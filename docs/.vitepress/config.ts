@@ -8,10 +8,10 @@ export default withMermaid(
         include: ['mermaid'],
       },
     },
-    title: 'Winnow',
+    title: 'Siphon',
     description: 'Legacy software lifting framework',
 
-    base: '/winnow/',
+    base: '/siphon/',
 
     themeConfig: {
       nav: [
@@ -51,7 +51,7 @@ export default withMermaid(
       },
 
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/rhizome-lab/winnow' }
+        { icon: 'github', link: 'https://github.com/rhizome-lab/siphon' }
       ],
 
       search: {
@@ -59,7 +59,7 @@ export default withMermaid(
       },
 
       editLink: {
-        pattern: 'https://github.com/rhizome-lab/winnow/edit/master/docs/:path',
+        pattern: 'https://github.com/rhizome-lab/siphon/edit/master/docs/:path',
         text: 'Edit this page on GitHub'
       },
     },

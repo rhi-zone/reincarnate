@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Winnow
+  name: Siphon
   text: Legacy software lifting framework
   tagline: Extract and transform applications from obsolete runtimes into modern web equivalents
   actions:

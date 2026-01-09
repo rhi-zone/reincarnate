@@ -4,7 +4,7 @@ Behavioral rules for Claude Code in this repository.
 
 ## Overview
 
-Winnow is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents.
+Siphon is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents.
 
 ### Key Components
 
@@ -18,7 +18,7 @@ Winnow is a legacy software lifting framework. It extracts and transforms applic
 
 ### Supported Targets
 
-Winnow works on **bytecode and script**, not native code:
+Siphon works on **bytecode and script**, not native code:
 - Flash (ABC bytecode)
 - Director/Shockwave (Lingo)
 - VB6 (P-Code)
@@ -63,9 +63,9 @@ Do not:
 
 ## Crate Structure
 
-All crates use the `rhizome-winnow-` prefix:
-- `rhizome-winnow-core` - Core types and traits
-- `rhizome-winnow-cli` - CLI binary (named `winnow`)
-- `rhizome-winnow-flash` - Flash/SWF support
-- `rhizome-winnow-director` - Director/Shockwave support
+All crates use the `rhizome-siphon-` prefix:
+- `rhizome-siphon-core` - Core types and traits
+- `rhizome-siphon-cli` - CLI binary (named `siphon`)
+- `rhizome-siphon-flash` - Flash/SWF support
+- `rhizome-siphon-director` - Director/Shockwave support
 - etc.

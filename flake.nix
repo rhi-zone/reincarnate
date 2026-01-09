@@ -1,5 +1,5 @@
 {
-  description = "winnow - legacy software lifting framework";
+  description = "siphon - legacy software lifting framework";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

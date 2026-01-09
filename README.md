@@ -1,4 +1,4 @@
-# Winnow
+# Siphon
 
 Legacy software lifting framework.
 
@@ -6,7 +6,7 @@ Part of the [Rhizome](https://rhizome-lab.github.io) ecosystem.
 
 ## Overview
 
-Winnow extracts and transforms applications from obsolete runtimes into modern web-based equivalents. It works on bytecode and script-based software—not native binaries.
+Siphon extracts and transforms applications from obsolete runtimes into modern web-based equivalents. It works on bytecode and script-based software—not native binaries.
 
 ### Supported Targets
 
