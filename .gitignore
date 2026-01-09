@@ -1,0 +1,17 @@
+# Rust
+/target/
+Cargo.lock
+
+# Nix
+/.direnv/
+result
+
+# Docs
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
