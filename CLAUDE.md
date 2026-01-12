@@ -39,6 +39,16 @@ Siphon works on **bytecode and script**, not native code:
 
 **Do the work properly.** When asked to analyze X, actually read X - don't synthesize from conversation.
 
+## Behavioral Patterns
+
+From ecosystem-wide session analysis:
+
+- **Question scope early:** Before implementing, ask whether it belongs in this crate/module
+- **Check consistency:** Look at how similar things are done elsewhere in the codebase
+- **Implement fully:** No silent arbitrary caps, incomplete pagination, or unexposed trait methods
+- **Name for purpose:** Avoid names that describe one consumer
+- **Verify before stating:** Don't assert API behavior or codebase facts without checking
+
 ## Design Principles
 
 **Unify, don't multiply.** One interface for multiple engines > separate implementations per engine. Plugin systems > hardcoded switches.
