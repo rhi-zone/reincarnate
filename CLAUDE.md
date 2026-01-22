@@ -84,6 +84,9 @@ Do not:
 - Add to the monolith - split by domain into sub-crates
 - Cut corners with fallbacks - implement properly for each case
 - Mark as done prematurely - note what remains
+- Use path dependencies in Cargo.toml - causes clippy to stash changes across repos
+- Use `--no-verify` - fix the issue or fix the hook
+- Assume tools are missing - check if `nix develop` is available for the right environment
 
 ## Crate Structure
 
