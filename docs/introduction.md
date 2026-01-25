@@ -1,6 +1,6 @@
 # Introduction
 
-Resurrect is a framework for lifting legacy software from obsolete runtimes into modern web-based equivalents.
+Reincarnate is a framework for lifting legacy software from obsolete runtimes into modern web-based equivalents.
 
 ## The Problem
 
@@ -14,7 +14,7 @@ Millions of interactive applications are trapped in dying runtimes:
 
 ## The Approach
 
-Resurrect works on **bytecode and script**, not native binaries.
+Reincarnate works on **bytecode and script**, not native binaries.
 
 ### Tier 1: Native Patching
 
@@ -36,7 +36,7 @@ For engines you *can* shim (Ren'Py, RPG Maker, Flash, GMS):
 - **Explant**: Extract bytecode, decompile scripts, dump assets
 - **Hypha**: Translation pipeline with UI overlay injection
 
-## What Resurrect Is Not
+## What Reincarnate Is Not
 
 - Not a VM or emulator (use Wine/DOSBox for native code)
 - Not a "remaster" tool (we preserve, not improve)

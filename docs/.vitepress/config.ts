@@ -8,10 +8,10 @@ export default withMermaid(
         include: ['mermaid'],
       },
     },
-    title: 'Resurrect',
+    title: 'Reincarnate',
     description: 'Legacy software lifting framework',
 
-    base: '/resurrect/',
+    base: '/reincarnate/',
 
     themeConfig: {
       nav: [
@@ -51,7 +51,7 @@ export default withMermaid(
       },
 
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/rhi-zone/resurrect' }
+        { icon: 'github', link: 'https://github.com/rhi-zone/reincarnate' }
       ],
 
       search: {
@@ -59,7 +59,7 @@ export default withMermaid(
       },
 
       editLink: {
-        pattern: 'https://github.com/rhi-zone/resurrect/edit/master/docs/:path',
+        pattern: 'https://github.com/rhi-zone/reincarnate/edit/master/docs/:path',
         text: 'Edit this page on GitHub'
       },
     },

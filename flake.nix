@@ -1,5 +1,5 @@
 {
-  description = "resurrect - legacy software lifting framework";
+  description = "reincarnate - legacy software lifting framework";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

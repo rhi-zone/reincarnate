@@ -4,7 +4,7 @@ Behavioral rules for Claude Code in this repository.
 
 ## Overview
 
-Resurrect is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents.
+Reincarnate is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents.
 
 ### Key Components
 
@@ -18,7 +18,7 @@ Resurrect is a legacy software lifting framework. It extracts and transforms app
 
 ### Supported Targets
 
-Resurrect works on **bytecode and script**, not native code:
+Reincarnate works on **bytecode and script**, not native code:
 - Flash (ABC bytecode)
 - Director/Shockwave (Lingo)
 - VB6 (P-Code)
@@ -90,9 +90,9 @@ Do not:
 
 ## Crate Structure
 
-All crates use the `rhi-resurrect-` prefix:
-- `rhi-resurrect-core` - Core types and traits
-- `rhi-resurrect-cli` - CLI binary (named `resurrect`)
-- `rhi-resurrect-flash` - Flash/SWF support
-- `rhi-resurrect-director` - Director/Shockwave support
+All crates use the `reincarnate-` prefix:
+- `reincarnate-core` - Core types and traits
+- `reincarnate-cli` - CLI binary (named `reincarnate`)
+- `reincarnate-flash` - Flash/SWF support
+- `reincarnate-director` - Director/Shockwave support
 - etc.

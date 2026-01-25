@@ -1,4 +1,4 @@
-# Resurrect
+# Reincarnate
 
 Legacy software lifting framework.
 
@@ -6,7 +6,7 @@ Part of the [RHI](https://rhi-zone.github.io) ecosystem.
 
 ## Overview
 
-Resurrect extracts and transforms applications from obsolete runtimes into modern web-based equivalents. It works on bytecode and script-based software—not native binaries.
+Reincarnate extracts and transforms applications from obsolete runtimes into modern web-based equivalents. It works on bytecode and script-based software—not native binaries.
 
 ### Supported Targets
 
