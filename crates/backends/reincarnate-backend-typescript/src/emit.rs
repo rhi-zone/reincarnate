@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -8,18 +9,12 @@ use reincarnate_core::ir::{
     Block, CmpKind, Constant, Function, InstId, Module, Op, StructDef, Type, Visibility,
 };
 
+use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
 
 /// Emit a single module as a `.ts` file into `output_dir`.
 pub fn emit_module(module: &Module, output_dir: &Path) -> Result<(), CoreError> {
-    let mut out = String::new();
-
-    emit_imports(module, &mut out);
-    emit_structs(module, &mut out);
-    emit_enums(module, &mut out);
-    emit_globals(module, &mut out);
-    emit_functions(module, &mut out)?;
-
+    let out = emit_module_to_string(module)?;
     let path = output_dir.join(format!("{}.ts", module.name));
     fs::write(&path, &out).map_err(CoreError::Io)?;
     Ok(())
@@ -29,6 +24,7 @@ pub fn emit_module(module: &Module, output_dir: &Path) -> Result<(), CoreError> 
 pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
     let mut out = String::new();
 
+    emit_runtime_imports(module, &mut out);
     emit_imports(module, &mut out);
     emit_structs(module, &mut out);
     emit_enums(module, &mut out);
@@ -36,6 +32,41 @@ pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
     emit_functions(module, &mut out)?;
 
     Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// Runtime imports (auto-detected from SystemCall ops)
+// ---------------------------------------------------------------------------
+
+/// Scan all functions in a module for `SystemCall` ops and collect the unique
+/// system names that match known runtime systems.
+fn collect_system_names(module: &Module) -> BTreeSet<String> {
+    let known: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
+    let mut used = BTreeSet::new();
+    for (_id, func) in module.functions.iter() {
+        for (_inst_id, inst) in func.insts.iter() {
+            if let Op::SystemCall { system, .. } = &inst.op {
+                if known.contains(system.as_str()) {
+                    used.insert(system.clone());
+                }
+            }
+        }
+    }
+    used
+}
+
+fn emit_runtime_imports(module: &Module, out: &mut String) {
+    let systems = collect_system_names(module);
+    if systems.is_empty() {
+        return;
+    }
+    let names: Vec<&str> = systems.iter().map(|s| s.as_str()).collect();
+    let _ = writeln!(
+        out,
+        "import {{ {} }} from \"./runtime\";",
+        names.join(", ")
+    );
+    out.push('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -814,7 +845,42 @@ mod tests {
             mb.add_function(fb.build());
         });
 
+        // Auto-injected runtime import.
+        assert!(out.contains("import { renderer } from \"./runtime\";"));
         assert!(out.contains("renderer.clear(v0, v1);"));
+    }
+
+    #[test]
+    fn multiple_system_imports() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![],
+                return_ty: Type::Void,
+            };
+            let mut fb = FunctionBuilder::new("tick", sig, Visibility::Public);
+            fb.system_call("timing", "tick", &[], Type::Void);
+            fb.system_call("input", "update", &[], Type::Void);
+            fb.system_call("renderer", "present", &[], Type::Void);
+            fb.ret(None);
+            mb.add_function(fb.build());
+        });
+
+        assert!(out.contains("import { input, renderer, timing } from \"./runtime\";"));
+    }
+
+    #[test]
+    fn no_runtime_import_without_system_calls() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![],
+                return_ty: Type::Void,
+            };
+            let mut fb = FunctionBuilder::new("noop", sig, Visibility::Public);
+            fb.ret(None);
+            mb.add_function(fb.build());
+        });
+
+        assert!(!out.contains("import"));
     }
 
     #[test]

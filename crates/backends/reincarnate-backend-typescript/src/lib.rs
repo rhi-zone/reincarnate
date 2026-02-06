@@ -1,4 +1,5 @@
 pub mod emit;
+pub mod runtime;
 pub mod types;
 
 use std::fs;
@@ -16,6 +17,8 @@ impl Backend for TypeScriptBackend {
 
     fn emit(&self, input: BackendInput) -> Result<(), CoreError> {
         fs::create_dir_all(&input.output_dir)?;
+
+        runtime::emit_runtime(&input.output_dir)?;
 
         for module in &input.modules {
             emit::emit_module(module, &input.output_dir)?;
