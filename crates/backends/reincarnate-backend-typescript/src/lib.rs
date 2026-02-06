@@ -1,5 +1,6 @@
 pub mod emit;
 pub mod runtime;
+pub mod scaffold;
 pub mod types;
 
 use std::fs;
@@ -23,6 +24,8 @@ impl Backend for TypeScriptBackend {
         for module in &input.modules {
             emit::emit_module(module, &input.output_dir)?;
         }
+
+        scaffold::emit_scaffold(&input.modules, &input.output_dir)?;
 
         // Write extracted assets to disk.
         for asset in &input.assets.assets {
