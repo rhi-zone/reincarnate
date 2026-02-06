@@ -6,6 +6,7 @@
 pub struct PassConfig {
     pub type_inference: bool,
     pub constant_folding: bool,
+    pub dead_code_elimination: bool,
 }
 
 impl Default for PassConfig {
@@ -13,6 +14,7 @@ impl Default for PassConfig {
         Self {
             type_inference: true,
             constant_folding: true,
+            dead_code_elimination: true,
         }
     }
 }
@@ -23,12 +25,14 @@ impl PassConfig {
     /// Pass names correspond to `Transform::name()` values:
     /// - `"type-inference"`
     /// - `"constant-folding"`
+    /// - `"dead-code-elimination"`
     pub fn from_skip_list(skip: &[&str]) -> Self {
         let mut config = Self::default();
         for name in skip {
             match *name {
                 "type-inference" => config.type_inference = false,
                 "constant-folding" => config.constant_folding = false,
+                "dead-code-elimination" => config.dead_code_elimination = false,
                 _ => {}
             }
         }
@@ -45,6 +49,7 @@ mod tests {
         let config = PassConfig::default();
         assert!(config.type_inference);
         assert!(config.constant_folding);
+        assert!(config.dead_code_elimination);
     }
 
     #[test]
@@ -52,13 +57,19 @@ mod tests {
         let config = PassConfig::from_skip_list(&["constant-folding"]);
         assert!(config.type_inference);
         assert!(!config.constant_folding);
+        assert!(config.dead_code_elimination);
     }
 
     #[test]
     fn skip_list_all() {
-        let config = PassConfig::from_skip_list(&["type-inference", "constant-folding"]);
+        let config = PassConfig::from_skip_list(&[
+            "type-inference",
+            "constant-folding",
+            "dead-code-elimination",
+        ]);
         assert!(!config.type_inference);
         assert!(!config.constant_folding);
+        assert!(!config.dead_code_elimination);
     }
 
     #[test]
