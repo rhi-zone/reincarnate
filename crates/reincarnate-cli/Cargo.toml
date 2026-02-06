@@ -1,0 +1,17 @@
+[package]
+name = "reincarnate-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "CLI for the Reincarnate legacy software lifting framework"
+
+[[bin]]
+name = "reincarnate"
+path = "src/main.rs"
+
+[dependencies]
+reincarnate-core = { path = "../reincarnate-core" }
+clap = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
