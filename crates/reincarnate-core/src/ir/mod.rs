@@ -4,6 +4,7 @@ pub mod coroutine;
 pub mod func;
 pub mod inst;
 pub mod module;
+pub mod printer;
 pub mod ty;
 pub mod value;
 
