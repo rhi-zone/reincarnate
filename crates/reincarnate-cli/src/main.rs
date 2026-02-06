@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
-use reincarnate_core::pipeline::{Frontend, FrontendInput, Transform};
+use reincarnate_core::pipeline::{Frontend, FrontendInput, PassConfig};
 use reincarnate_core::project::{EngineOrigin, ProjectManifest};
-use reincarnate_core::transforms::{ConstantFolding, TypeInference};
+use reincarnate_core::transforms::default_pipeline;
 
 #[derive(Parser)]
 #[command(name = "reincarnate", about = "Legacy software lifting framework")]
@@ -34,6 +34,9 @@ enum Command {
         /// Path to the project manifest.
         #[arg(long, default_value = "reincarnate.json")]
         manifest: PathBuf,
+        /// Transform passes to skip (e.g. "type-inference", "constant-folding").
+        #[arg(long = "skip-pass")]
+        skip_passes: Vec<String>,
     },
 }
 
@@ -74,7 +77,7 @@ fn cmd_print_ir(file: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn cmd_extract(manifest_path: &PathBuf) -> Result<()> {
+fn cmd_extract(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
     let manifest = load_manifest(manifest_path)?;
     let frontend = find_frontend(&manifest.engine);
     let Some(frontend) = frontend else {
@@ -92,15 +95,11 @@ fn cmd_extract(manifest_path: &PathBuf) -> Result<()> {
         .extract(input)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let type_infer = TypeInference;
-    let const_fold = ConstantFolding;
+    let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
+    let config = PassConfig::from_skip_list(&skip_refs);
+    let pipeline = default_pipeline(&config);
     for module in output.modules {
-        let module = type_infer
-            .apply(module)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-        let module = const_fold
-            .apply(module)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let module = pipeline.run(module).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("{module}");
     }
     Ok(())
@@ -111,6 +110,9 @@ fn main() -> Result<()> {
     match &cli.command {
         Command::Info { manifest } => cmd_info(manifest),
         Command::PrintIr { file } => cmd_print_ir(file),
-        Command::Extract { manifest } => cmd_extract(manifest),
+        Command::Extract {
+            manifest,
+            skip_passes,
+        } => cmd_extract(manifest, skip_passes),
     }
 }
