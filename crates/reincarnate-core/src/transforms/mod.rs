@@ -1,7 +1,9 @@
+pub mod cfg_simplify;
 pub mod const_fold;
 pub mod dce;
 pub mod type_infer;
 
+pub use cfg_simplify::CfgSimplify;
 pub use const_fold::ConstantFolding;
 pub use dce::DeadCodeElimination;
 pub use type_infer::TypeInference;
@@ -16,6 +18,9 @@ pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     }
     if config.constant_folding {
         pipeline.add(Box::new(ConstantFolding));
+    }
+    if config.cfg_simplify {
+        pipeline.add(Box::new(CfgSimplify));
     }
     if config.dead_code_elimination {
         pipeline.add(Box::new(DeadCodeElimination));
