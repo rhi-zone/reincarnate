@@ -14,7 +14,7 @@
 - [ ] Rust codegen backend (emit `.rs` files from typed IR)
 - [ ] TypeScript codegen backend
 - [ ] Dead code elimination pass
-- [ ] Constant folding pass
+- [x] Constant folding pass
 - [ ] Cross-module linking pass (resolve string imports, build global symbol table)
 - [ ] Asset extraction pipeline (images, audio, fonts from SWF/etc.)
 - [ ] wgpu + winit renderer system implementation
