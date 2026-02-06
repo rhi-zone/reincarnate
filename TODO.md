@@ -1,0 +1,21 @@
+# TODO
+
+## Next Up
+
+- [ ] **IR builder API** — Convenience layer in `reincarnate-core` for constructing functions, blocks, and instructions without manually managing entity IDs. Every frontend needs this.
+- [ ] **IR printer** — Human-readable text format for dumping IR (like LLVM `.ll` or Cranelift CLIF). Essential for debugging frontends and transforms.
+- [ ] **CLI scaffolding** — `reincarnate-cli` crate with clap. Parse a project manifest, load source files, print info. Wire up the pipeline trait plumbing.
+- [ ] **Flash frontend** — `reincarnate-flash` crate. AVM2 bytecode extraction and decompilation using Ruffle's `swf` crate (MIT/Apache-2.0). First real target.
+
+## Future
+
+- [ ] Type inference pass (flow-sensitive, constraint-based, `Dynamic` fallback)
+- [ ] Coroutine lowering transform (IR coroutine ops → state machines)
+- [ ] Rust codegen backend (emit `.rs` files from typed IR)
+- [ ] TypeScript codegen backend
+- [ ] Dead code elimination pass
+- [ ] Constant folding pass
+- [ ] Cross-module linking pass (resolve string imports, build global symbol table)
+- [ ] Asset extraction pipeline (images, audio, fonts from SWF/etc.)
+- [ ] wgpu + winit renderer system implementation
+- [ ] Web Audio system implementation
