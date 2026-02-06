@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -6,7 +6,7 @@ use std::path::Path;
 use reincarnate_core::entity::EntityRef;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{
-    Block, CmpKind, Constant, Function, InstId, Module, Op, StructDef, Type, Visibility,
+    Block, CmpKind, Constant, Function, InstId, Module, Op, StructDef, Type, ValueId, Visibility,
 };
 
 use crate::runtime::SYSTEM_NAMES;
@@ -35,11 +35,200 @@ pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
 }
 
 // ---------------------------------------------------------------------------
+// Emit context — alias resolution and inline-let tracking
+// ---------------------------------------------------------------------------
+
+/// Per-function context for copy propagation and inline `let` declarations.
+struct EmitCtx {
+    /// Value alias map: value → canonical source value (from copy propagation).
+    aliases: HashMap<ValueId, ValueId>,
+    /// Instructions to skip entirely (their effects are folded into aliases).
+    skip_insts: HashSet<InstId>,
+    /// Values that need a `let` keyword when first emitted.
+    needs_let: HashSet<ValueId>,
+}
+
+impl EmitCtx {
+    fn for_function(func: &Function) -> Self {
+        let (aliases, skip_insts) = build_aliases(func);
+        let needs_let = compute_needs_let(func, &skip_insts);
+        Self {
+            aliases,
+            skip_insts,
+            needs_let,
+        }
+    }
+
+    /// Resolve a value through the alias chain.
+    fn val(&self, v: ValueId) -> String {
+        let mut resolved = v;
+        for _ in 0..100 {
+            match self.aliases.get(&resolved) {
+                Some(&alias) if alias != resolved => resolved = alias,
+                _ => break,
+            }
+        }
+        format!("v{}", resolved.index())
+    }
+
+    /// Returns `"let "` the first time a value is emitted, `""` thereafter.
+    fn let_prefix(&self, v: ValueId) -> &'static str {
+        if self.needs_let.contains(&v) {
+            "let "
+        } else {
+            ""
+        }
+    }
+
+    fn should_skip(&self, inst_id: InstId) -> bool {
+        self.skip_insts.contains(&inst_id)
+    }
+}
+
+/// Build an alias map via copy propagation on Alloc/Store/Load/Copy patterns.
+///
+/// For alloc'd pointers with exactly one Store, all Loads are aliased to the
+/// stored value and the Alloc/Store/Load instructions are marked for skipping.
+/// Copy instructions are always aliased.
+fn build_aliases(func: &Function) -> (HashMap<ValueId, ValueId>, HashSet<InstId>) {
+    let mut aliases = HashMap::new();
+    let mut skip_insts = HashSet::new();
+
+    // Track alloc'd pointers and their stores.
+    let mut alloc_results: HashSet<ValueId> = HashSet::new();
+    let mut store_count: HashMap<ValueId, usize> = HashMap::new();
+    let mut store_value: HashMap<ValueId, ValueId> = HashMap::new();
+
+    for (_inst_id, inst) in func.insts.iter() {
+        match &inst.op {
+            Op::Alloc(_) => {
+                if let Some(r) = inst.result {
+                    alloc_results.insert(r);
+                }
+            }
+            Op::Store { ptr, value } => {
+                if alloc_results.contains(ptr) {
+                    *store_count.entry(*ptr).or_default() += 1;
+                    store_value.insert(*ptr, *value);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Single-store alloc pointers can be entirely eliminated.
+    let single_store: HashSet<ValueId> = store_count
+        .iter()
+        .filter(|(_, &c)| c == 1)
+        .map(|(&ptr, _)| ptr)
+        .collect();
+
+    for (inst_id, inst) in func.insts.iter() {
+        match &inst.op {
+            Op::Alloc(_) if inst.result.is_some_and(|r| single_store.contains(&r)) => {
+                skip_insts.insert(inst_id);
+            }
+            Op::Store { ptr, .. } if single_store.contains(ptr) => {
+                skip_insts.insert(inst_id);
+            }
+            Op::Load(ptr) if single_store.contains(ptr) => {
+                if let Some(r) = inst.result {
+                    aliases.insert(r, store_value[ptr]);
+                    skip_insts.insert(inst_id);
+                }
+            }
+            Op::Copy(src) => {
+                if let Some(r) = inst.result {
+                    aliases.insert(r, *src);
+                    skip_insts.insert(inst_id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Resolve transitive aliases: v3 → v2 → v1 becomes v3 → v1.
+    loop {
+        let mut changed = false;
+        let snapshot: Vec<_> = aliases.iter().map(|(k, v)| (*k, *v)).collect();
+        for (key, target) in snapshot {
+            if let Some(&next) = aliases.get(&target) {
+                if next != aliases[&key] {
+                    aliases.insert(key, next);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    (aliases, skip_insts)
+}
+
+/// Determine which values should get an inline `let` declaration.
+///
+/// Entry-block parameters are declared in the function signature. Non-entry
+/// block parameters are pre-declared before the dispatch loop. Everything else
+/// (instruction results) gets `let` at its definition site.
+fn compute_needs_let(func: &Function, skip_insts: &HashSet<InstId>) -> HashSet<ValueId> {
+    let entry_params: HashSet<ValueId> =
+        func.blocks[func.entry].params.iter().map(|p| p.value).collect();
+
+    let mut needs_let = HashSet::new();
+    for (inst_id, inst) in func.insts.iter() {
+        if skip_insts.contains(&inst_id) {
+            continue;
+        }
+        if let Some(r) = inst.result {
+            if !entry_params.contains(&r) {
+                needs_let.insert(r);
+            }
+        }
+    }
+    needs_let
+}
+
+// ---------------------------------------------------------------------------
+// Identifier sanitization
+// ---------------------------------------------------------------------------
+
+/// Sanitize a name into a valid JavaScript identifier.
+///
+/// Replaces non-alphanumeric characters with `_` and prefixes with `_` if the
+/// name starts with a digit.
+pub(crate) fn sanitize_ident(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() {
+        return "_".to_string();
+    }
+    if out.starts_with(|c: char| c.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// Check whether a string is a valid JS identifier (safe for dot-access).
+fn is_valid_js_ident(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with(|c: char| c.is_ascii_digit())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+}
+
+// ---------------------------------------------------------------------------
 // Runtime imports (auto-detected from SystemCall ops)
 // ---------------------------------------------------------------------------
 
-/// Scan all functions in a module for `SystemCall` ops and collect the unique
-/// system names.
 fn collect_system_names(module: &Module) -> BTreeSet<String> {
     let mut used = BTreeSet::new();
     for (_id, func) in module.functions.iter() {
@@ -57,7 +246,6 @@ fn emit_runtime_imports(module: &Module, out: &mut String) {
     if systems.is_empty() {
         return;
     }
-    // Partition into generic runtime systems and Flash-specific ones.
     let known: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
     let mut generic: Vec<&str> = Vec::new();
     let mut flash: Vec<String> = Vec::new();
@@ -65,7 +253,7 @@ fn emit_runtime_imports(module: &Module, out: &mut String) {
         if known.contains(sys.as_str()) {
             generic.push(sys.as_str());
         } else {
-            flash.push(system_to_ident(sys));
+            flash.push(sanitize_ident(sys));
         }
     }
     if !generic.is_empty() {
@@ -87,11 +275,6 @@ fn emit_runtime_imports(module: &Module, out: &mut String) {
     }
 }
 
-/// Convert a system name to a valid JS identifier (e.g., `Flash.Object` → `Flash_Object`).
-fn system_to_ident(system: &str) -> String {
-    system.replace('.', "_")
-}
-
 // ---------------------------------------------------------------------------
 // Imports
 // ---------------------------------------------------------------------------
@@ -99,8 +282,10 @@ fn system_to_ident(system: &str) -> String {
 fn emit_imports(module: &Module, out: &mut String) {
     for import in &module.imports {
         let name = match &import.alias {
-            Some(alias) => format!("{} as {}", import.name, alias),
-            None => import.name.clone(),
+            Some(alias) => {
+                format!("{} as {}", sanitize_ident(&import.name), sanitize_ident(alias))
+            }
+            None => sanitize_ident(&import.name),
         };
         let _ = writeln!(out, "import {{ {name} }} from \"./{}\";", import.module);
     }
@@ -121,9 +306,9 @@ fn emit_structs(module: &Module, out: &mut String) {
 
 fn emit_struct(def: &StructDef, out: &mut String) {
     let vis = visibility_prefix(def.visibility);
-    let _ = writeln!(out, "{vis}interface {} {{", def.name);
+    let _ = writeln!(out, "{vis}interface {} {{", sanitize_ident(&def.name));
     for (name, ty) in &def.fields {
-        let _ = writeln!(out, "  {name}: {};", ts_type(ty));
+        let _ = writeln!(out, "  {}: {};", sanitize_ident(name), ts_type(ty));
     }
     let _ = writeln!(out, "}}\n");
 }
@@ -152,7 +337,12 @@ fn emit_enums(module: &Module, out: &mut String) {
                 }
             })
             .collect();
-        let _ = writeln!(out, "{vis}type {} = {};", def.name, variants.join(" | "));
+        let _ = writeln!(
+            out,
+            "{vis}type {} = {};",
+            sanitize_ident(&def.name),
+            variants.join(" | ")
+        );
         out.push('\n');
     }
 }
@@ -168,7 +358,7 @@ fn emit_globals(module: &Module, out: &mut String) {
         let _ = writeln!(
             out,
             "{vis}{kw} {}: {};",
-            global.name,
+            sanitize_ident(&global.name),
             ts_type(&global.ty)
         );
     }
@@ -189,6 +379,7 @@ fn emit_functions(module: &Module, out: &mut String) -> Result<(), CoreError> {
 }
 
 fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
+    let ctx = EmitCtx::for_function(func);
     let vis = visibility_prefix(func.visibility);
     let star = if func.coroutine.is_some() { "*" } else { "" };
 
@@ -197,14 +388,14 @@ fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
     let params: Vec<String> = entry
         .params
         .iter()
-        .map(|p| format!("{}: {}", val(p.value), ts_type(&p.ty)))
+        .map(|p| format!("{}: {}", ctx.val(p.value), ts_type(&p.ty)))
         .collect();
     let ret_ty = ts_type(&func.sig.return_ty);
 
     let _ = write!(
         out,
         "{vis}function{star} {}({params}): {ret_ty}",
-        func.name,
+        sanitize_ident(&func.name),
         params = params.join(", "),
     );
 
@@ -213,10 +404,11 @@ fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
     let _ = writeln!(out, " {{");
 
     if is_simple {
-        emit_block_body(func, func.entry, &func.blocks[func.entry], out, "  ")?;
+        emit_block_body(&ctx, func, func.entry, &func.blocks[func.entry], out, "  ")?;
     } else {
-        // Declare all value variables used as block params (non-entry).
-        emit_block_param_declarations(func, out);
+        // Pre-declare only non-entry block parameters (they're assigned from
+        // other blocks via branch args).
+        emit_block_param_declarations(&ctx, func, out);
 
         let _ = writeln!(out, "  let $block = {};", func.entry.index());
         let _ = writeln!(out, "  while (true) {{");
@@ -224,7 +416,7 @@ fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
 
         for (block_id, block) in func.blocks.iter() {
             let _ = writeln!(out, "      case {}: {{", block_id.index());
-            emit_block_body(func, block_id, block, out, "        ")?;
+            emit_block_body(&ctx, func, block_id, block, out, "        ")?;
             let _ = writeln!(out, "      }}");
         }
 
@@ -236,8 +428,8 @@ fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
     Ok(())
 }
 
-/// Declare `let` bindings for block-param values in non-entry blocks.
-fn emit_block_param_declarations(func: &Function, out: &mut String) {
+/// Pre-declare `let` bindings for non-entry block parameters only.
+fn emit_block_param_declarations(ctx: &EmitCtx, func: &Function, out: &mut String) {
     for (block_id, block) in func.blocks.iter() {
         if block_id == func.entry {
             continue;
@@ -246,32 +438,15 @@ fn emit_block_param_declarations(func: &Function, out: &mut String) {
             let _ = writeln!(
                 out,
                 "  let {}: {};",
-                val(param.value),
+                ctx.val(param.value),
                 ts_type(&param.ty)
             );
-        }
-    }
-    // Also declare result values for instructions (non-void).
-    for (_inst_id, inst) in func.insts.iter() {
-        if let Some(v) = inst.result {
-            // Don't re-declare entry block params.
-            let is_entry_param = func.blocks[func.entry]
-                .params
-                .iter()
-                .any(|p| p.value == v);
-            if !is_entry_param {
-                let _ = writeln!(
-                    out,
-                    "  let {}: {};",
-                    val(v),
-                    ts_type(&func.value_types[v])
-                );
-            }
         }
     }
 }
 
 fn emit_block_body(
+    ctx: &EmitCtx,
     func: &Function,
     _block_id: reincarnate_core::ir::BlockId,
     block: &Block,
@@ -279,12 +454,16 @@ fn emit_block_body(
     indent: &str,
 ) -> Result<(), CoreError> {
     for &inst_id in &block.insts {
-        emit_inst(func, inst_id, out, indent)?;
+        if ctx.should_skip(inst_id) {
+            continue;
+        }
+        emit_inst(ctx, func, inst_id, out, indent)?;
     }
     Ok(())
 }
 
 fn emit_inst(
+    ctx: &EmitCtx,
     func: &Function,
     inst_id: InstId,
     out: &mut String,
@@ -297,30 +476,33 @@ fn emit_inst(
         // -- Constants --
         Op::Const(c) => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = {};", val(r), emit_constant(c));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(out, "{indent}{pfx}{} = {};", ctx.val(r), emit_constant(c));
         }
 
         // -- Arithmetic --
-        Op::Add(a, b) => emit_binop(out, indent, result, a, b, "+"),
-        Op::Sub(a, b) => emit_binop(out, indent, result, a, b, "-"),
-        Op::Mul(a, b) => emit_binop(out, indent, result, a, b, "*"),
-        Op::Div(a, b) => emit_binop(out, indent, result, a, b, "/"),
-        Op::Rem(a, b) => emit_binop(out, indent, result, a, b, "%"),
+        Op::Add(a, b) => emit_binop(ctx, out, indent, result, a, b, "+"),
+        Op::Sub(a, b) => emit_binop(ctx, out, indent, result, a, b, "-"),
+        Op::Mul(a, b) => emit_binop(ctx, out, indent, result, a, b, "*"),
+        Op::Div(a, b) => emit_binop(ctx, out, indent, result, a, b, "/"),
+        Op::Rem(a, b) => emit_binop(ctx, out, indent, result, a, b, "%"),
         Op::Neg(a) => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = -{};", val(r), val(*a));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(out, "{indent}{pfx}{} = -{};", ctx.val(r), ctx.val(*a));
         }
 
         // -- Bitwise --
-        Op::BitAnd(a, b) => emit_binop(out, indent, result, a, b, "&"),
-        Op::BitOr(a, b) => emit_binop(out, indent, result, a, b, "|"),
-        Op::BitXor(a, b) => emit_binop(out, indent, result, a, b, "^"),
+        Op::BitAnd(a, b) => emit_binop(ctx, out, indent, result, a, b, "&"),
+        Op::BitOr(a, b) => emit_binop(ctx, out, indent, result, a, b, "|"),
+        Op::BitXor(a, b) => emit_binop(ctx, out, indent, result, a, b, "^"),
         Op::BitNot(a) => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = ~{};", val(r), val(*a));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(out, "{indent}{pfx}{} = ~{};", ctx.val(r), ctx.val(*a));
         }
-        Op::Shl(a, b) => emit_binop(out, indent, result, a, b, "<<"),
-        Op::Shr(a, b) => emit_binop(out, indent, result, a, b, ">>"),
+        Op::Shl(a, b) => emit_binop(ctx, out, indent, result, a, b, "<<"),
+        Op::Shr(a, b) => emit_binop(ctx, out, indent, result, a, b, ">>"),
 
         // -- Comparison --
         Op::Cmp(kind, a, b) => {
@@ -332,18 +514,19 @@ fn emit_inst(
                 CmpKind::Gt => ">",
                 CmpKind::Ge => ">=",
             };
-            emit_binop(out, indent, result, a, b, op);
+            emit_binop(ctx, out, indent, result, a, b, op);
         }
 
         // -- Logic --
         Op::Not(a) => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = !{};", val(r), val(*a));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(out, "{indent}{pfx}{} = !{};", ctx.val(r), ctx.val(*a));
         }
 
         // -- Control flow --
         Op::Br { target, args } => {
-            emit_branch_args(func, *target, args, out, indent);
+            emit_branch_args(ctx, func, *target, args, out, indent);
             let _ = writeln!(out, "{indent}$block = {}; continue;", target.index());
         }
         Op::BrIf {
@@ -353,16 +536,16 @@ fn emit_inst(
             else_target,
             else_args,
         } => {
-            let _ = writeln!(out, "{indent}if ({}) {{", val(*cond));
+            let _ = writeln!(out, "{indent}if ({}) {{", ctx.val(*cond));
             let inner = format!("{indent}  ");
-            emit_branch_args(func, *then_target, then_args, out, &inner);
+            emit_branch_args(ctx, func, *then_target, then_args, out, &inner);
             let _ = writeln!(
                 out,
                 "{inner}$block = {}; continue;",
                 then_target.index()
             );
             let _ = writeln!(out, "{indent}}} else {{");
-            emit_branch_args(func, *else_target, else_args, out, &inner);
+            emit_branch_args(ctx, func, *else_target, else_args, out, &inner);
             let _ = writeln!(
                 out,
                 "{inner}$block = {}; continue;",
@@ -375,15 +558,11 @@ fn emit_inst(
             cases,
             default,
         } => {
-            let _ = writeln!(out, "{indent}switch ({}) {{", val(*value));
+            let _ = writeln!(out, "{indent}switch ({}) {{", ctx.val(*value));
             for (constant, target, args) in cases {
-                let _ = writeln!(
-                    out,
-                    "{indent}  case {}:",
-                    emit_constant(constant)
-                );
+                let _ = writeln!(out, "{indent}  case {}:", emit_constant(constant));
                 let inner = format!("{indent}    ");
-                emit_branch_args(func, *target, args, out, &inner);
+                emit_branch_args(ctx, func, *target, args, out, &inner);
                 let _ = writeln!(
                     out,
                     "{inner}$block = {}; continue;",
@@ -392,7 +571,7 @@ fn emit_inst(
             }
             let _ = writeln!(out, "{indent}  default:");
             let inner = format!("{indent}    ");
-            emit_branch_args(func, default.0, &default.1, out, &inner);
+            emit_branch_args(ctx, func, default.0, &default.1, out, &inner);
             let _ = writeln!(
                 out,
                 "{inner}$block = {}; continue;",
@@ -402,7 +581,7 @@ fn emit_inst(
         }
         Op::Return(v) => match v {
             Some(v) => {
-                let _ = writeln!(out, "{indent}return {};", val(*v));
+                let _ = writeln!(out, "{indent}return {};", ctx.val(*v));
             }
             None => {
                 let _ = writeln!(out, "{indent}return;");
@@ -412,44 +591,73 @@ fn emit_inst(
         // -- Memory / fields --
         Op::Alloc(ty) => {
             let r = result.unwrap();
+            let pfx = ctx.let_prefix(r);
             let _ = writeln!(
                 out,
-                "{indent}{} = undefined as unknown as {};",
-                val(r),
+                "{indent}{pfx}{} = undefined as unknown as {};",
+                ctx.val(r),
                 ts_type(ty)
             );
         }
         Op::Load(ptr) => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = {};", val(r), val(*ptr));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(out, "{indent}{pfx}{} = {};", ctx.val(r), ctx.val(*ptr));
         }
         Op::Store { ptr, value } => {
-            let _ = writeln!(out, "{indent}{} = {};", val(*ptr), val(*value));
+            let _ = writeln!(out, "{indent}{} = {};", ctx.val(*ptr), ctx.val(*value));
         }
         Op::GetField { object, field } => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = {}.{field};", val(r), val(*object));
+            let pfx = ctx.let_prefix(r);
+            if is_valid_js_ident(field) {
+                let _ = writeln!(
+                    out,
+                    "{indent}{pfx}{} = {}.{field};",
+                    ctx.val(r),
+                    ctx.val(*object)
+                );
+            } else {
+                let _ = writeln!(
+                    out,
+                    "{indent}{pfx}{} = {}[\"{}\"];",
+                    ctx.val(r),
+                    ctx.val(*object),
+                    escape_js_string(field)
+                );
+            }
         }
         Op::SetField {
             object,
             field,
             value,
         } => {
-            let _ = writeln!(
-                out,
-                "{indent}{}.{field} = {};",
-                val(*object),
-                val(*value)
-            );
+            if is_valid_js_ident(field) {
+                let _ = writeln!(
+                    out,
+                    "{indent}{}.{field} = {};",
+                    ctx.val(*object),
+                    ctx.val(*value)
+                );
+            } else {
+                let _ = writeln!(
+                    out,
+                    "{indent}{}[\"{}\"] = {};",
+                    ctx.val(*object),
+                    escape_js_string(field),
+                    ctx.val(*value)
+                );
+            }
         }
         Op::GetIndex { collection, index } => {
             let r = result.unwrap();
+            let pfx = ctx.let_prefix(r);
             let _ = writeln!(
                 out,
-                "{indent}{} = {}[{}];",
-                val(r),
-                val(*collection),
-                val(*index)
+                "{indent}{pfx}{} = {}[{}];",
+                ctx.val(r),
+                ctx.val(*collection),
+                ctx.val(*index)
             );
         }
         Op::SetIndex {
@@ -460,32 +668,47 @@ fn emit_inst(
             let _ = writeln!(
                 out,
                 "{indent}{}[{}] = {};",
-                val(*collection),
-                val(*index),
-                val(*value)
+                ctx.val(*collection),
+                ctx.val(*index),
+                ctx.val(*value)
             );
         }
 
         // -- Calls --
         Op::Call { func: fname, args } => {
-            let args_str = args.iter().map(|a| val(*a)).collect::<Vec<_>>().join(", ");
+            let args_str = args
+                .iter()
+                .map(|a| ctx.val(*a))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let safe_name = sanitize_ident(fname);
             if let Some(r) = result {
-                let _ = writeln!(out, "{indent}{} = {fname}({args_str});", val(r));
+                let pfx = ctx.let_prefix(r);
+                let _ = writeln!(
+                    out,
+                    "{indent}{pfx}{} = {safe_name}({args_str});",
+                    ctx.val(r)
+                );
             } else {
-                let _ = writeln!(out, "{indent}{fname}({args_str});");
+                let _ = writeln!(out, "{indent}{safe_name}({args_str});");
             }
         }
         Op::CallIndirect { callee, args } => {
-            let args_str = args.iter().map(|a| val(*a)).collect::<Vec<_>>().join(", ");
+            let args_str = args
+                .iter()
+                .map(|a| ctx.val(*a))
+                .collect::<Vec<_>>()
+                .join(", ");
             if let Some(r) = result {
+                let pfx = ctx.let_prefix(r);
                 let _ = writeln!(
                     out,
-                    "{indent}{} = {}({args_str});",
-                    val(r),
-                    val(*callee)
+                    "{indent}{pfx}{} = {}({args_str});",
+                    ctx.val(r),
+                    ctx.val(*callee)
                 );
             } else {
-                let _ = writeln!(out, "{indent}{}({args_str});", val(*callee));
+                let _ = writeln!(out, "{indent}{}({args_str});", ctx.val(*callee));
             }
         }
         Op::SystemCall {
@@ -493,90 +716,119 @@ fn emit_inst(
             method,
             args,
         } => {
-            let args_str = args.iter().map(|a| val(*a)).collect::<Vec<_>>().join(", ");
-            let sys_ident = system_to_ident(system);
+            let args_str = args
+                .iter()
+                .map(|a| ctx.val(*a))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let sys_ident = sanitize_ident(system);
+            let safe_method = if is_valid_js_ident(method) {
+                format!(".{method}")
+            } else {
+                format!("[\"{}\"]", escape_js_string(method))
+            };
             if let Some(r) = result {
+                let pfx = ctx.let_prefix(r);
                 let _ = writeln!(
                     out,
-                    "{indent}{} = {sys_ident}.{method}({args_str});",
-                    val(r)
+                    "{indent}{pfx}{} = {sys_ident}{safe_method}({args_str});",
+                    ctx.val(r)
                 );
             } else {
-                let _ = writeln!(out, "{indent}{sys_ident}.{method}({args_str});");
+                let _ = writeln!(
+                    out,
+                    "{indent}{sys_ident}{safe_method}({args_str});",
+                );
             }
         }
 
         // -- Type operations --
         Op::Cast(v, ty) => {
             let r = result.unwrap();
+            let pfx = ctx.let_prefix(r);
             let _ = writeln!(
                 out,
-                "{indent}{} = {} as {};",
-                val(r),
-                val(*v),
+                "{indent}{pfx}{} = {} as {};",
+                ctx.val(r),
+                ctx.val(*v),
                 ts_type(ty)
             );
         }
         Op::TypeCheck(v, ty) => {
             let r = result.unwrap();
-            let check = type_check_expr(*v, ty);
-            let _ = writeln!(out, "{indent}{} = {check};", val(r));
+            let pfx = ctx.let_prefix(r);
+            let check = type_check_expr(ctx, *v, ty);
+            let _ = writeln!(out, "{indent}{pfx}{} = {check};", ctx.val(r));
         }
 
         // -- Aggregate construction --
         Op::StructInit { name: _, fields } => {
             let r = result.unwrap();
+            let pfx = ctx.let_prefix(r);
             let field_strs: Vec<String> = fields
                 .iter()
-                .map(|(name, v)| format!("{name}: {}", val(*v)))
+                .map(|(name, v)| {
+                    if is_valid_js_ident(name) {
+                        format!("{name}: {}", ctx.val(*v))
+                    } else {
+                        format!("\"{}\": {}", escape_js_string(name), ctx.val(*v))
+                    }
+                })
                 .collect();
             let _ = writeln!(
                 out,
-                "{indent}{} = {{ {} }};",
-                val(r),
+                "{indent}{pfx}{} = {{ {} }};",
+                ctx.val(r),
                 field_strs.join(", ")
             );
         }
         Op::ArrayInit(elems) => {
             let r = result.unwrap();
+            let pfx = ctx.let_prefix(r);
             let elems_str = elems
                 .iter()
-                .map(|v| val(*v))
+                .map(|v| ctx.val(*v))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let _ = writeln!(out, "{indent}{} = [{elems_str}];", val(r));
+            let _ = writeln!(out, "{indent}{pfx}{} = [{elems_str}];", ctx.val(r));
         }
         Op::TupleInit(elems) => {
             let r = result.unwrap();
+            let pfx = ctx.let_prefix(r);
             let elems_str = elems
                 .iter()
-                .map(|v| val(*v))
+                .map(|v| ctx.val(*v))
                 .collect::<Vec<_>>()
                 .join(", ");
             let ty_str = ts_type(&func.value_types[r]);
             let _ = writeln!(
                 out,
-                "{indent}{} = [{elems_str}] as {ty_str};",
-                val(r)
+                "{indent}{pfx}{} = [{elems_str}] as {ty_str};",
+                ctx.val(r)
             );
         }
 
         // -- Coroutines --
         Op::Yield(v) => {
             if let Some(r) = result {
+                let pfx = ctx.let_prefix(r);
                 match v {
                     Some(yv) => {
-                        let _ =
-                            writeln!(out, "{indent}{} = yield {};", val(r), val(*yv));
+                        let _ = writeln!(
+                            out,
+                            "{indent}{pfx}{} = yield {};",
+                            ctx.val(r),
+                            ctx.val(*yv)
+                        );
                     }
                     None => {
-                        let _ = writeln!(out, "{indent}{} = yield;", val(r));
+                        let _ = writeln!(out, "{indent}{pfx}{} = yield;", ctx.val(r));
                     }
                 }
             } else {
                 match v {
                     Some(yv) => {
-                        let _ = writeln!(out, "{indent}yield {};", val(*yv));
+                        let _ = writeln!(out, "{indent}yield {};", ctx.val(*yv));
                     }
                     None => {
                         let _ = writeln!(out, "{indent}yield;");
@@ -589,22 +841,46 @@ fn emit_inst(
             args,
         } => {
             let r = result.unwrap();
-            let args_str = args.iter().map(|a| val(*a)).collect::<Vec<_>>().join(", ");
-            let _ = writeln!(out, "{indent}{} = {fname}({args_str});", val(r));
+            let pfx = ctx.let_prefix(r);
+            let args_str = args
+                .iter()
+                .map(|a| ctx.val(*a))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(
+                out,
+                "{indent}{pfx}{} = {}({args_str});",
+                ctx.val(r),
+                sanitize_ident(fname)
+            );
         }
         Op::CoroutineResume(v) => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = {}.next();", val(r), val(*v));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(
+                out,
+                "{indent}{pfx}{} = {}.next();",
+                ctx.val(r),
+                ctx.val(*v)
+            );
         }
 
         // -- Misc --
         Op::GlobalRef(name) => {
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = {name};", val(r));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(
+                out,
+                "{indent}{pfx}{} = {};",
+                ctx.val(r),
+                sanitize_ident(name)
+            );
         }
         Op::Copy(src) => {
+            // Not skipped (multi-use or other reason).
             let r = result.unwrap();
-            let _ = writeln!(out, "{indent}{} = {};", val(r), val(*src));
+            let pfx = ctx.let_prefix(r);
+            let _ = writeln!(out, "{indent}{pfx}{} = {};", ctx.val(r), ctx.val(*src));
         }
     }
 
@@ -616,15 +892,23 @@ fn emit_inst(
 // ---------------------------------------------------------------------------
 
 fn emit_binop(
+    ctx: &EmitCtx,
     out: &mut String,
     indent: &str,
-    result: Option<reincarnate_core::ir::ValueId>,
-    a: &reincarnate_core::ir::ValueId,
-    b: &reincarnate_core::ir::ValueId,
+    result: Option<ValueId>,
+    a: &ValueId,
+    b: &ValueId,
     op: &str,
 ) {
     let r = result.unwrap();
-    let _ = writeln!(out, "{indent}{} = {} {op} {};", val(r), val(*a), val(*b));
+    let pfx = ctx.let_prefix(r);
+    let _ = writeln!(
+        out,
+        "{indent}{pfx}{} = {} {op} {};",
+        ctx.val(r),
+        ctx.val(*a),
+        ctx.val(*b)
+    );
 }
 
 fn emit_constant(c: &Constant) -> String {
@@ -661,10 +945,6 @@ fn escape_js_string(s: &str) -> String {
     out
 }
 
-fn val(v: reincarnate_core::ir::ValueId) -> String {
-    format!("v{}", v.index())
-}
-
 fn visibility_prefix(vis: Visibility) -> &'static str {
     match vis {
         Visibility::Public => "export ",
@@ -674,30 +954,36 @@ fn visibility_prefix(vis: Visibility) -> &'static str {
 
 /// Assign branch args to the target block's parameter variables.
 fn emit_branch_args(
+    ctx: &EmitCtx,
     func: &Function,
     target: reincarnate_core::ir::BlockId,
-    args: &[reincarnate_core::ir::ValueId],
+    args: &[ValueId],
     out: &mut String,
     indent: &str,
 ) {
     let target_block = &func.blocks[target];
     for (param, arg) in target_block.params.iter().zip(args.iter()) {
-        let _ = writeln!(out, "{indent}{} = {};", val(param.value), val(*arg));
+        let _ = writeln!(
+            out,
+            "{indent}{} = {};",
+            ctx.val(param.value),
+            ctx.val(*arg)
+        );
     }
 }
 
 /// Generate a TypeScript type-check expression.
-fn type_check_expr(v: reincarnate_core::ir::ValueId, ty: &Type) -> String {
+fn type_check_expr(ctx: &EmitCtx, v: ValueId, ty: &Type) -> String {
     match ty {
-        Type::Bool => format!("typeof {} === \"boolean\"", val(v)),
+        Type::Bool => format!("typeof {} === \"boolean\"", ctx.val(v)),
         Type::Int(_) | Type::UInt(_) | Type::Float(_) => {
-            format!("typeof {} === \"number\"", val(v))
+            format!("typeof {} === \"number\"", ctx.val(v))
         }
-        Type::String => format!("typeof {} === \"string\"", val(v)),
+        Type::String => format!("typeof {} === \"string\"", ctx.val(v)),
         Type::Struct(name) | Type::Enum(name) => {
-            format!("{} instanceof {name}", val(v))
+            format!("{} instanceof {}", ctx.val(v), sanitize_ident(name))
         }
-        _ => format!("typeof {} === \"object\"", val(v)),
+        _ => format!("typeof {} === \"object\"", ctx.val(v)),
     }
 }
 
@@ -731,7 +1017,7 @@ mod tests {
         });
 
         assert!(out.contains("export function add(v0: number, v1: number): number {"));
-        assert!(out.contains("v2 = v0 + v1;"));
+        assert!(out.contains("let v2 = v0 + v1;"));
         assert!(out.contains("return v2;"));
         // Single block → no dispatch loop.
         assert!(!out.contains("$block"));
@@ -925,12 +1211,12 @@ mod tests {
             mb.add_function(fb.build());
         });
 
-        assert!(out.contains("= null;"));
-        assert!(out.contains("= true;"));
-        assert!(out.contains("= false;"));
-        assert!(out.contains("= 42;"));
-        assert!(out.contains("= 3.125;"));
-        assert!(out.contains(r#"= "hello \"world\"\nnewline";"#));
+        assert!(out.contains("let v0 = null;"));
+        assert!(out.contains("let v1 = true;"));
+        assert!(out.contains("let v2 = false;"));
+        assert!(out.contains("let v3 = 42;"));
+        assert!(out.contains("let v4 = 3.125;"));
+        assert!(out.contains(r#"let v5 = "hello \"world\"\nnewline";"#));
     }
 
     #[test]
@@ -954,7 +1240,58 @@ mod tests {
             mb.add_function(fb.build());
         });
 
-        assert!(out.contains("= [v0, v1];"));
-        assert!(out.contains("= { x: v3, y: v4 };"));
+        assert!(out.contains("let v2 = [v0, v1];"));
+        assert!(out.contains("let v5 = { x: v3, y: v4 };"));
+    }
+
+    #[test]
+    fn copy_propagation_eliminates_alloc_store_load() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Int(64)],
+                return_ty: Type::Int(64),
+            };
+            let mut fb = FunctionBuilder::new("identity", sig, Visibility::Public);
+            let param = fb.param(0);
+            // Alloc → Store → Load chain (typical local variable pattern).
+            let ptr = fb.alloc(Type::Int(64));
+            fb.store(ptr, param);
+            let loaded = fb.load(ptr, Type::Int(64));
+            fb.ret(Some(loaded));
+            mb.add_function(fb.build());
+        });
+
+        // The alloc/store/load should be eliminated; return refers to the
+        // original parameter directly.
+        assert!(out.contains("return v0;"));
+        assert!(!out.contains("undefined"));
+    }
+
+    #[test]
+    fn sanitize_ident_handles_avm2_names() {
+        assert_eq!(sanitize_ident("Flash.Object"), "Flash_Object");
+        assert_eq!(sanitize_ident("flash.display::Loader"), "flash_display__Loader");
+        assert_eq!(sanitize_ident("4l9JT7u2nN1ZFk+5"), "_4l9JT7u2nN1ZFk_5");
+        assert_eq!(sanitize_ident("l/YEs377IakicDh/"), "l_YEs377IakicDh_");
+        assert_eq!(sanitize_ident("normal_name"), "normal_name");
+    }
+
+    #[test]
+    fn bracket_notation_for_non_ident_fields() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Dynamic,
+            };
+            let mut fb = FunctionBuilder::new("get_prop", sig, Visibility::Public);
+            let obj = fb.param(0);
+            let result = fb.get_field(obj, "flash.display::Loader", Type::Dynamic);
+            fb.ret(Some(result));
+            mb.add_function(fb.build());
+        });
+
+        // Non-ident field name should use bracket notation.
+        assert!(out.contains("[\"flash.display::Loader\"]"));
+        assert!(!out.contains(".flash.display::Loader"));
     }
 }

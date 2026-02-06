@@ -7,6 +7,8 @@ use std::path::Path;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{Module, Visibility};
 
+use crate::emit::sanitize_ident;
+
 /// Write all scaffold files into `output_dir`.
 pub fn emit_scaffold(modules: &[Module], output_dir: &Path) -> Result<(), CoreError> {
     fs::write(
@@ -78,26 +80,30 @@ fn generate_main(modules: &[Module]) -> String {
     // Import all public functions from each module.
     let mut entry_func: Option<(String, String)> = None;
     for module in modules {
-        let public_names: Vec<&str> = module
+        let public_funcs: Vec<_> = module
             .functions
             .values()
             .filter(|f| f.visibility == Visibility::Public)
-            .map(|f| f.name.as_str())
             .collect();
-        if public_names.is_empty() {
+        if public_funcs.is_empty() {
             continue;
         }
+        let sanitized: Vec<String> = public_funcs
+            .iter()
+            .map(|f| sanitize_ident(&f.name))
+            .collect();
         let _ = writeln!(
             out,
             "import {{ {} }} from \"./{}\";",
-            public_names.join(", "),
+            sanitized.join(", "),
             module.name,
         );
         // Pick the first plausible entry point.
         if entry_func.is_none() {
-            for &name in &public_names {
-                if is_entry_candidate(name) {
-                    entry_func = Some((module.name.clone(), name.to_string()));
+            for func in &public_funcs {
+                if is_entry_candidate(&func.name) {
+                    entry_func =
+                        Some((module.name.clone(), sanitize_ident(&func.name)));
                     break;
                 }
             }

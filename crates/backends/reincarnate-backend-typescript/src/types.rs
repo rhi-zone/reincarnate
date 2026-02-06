@@ -1,5 +1,7 @@
 use reincarnate_core::ir::Type;
 
+use crate::emit::sanitize_ident;
+
 /// Map an IR [`Type`] to its TypeScript representation.
 pub fn ts_type(ty: &Type) -> String {
     match ty {
@@ -14,7 +16,7 @@ pub fn ts_type(ty: &Type) -> String {
             let parts: Vec<_> = elems.iter().map(ts_type).collect();
             format!("[{}]", parts.join(", "))
         }
-        Type::Struct(name) | Type::Enum(name) => name.clone(),
+        Type::Struct(name) | Type::Enum(name) => sanitize_ident(name),
         Type::Function(sig) => {
             let params: Vec<_> = sig
                 .params
