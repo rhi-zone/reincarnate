@@ -4,6 +4,8 @@ use crate::error::CoreError;
 use crate::ir::{BlockId, Function, Module, Op, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
+use super::util::{branch_targets, substitute_values_in_op};
+
 /// CFG simplification transform — removes redundant blocks and simplifies control flow.
 ///
 /// Three phases per function, iterated to a fixed point:
@@ -11,26 +13,6 @@ use crate::pipeline::{Transform, TransformResult};
 /// 2. Merge blocks (single-predecessor blocks absorbed into their predecessor)
 /// 3. Cleanup unreachable blocks (clear instructions and params)
 pub struct CfgSimplify;
-
-/// Extract branch targets from a control-flow instruction.
-fn branch_targets(op: &Op) -> Vec<BlockId> {
-    match op {
-        Op::Br { target, .. } => vec![*target],
-        Op::BrIf {
-            then_target,
-            else_target,
-            ..
-        } => vec![*then_target, *else_target],
-        Op::Switch {
-            cases, default, ..
-        } => {
-            let mut targets: Vec<BlockId> = cases.iter().map(|(_, t, _)| *t).collect();
-            targets.push(default.0);
-            targets
-        }
-        _ => vec![],
-    }
-}
 
 /// Find all blocks reachable from the entry block via BFS.
 fn find_reachable_blocks(func: &Function) -> HashSet<BlockId> {
@@ -65,140 +47,6 @@ fn build_predecessor_map(func: &Function) -> HashMap<BlockId, Vec<BlockId>> {
         }
     }
     preds
-}
-
-/// Replace ValueIds in an Op using a substitution map.
-fn substitute_values_in_op(op: &mut Op, subst: &HashMap<ValueId, ValueId>) {
-    let sub = |v: &mut ValueId| {
-        if let Some(&new) = subst.get(v) {
-            *v = new;
-        }
-    };
-
-    match op {
-        Op::Const(_) => {}
-        Op::Add(a, b)
-        | Op::Sub(a, b)
-        | Op::Mul(a, b)
-        | Op::Div(a, b)
-        | Op::Rem(a, b)
-        | Op::BitAnd(a, b)
-        | Op::BitOr(a, b)
-        | Op::BitXor(a, b)
-        | Op::Shl(a, b)
-        | Op::Shr(a, b) => {
-            sub(a);
-            sub(b);
-        }
-        Op::Neg(a) | Op::BitNot(a) | Op::Not(a) | Op::Copy(a) => sub(a),
-        Op::Cmp(_, a, b) => {
-            sub(a);
-            sub(b);
-        }
-        Op::Br { args, .. } => {
-            for a in args {
-                sub(a);
-            }
-        }
-        Op::BrIf {
-            cond,
-            then_args,
-            else_args,
-            ..
-        } => {
-            sub(cond);
-            for a in then_args {
-                sub(a);
-            }
-            for a in else_args {
-                sub(a);
-            }
-        }
-        Op::Switch {
-            value,
-            cases,
-            default,
-            ..
-        } => {
-            sub(value);
-            for (_, _, args) in cases {
-                for a in args {
-                    sub(a);
-                }
-            }
-            for a in &mut default.1 {
-                sub(a);
-            }
-        }
-        Op::Return(v) => {
-            if let Some(v) = v {
-                sub(v);
-            }
-        }
-        Op::Yield(v) => {
-            if let Some(v) = v {
-                sub(v);
-            }
-        }
-        Op::Alloc(_) => {}
-        Op::Load(ptr) => sub(ptr),
-        Op::Store { ptr, value } => {
-            sub(ptr);
-            sub(value);
-        }
-        Op::GetField { object, .. } => sub(object),
-        Op::SetField { object, value, .. } => {
-            sub(object);
-            sub(value);
-        }
-        Op::GetIndex { collection, index } => {
-            sub(collection);
-            sub(index);
-        }
-        Op::SetIndex {
-            collection,
-            index,
-            value,
-        } => {
-            sub(collection);
-            sub(index);
-            sub(value);
-        }
-        Op::Call { args, .. } => {
-            for a in args {
-                sub(a);
-            }
-        }
-        Op::CallIndirect { callee, args } => {
-            sub(callee);
-            for a in args {
-                sub(a);
-            }
-        }
-        Op::SystemCall { args, .. } => {
-            for a in args {
-                sub(a);
-            }
-        }
-        Op::Cast(a, _) | Op::TypeCheck(a, _) => sub(a),
-        Op::StructInit { fields, .. } => {
-            for (_, v) in fields {
-                sub(v);
-            }
-        }
-        Op::ArrayInit(elems) | Op::TupleInit(elems) => {
-            for e in elems {
-                sub(e);
-            }
-        }
-        Op::CoroutineCreate { args, .. } => {
-            for a in args {
-                sub(a);
-            }
-        }
-        Op::CoroutineResume(v) => sub(v),
-        Op::GlobalRef(_) => {}
-    }
 }
 
 /// Rewrite branch targets in an Op: replace `old` block with `new` block,
