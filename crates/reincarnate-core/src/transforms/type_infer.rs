@@ -310,6 +310,13 @@ fn infer_inst_type(
             .cloned()
             .unwrap_or(Type::Dynamic),
 
+        // Select: infer common type of the two branches.
+        Op::Select {
+            on_true, on_false, ..
+        } => infer_common_type(
+            [&func.value_types[*on_true], &func.value_types[*on_false]].into_iter(),
+        ),
+
         // SystemCall, CallIndirect, and everything else: keep current type.
         _ => return None,
     };
@@ -888,6 +895,84 @@ mod tests {
 
         let caller = &module.functions[FuncId::new(1)];
         assert_eq!(caller.value_types[result], Type::Bool);
+    }
+
+    /// Select with both branches Int(64) infers Int(64).
+    #[test]
+    fn select_same_type_inferred() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Int(64),
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let cond = fb.param(0);
+        let a = fb.const_int(1);
+        let b = fb.const_int(2);
+        let mut func = fb.build();
+
+        // Manually insert a Select with Dynamic result type.
+        let select_val = func.value_types.push(Type::Dynamic);
+        let select_inst = func.insts.push(Inst {
+            op: Op::Select {
+                cond,
+                on_true: a,
+                on_false: b,
+            },
+            result: Some(select_val),
+            span: None,
+        });
+        let entry = BlockId::new(0);
+        // Insert before the terminator.
+        let term_pos = func.blocks[entry].insts.len() - 1;
+        func.blocks[entry].insts.insert(term_pos, select_inst);
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        assert_eq!(func.value_types[select_val], Type::Int(64));
+    }
+
+    /// Select with mixed types stays Dynamic.
+    #[test]
+    fn select_mixed_types_stays_dynamic() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Dynamic,
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let cond = fb.param(0);
+        let a = fb.const_int(1);
+        let b = fb.const_string("hello");
+        let mut func = fb.build();
+
+        let select_val = func.value_types.push(Type::Dynamic);
+        let select_inst = func.insts.push(Inst {
+            op: Op::Select {
+                cond,
+                on_true: a,
+                on_false: b,
+            },
+            result: Some(select_val),
+            span: None,
+        });
+        let entry = BlockId::new(0);
+        let term_pos = func.blocks[entry].insts.len() - 1;
+        func.blocks[entry].insts.insert(term_pos, select_inst);
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        assert_eq!(func.value_types[select_val], Type::Dynamic);
     }
 
     /// Ambiguous bare name stays Dynamic when multiple classes disagree on return type.
