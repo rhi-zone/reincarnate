@@ -120,8 +120,37 @@ fn refine(old: &Type, new: &Type) -> Option<Type> {
     }
 }
 
+/// Merge two types into a union, deduplicating members.
+/// Returns a single type if only one distinct member remains.
+fn union_type(a: Type, b: Type) -> Type {
+    let mut types = match a {
+        Type::Union(v) => v,
+        other => vec![other],
+    };
+    match b {
+        Type::Union(v) => {
+            for t in v {
+                if !types.contains(&t) {
+                    types.push(t);
+                }
+            }
+        }
+        other => {
+            if !types.contains(&other) {
+                types.push(other);
+            }
+        }
+    }
+    if types.len() == 1 {
+        types.into_iter().next().unwrap()
+    } else {
+        Type::Union(types)
+    }
+}
+
 /// Build a map from alloc ValueId → stored type, by scanning all Store instructions.
 /// If all stores to a given alloc write the same concrete type, that type is recorded.
+/// If stores write different concrete types, a `Type::Union` is produced.
 fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
     let mut alloc_stores: HashMap<ValueId, Option<Type>> = HashMap::new();
 
@@ -132,10 +161,7 @@ fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
             match entry {
                 None => *entry = Some(stored_ty),
                 Some(existing) => {
-                    if *existing != stored_ty {
-                        // Mixed types — mark as Dynamic (won't refine).
-                        *existing = Type::Dynamic;
-                    }
+                    *existing = union_type(existing.clone(), stored_ty);
                 }
             }
         }
@@ -1096,9 +1122,9 @@ mod tests {
         }
     }
 
-    /// Alloc(Dynamic) stays Dynamic when stores disagree on type.
+    /// Alloc(Dynamic) becomes Alloc(Union([Int(64), String])) when stores disagree.
     #[test]
-    fn alloc_type_mixed_stays_dynamic() {
+    fn alloc_type_union_from_mixed_stores() {
         let sig = FunctionSig {
             params: vec![],
             return_ty: Type::Dynamic,
@@ -1121,10 +1147,10 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let func = &module.functions[FuncId::new(0)];
-        // Mixed stores — alloc stays Dynamic.
+        // Mixed stores — alloc becomes Union.
         let alloc_inst = func.insts.values().find(|i| matches!(&i.op, Op::Alloc(_))).unwrap();
         match &alloc_inst.op {
-            Op::Alloc(ty) => assert_eq!(*ty, Type::Dynamic),
+            Op::Alloc(ty) => assert_eq!(*ty, Type::Union(vec![Type::Int(64), Type::String])),
             other => panic!("expected Alloc, got {:?}", other),
         }
     }
