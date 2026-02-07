@@ -37,6 +37,7 @@ pub fn ts_type(ty: &Type) -> String {
             ts_type(yield_ty),
             ts_type(return_ty)
         ),
+        Type::Union(types) => types.iter().map(ts_type).collect::<Vec<_>>().join(" | "),
         Type::Var(_) | Type::Dynamic => "any".into(),
     }
 }
@@ -44,7 +45,7 @@ pub fn ts_type(ty: &Type) -> String {
 /// Wrap compound types in parens when used in contexts like `T[]`.
 fn ts_type_paren(ty: &Type) -> String {
     match ty {
-        Type::Option(_) | Type::Function(_) => format!("({})", ts_type(ty)),
+        Type::Option(_) | Type::Function(_) | Type::Union(_) => format!("({})", ts_type(ty)),
         _ => ts_type(ty),
     }
 }

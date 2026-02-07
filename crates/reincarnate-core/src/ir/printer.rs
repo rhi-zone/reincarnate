@@ -67,6 +67,15 @@ fn fmt_type(ty: &Type, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, ">")
         }
         Type::Var(id) => write!(f, "tvar{}", id.index()),
+        Type::Union(types) => {
+            for (i, t) in types.iter().enumerate() {
+                if i > 0 {
+                    write!(f, " | ")?;
+                }
+                fmt_type(t, f)?;
+            }
+            Ok(())
+        }
         Type::Dynamic => write!(f, "dyn"),
     }
 }

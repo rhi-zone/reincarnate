@@ -40,6 +40,8 @@ pub enum Type {
     },
     /// Unresolved type variable (pre-inference).
     Var(TypeVarId),
+    /// Union of distinct concrete types.
+    Union(Vec<Type>),
     /// Dynamic / any — fallback when inference fails.
     /// Backends emit a tagged union for this.
     Dynamic,
