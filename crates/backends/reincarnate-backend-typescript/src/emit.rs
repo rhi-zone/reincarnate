@@ -1045,7 +1045,7 @@ fn emit_inst(
             let pfx = ctx.let_prefix(r);
             let _ = writeln!(
                 out,
-                "{indent}{pfx}{} = undefined as unknown as {};",
+                "{indent}{pfx}{}: {};",
                 ctx.val(r),
                 ts_type(ty)
             );
