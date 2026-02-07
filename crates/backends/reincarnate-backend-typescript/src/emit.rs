@@ -1265,10 +1265,20 @@ fn emit_inst(
                     return Ok(());
                 }
             }
-            let expr = if is_valid_js_ident(field) {
-                format!("{}.{field}", ctx.operand(*object))
+            // Extract short name from qualified fields (e.g. "ns::Class::prop" → "prop").
+            let effective_field = if field.contains("::") {
+                field.rsplit("::").next().unwrap_or(field)
             } else {
-                format!("{}[\"{}\"]", ctx.operand(*object), escape_js_string(field))
+                field
+            };
+            let expr = if is_valid_js_ident(effective_field) {
+                format!("{}.{effective_field}", ctx.operand(*object))
+            } else {
+                format!(
+                    "{}[\"{}\"]",
+                    ctx.operand(*object),
+                    escape_js_string(effective_field)
+                )
             };
             emit_or_inline(ctx, r, expr, false, out, indent);
         }
@@ -1277,10 +1287,16 @@ fn emit_inst(
             field,
             value,
         } => {
-            if is_valid_js_ident(field) {
+            // Extract short name from qualified fields (e.g. "ns::Class::prop" → "prop").
+            let effective_field = if field.contains("::") {
+                field.rsplit("::").next().unwrap_or(field)
+            } else {
+                field
+            };
+            if is_valid_js_ident(effective_field) {
                 let _ = writeln!(
                     out,
-                    "{indent}{}.{field} = {};",
+                    "{indent}{}.{effective_field} = {};",
                     ctx.operand(*object),
                     ctx.val(*value)
                 );
@@ -1289,7 +1305,7 @@ fn emit_inst(
                     out,
                     "{indent}{}[\"{}\"] = {};",
                     ctx.operand(*object),
-                    escape_js_string(field),
+                    escape_js_string(effective_field),
                     ctx.val(*value)
                 );
             }
@@ -1315,13 +1331,29 @@ fn emit_inst(
 
         // -- Calls --
         Op::Call { func: fname, args } => {
-            let args_str = args
-                .iter()
-                .map(|a| ctx.val(*a))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let safe_name = sanitize_ident(fname);
-            let expr = format!("{safe_name}({args_str})");
+            let expr = if fname.contains("::") && !args.is_empty() {
+                // Qualified name → method dispatch: receiver.method(rest_args)
+                let method = fname.rsplit("::").next().unwrap_or(fname);
+                let receiver = args[0];
+                let rest_args = args[1..]
+                    .iter()
+                    .map(|a| ctx.val(*a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "{}.{}({rest_args})",
+                    ctx.operand(receiver),
+                    sanitize_ident(method)
+                )
+            } else {
+                let args_str = args
+                    .iter()
+                    .map(|a| ctx.val(*a))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let safe_name = sanitize_ident(fname);
+                format!("{safe_name}({args_str})")
+            };
             if let Some(r) = result {
                 emit_or_inline(ctx, r, expr, false, out, indent);
             } else {
@@ -2147,14 +2179,18 @@ mod tests {
             };
             let mut fb = FunctionBuilder::new("get_prop", sig, Visibility::Public);
             let obj = fb.param(0);
+            // Qualified field → short name extraction.
             let result = fb.get_field(obj, "flash.display::Loader", Type::Dynamic);
             fb.ret(Some(result));
             mb.add_function(fb.build());
         });
 
-        // Non-ident field name should use bracket notation.
-        assert!(out.contains("[\"flash.display::Loader\"]"));
-        assert!(!out.contains(".flash.display::Loader"));
+        // Qualified field should extract short name and use dot notation.
+        assert!(out.contains(".Loader"), "Should use short name:\n{out}");
+        assert!(
+            !out.contains("flash.display::Loader"),
+            "Should not have full qualified name:\n{out}"
+        );
     }
 
     #[test]
@@ -2718,6 +2754,83 @@ mod tests {
         assert!(
             !out.contains("Flash_Scope.findPropStrict"),
             "findPropStrict should be resolved away:\n{out}"
+        );
+    }
+
+    #[test]
+    fn qualified_call_emits_method_dispatch() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Dynamic,
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let receiver = fb.param(0);
+            let arg1 = fb.const_string("text");
+            let arg2 = fb.const_bool(true);
+            // Qualified call: receiver.outputText("text", true)
+            let result = fb.call(
+                "classes:BaseContent::outputText",
+                &[receiver, arg1, arg2],
+                Type::Dynamic,
+            );
+            fb.ret(Some(result));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains(".outputText("),
+            "Should emit method dispatch:\n{out}"
+        );
+        assert!(
+            !out.contains("classes_BaseContent__outputText"),
+            "Should not emit sanitized function call:\n{out}"
+        );
+    }
+
+    #[test]
+    fn qualified_get_field_emits_short_name() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Dynamic,
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let obj = fb.param(0);
+            let result = fb.get_field(obj, "classes:BaseContent::flags", Type::Dynamic);
+            fb.ret(Some(result));
+            mb.add_function(fb.build());
+        });
+
+        assert!(out.contains(".flags"), "Should use short field name:\n{out}");
+        assert!(
+            !out.contains("BaseContent"),
+            "Should not have qualified name:\n{out}"
+        );
+    }
+
+    #[test]
+    fn qualified_set_field_emits_short_name() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic, Type::Int(32)],
+                return_ty: Type::Void,
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let obj = fb.param(0);
+            let val = fb.param(1);
+            fb.set_field(obj, "classes:BaseContent::flags", val);
+            fb.ret(None);
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains(".flags = "),
+            "Should use short field name for set:\n{out}"
+        );
+        assert!(
+            !out.contains("BaseContent"),
+            "Should not have qualified name:\n{out}"
         );
     }
 }
