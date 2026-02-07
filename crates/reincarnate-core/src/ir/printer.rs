@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::entity::EntityRef;
 
-use super::func::{Function, Visibility};
+use super::func::{Function, MethodKind, Visibility};
 use super::inst::{CmpKind, Op};
 use super::module::Module;
 use super::ty::Type;
@@ -124,13 +124,34 @@ fn fmt_cmp_kind(kind: CmpKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     }
 }
 
+fn fmt_method_kind(kind: MethodKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match kind {
+        MethodKind::Free => Ok(()),
+        MethodKind::Constructor => write!(f, " [constructor]"),
+        MethodKind::Instance => write!(f, " [instance]"),
+        MethodKind::Static => write!(f, " [static]"),
+        MethodKind::Getter => write!(f, " [getter]"),
+        MethodKind::Setter => write!(f, " [setter]"),
+    }
+}
+
 impl fmt::Display for Function {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Function header
         match self.visibility {
-            Visibility::Public => write!(f, "pub fn {}", self.name)?,
-            Visibility::Private => write!(f, "fn {}", self.name)?,
+            Visibility::Public => write!(f, "pub ")?,
+            Visibility::Protected => write!(f, "protected ")?,
+            Visibility::Private => {}
         }
+        // Class/namespace annotation
+        if let Some(class) = &self.class {
+            if !self.namespace.is_empty() {
+                write!(f, "{}.", self.namespace.join("."))?;
+            }
+            write!(f, "{class}::")?;
+        }
+        write!(f, "fn {}", self.name)?;
+        fmt_method_kind(self.method_kind, f)?;
         write!(f, "(")?;
         let entry = &self.blocks[self.entry];
         for (i, param) in entry.params.iter().enumerate() {
@@ -500,11 +521,26 @@ impl fmt::Display for Module {
             writeln!(f, "}}")?;
         }
 
+        // Classes
+        for class in &self.classes {
+            writeln!(f)?;
+            if !class.namespace.is_empty() {
+                write!(f, "class {}.{}", class.namespace.join("."), class.name)?;
+            } else {
+                write!(f, "class {}", class.name)?;
+            }
+            if let Some(super_class) = &class.super_class {
+                write!(f, " extends {super_class}")?;
+            }
+            writeln!(f)?;
+        }
+
         // Globals
         for g in &self.globals {
             writeln!(f)?;
             match g.visibility {
                 Visibility::Public => write!(f, "pub ")?,
+                Visibility::Protected => write!(f, "protected ")?,
                 Visibility::Private => {}
             }
             write!(f, "global ")?;
@@ -617,6 +653,7 @@ fn choose(v0: bool, v1: i64, v2: i64) -> i64 {
 
         mb.add_struct(StructDef {
             name: "Point".into(),
+            namespace: Vec::new(),
             fields: vec![
                 ("x".into(), Type::Float(64)),
                 ("y".into(), Type::Float(64)),

@@ -16,6 +16,19 @@ define_entity!(FuncId);
 pub enum Visibility {
     Public,
     Private,
+    Protected,
+}
+
+/// What kind of method a function represents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum MethodKind {
+    #[default]
+    Free,
+    Constructor,
+    Instance,
+    Static,
+    Getter,
+    Setter,
 }
 
 /// A function in the IR.
@@ -24,6 +37,15 @@ pub struct Function {
     pub name: String,
     pub sig: FunctionSig,
     pub visibility: Visibility,
+    /// Namespace segments (e.g. `["classes", "Scenes", "Areas", "Bog"]`).
+    #[serde(default)]
+    pub namespace: Vec<String>,
+    /// Owning class short name (e.g. `"Phouka"`).
+    #[serde(default)]
+    pub class: Option<String>,
+    /// What kind of method this function represents.
+    #[serde(default)]
+    pub method_kind: MethodKind,
     pub blocks: PrimaryMap<BlockId, Block>,
     pub insts: PrimaryMap<InstId, Inst>,
     pub value_types: PrimaryMap<ValueId, Type>,

@@ -13,6 +13,29 @@ pub enum ResolvedName {
     RuntimeLate,
 }
 
+/// AVM2 namespace kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NsKind {
+    Package,
+    PackageInternal,
+    Protected,
+    Private,
+    Explicit,
+    StaticProtected,
+    Namespace,
+}
+
+/// A fully resolved qualified name with structured namespace info.
+#[derive(Debug, Clone)]
+pub struct QualifiedName {
+    /// Package segments split by `.` (e.g. `["flash", "display"]`).
+    pub namespace: Vec<String>,
+    /// Bare name (e.g. `"Sprite"`).
+    pub name: String,
+    /// What kind of AVM2 namespace this came from.
+    pub ns_kind: NsKind,
+}
+
 /// Look up a string in the constant pool by index.
 pub fn pool_string(pool: &ConstantPool, index: &Index<String>) -> String {
     let i = index.0 as usize;
@@ -34,6 +57,19 @@ pub fn resolve_namespace(pool: &ConstantPool, ns: &Namespace) -> String {
         | Namespace::Private(i) => i,
     };
     pool_string(pool, idx)
+}
+
+/// Get the `NsKind` of an AVM2 namespace.
+pub fn namespace_kind(ns: &Namespace) -> NsKind {
+    match ns {
+        Namespace::Package(_) => NsKind::Package,
+        Namespace::PackageInternal(_) => NsKind::PackageInternal,
+        Namespace::Protected(_) => NsKind::Protected,
+        Namespace::Private(_) => NsKind::Private,
+        Namespace::Explicit(_) => NsKind::Explicit,
+        Namespace::StaticProtected(_) => NsKind::StaticProtected,
+        Namespace::Namespace(_) => NsKind::Namespace,
+    }
 }
 
 /// Look up a namespace from the constant pool by index.
@@ -138,6 +174,37 @@ pub fn resolve_multiname_index(pool: &ConstantPool, index: &Index<Multiname>) ->
         }
     } else {
         "*".to_string()
+    }
+}
+
+/// Resolve a multiname index to a structured `QualifiedName`.
+///
+/// Returns `None` for runtime-late or unresolvable names.
+pub fn resolve_multiname_structured(
+    pool: &ConstantPool,
+    index: &Index<Multiname>,
+) -> Option<QualifiedName> {
+    let mn = pool_multiname(pool, index)?;
+    match mn {
+        Multiname::QName { namespace, name } | Multiname::QNameA { namespace, name } => {
+            let name_str = pool_string(pool, name);
+            let (ns_str, ns_kind) = if let Some(ns) = pool_namespace(pool, namespace) {
+                (resolve_namespace(pool, ns), namespace_kind(ns))
+            } else {
+                (String::new(), NsKind::Package)
+            };
+            let namespace_segments = if ns_str.is_empty() {
+                Vec::new()
+            } else {
+                ns_str.split('.').map(String::from).collect()
+            };
+            Some(QualifiedName {
+                namespace: namespace_segments,
+                name: name_str,
+                ns_kind,
+            })
+        }
+        _ => None,
     }
 }
 

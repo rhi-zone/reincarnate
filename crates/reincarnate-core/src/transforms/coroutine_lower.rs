@@ -231,6 +231,7 @@ fn generate_state_struct(
 
     let struct_def = StructDef {
         name: struct_name.to_string(),
+        namespace: Vec::new(),
         fields: fields.clone(),
         visibility: Visibility::Private,
     };
@@ -482,6 +483,9 @@ fn build_resume_function(
         name: orig_func.name.clone(),
         sig: new_sig,
         visibility: orig_func.visibility,
+        namespace: orig_func.namespace.clone(),
+        class: orig_func.class.clone(),
+        method_kind: orig_func.method_kind,
         blocks: rb.blocks,
         insts: rb.insts,
         value_types: rb.value_types,

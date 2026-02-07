@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use reincarnate_core::error::CoreError;
-use reincarnate_core::ir::{Module, Visibility};
+use reincarnate_core::ir::{MethodKind, Module, Visibility};
 
 use crate::emit::sanitize_ident;
 
@@ -17,6 +17,7 @@ pub fn emit_scaffold(modules: &[Module], output_dir: &Path) -> Result<(), CoreEr
     )?;
     fs::write(output_dir.join("tsconfig.json"), TSCONFIG)?;
     fs::write(output_dir.join("main.ts"), generate_main(modules))?;
+    fs::write(output_dir.join("package.json"), PACKAGE_JSON)?;
     Ok(())
 }
 
@@ -67,7 +68,21 @@ const TSCONFIG: &str = r#"{
     "rootDir": ".",
     "lib": ["ES2020", "DOM", "DOM.Iterable"]
   },
-  "include": ["*.ts", "runtime/*.ts"]
+  "include": ["**/*.ts"]
+}
+"#;
+
+const PACKAGE_JSON: &str = r#"{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild main.ts --bundle --outfile=dist/bundle.js --format=esm",
+    "dev": "esbuild main.ts --bundle --outfile=dist/bundle.js --format=esm --servedir=."
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.0.0"
+  }
 }
 "#;
 
@@ -77,34 +92,92 @@ fn generate_main(modules: &[Module]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "import {{ timing }} from \"./runtime\";");
 
-    // Import all public functions from each module.
-    let mut entry_func: Option<(String, String)> = None;
+    let mut entry_func: Option<String> = None;
+
     for module in modules {
-        let public_funcs: Vec<_> = module
-            .functions
-            .values()
-            .filter(|f| f.visibility == Visibility::Public)
-            .collect();
-        if public_funcs.is_empty() {
-            continue;
-        }
-        let sanitized: Vec<String> = public_funcs
-            .iter()
-            .map(|f| sanitize_ident(&f.name))
-            .collect();
-        let _ = writeln!(
-            out,
-            "import {{ {} }} from \"./{}\";",
-            sanitized.join(", "),
-            module.name,
-        );
-        // Pick the first plausible entry point.
-        if entry_func.is_none() {
-            for func in &public_funcs {
-                if is_entry_candidate(&func.name) {
-                    entry_func =
-                        Some((module.name.clone(), sanitize_ident(&func.name)));
-                    break;
+        if module.classes.is_empty() {
+            // Flat module — import public functions directly.
+            let public_funcs: Vec<_> = module
+                .functions
+                .values()
+                .filter(|f| f.visibility == Visibility::Public)
+                .collect();
+            if public_funcs.is_empty() {
+                continue;
+            }
+            let sanitized: Vec<String> = public_funcs
+                .iter()
+                .map(|f| sanitize_ident(&f.name))
+                .collect();
+            let _ = writeln!(
+                out,
+                "import {{ {} }} from \"./{}\";",
+                sanitized.join(", "),
+                module.name,
+            );
+            if entry_func.is_none() {
+                for func in &public_funcs {
+                    if is_entry_candidate(&func.name) {
+                        entry_func = Some(sanitize_ident(&func.name));
+                        break;
+                    }
+                }
+            }
+        } else {
+            // Class-based module — import from barrel file.
+            let mut imports = Vec::new();
+            for class in &module.classes {
+                if class.visibility == Visibility::Public {
+                    imports.push(sanitize_ident(&class.name));
+                }
+            }
+            // Also import free (non-class) public functions.
+            let class_methods: std::collections::HashSet<_> = module
+                .classes
+                .iter()
+                .flat_map(|c| c.methods.iter().copied())
+                .collect();
+            for (fid, func) in module.functions.iter() {
+                if !class_methods.contains(&fid)
+                    && func.visibility == Visibility::Public
+                {
+                    imports.push(sanitize_ident(&func.name));
+                    if entry_func.is_none() && is_entry_candidate(&func.name) {
+                        entry_func = Some(sanitize_ident(&func.name));
+                    }
+                }
+            }
+            if !imports.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "import {{ {} }} from \"./{}\";",
+                    imports.join(", "),
+                    module.name,
+                );
+            }
+            // Detect entry points in class methods (e.g., Main::init).
+            if entry_func.is_none() {
+                for class in &module.classes {
+                    for &fid in &class.methods {
+                        if let Some(func) = module.functions.get(fid) {
+                            if func.method_kind == MethodKind::Static
+                                && is_entry_candidate(
+                                    func.name.rsplit("::").next().unwrap_or(&func.name),
+                                )
+                            {
+                                let class_name = sanitize_ident(&class.name);
+                                let method_name = sanitize_ident(
+                                    func.name.rsplit("::").next().unwrap_or(&func.name),
+                                );
+                                entry_func =
+                                    Some(format!("{class_name}.{method_name}"));
+                                break;
+                            }
+                        }
+                    }
+                    if entry_func.is_some() {
+                        break;
+                    }
                 }
             }
         }
@@ -113,7 +186,7 @@ fn generate_main(modules: &[Module]) -> String {
     out.push('\n');
 
     match entry_func {
-        Some((_module, func_name)) => {
+        Some(func_name) => {
             let _ = writeln!(out, "function loop() {{");
             let _ = writeln!(out, "  timing.tick();");
             let _ = writeln!(out, "  {func_name}();");
@@ -123,9 +196,10 @@ fn generate_main(modules: &[Module]) -> String {
             let _ = writeln!(out, "requestAnimationFrame(loop);");
         }
         None => {
-            // No obvious entry point — just import everything and let the
-            // module top-level code run.
-            let _ = writeln!(out, "// No entry point detected. Module-level code will run on import.");
+            let _ = writeln!(
+                out,
+                "// No entry point detected. Module-level code will run on import."
+            );
         }
     }
 
@@ -192,6 +266,57 @@ mod tests {
         assert!(main.contains("import { compute } from \"./utils\";"));
         assert!(main.contains("No entry point detected"));
         assert!(!main.contains("requestAnimationFrame"));
+    }
+
+    #[test]
+    fn main_with_class_entry_point() {
+        use reincarnate_core::ir::{ClassDef, StructDef};
+
+        let mut mb = ModuleBuilder::new("game");
+        mb.add_struct(StructDef {
+            name: "App".into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("App::init", sig.clone(), Visibility::Public);
+        fb.set_class(Vec::new(), "App".into(), MethodKind::Static);
+        fb.ret(None);
+        let init_id = mb.add_function(fb.build());
+
+        let mut fb2 = FunctionBuilder::new("App::render", sig, Visibility::Public);
+        fb2.set_class(Vec::new(), "App".into(), MethodKind::Instance);
+        fb2.ret(None);
+        let render_id = mb.add_function(fb2.build());
+
+        mb.add_class(ClassDef {
+            name: "App".into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![init_id, render_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        let main = generate_main(&[module]);
+        assert!(
+            main.contains("import { App } from \"./game\";"),
+            "Should import class from barrel:\n{main}"
+        );
+        assert!(
+            main.contains("App.init();"),
+            "Should call static entry point:\n{main}"
+        );
+        assert!(
+            main.contains("requestAnimationFrame(loop);"),
+            "Should have game loop:\n{main}"
+        );
     }
 
     #[test]

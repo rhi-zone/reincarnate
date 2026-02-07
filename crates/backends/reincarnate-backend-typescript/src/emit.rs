@@ -6,22 +6,29 @@ use std::path::Path;
 use reincarnate_core::entity::EntityRef;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{
-    structurize, Block, BlockArgAssign, BlockId, CmpKind, Constant, Function, InstId, Module, Op,
-    Shape, StructDef, Type, ValueId, Visibility,
+    structurize, Block, BlockArgAssign, BlockId, ClassDef, CmpKind, Constant, FuncId, Function,
+    InstId, MethodKind, Module, Op, Shape, StructDef, Type, ValueId, Visibility,
 };
 
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
 
-/// Emit a single module as a `.ts` file into `output_dir`.
+/// Emit a single module into `output_dir`.
+///
+/// If the module has classes, emits a directory with one file per class plus
+/// a barrel `index.ts`. Otherwise emits a flat `.ts` file.
 pub fn emit_module(module: &Module, output_dir: &Path) -> Result<(), CoreError> {
-    let out = emit_module_to_string(module)?;
-    let path = output_dir.join(format!("{}.ts", module.name));
-    fs::write(&path, &out).map_err(CoreError::Io)?;
+    if module.classes.is_empty() {
+        let out = emit_module_to_string(module)?;
+        let path = output_dir.join(format!("{}.ts", module.name));
+        fs::write(&path, &out).map_err(CoreError::Io)?;
+    } else {
+        emit_module_to_dir(module, output_dir)?;
+    }
     Ok(())
 }
 
-/// Emit a module to a string (for testing).
+/// Emit a module to a string (flat output — for testing or class-free modules).
 pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
     let mut out = String::new();
 
@@ -30,9 +37,62 @@ pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
     emit_structs(module, &mut out);
     emit_enums(module, &mut out);
     emit_globals(module, &mut out);
-    emit_functions(module, &mut out)?;
+
+    if module.classes.is_empty() {
+        emit_functions(module, &mut out)?;
+    } else {
+        let (class_groups, free_funcs) = group_by_class(module);
+        for group in &class_groups {
+            emit_class(group, module, &mut out)?;
+        }
+        for (_fid, func) in &free_funcs {
+            emit_function(func, &mut out)?;
+        }
+    }
 
     Ok(out)
+}
+
+/// Emit a module as a directory with one `.ts` file per class.
+pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), CoreError> {
+    let module_dir = output_dir.join(&module.name);
+    fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
+
+    let (class_groups, free_funcs) = group_by_class(module);
+    let mut barrel_exports = Vec::new();
+
+    for group in &class_groups {
+        let file_name = sanitize_ident(&group.class_def.name);
+        let mut out = String::new();
+        emit_runtime_imports(module, &mut out);
+        emit_class(group, module, &mut out)?;
+        let path = module_dir.join(format!("{file_name}.ts"));
+        fs::write(&path, &out).map_err(CoreError::Io)?;
+        barrel_exports.push(file_name);
+    }
+
+    // Free functions → _init.ts
+    if !free_funcs.is_empty() {
+        let mut out = String::new();
+        emit_runtime_imports(module, &mut out);
+        emit_imports(module, &mut out);
+        emit_globals(module, &mut out);
+        for (_fid, func) in &free_funcs {
+            emit_function(func, &mut out)?;
+        }
+        let path = module_dir.join("_init.ts");
+        fs::write(&path, &out).map_err(CoreError::Io)?;
+        barrel_exports.push("_init".to_string());
+    }
+
+    // Barrel file: index.ts
+    let mut barrel = String::new();
+    for name in &barrel_exports {
+        let _ = writeln!(barrel, "export * from \"./{name}\";");
+    }
+    fs::write(module_dir.join("index.ts"), &barrel).map_err(CoreError::Io)?;
+
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -474,8 +534,12 @@ fn emit_shape_strip_trailing_continue(
     }
 }
 
-/// Emit a block's non-terminator instructions (skip Br, BrIf, Switch, Return
-/// is kept since it's meaningful).
+/// Emit a block's non-terminator instructions.
+///
+/// Skips Br, BrIf, and Switch (handled by the shape tree). Stops after
+/// encountering the first terminator — any instructions after it are dead
+/// code from the frontend and should not be emitted. Return is kept since
+/// it produces output (`return ...;`).
 fn emit_block_instructions(
     ctx: &EmitCtx,
     func: &Function,
@@ -488,7 +552,8 @@ fn emit_block_instructions(
         let inst = &func.insts[inst_id];
         match &inst.op {
             Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } => {
-                // Terminators are handled by the shape tree.
+                // First terminator reached — stop emitting.
+                break;
             }
             _ => {
                 emit_inst(ctx, func, inst_id, out, indent)?;
@@ -972,6 +1037,203 @@ fn emit_inst(
 }
 
 // ---------------------------------------------------------------------------
+// Class grouping and emission
+// ---------------------------------------------------------------------------
+
+struct ClassGroup<'a> {
+    class_def: &'a ClassDef,
+    struct_def: &'a StructDef,
+    methods: Vec<(FuncId, &'a Function)>,
+}
+
+/// Partition module contents into class groups and free functions.
+fn group_by_class(module: &Module) -> (Vec<ClassGroup<'_>>, Vec<(FuncId, &Function)>) {
+    let mut claimed: HashSet<FuncId> = HashSet::new();
+    let mut groups = Vec::new();
+
+    for class in &module.classes {
+        let struct_def = &module.structs[class.struct_index];
+        let methods: Vec<(FuncId, &Function)> = class
+            .methods
+            .iter()
+            .filter_map(|&fid| {
+                let func = module.functions.get(fid)?;
+                claimed.insert(fid);
+                Some((fid, func))
+            })
+            .collect();
+        groups.push(ClassGroup {
+            class_def: class,
+            struct_def,
+            methods,
+        });
+    }
+
+    let free: Vec<(FuncId, &Function)> = module
+        .functions
+        .iter()
+        .filter(|(fid, _)| !claimed.contains(fid))
+        .collect();
+
+    (groups, free)
+}
+
+/// Emit a TypeScript class from a `ClassGroup`.
+fn emit_class(
+    group: &ClassGroup<'_>,
+    _module: &Module,
+    out: &mut String,
+) -> Result<(), CoreError> {
+    let class_name = sanitize_ident(&group.class_def.name);
+    let vis = visibility_prefix(group.class_def.visibility);
+
+    let extends = match &group.class_def.super_class {
+        Some(sc) => {
+            let base = sc.rsplit("::").next().unwrap_or(sc);
+            format!(" extends {}", sanitize_ident(base))
+        }
+        None => String::new(),
+    };
+
+    let _ = writeln!(out, "{vis}class {class_name}{extends} {{");
+
+    // Fields from struct def.
+    for (name, ty) in &group.struct_def.fields {
+        let _ = writeln!(out, "  {}: {};", sanitize_ident(name), ts_type(ty));
+    }
+    if !group.struct_def.fields.is_empty() && !group.methods.is_empty() {
+        out.push('\n');
+    }
+
+    // Methods — sorted: constructor first, then instance, static, getters, setters.
+    let mut sorted_methods: Vec<&(FuncId, &Function)> = group.methods.iter().collect();
+    sorted_methods.sort_by_key(|(_, f)| match f.method_kind {
+        MethodKind::Constructor => 0,
+        MethodKind::Instance => 1,
+        MethodKind::Getter => 2,
+        MethodKind::Setter => 3,
+        MethodKind::Static => 4,
+        MethodKind::Free => 5,
+    });
+
+    for (i, &(_fid, func)) in sorted_methods.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        emit_class_method(func, out)?;
+    }
+
+    let _ = writeln!(out, "}}\n");
+    Ok(())
+}
+
+/// Emit a single method inside a class body.
+fn emit_class_method(func: &Function, out: &mut String) -> Result<(), CoreError> {
+    let ctx = EmitCtx::for_function(func);
+
+    // Extract bare method name from func.name (last `::` segment).
+    let raw_name = func
+        .name
+        .rsplit("::")
+        .next()
+        .unwrap_or(&func.name);
+
+    let entry = &func.blocks[func.entry];
+    let ret_ty = ts_type(&func.sig.return_ty);
+
+    // Determine which params to emit (skip `this` for instance/constructor/getter/setter).
+    let skip_self = matches!(
+        func.method_kind,
+        MethodKind::Constructor | MethodKind::Instance | MethodKind::Getter | MethodKind::Setter
+    );
+    let param_start = if skip_self { 1.min(entry.params.len()) } else { 0 };
+
+    let params: Vec<String> = entry.params[param_start..]
+        .iter()
+        .map(|p| format!("{}: {}", ctx.val(p.value), ts_type(&p.ty)))
+        .collect();
+
+    let is_simple = func.blocks.len() == 1;
+    let star = if func.coroutine.is_some() { "*" } else { "" };
+
+    // Method signature.
+    match func.method_kind {
+        MethodKind::Constructor => {
+            let _ = writeln!(out, "  constructor({}) {{", params.join(", "));
+        }
+        MethodKind::Getter => {
+            let name = raw_name
+                .strip_prefix("get_")
+                .unwrap_or(raw_name);
+            let _ = writeln!(
+                out,
+                "  get {name}(): {ret_ty} {{",
+            );
+        }
+        MethodKind::Setter => {
+            let name = raw_name
+                .strip_prefix("set_")
+                .unwrap_or(raw_name);
+            let _ = writeln!(
+                out,
+                "  set {name}({}) {{",
+                params.join(", ")
+            );
+        }
+        MethodKind::Static => {
+            let _ = writeln!(
+                out,
+                "  static {star}{}({}): {ret_ty} {{",
+                sanitize_ident(raw_name),
+                params.join(", ")
+            );
+        }
+        _ => {
+            let _ = writeln!(
+                out,
+                "  {star}{}({}): {ret_ty} {{",
+                sanitize_ident(raw_name),
+                params.join(", ")
+            );
+        }
+    }
+
+    // Method body.
+    if is_simple {
+        emit_block_body(&ctx, func, func.entry, &func.blocks[func.entry], out, "    ")?;
+    } else {
+        emit_block_param_declarations_indented(&ctx, func, out, "    ");
+        let shape = structurize::structurize(func);
+        emit_shape(&ctx, func, &shape, out, "    ")?;
+    }
+
+    let _ = writeln!(out, "  }}");
+    Ok(())
+}
+
+/// Pre-declare `let` bindings for non-entry block parameters at a given indent.
+fn emit_block_param_declarations_indented(
+    ctx: &EmitCtx,
+    func: &Function,
+    out: &mut String,
+    indent: &str,
+) {
+    for (block_id, block) in func.blocks.iter() {
+        if block_id == func.entry {
+            continue;
+        }
+        for param in &block.params {
+            let _ = writeln!(
+                out,
+                "{indent}let {}: {};",
+                ctx.val(param.value),
+                ts_type(&param.ty)
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -1032,7 +1294,7 @@ fn escape_js_string(s: &str) -> String {
 fn visibility_prefix(vis: Visibility) -> &'static str {
     match vis {
         Visibility::Public => "export ",
-        Visibility::Private => "",
+        Visibility::Private | Visibility::Protected => "",
     }
 }
 
@@ -1076,7 +1338,8 @@ mod tests {
     use super::*;
     use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
     use reincarnate_core::ir::{
-        EnumDef, EnumVariant, FunctionSig, Global, Import, StructDef, Visibility,
+        ClassDef, EnumDef, EnumVariant, FunctionSig, Global, Import, MethodKind, StructDef,
+        Visibility,
     };
 
     fn build_and_emit(build: impl FnOnce(&mut ModuleBuilder)) -> String {
@@ -1147,6 +1410,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             mb.add_struct(StructDef {
                 name: "Point".into(),
+                namespace: Vec::new(),
                 fields: vec![
                     ("x".into(), Type::Float(64)),
                     ("y".into(), Type::Float(64)),
@@ -1500,5 +1764,167 @@ mod tests {
         assert!(out.contains("v0 = v1;"), "Should have init assign:\n{out}");
         // Update assigns header param v0 from computed v5 (v0 + 1).
         assert!(out.contains("v0 = v5;"), "Should have update assign:\n{out}");
+    }
+
+    #[test]
+    fn emit_class_with_methods() {
+        let mut mb = ModuleBuilder::new("test");
+
+        // Struct for class fields.
+        mb.add_struct(StructDef {
+            name: "Phouka".into(),
+            namespace: vec!["classes".into(), "Scenes".into()],
+            fields: vec![("hp".into(), Type::Int(32))],
+            visibility: Visibility::Public,
+        });
+
+        // Constructor: (this: dyn) -> void
+        let ctor_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("Phouka::new", ctor_sig, Visibility::Public);
+        fb.set_class(
+            vec!["classes".into(), "Scenes".into()],
+            "Phouka".into(),
+            MethodKind::Constructor,
+        );
+        fb.ret(None);
+        let ctor_id = mb.add_function(fb.build());
+
+        // Instance method: (this: dyn, amount: i32) -> void
+        let method_sig = FunctionSig {
+            params: vec![Type::Dynamic, Type::Int(32)],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("Phouka::attack", method_sig, Visibility::Public);
+        fb.set_class(
+            vec!["classes".into(), "Scenes".into()],
+            "Phouka".into(),
+            MethodKind::Instance,
+        );
+        let _this = fb.param(0);
+        let _amount = fb.param(1);
+        fb.ret(None);
+        let method_id = mb.add_function(fb.build());
+
+        // Static method: (amount: i32) -> i32
+        let static_sig = FunctionSig {
+            params: vec![Type::Int(32)],
+            return_ty: Type::Int(32),
+        };
+        let mut fb = FunctionBuilder::new("Phouka::create", static_sig, Visibility::Public);
+        fb.set_class(
+            vec!["classes".into(), "Scenes".into()],
+            "Phouka".into(),
+            MethodKind::Static,
+        );
+        let p = fb.param(0);
+        fb.ret(Some(p));
+        let static_id = mb.add_function(fb.build());
+
+        // Getter: (this: dyn) -> i32
+        let getter_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Int(32),
+        };
+        let mut fb = FunctionBuilder::new("Phouka::get_health", getter_sig, Visibility::Public);
+        fb.set_class(
+            vec!["classes".into(), "Scenes".into()],
+            "Phouka".into(),
+            MethodKind::Getter,
+        );
+        let this = fb.param(0);
+        let hp = fb.get_field(this, "hp", Type::Int(32));
+        fb.ret(Some(hp));
+        let getter_id = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Phouka".into(),
+            namespace: vec!["classes".into(), "Scenes".into()],
+            struct_index: 0,
+            methods: vec![ctor_id, method_id, static_id, getter_id],
+            super_class: Some("Object".into()),
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        let out = emit_module_to_string(&module).unwrap();
+
+        // Class declaration with extends.
+        assert!(
+            out.contains("export class Phouka extends Object {"),
+            "Should have class decl:\n{out}"
+        );
+        // Field.
+        assert!(out.contains("  hp: number;"), "Should have field:\n{out}");
+        // Constructor — no `this` param.
+        assert!(
+            out.contains("  constructor() {"),
+            "Should have constructor:\n{out}"
+        );
+        // Instance method — skips `this`.
+        assert!(
+            out.contains("  attack(v1: number): void {"),
+            "Should have instance method:\n{out}"
+        );
+        // Static method — keeps all params.
+        assert!(
+            out.contains("  static create(v0: number): number {"),
+            "Should have static method:\n{out}"
+        );
+        // Getter — strips `get_` prefix.
+        assert!(
+            out.contains("  get health(): number {"),
+            "Should have getter:\n{out}"
+        );
+    }
+
+    #[test]
+    fn emit_class_and_free_functions() {
+        let mut mb = ModuleBuilder::new("test");
+
+        mb.add_struct(StructDef {
+            name: "Foo".into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("Foo::new", sig, Visibility::Public);
+        fb.set_class(Vec::new(), "Foo".into(), MethodKind::Constructor);
+        fb.ret(None);
+        let ctor_id = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Foo".into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![ctor_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+
+        // Free function.
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
+        fb.ret(None);
+        mb.add_function(fb.build());
+
+        let module = mb.build();
+        let out = emit_module_to_string(&module).unwrap();
+
+        assert!(out.contains("export class Foo {"), "Should have class:\n{out}");
+        assert!(
+            out.contains("export function init(): void {"),
+            "Should have free function:\n{out}"
+        );
     }
 }

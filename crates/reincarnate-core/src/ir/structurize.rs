@@ -370,6 +370,10 @@ struct Structurizer<'a> {
     loop_stack: Vec<BlockId>,
     /// Current recursion depth.
     depth: usize,
+    /// Blocks already emitted (not inside a loop). Prevents exponential
+    /// blowup when BrIf branches share downstream blocks and the BFS
+    /// merge heuristic picks a non-optimal merge point.
+    emitted: HashSet<BlockId>,
 }
 
 impl<'a> Structurizer<'a> {
@@ -387,6 +391,7 @@ impl<'a> Structurizer<'a> {
             loops,
             loop_stack: Vec::new(),
             depth: 0,
+            emitted: HashSet::new(),
         }
     }
 
@@ -401,7 +406,7 @@ impl<'a> Structurizer<'a> {
     /// rather than assuming it's the last instruction. This is defensive
     /// against frontends that may emit dead instructions after a terminator
     /// (e.g. a redundant `Br` following a `BrIf`).
-    fn terminator(&self, block: BlockId) -> &Op {
+    fn terminator(&self, block: BlockId) -> Option<&Op> {
         let blk = &self.func.blocks[block];
         for &inst_id in &blk.insts {
             let op = &self.func.insts[inst_id].op;
@@ -409,12 +414,11 @@ impl<'a> Structurizer<'a> {
                 op,
                 Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_)
             ) {
-                return op;
+                return Some(op);
             }
         }
-        // Fallback: use the last instruction (block should always have a terminator).
-        let last = *blk.insts.last().expect("block has no instructions");
-        &self.func.insts[last].op
+        // Fallback: use the last instruction if it exists.
+        blk.insts.last().map(|&id| &self.func.insts[id].op)
     }
 
     /// Build branch arg assignments for a branch to `target` with `args`.
@@ -440,6 +444,13 @@ impl<'a> Structurizer<'a> {
         loop_body: Option<&HashSet<BlockId>>,
     ) -> Shape {
         if Some(block) == until {
+            return Shape::Seq(vec![]);
+        }
+
+        // Prevent exponential blowup: if this block was already emitted,
+        // skip it. Each block should appear at most once in structured output.
+        // Loop headers are exempted (they're revisited via Continue).
+        if !self.emitted.insert(block) {
             return Shape::Seq(vec![]);
         }
 
@@ -469,7 +480,10 @@ impl<'a> Structurizer<'a> {
             return self.structurize_loop(block, until);
         }
 
-        let term = self.terminator(block).clone();
+        let Some(term) = self.terminator(block).cloned() else {
+            // Empty block — treat as a no-op block.
+            return Shape::Block(block);
+        };
 
         match &term {
             Op::Return(_) => Shape::Block(block),
@@ -624,7 +638,16 @@ impl<'a> Structurizer<'a> {
                 }
 
                 // Find merge point via post-dominator.
-                let merge = self.find_merge(block, then_target, else_target, until);
+                let mut merge = self.find_merge(block, then_target, else_target, until);
+
+                // If post-dominator didn't give us a merge, try BFS intersection
+                // of blocks reachable from both targets. Without a merge point,
+                // both branches would independently traverse shared downstream
+                // blocks, causing exponential blowup. BFS finds the first shared
+                // block to use as the merge boundary.
+                if merge.is_none() && then_target != else_target {
+                    merge = self.find_merge_bfs(then_target, else_target, until, loop_body);
+                }
 
                 let then_body = if then_target == merge.unwrap_or(then_target) && merge.is_some() {
                     Shape::Seq(vec![])
@@ -698,6 +721,74 @@ impl<'a> Structurizer<'a> {
         None
     }
 
+    /// Try to find a merge point by BFS from both targets.
+    ///
+    /// Returns the first block reachable from both `a` and `b` (in BFS order
+    /// from `a`), stopping at `until` and loop boundaries.
+    fn find_merge_bfs(
+        &self,
+        a: BlockId,
+        b: BlockId,
+        until: Option<BlockId>,
+        loop_body: Option<&HashSet<BlockId>>,
+    ) -> Option<BlockId> {
+        // Collect blocks reachable from `b`.
+        let mut reachable_from_b = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(b);
+        while let Some(cur) = queue.pop_front() {
+            if !reachable_from_b.insert(cur) {
+                continue;
+            }
+            if Some(cur) == until {
+                continue;
+            }
+            if let Some(lb) = loop_body {
+                if !lb.contains(&cur) {
+                    continue;
+                }
+            }
+            if let Some(succs) = self.cfg.succs.get(&cur) {
+                for &s in succs {
+                    queue.push_back(s);
+                }
+            }
+        }
+
+        // BFS from `a`, return first block also reachable from `b`
+        // (skip `a` itself since it's not a merge point).
+        let mut visited_a = HashSet::new();
+        let mut q = VecDeque::new();
+        if let Some(succs) = self.cfg.succs.get(&a) {
+            for &s in succs {
+                q.push_back(s);
+            }
+        }
+        while let Some(cur) = q.pop_front() {
+            if !visited_a.insert(cur) {
+                continue;
+            }
+            if Some(cur) == until {
+                continue;
+            }
+            if let Some(lb) = loop_body {
+                if !lb.contains(&cur) {
+                    continue;
+                }
+            }
+            if reachable_from_b.contains(&cur) {
+                return Some(cur);
+            }
+            if let Some(succs) = self.cfg.succs.get(&cur) {
+                for &s in succs {
+                    q.push_back(s);
+                }
+            }
+        }
+
+        None
+    }
+
     /// Build a Dispatch fallback for remaining blocks when recursion depth
     /// is exceeded. Collects all reachable blocks from `block` up to `until`.
     fn fallback_dispatch(
@@ -751,7 +842,7 @@ impl<'a> Structurizer<'a> {
             .map(|l| l.body.clone())
             .unwrap_or_default();
 
-        let term = self.terminator(header).clone();
+        let term = self.terminator(header).cloned();
 
         // Find the exit block (successor of header not in loop body, or
         // the "next" block after the loop).
@@ -759,13 +850,13 @@ impl<'a> Structurizer<'a> {
 
         self.loop_stack.push(header);
 
-        let shape = match &term {
-            Op::BrIf {
+        let shape = match term.as_ref() {
+            Some(Op::BrIf {
                 cond,
                 then_target,
                 else_target,
                 ..
-            } => {
+            }) => {
                 let cond = *cond;
                 let then_target = *then_target;
                 let else_target = *else_target;
@@ -827,13 +918,12 @@ impl<'a> Structurizer<'a> {
         loop_body: &HashSet<BlockId>,
     ) -> Option<BlockId> {
         // Look for successors of loop blocks that are outside the loop.
-        let term = self.terminator(header);
-        match term {
-            Op::BrIf {
+        match self.terminator(header) {
+            Some(Op::BrIf {
                 then_target,
                 else_target,
                 ..
-            } => {
+            }) => {
                 if !loop_body.contains(then_target) {
                     Some(*then_target)
                 } else if !loop_body.contains(else_target) {
@@ -930,12 +1020,10 @@ impl<'a> Structurizer<'a> {
             if loop_body.contains(&pred) {
                 continue; // Skip back edges.
             }
-            let term = self.terminator(pred);
-            match term {
-                Op::Br { target, args } if *target == header => {
+            if let Some(Op::Br { target, args }) = self.terminator(pred) {
+                if *target == header {
                     return Some(self.branch_assigns(header, args));
                 }
-                _ => {}
             }
         }
         None
@@ -955,12 +1043,10 @@ impl<'a> Structurizer<'a> {
             if pred == header {
                 continue; // Skip self-loops at header level.
             }
-            let term = self.terminator(pred);
-            match term {
-                Op::Br { target, args } if *target == header => {
+            if let Some(Op::Br { target, args }) = self.terminator(pred) {
+                if *target == header {
                     return Some(self.branch_assigns(header, args));
                 }
-                _ => {}
             }
         }
         None

@@ -458,6 +458,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_struct(StructDef {
             name: "Point".into(),
+            namespace: Vec::new(),
             fields: vec![
                 ("x".into(), Type::Int(64)),
                 ("y".into(), Type::Int(64)),

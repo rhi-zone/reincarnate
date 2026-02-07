@@ -168,6 +168,8 @@ fn is_terminated(
         return true; // Empty block range, treat as terminated.
     }
     // Check if the previous instruction is a terminator.
+    // Conditional branches (IfTrue, IfEq, etc.) are terminators too — they
+    // emit a BrIf in the IR, so no fallthrough Br should follow them.
     matches!(
         ops[prev].op,
         Op::Jump { .. }
@@ -175,6 +177,20 @@ fn is_terminated(
             | Op::ReturnVoid
             | Op::Throw
             | Op::LookupSwitch(_)
+            | Op::IfTrue { .. }
+            | Op::IfFalse { .. }
+            | Op::IfEq { .. }
+            | Op::IfNe { .. }
+            | Op::IfLt { .. }
+            | Op::IfLe { .. }
+            | Op::IfGt { .. }
+            | Op::IfGe { .. }
+            | Op::IfStrictEq { .. }
+            | Op::IfStrictNe { .. }
+            | Op::IfNge { .. }
+            | Op::IfNgt { .. }
+            | Op::IfNle { .. }
+            | Op::IfNlt { .. }
     )
 }
 

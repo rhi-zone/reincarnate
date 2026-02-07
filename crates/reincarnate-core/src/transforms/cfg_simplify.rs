@@ -254,15 +254,18 @@ fn forward_empty_blocks(func: &mut Function) -> bool {
                         // then remap them.
                         let pred_args = get_branch_args(&func.insts[inst_id].op, fwd_block);
                         if let Some(pred_args) = pred_args {
-                            let new_args: Vec<ValueId> =
-                                remap.iter().map(|&idx| pred_args[idx]).collect();
-                            redirect_block_target_in_op(
-                                &mut func.insts[inst_id].op,
-                                fwd_block,
-                                info.target,
-                                Some(&new_args),
-                            );
-                            changed = true;
+                            // Validate all remap indices are within bounds.
+                            if remap.iter().all(|&idx| idx < pred_args.len()) {
+                                let new_args: Vec<ValueId> =
+                                    remap.iter().map(|&idx| pred_args[idx]).collect();
+                                redirect_block_target_in_op(
+                                    &mut func.insts[inst_id].op,
+                                    fwd_block,
+                                    info.target,
+                                    Some(&new_args),
+                                );
+                                changed = true;
+                            }
                         }
                     }
                 }

@@ -147,15 +147,18 @@ fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
 
     let mut modules = Vec::new();
     for module in output.modules {
+        eprintln!("[emit] transforming module: {}", module.name);
         let module = pipeline.run(module).map_err(|e| anyhow::anyhow!("{e}"))?;
         modules.push(module);
     }
+    eprintln!("[emit] transforms done, linking...");
 
     // Cross-module linking: validate all imports resolve.
     Linker::link(&modules).map_err(|errors| {
         let msgs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
         anyhow::anyhow!("linking failed:\n  {}", msgs.join("\n  "))
     })?;
+    eprintln!("[emit] linking done, emitting...");
 
     for target in &manifest.targets {
         let backend = find_backend(&target.backend);
@@ -168,6 +171,7 @@ fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
             assets: output.assets.clone(),
             output_dir: target.output_dir.clone(),
         };
+        eprintln!("[emit] emitting to {}...", target.output_dir.display());
         backend
             .emit(input)
             .map_err(|e| anyhow::anyhow!("{e}"))?;

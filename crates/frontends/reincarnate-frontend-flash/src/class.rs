@@ -1,18 +1,20 @@
 //! AVM2 class/instance → IR StructDef + method functions.
 
 use reincarnate_core::ir::{
-    Function, FunctionSig, Module, ModuleBuilder, StructDef, Type, Visibility,
+    ClassDef, Function, FunctionSig, MethodKind, Module, ModuleBuilder, StructDef, Type, Visibility,
 };
 use swf::avm2::types::{AbcFile, ConstantPool, Index, Trait, TraitKind};
 
-use crate::multiname::{resolve_multiname_index, resolve_type};
+use crate::multiname::{resolve_multiname_index, resolve_multiname_structured, resolve_type, NsKind};
 use crate::translate::translate_method_body;
 
 /// Information about a translated class.
 pub struct ClassInfo {
     pub name: String,
+    pub namespace: Vec<String>,
     pub struct_def: StructDef,
     pub functions: Vec<Function>,
+    pub super_class: Option<String>,
 }
 
 /// Translate a single AVM2 class (Instance + Class pair) into IR.
@@ -21,12 +23,30 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     let class = &abc.classes[class_idx];
     let pool = &abc.constant_pool;
 
-    let class_name = resolve_multiname_index(pool, &instance.name);
+    // Resolve class name with structured namespace info.
+    let (class_short_name, class_ns) =
+        if let Some(qn) = resolve_multiname_structured(pool, &instance.name) {
+            (qn.name, qn.namespace)
+        } else {
+            (resolve_multiname_index(pool, &instance.name), Vec::new())
+        };
+
+    // Resolve the private namespace string for this class so we can strip
+    // redundant prefixes from trait names.
+    let class_private_ns = find_private_ns_string(pool, &instance.name);
+
+    // Resolve superclass name.
+    let super_class = if instance.super_name.0 != 0 {
+        Some(resolve_multiname_index(pool, &instance.super_name))
+    } else {
+        None
+    };
 
     // Build StructDef from instance slot/const traits (fields).
     let fields = extract_fields(pool, &instance.traits);
     let struct_def = StructDef {
-        name: class_name.clone(),
+        name: class_short_name.clone(),
+        namespace: class_ns.clone(),
         fields,
         visibility: Visibility::Public,
     };
@@ -34,53 +54,78 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     let mut functions = Vec::new();
 
     // Constructor: Instance.init_method
-    if let Some(func) = translate_class_method(
+    if let Some(mut func) = translate_class_method(
         abc,
         &instance.init_method,
-        &format!("{class_name}::new"),
+        &format!("{class_short_name}::new"),
         true,
     )? {
+        func.namespace = class_ns.clone();
+        func.class = Some(class_short_name.clone());
+        func.method_kind = MethodKind::Constructor;
         functions.push(func);
     }
 
     // Instance methods from traits
     for trait_ in &instance.traits {
         if let Some(method_idx) = trait_method_index(trait_) {
-            let trait_name = resolve_multiname_index(pool, &trait_.name);
+            let bare_name = resolve_trait_bare_name(pool, trait_, class_private_ns.as_deref());
+            let method_kind = trait_to_method_kind(&trait_.kind, false);
             let prefix = method_prefix(&trait_.kind);
-            let func_name = format!("{class_name}::{prefix}{trait_name}");
-            if let Some(func) = translate_class_method(abc, &method_idx, &func_name, true)? {
+            let func_name = format!("{class_short_name}::{prefix}{bare_name}");
+            let visibility = trait_visibility(pool, trait_);
+            if let Some(mut func) =
+                translate_class_method(abc, &method_idx, &func_name, true)?
+            {
+                func.namespace = class_ns.clone();
+                func.class = Some(class_short_name.clone());
+                func.method_kind = method_kind;
+                func.visibility = visibility;
                 functions.push(func);
             }
         }
     }
 
     // Static initializer: Class.init_method
-    if let Some(func) = translate_class_method(
+    if let Some(mut func) = translate_class_method(
         abc,
         &class.init_method,
-        &format!("{class_name}::cinit"),
+        &format!("{class_short_name}::cinit"),
         false,
     )? {
+        func.namespace = class_ns.clone();
+        func.class = Some(class_short_name.clone());
+        func.method_kind = MethodKind::Static;
+        func.visibility = Visibility::Private;
         functions.push(func);
     }
 
     // Static methods from class traits
     for trait_ in &class.traits {
         if let Some(method_idx) = trait_method_index(trait_) {
-            let trait_name = resolve_multiname_index(pool, &trait_.name);
+            let bare_name = resolve_trait_bare_name(pool, trait_, class_private_ns.as_deref());
+            let method_kind = trait_to_method_kind(&trait_.kind, true);
             let prefix = method_prefix(&trait_.kind);
-            let func_name = format!("{class_name}::{prefix}{trait_name}");
-            if let Some(func) = translate_class_method(abc, &method_idx, &func_name, false)? {
+            let func_name = format!("{class_short_name}::{prefix}{bare_name}");
+            let visibility = trait_visibility(pool, trait_);
+            if let Some(mut func) =
+                translate_class_method(abc, &method_idx, &func_name, false)?
+            {
+                func.namespace = class_ns.clone();
+                func.class = Some(class_short_name.clone());
+                func.method_kind = method_kind;
+                func.visibility = visibility;
                 functions.push(func);
             }
         }
     }
 
     Ok(ClassInfo {
-        name: class_name,
+        name: class_short_name,
+        namespace: class_ns,
         struct_def,
         functions,
+        super_class,
     })
 }
 
@@ -117,6 +162,74 @@ fn method_prefix(kind: &TraitKind) -> &'static str {
         TraitKind::Getter { .. } => "get_",
         TraitKind::Setter { .. } => "set_",
         _ => "",
+    }
+}
+
+/// Convert a trait kind to an IR `MethodKind`.
+fn trait_to_method_kind(kind: &TraitKind, is_static: bool) -> MethodKind {
+    match kind {
+        TraitKind::Getter { .. } => MethodKind::Getter,
+        TraitKind::Setter { .. } => MethodKind::Setter,
+        TraitKind::Method { .. } | TraitKind::Function { .. } => {
+            if is_static {
+                MethodKind::Static
+            } else {
+                MethodKind::Instance
+            }
+        }
+        _ => MethodKind::Free,
+    }
+}
+
+/// Resolve the bare name of a trait, stripping redundant private namespace
+/// prefixes that AVM2 duplicates from the class path.
+fn resolve_trait_bare_name(
+    pool: &ConstantPool,
+    trait_: &Trait,
+    class_private_ns: Option<&str>,
+) -> String {
+    // Try structured resolution first.
+    if let Some(qn) = resolve_multiname_structured(pool, &trait_.name) {
+        // If the trait's namespace is Private and matches the class's private
+        // namespace, just use the bare name (strips the redundant prefix).
+        if qn.ns_kind == NsKind::Private {
+            if let Some(cpns) = class_private_ns {
+                let trait_ns = qn.namespace.join(".");
+                if trait_ns == cpns {
+                    return qn.name;
+                }
+            }
+        }
+        return qn.name;
+    }
+    resolve_multiname_index(pool, &trait_.name)
+}
+
+/// Determine visibility from a trait's namespace kind.
+fn trait_visibility(pool: &ConstantPool, trait_: &Trait) -> Visibility {
+    if let Some(qn) = resolve_multiname_structured(pool, &trait_.name) {
+        match qn.ns_kind {
+            NsKind::Package | NsKind::PackageInternal | NsKind::Namespace => Visibility::Public,
+            NsKind::Protected | NsKind::StaticProtected => Visibility::Protected,
+            NsKind::Private | NsKind::Explicit => Visibility::Private,
+        }
+    } else {
+        Visibility::Public
+    }
+}
+
+/// Find the string of the private namespace associated with a class multiname.
+fn find_private_ns_string(pool: &ConstantPool, class_name_idx: &Index<swf::avm2::types::Multiname>) -> Option<String> {
+    // The class name's QName uses its own namespace. Private namespaces on
+    // traits typically have the same string as the class's qualified path.
+    if let Some(qn) = resolve_multiname_structured(pool, class_name_idx) {
+        if qn.namespace.is_empty() {
+            Some(qn.name.clone())
+        } else {
+            Some(format!("{}.{}", qn.namespace.join("."), qn.name))
+        }
+    } else {
+        None
     }
 }
 
@@ -172,10 +285,23 @@ pub fn translate_abc_to_module(abc: &AbcFile, module_name: &str) -> Result<Modul
     // Translate classes
     for i in 0..abc.instances.len() {
         let info = translate_class(abc, i)?;
+        let struct_index = mb.struct_count();
         mb.add_struct(info.struct_def);
+
+        let mut method_ids = Vec::new();
         for func in info.functions {
-            mb.add_function(func);
+            let fid = mb.add_function(func);
+            method_ids.push(fid);
         }
+
+        mb.add_class(ClassDef {
+            name: info.name,
+            namespace: info.namespace,
+            struct_index,
+            methods: method_ids,
+            super_class: info.super_class,
+            visibility: Visibility::Public,
+        });
     }
 
     // Translate script initializers

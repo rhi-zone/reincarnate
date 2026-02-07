@@ -3,7 +3,8 @@ use crate::entity::PrimaryMap;
 use super::block::{Block, BlockId, BlockParam};
 use super::func::{FuncId, Function, Visibility};
 use super::inst::{CmpKind, Inst, Op};
-use super::module::{EnumDef, Global, Import, Module, StructDef};
+use super::func::MethodKind;
+use super::module::{ClassDef, EnumDef, Global, Import, Module, StructDef};
 use super::ty::{FunctionSig, Type};
 use super::value::{Constant, ValueId};
 
@@ -42,6 +43,9 @@ impl FunctionBuilder {
             name: name.into(),
             sig,
             visibility,
+            namespace: Vec::new(),
+            class: None,
+            method_kind: MethodKind::Free,
             blocks,
             insts: PrimaryMap::new(),
             value_types,
@@ -104,6 +108,13 @@ impl FunctionBuilder {
     /// Panics if `index` is out of range.
     pub fn param(&self, index: usize) -> ValueId {
         self.func.blocks[self.func.entry].params[index].value
+    }
+
+    /// Set class metadata on the function being built.
+    pub fn set_class(&mut self, ns: Vec<String>, class: String, kind: MethodKind) {
+        self.func.namespace = ns;
+        self.func.class = Some(class);
+        self.func.method_kind = kind;
     }
 
     /// Consume the builder and return the constructed `Function`.
@@ -511,6 +522,10 @@ impl ModuleBuilder {
         self.module.structs.push(def);
     }
 
+    pub fn struct_count(&self) -> usize {
+        self.module.structs.len()
+    }
+
     pub fn add_enum(&mut self, def: EnumDef) {
         self.module.enums.push(def);
     }
@@ -521,6 +536,10 @@ impl ModuleBuilder {
 
     pub fn add_import(&mut self, import: Import) {
         self.module.imports.push(import);
+    }
+
+    pub fn add_class(&mut self, class: ClassDef) {
+        self.module.classes.push(class);
     }
 
     pub fn build(self) -> Module {
