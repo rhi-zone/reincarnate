@@ -1385,17 +1385,25 @@ fn emit_inst(
                     .map(|a| ctx.val(*a))
                     .collect::<Vec<_>>()
                     .join(", ");
-                format!(
-                    "{}.{}({rest_args})",
-                    ctx.operand(receiver),
-                    sanitize_ident(method)
-                )
+                if ctx.scope_lookups.contains(&receiver) {
+                    // Scope lookup receiver → bare function call
+                    format!("{}({rest_args})", sanitize_ident(method))
+                } else {
+                    format!(
+                        "{}.{}({rest_args})",
+                        ctx.operand(receiver),
+                        sanitize_ident(method)
+                    )
+                }
             } else {
-                let args_str = args
-                    .iter()
-                    .map(|a| ctx.val(*a))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                // Unqualified call: strip scope-lookup first arg if present
+                let effective_args: Vec<_> =
+                    if !args.is_empty() && ctx.scope_lookups.contains(&args[0]) {
+                        args[1..].iter().map(|a| ctx.val(*a)).collect()
+                    } else {
+                        args.iter().map(|a| ctx.val(*a)).collect()
+                    };
+                let args_str = effective_args.join(", ");
                 let safe_name = sanitize_ident(fname);
                 format!("{safe_name}({args_str})")
             };
@@ -3252,6 +3260,90 @@ mod tests {
         assert!(
             out.contains("Event"),
             "Should resolve to Event:\n{out}"
+        );
+    }
+
+    #[test]
+    fn call_unqualified_strips_scope_receiver() {
+        // findPropStrict("rand") + call("rand", [scope, x]) → rand(x)
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Int(64)],
+                return_ty: Type::Int(64),
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let name = fb.const_string("rand");
+            let scope =
+                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let result = fb.call("rand", &[scope, x], Type::Int(64));
+            fb.ret(Some(result));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            !out.contains("Flash_Scope.findPropStrict"),
+            "findPropStrict call should be resolved away:\n{out}"
+        );
+        assert!(
+            out.contains("rand(v0)"),
+            "Should emit rand(v0) without scope arg:\n{out}"
+        );
+    }
+
+    #[test]
+    fn call_qualified_strips_scope_receiver() {
+        // findPropStrict("flash.net::registerClassAlias") + call with qualified name
+        // → registerClassAlias("Foo", Foo)
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![],
+                return_ty: Type::Void,
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let name = fb.const_string("flash.net::registerClassAlias");
+            let scope =
+                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let alias = fb.const_string("Foo");
+            let cls = fb.const_string("FooCls");
+            fb.call("flash.net::registerClassAlias", &[scope, alias, cls], Type::Void);
+            fb.ret(None);
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            !out.contains("Flash_Scope.findPropStrict"),
+            "findPropStrict call should be resolved away:\n{out}"
+        );
+        assert!(
+            out.contains("registerClassAlias("),
+            "Should emit bare registerClassAlias call:\n{out}"
+        );
+        assert!(
+            !out.contains(".registerClassAlias("),
+            "Should not emit method dispatch on scope:\n{out}"
+        );
+    }
+
+    #[test]
+    fn call_non_scope_first_arg_unchanged() {
+        // Normal call without scope lookup — all args preserved
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Int(64), Type::Int(64)],
+                return_ty: Type::Int(64),
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let a = fb.param(0);
+            let b = fb.param(1);
+            let result = fb.call("add", &[a, b], Type::Int(64));
+            fb.ret(Some(result));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("add(v0, v1)"),
+            "Should preserve all args for non-scope call:\n{out}"
         );
     }
 }
