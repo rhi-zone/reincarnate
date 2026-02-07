@@ -271,7 +271,8 @@ struct EmitCtx {
     inline_exprs: HashMap<ValueId, (String, bool)>,
     /// Qualified class name → sanitized short name (e.g. "classes.Scenes::Foo" → "Foo").
     class_names: HashMap<String, String>,
-    /// Values produced by `findPropStrict` — used to resolve `GetField` to class names.
+    /// Values produced by scope lookups (`findPropStrict`/`findProperty`) — resolved to bare
+    /// names in `GetField`/`SetField`.
     scope_lookups: HashSet<ValueId>,
     /// Short names of the current class and all its ancestors in the hierarchy.
     ancestors: HashSet<String>,
@@ -1291,12 +1292,16 @@ fn emit_inst(
         }
         Op::GetField { object, field } => {
             let r = result.unwrap();
-            // Resolve findPropStrict + GetField → class name.
+            // Resolve scope lookup + GetField → bare name.
             if ctx.scope_lookups.contains(object) {
-                if let Some(short) = ctx.class_names.get(field) {
-                    emit_or_inline(ctx, r, short.clone(), false, out, indent);
-                    return Ok(());
-                }
+                let resolved = if let Some(short) = ctx.class_names.get(field) {
+                    short.clone()
+                } else {
+                    let effective = field.rsplit("::").next().unwrap_or(field);
+                    sanitize_ident(effective)
+                };
+                emit_or_inline(ctx, r, resolved, false, out, indent);
+                return Ok(());
             }
             // Extract short name from qualified fields (e.g. "ns::Class::prop" → "prop").
             let effective_field = if field.contains("::") {
@@ -1320,6 +1325,13 @@ fn emit_inst(
             field,
             value,
         } => {
+            // Resolve scope lookup + SetField → bare assignment.
+            if ctx.scope_lookups.contains(object) {
+                let effective = field.rsplit("::").next().unwrap_or(field);
+                let name = sanitize_ident(effective);
+                let _ = writeln!(out, "{indent}{name} = {};", ctx.val(*value));
+                return Ok(());
+            }
             // Extract short name from qualified fields (e.g. "ns::Class::prop" → "prop").
             let effective_field = if field.contains("::") {
                 field.rsplit("::").next().unwrap_or(field)
@@ -1441,8 +1453,11 @@ fn emit_inst(
                 }
             }
 
-            // findPropStrict(name) → resolve to `this` for class-member lookups
-            if system == "Flash.Scope" && method == "findPropStrict" {
+            // findPropStrict/findProperty → resolve to `this` for class-member lookups,
+            // otherwise record as scope lookup for bare-name resolution in GetField/SetField.
+            if system == "Flash.Scope"
+                && (method == "findPropStrict" || method == "findProperty")
+            {
                 if let Some(r) = result {
                     if ctx.self_value.is_some() {
                         if let Some(class_name) = class_from_scope_arg(func, args) {
@@ -1452,7 +1467,7 @@ fn emit_inst(
                             }
                         }
                     }
-                    // Fallback: record for constructor-resolution optimization.
+                    // Fallback: record for bare-name resolution in GetField/SetField.
                     ctx.scope_lookups.insert(r);
                 }
             }
@@ -3012,7 +3027,7 @@ mod tests {
     }
 
     #[test]
-    fn find_prop_strict_in_free_function_stays() {
+    fn find_prop_strict_in_free_function_resolves_to_bare_name() {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
@@ -3028,13 +3043,21 @@ mod tests {
         });
 
         assert!(
-            out.contains("findPropStrict"),
-            "findPropStrict in free function should not resolve to this:\n{out}"
+            !out.contains("findPropStrict"),
+            "findPropStrict should be resolved away:\n{out}"
+        );
+        assert!(
+            out.contains("hp"),
+            "Should resolve to bare field name:\n{out}"
+        );
+        assert!(
+            !out.contains("this.hp"),
+            "Free function should not resolve to this:\n{out}"
         );
     }
 
     #[test]
-    fn find_prop_strict_non_ancestor_stays() {
+    fn find_prop_strict_non_ancestor_resolves_to_bare_name() {
         let mut mb = ModuleBuilder::new("test");
 
         mb.add_struct(StructDef {
@@ -3086,11 +3109,149 @@ mod tests {
 
         assert!(
             !out.contains("this.power"),
-            "findPropStrict for non-ancestor should not resolve to this:\n{out}"
+            "Non-ancestor should not resolve to this:\n{out}"
         );
         assert!(
-            out.contains("findPropStrict"),
-            "findPropStrict should remain for non-ancestor:\n{out}"
+            !out.contains("findPropStrict"),
+            "findPropStrict should be resolved to bare name:\n{out}"
+        );
+        assert!(
+            out.contains("power"),
+            "Should resolve to bare field name:\n{out}"
+        );
+    }
+
+    #[test]
+    fn unqualified_find_prop_strict_resolves_to_bare_name() {
+        // findPropStrict("rand") + getField("rand") → rand
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Dynamic,
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let name = fb.const_string("rand");
+            let scope =
+                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let rand_fn = fb.get_field(scope, "rand", Type::Dynamic);
+            let result = fb.call_indirect(rand_fn, &[x], Type::Dynamic);
+            fb.ret(Some(result));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            !out.contains("Flash_Scope.findPropStrict"),
+            "findPropStrict call should be resolved away:\n{out}"
+        );
+        assert!(
+            out.contains("rand("),
+            "Should resolve to bare function call:\n{out}"
+        );
+    }
+
+    #[test]
+    fn find_property_set_field_resolves_to_bare_assignment() {
+        // findProperty("X") + setField("X", 5) → X = 5
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![],
+                return_ty: Type::Void,
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let name = fb.const_string("X");
+            let scope =
+                fb.system_call("Flash.Scope", "findProperty", &[name], Type::Dynamic);
+            let val = fb.const_int(5);
+            fb.set_field(scope, "X", val);
+            fb.ret(None);
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            !out.contains("Flash_Scope.findProperty"),
+            "findProperty call should be resolved away:\n{out}"
+        );
+        assert!(
+            out.contains("X = 5"),
+            "Should resolve to bare assignment:\n{out}"
+        );
+    }
+
+    #[test]
+    fn find_property_resolves_to_this_for_ancestor() {
+        // findProperty("classes:Base::temp") in instance method → this
+        let mut mb = ModuleBuilder::new("test");
+
+        mb.add_struct(StructDef {
+            name: "Base".into(),
+            namespace: vec!["classes".into()],
+            fields: vec![("temp".into(), Type::Dynamic)],
+            visibility: Visibility::Public,
+        });
+
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic, Type::Dynamic],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("Base::setTemp", sig, Visibility::Public);
+        fb.set_class(vec!["classes".into()], "Base".into(), MethodKind::Instance);
+        let _this = fb.param(0);
+        let v = fb.param(1);
+        let name = fb.const_string("classes:Base::temp");
+        let scope =
+            fb.system_call("Flash.Scope", "findProperty", &[name], Type::Dynamic);
+        fb.set_field(scope, "classes:Base::temp", v);
+        fb.ret(None);
+        let method_id = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Base".into(),
+            namespace: vec!["classes".into()],
+            struct_index: 0,
+            methods: vec![method_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        let out = emit_module_to_string(&module).unwrap();
+
+        assert!(
+            out.contains("this.temp = "),
+            "findProperty for own class should resolve to this.temp:\n{out}"
+        );
+        assert!(
+            !out.contains("findProperty"),
+            "findProperty should be resolved away:\n{out}"
+        );
+    }
+
+    #[test]
+    fn qualified_find_prop_strict_non_class_resolves_to_bare_name() {
+        // findPropStrict("flash.events::Event") + getField("Event") → Event
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![],
+                return_ty: Type::Dynamic,
+            };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let name = fb.const_string("flash.events::Event");
+            let scope =
+                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let event_cls = fb.get_field(scope, "flash.events::Event", Type::Dynamic);
+            let change = fb.get_field(event_cls, "CHANGE", Type::Dynamic);
+            fb.ret(Some(change));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            !out.contains("Flash_Scope.findPropStrict"),
+            "findPropStrict call should be resolved away:\n{out}"
+        );
+        assert!(
+            out.contains("Event"),
+            "Should resolve to Event:\n{out}"
         );
     }
 }
