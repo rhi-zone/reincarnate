@@ -120,21 +120,54 @@ fn refine(old: &Type, new: &Type) -> Option<Type> {
     }
 }
 
+/// Returns true if the type is `Option(Dynamic)` — the type of `null` literals.
+/// These are sentinel stores (Flash register cleanup) and carry no real type info.
+fn is_null_sentinel(ty: &Type) -> bool {
+    matches!(ty, Type::Option(inner) if **inner == Type::Dynamic)
+}
+
 /// Merge two types into a union, deduplicating members.
-/// `Dynamic` members are dropped — they carry no information.
-/// Returns a single type if only one distinct member remains,
-/// or `Dynamic` if no concrete members exist.
+/// `Dynamic` and `Option(Dynamic)` (null sentinel) members are dropped —
+/// they carry no information. If any null sentinels were present and concrete
+/// types remain, the result is wrapped in `Option` to preserve nullability.
 fn union_type(a: Type, b: Type) -> Type {
+    let mut nullable = false;
     let mut types = match a {
         Type::Dynamic => vec![],
-        Type::Union(v) => v.into_iter().filter(|t| *t != Type::Dynamic).collect(),
+        _ if is_null_sentinel(&a) => {
+            nullable = true;
+            vec![]
+        }
+        Type::Union(v) => v
+            .into_iter()
+            .filter(|t| {
+                if *t == Type::Dynamic {
+                    return false;
+                }
+                if is_null_sentinel(t) {
+                    nullable = true;
+                    return false;
+                }
+                true
+            })
+            .collect(),
         other => vec![other],
     };
     match b {
         Type::Dynamic => {}
+        _ if is_null_sentinel(&b) => {
+            nullable = true;
+        }
         Type::Union(v) => {
             for t in v {
-                if t != Type::Dynamic && !types.contains(&t) {
+                if t == Type::Dynamic {
+                    continue;
+                }
+                if is_null_sentinel(&t) {
+                    nullable = true;
+                    continue;
+                }
+                if !types.contains(&t) {
                     types.push(t);
                 }
             }
@@ -145,10 +178,18 @@ fn union_type(a: Type, b: Type) -> Type {
             }
         }
     }
-    match types.len() {
+    let base = match types.len() {
         0 => Type::Dynamic,
         1 => types.into_iter().next().unwrap(),
         _ => Type::Union(types),
+    };
+    if nullable && base != Type::Dynamic {
+        match base {
+            Type::Option(_) => base,
+            other => Type::Option(Box::new(other)),
+        }
+    } else {
+        base
     }
 }
 
@@ -1155,6 +1196,79 @@ mod tests {
         let alloc_inst = func.insts.values().find(|i| matches!(&i.op, Op::Alloc(_))).unwrap();
         match &alloc_inst.op {
             Op::Alloc(ty) => assert_eq!(*ty, Type::Union(vec![Type::Int(64), Type::String])),
+            other => panic!("expected Alloc, got {:?}", other),
+        }
+    }
+
+    /// Null sentinel + concrete type → Option(ConcreteType).
+    #[test]
+    fn alloc_type_null_sentinel_absorbed() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let ptr = fb.alloc(Type::Dynamic);
+        let a = fb.const_int(1);
+        fb.store(ptr, a);
+        let b = fb.const_null();
+        fb.store(ptr, b);
+        let loaded = fb.load(ptr, Type::Dynamic);
+        fb.ret(Some(loaded));
+        let func = fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        let alloc_inst = func.insts.values().find(|i| matches!(&i.op, Op::Alloc(_))).unwrap();
+        match &alloc_inst.op {
+            Op::Alloc(ty) => assert_eq!(*ty, Type::Option(Box::new(Type::Int(64)))),
+            other => panic!("expected Alloc, got {:?}", other),
+        }
+    }
+
+    /// Null sentinel + Dynamic → stays Dynamic (no info from null alone).
+    #[test]
+    fn alloc_type_null_sentinel_with_dynamic_stays_dynamic() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let ptr = fb.alloc(Type::Dynamic);
+        let b = fb.const_null();
+        fb.store(ptr, b);
+        let loaded = fb.load(ptr, Type::Dynamic);
+        fb.ret(Some(loaded));
+        let mut func = fb.build();
+
+        // Simulate an unresolved store by manually inserting a Store with Dynamic value.
+        let dyn_val = func.value_types.push(Type::Dynamic);
+        let store_inst = func.insts.push(Inst {
+            op: Op::Store { ptr, value: dyn_val },
+            result: None,
+            span: None,
+        });
+        let entry = BlockId::new(0);
+        let term_pos = func.blocks[entry].insts.len() - 1;
+        func.blocks[entry].insts.insert(term_pos, store_inst);
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        let alloc_inst = func.insts.values().find(|i| matches!(&i.op, Op::Alloc(_))).unwrap();
+        match &alloc_inst.op {
+            Op::Alloc(ty) => assert_eq!(*ty, Type::Dynamic),
             other => panic!("expected Alloc, got {:?}", other),
         }
     }
