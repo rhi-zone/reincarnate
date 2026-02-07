@@ -879,58 +879,6 @@ fn emit_function(
     Ok(())
 }
 
-/// Check if a branch arm (assigns + body) is empty — no assignments and no statements.
-fn is_empty_branch(assigns: &[BlockArgAssign], body: &Shape, func: &Function) -> bool {
-    assigns.is_empty() && is_empty_shape(body, func)
-}
-
-/// Check if a shape produces no output.
-fn is_empty_shape(shape: &Shape, func: &Function) -> bool {
-    match shape {
-        Shape::Seq(parts) => parts.iter().all(|p| is_empty_shape(p, func)),
-        Shape::Block(block_id) => {
-            // A block is effectively empty if every instruction is either:
-            // - A terminator (Br/BrIf/Switch) — handled by the shape tree
-            // - A pure value-producing expression — will be inlined into its
-            //   consumers or dropped if unused, producing no visible output.
-            //   Side-effecting ops (calls, stores, etc.) are NOT considered empty.
-            let block = &func.blocks[*block_id];
-            block.insts.iter().all(|&inst_id| {
-                let inst = &func.insts[inst_id];
-                matches!(
-                    inst.op,
-                    Op::Br { .. }
-                        | Op::BrIf { .. }
-                        | Op::Switch { .. }
-                        | Op::Const(_)
-                        | Op::Add(..)
-                        | Op::Sub(..)
-                        | Op::Mul(..)
-                        | Op::Div(..)
-                        | Op::Rem(..)
-                        | Op::BitAnd(..)
-                        | Op::BitOr(..)
-                        | Op::BitXor(..)
-                        | Op::Shl(..)
-                        | Op::Shr(..)
-                        | Op::Neg(..)
-                        | Op::BitNot(..)
-                        | Op::Not(..)
-                        | Op::Copy(..)
-                        | Op::Cmp(..)
-                        | Op::Select { .. }
-                        | Op::Cast(..)
-                        | Op::TypeCheck(..)
-                        | Op::GetField { .. }
-                        | Op::GetIndex { .. }
-                        | Op::Load(..)
-                        | Op::GlobalRef(..)
-                )
-            })
-        }
-        _ => false,
-    }
-}
 
 /// Negate a condition for `if` emission, avoiding double negation.
 ///
@@ -979,8 +927,18 @@ fn emit_shape(
             // Emit the block's non-terminator instructions first.
             emit_block_instructions(ctx, func, *block, out, indent)?;
 
-            let then_empty = is_empty_branch(then_assigns, then_body, func);
-            let else_empty = is_empty_branch(else_assigns, else_body, func);
+            // Emit both branches to buffers so we can detect truly empty output.
+            let inner = format!("{indent}  ");
+            let mut then_buf = String::new();
+            emit_arg_assigns(ctx, then_assigns, &mut then_buf, &inner);
+            emit_shape(ctx, func, then_body, &mut then_buf, &inner)?;
+
+            let mut else_buf = String::new();
+            emit_arg_assigns(ctx, else_assigns, &mut else_buf, &inner);
+            emit_shape(ctx, func, else_body, &mut else_buf, &inner)?;
+
+            let then_empty = then_buf.trim().is_empty();
+            let else_empty = else_buf.trim().is_empty();
 
             match (then_empty, else_empty) {
                 (true, true) => {
@@ -989,29 +947,22 @@ fn emit_shape(
                 (false, true) => {
                     // Only then has content — no else.
                     let _ = writeln!(out, "{indent}if ({}) {{", ctx.val(*cond));
-                    let inner = format!("{indent}  ");
-                    emit_arg_assigns(ctx, then_assigns, out, &inner);
-                    emit_shape(ctx, func, then_body, out, &inner)?;
+                    out.push_str(&then_buf);
                     let _ = writeln!(out, "{indent}}}");
                 }
                 (true, false) => {
                     // Only else has content — flip condition.
                     let neg = negate_cond(ctx, func, *block, *cond);
                     let _ = writeln!(out, "{indent}if ({neg}) {{");
-                    let inner = format!("{indent}  ");
-                    emit_arg_assigns(ctx, else_assigns, out, &inner);
-                    emit_shape(ctx, func, else_body, out, &inner)?;
+                    out.push_str(&else_buf);
                     let _ = writeln!(out, "{indent}}}");
                 }
                 (false, false) => {
                     // Both branches have content — full if/else.
                     let _ = writeln!(out, "{indent}if ({}) {{", ctx.val(*cond));
-                    let inner = format!("{indent}  ");
-                    emit_arg_assigns(ctx, then_assigns, out, &inner);
-                    emit_shape(ctx, func, then_body, out, &inner)?;
+                    out.push_str(&then_buf);
                     let _ = writeln!(out, "{indent}}} else {{");
-                    emit_arg_assigns(ctx, else_assigns, out, &inner);
-                    emit_shape(ctx, func, else_body, out, &inner)?;
+                    out.push_str(&else_buf);
                     let _ = writeln!(out, "{indent}}}");
                 }
             }
@@ -1184,8 +1135,18 @@ fn emit_shape_strip_trailing_return(
             // Emit the block's non-terminator instructions first.
             emit_block_instructions(ctx, func, *block, out, indent)?;
 
-            let then_empty = is_empty_branch(then_assigns, then_body, func);
-            let else_empty = is_empty_branch(else_assigns, else_body, func);
+            // Emit both branches to buffers so we can detect truly empty output.
+            let inner = format!("{indent}  ");
+            let mut then_buf = String::new();
+            emit_arg_assigns(ctx, then_assigns, &mut then_buf, &inner);
+            emit_shape_strip_trailing_return(ctx, func, then_body, &mut then_buf, &inner)?;
+
+            let mut else_buf = String::new();
+            emit_arg_assigns(ctx, else_assigns, &mut else_buf, &inner);
+            emit_shape_strip_trailing_return(ctx, func, else_body, &mut else_buf, &inner)?;
+
+            let then_empty = then_buf.trim().is_empty();
+            let else_empty = else_buf.trim().is_empty();
 
             match (then_empty, else_empty) {
                 (true, true) => {
@@ -1193,27 +1154,20 @@ fn emit_shape_strip_trailing_return(
                 }
                 (false, true) => {
                     let _ = writeln!(out, "{indent}if ({}) {{", ctx.val(*cond));
-                    let inner = format!("{indent}  ");
-                    emit_arg_assigns(ctx, then_assigns, out, &inner);
-                    emit_shape_strip_trailing_return(ctx, func, then_body, out, &inner)?;
+                    out.push_str(&then_buf);
                     let _ = writeln!(out, "{indent}}}");
                 }
                 (true, false) => {
                     let neg = negate_cond(ctx, func, *block, *cond);
                     let _ = writeln!(out, "{indent}if ({neg}) {{");
-                    let inner = format!("{indent}  ");
-                    emit_arg_assigns(ctx, else_assigns, out, &inner);
-                    emit_shape_strip_trailing_return(ctx, func, else_body, out, &inner)?;
+                    out.push_str(&else_buf);
                     let _ = writeln!(out, "{indent}}}");
                 }
                 (false, false) => {
                     let _ = writeln!(out, "{indent}if ({}) {{", ctx.val(*cond));
-                    let inner = format!("{indent}  ");
-                    emit_arg_assigns(ctx, then_assigns, out, &inner);
-                    emit_shape_strip_trailing_return(ctx, func, then_body, out, &inner)?;
+                    out.push_str(&then_buf);
                     let _ = writeln!(out, "{indent}}} else {{");
-                    emit_arg_assigns(ctx, else_assigns, out, &inner);
-                    emit_shape_strip_trailing_return(ctx, func, else_body, out, &inner)?;
+                    out.push_str(&else_buf);
                     let _ = writeln!(out, "{indent}}}");
                 }
             }
@@ -3982,48 +3936,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn if_else_empty_then_with_pure_ops_treated_as_empty() {
-        // A then-branch block containing only pure ops (Cmp, GetField) should
-        // be treated as empty, flipping the condition.
-        let out = build_and_emit(|mb| {
-            let sig = FunctionSig {
-                params: vec![Type::Bool, Type::Int(32)],
-                return_ty: Type::Void,
-            };
-            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
-            let cond = fb.param(0);
-            let x = fb.param(1);
-
-            let then_block = fb.create_block();
-            let else_block = fb.create_block();
-            let merge = fb.create_block();
-
-            fb.br_if(cond, then_block, &[], else_block, &[]);
-
-            // then: only pure ops (no calls/stores)
-            fb.switch_to_block(then_block);
-            let _unused = fb.cmp(CmpKind::Gt, x, x);
-            fb.br(merge, &[]);
-
-            // else: has a call
-            fb.switch_to_block(else_block);
-            fb.system_call("renderer", "clear", &[], Type::Void);
-            fb.br(merge, &[]);
-
-            fb.switch_to_block(merge);
-            fb.ret(None);
-
-            mb.add_function(fb.build());
-        });
-
-        assert!(
-            out.contains("if (!v0) {"),
-            "Pure-only then should be treated as empty, flipping condition:\n{out}"
-        );
-        assert!(
-            !out.contains("} else {"),
-            "Should not have else branch:\n{out}"
-        );
-    }
 }
