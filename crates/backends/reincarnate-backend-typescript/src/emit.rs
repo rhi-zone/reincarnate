@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -35,43 +35,31 @@ pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
 }
 
 // ---------------------------------------------------------------------------
-// Emit context — alias resolution and inline-let tracking
+// Emit context — inline-let tracking
 // ---------------------------------------------------------------------------
 
-/// Per-function context for copy propagation and inline `let` declarations.
+/// Per-function context for inline `let` declarations.
+///
+/// Copy propagation and alias resolution are handled by the `Mem2Reg` IR
+/// transform pass, so the emitter only needs to track which values get a
+/// `let` keyword at their definition site.
 struct EmitCtx {
-    /// Value alias map: value → canonical source value (from copy propagation).
-    aliases: HashMap<ValueId, ValueId>,
-    /// Instructions to skip entirely (their effects are folded into aliases).
-    skip_insts: HashSet<InstId>,
     /// Values that need a `let` keyword when first emitted.
     needs_let: HashSet<ValueId>,
 }
 
 impl EmitCtx {
     fn for_function(func: &Function) -> Self {
-        let (aliases, skip_insts) = build_aliases(func);
-        let needs_let = compute_needs_let(func, &skip_insts);
-        Self {
-            aliases,
-            skip_insts,
-            needs_let,
-        }
+        let needs_let = compute_needs_let(func);
+        Self { needs_let }
     }
 
-    /// Resolve a value through the alias chain.
+    /// Format a value reference.
     fn val(&self, v: ValueId) -> String {
-        let mut resolved = v;
-        for _ in 0..100 {
-            match self.aliases.get(&resolved) {
-                Some(&alias) if alias != resolved => resolved = alias,
-                _ => break,
-            }
-        }
-        format!("v{}", resolved.index())
+        format!("v{}", v.index())
     }
 
-    /// Returns `"let "` the first time a value is emitted, `""` thereafter.
+    /// Returns `"let "` for instruction results, `""` for parameters.
     fn let_prefix(&self, v: ValueId) -> &'static str {
         if self.needs_let.contains(&v) {
             "let "
@@ -79,92 +67,6 @@ impl EmitCtx {
             ""
         }
     }
-
-    fn should_skip(&self, inst_id: InstId) -> bool {
-        self.skip_insts.contains(&inst_id)
-    }
-}
-
-/// Build an alias map via copy propagation on Alloc/Store/Load/Copy patterns.
-///
-/// For alloc'd pointers with exactly one Store, all Loads are aliased to the
-/// stored value and the Alloc/Store/Load instructions are marked for skipping.
-/// Copy instructions are always aliased.
-fn build_aliases(func: &Function) -> (HashMap<ValueId, ValueId>, HashSet<InstId>) {
-    let mut aliases = HashMap::new();
-    let mut skip_insts = HashSet::new();
-
-    // Track alloc'd pointers and their stores.
-    let mut alloc_results: HashSet<ValueId> = HashSet::new();
-    let mut store_count: HashMap<ValueId, usize> = HashMap::new();
-    let mut store_value: HashMap<ValueId, ValueId> = HashMap::new();
-
-    for (_inst_id, inst) in func.insts.iter() {
-        match &inst.op {
-            Op::Alloc(_) => {
-                if let Some(r) = inst.result {
-                    alloc_results.insert(r);
-                }
-            }
-            Op::Store { ptr, value } => {
-                if alloc_results.contains(ptr) {
-                    *store_count.entry(*ptr).or_default() += 1;
-                    store_value.insert(*ptr, *value);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Single-store alloc pointers can be entirely eliminated.
-    let single_store: HashSet<ValueId> = store_count
-        .iter()
-        .filter(|(_, &c)| c == 1)
-        .map(|(&ptr, _)| ptr)
-        .collect();
-
-    for (inst_id, inst) in func.insts.iter() {
-        match &inst.op {
-            Op::Alloc(_) if inst.result.is_some_and(|r| single_store.contains(&r)) => {
-                skip_insts.insert(inst_id);
-            }
-            Op::Store { ptr, .. } if single_store.contains(ptr) => {
-                skip_insts.insert(inst_id);
-            }
-            Op::Load(ptr) if single_store.contains(ptr) => {
-                if let Some(r) = inst.result {
-                    aliases.insert(r, store_value[ptr]);
-                    skip_insts.insert(inst_id);
-                }
-            }
-            Op::Copy(src) => {
-                if let Some(r) = inst.result {
-                    aliases.insert(r, *src);
-                    skip_insts.insert(inst_id);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // Resolve transitive aliases: v3 → v2 → v1 becomes v3 → v1.
-    loop {
-        let mut changed = false;
-        let snapshot: Vec<_> = aliases.iter().map(|(k, v)| (*k, *v)).collect();
-        for (key, target) in snapshot {
-            if let Some(&next) = aliases.get(&target) {
-                if next != aliases[&key] {
-                    aliases.insert(key, next);
-                    changed = true;
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-
-    (aliases, skip_insts)
 }
 
 /// Determine which values should get an inline `let` declaration.
@@ -172,15 +74,12 @@ fn build_aliases(func: &Function) -> (HashMap<ValueId, ValueId>, HashSet<InstId>
 /// Entry-block parameters are declared in the function signature. Non-entry
 /// block parameters are pre-declared before the dispatch loop. Everything else
 /// (instruction results) gets `let` at its definition site.
-fn compute_needs_let(func: &Function, skip_insts: &HashSet<InstId>) -> HashSet<ValueId> {
+fn compute_needs_let(func: &Function) -> HashSet<ValueId> {
     let entry_params: HashSet<ValueId> =
         func.blocks[func.entry].params.iter().map(|p| p.value).collect();
 
     let mut needs_let = HashSet::new();
-    for (inst_id, inst) in func.insts.iter() {
-        if skip_insts.contains(&inst_id) {
-            continue;
-        }
+    for (_inst_id, inst) in func.insts.iter() {
         if let Some(r) = inst.result {
             if !entry_params.contains(&r) {
                 needs_let.insert(r);
@@ -454,9 +353,6 @@ fn emit_block_body(
     indent: &str,
 ) -> Result<(), CoreError> {
     for &inst_id in &block.insts {
-        if ctx.should_skip(inst_id) {
-            continue;
-        }
         emit_inst(ctx, func, inst_id, out, indent)?;
     }
     Ok(())
@@ -1245,21 +1141,29 @@ mod tests {
     }
 
     #[test]
-    fn copy_propagation_eliminates_alloc_store_load() {
-        let out = build_and_emit(|mb| {
-            let sig = FunctionSig {
-                params: vec![Type::Int(64)],
-                return_ty: Type::Int(64),
-            };
-            let mut fb = FunctionBuilder::new("identity", sig, Visibility::Public);
-            let param = fb.param(0);
-            // Alloc → Store → Load chain (typical local variable pattern).
-            let ptr = fb.alloc(Type::Int(64));
-            fb.store(ptr, param);
-            let loaded = fb.load(ptr, Type::Int(64));
-            fb.ret(Some(loaded));
-            mb.add_function(fb.build());
-        });
+    fn mem2reg_plus_emit_eliminates_alloc_store_load() {
+        use reincarnate_core::pipeline::Transform;
+        use reincarnate_core::transforms::Mem2Reg;
+
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64),
+        };
+        let mut fb = FunctionBuilder::new("identity", sig, Visibility::Public);
+        let param = fb.param(0);
+        // Alloc → Store → Load chain (typical local variable pattern).
+        let ptr = fb.alloc(Type::Int(64));
+        fb.store(ptr, param);
+        let loaded = fb.load(ptr, Type::Int(64));
+        fb.ret(Some(loaded));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+
+        // Run mem2reg IR pass, then emit.
+        let result = Mem2Reg.apply(module).unwrap();
+        let out = emit_module_to_string(&result.module).unwrap();
 
         // The alloc/store/load should be eliminated; return refers to the
         // original parameter directly.

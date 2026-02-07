@@ -16,6 +16,7 @@
 - [x] Dead code elimination pass
 - [x] Constant folding pass
 - [x] CFG simplification pass (merge redundant blocks, thread jumps)
+- [x] Mem2Reg pass (promote single-store alloc/store/load chains, eliminate copies)
 - [x] Transform pipeline fixpoint iteration (re-run until no changes)
 - [x] Cross-module linking pass (resolve string imports, build global symbol table)
 - [x] Asset extraction pipeline (images, audio, fonts from SWF/etc.)
