@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -53,28 +53,143 @@ pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
     Ok(out)
 }
 
-/// Emit a module as a directory with one `.ts` file per class.
+// ---------------------------------------------------------------------------
+// ClassRegistry — maps qualified names to filesystem paths for imports
+// ---------------------------------------------------------------------------
+
+struct ClassEntry {
+    short_name: String,
+    /// Path segments from module root, e.g. ["classes", "Scenes", "Swamp", "Swamp"].
+    path_segments: Vec<String>,
+}
+
+struct ClassRegistry {
+    /// Keyed by both qualified name and bare name (fallback).
+    classes: HashMap<String, ClassEntry>,
+}
+
+impl ClassRegistry {
+    fn from_module(module: &Module) -> Self {
+        let mut classes = HashMap::new();
+        for class in &module.classes {
+            let short = sanitize_ident(&class.name);
+            let mut segments: Vec<String> =
+                class.namespace.iter().map(|s| sanitize_ident(s)).collect();
+            segments.push(short.clone());
+            let entry = ClassEntry {
+                short_name: short.clone(),
+                path_segments: segments,
+            };
+            // Key by qualified name: "classes.Scenes.Areas.Swamp::CorruptedDriderScene"
+            let qualified = qualified_class_name(class);
+            classes.insert(qualified, entry);
+            // Also key by bare name for fallback lookup (if not already taken).
+            let bare_entry = ClassEntry {
+                short_name: short.clone(),
+                path_segments: classes
+                    .values()
+                    .last()
+                    .unwrap()
+                    .path_segments
+                    .clone(),
+            };
+            classes.entry(short).or_insert(bare_entry);
+        }
+        Self { classes }
+    }
+
+    fn lookup(&self, name: &str) -> Option<&ClassEntry> {
+        self.classes.get(name).or_else(|| {
+            // Try extracting the short name after `::`
+            let short = name.rsplit("::").next()?;
+            self.classes.get(short)
+        })
+    }
+}
+
+/// Build a qualified name from a ClassDef's namespace + name.
+fn qualified_class_name(class: &ClassDef) -> String {
+    if class.namespace.is_empty() {
+        class.name.clone()
+    } else {
+        format!("{}::{}", class.namespace.join("."), class.name)
+    }
+}
+
+/// Compute a relative import path between two sets of path segments.
+///
+/// Both `from` and `to` are file-level segments (the last element is the
+/// filename without extension).
+fn relative_import_path(from: &[String], to: &[String]) -> String {
+    // Find common prefix length.
+    let common = from
+        .iter()
+        .zip(to.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+
+    // Go up from `from`'s directory (all segments except the filename).
+    let ups = from.len() - 1 - common;
+    let mut parts = Vec::new();
+    if ups == 0 {
+        parts.push(".".to_string());
+    } else {
+        for _ in 0..ups {
+            parts.push("..".to_string());
+        }
+    }
+    // Go down into `to`'s remaining path.
+    for seg in &to[common..] {
+        parts.push(seg.clone());
+    }
+    parts.join("/")
+}
+
+/// Emit a module as a directory with one `.ts` file per class in nested dirs.
 pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), CoreError> {
     let module_dir = output_dir.join(&module.name);
     fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
 
     let (class_groups, free_funcs) = group_by_class(module);
-    let mut barrel_exports = Vec::new();
+    let registry = ClassRegistry::from_module(module);
+    let mut barrel_exports: Vec<String> = Vec::new();
 
     for group in &class_groups {
-        let file_name = sanitize_ident(&group.class_def.name);
+        let class_def = group.class_def;
+        let short_name = sanitize_ident(&class_def.name);
+
+        // Path segments for this class: namespace segments + class name.
+        let mut segments: Vec<String> =
+            class_def.namespace.iter().map(|s| sanitize_ident(s)).collect();
+        segments.push(short_name.clone());
+
+        // Depth = number of namespace segments (directories below module_dir).
+        let depth = class_def.namespace.len();
+
+        // Create nested directory.
+        let mut file_dir = module_dir.clone();
+        for seg in &class_def.namespace {
+            file_dir = file_dir.join(sanitize_ident(seg));
+        }
+        fs::create_dir_all(&file_dir).map_err(CoreError::Io)?;
+
         let mut out = String::new();
-        emit_runtime_imports(module, &mut out);
+        emit_runtime_imports_at_depth(module, &mut out, depth);
+        emit_intra_imports(group, &segments, &registry, &mut out);
         emit_class(group, module, &mut out)?;
-        let path = module_dir.join(format!("{file_name}.ts"));
+
+        let path = file_dir.join(format!("{short_name}.ts"));
         fs::write(&path, &out).map_err(CoreError::Io)?;
-        barrel_exports.push(file_name);
+
+        // Barrel export path: relative from module_dir.
+        let export_path = segments.join("/");
+        barrel_exports.push(export_path);
     }
 
-    // Free functions → _init.ts
+    // Free functions → _init.ts (at module root, depth 0).
     if !free_funcs.is_empty() {
         let mut out = String::new();
-        emit_runtime_imports(module, &mut out);
+        emit_runtime_imports_at_depth(module, &mut out, 0);
         emit_imports(module, &mut out);
         emit_globals(module, &mut out);
         for (_fid, func) in &free_funcs {
@@ -87,8 +202,8 @@ pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), Core
 
     // Barrel file: index.ts
     let mut barrel = String::new();
-    for name in &barrel_exports {
-        let _ = writeln!(barrel, "export * from \"./{name}\";");
+    for export_path in &barrel_exports {
+        let _ = writeln!(barrel, "export * from \"./{export_path}\";");
     }
     fs::write(module_dir.join("index.ts"), &barrel).map_err(CoreError::Io)?;
 
@@ -202,10 +317,24 @@ fn collect_system_names(module: &Module) -> BTreeSet<String> {
 }
 
 fn emit_runtime_imports(module: &Module, out: &mut String) {
+    emit_runtime_imports_at_depth(module, out, 0);
+}
+
+/// Emit runtime imports with path prefix adjusted for directory depth.
+///
+/// `depth` is the number of directories below the module dir. From depth `d`,
+/// the runtime path is `"../".repeat(d + 1) + "runtime"` (the `+1` accounts
+/// for the module dir being one level inside `output_dir`).
+fn emit_runtime_imports_at_depth(module: &Module, out: &mut String, depth: usize) {
     let systems = collect_system_names(module);
     if systems.is_empty() {
         return;
     }
+    let prefix = if depth == 0 {
+        ".".to_string()
+    } else {
+        "../".repeat(depth).trim_end_matches('/').to_string()
+    };
     let known: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
     let mut generic: Vec<&str> = Vec::new();
     let mut flash: Vec<String> = Vec::new();
@@ -219,20 +348,142 @@ fn emit_runtime_imports(module: &Module, out: &mut String) {
     if !generic.is_empty() {
         let _ = writeln!(
             out,
-            "import {{ {} }} from \"./runtime\";",
+            "import {{ {} }} from \"{prefix}/runtime\";",
             generic.join(", ")
         );
     }
     if !flash.is_empty() {
         let _ = writeln!(
             out,
-            "import {{ {} }} from \"./runtime/flash\";",
+            "import {{ {} }} from \"{prefix}/runtime/flash\";",
             flash.join(", ")
         );
     }
     if !generic.is_empty() || !flash.is_empty() {
         out.push('\n');
     }
+}
+
+// ---------------------------------------------------------------------------
+// Intra-module imports (class-to-class references)
+// ---------------------------------------------------------------------------
+
+/// Collect type names referenced by a class group that exist in the registry.
+fn collect_class_references(group: &ClassGroup<'_>, registry: &ClassRegistry) -> BTreeSet<String> {
+    let self_name = &group.class_def.name;
+    let mut refs = BTreeSet::new();
+
+    // Super class reference.
+    if let Some(sc) = &group.class_def.super_class {
+        let short = sc.rsplit("::").next().unwrap_or(sc);
+        if short != self_name {
+            if let Some(entry) = registry.lookup(sc) {
+                refs.insert(entry.short_name.clone());
+            }
+        }
+    }
+
+    // Scan all method bodies for type references.
+    for (_fid, func) in &group.methods {
+        collect_type_refs_from_function(func, self_name, registry, &mut refs);
+    }
+
+    refs
+}
+
+/// Scan a function's instructions and signature for type references.
+fn collect_type_refs_from_function(
+    func: &Function,
+    self_name: &str,
+    registry: &ClassRegistry,
+    refs: &mut BTreeSet<String>,
+) {
+    // Check return type and param types.
+    collect_type_ref(&func.sig.return_ty, self_name, registry, refs);
+    for ty in &func.sig.params {
+        collect_type_ref(ty, self_name, registry, refs);
+    }
+
+    // Check instructions.
+    for (_inst_id, inst) in func.insts.iter() {
+        match &inst.op {
+            Op::Alloc(ty) | Op::Cast(_, ty) | Op::TypeCheck(_, ty) => {
+                collect_type_ref(ty, self_name, registry, refs);
+            }
+            _ => {}
+        }
+    }
+
+    // Check value_types for Struct/Enum references.
+    for (_vid, ty) in func.value_types.iter() {
+        collect_type_ref(ty, self_name, registry, refs);
+    }
+}
+
+/// If a type references a class in the registry, add its short name.
+fn collect_type_ref(
+    ty: &Type,
+    self_name: &str,
+    registry: &ClassRegistry,
+    refs: &mut BTreeSet<String>,
+) {
+    match ty {
+        Type::Struct(name) | Type::Enum(name) => {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            if short != self_name {
+                if let Some(entry) = registry.lookup(name) {
+                    refs.insert(entry.short_name.clone());
+                }
+            }
+        }
+        Type::Array(inner) | Type::Option(inner) => {
+            collect_type_ref(inner, self_name, registry, refs);
+        }
+        Type::Map(k, v) => {
+            collect_type_ref(k, self_name, registry, refs);
+            collect_type_ref(v, self_name, registry, refs);
+        }
+        Type::Tuple(elems) => {
+            for elem in elems {
+                collect_type_ref(elem, self_name, registry, refs);
+            }
+        }
+        Type::Function(sig) => {
+            collect_type_ref(&sig.return_ty, self_name, registry, refs);
+            for p in &sig.params {
+                collect_type_ref(p, self_name, registry, refs);
+            }
+        }
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => {
+            collect_type_ref(yield_ty, self_name, registry, refs);
+            collect_type_ref(return_ty, self_name, registry, refs);
+        }
+        _ => {}
+    }
+}
+
+/// Emit `import { X } from "..."` statements for intra-module class references.
+fn emit_intra_imports(
+    group: &ClassGroup<'_>,
+    source_segments: &[String],
+    registry: &ClassRegistry,
+    out: &mut String,
+) {
+    let needed = collect_class_references(group, registry);
+    if needed.is_empty() {
+        return;
+    }
+
+    for short_name in &needed {
+        if let Some(entry) = registry.classes.get(short_name) {
+            let rel = relative_import_path(source_segments, &entry.path_segments);
+            let _ = writeln!(out, "import {{ {short_name} }} from \"{rel}\";");
+        }
+    }
+    out.push('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -1926,6 +2177,160 @@ mod tests {
         assert!(
             out.contains("export function init(): void {"),
             "Should have free function:\n{out}"
+        );
+    }
+
+    #[test]
+    fn relative_import_path_same_dir() {
+        let from = vec!["classes".into(), "Scenes".into(), "Swamp".into(), "Swamp".into()];
+        let to = vec![
+            "classes".into(),
+            "Scenes".into(),
+            "Swamp".into(),
+            "CorruptedDriderScene".into(),
+        ];
+        assert_eq!(relative_import_path(&from, &to), "./CorruptedDriderScene");
+    }
+
+    #[test]
+    fn relative_import_path_different_dir() {
+        let from = vec!["classes".into(), "Scenes".into(), "Swamp".into(), "Swamp".into()];
+        let to = vec!["classes".into(), "CoC".into()];
+        assert_eq!(relative_import_path(&from, &to), "../../CoC");
+    }
+
+    #[test]
+    fn relative_import_path_no_common() {
+        let from = vec!["a".into(), "b".into()];
+        let to = vec!["c".into(), "d".into()];
+        assert_eq!(relative_import_path(&from, &to), "../c/d");
+    }
+
+    #[test]
+    fn emit_nested_class_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut mb = ModuleBuilder::new("frame1");
+
+        // Class with namespace → nested directory.
+        mb.add_struct(StructDef {
+            name: "Swamp".into(),
+            namespace: vec!["classes".into(), "Scenes".into()],
+            fields: vec![("hp".into(), Type::Int(32))],
+            visibility: Visibility::Public,
+        });
+
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("Swamp::new", sig, Visibility::Public);
+        fb.set_class(
+            vec!["classes".into(), "Scenes".into()],
+            "Swamp".into(),
+            MethodKind::Constructor,
+        );
+        fb.system_call("renderer", "clear", &[], Type::Void);
+        fb.ret(None);
+        let ctor_id = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Swamp".into(),
+            namespace: vec!["classes".into(), "Scenes".into()],
+            struct_index: 0,
+            methods: vec![ctor_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        emit_module_to_dir(&module, dir.path()).unwrap();
+
+        // Check nested file exists.
+        let class_file = dir
+            .path()
+            .join("frame1/classes/Scenes/Swamp.ts");
+        assert!(class_file.exists(), "Nested class file should exist");
+
+        let content = fs::read_to_string(&class_file).unwrap();
+
+        // Runtime import should go up 2 levels (depth = 2 namespace segments).
+        assert!(
+            content.contains("from \"../../runtime\""),
+            "Runtime import should use depth-relative path:\n{content}"
+        );
+
+        // Barrel file should have nested re-export.
+        let barrel = fs::read_to_string(dir.path().join("frame1/index.ts")).unwrap();
+        assert!(
+            barrel.contains("export * from \"./classes/Scenes/Swamp\";"),
+            "Barrel should have nested export path:\n{barrel}"
+        );
+    }
+
+    #[test]
+    fn emit_intra_module_imports() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut mb = ModuleBuilder::new("frame1");
+
+        // Two classes: Monster (root) and Swamp (nested), where Swamp references Monster.
+        mb.add_struct(StructDef {
+            name: "Monster".into(),
+            namespace: vec!["classes".into()],
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+        mb.add_struct(StructDef {
+            name: "Swamp".into(),
+            namespace: vec!["classes".into(), "Scenes".into()],
+            fields: vec![("boss".into(), Type::Struct("classes::Monster".into()))],
+            visibility: Visibility::Public,
+        });
+
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+        };
+        let mut fb = FunctionBuilder::new("Monster::new", sig.clone(), Visibility::Public);
+        fb.set_class(vec!["classes".into()], "Monster".into(), MethodKind::Constructor);
+        fb.ret(None);
+        let monster_ctor = mb.add_function(fb.build());
+
+        let mut fb = FunctionBuilder::new("Swamp::new", sig, Visibility::Public);
+        fb.set_class(
+            vec!["classes".into(), "Scenes".into()],
+            "Swamp".into(),
+            MethodKind::Constructor,
+        );
+        fb.ret(None);
+        let swamp_ctor = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Monster".into(),
+            namespace: vec!["classes".into()],
+            struct_index: 0,
+            methods: vec![monster_ctor],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+        mb.add_class(ClassDef {
+            name: "Swamp".into(),
+            namespace: vec!["classes".into(), "Scenes".into()],
+            struct_index: 1,
+            methods: vec![swamp_ctor],
+            super_class: Some("classes::Monster".into()),
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        emit_module_to_dir(&module, dir.path()).unwrap();
+
+        let swamp_file = dir.path().join("frame1/classes/Scenes/Swamp.ts");
+        let content = fs::read_to_string(&swamp_file).unwrap();
+
+        // Swamp extends Monster → should have import for Monster.
+        assert!(
+            content.contains("import { Monster } from \"../Monster\";"),
+            "Should import Monster from parent dir:\n{content}"
         );
     }
 }
