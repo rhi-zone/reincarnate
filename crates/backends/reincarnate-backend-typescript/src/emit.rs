@@ -214,7 +214,10 @@ pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), Core
         fs::create_dir_all(&file_dir).map_err(CoreError::Io)?;
 
         let mut out = String::new();
-        emit_runtime_imports_at_depth(module, &mut out, depth);
+        let systems = collect_system_names_from_funcs(
+            group.methods.iter().map(|(_id, f)| *f),
+        );
+        emit_runtime_imports_for(systems, &mut out, depth);
         emit_intra_imports(group, &segments, &registry, &mut out);
         emit_class(group, module, &class_names, &ancestor_sets, &mut out)?;
 
@@ -229,7 +232,10 @@ pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), Core
     // Free functions → _init.ts (at module root, depth 0).
     if !free_funcs.is_empty() {
         let mut out = String::new();
-        emit_runtime_imports_at_depth(module, &mut out, 0);
+        let systems = collect_system_names_from_funcs(
+            free_funcs.iter().map(|(_id, f)| *f),
+        );
+        emit_runtime_imports_for(systems, &mut out, 0);
         emit_imports(module, &mut out);
         emit_globals(module, &mut out);
         for (_fid, func) in &free_funcs {
@@ -442,9 +448,11 @@ fn is_valid_js_ident(name: &str) -> bool {
 // Runtime imports (auto-detected from SystemCall ops)
 // ---------------------------------------------------------------------------
 
-fn collect_system_names(module: &Module) -> BTreeSet<String> {
+fn collect_system_names_from_funcs<'a>(
+    funcs: impl Iterator<Item = &'a Function>,
+) -> BTreeSet<String> {
     let mut used = BTreeSet::new();
-    for (_id, func) in module.functions.iter() {
+    for func in funcs {
         for (_inst_id, inst) in func.insts.iter() {
             if let Op::SystemCall { system, .. } = &inst.op {
                 used.insert(system.clone());
@@ -455,7 +463,9 @@ fn collect_system_names(module: &Module) -> BTreeSet<String> {
 }
 
 fn emit_runtime_imports(module: &Module, out: &mut String) {
-    emit_runtime_imports_at_depth(module, out, 0);
+    let systems =
+        collect_system_names_from_funcs(module.functions.iter().map(|(_id, f)| f));
+    emit_runtime_imports_for(systems, out, 0);
 }
 
 /// Emit runtime imports with path prefix adjusted for directory depth.
@@ -463,8 +473,7 @@ fn emit_runtime_imports(module: &Module, out: &mut String) {
 /// `depth` is the number of directories below the module dir. From depth `d`,
 /// the runtime path is `"../".repeat(d + 1) + "runtime"` (the `+1` accounts
 /// for the module dir being one level inside `output_dir`).
-fn emit_runtime_imports_at_depth(module: &Module, out: &mut String, depth: usize) {
-    let systems = collect_system_names(module);
+fn emit_runtime_imports_for(systems: BTreeSet<String>, out: &mut String, depth: usize) {
     if systems.is_empty() {
         return;
     }
