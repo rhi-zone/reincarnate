@@ -16,7 +16,10 @@ pub fn ts_type(ty: &Type) -> String {
             let parts: Vec<_> = elems.iter().map(ts_type).collect();
             format!("[{}]", parts.join(", "))
         }
-        Type::Struct(name) | Type::Enum(name) => sanitize_ident(name),
+        Type::Struct(name) | Type::Enum(name) => {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            sanitize_ident(short)
+        }
         Type::Function(sig) => {
             let params: Vec<_> = sig
                 .params

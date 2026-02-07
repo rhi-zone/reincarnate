@@ -1327,7 +1327,8 @@ fn type_check_expr(ctx: &EmitCtx, v: ValueId, ty: &Type) -> String {
         }
         Type::String => format!("typeof {} === \"string\"", ctx.val(v)),
         Type::Struct(name) | Type::Enum(name) => {
-            format!("{} instanceof {}", ctx.val(v), sanitize_ident(name))
+            let short = name.rsplit("::").next().unwrap_or(name);
+            format!("{} instanceof {}", ctx.val(v), sanitize_ident(short))
         }
         _ => format!("typeof {} === \"object\"", ctx.val(v)),
     }
