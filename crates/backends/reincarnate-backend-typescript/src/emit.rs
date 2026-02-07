@@ -477,23 +477,46 @@ fn compute_use_counts(func: &Function) -> HashMap<ValueId, usize> {
 
 /// Adjust use counts for LogicalOr/LogicalAnd shapes.
 ///
-/// In the IR, a BrIf uses `cond` twice (as condition + branch arg).
-/// After folding into `cond || rhs` or `cond && rhs`, `cond` appears
-/// only once. Decrement by 1 so the inline system can fold single-use
-/// values through the `||`/`&&` expression.
+/// In the standard case, a BrIf uses `cond` twice (as condition + branch
+/// arg). After folding into `cond || rhs` or `cond && rhs`, `cond`
+/// appears only once. Decrement by 1 so the inline system can fold
+/// single-use values through the `||`/`&&` expression.
+///
+/// In the **inverted** case, the BrIf condition differs from the shape's
+/// `cond` (which is the inverse comparison). Each value is used once in
+/// the BrIf — no double-counting, so no decrement needed.
 ///
 /// Only adjusts when rhs_body will emit empty (clean `||`/`&&` path).
 fn adjust_use_counts_for_logical_ops(ctx: &mut EmitCtx, func: &Function, shape: &Shape) {
     match shape {
         Shape::LogicalOr {
-            cond, rhs_body, ..
+            block,
+            cond,
+            rhs_body,
+            ..
         }
         | Shape::LogicalAnd {
-            cond, rhs_body, ..
+            block,
+            cond,
+            rhs_body,
+            ..
         } => {
             if logical_rhs_body_emits_empty(ctx, func, rhs_body) {
-                if let Some(count) = ctx.use_counts.get_mut(cond) {
-                    *count = count.saturating_sub(1);
+                // Only decrement when the shape's cond was the BrIf's own
+                // condition (standard case: BrIf uses cond twice). In the
+                // inverted case the BrIf condition is a different value,
+                // so no double-counting occurred.
+                let brif_cond = func.blocks[*block]
+                    .insts
+                    .last()
+                    .and_then(|&iid| match &func.insts[iid].op {
+                        Op::BrIf { cond: c, .. } => Some(*c),
+                        _ => None,
+                    });
+                if brif_cond == Some(*cond) {
+                    if let Some(count) = ctx.use_counts.get_mut(cond) {
+                        *count = count.saturating_sub(1);
+                    }
                 }
             }
             adjust_use_counts_for_logical_ops(ctx, func, rhs_body);

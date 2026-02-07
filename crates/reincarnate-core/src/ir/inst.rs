@@ -37,6 +37,20 @@ pub enum CmpKind {
     Ge,
 }
 
+impl CmpKind {
+    /// Return the inverse comparison (e.g. Lt ↔ Ge, Eq ↔ Ne).
+    pub fn inverse(self) -> Self {
+        match self {
+            CmpKind::Eq => CmpKind::Ne,
+            CmpKind::Ne => CmpKind::Eq,
+            CmpKind::Lt => CmpKind::Ge,
+            CmpKind::Ge => CmpKind::Lt,
+            CmpKind::Gt => CmpKind::Le,
+            CmpKind::Le => CmpKind::Gt,
+        }
+    }
+}
+
 /// IR operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Op {

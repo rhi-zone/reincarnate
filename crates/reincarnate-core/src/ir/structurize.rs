@@ -1133,6 +1133,19 @@ impl<'a> Structurizer<'a> {
     /// `else_trailing` empty, `then_assigns` empty,
     /// `then_trailing == [{phi, rhs}]`
     /// → `LogicalAnd { block, cond, phi, rhs_body: then_body, rhs }`
+    ///
+    /// Also handles **inverted** variants where the short-circuit branch
+    /// assigns `!cond` instead of `cond`:
+    ///
+    /// **Inverted AND:** `then_assigns == [{phi, !cond}]`, `then_body` empty,
+    /// `then_trailing` empty, `else_assigns` empty,
+    /// `else_trailing == [{phi, rhs}]`
+    /// → `LogicalAnd { block, cond: !cond, phi, rhs_body: else_body, rhs }`
+    ///
+    /// **Inverted OR:** `else_assigns == [{phi, !cond}]`, `else_body` empty,
+    /// `else_trailing` empty, `then_assigns` empty,
+    /// `then_trailing == [{phi, rhs}]`
+    /// → `LogicalOr { block, cond: !cond, phi, rhs_body: then_body, rhs }`
     fn try_logical_op(&self, shape: Shape) -> Shape {
         let Shape::IfElse {
             block,
@@ -1188,6 +1201,54 @@ impl<'a> Structurizer<'a> {
             };
         }
 
+        // Inverted AND: then assigns phi=!cond (always false when cond is
+        // truthy), else computes rhs → phi = !cond && rhs
+        //
+        // This occurs when the ABC compiler emits a separate inverse
+        // comparison (e.g. CmpLt for BrIf + CmpGe for the short-circuit
+        // value) instead of reusing the same value.
+        if then_assigns.len() == 1
+            && is_boolean_inverse(self.func, then_assigns[0].src, cond)
+            && **then_body == Shape::Seq(vec![])
+            && then_trailing_assigns.is_empty()
+            && else_assigns.is_empty()
+            && else_trailing_assigns.len() == 1
+            && else_trailing_assigns[0].dst == then_assigns[0].dst
+        {
+            let phi = then_assigns[0].dst;
+            let real_cond = then_assigns[0].src;
+            let rhs = else_trailing_assigns[0].src;
+            return Shape::LogicalAnd {
+                block,
+                cond: real_cond,
+                phi,
+                rhs_body: else_body.clone(),
+                rhs,
+            };
+        }
+
+        // Inverted OR: else assigns phi=!cond (always true when cond is
+        // falsy), then computes rhs → phi = !cond || rhs
+        if else_assigns.len() == 1
+            && is_boolean_inverse(self.func, else_assigns[0].src, cond)
+            && **else_body == Shape::Seq(vec![])
+            && else_trailing_assigns.is_empty()
+            && then_assigns.is_empty()
+            && then_trailing_assigns.len() == 1
+            && then_trailing_assigns[0].dst == else_assigns[0].dst
+        {
+            let phi = else_assigns[0].dst;
+            let real_cond = else_assigns[0].src;
+            let rhs = then_trailing_assigns[0].src;
+            return Shape::LogicalOr {
+                block,
+                cond: real_cond,
+                phi,
+                rhs_body: then_body.clone(),
+                rhs,
+            };
+        }
+
         shape
     }
 
@@ -1203,6 +1264,55 @@ impl<'a> Structurizer<'a> {
             body: Box::new(body),
         }
     }
+}
+
+// -------------------------------------------------------------------------
+// Helpers
+// -------------------------------------------------------------------------
+
+/// Check if two values are boolean inverses of each other.
+///
+/// Recognizes:
+/// - `Not(a)` vs `a`
+/// - `Cmp(k1, x, y)` vs `Cmp(k2, x, y)` where `k1 == k2.inverse()`
+///
+/// Comparison operands are considered equal if they share the same
+/// `ValueId` or are structurally identical constants.
+fn is_boolean_inverse(func: &Function, a: ValueId, b: ValueId) -> bool {
+    let a_op = func
+        .insts
+        .iter()
+        .find_map(|(_, inst)| (inst.result == Some(a)).then_some(&inst.op));
+    let b_op = func
+        .insts
+        .iter()
+        .find_map(|(_, inst)| (inst.result == Some(b)).then_some(&inst.op));
+    match (a_op, b_op) {
+        (Some(Op::Not(inner)), _) if *inner == b => true,
+        (_, Some(Op::Not(inner))) if *inner == a => true,
+        (Some(Op::Cmp(k1, x1, y1)), Some(Op::Cmp(k2, x2, y2))) => {
+            values_equivalent(func, *x1, *x2)
+                && values_equivalent(func, *y1, *y2)
+                && *k1 == k2.inverse()
+        }
+        _ => false,
+    }
+}
+
+/// Check if two values are equivalent: same `ValueId` or identical constants.
+fn values_equivalent(func: &Function, a: ValueId, b: ValueId) -> bool {
+    if a == b {
+        return true;
+    }
+    let a_const = func.insts.iter().find_map(|(_, inst)| match &inst.op {
+        Op::Const(c) if inst.result == Some(a) => Some(c),
+        _ => None,
+    });
+    let b_const = func.insts.iter().find_map(|(_, inst)| match &inst.op {
+        Op::Const(c) if inst.result == Some(b) => Some(c),
+        _ => None,
+    });
+    matches!((a_const, b_const), (Some(a), Some(b)) if a == b)
 }
 
 // -------------------------------------------------------------------------
@@ -1833,6 +1943,198 @@ mod tests {
                 matches!(**rhs_body, Shape::Block(_)),
                 "Expected Block in rhs_body, got: {rhs_body:?}"
             );
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[test]
+    fn test_inverted_logical_and() {
+        // Simulates the ABC pattern where && is lowered with inverse
+        // comparisons:
+        //
+        //   entry: v_ge = cmp.ge(x, 0); v_lt = cmp.lt(x, 0);
+        //          br_if v_lt, merge(v_ge), rhs_block()
+        //   rhs_block: v_rhs = cmp.ge(y, 60); br merge(v_rhs)
+        //   merge(v_phi): return v_phi
+        //
+        // v_lt is true ⟹ v_ge is false (short-circuit), so:
+        //   v_phi = v_ge && v_rhs
+        let sig = FunctionSig {
+            params: vec![Type::Int(64), Type::Int(64)],
+            return_ty: Type::Bool,
+        };
+        let mut fb = FunctionBuilder::new("inv_and", sig, Visibility::Public);
+        let x = fb.param(0);
+        let y = fb.param(1);
+
+        let zero = fb.const_int(0);
+        let v_ge = fb.cmp(CmpKind::Ge, x, zero);
+        let zero2 = fb.const_int(0);
+        let v_lt = fb.cmp(CmpKind::Lt, x, zero2);
+
+        let rhs_block = fb.create_block();
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Bool]);
+
+        // br_if v_lt → merge(v_ge), rhs_block()
+        fb.br_if(v_lt, merge, &[v_ge], rhs_block, &[]);
+
+        fb.switch_to_block(rhs_block);
+        let sixty = fb.const_int(60);
+        let v_rhs = fb.cmp(CmpKind::Ge, y, sixty);
+        fb.br(merge, &[v_rhs]);
+
+        fb.switch_to_block(merge);
+        let v_phi = merge_vals[0];
+        fb.ret(Some(v_phi));
+
+        let func = fb.build();
+        let shape = structurize(&func);
+
+        fn find_logical_and(shape: &Shape) -> Option<&Shape> {
+            match shape {
+                s @ Shape::LogicalAnd { .. } => Some(s),
+                Shape::Seq(parts) => parts.iter().find_map(find_logical_and),
+                _ => None,
+            }
+        }
+
+        let la = find_logical_and(&shape).expect("Expected LogicalAnd in shape");
+        if let Shape::LogicalAnd {
+            cond: la_cond,
+            phi,
+            rhs,
+            ..
+        } = la
+        {
+            assert_eq!(*la_cond, v_ge, "cond should be the v_ge (inverse of BrIf condition)");
+            assert_eq!(*phi, v_phi);
+            assert_eq!(*rhs, v_rhs);
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[test]
+    fn test_inverted_logical_or() {
+        // Simulates an inverted OR where BrIf uses cond but else branch
+        // assigns !cond (always true when cond is false):
+        //
+        //   entry: v_lt = cmp.lt(x, 0); v_ge = cmp.ge(x, 0);
+        //          br_if v_lt, rhs_block(), merge(v_ge)
+        //   rhs_block: v_rhs = cmp.ge(y, 60); br merge(v_rhs)
+        //   merge(v_phi): return v_phi
+        //
+        // v_lt is false ⟹ v_ge is true (short-circuit), so:
+        //   v_phi = v_ge || v_rhs
+        let sig = FunctionSig {
+            params: vec![Type::Int(64), Type::Int(64)],
+            return_ty: Type::Bool,
+        };
+        let mut fb = FunctionBuilder::new("inv_or", sig, Visibility::Public);
+        let x = fb.param(0);
+        let y = fb.param(1);
+
+        let zero = fb.const_int(0);
+        let v_lt = fb.cmp(CmpKind::Lt, x, zero);
+        let zero2 = fb.const_int(0);
+        let v_ge = fb.cmp(CmpKind::Ge, x, zero2);
+
+        let rhs_block = fb.create_block();
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Bool]);
+
+        // br_if v_lt → rhs_block(), merge(v_ge)
+        fb.br_if(v_lt, rhs_block, &[], merge, &[v_ge]);
+
+        fb.switch_to_block(rhs_block);
+        let sixty = fb.const_int(60);
+        let v_rhs = fb.cmp(CmpKind::Ge, y, sixty);
+        fb.br(merge, &[v_rhs]);
+
+        fb.switch_to_block(merge);
+        let v_phi = merge_vals[0];
+        fb.ret(Some(v_phi));
+
+        let func = fb.build();
+        let shape = structurize(&func);
+
+        fn find_logical_or(shape: &Shape) -> Option<&Shape> {
+            match shape {
+                s @ Shape::LogicalOr { .. } => Some(s),
+                Shape::Seq(parts) => parts.iter().find_map(find_logical_or),
+                _ => None,
+            }
+        }
+
+        let lo = find_logical_or(&shape).expect("Expected LogicalOr in shape");
+        if let Shape::LogicalOr {
+            cond: lo_cond,
+            phi,
+            rhs,
+            ..
+        } = lo
+        {
+            assert_eq!(*lo_cond, v_ge, "cond should be v_ge (inverse of BrIf condition)");
+            assert_eq!(*phi, v_phi);
+            assert_eq!(*rhs, v_rhs);
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[test]
+    fn test_inverted_logical_and_with_not() {
+        // Same as inverted AND but using Not(v) instead of inverse Cmp:
+        //
+        //   entry: v_bool = cmp.ge(x, 0); v_not = not(v_bool);
+        //          br_if v_not, merge(v_bool), rhs_block()
+        //   rhs_block: v_rhs = ...; br merge(v_rhs)
+        //   merge(v_phi): return v_phi
+        //
+        //   v_phi = v_bool && v_rhs
+        let sig = FunctionSig {
+            params: vec![Type::Int(64), Type::Int(64)],
+            return_ty: Type::Bool,
+        };
+        let mut fb = FunctionBuilder::new("inv_and_not", sig, Visibility::Public);
+        let x = fb.param(0);
+        let y = fb.param(1);
+
+        let zero = fb.const_int(0);
+        let v_bool = fb.cmp(CmpKind::Ge, x, zero);
+        let v_not = fb.not(v_bool);
+
+        let rhs_block = fb.create_block();
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Bool]);
+
+        fb.br_if(v_not, merge, &[v_bool], rhs_block, &[]);
+
+        fb.switch_to_block(rhs_block);
+        let sixty = fb.const_int(60);
+        let v_rhs = fb.cmp(CmpKind::Ge, y, sixty);
+        fb.br(merge, &[v_rhs]);
+
+        fb.switch_to_block(merge);
+        let v_phi = merge_vals[0];
+        fb.ret(Some(v_phi));
+
+        let func = fb.build();
+        let shape = structurize(&func);
+
+        fn find_logical_and(shape: &Shape) -> Option<&Shape> {
+            match shape {
+                s @ Shape::LogicalAnd { .. } => Some(s),
+                Shape::Seq(parts) => parts.iter().find_map(find_logical_and),
+                _ => None,
+            }
+        }
+
+        let la = find_logical_and(&shape).expect("Expected LogicalAnd in shape");
+        if let Shape::LogicalAnd {
+            cond: la_cond, ..
+        } = la
+        {
+            assert_eq!(*la_cond, v_bool, "cond should be v_bool (inner of Not)");
         } else {
             unreachable!();
         }
