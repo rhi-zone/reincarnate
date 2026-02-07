@@ -491,6 +491,7 @@ fn build_resume_function(
         value_types: rb.value_types,
         entry,
         coroutine: None, // No longer a coroutine after lowering.
+        value_names: std::collections::HashMap::new(),
     }
 }
 

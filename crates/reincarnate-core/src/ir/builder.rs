@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::entity::PrimaryMap;
 
 use super::block::{Block, BlockId, BlockParam};
@@ -51,6 +53,7 @@ impl FunctionBuilder {
             value_types,
             entry,
             coroutine: None,
+            value_names: HashMap::new(),
         };
 
         Self {
@@ -115,6 +118,11 @@ impl FunctionBuilder {
         self.func.namespace = ns;
         self.func.class = Some(class);
         self.func.method_kind = kind;
+    }
+
+    /// Attach a debug name to a value (from source-level variable/parameter names).
+    pub fn name_value(&mut self, v: ValueId, name: String) {
+        self.func.value_names.insert(v, name);
     }
 
     /// Consume the builder and return the constructed `Function`.

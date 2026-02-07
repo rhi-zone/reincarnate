@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::define_entity;
@@ -53,4 +55,7 @@ pub struct Function {
     pub entry: BlockId,
     /// If this function is a coroutine, metadata about it.
     pub coroutine: Option<CoroutineInfo>,
+    /// Optional debug names for values (from source-level variable names).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub value_names: HashMap<ValueId, String>,
 }
