@@ -43,7 +43,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     };
 
     // Build StructDef from instance slot/const traits (fields).
-    let fields = extract_fields(pool, &instance.traits);
+    let fields = extract_fields(pool, &instance.traits, class_private_ns.as_deref());
     let struct_def = StructDef {
         name: class_short_name.clone(),
         namespace: class_ns.clone(),
@@ -132,12 +132,16 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
 }
 
 /// Extract slot/const trait fields as IR struct fields.
-fn extract_fields(pool: &ConstantPool, traits: &[Trait]) -> Vec<(String, Type)> {
+fn extract_fields(
+    pool: &ConstantPool,
+    traits: &[Trait],
+    class_private_ns: Option<&str>,
+) -> Vec<(String, Type)> {
     let mut fields = Vec::new();
     for trait_ in traits {
         match &trait_.kind {
             TraitKind::Slot { type_name, .. } | TraitKind::Const { type_name, .. } => {
-                let name = resolve_multiname_index(pool, &trait_.name);
+                let name = resolve_trait_bare_name(pool, trait_, class_private_ns);
                 let ty = resolve_type(pool, type_name);
                 fields.push((name, ty));
             }
