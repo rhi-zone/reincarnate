@@ -108,6 +108,28 @@ Do not:
 - Use `--no-verify` - fix the issue or fix the hook
 - Assume tools are missing - check if `nix develop` is available for the right environment
 
+## CLI Usage
+
+Run via cargo from the repo root:
+
+```bash
+# Full pipeline: extract SWF → IR → transform → emit TypeScript
+cargo run -p reincarnate-cli -- emit --manifest ~/cc-project/reincarnate.json
+
+# Print human-readable IR (for debugging)
+cargo run -p reincarnate-cli -- print-ir <ir-json-file>
+
+# Extract IR only (no transforms/emit)
+cargo run -p reincarnate-cli -- extract --manifest ~/cc-project/reincarnate.json
+
+# Show project manifest info
+cargo run -p reincarnate-cli -- info --manifest ~/cc-project/reincarnate.json
+```
+
+The `--manifest` flag defaults to `reincarnate.json` in the current directory. Use `--skip-pass` to disable specific transform passes (e.g. `--skip-pass type-inference --skip-pass constant-folding`).
+
+Test project is at `~/cc-project/` (Flash SWF → TypeScript).
+
 ## Crate Structure
 
 All crates use the `reincarnate-` prefix:
