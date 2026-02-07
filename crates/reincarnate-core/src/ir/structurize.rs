@@ -8,6 +8,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::entity::EntityRef;
 use crate::ir::{BlockId, Function, Op, ValueId};
 use crate::transforms::util::branch_targets;
 
@@ -104,61 +105,130 @@ fn build_cfg(func: &Function) -> Cfg {
 }
 
 // -------------------------------------------------------------------------
-// Dominator computation (Cooper-Harvey-Kennedy)
+// Dominator computation (Lengauer-Tarjan)
 // -------------------------------------------------------------------------
 
-fn compute_dominators(func: &Function, cfg: &Cfg) -> HashMap<BlockId, BlockId> {
-    let entry = func.entry;
-    let blocks: Vec<BlockId> = func.blocks.keys().collect();
-
-    // Compute reverse postorder.
-    let rpo = reverse_postorder(entry, &cfg.succs, &blocks);
-    let rpo_number: HashMap<BlockId, usize> =
-        rpo.iter().enumerate().map(|(i, &b)| (b, i)).collect();
-
-    let mut idom: HashMap<BlockId, BlockId> = HashMap::new();
-    idom.insert(entry, entry);
-
-    let intersect = |mut a: BlockId, mut b: BlockId, idom: &HashMap<BlockId, BlockId>| -> BlockId {
-        while a != b {
-            while rpo_number[&a] > rpo_number[&b] {
-                a = idom[&a];
-            }
-            while rpo_number[&b] > rpo_number[&a] {
-                b = idom[&b];
-            }
+/// Iterative path compression for the Lengauer-Tarjan union-find forest.
+///
+/// Updates `label` entries so each node records the vertex with minimum
+/// `semi` value on its path to the forest root, and compresses ancestor
+/// pointers for future lookups. `usize::MAX` in `ancestor` means "root".
+fn lt_compress(v: usize, ancestor: &mut [usize], label: &mut [usize], semi: &[usize]) {
+    let mut path = Vec::new();
+    let mut u = v;
+    while ancestor[u] != usize::MAX && ancestor[ancestor[u]] != usize::MAX {
+        path.push(u);
+        u = ancestor[u];
+    }
+    for &node in path.iter().rev() {
+        let a = ancestor[node];
+        if semi[label[a]] < semi[label[node]] {
+            label[node] = label[a];
         }
-        a
-    };
+        ancestor[node] = ancestor[a];
+    }
+}
 
-    let mut changed = true;
-    while changed {
-        changed = false;
-        for &b in &rpo {
-            if b == entry {
-                continue;
-            }
-            let preds = cfg.preds.get(&b).map(|v| v.as_slice()).unwrap_or(&[]);
-            let mut new_idom: Option<BlockId> = None;
-            for &p in preds {
-                if !idom.contains_key(&p) {
-                    continue;
-                }
-                new_idom = Some(match new_idom {
-                    None => p,
-                    Some(current) => intersect(p, current, &idom),
-                });
-            }
-            if let Some(new) = new_idom {
-                if idom.get(&b) != Some(&new) {
-                    idom.insert(b, new);
-                    changed = true;
+/// EVAL: returns the vertex with minimum semidominator on the path from
+/// `v` to the root of its tree in the forest.
+fn lt_eval(v: usize, ancestor: &mut [usize], label: &mut [usize], semi: &[usize]) -> usize {
+    if ancestor[v] == usize::MAX {
+        return v;
+    }
+    lt_compress(v, ancestor, label, semi);
+    label[v]
+}
+
+/// Lengauer-Tarjan dominator tree computation.
+///
+/// Nearly linear time with path compression. Works for any CFG given as
+/// predecessor/successor maps. Used for both dominator and post-dominator
+/// computation.
+fn compute_dominators_lt(
+    entry: BlockId,
+    preds: &HashMap<BlockId, Vec<BlockId>>,
+    succs: &HashMap<BlockId, Vec<BlockId>>,
+) -> HashMap<BlockId, BlockId> {
+    // Phase 1: Iterative DFS numbering (avoids stack overflow on large functions).
+    let mut dfnum: HashMap<BlockId, usize> = HashMap::new();
+    let mut vertex: Vec<BlockId> = Vec::new();
+    let mut dfs_parent: Vec<usize> = Vec::new();
+
+    let mut stack: Vec<(BlockId, usize)> = vec![(entry, usize::MAX)];
+    while let Some((block, parent_df)) = stack.pop() {
+        if dfnum.contains_key(&block) {
+            continue;
+        }
+        let df = vertex.len();
+        dfnum.insert(block, df);
+        vertex.push(block);
+        dfs_parent.push(parent_df);
+
+        if let Some(s) = succs.get(&block) {
+            for &succ in s.iter().rev() {
+                if !dfnum.contains_key(&succ) {
+                    stack.push((succ, df));
                 }
             }
         }
     }
 
-    idom
+    let n = vertex.len();
+    if n <= 1 {
+        let mut idom = HashMap::new();
+        idom.insert(entry, entry);
+        return idom;
+    }
+
+    // Phase 2: Compute semidominators and immediate dominators.
+    let mut semi: Vec<usize> = (0..n).collect();
+    let mut idom_idx: Vec<usize> = vec![0; n];
+    let mut ancestor: Vec<usize> = vec![usize::MAX; n];
+    let mut label: Vec<usize> = (0..n).collect();
+    let mut bucket: Vec<Vec<usize>> = vec![Vec::new(); n];
+
+    for i in (1..n).rev() {
+        let w = vertex[i];
+        let p = dfs_parent[i];
+
+        if let Some(w_preds) = preds.get(&w) {
+            for &v in w_preds {
+                if let Some(&v_df) = dfnum.get(&v) {
+                    let u = lt_eval(v_df, &mut ancestor, &mut label, &semi);
+                    if semi[u] < semi[i] {
+                        semi[i] = semi[u];
+                    }
+                }
+            }
+        }
+
+        bucket[semi[i]].push(i);
+        ancestor[i] = p;
+
+        for v in std::mem::take(&mut bucket[p]) {
+            let u = lt_eval(v, &mut ancestor, &mut label, &semi);
+            idom_idx[v] = if semi[u] < semi[v] { u } else { p };
+        }
+    }
+
+    // Phase 3: Adjust immediate dominators.
+    for i in 1..n {
+        if idom_idx[i] != semi[i] {
+            idom_idx[i] = idom_idx[idom_idx[i]];
+        }
+    }
+
+    let mut result = HashMap::with_capacity(n);
+    result.insert(entry, entry);
+    for i in 1..n {
+        result.insert(vertex[i], vertex[idom_idx[i]]);
+    }
+    result
+}
+
+/// Compute dominators using Lengauer-Tarjan on the forward CFG.
+fn compute_dominators(func: &Function, cfg: &Cfg) -> HashMap<BlockId, BlockId> {
+    compute_dominators_lt(func.entry, &cfg.preds, &cfg.succs)
 }
 
 /// Check if `a` dominates `b`.
@@ -175,45 +245,15 @@ fn dominates(a: BlockId, b: BlockId, idom: &HashMap<BlockId, BlockId>) -> bool {
     }
 }
 
-/// Reverse postorder traversal from entry.
-fn reverse_postorder(
-    entry: BlockId,
-    succs: &HashMap<BlockId, Vec<BlockId>>,
-    _all_blocks: &[BlockId],
-) -> Vec<BlockId> {
-    let mut visited = HashSet::new();
-    let mut postorder = Vec::new();
-
-    fn dfs(
-        b: BlockId,
-        succs: &HashMap<BlockId, Vec<BlockId>>,
-        visited: &mut HashSet<BlockId>,
-        postorder: &mut Vec<BlockId>,
-    ) {
-        if !visited.insert(b) {
-            return;
-        }
-        if let Some(children) = succs.get(&b) {
-            for &c in children {
-                dfs(c, succs, visited, postorder);
-            }
-        }
-        postorder.push(b);
-    }
-
-    dfs(entry, succs, &mut visited, &mut postorder);
-    postorder.reverse();
-    postorder
-}
-
 // -------------------------------------------------------------------------
-// Post-dominator computation
+// Post-dominator computation (virtual exit + Lengauer-Tarjan)
 // -------------------------------------------------------------------------
 
-/// Compute post-dominators (dominators on the reverse CFG).
-/// Returns ipdom[block] = immediate post-dominator.
+/// Compute post-dominators using a virtual exit node and Lengauer-Tarjan.
+///
+/// Adds a virtual exit that all return blocks flow to, ensuring correct
+/// post-dominator computation even with multiple exits.
 fn compute_post_dominators(func: &Function, cfg: &Cfg) -> HashMap<BlockId, BlockId> {
-    // Find exit blocks (blocks with Return).
     let exits: Vec<BlockId> = func
         .blocks
         .iter()
@@ -231,139 +271,37 @@ fn compute_post_dominators(func: &Function, cfg: &Cfg) -> HashMap<BlockId, Block
         return HashMap::new();
     }
 
-    // Build reverse CFG.
+    // Build reverse CFG: for forward edge A→B, reverse has B→A.
     let mut rev_succs: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
+    let mut rev_preds: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
     for (block_id, _) in func.blocks.iter() {
         rev_succs.entry(block_id).or_default();
+        rev_preds.entry(block_id).or_default();
     }
     for (block_id, targets) in &cfg.succs {
         for target in targets {
             rev_succs.entry(*target).or_default().push(*block_id);
+            rev_preds.entry(*block_id).or_default().push(*target);
         }
     }
 
-    // If multiple exits, create a virtual exit node approach by just using
-    // the first exit. For most well-formed functions there's a single exit
-    // or the exits converge. For simplicity, iterate from each exit block.
-    // We use a single-exit approach: pick a unique exit or handle multiple.
-    let all_blocks: Vec<BlockId> = func.blocks.keys().collect();
-
-    if exits.len() == 1 {
-        let exit = exits[0];
-        let rpo = reverse_postorder(exit, &rev_succs, &all_blocks);
-        let rpo_number: HashMap<BlockId, usize> =
-            rpo.iter().enumerate().map(|(i, &b)| (b, i)).collect();
-
-        let mut ipdom: HashMap<BlockId, BlockId> = HashMap::new();
-        ipdom.insert(exit, exit);
-
-        let intersect =
-            |mut a: BlockId, mut b: BlockId, ipdom: &HashMap<BlockId, BlockId>| -> BlockId {
-                while a != b {
-                    while rpo_number.get(&a).copied().unwrap_or(usize::MAX)
-                        > rpo_number.get(&b).copied().unwrap_or(usize::MAX)
-                    {
-                        a = ipdom[&a];
-                    }
-                    while rpo_number.get(&b).copied().unwrap_or(usize::MAX)
-                        > rpo_number.get(&a).copied().unwrap_or(usize::MAX)
-                    {
-                        b = ipdom[&b];
-                    }
-                }
-                a
-            };
-
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for &b in &rpo {
-                if b == exit {
-                    continue;
-                }
-                // In reverse CFG, successors of b are its predecessors in the
-                // forward CFG — but we already built rev_succs as the reverse.
-                let rev_preds = cfg.succs.get(&b).map(|v| v.as_slice()).unwrap_or(&[]);
-                let mut new_ipdom: Option<BlockId> = None;
-                for &p in rev_preds {
-                    if !ipdom.contains_key(&p) {
-                        continue;
-                    }
-                    new_ipdom = Some(match new_ipdom {
-                        None => p,
-                        Some(current) => intersect(p, current, &ipdom),
-                    });
-                }
-                if let Some(new) = new_ipdom {
-                    if ipdom.get(&b) != Some(&new) {
-                        ipdom.insert(b, new);
-                        changed = true;
-                    }
-                }
-            }
-        }
-
-        ipdom
-    } else {
-        // Multiple exits — use a "virtual exit" approach.
-        // Add virtual successors from each exit to a conceptual virtual exit.
-        // Instead, compute using the first reachable exit as the root and
-        // see what we get. For irreducible cases we fall back to Dispatch.
-        // Use the last block as heuristic exit (often the return block).
-        let exit = *exits.last().unwrap();
-        let rpo = reverse_postorder(exit, &rev_succs, &all_blocks);
-        let rpo_number: HashMap<BlockId, usize> =
-            rpo.iter().enumerate().map(|(i, &b)| (b, i)).collect();
-
-        let mut ipdom: HashMap<BlockId, BlockId> = HashMap::new();
-        ipdom.insert(exit, exit);
-
-        let intersect =
-            |mut a: BlockId, mut b: BlockId, ipdom: &HashMap<BlockId, BlockId>| -> BlockId {
-                while a != b {
-                    while rpo_number.get(&a).copied().unwrap_or(usize::MAX)
-                        > rpo_number.get(&b).copied().unwrap_or(usize::MAX)
-                    {
-                        a = ipdom[&a];
-                    }
-                    while rpo_number.get(&b).copied().unwrap_or(usize::MAX)
-                        > rpo_number.get(&a).copied().unwrap_or(usize::MAX)
-                    {
-                        b = ipdom[&b];
-                    }
-                }
-                a
-            };
-
-        let mut changed = true;
-        while changed {
-            changed = false;
-            for &b in &rpo {
-                if b == exit {
-                    continue;
-                }
-                let rev_preds = cfg.succs.get(&b).map(|v| v.as_slice()).unwrap_or(&[]);
-                let mut new_ipdom: Option<BlockId> = None;
-                for &p in rev_preds {
-                    if !ipdom.contains_key(&p) {
-                        continue;
-                    }
-                    new_ipdom = Some(match new_ipdom {
-                        None => p,
-                        Some(current) => intersect(p, current, &ipdom),
-                    });
-                }
-                if let Some(new) = new_ipdom {
-                    if ipdom.get(&b) != Some(&new) {
-                        ipdom.insert(b, new);
-                        changed = true;
-                    }
-                }
-            }
-        }
-
-        ipdom
+    // Virtual exit node — all return blocks flow to it in the forward CFG,
+    // so in the reverse CFG it has edges TO all exit blocks.
+    let virtual_exit = BlockId::new(u32::MAX);
+    rev_succs.insert(virtual_exit, exits.clone());
+    rev_preds.entry(virtual_exit).or_default();
+    for &exit in &exits {
+        rev_preds.entry(exit).or_default().push(virtual_exit);
     }
+
+    let ipdom = compute_dominators_lt(virtual_exit, &rev_preds, &rev_succs);
+
+    // Keep only real blocks; drop entries pointing to the virtual exit
+    // (those blocks post-dominate all paths to exits — no real merge point).
+    ipdom
+        .into_iter()
+        .filter(|(k, v)| *k != virtual_exit && *v != virtual_exit)
+        .collect()
 }
 
 // -------------------------------------------------------------------------
@@ -415,6 +353,12 @@ fn detect_loops(cfg: &Cfg, idom: &HashMap<BlockId, BlockId>) -> Vec<NaturalLoop>
 // Structurizer
 // -------------------------------------------------------------------------
 
+/// Maximum recursion depth before falling back to a dispatch loop.
+/// Real-world Flash functions can have 1000+ blocks forming deeply nested
+/// if/else chains; without a depth limit, the structurizer will overflow
+/// the stack.
+const MAX_DEPTH: usize = 200;
+
 /// Context for the recursive structurizer.
 struct Structurizer<'a> {
     func: &'a Function,
@@ -424,6 +368,8 @@ struct Structurizer<'a> {
     loops: Vec<NaturalLoop>,
     /// Stack of loop headers we're currently inside (innermost last).
     loop_stack: Vec<BlockId>,
+    /// Current recursion depth.
+    depth: usize,
 }
 
 impl<'a> Structurizer<'a> {
@@ -440,6 +386,7 @@ impl<'a> Structurizer<'a> {
             ipdom,
             loops,
             loop_stack: Vec::new(),
+            depth: 0,
         }
     }
 
@@ -449,8 +396,23 @@ impl<'a> Structurizer<'a> {
     }
 
     /// Get the terminator Op of a block.
+    ///
+    /// Finds the *first* control-flow terminator (Br, BrIf, Switch, Return)
+    /// rather than assuming it's the last instruction. This is defensive
+    /// against frontends that may emit dead instructions after a terminator
+    /// (e.g. a redundant `Br` following a `BrIf`).
     fn terminator(&self, block: BlockId) -> &Op {
         let blk = &self.func.blocks[block];
+        for &inst_id in &blk.insts {
+            let op = &self.func.insts[inst_id].op;
+            if matches!(
+                op,
+                Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_)
+            ) {
+                return op;
+            }
+        }
+        // Fallback: use the last instruction (block should always have a terminator).
         let last = *blk.insts.last().expect("block has no instructions");
         &self.func.insts[last].op
     }
@@ -481,6 +443,27 @@ impl<'a> Structurizer<'a> {
             return Shape::Seq(vec![]);
         }
 
+        // Guard against deep recursion on functions with hundreds of blocks
+        // (common in ActionScript-generated code with long if/else chains).
+        // Fall back to a dispatch loop for the remaining blocks.
+        self.depth += 1;
+        if self.depth > MAX_DEPTH {
+            self.depth -= 1;
+            return self.fallback_dispatch(block, until, loop_body);
+        }
+
+        let result = self.structurize_region_inner(block, until, loop_body);
+        self.depth -= 1;
+        result
+    }
+
+    /// Inner implementation of `structurize_region` (depth tracking is in the wrapper).
+    fn structurize_region_inner(
+        &mut self,
+        block: BlockId,
+        until: Option<BlockId>,
+        loop_body: Option<&HashSet<BlockId>>,
+    ) -> Shape {
         // Check if this block is a loop header we're supposed to process.
         if self.is_loop_header(block) && !self.loop_stack.contains(&block) {
             return self.structurize_loop(block, until);
@@ -713,6 +696,49 @@ impl<'a> Structurizer<'a> {
             }
         }
         None
+    }
+
+    /// Build a Dispatch fallback for remaining blocks when recursion depth
+    /// is exceeded. Collects all reachable blocks from `block` up to `until`.
+    fn fallback_dispatch(
+        &self,
+        block: BlockId,
+        until: Option<BlockId>,
+        loop_body: Option<&HashSet<BlockId>>,
+    ) -> Shape {
+        let mut blocks = Vec::new();
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+        queue.push_back(block);
+
+        while let Some(b) = queue.pop_front() {
+            if !visited.insert(b) {
+                continue;
+            }
+            if Some(b) == until {
+                continue;
+            }
+            if let Some(lb) = loop_body {
+                if !lb.contains(&b) {
+                    continue;
+                }
+            }
+            blocks.push(b);
+            if let Some(succs) = self.cfg.succs.get(&b) {
+                for &s in succs {
+                    queue.push_back(s);
+                }
+            }
+        }
+
+        if blocks.is_empty() {
+            Shape::Seq(vec![])
+        } else {
+            Shape::Dispatch {
+                entry: block,
+                blocks,
+            }
+        }
     }
 
     /// Structurize a loop starting at `header`.
@@ -962,6 +988,8 @@ impl<'a> Structurizer<'a> {
 ///
 /// Single-block functions return `Shape::Block(entry)`.
 /// Multi-block functions are analyzed for if/else, loops, etc.
+/// Recursion depth is bounded by `MAX_DEPTH`; the dominator and
+/// post-dominator computations are nearly linear (Lengauer-Tarjan).
 pub fn structurize(func: &Function) -> Shape {
     if func.blocks.len() == 1 {
         return Shape::Block(func.entry);
