@@ -221,22 +221,41 @@ pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), Core
 struct EmitCtx {
     /// Values that need a `let` keyword when first emitted.
     needs_let: HashSet<ValueId>,
+    /// The `this` parameter for instance methods (emitted as `this` instead of `v0`).
+    self_value: Option<ValueId>,
 }
 
 impl EmitCtx {
     fn for_function(func: &Function) -> Self {
         let needs_let = compute_needs_let(func);
-        Self { needs_let }
+        Self {
+            needs_let,
+            self_value: None,
+        }
+    }
+
+    fn for_method(func: &Function, self_value: ValueId) -> Self {
+        let needs_let = compute_needs_let(func);
+        Self {
+            needs_let,
+            self_value: Some(self_value),
+        }
     }
 
     /// Format a value reference.
     fn val(&self, v: ValueId) -> String {
-        format!("v{}", v.index())
+        if self.self_value == Some(v) {
+            "this".into()
+        } else {
+            format!("v{}", v.index())
+        }
     }
 
-    /// Returns `"let "` for instruction results, `""` for parameters.
+    /// Returns `"let "` for instruction results, `""` for parameters and self.
     fn let_prefix(&self, v: ValueId) -> &'static str {
-        if self.needs_let.contains(&v) {
+        if self.self_value == Some(v) {
+            ""
+        } else if self.needs_let.contains(&v) {
             "let "
         } else {
             ""
@@ -1412,8 +1431,6 @@ fn emit_class(
 
 /// Emit a single method inside a class body.
 fn emit_class_method(func: &Function, out: &mut String) -> Result<(), CoreError> {
-    let ctx = EmitCtx::for_function(func);
-
     // Extract bare method name from func.name (last `::` segment).
     let raw_name = func
         .name
@@ -1430,6 +1447,13 @@ fn emit_class_method(func: &Function, out: &mut String) -> Result<(), CoreError>
         MethodKind::Constructor | MethodKind::Instance | MethodKind::Getter | MethodKind::Setter
     );
     let param_start = if skip_self { 1.min(entry.params.len()) } else { 0 };
+
+    // Build context — methods with a self parameter get `this` binding.
+    let ctx = if skip_self && !entry.params.is_empty() {
+        EmitCtx::for_method(func, entry.params[0].value)
+    } else {
+        EmitCtx::for_function(func)
+    };
 
     let params: Vec<String> = entry.params[param_start..]
         .iter()
@@ -2157,10 +2181,14 @@ mod tests {
             out.contains("  static create(v0: number): number {"),
             "Should have static method:\n{out}"
         );
-        // Getter — strips `get_` prefix.
+        // Getter — strips `get_` prefix, body uses `this`.
         assert!(
             out.contains("  get health(): number {"),
             "Should have getter:\n{out}"
+        );
+        assert!(
+            out.contains("this.hp"),
+            "Getter body should use `this.hp`:\n{out}"
         );
     }
 
