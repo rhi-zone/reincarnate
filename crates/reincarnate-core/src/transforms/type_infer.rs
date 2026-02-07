@@ -16,6 +16,12 @@ struct ModuleContext {
     global_types: HashMap<String, Type>,
     /// Function name → return type.
     func_return_types: HashMap<String, Type>,
+    /// (class_short_name, bare_method_name) → return type.
+    method_return_types: HashMap<(String, String), Type>,
+    /// class_short_name → super_class_short_name.
+    class_hierarchy: HashMap<String, Option<String>>,
+    /// bare_method_name → return type (only for unambiguous names across all classes).
+    unique_method_types: HashMap<String, Type>,
 }
 
 impl ModuleContext {
@@ -38,11 +44,69 @@ impl ModuleContext {
             .map(|f| (f.name.clone(), f.sig.return_ty.clone()))
             .collect();
 
+        // Build method_return_types: (class, bare_name) → return type
+        let mut method_return_types = HashMap::new();
+        for f in module.functions.values() {
+            if f.class.is_some() {
+                if let Some(bare) = f.name.rsplit("::").next() {
+                    if let Some(class) = &f.class {
+                        method_return_types
+                            .insert((class.clone(), bare.to_string()), f.sig.return_ty.clone());
+                    }
+                }
+            }
+        }
+
+        // Build class_hierarchy from module.classes
+        let mut class_hierarchy: HashMap<String, Option<String>> = HashMap::new();
+        for class in &module.classes {
+            let super_short = class.super_class.as_ref().map(|sc| {
+                sc.rsplit("::").next().unwrap_or(sc).to_string()
+            });
+            class_hierarchy.insert(class.name.clone(), super_short);
+        }
+
+        // Build unique_method_types: bare names that resolve to a single return type
+        let mut bare_name_types: HashMap<String, Option<Type>> = HashMap::new();
+        for ((_, bare), ty) in &method_return_types {
+            match bare_name_types.get(bare) {
+                None => {
+                    bare_name_types.insert(bare.clone(), Some(ty.clone()));
+                }
+                Some(Some(existing)) if *existing == *ty => {}
+                Some(Some(_)) => {
+                    bare_name_types.insert(bare.clone(), None);
+                }
+                Some(None) => {}
+            }
+        }
+        let unique_method_types = bare_name_types
+            .into_iter()
+            .filter_map(|(name, ty)| ty.map(|t| (name, t)))
+            .collect();
+
         Self {
             struct_fields,
             global_types,
             func_return_types,
+            method_return_types,
+            class_hierarchy,
+            unique_method_types,
         }
+    }
+
+    /// Resolve a method's return type by walking the class hierarchy.
+    fn resolve_method_return_type(&self, class: &str, method: &str) -> Option<Type> {
+        let mut current = Some(class.to_string());
+        let max_depth = self.class_hierarchy.len();
+        for _ in 0..=max_depth {
+            let Some(cls) = current else { break };
+            if let Some(ty) = self.method_return_types.get(&(cls.clone(), method.to_string())) {
+                return Some(ty.clone());
+            }
+            current = self.class_hierarchy.get(&cls).and_then(|s| s.clone());
+        }
+        None
     }
 }
 
@@ -191,12 +255,36 @@ fn infer_inst_type(
             }
         }
 
-        // Direct call: look up return type.
-        Op::Call { func: name, .. } => ctx
-            .func_return_types
-            .get(name)
-            .cloned()
-            .unwrap_or(Type::Dynamic),
+        // Direct call: look up return type via 3-strategy chain.
+        Op::Call { func: name, args } => {
+            // Strategy 1: exact qualified name lookup.
+            if let Some(ty) = ctx.func_return_types.get(name) {
+                ty.clone()
+            }
+            // Strategy 2: receiver-based — if first arg is Struct(class), walk hierarchy.
+            else if let Some(first) = args.first() {
+                if let Type::Struct(class) = &func.value_types[*first] {
+                    let bare = name.rsplit("::").next().unwrap_or(name);
+                    ctx.resolve_method_return_type(class, bare)
+                        .unwrap_or_else(|| {
+                            // Strategy 3: unique bare name fallback.
+                            ctx.unique_method_types
+                                .get(bare)
+                                .cloned()
+                                .unwrap_or(Type::Dynamic)
+                        })
+                } else {
+                    // No struct receiver — try unique bare name.
+                    let bare = name.rsplit("::").next().unwrap_or(name);
+                    ctx.unique_method_types
+                        .get(bare)
+                        .cloned()
+                        .unwrap_or(Type::Dynamic)
+                }
+            } else {
+                Type::Dynamic
+            }
+        }
 
         // Copy: propagate source type.
         Op::Copy(v) => func.value_types[*v].clone(),
@@ -343,7 +431,7 @@ mod tests {
     use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
     use crate::ir::ty::FunctionSig;
-    use crate::ir::{CmpKind, FuncId, Global, StructDef, Visibility};
+    use crate::ir::{ClassDef, CmpKind, FuncId, Global, StructDef, Visibility};
 
     /// Constants propagate: pushbyte 42 + add should infer Int(64) for the add result.
     #[test]
@@ -615,5 +703,258 @@ mod tests {
 
         let func = &module.functions[FuncId::new(0)];
         assert_eq!(func.value_types[cmp], Type::Bool);
+    }
+
+    /// Helper: build a module with a class method and a caller that invokes it
+    /// via a bare name on a typed receiver.
+    fn build_method_call_module(
+        class_name: &str,
+        method_bare: &str,
+        method_return_ty: Type,
+        super_class: Option<&str>,
+    ) -> (Module, ValueId) {
+        // The method: Creature::isNaga -> Bool
+        let method_full = format!("{class_name}::{method_bare}");
+        let method_sig = FunctionSig {
+            params: vec![Type::Struct(class_name.to_string())],
+            return_ty: method_return_ty,
+        };
+        let mut method_fb =
+            FunctionBuilder::new(&method_full, method_sig, Visibility::Public);
+        let self_param = method_fb.param(0);
+        method_fb.ret(Some(self_param));
+        let mut method_func = method_fb.build();
+        method_func.class = Some(class_name.to_string());
+
+        // The caller calls bare "isNaga" with a Struct("Creature") receiver.
+        let caller_sig = FunctionSig {
+            params: vec![Type::Struct(class_name.to_string())],
+            return_ty: Type::Dynamic,
+        };
+        let mut caller_fb =
+            FunctionBuilder::new("caller", caller_sig, Visibility::Public);
+        let recv = caller_fb.param(0);
+        let result = caller_fb.call(method_bare, &[recv], Type::Dynamic);
+        caller_fb.ret(Some(result));
+        let caller_func = caller_fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_struct(StructDef {
+            name: class_name.into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+        let method_id = mb.add_function(method_func);
+        mb.add_function(caller_func);
+        mb.add_class(ClassDef {
+            name: class_name.into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![method_id],
+            super_class: super_class.map(|s| s.to_string()),
+            visibility: Visibility::Public,
+        });
+        (mb.build(), result)
+    }
+
+    /// Method call resolved via receiver type.
+    #[test]
+    fn method_call_resolved_via_receiver() {
+        let (module, result) =
+            build_method_call_module("Creature", "isNaga", Type::Bool, None);
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let caller = &module.functions[FuncId::new(1)];
+        assert_eq!(caller.value_types[result], Type::Bool);
+    }
+
+    /// Method call resolved via hierarchy walk (method on parent class).
+    #[test]
+    fn method_call_resolved_via_hierarchy() {
+        // Parent class "Creature" has isNaga, child "Naga" extends it.
+        let parent_method_sig = FunctionSig {
+            params: vec![Type::Struct("Creature".to_string())],
+            return_ty: Type::Bool,
+        };
+        let mut parent_fb =
+            FunctionBuilder::new("Creature::isNaga", parent_method_sig, Visibility::Public);
+        let self_param = parent_fb.param(0);
+        parent_fb.ret(Some(self_param));
+        let mut parent_func = parent_fb.build();
+        parent_func.class = Some("Creature".to_string());
+
+        // Caller has a Naga receiver, calls bare "isNaga".
+        let caller_sig = FunctionSig {
+            params: vec![Type::Struct("Naga".to_string())],
+            return_ty: Type::Dynamic,
+        };
+        let mut caller_fb =
+            FunctionBuilder::new("caller", caller_sig, Visibility::Public);
+        let recv = caller_fb.param(0);
+        let result = caller_fb.call("isNaga", &[recv], Type::Dynamic);
+        caller_fb.ret(Some(result));
+        let caller_func = caller_fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_struct(StructDef {
+            name: "Creature".into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+        mb.add_struct(StructDef {
+            name: "Naga".into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+        let parent_method_id = mb.add_function(parent_func);
+        mb.add_function(caller_func);
+        mb.add_class(ClassDef {
+            name: "Creature".into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![parent_method_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+        mb.add_class(ClassDef {
+            name: "Naga".into(),
+            namespace: Vec::new(),
+            struct_index: 1,
+            methods: vec![],
+            super_class: Some("Creature".to_string()),
+            visibility: Visibility::Public,
+        });
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let caller = &module.functions[FuncId::new(1)];
+        assert_eq!(caller.value_types[result], Type::Bool);
+    }
+
+    /// Unique bare name fallback when receiver is not a Struct.
+    #[test]
+    fn method_call_unique_fallback() {
+        // Only one class defines "isNaga" → unique fallback works.
+        let method_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Bool,
+        };
+        let mut method_fb =
+            FunctionBuilder::new("Creature::isNaga", method_sig, Visibility::Public);
+        let self_param = method_fb.param(0);
+        method_fb.ret(Some(self_param));
+        let mut method_func = method_fb.build();
+        method_func.class = Some("Creature".to_string());
+
+        // Caller with Dynamic receiver.
+        let caller_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Dynamic,
+        };
+        let mut caller_fb =
+            FunctionBuilder::new("caller", caller_sig, Visibility::Public);
+        let recv = caller_fb.param(0);
+        let result = caller_fb.call("isNaga", &[recv], Type::Dynamic);
+        caller_fb.ret(Some(result));
+        let caller_func = caller_fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_struct(StructDef {
+            name: "Creature".into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+        let method_id = mb.add_function(method_func);
+        mb.add_function(caller_func);
+        mb.add_class(ClassDef {
+            name: "Creature".into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![method_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let caller = &module.functions[FuncId::new(1)];
+        assert_eq!(caller.value_types[result], Type::Bool);
+    }
+
+    /// Ambiguous bare name stays Dynamic when multiple classes disagree on return type.
+    #[test]
+    fn method_call_ambiguous_stays_dynamic() {
+        // Two classes define "getValue" with different return types.
+        let method1_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Bool,
+        };
+        let mut method1_fb =
+            FunctionBuilder::new("ClassA::getValue", method1_sig, Visibility::Public);
+        let s1 = method1_fb.param(0);
+        method1_fb.ret(Some(s1));
+        let mut method1 = method1_fb.build();
+        method1.class = Some("ClassA".to_string());
+
+        let method2_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Int(64),
+        };
+        let mut method2_fb =
+            FunctionBuilder::new("ClassB::getValue", method2_sig, Visibility::Public);
+        let s2 = method2_fb.param(0);
+        method2_fb.ret(Some(s2));
+        let mut method2 = method2_fb.build();
+        method2.class = Some("ClassB".to_string());
+
+        // Caller with Dynamic receiver.
+        let caller_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Dynamic,
+        };
+        let mut caller_fb =
+            FunctionBuilder::new("caller", caller_sig, Visibility::Public);
+        let recv = caller_fb.param(0);
+        let result = caller_fb.call("getValue", &[recv], Type::Dynamic);
+        caller_fb.ret(Some(result));
+        let caller_func = caller_fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        let m1_id = mb.add_function(method1);
+        let m2_id = mb.add_function(method2);
+        mb.add_function(caller_func);
+        mb.add_class(ClassDef {
+            name: "ClassA".into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![m1_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+        mb.add_class(ClassDef {
+            name: "ClassB".into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![m2_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let caller = &module.functions[FuncId::new(2)];
+        // Ambiguous — stays Dynamic.
+        assert_eq!(caller.value_types[result], Type::Dynamic);
     }
 }
