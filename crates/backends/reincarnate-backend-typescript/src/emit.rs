@@ -34,6 +34,7 @@ pub fn emit_module(module: &Module, output_dir: &Path) -> Result<(), CoreError> 
 pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
     let mut out = String::new();
     let class_names = build_class_names(module);
+    let ancestor_sets = build_ancestor_sets(module);
 
     emit_runtime_imports(module, &mut out);
     emit_imports(module, &mut out);
@@ -46,7 +47,7 @@ pub fn emit_module_to_string(module: &Module) -> Result<String, CoreError> {
     } else {
         let (class_groups, free_funcs) = group_by_class(module);
         for group in &class_groups {
-            emit_class(group, module, &class_names, &mut out)?;
+            emit_class(group, module, &class_names, &ancestor_sets, &mut out)?;
         }
         for (_fid, func) in &free_funcs {
             emit_function(func, &class_names, &mut out)?;
@@ -116,6 +117,32 @@ fn build_class_names(module: &Module) -> HashMap<String, String> {
         .collect()
 }
 
+/// Build a map from qualified class name to the set of ancestor short names.
+///
+/// For each class, the set includes the class's own short name and the short
+/// names of all superclasses reachable via `super_class` links within the module.
+fn build_ancestor_sets(module: &Module) -> HashMap<String, HashSet<String>> {
+    let class_by_short: HashMap<&str, &ClassDef> =
+        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
+
+    let mut result = HashMap::new();
+    for class in &module.classes {
+        let mut ancestors = HashSet::new();
+        ancestors.insert(class.name.clone());
+        let mut current = class;
+        while let Some(ref sc) = current.super_class {
+            let short = sc.rsplit("::").next().unwrap_or(sc);
+            ancestors.insert(short.to_string());
+            match class_by_short.get(short) {
+                Some(parent) => current = parent,
+                None => break,
+            }
+        }
+        result.insert(qualified_class_name(class), ancestors);
+    }
+    result
+}
+
 /// Build a qualified name from a ClassDef's namespace + name.
 fn qualified_class_name(class: &ClassDef) -> String {
     if class.namespace.is_empty() {
@@ -164,6 +191,7 @@ pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), Core
     let (class_groups, free_funcs) = group_by_class(module);
     let registry = ClassRegistry::from_module(module);
     let class_names = build_class_names(module);
+    let ancestor_sets = build_ancestor_sets(module);
     let mut barrel_exports: Vec<String> = Vec::new();
 
     for group in &class_groups {
@@ -188,7 +216,7 @@ pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), Core
         let mut out = String::new();
         emit_runtime_imports_at_depth(module, &mut out, depth);
         emit_intra_imports(group, &segments, &registry, &mut out);
-        emit_class(group, module, &class_names, &mut out)?;
+        emit_class(group, module, &class_names, &ancestor_sets, &mut out)?;
 
         let path = file_dir.join(format!("{short_name}.ts"));
         fs::write(&path, &out).map_err(CoreError::Io)?;
@@ -245,6 +273,8 @@ struct EmitCtx {
     class_names: HashMap<String, String>,
     /// Values produced by `findPropStrict` — used to resolve `GetField` to class names.
     scope_lookups: HashSet<ValueId>,
+    /// Short names of the current class and all its ancestors in the hierarchy.
+    ancestors: HashSet<String>,
 }
 
 impl EmitCtx {
@@ -258,6 +288,7 @@ impl EmitCtx {
             inline_exprs: HashMap::new(),
             class_names: class_names.clone(),
             scope_lookups: HashSet::new(),
+            ancestors: HashSet::new(),
         }
     }
 
@@ -265,6 +296,7 @@ impl EmitCtx {
         func: &Function,
         self_value: ValueId,
         class_names: &HashMap<String, String>,
+        ancestors: &HashSet<String>,
     ) -> Self {
         let needs_let = compute_needs_let(func);
         let use_counts = compute_use_counts(func);
@@ -275,6 +307,7 @@ impl EmitCtx {
             inline_exprs: HashMap::new(),
             class_names: class_names.clone(),
             scope_lookups: HashSet::new(),
+            ancestors: ancestors.clone(),
         }
     }
 
@@ -1408,9 +1441,18 @@ fn emit_inst(
                 }
             }
 
-            // findPropStrict(name) → record scope lookup, emit normally
+            // findPropStrict(name) → resolve to `this` for class-member lookups
             if system == "Flash.Scope" && method == "findPropStrict" {
                 if let Some(r) = result {
+                    if ctx.self_value.is_some() {
+                        if let Some(class_name) = class_from_scope_arg(func, args) {
+                            if ctx.ancestors.contains(&class_name) {
+                                ctx.store_inline(r, "this".to_string(), false);
+                                return Ok(());
+                            }
+                        }
+                    }
+                    // Fallback: record for constructor-resolution optimization.
                     ctx.scope_lookups.insert(r);
                 }
             }
@@ -1596,6 +1638,7 @@ fn emit_class(
     group: &ClassGroup<'_>,
     _module: &Module,
     class_names: &HashMap<String, String>,
+    ancestor_sets: &HashMap<String, HashSet<String>>,
     out: &mut String,
 ) -> Result<(), CoreError> {
     let class_name = sanitize_ident(&group.class_def.name);
@@ -1630,11 +1673,15 @@ fn emit_class(
         MethodKind::Free => 5,
     });
 
+    let qualified = qualified_class_name(group.class_def);
+    let empty_ancestors = HashSet::new();
+    let ancestors = ancestor_sets.get(&qualified).unwrap_or(&empty_ancestors);
+
     for (i, &(_fid, func)) in sorted_methods.iter().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(func, class_names, out)?;
+        emit_class_method(func, class_names, ancestors, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -1645,6 +1692,7 @@ fn emit_class(
 fn emit_class_method(
     func: &Function,
     class_names: &HashMap<String, String>,
+    ancestors: &HashSet<String>,
     out: &mut String,
 ) -> Result<(), CoreError> {
     // Extract bare method name from func.name (last `::` segment).
@@ -1666,7 +1714,7 @@ fn emit_class_method(
 
     // Build context — methods with a self parameter get `this` binding.
     let mut ctx = if skip_self && !entry.params.is_empty() {
-        EmitCtx::for_method(func, entry.params[0].value, class_names)
+        EmitCtx::for_method(func, entry.params[0].value, class_names, ancestors)
     } else {
         EmitCtx::for_function(func, class_names)
     };
@@ -1844,6 +1892,27 @@ fn emit_branch_args(
             ctx.val(*arg)
         );
     }
+}
+
+/// Extract the defining-class short name from a findPropStrict argument string.
+///
+/// Class-member namespaces have the format "pkg:ClassName::member" where the
+/// single colon distinguishes them from package-level namespaces ("pkg.sub::name").
+/// Returns `Some("ClassName")` for class-member lookups, `None` otherwise.
+fn class_from_scope_arg(func: &Function, args: &[ValueId]) -> Option<String> {
+    let arg = args.first()?;
+    let name = func.insts.iter().find_map(|(_, inst)| {
+        if inst.result == Some(*arg) {
+            if let Op::Const(Constant::String(s)) = &inst.op {
+                return Some(s.as_str());
+            }
+        }
+        None
+    })?;
+    // Must have :: (qualified) and the prefix must contain : (class-scoped namespace).
+    let prefix = name.rsplit_once("::")?.0;
+    let class_name = prefix.rsplit_once(':')?.1;
+    Some(class_name.to_string())
 }
 
 /// Generate a TypeScript type-check expression.
@@ -2831,6 +2900,197 @@ mod tests {
         assert!(
             !out.contains("BaseContent"),
             "Should not have qualified name:\n{out}"
+        );
+    }
+
+    #[test]
+    fn find_prop_strict_resolves_to_this_for_own_class() {
+        let mut mb = ModuleBuilder::new("test");
+
+        mb.add_struct(StructDef {
+            name: "Hero".into(),
+            namespace: vec!["classes".into()],
+            fields: vec![("hp".into(), Type::Int(32))],
+            visibility: Visibility::Public,
+        });
+
+        // Instance method that does findPropStrict("classes:Hero::hp") + getField.
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Dynamic,
+        };
+        let mut fb = FunctionBuilder::new("Hero::getHp", sig, Visibility::Public);
+        fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
+        let _this = fb.param(0);
+        let name = fb.const_string("classes:Hero::hp");
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+        let val = fb.get_field(scope, "classes:Hero::hp", Type::Int(32));
+        fb.ret(Some(val));
+        let method_id = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Hero".into(),
+            namespace: vec!["classes".into()],
+            struct_index: 0,
+            methods: vec![method_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        let out = emit_module_to_string(&module).unwrap();
+
+        assert!(
+            out.contains("this.hp"),
+            "findPropStrict for own class should resolve to this.hp:\n{out}"
+        );
+        assert!(
+            !out.contains("findPropStrict"),
+            "findPropStrict should be resolved away:\n{out}"
+        );
+    }
+
+    #[test]
+    fn find_prop_strict_resolves_to_this_for_ancestor() {
+        let mut mb = ModuleBuilder::new("test");
+
+        mb.add_struct(StructDef {
+            name: "Base".into(),
+            namespace: vec!["classes".into()],
+            fields: vec![("player".into(), Type::Dynamic)],
+            visibility: Visibility::Public,
+        });
+        mb.add_struct(StructDef {
+            name: "Child".into(),
+            namespace: vec!["classes".into()],
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+
+        // Child instance method does findPropStrict("classes:Base::player") + getField.
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Dynamic,
+        };
+        let mut fb = FunctionBuilder::new("Child::getPlayer", sig, Visibility::Public);
+        fb.set_class(vec!["classes".into()], "Child".into(), MethodKind::Instance);
+        let _this = fb.param(0);
+        let name = fb.const_string("classes:Base::player");
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+        let val = fb.get_field(scope, "classes:Base::player", Type::Dynamic);
+        fb.ret(Some(val));
+        let method_id = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Base".into(),
+            namespace: vec!["classes".into()],
+            struct_index: 0,
+            methods: vec![],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+        mb.add_class(ClassDef {
+            name: "Child".into(),
+            namespace: vec!["classes".into()],
+            struct_index: 1,
+            methods: vec![method_id],
+            super_class: Some("classes::Base".into()),
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        let out = emit_module_to_string(&module).unwrap();
+
+        assert!(
+            out.contains("this.player"),
+            "findPropStrict for ancestor class should resolve to this.player:\n{out}"
+        );
+        assert!(
+            !out.contains("findPropStrict"),
+            "findPropStrict should be resolved away:\n{out}"
+        );
+    }
+
+    #[test]
+    fn find_prop_strict_in_free_function_stays() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![],
+                return_ty: Type::Dynamic,
+            };
+            let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
+            let name = fb.const_string("classes:Hero::hp");
+            let scope =
+                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let val = fb.get_field(scope, "classes:Hero::hp", Type::Dynamic);
+            fb.ret(Some(val));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("findPropStrict"),
+            "findPropStrict in free function should not resolve to this:\n{out}"
+        );
+    }
+
+    #[test]
+    fn find_prop_strict_non_ancestor_stays() {
+        let mut mb = ModuleBuilder::new("test");
+
+        mb.add_struct(StructDef {
+            name: "Hero".into(),
+            namespace: vec!["classes".into()],
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+        mb.add_struct(StructDef {
+            name: "Villain".into(),
+            namespace: vec!["classes".into()],
+            fields: vec![("power".into(), Type::Int(32))],
+            visibility: Visibility::Public,
+        });
+
+        // Hero method does findPropStrict("classes:Villain::power") — unrelated class.
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Dynamic,
+        };
+        let mut fb = FunctionBuilder::new("Hero::spy", sig, Visibility::Public);
+        fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
+        let _this = fb.param(0);
+        let name = fb.const_string("classes:Villain::power");
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+        let val = fb.get_field(scope, "classes:Villain::power", Type::Int(32));
+        fb.ret(Some(val));
+        let method_id = mb.add_function(fb.build());
+
+        mb.add_class(ClassDef {
+            name: "Hero".into(),
+            namespace: vec!["classes".into()],
+            struct_index: 0,
+            methods: vec![method_id],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+        mb.add_class(ClassDef {
+            name: "Villain".into(),
+            namespace: vec!["classes".into()],
+            struct_index: 1,
+            methods: vec![],
+            super_class: None,
+            visibility: Visibility::Public,
+        });
+
+        let module = mb.build();
+        let out = emit_module_to_string(&module).unwrap();
+
+        assert!(
+            !out.contains("this.power"),
+            "findPropStrict for non-ancestor should not resolve to this:\n{out}"
+        );
+        assert!(
+            out.contains("findPropStrict"),
+            "findPropStrict should remain for non-ancestor:\n{out}"
         );
     }
 }
