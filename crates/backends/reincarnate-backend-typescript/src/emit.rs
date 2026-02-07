@@ -10,6 +10,8 @@ use reincarnate_core::ir::{
     InstId, MethodKind, Module, Op, Shape, StructDef, Type, ValueId, Visibility,
 };
 
+use reincarnate_core::transforms::util::value_operands;
+
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
 
@@ -213,37 +215,87 @@ pub fn emit_module_to_dir(module: &Module, output_dir: &Path) -> Result<(), Core
 // Emit context — inline-let tracking
 // ---------------------------------------------------------------------------
 
-/// Per-function context for inline `let` declarations.
+/// Per-function context for inline `let` declarations and expression inlining.
 ///
 /// Copy propagation and alias resolution are handled by the `Mem2Reg` IR
-/// transform pass, so the emitter only needs to track which values get a
-/// `let` keyword at their definition site.
+/// transform pass. The emitter tracks which values get a `let` keyword at
+/// their definition site and which single-use values can be inlined into
+/// their sole consumer.
 struct EmitCtx {
     /// Values that need a `let` keyword when first emitted.
     needs_let: HashSet<ValueId>,
     /// The `this` parameter for instance methods (emitted as `this` instead of `v0`).
     self_value: Option<ValueId>,
+    /// Number of times each value is used as an operand.
+    use_counts: HashMap<ValueId, usize>,
+    /// Inlined expressions for single-use values: (expr, needs_parens).
+    inline_exprs: HashMap<ValueId, (String, bool)>,
 }
 
 impl EmitCtx {
     fn for_function(func: &Function) -> Self {
         let needs_let = compute_needs_let(func);
+        let use_counts = compute_use_counts(func);
         Self {
             needs_let,
             self_value: None,
+            use_counts,
+            inline_exprs: HashMap::new(),
         }
     }
 
     fn for_method(func: &Function, self_value: ValueId) -> Self {
         let needs_let = compute_needs_let(func);
+        let use_counts = compute_use_counts(func);
         Self {
             needs_let,
             self_value: Some(self_value),
+            use_counts,
+            inline_exprs: HashMap::new(),
         }
     }
 
-    /// Format a value reference.
+    /// Whether a value should be inlined rather than assigned to a variable.
+    fn should_inline(&self, v: ValueId) -> bool {
+        self.use_counts.get(&v).copied().unwrap_or(0) == 1
+    }
+
+    /// Store an expression for a value to be inlined at its use site.
+    fn store_inline(&mut self, v: ValueId, expr: String, needs_parens: bool) {
+        self.inline_exprs.insert(v, (expr, needs_parens));
+    }
+
+    /// Format a value reference, checking for inlined expressions.
     fn val(&self, v: ValueId) -> String {
+        if self.self_value == Some(v) {
+            "this".into()
+        } else if let Some((expr, _)) = self.inline_exprs.get(&v) {
+            expr.clone()
+        } else {
+            format!("v{}", v.index())
+        }
+    }
+
+    /// Format a value reference for use as an operand where precedence matters.
+    ///
+    /// If the value is an inlined expression that needs parenthesization,
+    /// wraps it in `(...)`.
+    fn operand(&self, v: ValueId) -> String {
+        if self.self_value == Some(v) {
+            "this".into()
+        } else if let Some((expr, needs_parens)) = self.inline_exprs.get(&v) {
+            if *needs_parens {
+                format!("({expr})")
+            } else {
+                expr.clone()
+            }
+        } else {
+            format!("v{}", v.index())
+        }
+    }
+
+    /// Format a value name for the LHS of assignments (no inline lookup).
+    fn val_name(&self, v: ValueId) -> String {
         if self.self_value == Some(v) {
             "this".into()
         } else {
@@ -281,6 +333,17 @@ fn compute_needs_let(func: &Function) -> HashSet<ValueId> {
         }
     }
     needs_let
+}
+
+/// Count how many times each value is used as an operand across all instructions.
+fn compute_use_counts(func: &Function) -> HashMap<ValueId, usize> {
+    let mut counts = HashMap::new();
+    for (_id, inst) in func.insts.iter() {
+        for v in value_operands(&inst.op) {
+            *counts.entry(v).or_insert(0) += 1;
+        }
+    }
+    counts
 }
 
 // ---------------------------------------------------------------------------
@@ -641,7 +704,7 @@ fn emit_functions(module: &Module, out: &mut String) -> Result<(), CoreError> {
 }
 
 fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
-    let ctx = EmitCtx::for_function(func);
+    let mut ctx = EmitCtx::for_function(func);
     let vis = visibility_prefix(func.visibility);
     let star = if func.coroutine.is_some() { "*" } else { "" };
 
@@ -676,14 +739,14 @@ fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
             insts.len()
         };
         for &inst_id in &insts[..emit_count] {
-            emit_inst(&ctx, func, inst_id, out, "  ")?;
+            emit_inst(&mut ctx, func, inst_id, out, "  ")?;
         }
     } else {
         // Pre-declare only non-entry block parameters.
         emit_block_param_declarations(&ctx, func, out);
 
         let shape = structurize::structurize(func);
-        emit_shape_strip_trailing_return(&ctx, func, &shape, out, "  ")?;
+        emit_shape_strip_trailing_return(&mut ctx, func, &shape, out, "  ")?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -692,7 +755,7 @@ fn emit_function(func: &Function, out: &mut String) -> Result<(), CoreError> {
 
 /// Emit a structured shape tree as TypeScript.
 fn emit_shape(
-    ctx: &EmitCtx,
+    ctx: &mut EmitCtx,
     func: &Function,
     shape: &Shape,
     out: &mut String,
@@ -736,15 +799,15 @@ fn emit_shape(
             cond_negated,
             body,
         } => {
-            let cond_expr = if *cond_negated {
-                format!("!{}", ctx.val(*cond))
-            } else {
-                ctx.val(*cond)
-            };
             let _ = writeln!(out, "{indent}while (true) {{");
             let inner = format!("{indent}  ");
             emit_block_instructions(ctx, func, *header, out, &inner)?;
-            let _ = writeln!(out, "{inner}if (!{cond_expr}) break;");
+            let cond_expr = if *cond_negated {
+                format!("!{}", ctx.operand(*cond))
+            } else {
+                ctx.val(*cond)
+            };
+            let _ = writeln!(out, "{inner}if (!({cond_expr})) break;");
             // Strip trailing Continue — while(true) loops back naturally.
             emit_shape_strip_trailing_continue(ctx, func, body, out, &inner)?;
             let _ = writeln!(out, "{indent}}}");
@@ -758,19 +821,18 @@ fn emit_shape(
             update_assigns,
             body,
         } => {
-            let cond_expr = if *cond_negated {
-                format!("!{}", ctx.val(*cond))
-            } else {
-                ctx.val(*cond)
-            };
-
             // Emit init assignments before the loop.
             emit_arg_assigns(ctx, init_assigns, out, indent);
 
             let _ = writeln!(out, "{indent}while (true) {{");
             let inner = format!("{indent}  ");
             emit_block_instructions(ctx, func, *header, out, &inner)?;
-            let _ = writeln!(out, "{inner}if (!{cond_expr}) break;");
+            let cond_expr = if *cond_negated {
+                format!("!{}", ctx.operand(*cond))
+            } else {
+                ctx.val(*cond)
+            };
+            let _ = writeln!(out, "{inner}if (!({cond_expr})) break;");
             // Strip trailing Continue — update assigns + natural loop-back handle it.
             emit_shape_strip_trailing_continue(ctx, func, body, out, &inner)?;
             emit_arg_assigns(ctx, update_assigns, out, &inner);
@@ -824,7 +886,7 @@ fn emit_shape(
 /// Used inside `while(true)` loops where the natural loop-back makes an
 /// explicit `continue` redundant.
 fn emit_shape_strip_trailing_continue(
-    ctx: &EmitCtx,
+    ctx: &mut EmitCtx,
     func: &Function,
     shape: &Shape,
     out: &mut String,
@@ -852,7 +914,7 @@ fn emit_shape_strip_trailing_continue(
 /// Used at the top level of function/method bodies to omit unnecessary
 /// `return;` at the end of void functions.
 fn emit_shape_strip_trailing_return(
-    ctx: &EmitCtx,
+    ctx: &mut EmitCtx,
     func: &Function,
     shape: &Shape,
     out: &mut String,
@@ -919,7 +981,7 @@ fn emit_shape_strip_trailing_return(
 /// code from the frontend and should not be emitted. Return is kept since
 /// it produces output (`return ...;`).
 fn emit_block_instructions(
-    ctx: &EmitCtx,
+    ctx: &mut EmitCtx,
     func: &Function,
     block_id: BlockId,
     out: &mut String,
@@ -976,7 +1038,7 @@ fn emit_block_param_declarations(ctx: &EmitCtx, func: &Function, out: &mut Strin
 }
 
 fn emit_block_body(
-    ctx: &EmitCtx,
+    ctx: &mut EmitCtx,
     func: &Function,
     _block_id: reincarnate_core::ir::BlockId,
     block: &Block,
@@ -989,8 +1051,25 @@ fn emit_block_body(
     Ok(())
 }
 
+/// Either inline a single-use expression or emit it as a `let` binding.
+fn emit_or_inline(
+    ctx: &mut EmitCtx,
+    r: ValueId,
+    expr: String,
+    needs_parens: bool,
+    out: &mut String,
+    indent: &str,
+) {
+    if ctx.should_inline(r) {
+        ctx.store_inline(r, expr, needs_parens);
+    } else {
+        let pfx = ctx.let_prefix(r);
+        let _ = writeln!(out, "{indent}{pfx}{} = {expr};", ctx.val_name(r));
+    }
+}
+
 fn emit_inst(
-    ctx: &EmitCtx,
+    ctx: &mut EmitCtx,
     func: &Function,
     inst_id: InstId,
     out: &mut String,
@@ -1003,8 +1082,8 @@ fn emit_inst(
         // -- Constants --
         Op::Const(c) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(out, "{indent}{pfx}{} = {};", ctx.val(r), emit_constant(c));
+            let expr = emit_constant(c);
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
 
         // -- Arithmetic --
@@ -1015,8 +1094,8 @@ fn emit_inst(
         Op::Rem(a, b) => emit_binop(ctx, out, indent, result, a, b, "%"),
         Op::Neg(a) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(out, "{indent}{pfx}{} = -{};", ctx.val(r), ctx.val(*a));
+            let expr = format!("-{}", ctx.operand(*a));
+            emit_or_inline(ctx, r, expr, true, out, indent);
         }
 
         // -- Bitwise --
@@ -1025,8 +1104,8 @@ fn emit_inst(
         Op::BitXor(a, b) => emit_binop(ctx, out, indent, result, a, b, "^"),
         Op::BitNot(a) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(out, "{indent}{pfx}{} = ~{};", ctx.val(r), ctx.val(*a));
+            let expr = format!("~{}", ctx.operand(*a));
+            emit_or_inline(ctx, r, expr, true, out, indent);
         }
         Op::Shl(a, b) => emit_binop(ctx, out, indent, result, a, b, "<<"),
         Op::Shr(a, b) => emit_binop(ctx, out, indent, result, a, b, ">>"),
@@ -1047,8 +1126,8 @@ fn emit_inst(
         // -- Logic --
         Op::Not(a) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(out, "{indent}{pfx}{} = !{};", ctx.val(r), ctx.val(*a));
+            let expr = format!("!{}", ctx.operand(*a));
+            emit_or_inline(ctx, r, expr, true, out, indent);
         }
 
         // -- Control flow --
@@ -1117,42 +1196,32 @@ fn emit_inst(
 
         // -- Memory / fields --
         Op::Alloc(ty) => {
+            // Alloc is a declaration, not an expression — always emit directly.
             let r = result.unwrap();
             let pfx = ctx.let_prefix(r);
             let _ = writeln!(
                 out,
                 "{indent}{pfx}{}: {};",
-                ctx.val(r),
+                ctx.val_name(r),
                 ts_type(ty)
             );
         }
         Op::Load(ptr) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(out, "{indent}{pfx}{} = {};", ctx.val(r), ctx.val(*ptr));
+            let expr = ctx.val(*ptr);
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::Store { ptr, value } => {
             let _ = writeln!(out, "{indent}{} = {};", ctx.val(*ptr), ctx.val(*value));
         }
         Op::GetField { object, field } => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            if is_valid_js_ident(field) {
-                let _ = writeln!(
-                    out,
-                    "{indent}{pfx}{} = {}.{field};",
-                    ctx.val(r),
-                    ctx.val(*object)
-                );
+            let expr = if is_valid_js_ident(field) {
+                format!("{}.{field}", ctx.operand(*object))
             } else {
-                let _ = writeln!(
-                    out,
-                    "{indent}{pfx}{} = {}[\"{}\"];",
-                    ctx.val(r),
-                    ctx.val(*object),
-                    escape_js_string(field)
-                );
-            }
+                format!("{}[\"{}\"]", ctx.operand(*object), escape_js_string(field))
+            };
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::SetField {
             object,
@@ -1163,14 +1232,14 @@ fn emit_inst(
                 let _ = writeln!(
                     out,
                     "{indent}{}.{field} = {};",
-                    ctx.val(*object),
+                    ctx.operand(*object),
                     ctx.val(*value)
                 );
             } else {
                 let _ = writeln!(
                     out,
                     "{indent}{}[\"{}\"] = {};",
-                    ctx.val(*object),
+                    ctx.operand(*object),
                     escape_js_string(field),
                     ctx.val(*value)
                 );
@@ -1178,14 +1247,8 @@ fn emit_inst(
         }
         Op::GetIndex { collection, index } => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(
-                out,
-                "{indent}{pfx}{} = {}[{}];",
-                ctx.val(r),
-                ctx.val(*collection),
-                ctx.val(*index)
-            );
+            let expr = format!("{}[{}]", ctx.operand(*collection), ctx.val(*index));
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::SetIndex {
             collection,
@@ -1195,7 +1258,7 @@ fn emit_inst(
             let _ = writeln!(
                 out,
                 "{indent}{}[{}] = {};",
-                ctx.val(*collection),
+                ctx.operand(*collection),
                 ctx.val(*index),
                 ctx.val(*value)
             );
@@ -1209,15 +1272,11 @@ fn emit_inst(
                 .collect::<Vec<_>>()
                 .join(", ");
             let safe_name = sanitize_ident(fname);
+            let expr = format!("{safe_name}({args_str})");
             if let Some(r) = result {
-                let pfx = ctx.let_prefix(r);
-                let _ = writeln!(
-                    out,
-                    "{indent}{pfx}{} = {safe_name}({args_str});",
-                    ctx.val(r)
-                );
+                emit_or_inline(ctx, r, expr, false, out, indent);
             } else {
-                let _ = writeln!(out, "{indent}{safe_name}({args_str});");
+                let _ = writeln!(out, "{indent}{expr};");
             }
         }
         Op::CallIndirect { callee, args } => {
@@ -1226,16 +1285,11 @@ fn emit_inst(
                 .map(|a| ctx.val(*a))
                 .collect::<Vec<_>>()
                 .join(", ");
+            let expr = format!("{}({args_str})", ctx.val(*callee));
             if let Some(r) = result {
-                let pfx = ctx.let_prefix(r);
-                let _ = writeln!(
-                    out,
-                    "{indent}{pfx}{} = {}({args_str});",
-                    ctx.val(r),
-                    ctx.val(*callee)
-                );
+                emit_or_inline(ctx, r, expr, false, out, indent);
             } else {
-                let _ = writeln!(out, "{indent}{}({args_str});", ctx.val(*callee));
+                let _ = writeln!(out, "{indent}{expr};");
             }
         }
         Op::SystemCall {
@@ -1254,44 +1308,29 @@ fn emit_inst(
             } else {
                 format!("[\"{}\"]", escape_js_string(method))
             };
+            let expr = format!("{sys_ident}{safe_method}({args_str})");
             if let Some(r) = result {
-                let pfx = ctx.let_prefix(r);
-                let _ = writeln!(
-                    out,
-                    "{indent}{pfx}{} = {sys_ident}{safe_method}({args_str});",
-                    ctx.val(r)
-                );
+                emit_or_inline(ctx, r, expr, false, out, indent);
             } else {
-                let _ = writeln!(
-                    out,
-                    "{indent}{sys_ident}{safe_method}({args_str});",
-                );
+                let _ = writeln!(out, "{indent}{expr};");
             }
         }
 
         // -- Type operations --
         Op::Cast(v, ty) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(
-                out,
-                "{indent}{pfx}{} = {} as {};",
-                ctx.val(r),
-                ctx.val(*v),
-                ts_type(ty)
-            );
+            let expr = format!("{} as {}", ctx.operand(*v), ts_type(ty));
+            emit_or_inline(ctx, r, expr, true, out, indent);
         }
         Op::TypeCheck(v, ty) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
             let check = type_check_expr(ctx, *v, ty);
-            let _ = writeln!(out, "{indent}{pfx}{} = {check};", ctx.val(r));
+            emit_or_inline(ctx, r, check, false, out, indent);
         }
 
         // -- Aggregate construction --
         Op::StructInit { name: _, fields } => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
             let field_strs: Vec<String> = fields
                 .iter()
                 .map(|(name, v)| {
@@ -1302,41 +1341,35 @@ fn emit_inst(
                     }
                 })
                 .collect();
-            let _ = writeln!(
-                out,
-                "{indent}{pfx}{} = {{ {} }};",
-                ctx.val(r),
-                field_strs.join(", ")
-            );
+            let expr = format!("{{ {} }}", field_strs.join(", "));
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::ArrayInit(elems) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
             let elems_str = elems
                 .iter()
                 .map(|v| ctx.val(*v))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let _ = writeln!(out, "{indent}{pfx}{} = [{elems_str}];", ctx.val(r));
+            let expr = format!("[{elems_str}]");
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::TupleInit(elems) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
             let elems_str = elems
                 .iter()
                 .map(|v| ctx.val(*v))
                 .collect::<Vec<_>>()
                 .join(", ");
             let ty_str = ts_type(&func.value_types[r]);
-            let _ = writeln!(
-                out,
-                "{indent}{pfx}{} = [{elems_str}] as {ty_str};",
-                ctx.val(r)
+            let expr = format!("[{elems_str}] as {ty_str}");
+            emit_or_inline(ctx, r, expr, true, out, indent
             );
         }
 
         // -- Coroutines --
         Op::Yield(v) => {
+            // Yield has side effects — always emit directly.
             if let Some(r) = result {
                 let pfx = ctx.let_prefix(r);
                 match v {
@@ -1344,12 +1377,12 @@ fn emit_inst(
                         let _ = writeln!(
                             out,
                             "{indent}{pfx}{} = yield {};",
-                            ctx.val(r),
+                            ctx.val_name(r),
                             ctx.val(*yv)
                         );
                     }
                     None => {
-                        let _ = writeln!(out, "{indent}{pfx}{} = yield;", ctx.val(r));
+                        let _ = writeln!(out, "{indent}{pfx}{} = yield;", ctx.val_name(r));
                     }
                 }
             } else {
@@ -1368,46 +1401,30 @@ fn emit_inst(
             args,
         } => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
             let args_str = args
                 .iter()
                 .map(|a| ctx.val(*a))
                 .collect::<Vec<_>>()
                 .join(", ");
-            let _ = writeln!(
-                out,
-                "{indent}{pfx}{} = {}({args_str});",
-                ctx.val(r),
-                sanitize_ident(fname)
-            );
+            let expr = format!("{}({args_str})", sanitize_ident(fname));
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::CoroutineResume(v) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(
-                out,
-                "{indent}{pfx}{} = {}.next();",
-                ctx.val(r),
-                ctx.val(*v)
-            );
+            let expr = format!("{}.next()", ctx.val(*v));
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
 
         // -- Misc --
         Op::GlobalRef(name) => {
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(
-                out,
-                "{indent}{pfx}{} = {};",
-                ctx.val(r),
-                sanitize_ident(name)
-            );
+            let expr = sanitize_ident(name);
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::Copy(src) => {
-            // Not skipped (multi-use or other reason).
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
-            let _ = writeln!(out, "{indent}{pfx}{} = {};", ctx.val(r), ctx.val(*src));
+            let expr = ctx.val(*src);
+            emit_or_inline(ctx, r, expr, false, out, indent);
         }
     }
 
@@ -1525,7 +1542,7 @@ fn emit_class_method(func: &Function, out: &mut String) -> Result<(), CoreError>
     let param_start = if skip_self { 1.min(entry.params.len()) } else { 0 };
 
     // Build context — methods with a self parameter get `this` binding.
-    let ctx = if skip_self && !entry.params.is_empty() {
+    let mut ctx = if skip_self && !entry.params.is_empty() {
         EmitCtx::for_method(func, entry.params[0].value)
     } else {
         EmitCtx::for_function(func)
@@ -1593,12 +1610,12 @@ fn emit_class_method(func: &Function, out: &mut String) -> Result<(), CoreError>
             insts.len()
         };
         for &inst_id in &insts[..emit_count] {
-            emit_inst(&ctx, func, inst_id, out, "    ")?;
+            emit_inst(&mut ctx, func, inst_id, out, "    ")?;
         }
     } else {
         emit_block_param_declarations_indented(&ctx, func, out, "    ");
         let shape = structurize::structurize(func);
-        emit_shape_strip_trailing_return(&ctx, func, &shape, out, "    ")?;
+        emit_shape_strip_trailing_return(&mut ctx, func, &shape, out, "    ")?;
     }
 
     let _ = writeln!(out, "  }}");
@@ -1632,7 +1649,7 @@ fn emit_block_param_declarations_indented(
 // ---------------------------------------------------------------------------
 
 fn emit_binop(
-    ctx: &EmitCtx,
+    ctx: &mut EmitCtx,
     out: &mut String,
     indent: &str,
     result: Option<ValueId>,
@@ -1641,14 +1658,8 @@ fn emit_binop(
     op: &str,
 ) {
     let r = result.unwrap();
-    let pfx = ctx.let_prefix(r);
-    let _ = writeln!(
-        out,
-        "{indent}{pfx}{} = {} {op} {};",
-        ctx.val(r),
-        ctx.val(*a),
-        ctx.val(*b)
-    );
+    let expr = format!("{} {op} {}", ctx.operand(*a), ctx.operand(*b));
+    emit_or_inline(ctx, r, expr, true, out, indent);
 }
 
 fn emit_constant(c: &Constant) -> String {
@@ -1715,16 +1726,16 @@ fn emit_branch_args(
 /// Generate a TypeScript type-check expression.
 fn type_check_expr(ctx: &EmitCtx, v: ValueId, ty: &Type) -> String {
     match ty {
-        Type::Bool => format!("typeof {} === \"boolean\"", ctx.val(v)),
+        Type::Bool => format!("typeof {} === \"boolean\"", ctx.operand(v)),
         Type::Int(_) | Type::UInt(_) | Type::Float(_) => {
-            format!("typeof {} === \"number\"", ctx.val(v))
+            format!("typeof {} === \"number\"", ctx.operand(v))
         }
-        Type::String => format!("typeof {} === \"string\"", ctx.val(v)),
+        Type::String => format!("typeof {} === \"string\"", ctx.operand(v)),
         Type::Struct(name) | Type::Enum(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
-            format!("{} instanceof {}", ctx.val(v), sanitize_ident(short))
+            format!("{} instanceof {}", ctx.operand(v), sanitize_ident(short))
         }
-        _ => format!("typeof {} === \"object\"", ctx.val(v)),
+        _ => format!("typeof {} === \"object\"", ctx.operand(v)),
     }
 }
 
@@ -1759,8 +1770,9 @@ mod tests {
         });
 
         assert!(out.contains("export function add(v0: number, v1: number): number {"));
-        assert!(out.contains("let v2 = v0 + v1;"));
-        assert!(out.contains("return v2;"));
+        // Single-use sum is inlined into return.
+        assert!(out.contains("return v0 + v1;"), "Should inline sum into return:\n{out}");
+        assert!(!out.contains("let v2"), "Single-use v2 should be inlined:\n{out}");
         // Single block → no dispatch loop.
         assert!(!out.contains("$block"));
     }
@@ -1900,7 +1912,11 @@ mod tests {
 
         // Auto-injected runtime import.
         assert!(out.contains("import { renderer } from \"./runtime\";"));
-        assert!(out.contains("renderer.clear(v0, v1);"));
+        // Constants are inlined into the system call.
+        assert!(
+            out.contains("renderer.clear(100, 200);"),
+            "Should inline consts into system call:\n{out}"
+        );
     }
 
     #[test]
@@ -1983,8 +1999,12 @@ mod tests {
             mb.add_function(fb.build());
         });
 
-        assert!(out.contains("let v2 = [v0, v1];"));
-        assert!(out.contains("let v5 = { x: v3, y: v4 };"));
+        // Constants are inlined into the aggregate expressions.
+        assert!(out.contains("let v2 = [1, 2];"), "Should inline consts into array:\n{out}");
+        assert!(
+            out.contains("let v5 = { x: 10.0, y: 20.0 };"),
+            "Should inline consts into struct:\n{out}"
+        );
     }
 
     #[test]
@@ -2157,10 +2177,10 @@ mod tests {
         // For-loop emits as while(true) with init assigns before and
         // update assigns inside.
         assert!(out.contains("while (true)"), "Should have loop:\n{out}");
-        // Init assigns header param v0 from const v1 (which is 0).
-        assert!(out.contains("v0 = v1;"), "Should have init assign:\n{out}");
-        // Update assigns header param v0 from computed v5 (v0 + 1).
-        assert!(out.contains("v0 = v5;"), "Should have update assign:\n{out}");
+        // Init assigns header param v0 from inlined const 0.
+        assert!(out.contains("v0 = 0;"), "Should have init assign:\n{out}");
+        // Update assigns header param v0 from inlined v0 + 1.
+        assert!(out.contains("v0 = v0 + 1;"), "Should have update assign:\n{out}");
     }
 
     #[test]
