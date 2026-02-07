@@ -435,6 +435,29 @@ impl<'a> Structurizer<'a> {
             .collect()
     }
 
+    /// Walk a shape tree to find trailing assigns from a `Br` to `merge`.
+    ///
+    /// When the structurizer stops at a merge boundary, the `Br { target: merge, args }`
+    /// terminator's args are dropped. This recovers them by finding the last block
+    /// in the shape and checking if it branches to the merge with args.
+    fn trailing_merge_assigns(&self, shape: &Shape, merge: BlockId) -> Vec<BlockArgAssign> {
+        match shape {
+            Shape::Block(b) => {
+                if let Some(Op::Br { target, args }) = self.terminator(*b).cloned() {
+                    if target == merge {
+                        return self.branch_assigns(merge, &args);
+                    }
+                }
+                vec![]
+            }
+            Shape::Seq(parts) => parts
+                .last()
+                .map(|last| self.trailing_merge_assigns(last, merge))
+                .unwrap_or_default(),
+            _ => vec![],
+        }
+    }
+
     /// Main entry: structurize starting from `block`, continuing until we
     /// reach `until` (exclusive) or run out of blocks.
     fn structurize_region(
@@ -542,8 +565,8 @@ impl<'a> Structurizer<'a> {
                 let then_args = then_args.clone();
                 let else_args = else_args.clone();
 
-                let then_assigns = self.branch_assigns(then_target, &then_args);
-                let else_assigns = self.branch_assigns(else_target, &else_args);
+                let mut then_assigns = self.branch_assigns(then_target, &then_args);
+                let mut else_assigns = self.branch_assigns(else_target, &else_args);
 
                 // Check if inside a loop and branches target header/exit.
                 if let Some(lb) = loop_body {
@@ -660,6 +683,13 @@ impl<'a> Structurizer<'a> {
                 } else {
                     self.structurize_region(else_target, merge.or(until), loop_body)
                 };
+
+                // Recover trailing assigns from Br-to-merge that the
+                // structurizer drops when it stops at the merge boundary.
+                if let Some(merge_block) = merge {
+                    then_assigns.extend(self.trailing_merge_assigns(&then_body, merge_block));
+                    else_assigns.extend(self.trailing_merge_assigns(&else_body, merge_block));
+                }
 
                 let if_shape = Shape::IfElse {
                     block,
@@ -1457,5 +1487,140 @@ mod tests {
 
         // merge's idom should be entry.
         assert_eq!(idom[&merge], func.entry);
+    }
+
+    #[test]
+    fn test_if_else_trailing_merge_assigns() {
+        // entry: br_if cond, then_block(cond), else_mid()
+        // then_block: ... (directly targets merge via BrIf args)
+        // else_mid: v_cmp = cmp.gt ...; br merge(v_cmp)  ← trailing assign
+        // merge(v_phi): return
+        //
+        // The else branch goes through an intermediate block that Br's to
+        // merge with args. The trailing assign (v_phi = v_cmp) must be
+        // captured in else_assigns.
+        let sig = FunctionSig {
+            params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
+            return_ty: Type::Bool,
+        };
+        let mut fb = FunctionBuilder::new("trailing_else", sig, Visibility::Public);
+        let cond = fb.param(0);
+        let a = fb.param(1);
+        let b = fb.param(2);
+
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Bool]);
+        let else_mid = fb.create_block();
+
+        // entry: br_if cond → merge(cond), else_mid()
+        fb.br_if(cond, merge, &[cond], else_mid, &[]);
+
+        // else_mid: v_cmp = a > b; br merge(v_cmp)
+        fb.switch_to_block(else_mid);
+        let v_cmp = fb.cmp(CmpKind::Gt, a, b);
+        fb.br(merge, &[v_cmp]);
+
+        // merge(v_phi): return v_phi
+        fb.switch_to_block(merge);
+        let v_phi = merge_vals[0];
+        fb.ret(Some(v_phi));
+
+        let func = fb.build();
+        let shape = structurize(&func);
+
+        // Find the IfElse and check assigns.
+        fn find_if_else(shape: &Shape) -> Option<&Shape> {
+            match shape {
+                s @ Shape::IfElse { .. } => Some(s),
+                Shape::Seq(parts) => parts.iter().find_map(find_if_else),
+                _ => None,
+            }
+        }
+
+        let ie = find_if_else(&shape).expect("Expected IfElse in shape");
+        if let Shape::IfElse {
+            then_assigns,
+            else_assigns,
+            ..
+        } = ie
+        {
+            // then branch: direct to merge with cond → then_assigns has v_phi=cond
+            assert_eq!(then_assigns.len(), 1, "then_assigns: {then_assigns:?}");
+            assert_eq!(then_assigns[0].dst, v_phi);
+            assert_eq!(then_assigns[0].src, cond);
+
+            // else branch: goes through else_mid which Br's to merge with v_cmp
+            // The trailing assign v_phi=v_cmp must be captured.
+            assert!(
+                else_assigns.iter().any(|a| a.dst == v_phi && a.src == v_cmp),
+                "else_assigns should contain v_phi=v_cmp, got: {else_assigns:?}"
+            );
+        } else {
+            unreachable!();
+        }
+    }
+
+    #[test]
+    fn test_if_else_both_trailing_assigns() {
+        // entry: br_if cond, then_mid(), else_mid()
+        // then_mid: v1 = const 1; br merge(v1)
+        // else_mid: v2 = const 2; br merge(v2)
+        // merge(v_phi): return
+        //
+        // Both branches go through intermediate blocks before reaching
+        // merge with args. Verify both sets of assigns are captured.
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Int(64),
+        };
+        let mut fb = FunctionBuilder::new("trailing_both", sig, Visibility::Public);
+        let cond = fb.param(0);
+
+        let then_mid = fb.create_block();
+        let else_mid = fb.create_block();
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Int(64)]);
+
+        fb.br_if(cond, then_mid, &[], else_mid, &[]);
+
+        fb.switch_to_block(then_mid);
+        let v1 = fb.const_int(1);
+        fb.br(merge, &[v1]);
+
+        fb.switch_to_block(else_mid);
+        let v2 = fb.const_int(2);
+        fb.br(merge, &[v2]);
+
+        fb.switch_to_block(merge);
+        let v_phi = merge_vals[0];
+        fb.ret(Some(v_phi));
+
+        let func = fb.build();
+        let shape = structurize(&func);
+
+        fn find_if_else(shape: &Shape) -> Option<&Shape> {
+            match shape {
+                s @ Shape::IfElse { .. } => Some(s),
+                Shape::Seq(parts) => parts.iter().find_map(find_if_else),
+                _ => None,
+            }
+        }
+
+        let ie = find_if_else(&shape).expect("Expected IfElse in shape");
+        if let Shape::IfElse {
+            then_assigns,
+            else_assigns,
+            ..
+        } = ie
+        {
+            assert!(
+                then_assigns.iter().any(|a| a.dst == v_phi && a.src == v1),
+                "then_assigns should contain v_phi=v1, got: {then_assigns:?}"
+            );
+            assert!(
+                else_assigns.iter().any(|a| a.dst == v_phi && a.src == v2),
+                "else_assigns should contain v_phi=v2, got: {else_assigns:?}"
+            );
+        } else {
+            unreachable!();
+        }
     }
 }
