@@ -120,74 +120,67 @@ fn refine(old: &Type, new: &Type) -> Option<Type> {
     }
 }
 
-/// Returns true if the type is `Option(Dynamic)` — the type of `null` literals.
-/// These are sentinel stores (Flash register cleanup) and carry no real type info.
-fn is_null_sentinel(ty: &Type) -> bool {
-    matches!(ty, Type::Option(inner) if **inner == Type::Dynamic)
+/// Returns true if two types are equivalent for union deduplication.
+/// Numeric types with different bit widths are considered equivalent
+/// because they map to the same backend type (e.g., `number` in TS).
+fn types_equivalent(a: &Type, b: &Type) -> bool {
+    if a == b {
+        return true;
+    }
+    matches!(
+        (a, b),
+        (Type::Int(_), Type::Int(_))
+            | (Type::Int(_), Type::Float(_))
+            | (Type::Float(_), Type::Int(_))
+            | (Type::Float(_), Type::Float(_))
+            | (Type::UInt(_), Type::UInt(_))
+            | (Type::UInt(_), Type::Int(_))
+            | (Type::Int(_), Type::UInt(_))
+            | (Type::UInt(_), Type::Float(_))
+            | (Type::Float(_), Type::UInt(_))
+    )
 }
 
-/// Merge two types into a union, deduplicating members.
-/// `Dynamic` and `Option(Dynamic)` (null sentinel) members are dropped —
-/// they carry no information. If any null sentinels were present and concrete
-/// types remain, the result is wrapped in `Option` to preserve nullability.
-fn union_type(a: Type, b: Type) -> Type {
-    let mut nullable = false;
-    let mut types = match a {
-        Type::Dynamic => vec![],
-        _ if is_null_sentinel(&a) => {
-            nullable = true;
-            vec![]
-        }
-        Type::Union(v) => v
-            .into_iter()
-            .filter(|t| {
-                if *t == Type::Dynamic {
-                    return false;
-                }
-                if is_null_sentinel(t) {
-                    nullable = true;
-                    return false;
-                }
-                true
-            })
-            .collect(),
-        other => vec![other],
-    };
-    match b {
+/// Flatten a type into a list of non-Dynamic, non-Option, non-Union members,
+/// tracking nullability. This ensures unions never nest. Numeric types that
+/// are equivalent for codegen purposes are deduplicated.
+fn flatten_into(ty: Type, nullable: &mut bool, out: &mut Vec<Type>) {
+    match ty {
         Type::Dynamic => {}
-        _ if is_null_sentinel(&b) => {
-            nullable = true;
+        Type::Option(inner) => {
+            *nullable = true;
+            flatten_into(*inner, nullable, out);
         }
         Type::Union(v) => {
             for t in v {
-                if t == Type::Dynamic {
-                    continue;
-                }
-                if is_null_sentinel(&t) {
-                    nullable = true;
-                    continue;
-                }
-                if !types.contains(&t) {
-                    types.push(t);
-                }
+                flatten_into(t, nullable, out);
             }
         }
         other => {
-            if !types.contains(&other) {
-                types.push(other);
+            if !out.iter().any(|existing| types_equivalent(existing, &other)) {
+                out.push(other);
             }
         }
     }
+}
+
+/// Merge two types into a union, deduplicating members.
+/// `Dynamic` members are dropped. `Option` is unwrapped into a nullable flag
+/// and its inner type is flattened into the member list. This prevents nesting
+/// from iterative inference passes.
+fn union_type(a: Type, b: Type) -> Type {
+    let mut nullable = false;
+    let mut types = Vec::new();
+    flatten_into(a, &mut nullable, &mut types);
+    flatten_into(b, &mut nullable, &mut types);
+
     let base = match types.len() {
         0 => Type::Dynamic,
         1 => types.into_iter().next().unwrap(),
         _ => Type::Union(types),
     };
     if nullable && base != Type::Dynamic {
-        match base {
-            Type::Option(_) => base,
-            other => Type::Option(Box::new(other)),
-        }
+        Type::Option(Box::new(base))
     } else {
         base
     }
