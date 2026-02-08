@@ -1160,12 +1160,15 @@ fn emit_function(
             emit_inst(&mut ctx, func, inst_id, out, "  ")?;
         }
     } else {
-        // Pre-declare only non-entry block parameters.
-        emit_block_param_declarations(&mut ctx, func, out);
-
+        // Emit body to a buffer first, then declare only the block params
+        // that actually appear in the output (eliminates dead declarations).
         let shape = structurize::structurize(func);
         adjust_use_counts_for_shapes(&mut ctx, func, &shape);
-        emit_shape_strip_trailing_return(&mut ctx, func, &shape, out, "  ")?;
+        let mut body = String::new();
+        emit_shape_strip_trailing_return(&mut ctx, func, &shape, &mut body, "  ")?;
+
+        emit_block_param_declarations(&mut ctx, func, out, &body);
+        out.push_str(&body);
     }
 
     let _ = writeln!(out, "}}\n");
@@ -1975,8 +1978,35 @@ fn is_trivial_body(ctx: &EmitCtx, func: &Function, shape: &Shape) -> bool {
     }
 }
 
-/// Pre-declare `let` bindings for non-entry block parameters only.
-fn emit_block_param_declarations(ctx: &mut EmitCtx, func: &Function, out: &mut String) {
+/// Check if `word` appears as a whole identifier in `body` (not as a substring
+/// of a longer identifier like `v1` inside `v10`).
+fn body_contains_ident(body: &str, word: &str) -> bool {
+    let bytes = body.as_bytes();
+    for (i, _) in body.match_indices(word) {
+        let before_ok = i == 0 || {
+            let b = bytes[i - 1];
+            !b.is_ascii_alphanumeric() && b != b'_'
+        };
+        let after_idx = i + word.len();
+        let after_ok = after_idx >= bytes.len() || {
+            let b = bytes[after_idx];
+            !b.is_ascii_alphanumeric() && b != b'_'
+        };
+        if before_ok && after_ok {
+            return true;
+        }
+    }
+    false
+}
+
+/// Pre-declare `let` bindings for non-entry block parameters that appear in the
+/// emitted body. Skips params that are never assigned or read in the output.
+fn emit_block_param_declarations(
+    ctx: &mut EmitCtx,
+    func: &Function,
+    out: &mut String,
+    body: &str,
+) {
     let mut declared: HashSet<String> = HashSet::new();
     for (block_id, block) in func.blocks.iter() {
         if block_id == func.entry {
@@ -1984,6 +2014,9 @@ fn emit_block_param_declarations(ctx: &mut EmitCtx, func: &Function, out: &mut S
         }
         for param in &block.params {
             let name = ctx.val(func, param.value).to_string();
+            if !body_contains_ident(body, &name) {
+                continue;
+            }
             if declared.insert(name.clone()) {
                 let _ = writeln!(out, "  let {}: {};", name, ts_type(&param.ty));
             }
@@ -2779,22 +2812,27 @@ fn emit_class_method(
             emit_inst(&mut ctx, func, inst_id, out, "    ")?;
         }
     } else {
-        emit_block_param_declarations_indented(&mut ctx, func, out, "    ");
         let shape = structurize::structurize(func);
         adjust_use_counts_for_shapes(&mut ctx, func, &shape);
-        emit_shape_strip_trailing_return(&mut ctx, func, &shape, out, "    ")?;
+        let mut body = String::new();
+        emit_shape_strip_trailing_return(&mut ctx, func, &shape, &mut body, "    ")?;
+
+        emit_block_param_declarations_indented(&mut ctx, func, out, "    ", &body);
+        out.push_str(&body);
     }
 
     let _ = writeln!(out, "  }}");
     Ok(())
 }
 
-/// Pre-declare `let` bindings for non-entry block parameters at a given indent.
+/// Pre-declare `let` bindings for non-entry block parameters that appear in the
+/// emitted body. Skips params that are never assigned or read in the output.
 fn emit_block_param_declarations_indented(
     ctx: &mut EmitCtx,
     func: &Function,
     out: &mut String,
     indent: &str,
+    body: &str,
 ) {
     let mut declared: HashSet<String> = HashSet::new();
     for (block_id, block) in func.blocks.iter() {
@@ -2803,6 +2841,9 @@ fn emit_block_param_declarations_indented(
         }
         for param in &block.params {
             let name = ctx.val(func, param.value).to_string();
+            if !body_contains_ident(body, &name) {
+                continue;
+            }
             if declared.insert(name.clone()) {
                 let _ = writeln!(out, "{indent}let {}: {};", name, ts_type(&param.ty));
             }
