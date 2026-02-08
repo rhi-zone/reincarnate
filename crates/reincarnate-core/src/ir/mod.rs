@@ -15,6 +15,8 @@ pub use coroutine::CoroutineInfo;
 pub use func::{FuncId, Function, MethodKind, Visibility};
 pub use inst::{CmpKind, Inst, InstId, Op, Span};
 pub use module::{ClassDef, EnumDef, EnumVariant, Global, Import, Module, StructDef};
-pub use structurize::{structurize, BlockArgAssign, Shape};
+pub use structurize::{
+    build_cfg, compute_dominators_lt, dominates, structurize, BlockArgAssign, Cfg, Shape,
+};
 pub use ty::{FunctionSig, Type, TypeConstraint, TypeVarId};
 pub use value::{Constant, ValueId};

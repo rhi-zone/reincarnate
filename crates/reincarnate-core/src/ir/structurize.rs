@@ -99,12 +99,12 @@ pub enum Shape {
 // -------------------------------------------------------------------------
 
 /// Predecessor and successor maps for a function's CFG.
-struct Cfg {
-    succs: HashMap<BlockId, Vec<BlockId>>,
-    preds: HashMap<BlockId, Vec<BlockId>>,
+pub struct Cfg {
+    pub succs: HashMap<BlockId, Vec<BlockId>>,
+    pub preds: HashMap<BlockId, Vec<BlockId>>,
 }
 
-fn build_cfg(func: &Function) -> Cfg {
+pub fn build_cfg(func: &Function) -> Cfg {
     let mut succs: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
     let mut preds: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
 
@@ -165,7 +165,12 @@ fn lt_eval(v: usize, ancestor: &mut [usize], label: &mut [usize], semi: &[usize]
 /// Nearly linear time with path compression. Works for any CFG given as
 /// predecessor/successor maps. Used for both dominator and post-dominator
 /// computation.
-fn compute_dominators_lt(
+///
+/// We use Lengauer-Tarjan (nearly O(n)) instead of Cooper-Harvey-Kennedy
+/// (O(n²) in practice with repeated RPO walks) because some decompiled
+/// functions produce large CFGs where CHK's quadratic behaviour becomes
+/// a bottleneck.
+pub fn compute_dominators_lt(
     entry: BlockId,
     preds: &HashMap<BlockId, Vec<BlockId>>,
     succs: &HashMap<BlockId, Vec<BlockId>>,
@@ -253,7 +258,7 @@ fn compute_dominators(func: &Function, cfg: &Cfg) -> HashMap<BlockId, BlockId> {
 }
 
 /// Check if `a` dominates `b`.
-fn dominates(a: BlockId, b: BlockId, idom: &HashMap<BlockId, BlockId>) -> bool {
+pub fn dominates(a: BlockId, b: BlockId, idom: &HashMap<BlockId, BlockId>) -> bool {
     let mut cur = b;
     loop {
         if cur == a {
