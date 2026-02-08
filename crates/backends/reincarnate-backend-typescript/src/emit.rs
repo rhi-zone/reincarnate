@@ -1504,17 +1504,16 @@ fn emit_arg_assigns(
 
 /// Pre-declare `let` bindings for non-entry block parameters only.
 fn emit_block_param_declarations(ctx: &EmitCtx, func: &Function, out: &mut String) {
+    let mut declared: HashSet<String> = HashSet::new();
     for (block_id, block) in func.blocks.iter() {
         if block_id == func.entry {
             continue;
         }
         for param in &block.params {
-            let _ = writeln!(
-                out,
-                "  let {}: {};",
-                ctx.val(param.value),
-                ts_type(&param.ty)
-            );
+            let name = ctx.val(param.value).to_string();
+            if declared.insert(name.clone()) {
+                let _ = writeln!(out, "  let {}: {};", name, ts_type(&param.ty));
+            }
         }
     }
 }
@@ -2309,17 +2308,16 @@ fn emit_block_param_declarations_indented(
     out: &mut String,
     indent: &str,
 ) {
+    let mut declared: HashSet<String> = HashSet::new();
     for (block_id, block) in func.blocks.iter() {
         if block_id == func.entry {
             continue;
         }
         for param in &block.params {
-            let _ = writeln!(
-                out,
-                "{indent}let {}: {};",
-                ctx.val(param.value),
-                ts_type(&param.ty)
-            );
+            let name = ctx.val(param.value).to_string();
+            if declared.insert(name.clone()) {
+                let _ = writeln!(out, "{indent}let {}: {};", name, ts_type(&param.ty));
+            }
         }
     }
 }
