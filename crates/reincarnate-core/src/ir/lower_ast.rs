@@ -10,6 +10,8 @@ use std::collections::{HashMap, HashSet};
 use crate::entity::EntityRef;
 use crate::transforms::util::value_operands;
 
+use crate::pipeline::LoweringConfig;
+
 use super::ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
 use super::block::BlockId;
 use super::func::Function;
@@ -25,8 +27,9 @@ use super::value::{Constant, ValueId};
 /// Lower a structured function into AST form.
 ///
 /// `shape` is the structurized control-flow tree (from `structurize()`).
-pub fn lower_function(func: &Function, shape: &Shape) -> AstFunction {
-    let mut ctx = LowerCtx::new(func);
+/// `config` controls which pattern-matching optimizations are applied.
+pub fn lower_function(func: &Function, shape: &Shape, config: &LoweringConfig) -> AstFunction {
+    let mut ctx = LowerCtx::new(func, config);
     adjust_use_counts_for_shapes(&mut ctx, func, shape);
 
     let mut body = lower_shape(&mut ctx, func, shape);
@@ -62,7 +65,9 @@ fn build_params(func: &Function, ctx: &LowerCtx) -> Vec<(String, Type)> {
 // Lowering context — replaces EmitCtx
 // ---------------------------------------------------------------------------
 
-struct LowerCtx {
+struct LowerCtx<'a> {
+    /// Lowering configuration (controls which optimizations are applied).
+    config: &'a LoweringConfig,
     /// Number of times each value is used as an operand (after shape adjustments).
     use_counts: HashMap<ValueId, usize>,
     /// Deferred single-use pure instructions for lazy expression building.
@@ -89,8 +94,8 @@ struct LowerCtx {
     skip_loop_init_assigns: bool,
 }
 
-impl LowerCtx {
-    fn new(func: &Function) -> Self {
+impl<'a> LowerCtx<'a> {
+    fn new(func: &Function, config: &'a LoweringConfig) -> Self {
         let use_counts = compute_use_counts(func);
         let (alloc_inits, skip_stores) = compute_merged_stores(func);
         let value_names: HashMap<ValueId, String> = func
@@ -105,6 +110,7 @@ impl LowerCtx {
             .collect();
 
         Self {
+            config,
             use_counts,
             lazy_inlines: HashMap::new(),
             constant_inlines: HashMap::new(),
@@ -307,7 +313,9 @@ fn adjust_use_counts_for_shapes(ctx: &mut LowerCtx, func: &Function, shape: &Sha
             rhs_body,
             ..
         } => {
-            if logical_rhs_body_emits_empty(ctx, func, rhs_body) {
+            if ctx.config.logical_operators
+                && logical_rhs_body_emits_empty(ctx, func, rhs_body)
+            {
                 let brif_cond = brif_cond_of(func, *block);
                 if brif_cond == Some(*cond) {
                     if let Some(count) = ctx.use_counts.get_mut(cond) {
@@ -329,32 +337,36 @@ fn adjust_use_counts_for_shapes(ctx: &mut LowerCtx, func: &Function, shape: &Sha
             else_body,
             else_trailing_assigns,
         } => {
-            if let Some((_, then_src, else_src)) = try_ternary_assigns(
-                ctx,
-                func,
-                (then_assigns, then_body, then_trailing_assigns),
-                (else_assigns, else_body, else_trailing_assigns),
-            ) {
-                if try_minmax(func, *block, *cond, then_src, else_src).is_some() {
-                    // The cond comparison is replaced by Math.max/min —
-                    // mark it dead so it doesn't consume its operands via
-                    // side-effecting inline chaining.
-                    if let Some(c) = ctx.use_counts.get_mut(cond) {
-                        *c = c.saturating_sub(1);
-                    }
-                    for &iid in func.blocks[*block].insts.iter().rev() {
-                        let inst = &func.insts[iid];
-                        if inst.result == Some(*cond) {
-                            if let Op::Cmp(_, lhs, rhs) = &inst.op {
-                                for v in [*lhs, *rhs] {
-                                    if let Some(c) = ctx.use_counts.get_mut(&v) {
-                                        if *c > 1 {
-                                            *c -= 1;
+            if ctx.config.ternary {
+                if let Some((_, then_src, else_src)) = try_ternary_assigns(
+                    ctx,
+                    func,
+                    (then_assigns, then_body, then_trailing_assigns),
+                    (else_assigns, else_body, else_trailing_assigns),
+                ) {
+                    if ctx.config.minmax
+                        && try_minmax(func, *block, *cond, then_src, else_src).is_some()
+                    {
+                        // The cond comparison is replaced by Math.max/min —
+                        // mark it dead so it doesn't consume its operands via
+                        // side-effecting inline chaining.
+                        if let Some(c) = ctx.use_counts.get_mut(cond) {
+                            *c = c.saturating_sub(1);
+                        }
+                        for &iid in func.blocks[*block].insts.iter().rev() {
+                            let inst = &func.insts[iid];
+                            if inst.result == Some(*cond) {
+                                if let Op::Cmp(_, lhs, rhs) = &inst.op {
+                                    for v in [*lhs, *rhs] {
+                                        if let Some(c) = ctx.use_counts.get_mut(&v) {
+                                            if *c > 1 {
+                                                *c -= 1;
+                                            }
                                         }
                                     }
                                 }
+                                break;
                             }
-                            break;
                         }
                     }
                 }
@@ -1089,12 +1101,18 @@ fn lower_shape_into(
 
             // Try ternary pattern BEFORE flushing side-effecting inlines,
             // so that operands are still available for minmax/ternary.
-            if let Some((dst, then_src, else_src)) = try_ternary_assigns(
-                ctx,
-                func,
-                (then_assigns, then_body, then_trailing_assigns),
-                (else_assigns, else_body, else_trailing_assigns),
-            ) {
+            let ternary = if ctx.config.ternary {
+                try_ternary_assigns(
+                    ctx,
+                    func,
+                    (then_assigns, then_body, then_trailing_assigns),
+                    (else_assigns, else_body, else_trailing_assigns),
+                )
+            } else {
+                None
+            };
+
+            if let Some((dst, then_src, else_src)) = ternary {
                 // Process trivial bodies so their insts get deferred.
                 // Save SE inlines so they don't leak into body processing.
                 let saved_se = std::mem::take(&mut ctx.side_effecting_inlines);
@@ -1103,9 +1121,13 @@ fn lower_shape_into(
                 let body_se = std::mem::replace(&mut ctx.side_effecting_inlines, saved_se);
                 ctx.side_effecting_inlines.extend(body_se);
 
-                if let Some((name, a, b)) =
+                let minmax = if ctx.config.minmax {
                     try_minmax(func, *block, *cond, then_src, else_src)
-                {
+                } else {
+                    None
+                };
+
+                if let Some((name, a, b)) = minmax {
                     // Math.max / Math.min — consume operands, then flush rest.
                     let expr = Expr::Call {
                         func: name.to_string(),
@@ -1193,7 +1215,7 @@ fn lower_shape_into(
             let mut header_stmts = Vec::new();
             lower_block_instructions(ctx, func, *header, &mut header_stmts);
 
-            if header_stmts.is_empty() {
+            if ctx.config.while_condition_hoisting && header_stmts.is_empty() {
                 // All header instructions were inlined — hoist condition
                 // into `while (cond) { body }`.
                 let cond_expr = if *cond_negated {
@@ -1246,7 +1268,7 @@ fn lower_shape_into(
             let mut header_stmts = Vec::new();
             lower_block_instructions(ctx, func, *header, &mut header_stmts);
 
-            if header_stmts.is_empty() {
+            if ctx.config.while_condition_hoisting && header_stmts.is_empty() {
                 // All header instructions were inlined — use while(cond).
                 let cond_expr = if *cond_negated {
                     negate_cond_expr(ctx, func, *header, *cond)
@@ -1315,7 +1337,7 @@ fn lower_shape_into(
             // Merge any SE inlines from the rhs body back.
             ctx.side_effecting_inlines.extend(rhs_se);
 
-            if body_stmts.is_empty() {
+            if ctx.config.logical_operators && body_stmts.is_empty() {
                 // Short-circuit: phi = cond || rhs
                 let expr = Expr::LogicalOr {
                     lhs: Box::new(ctx.build_val(func, *cond)),
@@ -1358,7 +1380,7 @@ fn lower_shape_into(
             let rhs_se = std::mem::replace(&mut ctx.side_effecting_inlines, saved_se);
             ctx.side_effecting_inlines.extend(rhs_se);
 
-            if body_stmts.is_empty() {
+            if ctx.config.logical_operators && body_stmts.is_empty() {
                 // Short-circuit: phi = cond && rhs
                 let expr = Expr::LogicalAnd {
                     lhs: Box::new(ctx.build_val(func, *cond)),
@@ -1556,7 +1578,7 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function(&func, &shape);
+        let ast = lower_function(&func, &shape, &LoweringConfig::default());
 
         assert_eq!(ast.name, "add");
         assert_eq!(ast.params.len(), 2);
@@ -1580,7 +1602,7 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function(&func, &shape);
+        let ast = lower_function(&func, &shape, &LoweringConfig::default());
 
         // Constant and single-use sum both inlined into return.
         assert_eq!(ast.body.len(), 1);
@@ -1617,7 +1639,7 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function(&func, &shape);
+        let ast = lower_function(&func, &shape, &LoweringConfig::default());
 
         // Should produce block param decl + if/else (as ternary assign or full if/else).
         assert!(!ast.body.is_empty());
@@ -1638,7 +1660,7 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function(&func, &shape);
+        let ast = lower_function(&func, &shape, &LoweringConfig::default());
 
         // Dead add should be eliminated, trailing void return stripped.
         assert!(ast.body.is_empty(), "Expected empty body, got: {:?}", ast.body);

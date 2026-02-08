@@ -65,6 +65,63 @@ impl PassConfig {
     }
 }
 
+/// Configuration for AST lowering optimizations.
+///
+/// Controls which pattern-matching optimizations are applied when converting
+/// structured IR to the high-level AST. Expression inlining and constant
+/// propagation are always enabled — these flags control higher-level patterns.
+#[derive(Debug, Clone)]
+pub struct LoweringConfig {
+    /// Convert single-assign if/else branches to ternary expressions.
+    pub ternary: bool,
+    /// Convert comparison + ternary patterns to `Math.max`/`Math.min`.
+    pub minmax: bool,
+    /// Convert LogicalOr/And shapes to `||`/`&&` short-circuit expressions.
+    pub logical_operators: bool,
+    /// Hoist loop conditions into `while (cond)` instead of
+    /// `while (true) { if (!cond) break; ... }`.
+    pub while_condition_hoisting: bool,
+}
+
+impl Default for LoweringConfig {
+    /// Default is the optimized preset (all optimizations enabled).
+    fn default() -> Self {
+        Self::optimized()
+    }
+}
+
+impl LoweringConfig {
+    /// "Literal" preset — faithful 1:1 translation without pattern-matching
+    /// optimizations. Produces straightforward if/else with assignments.
+    pub fn literal() -> Self {
+        Self {
+            ternary: false,
+            minmax: false,
+            logical_operators: false,
+            while_condition_hoisting: false,
+        }
+    }
+
+    /// "Optimized" preset — all pattern-matching optimizations enabled.
+    pub fn optimized() -> Self {
+        Self {
+            ternary: true,
+            minmax: true,
+            logical_operators: true,
+            while_condition_hoisting: true,
+        }
+    }
+
+    /// Create from a preset name. Returns `None` for unknown presets.
+    pub fn from_preset(name: &str) -> Option<Self> {
+        match name {
+            "literal" => Some(Self::literal()),
+            "optimized" => Some(Self::optimized()),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,5 +178,37 @@ mod tests {
         assert!(config.type_inference);
         assert!(config.constant_folding);
         assert!(config.cfg_simplify);
+    }
+
+    #[test]
+    fn lowering_optimized_preset() {
+        let config = LoweringConfig::optimized();
+        assert!(config.ternary);
+        assert!(config.minmax);
+        assert!(config.logical_operators);
+        assert!(config.while_condition_hoisting);
+    }
+
+    #[test]
+    fn lowering_literal_preset() {
+        let config = LoweringConfig::literal();
+        assert!(!config.ternary);
+        assert!(!config.minmax);
+        assert!(!config.logical_operators);
+        assert!(!config.while_condition_hoisting);
+    }
+
+    #[test]
+    fn lowering_default_is_optimized() {
+        let config = LoweringConfig::default();
+        assert!(config.ternary);
+        assert!(config.minmax);
+    }
+
+    #[test]
+    fn lowering_from_preset() {
+        assert!(LoweringConfig::from_preset("literal").is_some());
+        assert!(LoweringConfig::from_preset("optimized").is_some());
+        assert!(LoweringConfig::from_preset("unknown").is_none());
     }
 }

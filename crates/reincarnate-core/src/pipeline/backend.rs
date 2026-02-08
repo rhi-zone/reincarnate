@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::error::CoreError;
 use crate::ir::Module;
+use super::LoweringConfig;
 use crate::project::AssetCatalog;
 
 /// Input to a backend.
@@ -12,6 +13,8 @@ pub struct BackendInput {
     pub assets: AssetCatalog,
     /// Output directory for generated code.
     pub output_dir: PathBuf,
+    /// Configuration for AST lowering optimizations.
+    pub lowering_config: LoweringConfig,
 }
 
 /// Backend trait — emits target code from IR.

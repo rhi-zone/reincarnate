@@ -7,6 +7,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{
     structurize, ClassDef, FuncId, Function, MethodKind, Module, Op, StructDef, Type, Visibility,
 };
+use reincarnate_core::pipeline::LoweringConfig;
 
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
@@ -15,19 +16,23 @@ use crate::types::ts_type;
 ///
 /// If the module has classes, emits a directory with one file per class plus
 /// a barrel `index.ts`. Otherwise emits a flat `.ts` file.
-pub fn emit_module(module: &mut Module, output_dir: &Path) -> Result<(), CoreError> {
+pub fn emit_module(
+    module: &mut Module,
+    output_dir: &Path,
+    lowering_config: &LoweringConfig,
+) -> Result<(), CoreError> {
     if module.classes.is_empty() {
-        let out = emit_module_to_string(module)?;
+        let out = emit_module_to_string(module, lowering_config)?;
         let path = output_dir.join(format!("{}.ts", module.name));
         fs::write(&path, &out).map_err(CoreError::Io)?;
     } else {
-        emit_module_to_dir(module, output_dir)?;
+        emit_module_to_dir(module, output_dir, lowering_config)?;
     }
     Ok(())
 }
 
 /// Emit a module to a string (flat output — for testing or class-free modules).
-pub fn emit_module_to_string(module: &mut Module) -> Result<String, CoreError> {
+pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConfig) -> Result<String, CoreError> {
     let mut out = String::new();
     let class_names = build_class_names(module);
     let ancestor_sets = build_ancestor_sets(module);
@@ -40,14 +45,14 @@ pub fn emit_module_to_string(module: &mut Module) -> Result<String, CoreError> {
     emit_globals(module, &mut out);
 
     if module.classes.is_empty() {
-        emit_functions(module, &class_names, &mut out)?;
+        emit_functions(module, &class_names, lowering_config, &mut out)?;
     } else {
         let (class_groups, free_funcs) = group_by_class(module);
         for group in &class_groups {
-            emit_class(group, module, &class_names, &ancestor_sets, &method_name_sets, &mut out)?;
+            emit_class(group, module, &class_names, &ancestor_sets, &method_name_sets, lowering_config, &mut out)?;
         }
         for &fid in &free_funcs {
-            emit_function(&mut module.functions[fid], &class_names, &mut out)?;
+            emit_function(&mut module.functions[fid], &class_names, lowering_config, &mut out)?;
         }
     }
 
@@ -215,7 +220,7 @@ fn relative_import_path(from: &[String], to: &[String]) -> String {
 }
 
 /// Emit a module as a directory with one `.ts` file per class in nested dirs.
-pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path) -> Result<(), CoreError> {
+pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_config: &LoweringConfig) -> Result<(), CoreError> {
     let module_dir = output_dir.join(&module.name);
     fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
 
@@ -251,7 +256,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path) -> Result<(), 
         );
         emit_runtime_imports_for(systems, &mut out, depth);
         emit_intra_imports(group, module, &segments, &registry, &mut out);
-        emit_class(group, module, &class_names, &ancestor_sets, &method_name_sets, &mut out)?;
+        emit_class(group, module, &class_names, &ancestor_sets, &method_name_sets, lowering_config, &mut out)?;
 
         let path = file_dir.join(format!("{short_name}.ts"));
         fs::write(&path, &out).map_err(CoreError::Io)?;
@@ -271,7 +276,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path) -> Result<(), 
         emit_imports(module, &mut out);
         emit_globals(module, &mut out);
         for &fid in &free_funcs {
-            emit_function(&mut module.functions[fid], &class_names, &mut out)?;
+            emit_function(&mut module.functions[fid], &class_names, lowering_config, &mut out)?;
         }
         let path = module_dir.join("_init.ts");
         fs::write(&path, &out).map_err(CoreError::Io)?;
@@ -653,10 +658,11 @@ fn emit_globals(module: &Module, out: &mut String) {
 fn emit_functions(
     module: &mut Module,
     class_names: &HashMap<String, String>,
+    lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
     for id in module.functions.keys().collect::<Vec<_>>() {
-        emit_function(&mut module.functions[id], class_names, out)?;
+        emit_function(&mut module.functions[id], class_names, lowering_config, out)?;
     }
     Ok(())
 }
@@ -664,13 +670,14 @@ fn emit_functions(
 fn emit_function(
     func: &mut Function,
     class_names: &HashMap<String, String>,
+    lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
     use crate::ast_printer::{self, PrintCtx};
     use reincarnate_core::ir::lower_ast;
 
     let shape = structurize::structurize(func);
-    let ast = lower_ast::lower_function(func, &shape);
+    let ast = lower_ast::lower_function(func, &shape, lowering_config);
     let pctx = PrintCtx::for_function(class_names);
     ast_printer::print_function(&ast, &pctx, out);
     Ok(())
@@ -729,6 +736,7 @@ fn emit_class(
     class_names: &HashMap<String, String>,
     ancestor_sets: &HashMap<String, HashSet<String>>,
     method_name_sets: &HashMap<String, HashSet<String>>,
+    lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
     let class_name = sanitize_ident(&group.class_def.name);
@@ -773,7 +781,7 @@ fn emit_class(
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, lowering_config, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -786,6 +794,7 @@ fn emit_class_method(
     class_names: &HashMap<String, String>,
     ancestors: &HashSet<String>,
     method_names: &HashSet<String>,
+    lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
     use crate::ast_printer::{self, PrintCtx};
@@ -804,7 +813,7 @@ fn emit_class_method(
     );
 
     let shape = structurize::structurize(func);
-    let ast = lower_ast::lower_function(func, &shape);
+    let ast = lower_ast::lower_function(func, &shape, lowering_config);
     let pctx = if skip_self {
         PrintCtx::for_method(class_names, ancestors, method_names)
     } else {
@@ -831,7 +840,7 @@ mod tests {
     fn build_and_emit(build: impl FnOnce(&mut ModuleBuilder)) -> String {
         let mut mb = ModuleBuilder::new("test");
         build(&mut mb);
-        emit_module_to_string(&mut mb.build()).unwrap()
+        emit_module_to_string(&mut mb.build(), &LoweringConfig::default()).unwrap()
     }
 
     #[test]
@@ -1111,7 +1120,7 @@ mod tests {
 
         // Run mem2reg IR pass, then emit.
         let mut result = Mem2Reg.apply(module).unwrap();
-        let out = emit_module_to_string(&mut result.module).unwrap();
+        let out = emit_module_to_string(&mut result.module, &LoweringConfig::default()).unwrap();
 
         // The alloc/store/load should be eliminated; return refers to the
         // original parameter directly.
@@ -1342,7 +1351,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         // Class declaration with extends.
         assert!(
@@ -1414,7 +1423,7 @@ mod tests {
         mb.add_function(fb.build());
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(out.contains("export class Foo {"), "Should have class:\n{out}");
         assert!(
@@ -1485,7 +1494,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        emit_module_to_dir(&mut module, dir.path()).unwrap();
+        emit_module_to_dir(&mut module, dir.path(), &LoweringConfig::default()).unwrap();
 
         // Check nested file exists.
         let class_file = dir
@@ -1563,7 +1572,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        emit_module_to_dir(&mut module, dir.path()).unwrap();
+        emit_module_to_dir(&mut module, dir.path(), &LoweringConfig::default()).unwrap();
 
         let swamp_file = dir.path().join("frame1/classes/Scenes/Swamp.ts");
         let content = fs::read_to_string(&swamp_file).unwrap();
@@ -1606,7 +1615,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(
             out.contains("super();"),
@@ -1683,7 +1692,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(
             out.contains("new Widget()"),
@@ -1807,7 +1816,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(
             out.contains("this.hp"),
@@ -1867,7 +1876,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(
             out.contains("this.player"),
@@ -1956,7 +1965,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(
             !out.contains("this.power"),
@@ -2063,7 +2072,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(
             out.contains("this.temp = "),
@@ -2299,7 +2308,7 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module).unwrap();
+        let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
         assert!(
             out.contains("this.isNaga()"),

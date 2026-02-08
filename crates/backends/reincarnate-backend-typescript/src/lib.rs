@@ -23,7 +23,7 @@ impl Backend for TypeScriptBackend {
         runtime::emit_runtime(&input.output_dir)?;
 
         for module in &mut input.modules {
-            emit::emit_module(module, &input.output_dir)?;
+            emit::emit_module(module, &input.output_dir, &input.lowering_config)?;
         }
 
         scaffold::emit_scaffold(&input.modules, &input.output_dir)?;

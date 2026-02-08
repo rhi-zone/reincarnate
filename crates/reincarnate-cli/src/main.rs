@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
-use reincarnate_core::pipeline::{Backend, BackendInput, Frontend, FrontendInput, Linker, PassConfig};
+use reincarnate_core::pipeline::{Backend, BackendInput, Frontend, FrontendInput, Linker, LoweringConfig, PassConfig};
 use reincarnate_core::project::{EngineOrigin, ProjectManifest, TargetBackend};
 use reincarnate_core::transforms::default_pipeline;
 
@@ -46,6 +46,9 @@ enum Command {
         /// Transform passes to skip (e.g. "type-inference", "constant-folding").
         #[arg(long = "skip-pass")]
         skip_passes: Vec<String>,
+        /// Lowering preset: "literal" (1:1 translation) or "optimized" (default).
+        #[arg(long, default_value = "optimized")]
+        lowering_preset: String,
     },
 }
 
@@ -123,7 +126,7 @@ fn cmd_extract(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
+fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String], lowering_preset: &str) -> Result<()> {
     let manifest = load_manifest(manifest_path)?;
     let frontend = find_frontend(&manifest.engine);
     let Some(frontend) = frontend else {
@@ -153,6 +156,9 @@ fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
     }
     eprintln!("[emit] transforms done, linking...");
 
+    let lowering_config = LoweringConfig::from_preset(lowering_preset)
+        .ok_or_else(|| anyhow::anyhow!("unknown lowering preset: {lowering_preset:?} (valid: \"literal\", \"optimized\")"))?;
+
     // Cross-module linking: validate all imports resolve.
     Linker::link(&modules).map_err(|errors| {
         let msgs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
@@ -170,6 +176,7 @@ fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
             modules: modules.clone(),
             assets: output.assets.clone(),
             output_dir: target.output_dir.clone(),
+            lowering_config: lowering_config.clone(),
         };
         eprintln!("[emit] emitting to {}...", target.output_dir.display());
         backend
@@ -197,6 +204,7 @@ fn main() -> Result<()> {
         Command::Emit {
             manifest,
             skip_passes,
-        } => cmd_emit(manifest, skip_passes),
+            lowering_preset,
+        } => cmd_emit(manifest, skip_passes, lowering_preset),
     }
 }
