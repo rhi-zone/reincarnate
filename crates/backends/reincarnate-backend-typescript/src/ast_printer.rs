@@ -244,6 +244,16 @@ fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
             );
         }
 
+        Stmt::CompoundAssign { target, op, value } => {
+            let _ = writeln!(
+                out,
+                "{indent}{} {}= {};",
+                print_expr(target, ctx),
+                binop_str(*op),
+                print_expr(value, ctx),
+            );
+        }
+
         Stmt::Expr(expr) => {
             // Handle constructSuper pattern.
             if let Expr::SystemCall {

@@ -152,6 +152,56 @@ fn match_minmax(target: &Expr, value: &Expr) -> Option<Stmt> {
 }
 
 // ---------------------------------------------------------------------------
+// Compound assignment rewrite
+// ---------------------------------------------------------------------------
+
+/// Rewrite `target = target op value` to `target op= value`.
+///
+/// Matches:
+/// ```text
+/// x = x + 1   →  x += 1
+/// a.b = a.b - c  →  a.b -= c
+/// ```
+///
+/// Only matches when the left operand of the binary expression equals the
+/// assignment target (not the right operand), preserving operand order for
+/// non-commutative operators (Sub, Div, Rem, Shl, Shr).
+///
+/// Recurses into all nested statement bodies.
+pub fn rewrite_compound_assign(body: &mut [Stmt]) {
+    for stmt in body.iter_mut() {
+        recurse_into_stmt(stmt, rewrite_compound_assign);
+
+        let replacement = match stmt {
+            Stmt::Assign { target, value } => match_compound_assign(target, value),
+            _ => None,
+        };
+
+        if let Some(new_stmt) = replacement {
+            *stmt = new_stmt;
+        }
+    }
+}
+
+/// Check whether an assignment matches the compound assignment pattern.
+fn match_compound_assign(target: &Expr, value: &Expr) -> Option<Stmt> {
+    let (op, lhs, rhs) = match value {
+        Expr::Binary { op, lhs, rhs } => (*op, lhs.as_ref(), rhs.as_ref()),
+        _ => return None,
+    };
+
+    if lhs != target {
+        return None;
+    }
+
+    Some(Stmt::CompoundAssign {
+        target: target.clone(),
+        op,
+        value: rhs.clone(),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -529,6 +579,167 @@ mod tests {
                 other => panic!("Expected Call, got: {other:?}"),
             },
             other => panic!("Expected Assign, got: {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Compound assignment tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn compound_assign_basic_sub() {
+        // HP = HP - damage  →  HP -= damage
+        let mut body = vec![assign(
+            var("HP"),
+            Expr::Binary {
+                op: BinOp::Sub,
+                lhs: Box::new(var("HP")),
+                rhs: Box::new(var("damage")),
+            },
+        )];
+
+        rewrite_compound_assign(&mut body);
+
+        match &body[0] {
+            Stmt::CompoundAssign { target, op, value } => {
+                assert_eq!(*target, var("HP"));
+                assert_eq!(*op, BinOp::Sub);
+                assert_eq!(*value, var("damage"));
+            }
+            other => panic!("Expected CompoundAssign, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compound_assign_add() {
+        // x = x + 1  →  x += 1
+        let mut body = vec![assign(
+            var("x"),
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs: Box::new(var("x")),
+                rhs: Box::new(int(1)),
+            },
+        )];
+
+        rewrite_compound_assign(&mut body);
+
+        match &body[0] {
+            Stmt::CompoundAssign { target, op, value } => {
+                assert_eq!(*target, var("x"));
+                assert_eq!(*op, BinOp::Add);
+                assert_eq!(*value, int(1));
+            }
+            other => panic!("Expected CompoundAssign, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compound_assign_no_rewrite_rhs_match() {
+        // x = y + x — rhs matches target but lhs doesn't, no rewrite
+        let mut body = vec![assign(
+            var("x"),
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs: Box::new(var("y")),
+                rhs: Box::new(var("x")),
+            },
+        )];
+
+        rewrite_compound_assign(&mut body);
+
+        assert!(matches!(&body[0], Stmt::Assign { .. }));
+    }
+
+    #[test]
+    fn compound_assign_no_rewrite_different_target() {
+        // x = y - z — no match at all
+        let mut body = vec![assign(
+            var("x"),
+            Expr::Binary {
+                op: BinOp::Sub,
+                lhs: Box::new(var("y")),
+                rhs: Box::new(var("z")),
+            },
+        )];
+
+        rewrite_compound_assign(&mut body);
+
+        assert!(matches!(&body[0], Stmt::Assign { .. }));
+    }
+
+    #[test]
+    fn compound_assign_field_access() {
+        // this.HP = this.HP * 2  →  this.HP *= 2
+        let field = Expr::Field {
+            object: Box::new(var("this")),
+            field: "HP".to_string(),
+        };
+        let mut body = vec![assign(
+            field.clone(),
+            Expr::Binary {
+                op: BinOp::Mul,
+                lhs: Box::new(field.clone()),
+                rhs: Box::new(int(2)),
+            },
+        )];
+
+        rewrite_compound_assign(&mut body);
+
+        match &body[0] {
+            Stmt::CompoundAssign { target, op, value } => {
+                assert_eq!(*target, field);
+                assert_eq!(*op, BinOp::Mul);
+                assert_eq!(*value, int(2));
+            }
+            other => panic!("Expected CompoundAssign, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compound_assign_recurses_into_nested() {
+        let inner = assign(
+            var("x"),
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs: Box::new(var("x")),
+                rhs: Box::new(int(1)),
+            },
+        );
+        let mut body = vec![Stmt::While {
+            cond: var("true"),
+            body: vec![inner],
+        }];
+
+        rewrite_compound_assign(&mut body);
+
+        match &body[0] {
+            Stmt::While { body, .. } => {
+                assert!(matches!(&body[0], Stmt::CompoundAssign { .. }));
+            }
+            other => panic!("Expected While, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn compound_assign_bitwise_ops() {
+        // x = x | mask  →  x |= mask
+        let mut body = vec![assign(
+            var("x"),
+            Expr::Binary {
+                op: BinOp::BitOr,
+                lhs: Box::new(var("x")),
+                rhs: Box::new(var("mask")),
+            },
+        )];
+
+        rewrite_compound_assign(&mut body);
+
+        match &body[0] {
+            Stmt::CompoundAssign { op, .. } => {
+                assert_eq!(*op, BinOp::BitOr);
+            }
+            other => panic!("Expected CompoundAssign, got: {other:?}"),
         }
     }
 }

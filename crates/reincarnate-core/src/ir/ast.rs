@@ -148,6 +148,12 @@ pub enum Stmt {
         target: Expr,
         value: Expr,
     },
+    /// Compound assignment: `target op= value;`
+    CompoundAssign {
+        target: Expr,
+        op: BinOp,
+        value: Expr,
+    },
     /// Expression statement (side-effecting call, void return).
     Expr(Expr),
     /// If/else.
