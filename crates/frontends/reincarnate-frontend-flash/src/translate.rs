@@ -25,6 +25,7 @@ pub fn translate_method_body(
     func_name: &str,
     sig: FunctionSig,
     param_names: &[Option<String>],
+    has_self: bool,
 ) -> Result<Function, String> {
     let ops = parse_bytecode(&body.code)?;
     let offset_map = offset_to_index_map(&ops);
@@ -99,11 +100,14 @@ pub fn translate_method_body(
     // Track which registers have already been named by Op::Debug so we only
     // keep the first name.  AVM2 reuses registers for unrelated local
     // variables later in the method body — taking the last name would
-    // mis-label earlier variables.  Parameter registers (0..num_params) are
-    // pre-marked because the AS3 compiler doesn't emit Op::Debug for params
-    // (it relies on HAS_PARAM_NAMES); any Op::Debug for a param register is
-    // a reused local variable, not the parameter itself.
-    let mut named_registers: HashSet<u8> = (0..num_params as u8).collect();
+    // mis-label earlier variables.
+    let mut named_registers: HashSet<u8> = HashSet::new();
+
+    // Op::Debug register numbering skips `this`: register 0 = first actual
+    // parameter, not `this`.  Our locals[] includes `this` at index 0 for
+    // instance methods, so we need an offset to align the two numbering
+    // schemes.
+    let debug_reg_offset: usize = if has_self { 1 } else { 0 };
 
     let mut stack: Vec<ValueId> = Vec::new();
     let mut scope_stack = ScopeStack::new();
@@ -168,6 +172,8 @@ pub fn translate_method_body(
             &mut locals,
             &mut block_param_values,
             &mut named_registers,
+            debug_reg_offset,
+            num_params,
         );
     }
 
@@ -328,6 +334,8 @@ fn translate_op(
     locals: &mut [ValueId],
     block_param_values: &mut HashMap<usize, Vec<ValueId>>,
     named_registers: &mut HashSet<u8>,
+    debug_reg_offset: usize,
+    num_params: usize,
 ) {
     let loc = &ops[op_idx];
     match &loc.op {
@@ -1656,9 +1664,20 @@ fn translate_op(
             if *is_local_register && named_registers.insert(*register) {
                 let name = pool_string(pool, register_name);
                 if !name.is_empty() {
-                    let idx = *register as usize;
+                    // Op::Debug registers skip `this`: register 0 = first
+                    // actual parameter.  Apply offset to align with our
+                    // locals[] array which includes `this` at index 0.
+                    let idx = *register as usize + debug_reg_offset;
                     if idx < locals.len() {
-                        fb.name_value(locals[idx], name);
+                        if idx < num_params {
+                            // Name the param value directly so the function
+                            // signature gets the correct name.  Don't name
+                            // the alloc slot — it would create a conflicting
+                            // `let` declaration in the emitted output.
+                            fb.name_value(fb.param(idx), name);
+                        } else {
+                            fb.name_value(locals[idx], name);
+                        }
                     }
                 }
             }
@@ -1823,7 +1842,7 @@ mod tests {
             return_ty: Type::Void,
         };
 
-        let func = translate_method_body(&abc, &body, "test", sig, &[]).unwrap();
+        let func = translate_method_body(&abc, &body, "test", sig, &[], false).unwrap();
         let output = format!("{func}");
         assert!(output.contains("return"), "expected return in:\n{output}");
     }
@@ -1856,7 +1875,7 @@ mod tests {
             return_ty: Type::Int(32),
         };
 
-        let func = translate_method_body(&abc, &body, "answer", sig, &[]).unwrap();
+        let func = translate_method_body(&abc, &body, "answer", sig, &[], false).unwrap();
         let output = format!("{func}");
         assert!(output.contains("const 42"), "expected const 42 in:\n{output}");
         assert!(output.contains("return"), "expected return in:\n{output}");
@@ -1890,7 +1909,7 @@ mod tests {
             return_ty: Type::Dynamic,
         };
 
-        let func = translate_method_body(&abc, &body, "add_test", sig, &[]).unwrap();
+        let func = translate_method_body(&abc, &body, "add_test", sig, &[], false).unwrap();
         let output = format!("{func}");
         assert!(output.contains("const 3"), "expected const 3 in:\n{output}");
         assert!(output.contains("const 4"), "expected const 4 in:\n{output}");
@@ -1926,7 +1945,7 @@ mod tests {
             return_ty: Type::Dynamic,
         };
 
-        let func = translate_method_body(&abc, &body, "local_test", sig, &[]).unwrap();
+        let func = translate_method_body(&abc, &body, "local_test", sig, &[], false).unwrap();
         let output = format!("{func}");
         assert!(output.contains("store"), "expected store in:\n{output}");
         assert!(output.contains("load"), "expected load in:\n{output}");

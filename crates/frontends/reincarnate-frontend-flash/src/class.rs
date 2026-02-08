@@ -294,7 +294,7 @@ fn translate_class_method(
         return_ty: return_type,
     };
 
-    let func = translate_method_body(abc, body, func_name, sig, &param_names)?;
+    let func = translate_method_body(abc, body, func_name, sig, &param_names, has_self)?;
     Ok(Some(func))
 }
 
@@ -341,7 +341,7 @@ pub fn translate_abc_to_module(abc: &AbcFile, module_name: &str) -> Result<Modul
                     params: vec![],
                     return_ty: return_type,
                 };
-                let func = translate_method_body(abc, body, &func_name, sig, &[])?;
+                let func = translate_method_body(abc, body, &func_name, sig, &[], false)?;
                 mb.add_function(func);
             }
         }
