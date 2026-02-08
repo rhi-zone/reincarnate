@@ -163,13 +163,12 @@ identified by comparing `takeDamage` / `reduceDamage` in Player.ts.
   pattern match on `Stmt::Assign` where the value is a `Binary` with one
   operand equal to the target. Also `HP = HP - v` → `HP -= v`.
 
-- [ ] **Block-param decl/init merging** — When the ternary rewrite converts
+- [x] **Block-param decl/init merging** — When the ternary rewrite converts
   `if (c) { x = a } else { x = b }` → `x = c ? a : b`, the variable `x`
   is already declared as `let x: T;` at the top (block-param decl system).
   The result is a split `let x; ... x = c ? a : b` instead of a combined
-  `let x = c ? a : b`. Could be a post-pass that merges `let x;` + first
-  `x = init` into `let x = init` when the decl has no init and there's a
-  single dominating assignment.
+  `let x = c ? a : b`. Post-pass merges uninit decls with their first
+  dominating assignment. 43% of split let decls merged (1768/4081).
 
 ### Low Priority (polish)
 
