@@ -309,8 +309,11 @@ struct EmitCtx {
     self_value: Option<ValueId>,
     /// Number of times each value is used as an operand.
     use_counts: HashMap<ValueId, usize>,
-    /// Inlined expressions for single-use values: (expr, needs_parens).
-    inline_exprs: HashMap<ValueId, (String, bool)>,
+    /// Inlined expressions for single-use values: (expr, needs_parens, side_effecting).
+    inline_exprs: HashMap<ValueId, (String, bool, bool)>,
+    /// Set when `val()`/`operand()` consumes a side-effecting inline expression.
+    /// Propagated to the next `store_inline` call.
+    consumed_side_effect: bool,
     /// Qualified class name → sanitized short name (e.g. "classes.Scenes::Foo" → "Foo").
     class_names: HashMap<String, String>,
     /// Values produced by scope lookups (`findPropStrict`/`findProperty`) — resolved to bare
@@ -350,6 +353,7 @@ impl EmitCtx {
             self_value: None,
             use_counts,
             inline_exprs: HashMap::new(),
+            consumed_side_effect: false,
             class_names: class_names.clone(),
             scope_lookups: HashSet::new(),
             ancestors: HashSet::new(),
@@ -381,6 +385,7 @@ impl EmitCtx {
             self_value: Some(self_value),
             use_counts,
             inline_exprs: HashMap::new(),
+            consumed_side_effect: false,
             class_names: class_names.clone(),
             scope_lookups: HashSet::new(),
             ancestors: ancestors.clone(),
@@ -399,7 +404,9 @@ impl EmitCtx {
 
     /// Store an expression for a value to be inlined at its use site.
     fn store_inline(&mut self, v: ValueId, expr: String, needs_parens: bool) {
-        self.inline_exprs.insert(v, (expr, needs_parens));
+        let side_effecting = self.consumed_side_effect;
+        self.consumed_side_effect = false;
+        self.inline_exprs.insert(v, (expr, needs_parens, side_effecting));
     }
 
     /// Format a value reference, checking for inlined expressions.
@@ -410,13 +417,19 @@ impl EmitCtx {
         if self.self_value == Some(v) {
             return "this".into();
         }
-        if let Some((expr, _)) = self.inline_exprs.remove(&v) {
+        if let Some((expr, _, side_effecting)) = self.inline_exprs.remove(&v) {
+            if side_effecting {
+                self.consumed_side_effect = true;
+            }
             return expr;
         }
         if let Some(inst_id) = self.lazy_inlines.remove(&v) {
             let mut discard = String::new();
             emit_inst(self, func, inst_id, &mut discard, "").unwrap();
-            if let Some((expr, _)) = self.inline_exprs.remove(&v) {
+            if let Some((expr, _, side_effecting)) = self.inline_exprs.remove(&v) {
+                if side_effecting {
+                    self.consumed_side_effect = true;
+                }
                 return expr;
             }
         }
@@ -435,7 +448,10 @@ impl EmitCtx {
         if self.self_value == Some(v) {
             return "this".into();
         }
-        if let Some((expr, needs_parens)) = self.inline_exprs.remove(&v) {
+        if let Some((expr, needs_parens, side_effecting)) = self.inline_exprs.remove(&v) {
+            if side_effecting {
+                self.consumed_side_effect = true;
+            }
             return if needs_parens {
                 format!("({expr})")
             } else {
@@ -445,7 +461,10 @@ impl EmitCtx {
         if let Some(inst_id) = self.lazy_inlines.remove(&v) {
             let mut discard = String::new();
             emit_inst(self, func, inst_id, &mut discard, "").unwrap();
-            if let Some((expr, needs_parens)) = self.inline_exprs.remove(&v) {
+            if let Some((expr, needs_parens, side_effecting)) = self.inline_exprs.remove(&v) {
+                if side_effecting {
+                    self.consumed_side_effect = true;
+                }
                 return if needs_parens {
                     format!("({expr})")
                 } else {
@@ -1216,6 +1235,9 @@ fn emit_shape(
             // Emit the block's non-terminator instructions first.
             emit_block_instructions(ctx, func, *block, out, indent)?;
 
+            // Materialize any side-effecting inlines before branches diverge.
+            flush_side_effecting_inlines(ctx, out, indent);
+
             // Check for ternary pattern: both branches are assign-only with a
             // single shared dst, and their block bodies have no emitted statements.
             if let Some((dst, then_src, else_src)) = try_ternary_assigns(
@@ -1491,6 +1513,9 @@ fn emit_shape_strip_trailing_return(
             Ok(())
         }
         Shape::Block(block_id) => {
+            // Materialize side-effecting inlines from previous blocks.
+            flush_side_effecting_inlines(ctx, out, indent);
+
             // Emit block instructions, skip trailing Return(None).
             let block = &func.blocks[*block_id];
             for &inst_id in &block.insts {
@@ -1519,6 +1544,11 @@ fn emit_shape_strip_trailing_return(
         } => {
             // Emit the block's non-terminator instructions first.
             emit_block_instructions(ctx, func, *block, out, indent)?;
+
+            // Materialize any side-effecting inlines before branches diverge.
+            // Must happen here (into `out`) before ternary/if-else processing,
+            // which may route output through discard buffers.
+            flush_side_effecting_inlines(ctx, out, indent);
 
             if let Some((dst, then_src, else_src)) = try_ternary_assigns(
                 ctx,
@@ -1625,6 +1655,11 @@ fn emit_block_instructions(
     out: &mut String,
     indent: &str,
 ) -> Result<(), CoreError> {
+    // Materialize any side-effecting inline expressions left over from
+    // previous blocks. These must evaluate before this block's instructions
+    // to preserve the original evaluation order.
+    flush_side_effecting_inlines(ctx, out, indent);
+
     let block = &func.blocks[block_id];
     for &inst_id in &block.insts {
         let inst = &func.insts[inst_id];
@@ -1634,12 +1669,25 @@ fn emit_block_instructions(
                 break;
             }
             _ => {
+                // Before a memory write, flush any deferred memory reads so
+                // they capture values before the write mutates them.
+                if is_memory_write(&inst.op) {
+                    flush_pending_reads(ctx, func, out, indent)?;
+                }
+
                 // Defer single-use pure instructions for lazy inlining.
                 // Their expressions are only built when val()/operand()
                 // actually reads the value, so instructions absorbed by
                 // shape optimizations never consume their operands' inlines.
+                //
+                // Don't defer if an operand carries a side-effecting inline
+                // (e.g. a Call result) — deferring would move the side effect
+                // across block boundaries, changing evaluation order.
                 if let Some(r) = inst.result {
-                    if ctx.should_inline(r) && is_deferrable(&inst.op) {
+                    if ctx.should_inline(r)
+                        && is_deferrable(&inst.op)
+                        && !has_side_effecting_operand(ctx, func, inst_id)
+                    {
                         ctx.lazy_inlines.insert(r, inst_id);
                         continue;
                     }
@@ -1649,6 +1697,61 @@ fn emit_block_instructions(
         }
     }
     Ok(())
+}
+
+/// Whether an instruction writes to memory (fields, indices, or alloc slots).
+fn is_memory_write(op: &Op) -> bool {
+    matches!(op, Op::SetField { .. } | Op::SetIndex { .. } | Op::Store { .. })
+}
+
+/// Flush all deferred memory-read lazy inlines (GetField/GetIndex/Load) into
+/// real variable assignments. Called before memory writes to prevent reads from
+/// being reordered past writes to the same location.
+fn flush_pending_reads(
+    ctx: &mut EmitCtx,
+    func: &Function,
+    out: &mut String,
+    indent: &str,
+) -> Result<(), CoreError> {
+    let to_flush: Vec<(ValueId, InstId)> = ctx
+        .lazy_inlines
+        .iter()
+        .filter(|(_, &iid)| {
+            matches!(
+                func.insts[iid].op,
+                Op::GetField { .. } | Op::GetIndex { .. } | Op::Load(..)
+            )
+        })
+        .map(|(&v, &iid)| (v, iid))
+        .collect();
+
+    for (v, iid) in to_flush {
+        ctx.lazy_inlines.remove(&v);
+        // Bump use_count so emit_or_inline emits a real assignment
+        // instead of storing an inline expression.
+        *ctx.use_counts.entry(v).or_insert(1) = 2;
+        emit_inst(ctx, func, iid, out, indent)?;
+    }
+    Ok(())
+}
+
+/// Materialize any side-effecting inline expressions as real variable
+/// assignments. Called at block boundaries to prevent side-effecting
+/// expressions (Call/SystemCall results) from being textually pasted at a
+/// use site in a different block, which would change evaluation order.
+fn flush_side_effecting_inlines(ctx: &mut EmitCtx, out: &mut String, indent: &str) {
+    let to_flush: Vec<ValueId> = ctx
+        .inline_exprs
+        .iter()
+        .filter(|(_, (_, _, side_effecting))| *side_effecting)
+        .map(|(&v, _)| v)
+        .collect();
+
+    for v in to_flush {
+        let (expr, _, _) = ctx.inline_exprs.remove(&v).unwrap();
+        let pfx = ctx.let_prefix(v);
+        let _ = writeln!(out, "{indent}{pfx}{} = {expr};", ctx.val_name(v));
+    }
 }
 
 /// Whether an instruction's Op is pure enough to defer for lazy inlining.
@@ -1686,6 +1789,18 @@ fn is_deferrable(op: &Op) -> bool {
             | Op::GlobalRef(..)
             | Op::TypeCheck(..)
     )
+}
+
+/// Whether any operand of `inst_id` has a pending side-effecting inline
+/// expression. If so, the instruction should not be deferred to lazy_inlines,
+/// because deferring would move the side effect across block boundaries.
+fn has_side_effecting_operand(ctx: &EmitCtx, func: &Function, inst_id: InstId) -> bool {
+    for v in value_operands(&func.insts[inst_id].op) {
+        if let Some((_, _, true)) = ctx.inline_exprs.get(&v) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Emit block argument assignments.
@@ -1908,6 +2023,7 @@ fn emit_or_inline(
         let _ = writeln!(out, "{indent}{pfx}{} = {expr};", ctx.val_name(r));
     }
 }
+
 
 fn emit_inst(
     ctx: &mut EmitCtx,
@@ -2222,6 +2338,7 @@ fn emit_inst(
                 format!("{}()", sanitize_ident(fname))
             };
             if let Some(r) = result {
+                ctx.consumed_side_effect = true;
                 emit_or_inline(ctx, r, expr, false, out, indent);
             } else {
                 let _ = writeln!(out, "{indent}{expr};");
@@ -2235,6 +2352,7 @@ fn emit_inst(
                 .join(", ");
             let expr = format!("{}({args_str})", ctx.val(func, *callee));
             if let Some(r) = result {
+                ctx.consumed_side_effect = true;
                 emit_or_inline(ctx, r, expr, false, out, indent);
             } else {
                 let _ = writeln!(out, "{indent}{expr};");
@@ -2267,6 +2385,7 @@ fn emit_inst(
                         .join(", ");
                     let expr = format!("new {}({rest_args})", ctx.val(func, ctor));
                     if let Some(r) = result {
+                        ctx.consumed_side_effect = true;
                         emit_or_inline(ctx, r, expr, false, out, indent);
                     } else {
                         let _ = writeln!(out, "{indent}{expr};");
@@ -2308,6 +2427,7 @@ fn emit_inst(
             };
             let expr = format!("{sys_ident}{safe_method}({args_str})");
             if let Some(r) = result {
+                ctx.consumed_side_effect = true;
                 emit_or_inline(ctx, r, expr, false, out, indent);
             } else {
                 let _ = writeln!(out, "{indent}{expr};");

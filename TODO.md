@@ -113,9 +113,8 @@ examples in the test project (`~/cc-project/comparison-notes.md`).
 
 ### High Priority (correctness)
 
-- [ ] **`["rt:?"]` runtime property access** — Systemic. `GetProperty` with
-  runtime indices emits `index["rt:?"]` instead of `array[index]`. Produces
-  non-functional code for array lookups and indexed property access.
+- [x] **`["rt:?"]` runtime property access** — Fixed. Runtime multinames now
+  resolve to proper indexed access (`array[index]`).
 - [ ] **Instruction reordering** — Some methods emit side-effecting calls in
   the wrong order, changing semantics. Likely a stack simulation bug.
 - [ ] **Negative constant resolution** — At least one `Math.max` clamp emits
@@ -123,13 +122,9 @@ examples in the test project (`~/cc-project/comparison-notes.md`).
 
 ### Medium Priority (output quality)
 
-- [ ] **Early returns via control flow inversion** — The structurizer always
-  nests if/else. When one branch returns, emit it as a guard clause
-  (`if (cond) return x;`) and continue at the same nesting level. FFDec does
-  this. Implementation: detect when one branch of a BrIf terminates (all paths
-  return), extract as guard, flatten continuation into Seq.
-- [ ] **Default parameter values** — AVM2 encodes optional parameter defaults
-  (HAS_OPTIONAL flag). We parse them (swf crate) but don't emit them.
+- [x] **Early returns via control flow inversion** — Done. Guard clause
+  detection flattens `if/else` when one branch terminates.
+- [x] **Default parameter values** — Done. HAS_OPTIONAL defaults emitted.
 - [ ] **Dead variable declarations** — Many methods declare unused
   `let v###` variables. SSA artifacts (dead phi-merge variables) that survive
   DCE. Need a pass or emitter check to skip variables never read.
