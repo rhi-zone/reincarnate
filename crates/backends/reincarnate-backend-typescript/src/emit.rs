@@ -328,8 +328,6 @@ struct EmitCtx {
     alloc_inits: HashMap<ValueId, ValueId>,
     /// Store InstIds that were merged into their preceding Alloc — skip these.
     skip_stores: HashSet<InstId>,
-    /// Instructions absorbed by shape optimizations (e.g. Cmp absorbed by Math.max).
-    skip_insts: HashSet<InstId>,
     /// Deferred single-use instructions for lazy inlining. The expression is
     /// only built when `val()`/`operand()` actually reads the value, so
     /// instructions absorbed by shape optimizations (Math.max, ternary) never
@@ -359,7 +357,6 @@ impl EmitCtx {
             value_names,
             alloc_inits,
             skip_stores,
-            skip_insts: HashSet::new(),
             lazy_inlines: HashMap::new(),
         }
     }
@@ -391,7 +388,6 @@ impl EmitCtx {
             value_names,
             alloc_inits,
             skip_stores,
-            skip_insts: HashSet::new(),
             lazy_inlines: HashMap::new(),
         }
     }
@@ -594,11 +590,10 @@ fn adjust_use_counts_for_shapes(ctx: &mut EmitCtx, func: &Function, shape: &Shap
             else_trailing_assigns,
         } => {
             // When Math.max/min absorbs a ternary, the Cmp instruction is
-            // never emitted. Mark it for skipping so its expression building
-            // doesn't consume inline values needed by Math.max. Only
-            // decrement multi-use Cmp operands (from 2 → 1) so they become
-            // inlineable; single-use operands are already should_inline and
-            // will silently disappear when the Cmp is skipped.
+            // lazily deferred and never resolved. But the Cmp's operands
+            // still have inflated use counts (used by both Cmp and branch
+            // args). Decrement multi-use Cmp operands (2 → 1) so they
+            // become inlineable at the Math.max call site.
             if let Some((_, then_src, else_src)) = try_ternary_assigns(
                 ctx,
                 func,
@@ -610,7 +605,6 @@ fn adjust_use_counts_for_shapes(ctx: &mut EmitCtx, func: &Function, shape: &Shap
                         let inst = &func.insts[iid];
                         if inst.result == Some(*cond) {
                             if let Op::Cmp(_, lhs, rhs) = &inst.op {
-                                ctx.skip_insts.insert(iid);
                                 for v in [*lhs, *rhs] {
                                     if let Some(c) = ctx.use_counts.get_mut(&v) {
                                         if *c > 1 {
@@ -1914,11 +1908,6 @@ fn emit_inst(
 ) -> Result<(), CoreError> {
     let inst = &func.insts[inst_id];
     let result = inst.result;
-
-    // Skip instructions absorbed by shape optimizations (e.g. Math.max).
-    if ctx.skip_insts.contains(&inst_id) {
-        return Ok(());
-    }
 
     match &inst.op {
         // -- Constants --
