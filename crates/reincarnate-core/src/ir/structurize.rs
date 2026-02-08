@@ -773,6 +773,66 @@ impl<'a> Structurizer<'a> {
                     merge = self.find_merge_bfs(then_target, else_target, until, loop_body);
                 }
 
+                // Guard clause: when no merge point exists and one branch
+                // terminates (returns), emit it as a flat guard and continue
+                // with the non-terminating branch as a sibling sequence.
+                if merge.is_none() && then_target != else_target {
+                    let then_terminates = self.region_terminates(then_target, 0);
+                    let else_terminates = self.region_terminates(else_target, 0);
+
+                    if then_terminates && !else_terminates {
+                        // Guard: if (cond) { ...return... }
+                        // Continuation: else branch flattened after.
+                        let guard_body = self.structurize_region(then_target, until, loop_body);
+                        let guard = Shape::IfElse {
+                            block,
+                            cond,
+                            then_assigns: then_assigns.clone(),
+                            then_body: Box::new(guard_body),
+                            then_trailing_assigns: vec![],
+                            else_assigns: vec![],
+                            else_body: Box::new(Shape::Seq(vec![])),
+                            else_trailing_assigns: vec![],
+                        };
+                        let guard = self.try_logical_op(guard);
+                        let continuation = self.structurize_region(else_target, until, loop_body);
+                        let mut parts = vec![guard];
+                        match continuation {
+                            Shape::Seq(inner) => parts.extend(inner),
+                            other => parts.push(other),
+                        }
+                        return Shape::Seq(parts);
+                    }
+
+                    if else_terminates && !then_terminates {
+                        // Invert: if (!cond) { ...return... }
+                        // Continuation: then branch flattened after.
+                        if self.try_invert_cmp(cond) {
+                            let guard_body = self.structurize_region(else_target, until, loop_body);
+                            let guard = Shape::IfElse {
+                                block,
+                                cond,
+                                then_assigns: else_assigns.clone(),
+                                then_body: Box::new(guard_body),
+                                then_trailing_assigns: vec![],
+                                else_assigns: vec![],
+                                else_body: Box::new(Shape::Seq(vec![])),
+                                else_trailing_assigns: vec![],
+                            };
+                            let guard = self.try_logical_op(guard);
+                            let continuation = self.structurize_region(then_target, until, loop_body);
+                            let mut parts = vec![guard];
+                            match continuation {
+                                Shape::Seq(inner) => parts.extend(inner),
+                                other => parts.push(other),
+                            }
+                            return Shape::Seq(parts);
+                        }
+                        // If we can't invert the cmp (multi-use), fall through
+                        // to the normal if/else path below.
+                    }
+                }
+
                 let then_body = if then_target == merge.unwrap_or(then_target) && merge.is_some() {
                     Shape::Seq(vec![])
                 } else {
@@ -945,6 +1005,34 @@ impl<'a> Structurizer<'a> {
         }
 
         None
+    }
+
+    /// Check if a region starting at `block` always terminates (returns/throws)
+    /// without reaching any merge point. Used to detect guard clause patterns
+    /// where one branch of an if/else returns early.
+    fn region_terminates(&self, block: BlockId, depth: usize) -> bool {
+        if depth > 20 {
+            return false;
+        }
+        match self.terminator(block) {
+            Some(Op::Return(_)) => true,
+            Some(Op::Br { target, .. }) => {
+                // If target is a loop header we're inside, it doesn't terminate.
+                if self.loop_stack.contains(target) {
+                    return false;
+                }
+                self.region_terminates(*target, depth + 1)
+            }
+            Some(Op::BrIf {
+                then_target,
+                else_target,
+                ..
+            }) => {
+                self.region_terminates(*then_target, depth + 1)
+                    && self.region_terminates(*else_target, depth + 1)
+            }
+            _ => false,
+        }
     }
 
     /// Build a Dispatch fallback for remaining blocks when recursion depth
