@@ -139,13 +139,10 @@ examples in the test project (`~/cc-project/comparison-notes.md`).
 These are the main gaps between our output and ffdec-quality decompilation,
 identified by comparing `takeDamage` / `reduceDamage` in Player.ts.
 
-- [ ] **Out-of-SSA variable coalescing** — SSA creates a new ValueId for each
-  definition (`v11 = Math.round(damage)` instead of `damage = Math.round(damage)`).
-  Multiple SSA values sharing the same debug name should be coalesced back into a
-  single mutable variable when they don't interfere (aren't live simultaneously).
-  This is the single biggest readability gap vs ffdec. The information is all in
-  `value_names` — we just need to use it during AST lowering. Standard out-of-SSA
-  (phi elimination + copy coalescing via interference graph).
+- [x] **Out-of-SSA variable coalescing** — Done. Mem2Reg propagates alloc debug
+  names to stored values. Structurizer uses ValueId-only identity skip (not name
+  matching). Lowerer detects shared names and emits assignments instead of const
+  declarations, with self-assignment detection in branch-arg handlers.
 
 - [x] **SE inline flush architecture** — Solved via AST-level single-use const
   folding (`fold_single_use_consts`). Instead of fixing the lowerer's flush
