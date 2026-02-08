@@ -69,6 +69,8 @@ struct LowerCtx {
     lazy_inlines: HashMap<ValueId, InstId>,
     /// Constants that are always inlined (not removed on read).
     constant_inlines: HashMap<ValueId, Constant>,
+    /// Always-inlined instructions (like scope lookups) — rebuilt on every use.
+    always_inlines: HashMap<ValueId, InstId>,
     /// Alloc results whose immediately-following Store is merged.
     alloc_inits: HashMap<ValueId, ValueId>,
     /// Store InstIds that were merged into their preceding Alloc.
@@ -103,6 +105,7 @@ impl LowerCtx {
             use_counts,
             lazy_inlines: HashMap::new(),
             constant_inlines: HashMap::new(),
+            always_inlines: HashMap::new(),
             alloc_inits,
             skip_stores,
             value_names,
@@ -137,6 +140,13 @@ impl LowerCtx {
         // Check for constant inline first (always inlined, not consumed).
         if let Some(c) = self.constant_inlines.get(&v) {
             return Expr::Literal(c.clone());
+        }
+
+        // Check for always-inline (e.g. scope lookups — rebuilt on every use).
+        if let Some(&inst_id) = self.always_inlines.get(&v) {
+            if let Some(expr) = build_expr_from_op(self, func, &func.insts[inst_id].op.clone(), func.insts[inst_id].result) {
+                return expr;
+            }
         }
 
         // Check for side-effecting inline expression.
@@ -584,6 +594,17 @@ fn is_memory_write(op: &Op) -> bool {
     matches!(op, Op::SetField { .. } | Op::SetIndex { .. } | Op::Store { .. })
 }
 
+/// Scope-lookup calls are pure metadata that should always be inlined so that
+/// backend printers can detect and resolve them at consumption sites.
+fn is_scope_lookup_op(op: &Op) -> bool {
+    matches!(
+        op,
+        Op::SystemCall { system, method, .. }
+            if system == "Flash.Scope"
+                && (method == "findPropStrict" || method == "findProperty")
+    )
+}
+
 fn has_side_effecting_operand(ctx: &LowerCtx, func: &Function, inst_id: InstId) -> bool {
     for v in value_operands(&func.insts[inst_id].op) {
         if ctx.side_effecting_inlines.contains_key(&v) {
@@ -718,10 +739,17 @@ fn build_expr_from_op(
         },
 
         // Type operations
-        Op::Cast(v, ty) => Expr::Cast {
-            expr: Box::new(ctx.build_val(func, *v)),
-            ty: ty.clone(),
-        },
+        Op::Cast(v, ty) => {
+            // Elide redundant casts where source type matches target.
+            if func.value_types.get(*v).map(|t| t == ty).unwrap_or(false) {
+                ctx.build_val(func, *v)
+            } else {
+                Expr::Cast {
+                    expr: Box::new(ctx.build_val(func, *v)),
+                    ty: ty.clone(),
+                }
+            }
+        }
         Op::TypeCheck(v, ty) => Expr::TypeCheck {
             expr: Box::new(ctx.build_val(func, *v)),
             ty: ty.clone(),
@@ -933,6 +961,16 @@ fn lower_block_instructions(
                     ctx.flush_pending_reads(func, stmts);
                 }
 
+                // Scope lookups are pure metadata — always inline regardless
+                // of use count so consumption sites (Field, Call, Binary) can
+                // detect and resolve them.
+                if is_scope_lookup_op(&inst.op) {
+                    if let Some(r) = inst.result {
+                        ctx.always_inlines.insert(r, inst_id);
+                        continue;
+                    }
+                }
+
                 if let Some(r) = inst.result {
                     let count = ctx.use_count(r);
                     if is_deferrable(&inst.op) {
@@ -943,11 +981,23 @@ fn lower_block_instructions(
                             ctx.constant_inlines.insert(r, c.clone());
                             continue;
                         }
-                        if count == 1
-                            && !has_side_effecting_operand(ctx, func, inst_id)
-                        {
+                        let has_se_operand = has_side_effecting_operand(ctx, func, inst_id);
+                        if count == 1 && !has_se_operand {
                             ctx.lazy_inlines.insert(r, inst_id);
                             continue;
+                        }
+                        // Single-use pure op whose operand is a deferred side-
+                        // effecting inline — build the expression now and store
+                        // as a side-effecting inline so it propagates to the
+                        // single use site.
+                        if count == 1 && has_se_operand {
+                            let op = inst.op.clone();
+                            let result = inst.result;
+                            let expr = build_expr_from_op(ctx, func, &op, result);
+                            if let Some(e) = expr {
+                                ctx.side_effecting_inlines.insert(r, e);
+                                continue;
+                            }
                         }
                     }
                 }

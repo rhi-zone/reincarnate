@@ -1,3 +1,4 @@
+pub mod ast_printer;
 pub mod emit;
 pub mod runtime;
 pub mod scaffold;
