@@ -328,6 +328,8 @@ struct EmitCtx {
     alloc_inits: HashMap<ValueId, ValueId>,
     /// Store InstIds that were merged into their preceding Alloc — skip these.
     skip_stores: HashSet<InstId>,
+    /// Instructions absorbed by shape optimizations (e.g. Cmp absorbed by Math.max).
+    skip_insts: HashSet<InstId>,
 }
 
 impl EmitCtx {
@@ -352,6 +354,7 @@ impl EmitCtx {
             value_names,
             alloc_inits,
             skip_stores,
+            skip_insts: HashSet::new(),
         }
     }
 
@@ -382,6 +385,7 @@ impl EmitCtx {
             value_names,
             alloc_inits,
             skip_stores,
+            skip_insts: HashSet::new(),
         }
     }
 
@@ -557,9 +561,12 @@ fn adjust_use_counts_for_shapes(ctx: &mut EmitCtx, func: &Function, shape: &Shap
             else_body,
             else_trailing_assigns,
         } => {
-            // When Math.max/min absorbs a ternary IfElse, the Cmp defining
-            // cond is never emitted. Decrement use counts for its operands
-            // so they can be inlined at their (now single) use site.
+            // When Math.max/min absorbs a ternary, the Cmp instruction is
+            // never emitted. Mark it for skipping so its expression building
+            // doesn't consume inline values needed by Math.max. Only
+            // decrement multi-use Cmp operands (from 2 → 1) so they become
+            // inlineable; single-use operands are already should_inline and
+            // will silently disappear when the Cmp is skipped.
             if let Some((_, then_src, else_src)) = try_ternary_assigns(
                 ctx,
                 func,
@@ -567,31 +574,20 @@ fn adjust_use_counts_for_shapes(ctx: &mut EmitCtx, func: &Function, shape: &Shap
                 (else_assigns, else_body, else_trailing_assigns),
             ) {
                 if try_minmax(func, *block, *cond, then_src, else_src).is_some() {
-                    // cond loses its BrIf use (absorbed by Math.max/min).
-                    if let Some(count) = ctx.use_counts.get_mut(cond) {
-                        *count = count.saturating_sub(1);
-                    }
-                    // If cond is now unused, the Cmp won't emit — decrement
-                    // its operands too.
-                    if ctx.use_counts.get(cond).copied().unwrap_or(0) == 0 {
-                        let cmp_ops = func.blocks[*block].insts.iter().rev().find_map(
-                            |&iid| {
-                                let inst = &func.insts[iid];
-                                if inst.result == Some(*cond) {
-                                    if let Op::Cmp(_, lhs, rhs) = &inst.op {
-                                        return Some((*lhs, *rhs));
+                    for &iid in func.blocks[*block].insts.iter().rev() {
+                        let inst = &func.insts[iid];
+                        if inst.result == Some(*cond) {
+                            if let Op::Cmp(_, lhs, rhs) = &inst.op {
+                                ctx.skip_insts.insert(iid);
+                                for v in [*lhs, *rhs] {
+                                    if let Some(c) = ctx.use_counts.get_mut(&v) {
+                                        if *c > 1 {
+                                            *c -= 1;
+                                        }
                                     }
                                 }
-                                None
-                            },
-                        );
-                        if let Some((lhs, rhs)) = cmp_ops {
-                            if let Some(c) = ctx.use_counts.get_mut(&lhs) {
-                                *c = c.saturating_sub(1);
                             }
-                            if let Some(c) = ctx.use_counts.get_mut(&rhs) {
-                                *c = c.saturating_sub(1);
-                            }
+                            break;
                         }
                     }
                 }
@@ -1838,6 +1834,11 @@ fn emit_inst(
 ) -> Result<(), CoreError> {
     let inst = &func.insts[inst_id];
     let result = inst.result;
+
+    // Skip instructions absorbed by shape optimizations (e.g. Math.max).
+    if ctx.skip_insts.contains(&inst_id) {
+        return Ok(());
+    }
 
     match &inst.op {
         // -- Constants --
