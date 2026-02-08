@@ -322,12 +322,19 @@ struct EmitCtx {
     method_names: HashSet<String>,
     /// Debug names for values (from source-level variable/parameter names).
     value_names: HashMap<ValueId, String>,
+    /// Alloc results whose immediately-following Store is merged into the
+    /// declaration: `let name: type = value;` instead of separate statements.
+    /// Maps alloc result (ptr ValueId) → store value (ValueId).
+    alloc_inits: HashMap<ValueId, ValueId>,
+    /// Store InstIds that were merged into their preceding Alloc — skip these.
+    skip_stores: HashSet<InstId>,
 }
 
 impl EmitCtx {
     fn for_function(func: &Function, class_names: &HashMap<String, String>) -> Self {
         let needs_let = compute_needs_let(func);
         let use_counts = compute_use_counts(func);
+        let (alloc_inits, skip_stores) = compute_merged_stores(func);
         let value_names: HashMap<ValueId, String> = func
             .value_names
             .iter()
@@ -343,6 +350,8 @@ impl EmitCtx {
             ancestors: HashSet::new(),
             method_names: HashSet::new(),
             value_names,
+            alloc_inits,
+            skip_stores,
         }
     }
 
@@ -355,6 +364,7 @@ impl EmitCtx {
     ) -> Self {
         let needs_let = compute_needs_let(func);
         let use_counts = compute_use_counts(func);
+        let (alloc_inits, skip_stores) = compute_merged_stores(func);
         let value_names: HashMap<ValueId, String> = func
             .value_names
             .iter()
@@ -370,6 +380,8 @@ impl EmitCtx {
             ancestors: ancestors.clone(),
             method_names: method_names.clone(),
             value_names,
+            alloc_inits,
+            skip_stores,
         }
     }
 
@@ -468,6 +480,30 @@ fn compute_use_counts(func: &Function) -> HashMap<ValueId, usize> {
         }
     }
     counts
+}
+
+/// Find Store instructions that immediately follow their Alloc in the same block.
+///
+/// Returns (alloc_inits, skip_stores) so the Alloc can emit `let name: type = value;`
+/// and the Store can be skipped.
+fn compute_merged_stores(func: &Function) -> (HashMap<ValueId, ValueId>, HashSet<InstId>) {
+    let mut alloc_inits = HashMap::new();
+    let mut skip_stores = HashSet::new();
+    for block in func.blocks.values() {
+        for pair in block.insts.windows(2) {
+            let alloc_inst = &func.insts[pair[0]];
+            if let Op::Alloc(_) = &alloc_inst.op {
+                let alloc_result = alloc_inst.result.unwrap();
+                if let Op::Store { ptr, value } = &func.insts[pair[1]].op {
+                    if *ptr == alloc_result {
+                        alloc_inits.insert(alloc_result, *value);
+                        skip_stores.insert(pair[1]);
+                    }
+                }
+            }
+        }
+    }
+    (alloc_inits, skip_stores)
 }
 
 /// Adjust use counts for shapes whose condition was normalized by the
@@ -1658,14 +1694,23 @@ fn emit_inst(
 
         // -- Memory / fields --
         Op::Alloc(ty) => {
-            // Alloc is a mutable local — always `let`, never `const`.
             let r = result.unwrap();
-            let _ = writeln!(
-                out,
-                "{indent}let {}: {};",
-                ctx.val_name(r),
-                ts_type(ty)
-            );
+            if let Some(&init) = ctx.alloc_inits.get(&r) {
+                let _ = writeln!(
+                    out,
+                    "{indent}let {}: {} = {};",
+                    ctx.val_name(r),
+                    ts_type(ty),
+                    ctx.val(init)
+                );
+            } else {
+                let _ = writeln!(
+                    out,
+                    "{indent}let {}: {};",
+                    ctx.val_name(r),
+                    ts_type(ty)
+                );
+            }
         }
         Op::Load(ptr) => {
             let r = result.unwrap();
@@ -1673,7 +1718,9 @@ fn emit_inst(
             emit_or_inline(ctx, r, expr, false, out, indent);
         }
         Op::Store { ptr, value } => {
-            let _ = writeln!(out, "{indent}{} = {};", ctx.val(*ptr), ctx.val(*value));
+            if !ctx.skip_stores.contains(&inst_id) {
+                let _ = writeln!(out, "{indent}{} = {};", ctx.val(*ptr), ctx.val(*value));
+            }
         }
         Op::GetField { object, field } => {
             let r = result.unwrap();
