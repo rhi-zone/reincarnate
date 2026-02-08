@@ -158,7 +158,7 @@ identified by comparing `takeDamage` / `reduceDamage` in Player.ts.
   and cross-shape values (LogicalAnd/Or phis) need a separate mechanism not
   subject to block-boundary flushing.
 
-- [ ] **Compound assignment detection** — AST-to-AST pass to rewrite
+- [x] **Compound assignment detection** — AST-to-AST pass to rewrite
   `x = x + y` → `x += y`, `x = x - 1` → `x -= 1`, etc. Straightforward
   pattern match on `Stmt::Assign` where the value is a `Binary` with one
   operand equal to the target. Also `HP = HP - v` → `HP -= v`.
