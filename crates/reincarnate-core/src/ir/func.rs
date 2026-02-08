@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -58,4 +58,41 @@ pub struct Function {
     /// Optional debug names for values (from source-level variable names).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub value_names: HashMap<ValueId, String>,
+}
+
+impl Function {
+    /// Remove dead instructions from the arena.
+    ///
+    /// After transforms like Mem2Reg and DCE, instructions removed from blocks
+    /// remain in the `insts` arena. This compacts the arena so only live
+    /// instructions remain, allowing downstream consumers to safely iterate it.
+    pub fn compact_insts(&mut self) {
+        let mut live: HashSet<InstId> = HashSet::new();
+        for block in self.blocks.values() {
+            for &inst_id in &block.insts {
+                live.insert(inst_id);
+            }
+        }
+
+        if live.len() == self.insts.len() {
+            return;
+        }
+
+        let mut new_insts = PrimaryMap::new();
+        let mut remap: HashMap<InstId, InstId> = HashMap::new();
+        for (old_id, inst) in self.insts.iter() {
+            if live.contains(&old_id) {
+                let new_id = new_insts.push(inst.clone());
+                remap.insert(old_id, new_id);
+            }
+        }
+
+        for block in self.blocks.values_mut() {
+            for inst_id in &mut block.insts {
+                *inst_id = remap[inst_id];
+            }
+        }
+
+        self.insts = new_insts;
+    }
 }

@@ -70,6 +70,14 @@ impl TransformPipeline {
                 module = transform.apply(module)?.module;
             }
         }
+
+        // Compact instruction arenas: remove dead instructions left behind by
+        // transforms (Mem2Reg, DCE, etc.) so downstream consumers can safely
+        // iterate the arena without encountering orphaned entries.
+        for func in module.functions.values_mut() {
+            func.compact_insts();
+        }
+
         Ok(module)
     }
 }
