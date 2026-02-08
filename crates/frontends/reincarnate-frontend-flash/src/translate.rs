@@ -1942,8 +1942,7 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
 
         let func = translate_method_body(&abc, &body, "test", sig, &[], false).unwrap();
         let output = format!("{func}");
@@ -1975,8 +1974,7 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(32),
-        };
+            return_ty: Type::Int(32), ..Default::default() };
 
         let func = translate_method_body(&abc, &body, "answer", sig, &[], false).unwrap();
         let output = format!("{func}");
@@ -2009,8 +2007,7 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
 
         let func = translate_method_body(&abc, &body, "add_test", sig, &[], false).unwrap();
         let output = format!("{func}");
@@ -2045,8 +2042,7 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
 
         let func = translate_method_body(&abc, &body, "local_test", sig, &[], false).unwrap();
         let output = format!("{func}");

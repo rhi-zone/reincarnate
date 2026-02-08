@@ -507,8 +507,7 @@ mod tests {
     fn constants_propagate_through_arithmetic() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(42);
         let b = fb.const_int(10);
@@ -536,8 +535,7 @@ mod tests {
     fn local_variable_tracking() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(32),
-        };
+            return_ty: Type::Int(32), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(32));
         let val = fb.const_int(42);
@@ -563,8 +561,7 @@ mod tests {
         // Create a callee function.
         let callee_sig = FunctionSig {
             params: vec![],
-            return_ty: Type::String,
-        };
+            return_ty: Type::String, ..Default::default() };
         let mut callee_fb =
             FunctionBuilder::new("get_name", callee_sig, Visibility::Public);
         let s = callee_fb.const_string("hello");
@@ -574,8 +571,7 @@ mod tests {
         // Create a caller that calls get_name with Dynamic return type.
         let caller_sig = FunctionSig {
             params: vec![],
-            return_ty: Type::String,
-        };
+            return_ty: Type::String, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let result = caller_fb.call("get_name", &[], Type::Dynamic);
@@ -599,8 +595,7 @@ mod tests {
     fn struct_field_type() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let vx = fb.const_int(10);
         let vy = fb.const_int(20);
@@ -637,8 +632,7 @@ mod tests {
     fn block_parameter_join_same_type() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
@@ -681,8 +675,7 @@ mod tests {
     fn mixed_types_stay_dynamic() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
@@ -722,8 +715,7 @@ mod tests {
     fn global_ref_type() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let g = fb.global_ref("counter", Type::Dynamic);
         fb.ret(Some(g));
@@ -751,8 +743,7 @@ mod tests {
     fn comparison_produces_bool() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(2);
@@ -786,8 +777,7 @@ mod tests {
         let method_full = format!("{class_name}::{method_bare}");
         let method_sig = FunctionSig {
             params: vec![Type::Struct(class_name.to_string())],
-            return_ty: method_return_ty,
-        };
+            return_ty: method_return_ty, ..Default::default() };
         let mut method_fb =
             FunctionBuilder::new(&method_full, method_sig, Visibility::Public);
         let self_param = method_fb.param(0);
@@ -798,8 +788,7 @@ mod tests {
         // The caller calls bare "isNaga" with a Struct("Creature") receiver.
         let caller_sig = FunctionSig {
             params: vec![Type::Struct(class_name.to_string())],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
@@ -845,8 +834,7 @@ mod tests {
         // Parent class "Creature" has isNaga, child "Naga" extends it.
         let parent_method_sig = FunctionSig {
             params: vec![Type::Struct("Creature".to_string())],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut parent_fb =
             FunctionBuilder::new("Creature::isNaga", parent_method_sig, Visibility::Public);
         let self_param = parent_fb.param(0);
@@ -857,8 +845,7 @@ mod tests {
         // Caller has a Naga receiver, calls bare "isNaga".
         let caller_sig = FunctionSig {
             params: vec![Type::Struct("Naga".to_string())],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
@@ -912,8 +899,7 @@ mod tests {
         // Only one class defines "isNaga" → unique fallback works.
         let method_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut method_fb =
             FunctionBuilder::new("Creature::isNaga", method_sig, Visibility::Public);
         let self_param = method_fb.param(0);
@@ -924,8 +910,7 @@ mod tests {
         // Caller with Dynamic receiver.
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
@@ -964,8 +949,7 @@ mod tests {
     fn select_same_type_inferred() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let a = fb.const_int(1);
@@ -1004,8 +988,7 @@ mod tests {
     fn select_mixed_types_stays_dynamic() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let a = fb.const_int(1);
@@ -1043,8 +1026,7 @@ mod tests {
         // Two classes define "getValue" with different return types.
         let method1_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut method1_fb =
             FunctionBuilder::new("ClassA::getValue", method1_sig, Visibility::Public);
         let s1 = method1_fb.param(0);
@@ -1054,8 +1036,7 @@ mod tests {
 
         let method2_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut method2_fb =
             FunctionBuilder::new("ClassB::getValue", method2_sig, Visibility::Public);
         let s2 = method2_fb.param(0);
@@ -1066,8 +1047,7 @@ mod tests {
         // Caller with Dynamic receiver.
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
@@ -1110,8 +1090,7 @@ mod tests {
     fn alloc_type_refined_from_stores() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Dynamic);
         let a = fb.const_int(1);
@@ -1143,8 +1122,7 @@ mod tests {
     fn alloc_type_union_from_mixed_stores() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Dynamic);
         let a = fb.const_int(1);
@@ -1176,8 +1154,7 @@ mod tests {
     fn alloc_type_null_sentinel_absorbed() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Dynamic);
         let a = fb.const_int(1);
@@ -1208,8 +1185,7 @@ mod tests {
     fn alloc_type_null_sentinel_with_dynamic_stays_dynamic() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Dynamic);
         let b = fb.const_null();

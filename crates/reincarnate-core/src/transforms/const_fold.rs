@@ -319,8 +319,7 @@ mod tests {
     fn int_arithmetic() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(2);
         let b = fb.const_int(3);
@@ -337,8 +336,7 @@ mod tests {
     fn float_arithmetic() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Float(64),
-        };
+            return_ty: Type::Float(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_float(1.5);
         let b = fb.const_float(2.0);
@@ -354,8 +352,7 @@ mod tests {
     fn comparison() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(5);
         let b = fb.const_int(10);
@@ -371,8 +368,7 @@ mod tests {
     fn logical_not() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_bool(true);
         let result = fb.not(a);
@@ -387,8 +383,7 @@ mod tests {
     fn division_by_zero_preserved() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(5);
         let b = fb.const_int(0);
@@ -404,8 +399,7 @@ mod tests {
     fn non_constant_operand() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let b = fb.const_int(3);
@@ -421,8 +415,7 @@ mod tests {
     fn negation() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(42);
         let result = fb.neg(a);
@@ -437,8 +430,7 @@ mod tests {
     fn not_cmp_folds_to_inverse() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let one = fb.const_int(1);
@@ -460,8 +452,7 @@ mod tests {
     fn bitwise_and() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(0xFF);
         let b = fb.const_int(0x0F);

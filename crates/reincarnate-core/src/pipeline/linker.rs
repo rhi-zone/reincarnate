@@ -152,8 +152,7 @@ mod tests {
         let mut mb_a = ModuleBuilder::new("mod_a");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("helper", sig, Visibility::Public);
         fb.ret(None);
         mb_a.add_function(fb.build());
@@ -214,8 +213,7 @@ mod tests {
         let mut mb_a = ModuleBuilder::new("mod_a");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("secret", sig, Visibility::Private);
         fb.ret(None);
         mb_a.add_function(fb.build());
@@ -281,8 +279,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("standalone");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("main", sig, Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -297,8 +294,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("mod_a");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("f1", sig.clone(), Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());

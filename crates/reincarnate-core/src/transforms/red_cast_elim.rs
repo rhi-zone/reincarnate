@@ -54,8 +54,7 @@ mod tests {
     fn redundant_cast_rewritten_to_copy() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(1);
@@ -83,8 +82,7 @@ mod tests {
     fn non_redundant_cast_unchanged() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let val = fb.const_int(1); // Type::Int(64)
         let cast = fb.cast(val, Type::Bool);

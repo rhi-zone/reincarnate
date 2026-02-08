@@ -1104,7 +1104,15 @@ fn emit_function(
     let params: Vec<String> = entry
         .params
         .iter()
-        .map(|p| format!("{}: {}", ctx.val(func, p.value), ts_type(&p.ty)))
+        .enumerate()
+        .map(|(i, p)| {
+            let base = format!("{}: {}", ctx.val(func, p.value), ts_type(&p.ty));
+            if let Some(Some(default)) = func.sig.defaults.get(i) {
+                format!("{base} = {}", emit_constant(default))
+            } else {
+                base
+            }
+        })
         .collect();
     let ret_ty = ts_type(&func.sig.return_ty);
 
@@ -2579,7 +2587,16 @@ fn emit_class_method(
 
     let params: Vec<String> = entry.params[param_start..]
         .iter()
-        .map(|p| format!("{}: {}", ctx.val(func, p.value), ts_type(&p.ty)))
+        .enumerate()
+        .map(|(i, p)| {
+            let sig_idx = i + param_start;
+            let base = format!("{}: {}", ctx.val(func, p.value), ts_type(&p.ty));
+            if let Some(Some(default)) = func.sig.defaults.get(sig_idx) {
+                format!("{base} = {}", emit_constant(default))
+            } else {
+                base
+            }
+        })
         .collect();
 
     let is_simple = func.blocks.len() == 1;
@@ -2826,8 +2843,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64), Type::Int(64)],
-                return_ty: Type::Int(64),
-            };
+                return_ty: Type::Int(64), ..Default::default() };
             let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
             let a = fb.param(0);
             let b = fb.param(1);
@@ -2849,8 +2865,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-                return_ty: Type::Int(64),
-            };
+                return_ty: Type::Int(64), ..Default::default() };
             let mut fb = FunctionBuilder::new("choose", sig, Visibility::Public);
 
             let cond = fb.param(0);
@@ -2967,8 +2982,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
             let x = fb.const_int(100);
             let y = fb.const_int(200);
@@ -2991,8 +3005,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("tick", sig, Visibility::Public);
             fb.system_call("timing", "tick", &[], Type::Void);
             fb.system_call("input", "update", &[], Type::Void);
@@ -3009,8 +3022,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("noop", sig, Visibility::Public);
             fb.ret(None);
             mb.add_function(fb.build());
@@ -3024,8 +3036,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("constants", sig, Visibility::Public);
             fb.const_null();
             fb.const_bool(true);
@@ -3051,8 +3062,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
 
             let a = fb.const_int(1);
@@ -3082,8 +3092,7 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("identity", sig, Visibility::Public);
         let param = fb.param(0);
         // Alloc → Store → Load chain (typical local variable pattern).
@@ -3120,8 +3129,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic,
-            };
+                return_ty: Type::Dynamic, ..Default::default() };
             let mut fb = FunctionBuilder::new("get_prop", sig, Visibility::Public);
             let obj = fb.param(0);
             // Qualified field → short name extraction.
@@ -3147,8 +3155,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("diamond", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -3182,8 +3189,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("while_loop", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -3216,8 +3222,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("for_loop", sig, Visibility::Public);
 
             let (header, header_vals) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -3269,8 +3274,7 @@ mod tests {
         // Constructor: (this: dyn) -> void
         let ctor_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Phouka::new", ctor_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -3283,8 +3287,7 @@ mod tests {
         // Instance method: (this: dyn, amount: i32) -> void
         let method_sig = FunctionSig {
             params: vec![Type::Dynamic, Type::Int(32)],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Phouka::attack", method_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -3299,8 +3302,7 @@ mod tests {
         // Static method: (amount: i32) -> i32
         let static_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Int(32),
-        };
+            return_ty: Type::Int(32), ..Default::default() };
         let mut fb = FunctionBuilder::new("Phouka::create", static_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -3314,8 +3316,7 @@ mod tests {
         // Getter: (this: dyn) -> i32
         let getter_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(32),
-        };
+            return_ty: Type::Int(32), ..Default::default() };
         let mut fb = FunctionBuilder::new("Phouka::get_health", getter_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -3385,8 +3386,7 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Foo::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "Foo".into(), MethodKind::Constructor);
         fb.ret(None);
@@ -3404,8 +3404,7 @@ mod tests {
         // Free function.
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -3461,8 +3460,7 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Swamp::new", sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -3528,8 +3526,7 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Monster::new", sig.clone(), Visibility::Public);
         fb.set_class(vec!["classes".into()], "Monster".into(), MethodKind::Constructor);
         fb.ret(None);
@@ -3587,8 +3584,7 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Child::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "Child".into(), MethodKind::Constructor);
         let this = fb.param(0);
@@ -3639,8 +3635,7 @@ mod tests {
         // Container constructor does findPropStrict + getField + construct.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Container::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "Container".into(), MethodKind::Constructor);
         let _this = fb.param(0);
@@ -3660,8 +3655,7 @@ mod tests {
         // Widget constructor (empty).
         let sig2 = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb2 = FunctionBuilder::new("Widget::new", sig2, Visibility::Public);
         fb2.set_class(Vec::new(), "Widget".into(), MethodKind::Constructor);
         fb2.ret(None);
@@ -3706,8 +3700,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic,
-            };
+                return_ty: Type::Dynamic, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let receiver = fb.param(0);
             let arg1 = fb.const_string("text");
@@ -3737,8 +3730,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic,
-            };
+                return_ty: Type::Dynamic, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let obj = fb.param(0);
             let result = fb.get_field(obj, "classes:BaseContent::flags", Type::Dynamic);
@@ -3758,8 +3750,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic, Type::Int(32)],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let obj = fb.param(0);
             let val = fb.param(1);
@@ -3792,8 +3783,7 @@ mod tests {
         // Instance method that does findPropStrict("classes:Hero::hp") + getField.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("Hero::getHp", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -3845,8 +3835,7 @@ mod tests {
         // Child instance method does findPropStrict("classes:Base::player") + getField.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("Child::getPlayer", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Child".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -3891,8 +3880,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Dynamic,
-            };
+                return_ty: Type::Dynamic, ..Default::default() };
             let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
             let name = fb.const_string("classes:Hero::hp");
             let scope =
@@ -3936,8 +3924,7 @@ mod tests {
         // Hero method does findPropStrict("classes:Villain::power") — unrelated class.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut fb = FunctionBuilder::new("Hero::spy", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -3987,8 +3974,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic,
-            };
+                return_ty: Type::Dynamic, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let name = fb.const_string("rand");
@@ -4016,8 +4002,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("X");
             let scope =
@@ -4052,8 +4037,7 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic, Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("Base::setTemp", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Base".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -4093,8 +4077,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Dynamic,
-            };
+                return_ty: Type::Dynamic, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("flash.events::Event");
             let scope =
@@ -4121,8 +4104,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64)],
-                return_ty: Type::Int(64),
-            };
+                return_ty: Type::Int(64), ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let name = fb.const_string("rand");
@@ -4150,8 +4132,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("flash.net::registerClassAlias");
             let scope =
@@ -4184,8 +4165,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64), Type::Int(64)],
-                return_ty: Type::Int(64),
-            };
+                return_ty: Type::Int(64), ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let a = fb.param(0);
             let b = fb.param(1);
@@ -4206,8 +4186,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic,
-            };
+                return_ty: Type::Dynamic, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let name = fb.const_string("int");
@@ -4237,8 +4216,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("rand");
             let _scope =
@@ -4276,8 +4254,7 @@ mod tests {
         // Base class with isNaga method.
         let base_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("Base::isNaga", base_sig, Visibility::Public);
         fb.set_class(vec![], "Base".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -4297,8 +4274,7 @@ mod tests {
         // Child class with a method that calls isNaga via scope lookup.
         let child_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("Child::check", child_sig, Visibility::Public);
         fb.set_class(vec![], "Child".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -4338,8 +4314,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool,
-            };
+                return_ty: Type::Bool, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let player = fb.param(0);
             let result = fb.call("isNaga", &[player], Type::Bool);
@@ -4359,8 +4334,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Bool,
-            };
+                return_ty: Type::Bool, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Bool);
@@ -4380,8 +4354,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool,
-            };
+                return_ty: Type::Bool, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Bool);
@@ -4401,8 +4374,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool,
-            };
+                return_ty: Type::Bool, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Bool);
@@ -4428,8 +4400,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -4470,8 +4441,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -4512,8 +4482,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -4548,8 +4517,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
             let not_cond = fb.not(cond);
@@ -4591,8 +4559,7 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64), Type::Int(64)],
-                return_ty: Type::Void,
-            };
+                return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let a = fb.param(0);
             let b = fb.param(1);

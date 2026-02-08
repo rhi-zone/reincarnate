@@ -1,11 +1,12 @@
 //! AVM2 class/instance → IR StructDef + method functions.
 
 use reincarnate_core::ir::{
-    ClassDef, Function, FunctionSig, MethodKind, Module, ModuleBuilder, StructDef, Type, Visibility,
+    ClassDef, Constant, Function, FunctionSig, MethodKind, Module, ModuleBuilder, StructDef, Type,
+    Visibility,
 };
-use swf::avm2::types::{AbcFile, ConstantPool, Index, Trait, TraitKind};
+use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, Trait, TraitKind};
 
-use crate::multiname::{resolve_multiname_index, resolve_multiname_structured, resolve_type, NsKind};
+use crate::multiname::{pool_string, resolve_multiname_index, resolve_multiname_structured, resolve_type, NsKind};
 use crate::translate::translate_method_body;
 
 /// Information about a translated class.
@@ -282,9 +283,24 @@ fn translate_class_method(
     // (e.g. "game", "DUNGEON_WITCH_CUM_WITCH_BEDROOM") instead of the real
     // parameter names.  Op::Debug opcodes embedded in the method body provide
     // the correct variable names — including for parameter registers.
+    let mut defaults: Vec<Option<Constant>> = Vec::new();
+    if has_self {
+        defaults.push(None); // `this` has no default
+    }
     for param in &method.params {
         param_types.push(resolve_type(pool, &param.kind));
         param_names.push(None);
+        defaults.push(
+            param
+                .default_value
+                .as_ref()
+                .and_then(|dv| convert_default_value(pool, dv)),
+        );
+    }
+
+    // Trim trailing None values to keep defaults vec minimal.
+    while defaults.last() == Some(&None) {
+        defaults.pop();
     }
 
     let return_type = resolve_type(pool, &method.return_type);
@@ -292,10 +308,56 @@ fn translate_class_method(
     let sig = FunctionSig {
         params: param_types,
         return_ty: return_type,
+        defaults,
     };
 
     let func = translate_method_body(abc, body, func_name, sig, &param_names, has_self)?;
     Ok(Some(func))
+}
+
+/// Convert an AVM2 `DefaultValue` to an IR `Constant`.
+fn convert_default_value(pool: &ConstantPool, dv: &DefaultValue) -> Option<Constant> {
+    match dv {
+        DefaultValue::True => Some(Constant::Bool(true)),
+        DefaultValue::False => Some(Constant::Bool(false)),
+        DefaultValue::Null | DefaultValue::Undefined => Some(Constant::Null),
+        DefaultValue::Int(idx) => {
+            let i = idx.0 as usize;
+            let val = if i > 0 && i <= pool.ints.len() {
+                pool.ints[i - 1] as i64
+            } else {
+                0
+            };
+            Some(Constant::Int(val))
+        }
+        DefaultValue::Uint(idx) => {
+            let i = idx.0 as usize;
+            let val = if i > 0 && i <= pool.uints.len() {
+                pool.uints[i - 1] as u64
+            } else {
+                0
+            };
+            Some(Constant::UInt(val))
+        }
+        DefaultValue::Double(idx) => {
+            let i = idx.0 as usize;
+            let val = if i > 0 && i <= pool.doubles.len() {
+                pool.doubles[i - 1]
+            } else {
+                f64::NAN
+            };
+            Some(Constant::Float(val))
+        }
+        DefaultValue::String(idx) => Some(Constant::String(pool_string(pool, idx))),
+        // Namespace variants are rare and don't map to simple constants.
+        DefaultValue::Namespace(_)
+        | DefaultValue::Package(_)
+        | DefaultValue::PackageInternal(_)
+        | DefaultValue::Protected(_)
+        | DefaultValue::Explicit(_)
+        | DefaultValue::StaticProtected(_)
+        | DefaultValue::Private(_) => None,
+    }
 }
 
 /// Translate all classes and scripts in an ABC file into an IR module.
@@ -339,8 +401,7 @@ pub fn translate_abc_to_module(abc: &AbcFile, module_name: &str) -> Result<Modul
                 let return_type = resolve_type(&abc.constant_pool, &method.return_type);
                 let sig = FunctionSig {
                     params: vec![],
-                    return_ty: return_type,
-                };
+                    return_ty: return_type, ..Default::default() };
                 let func = translate_method_body(abc, body, &func_name, sig, &[], false)?;
                 mb.add_function(func);
             }

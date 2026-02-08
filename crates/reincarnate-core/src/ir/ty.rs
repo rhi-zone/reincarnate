@@ -52,6 +52,19 @@ pub enum Type {
 pub struct FunctionSig {
     pub params: Vec<Type>,
     pub return_ty: Type,
+    /// Default values for parameters (parallel vec, `None` = no default).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub defaults: Vec<Option<super::value::Constant>>,
+}
+
+impl Default for FunctionSig {
+    fn default() -> Self {
+        Self {
+            params: Vec::new(),
+            return_ty: Type::Void,
+            defaults: Vec::new(),
+        }
+    }
 }
 
 /// Constraint generated during type inference.

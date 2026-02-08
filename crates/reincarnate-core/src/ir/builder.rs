@@ -564,8 +564,7 @@ mod tests {
         // Build: fn add(a: Int(64), b: Int(64)) -> Int(64) { return a + b }
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
 
         let a = fb.param(0);
@@ -606,8 +605,7 @@ mod tests {
         //   else(v): return v
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("choose", sig, Visibility::Public);
 
         let cond = fb.param(0);
@@ -640,8 +638,7 @@ mod tests {
     fn build_module() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("main", sig, Visibility::Public);
         fb.ret(None);
         let func = fb.build();

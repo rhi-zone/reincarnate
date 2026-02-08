@@ -726,8 +726,7 @@ mod tests {
         // foo(x: Int(32)) → Void. Caller passes Dynamic arg → should refine.
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut callee_fb =
             FunctionBuilder::new("foo", callee_sig, Visibility::Private);
         callee_fb.ret(None);
@@ -735,8 +734,7 @@ mod tests {
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let arg = caller_fb.param(0);
@@ -761,8 +759,7 @@ mod tests {
         // fn returning Int(32), returns a Dynamic param → param should refine.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(32),
-        };
+            return_ty: Type::Int(32), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -784,8 +781,7 @@ mod tests {
         // Add(v_dynamic, v_int64) → v_dynamic should become Int(64).
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.param(0); // Dynamic
         let b = fb.const_int(42); // Int(64)
@@ -809,8 +805,7 @@ mod tests {
         // BrIf on a Dynamic cond → should become Bool.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0); // Dynamic
         let then_b = fb.create_block();
@@ -840,8 +835,7 @@ mod tests {
         // expects Int(32) → both v1 and v2 should become Int(32).
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut callee_fb =
             FunctionBuilder::new("foo", callee_sig, Visibility::Private);
         callee_fb.ret(None);
@@ -849,8 +843,7 @@ mod tests {
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let v1 = caller_fb.param(0);
@@ -877,8 +870,7 @@ mod tests {
         // Value constrained to both Int(32) (by call) and String (by return) → stays Dynamic.
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut callee_fb =
             FunctionBuilder::new("foo", callee_sig, Visibility::Private);
         callee_fb.ret(None);
@@ -886,8 +878,7 @@ mod tests {
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::String,
-        };
+            return_ty: Type::String, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let p = caller_fb.param(0);
@@ -913,8 +904,7 @@ mod tests {
         // Already-typed values should remain unchanged.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0); // Int(64)
         let c = fb.const_int(42); // Int(64)
@@ -941,8 +931,7 @@ mod tests {
         // Branch with concrete arg → target block param should be refined.
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
@@ -980,8 +969,7 @@ mod tests {
         // Module with no Dynamic values → changed = false.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -1004,8 +992,7 @@ mod tests {
         //   result should become Bool via unique method sig fallback.
         let method_sig = FunctionSig {
             params: vec![Type::Struct("Creature".to_string())],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut method_fb =
             FunctionBuilder::new("Creature::isAlive", method_sig, Visibility::Public);
         let self_param = method_fb.param(0);
@@ -1015,8 +1002,7 @@ mod tests {
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
-        };
+            return_ty: Type::Dynamic, ..Default::default() };
         let mut caller_fb =
             FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
@@ -1061,8 +1047,7 @@ mod tests {
         // SetField on a known struct constrains the value to the field type.
         let sig = FunctionSig {
             params: vec![Type::Struct("Point".to_string()), Type::Dynamic],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let obj = fb.param(0);
         let val = fb.param(1); // Dynamic

@@ -257,8 +257,7 @@ mod tests {
     fn dead_arithmetic_removed() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(2);
@@ -280,8 +279,7 @@ mod tests {
     fn used_arithmetic_kept() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(2);
@@ -299,8 +297,7 @@ mod tests {
     fn side_effects_kept() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let _call_result = fb.call("side_effect", &[], Type::Void);
         fb.ret(None);
@@ -316,8 +313,7 @@ mod tests {
     fn chained_dead_code() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let _b = fb.add(a, a); // unused chain
@@ -333,8 +329,7 @@ mod tests {
     fn constant_branch_simplified() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let then_block = fb.create_block();
@@ -382,8 +377,7 @@ mod tests {
     fn unreachable_block_cleared() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let dead_block = fb.create_block();

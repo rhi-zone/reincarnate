@@ -1534,8 +1534,7 @@ mod tests {
     fn test_single_block() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("id", sig, Visibility::Public);
         let a = fb.param(0);
         fb.ret(Some(a));
@@ -1550,8 +1549,7 @@ mod tests {
         // entry → b1 → b2 (return)
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("chain", sig, Visibility::Public);
 
         let b1 = fb.create_block();
@@ -1584,8 +1582,7 @@ mod tests {
         //   merge: return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("diamond", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -1625,8 +1622,7 @@ mod tests {
         //   merge: return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("if_then", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -1675,8 +1671,7 @@ mod tests {
         //   exit:   return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("while_loop", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -1716,8 +1711,7 @@ mod tests {
         //   exit:   return
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("for_loop", sig, Visibility::Public);
 
         let (header, header_vals) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -1762,8 +1756,7 @@ mod tests {
         //   exit:   return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("general_loop", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -1807,8 +1800,7 @@ mod tests {
         // This is a general loop (exit not at header) with if/else inside.
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Bool],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("nested", sig, Visibility::Public);
         let cond = fb.param(0);
         let loop_cond = fb.param(1);
@@ -1857,8 +1849,7 @@ mod tests {
         //   merge → (return)
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("dom_test", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -1904,8 +1895,7 @@ mod tests {
         // The structurizer should upgrade the IfElse to LogicalOr.
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("trailing_else", sig, Visibility::Public);
         let cond = fb.param(0);
         let a = fb.param(1);
@@ -1966,8 +1956,7 @@ mod tests {
         // merge with args. Verify both sets of assigns are captured.
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64),
-        };
+            return_ty: Type::Int(64), ..Default::default() };
         let mut fb = FunctionBuilder::new("trailing_both", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -2033,8 +2022,7 @@ mod tests {
         // Short-circuit AND: v_phi = cond && v_cmp.
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("logical_and", sig, Visibility::Public);
         let cond = fb.param(0);
         let a = fb.param(1);
@@ -2092,8 +2080,7 @@ mod tests {
         // Simplest OR: v_phi = cond || other (rhs_body is empty).
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Bool],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("or_simple", sig, Visibility::Public);
         let cond = fb.param(0);
         let other = fb.param(1);
@@ -2148,8 +2135,7 @@ mod tests {
         //   v_phi = v_ge && v_rhs
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("inv_and", sig, Visibility::Public);
         let x = fb.param(0);
         let y = fb.param(1);
@@ -2215,8 +2201,7 @@ mod tests {
         //   v_phi = v_ge || v_rhs
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("inv_or", sig, Visibility::Public);
         let x = fb.param(0);
         let y = fb.param(1);
@@ -2280,8 +2265,7 @@ mod tests {
         //   v_phi = v_bool && v_rhs
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool,
-        };
+            return_ty: Type::Bool, ..Default::default() };
         let mut fb = FunctionBuilder::new("inv_and_not", sig, Visibility::Public);
         let x = fb.param(0);
         let y = fb.param(1);

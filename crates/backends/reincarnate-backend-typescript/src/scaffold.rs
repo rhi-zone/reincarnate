@@ -232,8 +232,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("game");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("update", sig.clone(), Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -255,8 +254,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("utils");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("compute", sig, Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -282,8 +280,7 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
-        };
+            return_ty: Type::Void, ..Default::default() };
         let mut fb = FunctionBuilder::new("App::init", sig.clone(), Visibility::Public);
         fb.set_class(Vec::new(), "App".into(), MethodKind::Static);
         fb.ret(None);
