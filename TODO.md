@@ -60,8 +60,9 @@ value needs a concrete type. This isn't a polish pass; it's a prerequisite.
   what the source already knows, so inference only needs to handle what's
   genuinely untyped.
 - [x] **Flash frontend: extract local variable names** — Done. Extracts from
-  `MethodParam.name` and `Op::Debug` opcodes. Names propagate through Mem2Reg
-  and appear in TypeScript output.
+  `Op::Debug` opcodes (not HAS_PARAM_NAMES, which has stale indices in this
+  SWF). Register offset corrected for instance methods (`this` skipped).
+  Names propagate through Mem2Reg and appear in TypeScript output.
 - [ ] **Alloc type refinement** — The single biggest remaining `:any` source
   (~390 of 445). The Flash frontend creates `alloc dyn` for all locals. Even
   when every Store to an alloc writes the same concrete type (e.g. `Function`,
@@ -103,3 +104,44 @@ Measured on CoC.ts (36k lines) after TypeInference + ConstraintSolve.
     could use `Option<T>` instead of a union.
   - For TypeScript, the pragmatic fix is to emit a union type annotation
     (`number | string`) instead of `any`, which at least preserves type safety.
+
+## Output Quality — FFDec Comparison
+
+Compared our TypeScript output against JPEXS FFDec's ActionScript decompilation
+of the same SWF. Parameter names now match. Detailed notes with specific method
+examples in the test project (`~/cc-project/comparison-notes.md`).
+
+### High Priority (correctness)
+
+- [ ] **`["rt:?"]` runtime property access** — Systemic. `GetProperty` with
+  runtime indices emits `index["rt:?"]` instead of `array[index]`. Produces
+  non-functional code for array lookups and indexed property access.
+- [ ] **Instruction reordering** — Some methods emit side-effecting calls in
+  the wrong order, changing semantics. Likely a stack simulation bug.
+- [ ] **Negative constant resolution** — At least one `Math.max` clamp emits
+  a wrong positive constant instead of the correct negative value.
+
+### Medium Priority (output quality)
+
+- [ ] **Early returns via control flow inversion** — The structurizer always
+  nests if/else. When one branch returns, emit it as a guard clause
+  (`if (cond) return x;`) and continue at the same nesting level. FFDec does
+  this. Implementation: detect when one branch of a BrIf terminates (all paths
+  return), extract as guard, flatten continuation into Seq.
+- [ ] **Default parameter values** — AVM2 encodes optional parameter defaults
+  (HAS_OPTIONAL flag). We parse them (swf crate) but don't emit them.
+- [ ] **Dead variable declarations** — Many methods declare unused
+  `let v###` variables. SSA artifacts (dead phi-merge variables) that survive
+  DCE. Need a pass or emitter check to skip variables never read.
+- [ ] **Complex loop decompilation** — Some while-loop bodies have unreachable
+  code after `continue`, wrong variable assignments, and confused array
+  accesses. Related to the `["rt:?"]` bug.
+
+### Low Priority (polish)
+
+- [ ] **Redundant type casts** — Eliminate `as number` etc. when the expression
+  already has the target type.
+- [ ] **Inline closures** — Filter/map callbacks extracted as named function
+  references instead of being inlined as arrow functions.
+- [ ] **Condition inversion** — Structurizer sometimes inverts conditions.
+  Not a bug but reads backward vs the original source.
