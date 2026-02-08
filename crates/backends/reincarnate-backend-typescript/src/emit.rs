@@ -449,10 +449,14 @@ fn compute_needs_let(func: &Function) -> HashSet<ValueId> {
         func.blocks[func.entry].params.iter().map(|p| p.value).collect();
 
     let mut needs_let = HashSet::new();
-    for (_inst_id, inst) in func.insts.iter() {
-        if let Some(r) = inst.result {
-            if !entry_params.contains(&r) {
-                needs_let.insert(r);
+    // Only iterate live instructions in blocks — the arena includes
+    // orphaned dead instructions from Mem2Reg/DCE.
+    for block in func.blocks.values() {
+        for &inst_id in &block.insts {
+            if let Some(r) = func.insts[inst_id].result {
+                if !entry_params.contains(&r) {
+                    needs_let.insert(r);
+                }
             }
         }
     }
@@ -1663,12 +1667,11 @@ fn emit_inst(
 
         // -- Memory / fields --
         Op::Alloc(ty) => {
-            // Alloc is a declaration, not an expression — always emit directly.
+            // Alloc is a mutable local — always `let`, never `const`.
             let r = result.unwrap();
-            let pfx = ctx.let_prefix(r);
             let _ = writeln!(
                 out,
-                "{indent}{pfx}{}: {};",
+                "{indent}let {}: {};",
                 ctx.val_name(r),
                 ts_type(ty)
             );
