@@ -13,9 +13,10 @@ use crate::transforms::util::value_operands;
 use crate::pipeline::LoweringConfig;
 
 use super::ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
+use super::ast_passes;
 use super::block::BlockId;
 use super::func::Function;
-use super::inst::{CmpKind, InstId, Op};
+use super::inst::{InstId, Op};
 use super::structurize::{BlockArgAssign, Shape};
 use super::ty::Type;
 use super::value::{Constant, ValueId};
@@ -41,6 +42,14 @@ pub fn lower_function(func: &Function, shape: &Shape, config: &LoweringConfig) -
     // Prepend declarations to body.
     let mut full_body = decls;
     full_body.append(&mut body);
+
+    // AST-to-AST rewrite passes (run after lowering).
+    if config.ternary {
+        ast_passes::rewrite_ternary(&mut full_body);
+    }
+    if config.minmax {
+        ast_passes::rewrite_minmax(&mut full_body);
+    }
 
     AstFunction {
         name: func.name.clone(),
@@ -328,49 +337,10 @@ fn adjust_use_counts_for_shapes(ctx: &mut LowerCtx, func: &Function, shape: &Sha
             adjust_use_counts_for_shapes(ctx, func, rhs_body);
         }
         Shape::IfElse {
-            block,
-            cond,
-            then_assigns,
             then_body,
-            then_trailing_assigns,
-            else_assigns,
             else_body,
-            else_trailing_assigns,
+            ..
         } => {
-            if ctx.config.ternary {
-                if let Some((_, then_src, else_src)) = try_ternary_assigns(
-                    ctx,
-                    func,
-                    (then_assigns, then_body, then_trailing_assigns),
-                    (else_assigns, else_body, else_trailing_assigns),
-                ) {
-                    if ctx.config.minmax
-                        && try_minmax(func, *block, *cond, then_src, else_src).is_some()
-                    {
-                        // The cond comparison is replaced by Math.max/min —
-                        // mark it dead so it doesn't consume its operands via
-                        // side-effecting inline chaining.
-                        if let Some(c) = ctx.use_counts.get_mut(cond) {
-                            *c = c.saturating_sub(1);
-                        }
-                        for &iid in func.blocks[*block].insts.iter().rev() {
-                            let inst = &func.insts[iid];
-                            if inst.result == Some(*cond) {
-                                if let Op::Cmp(_, lhs, rhs) = &inst.op {
-                                    for v in [*lhs, *rhs] {
-                                        if let Some(c) = ctx.use_counts.get_mut(&v) {
-                                            if *c > 1 {
-                                                *c -= 1;
-                                            }
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
             adjust_use_counts_for_shapes(ctx, func, then_body);
             adjust_use_counts_for_shapes(ctx, func, else_body);
         }
@@ -455,129 +425,6 @@ fn logical_rhs_body_emits_empty(ctx: &LowerCtx, func: &Function, shape: &Shape) 
             true
         }
         _ => false,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Ternary / Math.max/min detection
-// ---------------------------------------------------------------------------
-
-fn try_ternary_assigns(
-    ctx: &LowerCtx,
-    func: &Function,
-    then_branch: (&[BlockArgAssign], &Shape, &[BlockArgAssign]),
-    else_branch: (&[BlockArgAssign], &Shape, &[BlockArgAssign]),
-) -> Option<(ValueId, ValueId, ValueId)> {
-    let (then_assigns, then_body, then_trailing) = then_branch;
-    let (else_assigns, else_body, else_trailing) = else_branch;
-
-    let then_all: Vec<_> = then_assigns.iter().chain(then_trailing).collect();
-    let else_all: Vec<_> = else_assigns.iter().chain(else_trailing).collect();
-
-    if then_all.len() != 1 || else_all.len() != 1 {
-        return None;
-    }
-    let then_a = then_all[0];
-    let else_a = else_all[0];
-    if ctx.value_name(then_a.dst) != ctx.value_name(else_a.dst) {
-        return None;
-    }
-
-    if !is_trivial_body(ctx, func, then_body) || !is_trivial_body(ctx, func, else_body) {
-        return None;
-    }
-
-    Some((then_a.dst, then_a.src, else_a.src))
-}
-
-fn is_trivial_body(ctx: &LowerCtx, func: &Function, shape: &Shape) -> bool {
-    match shape {
-        Shape::Block(b) => {
-            let block = &func.blocks[*b];
-            for &inst_id in &block.insts {
-                let inst = &func.insts[inst_id];
-                match &inst.op {
-                    Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } => break,
-                    _ => {
-                        if let Some(r) = inst.result {
-                            if !ctx.should_inline(r)
-                                && ctx.use_count(r) > 0
-                            {
-                                return false;
-                            }
-                        } else {
-                            return false;
-                        }
-                    }
-                }
-            }
-            true
-        }
-        Shape::Seq(parts) => parts.iter().all(|p| is_trivial_body(ctx, func, p)),
-        _ => false,
-    }
-}
-
-fn try_minmax(
-    func: &Function,
-    block: BlockId,
-    cond: ValueId,
-    then_val: ValueId,
-    else_val: ValueId,
-) -> Option<(&'static str, ValueId, ValueId)> {
-    let blk = &func.blocks[block];
-    let cmp = blk.insts.iter().rev().find_map(|&inst_id| {
-        let inst = &func.insts[inst_id];
-        if inst.result == Some(cond) {
-            if let Op::Cmp(kind, lhs, rhs) = &inst.op {
-                return Some((*kind, *lhs, *rhs));
-            }
-        }
-        None
-    })?;
-    let (kind, lhs, rhs) = cmp;
-
-    let equiv = |a: ValueId, b: ValueId| -> bool {
-        if a == b {
-            return true;
-        }
-        let as_f64 = |v: ValueId| -> Option<f64> {
-            func.insts.iter().find_map(|(_, inst)| {
-                if inst.result == Some(v) {
-                    match &inst.op {
-                        Op::Const(Constant::Int(n)) => Some(*n as f64),
-                        Op::Const(Constant::UInt(n)) => Some(*n as f64),
-                        Op::Const(Constant::Float(n)) => Some(*n),
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            })
-        };
-        matches!((as_f64(a), as_f64(b)), (Some(x), Some(y)) if x == y)
-    };
-
-    match kind {
-        CmpKind::Ge | CmpKind::Gt => {
-            if equiv(then_val, lhs) && equiv(else_val, rhs) {
-                Some(("Math.max", then_val, else_val))
-            } else if equiv(then_val, rhs) && equiv(else_val, lhs) {
-                Some(("Math.min", then_val, else_val))
-            } else {
-                None
-            }
-        }
-        CmpKind::Le | CmpKind::Lt => {
-            if equiv(then_val, lhs) && equiv(else_val, rhs) {
-                Some(("Math.min", then_val, else_val))
-            } else if equiv(then_val, rhs) && equiv(else_val, lhs) {
-                Some(("Math.max", then_val, else_val))
-            } else {
-                None
-            }
-        }
-        _ => None,
     }
 }
 
@@ -1098,110 +945,48 @@ fn lower_shape_into(
             else_trailing_assigns,
         } => {
             lower_block_instructions(ctx, func, *block, stmts);
+            ctx.flush_side_effecting_inlines(stmts);
+            let cond_expr = ctx.build_val(func, *cond);
 
-            // Try ternary pattern BEFORE flushing side-effecting inlines,
-            // so that operands are still available for minmax/ternary.
-            let ternary = if ctx.config.ternary {
-                try_ternary_assigns(
-                    ctx,
-                    func,
-                    (then_assigns, then_body, then_trailing_assigns),
-                    (else_assigns, else_body, else_trailing_assigns),
-                )
-            } else {
-                None
-            };
+            let mut then_stmts = Vec::new();
+            lower_arg_assigns(ctx, func, then_assigns, &mut then_stmts);
+            lower_shape_into(ctx, func, then_body, &mut then_stmts);
+            lower_arg_assigns(ctx, func, then_trailing_assigns, &mut then_stmts);
 
-            if let Some((dst, then_src, else_src)) = ternary {
-                // Process trivial bodies so their insts get deferred.
-                // Save SE inlines so they don't leak into body processing.
-                let saved_se = std::mem::take(&mut ctx.side_effecting_inlines);
-                lower_shape(ctx, func, then_body);
-                lower_shape(ctx, func, else_body);
-                let body_se = std::mem::replace(&mut ctx.side_effecting_inlines, saved_se);
-                ctx.side_effecting_inlines.extend(body_se);
+            let mut else_stmts = Vec::new();
+            lower_arg_assigns(ctx, func, else_assigns, &mut else_stmts);
+            lower_shape_into(ctx, func, else_body, &mut else_stmts);
+            lower_arg_assigns(ctx, func, else_trailing_assigns, &mut else_stmts);
 
-                let minmax = if ctx.config.minmax {
-                    try_minmax(func, *block, *cond, then_src, else_src)
-                } else {
-                    None
-                };
+            let then_empty = then_stmts.is_empty();
+            let else_empty = else_stmts.is_empty();
 
-                if let Some((name, a, b)) = minmax {
-                    // Math.max / Math.min — consume operands, then flush rest.
-                    let expr = Expr::Call {
-                        func: name.to_string(),
-                        args: vec![
-                            ctx.build_val(func, a),
-                            ctx.build_val(func, b),
-                        ],
-                    };
-                    ctx.flush_side_effecting_inlines(stmts);
-                    ctx.referenced_block_params.insert(dst);
-                    stmts.push(Stmt::Assign {
-                        target: Expr::Var(ctx.value_name(dst)),
-                        value: expr,
-                    });
-                } else {
-                    // Ternary: dst = cond ? then_src : else_src
-                    let cond_expr = ctx.build_val(func, *cond);
-                    let then_expr = ctx.build_val(func, then_src);
-                    let else_expr = ctx.build_val(func, else_src);
-                    ctx.flush_side_effecting_inlines(stmts);
-                    ctx.referenced_block_params.insert(dst);
-                    stmts.push(Stmt::Assign {
-                        target: Expr::Var(ctx.value_name(dst)),
-                        value: Expr::Ternary {
-                            cond: Box::new(cond_expr),
-                            then_val: Box::new(then_expr),
-                            else_val: Box::new(else_expr),
-                        },
+            match (then_empty, else_empty) {
+                (true, true) => {
+                    // Both empty — skip.
+                }
+                (false, true) => {
+                    stmts.push(Stmt::If {
+                        cond: cond_expr,
+                        then_body: then_stmts,
+                        else_body: Vec::new(),
                     });
                 }
-            } else {
-                ctx.flush_side_effecting_inlines(stmts);
-                let cond_expr = ctx.build_val(func, *cond);
-
-                let mut then_stmts = Vec::new();
-                lower_arg_assigns(ctx, func, then_assigns, &mut then_stmts);
-                lower_shape_into(ctx, func, then_body, &mut then_stmts);
-                lower_arg_assigns(ctx, func, then_trailing_assigns, &mut then_stmts);
-
-                let mut else_stmts = Vec::new();
-                lower_arg_assigns(ctx, func, else_assigns, &mut else_stmts);
-                lower_shape_into(ctx, func, else_body, &mut else_stmts);
-                lower_arg_assigns(ctx, func, else_trailing_assigns, &mut else_stmts);
-
-                let then_empty = then_stmts.is_empty();
-                let else_empty = else_stmts.is_empty();
-
-                match (then_empty, else_empty) {
-                    (true, true) => {
-                        // Both empty — skip.
-                    }
-                    (false, true) => {
-                        stmts.push(Stmt::If {
-                            cond: cond_expr,
-                            then_body: then_stmts,
-                            else_body: Vec::new(),
-                        });
-                    }
-                    (true, false) => {
-                        // Negate condition and use else as then.
-                        let neg = negate_cond_expr(ctx, func, *block, *cond);
-                        stmts.push(Stmt::If {
-                            cond: neg,
-                            then_body: else_stmts,
-                            else_body: Vec::new(),
-                        });
-                    }
-                    (false, false) => {
-                        stmts.push(Stmt::If {
-                            cond: cond_expr,
-                            then_body: then_stmts,
-                            else_body: else_stmts,
-                        });
-                    }
+                (true, false) => {
+                    // Negate condition and use else as then.
+                    let neg = negate_cond_expr(ctx, func, *block, *cond);
+                    stmts.push(Stmt::If {
+                        cond: neg,
+                        then_body: else_stmts,
+                        else_body: Vec::new(),
+                    });
+                }
+                (false, false) => {
+                    stmts.push(Stmt::If {
+                        cond: cond_expr,
+                        then_body: then_stmts,
+                        else_body: else_stmts,
+                    });
                 }
             }
         }
