@@ -177,6 +177,43 @@ pub fn resolve_multiname_index(pool: &ConstantPool, index: &Index<Multiname>) ->
     }
 }
 
+/// How a multiname's runtime components should be handled.
+#[derive(Debug, Clone)]
+pub enum MultinameKind {
+    /// Fully resolved at compile time — no extra stack pops.
+    Named(String),
+    /// Name is known but a namespace was popped from the runtime stack (discard it).
+    RuntimeNs(String),
+    /// The property name/index comes from the runtime stack (pop 1).
+    RuntimeName,
+    /// Both name and namespace come from the runtime stack (pop 2: name first, then namespace).
+    RuntimeBoth,
+}
+
+/// Classify a multiname for property access: how many values to pop from the
+/// runtime stack, and whether the access is named or indexed.
+pub fn classify_multiname(pool: &ConstantPool, index: &Index<Multiname>) -> MultinameKind {
+    let Some(mn) = pool_multiname(pool, index) else {
+        return MultinameKind::Named("*".to_string());
+    };
+    match mn {
+        Multiname::QName { .. }
+        | Multiname::QNameA { .. }
+        | Multiname::Multiname { .. }
+        | Multiname::MultinameA { .. }
+        | Multiname::TypeName { .. } => {
+            MultinameKind::Named(resolve_multiname_index(pool, index))
+        }
+        Multiname::RTQName { name } | Multiname::RTQNameA { name } => {
+            MultinameKind::RuntimeNs(pool_string(pool, name))
+        }
+        Multiname::RTQNameL | Multiname::RTQNameLA => MultinameKind::RuntimeBoth,
+        Multiname::MultinameL { .. } | Multiname::MultinameLA { .. } => {
+            MultinameKind::RuntimeName
+        }
+    }
+}
+
 /// Resolve a multiname index to a structured `QualifiedName`.
 ///
 /// Returns `None` for runtime-late or unresolvable names.

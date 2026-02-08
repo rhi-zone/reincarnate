@@ -15,7 +15,7 @@ use swf::avm2::types::{AbcFile, MethodBody, Op};
 use crate::abc::{
     offset_to_index_map, parse_bytecode, resolve_branch_target, resolve_switch_target, LocatedOp,
 };
-use crate::multiname::{pool_string, resolve_multiname_index, resolve_type};
+use crate::multiname::{classify_multiname, pool_string, resolve_multiname_index, resolve_type, MultinameKind};
 use crate::scope::ScopeStack;
 
 /// Translate a single method body into an IR function.
@@ -318,6 +318,40 @@ fn prepare_branch_args(
     });
     // Return the current stack values as branch arguments.
     stack.to_vec()
+}
+
+/// Resolved property access — either a compile-time name or a runtime index.
+enum PropertyAccess {
+    Named(String),
+    Indexed(ValueId),
+}
+
+/// Resolve a multiname into a `PropertyAccess`, popping runtime values from
+/// the stack as needed.
+fn resolve_property(
+    pool: &swf::avm2::types::ConstantPool,
+    index: &swf::avm2::types::Index<swf::avm2::types::Multiname>,
+    stack: &mut Vec<ValueId>,
+) -> PropertyAccess {
+    match classify_multiname(pool, index) {
+        MultinameKind::Named(name) => PropertyAccess::Named(name),
+        MultinameKind::RuntimeNs(name) => {
+            // Pop the namespace value from the stack and discard it.
+            stack.pop();
+            PropertyAccess::Named(name)
+        }
+        MultinameKind::RuntimeName => {
+            // Pop the name/index value from the stack.
+            let idx = stack.pop().unwrap_or_else(|| panic!("stack underflow for RuntimeName"));
+            PropertyAccess::Indexed(idx)
+        }
+        MultinameKind::RuntimeBoth => {
+            // Pop name first, then namespace (AVM2 stack order).
+            let idx = stack.pop().unwrap_or_else(|| panic!("stack underflow for RuntimeBoth name"));
+            stack.pop(); // namespace, discard
+            PropertyAccess::Indexed(idx)
+        }
+    }
 }
 
 /// Translate a single AVM2 opcode.
@@ -825,32 +859,44 @@ fn translate_op(
         // Property access
         // ====================================================================
         Op::GetProperty { index } => {
-            let name = resolve_multiname_index(pool, index);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let v = fb.get_field(obj, &name, Type::Dynamic);
+                let v = match prop {
+                    PropertyAccess::Named(name) => fb.get_field(obj, &name, Type::Dynamic),
+                    PropertyAccess::Indexed(idx) => fb.get_index(obj, idx, Type::Dynamic),
+                };
                 stack.push(v);
             }
         }
         Op::SetProperty { index } => {
-            let name = resolve_multiname_index(pool, index);
+            let prop = resolve_property(pool, index, stack);
             if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
-                fb.set_field(obj, &name, val);
+                match prop {
+                    PropertyAccess::Named(name) => fb.set_field(obj, &name, val),
+                    PropertyAccess::Indexed(idx) => fb.set_index(obj, idx, val),
+                }
             }
         }
         Op::InitProperty { index } => {
-            let name = resolve_multiname_index(pool, index);
+            let prop = resolve_property(pool, index, stack);
             if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
-                fb.set_field(obj, &name, val);
+                match prop {
+                    PropertyAccess::Named(name) => fb.set_field(obj, &name, val),
+                    PropertyAccess::Indexed(idx) => fb.set_index(obj, idx, val),
+                }
             }
         }
         Op::DeleteProperty { index } => {
-            let name = resolve_multiname_index(pool, index);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let name_val = fb.const_string(&name);
+                let key_val = match prop {
+                    PropertyAccess::Named(name) => fb.const_string(&name),
+                    PropertyAccess::Indexed(idx) => idx,
+                };
                 let v = fb.system_call(
                     "Flash.Object",
                     "deleteProperty",
-                    &[obj, name_val],
+                    &[obj, key_val],
                     Type::Bool,
                 );
                 stack.push(v);
@@ -882,9 +928,12 @@ fn translate_op(
             }
         }
         Op::GetSuper { index } => {
-            let name = resolve_multiname_index(pool, index);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let name_val = fb.const_string(&name);
+                let name_val = match prop {
+                    PropertyAccess::Named(name) => fb.const_string(&name),
+                    PropertyAccess::Indexed(idx) => idx,
+                };
                 let v = fb.system_call(
                     "Flash.Class",
                     "getSuper",
@@ -895,13 +944,17 @@ fn translate_op(
             }
         }
         Op::SetSuper { index } => {
-            let name = resolve_multiname_index(pool, index);
+            let prop = resolve_property(pool, index, stack);
             if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let name_val = fb.const_string(&name);
+                let name_val = match prop {
+                    PropertyAccess::Named(name) => fb.const_string(&name),
+                    PropertyAccess::Indexed(idx) => idx,
+                };
                 fb.system_call("Flash.Class", "setSuper", &[obj, name_val, val], Type::Void);
             }
         }
         Op::GetLex { index } => {
+            // GetLex is always statically named (AVM2 spec: no runtime multinames).
             let name = resolve_multiname_index(pool, index);
             let name_val = fb.const_string(&name);
             let v = fb.system_call(
@@ -918,8 +971,11 @@ fn translate_op(
         // Find property (scope chain)
         // ====================================================================
         Op::FindProperty { index } => {
-            let name = resolve_multiname_index(pool, index);
-            let name_val = fb.const_string(&name);
+            let prop = resolve_property(pool, index, stack);
+            let name_val = match prop {
+                PropertyAccess::Named(name) => fb.const_string(&name),
+                PropertyAccess::Indexed(idx) => idx,
+            };
             let v = fb.system_call(
                 "Flash.Scope",
                 "findProperty",
@@ -929,8 +985,11 @@ fn translate_op(
             stack.push(v);
         }
         Op::FindPropStrict { index } => {
-            let name = resolve_multiname_index(pool, index);
-            let name_val = fb.const_string(&name);
+            let prop = resolve_property(pool, index, stack);
+            let name_val = match prop {
+                PropertyAccess::Named(name) => fb.const_string(&name),
+                PropertyAccess::Indexed(idx) => idx,
+            };
             let v = fb.system_call(
                 "Flash.Scope",
                 "findPropStrict",
@@ -955,43 +1014,78 @@ fn translate_op(
         // Calls
         // ====================================================================
         Op::CallProperty { index, num_args } => {
-            let name = resolve_multiname_index(pool, index);
             let n = *num_args as usize;
             let args = pop_n(stack, n);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let mut call_args = vec![obj];
-                call_args.extend(args);
-                let v = fb.call(&name, &call_args, Type::Dynamic);
-                stack.push(v);
+                match prop {
+                    PropertyAccess::Named(name) => {
+                        let mut call_args = vec![obj];
+                        call_args.extend(args);
+                        let v = fb.call(&name, &call_args, Type::Dynamic);
+                        stack.push(v);
+                    }
+                    PropertyAccess::Indexed(idx) => {
+                        let callee = fb.get_index(obj, idx, Type::Dynamic);
+                        let mut call_args = vec![obj];
+                        call_args.extend(args);
+                        let v = fb.call_indirect(callee, &call_args, Type::Dynamic);
+                        stack.push(v);
+                    }
+                }
             }
         }
         Op::CallPropVoid { index, num_args } => {
-            let name = resolve_multiname_index(pool, index);
             let n = *num_args as usize;
             let args = pop_n(stack, n);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let mut call_args = vec![obj];
-                call_args.extend(args);
-                fb.call(&name, &call_args, Type::Void);
+                match prop {
+                    PropertyAccess::Named(name) => {
+                        let mut call_args = vec![obj];
+                        call_args.extend(args);
+                        fb.call(&name, &call_args, Type::Void);
+                    }
+                    PropertyAccess::Indexed(idx) => {
+                        let callee = fb.get_index(obj, idx, Type::Dynamic);
+                        let mut call_args = vec![obj];
+                        call_args.extend(args);
+                        fb.call_indirect(callee, &call_args, Type::Void);
+                    }
+                }
             }
         }
         Op::CallPropLex { index, num_args } => {
-            let name = resolve_multiname_index(pool, index);
             let n = *num_args as usize;
             let args = pop_n(stack, n);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let mut call_args = vec![obj];
-                call_args.extend(args);
-                let v = fb.call(&name, &call_args, Type::Dynamic);
-                stack.push(v);
+                match prop {
+                    PropertyAccess::Named(name) => {
+                        let mut call_args = vec![obj];
+                        call_args.extend(args);
+                        let v = fb.call(&name, &call_args, Type::Dynamic);
+                        stack.push(v);
+                    }
+                    PropertyAccess::Indexed(idx) => {
+                        let callee = fb.get_index(obj, idx, Type::Dynamic);
+                        let mut call_args = vec![obj];
+                        call_args.extend(args);
+                        let v = fb.call_indirect(callee, &call_args, Type::Dynamic);
+                        stack.push(v);
+                    }
+                }
             }
         }
         Op::CallSuper { index, num_args } => {
-            let name = resolve_multiname_index(pool, index);
             let n = *num_args as usize;
             let args = pop_n(stack, n);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let name_val = fb.const_string(&name);
+                let name_val = match prop {
+                    PropertyAccess::Named(name) => fb.const_string(&name),
+                    PropertyAccess::Indexed(idx) => idx,
+                };
                 let mut call_args = vec![obj, name_val];
                 call_args.extend(args);
                 let v = fb.system_call(
@@ -1004,11 +1098,14 @@ fn translate_op(
             }
         }
         Op::CallSuperVoid { index, num_args } => {
-            let name = resolve_multiname_index(pool, index);
             let n = *num_args as usize;
             let args = pop_n(stack, n);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let name_val = fb.const_string(&name);
+                let name_val = match prop {
+                    PropertyAccess::Named(name) => fb.const_string(&name),
+                    PropertyAccess::Indexed(idx) => idx,
+                };
                 let mut call_args = vec![obj, name_val];
                 call_args.extend(args);
                 fb.system_call("Flash.Class", "callSuper", &call_args, Type::Void);
@@ -1066,11 +1163,14 @@ fn translate_op(
             }
         }
         Op::ConstructProp { index, num_args } => {
-            let name = resolve_multiname_index(pool, index);
             let n = *num_args as usize;
             let args = pop_n(stack, n);
+            let prop_access = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let prop = fb.get_field(obj, &name, Type::Dynamic);
+                let prop = match prop_access {
+                    PropertyAccess::Named(name) => fb.get_field(obj, &name, Type::Dynamic),
+                    PropertyAccess::Indexed(idx) => fb.get_index(obj, idx, Type::Dynamic),
+                };
                 let mut call_args = vec![prop];
                 call_args.extend(args);
                 let v = fb.system_call(
@@ -1620,9 +1720,12 @@ fn translate_op(
             }
         }
         Op::GetDescendants { index } => {
-            let name = resolve_multiname_index(pool, index);
+            let prop = resolve_property(pool, index, stack);
             if let Some(obj) = stack.pop() {
-                let name_val = fb.const_string(&name);
+                let name_val = match prop {
+                    PropertyAccess::Named(name) => fb.const_string(&name),
+                    PropertyAccess::Indexed(idx) => idx,
+                };
                 let v = fb.system_call(
                     "Flash.XML",
                     "getDescendants",
