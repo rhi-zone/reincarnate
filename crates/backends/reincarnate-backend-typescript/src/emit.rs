@@ -2384,6 +2384,7 @@ mod tests {
     #[test]
     fn cast_binding_uses_type_annotation() {
         // Multi-use cast (assigned to variable) → type annotation instead of "as T".
+        // Both uses must survive DCE to prevent single-use const folding.
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
@@ -2391,8 +2392,8 @@ mod tests {
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Bool);
-            // Use the cast result twice to force a variable binding.
-            let _sum = fb.add(casted, casted);
+            // Use the cast result in a non-dead side-effecting call to keep both uses alive.
+            fb.system_call("console", "log", &[casted], Type::Void);
             fb.ret(Some(casted));
             mb.add_function(fb.build());
         });

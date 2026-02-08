@@ -50,6 +50,7 @@ pub fn lower_function(func: &Function, shape: &Shape, config: &LoweringConfig) -
     if config.minmax {
         ast_passes::rewrite_minmax(&mut full_body);
     }
+    ast_passes::fold_single_use_consts(&mut full_body);
     ast_passes::rewrite_compound_assign(&mut full_body);
     ast_passes::merge_decl_init(&mut full_body);
 

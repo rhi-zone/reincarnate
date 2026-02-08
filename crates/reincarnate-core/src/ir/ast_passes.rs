@@ -152,6 +152,443 @@ fn match_minmax(target: &Expr, value: &Expr) -> Option<Stmt> {
 }
 
 // ---------------------------------------------------------------------------
+// Single-use const folding
+// ---------------------------------------------------------------------------
+
+/// Fold single-use `const x = expr; ... use(x) ...` into `... use(expr) ...`.
+///
+/// This is AST-level copy propagation: if an immutable variable is assigned
+/// once and referenced exactly once, substitute the init expression at the
+/// use site and remove the declaration.
+///
+/// Runs iteratively until fixpoint. Recurses into nested bodies.
+///
+/// Safety rules:
+/// - Adjacent use (next statement): always fold (pure or impure init).
+/// - Non-adjacent use: only fold when all intervening statements are free
+///   of side effects (pure VarDecls, uninit decls).
+pub fn fold_single_use_consts(body: &mut Vec<Stmt>) {
+    // Fold at this level first.
+    loop {
+        if !try_fold_one_const(body) {
+            break;
+        }
+    }
+    // Then recurse into nested bodies.
+    for stmt in body.iter_mut() {
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                fold_single_use_consts(then_body);
+                fold_single_use_consts(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                fold_single_use_consts(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                fold_single_use_consts(init);
+                fold_single_use_consts(update);
+                fold_single_use_consts(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    fold_single_use_consts(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Try to fold a single const. Returns `true` if a fold was performed.
+fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
+    for i in 0..body.len() {
+        let name = match &body[i] {
+            Stmt::VarDecl {
+                name,
+                init: Some(_),
+                mutable: false,
+                ..
+            } => name.clone(),
+            _ => continue,
+        };
+
+        // Count ALL references in the remaining body.
+        let total_refs: usize = body[i + 1..]
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, &name))
+            .sum();
+
+        if total_refs != 1 {
+            continue;
+        }
+
+        // Find the statement containing the single use.
+        let use_idx = (i + 1..body.len())
+            .find(|&j| stmt_references_var(&body[j], &name))
+            .unwrap();
+
+        let adjacent = use_idx == i + 1;
+
+        if !adjacent {
+            // Non-adjacent: only fold if all intervening statements are SE-free.
+            let all_intervening_pure = body[i + 1..use_idx]
+                .iter()
+                .all(|s| !stmt_has_side_effects(s));
+            if !all_intervening_pure {
+                continue;
+            }
+        }
+
+        // Extract init and substitute at the use site.
+        let init_expr = match body.remove(i) {
+            Stmt::VarDecl {
+                init: Some(expr), ..
+            } => expr,
+            _ => unreachable!(),
+        };
+
+        // use_idx shifted left by 1 after removal.
+        let mut replacement = Some(init_expr);
+        substitute_var_in_stmt(&mut body[use_idx - 1], &name, &mut replacement);
+        return true;
+    }
+    false
+}
+
+/// Whether a statement could have observable side effects.
+fn stmt_has_side_effects(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::VarDecl {
+            init: Some(init), ..
+        } => expr_has_side_effects(init),
+        Stmt::VarDecl { init: None, .. } => false,
+        // Assigns, calls, control flow — conservatively side-effecting.
+        _ => true,
+    }
+}
+
+/// Whether an expression could have observable side effects (calls).
+fn expr_has_side_effects(expr: &Expr) -> bool {
+    match expr {
+        Expr::Call { .. }
+        | Expr::CallIndirect { .. }
+        | Expr::SystemCall { .. }
+        | Expr::CoroutineCreate { .. }
+        | Expr::CoroutineResume(_)
+        | Expr::Yield(_) => true,
+        Expr::Literal(_) | Expr::Var(_) | Expr::GlobalRef(_) => false,
+        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+            expr_has_side_effects(lhs) || expr_has_side_effects(rhs)
+        }
+        Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
+            expr_has_side_effects(lhs) || expr_has_side_effects(rhs)
+        }
+        Expr::Unary { expr: inner, .. }
+        | Expr::Cast { expr: inner, .. }
+        | Expr::TypeCheck { expr: inner, .. }
+        | Expr::Not(inner) => expr_has_side_effects(inner),
+        Expr::Field { object, .. } => expr_has_side_effects(object),
+        Expr::Index { collection, index } => {
+            expr_has_side_effects(collection) || expr_has_side_effects(index)
+        }
+        Expr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            expr_has_side_effects(cond)
+                || expr_has_side_effects(then_val)
+                || expr_has_side_effects(else_val)
+        }
+        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
+            elems.iter().any(expr_has_side_effects)
+        }
+        Expr::StructInit { fields, .. } => {
+            fields.iter().any(|(_, v)| expr_has_side_effects(v))  // closure needed: tuple destructure
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Variable reference counting and substitution
+// ---------------------------------------------------------------------------
+
+/// Count occurrences of `Var(name)` in an expression.
+fn count_var_refs_in_expr(expr: &Expr, name: &str) -> usize {
+    match expr {
+        Expr::Var(n) => usize::from(n == name),
+        Expr::Literal(_) | Expr::GlobalRef(_) => 0,
+        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+            count_var_refs_in_expr(lhs, name) + count_var_refs_in_expr(rhs, name)
+        }
+        Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
+            count_var_refs_in_expr(lhs, name) + count_var_refs_in_expr(rhs, name)
+        }
+        Expr::Unary { expr: inner, .. }
+        | Expr::Cast { expr: inner, .. }
+        | Expr::TypeCheck { expr: inner, .. }
+        | Expr::Not(inner)
+        | Expr::CoroutineResume(inner) => count_var_refs_in_expr(inner, name),
+        Expr::Field { object, .. } => count_var_refs_in_expr(object, name),
+        Expr::Index { collection, index } => {
+            count_var_refs_in_expr(collection, name) + count_var_refs_in_expr(index, name)
+        }
+        Expr::Call { args, .. } | Expr::CoroutineCreate { args, .. } => {
+            args.iter().map(|a| count_var_refs_in_expr(a, name)).sum()
+        }
+        Expr::CallIndirect { callee, args } => {
+            count_var_refs_in_expr(callee, name)
+                + args.iter().map(|a| count_var_refs_in_expr(a, name)).sum::<usize>()
+        }
+        Expr::SystemCall { args, .. } => {
+            args.iter().map(|a| count_var_refs_in_expr(a, name)).sum()
+        }
+        Expr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            count_var_refs_in_expr(cond, name)
+                + count_var_refs_in_expr(then_val, name)
+                + count_var_refs_in_expr(else_val, name)
+        }
+        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
+            elems.iter().map(|e| count_var_refs_in_expr(e, name)).sum()
+        }
+        Expr::StructInit { fields, .. } => fields
+            .iter()
+            .map(|(_, v)| count_var_refs_in_expr(v, name))
+            .sum(),
+        Expr::Yield(v) => v.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name)),
+    }
+}
+
+/// Count occurrences of `Var(name)` in a statement (recursing into nested bodies).
+fn count_var_refs_in_stmt(stmt: &Stmt, name: &str) -> usize {
+    match stmt {
+        Stmt::VarDecl { name: n, init, .. } => {
+            usize::from(n == name) + init.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name))
+        }
+        Stmt::Assign { target, value } => {
+            count_var_refs_in_expr(target, name) + count_var_refs_in_expr(value, name)
+        }
+        Stmt::CompoundAssign { target, value, .. } => {
+            count_var_refs_in_expr(target, name) + count_var_refs_in_expr(value, name)
+        }
+        Stmt::Expr(e) => count_var_refs_in_expr(e, name),
+        Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            count_var_refs_in_expr(cond, name)
+                + then_body
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .sum::<usize>()
+                + else_body
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        Stmt::While { cond, body } => {
+            count_var_refs_in_expr(cond, name)
+                + body
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        Stmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            init.iter()
+                .map(|s| count_var_refs_in_stmt(s, name))
+                .sum::<usize>()
+                + count_var_refs_in_expr(cond, name)
+                + update
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .sum::<usize>()
+                + body
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        Stmt::Loop { body } => body
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, name))
+            .sum(),
+        Stmt::Return(e) => e.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name)),
+        Stmt::Dispatch { blocks, .. } => blocks
+            .iter()
+            .flat_map(|(_, stmts)| stmts.iter())
+            .map(|s| count_var_refs_in_stmt(s, name))
+            .sum(),
+        Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => 0,
+    }
+}
+
+/// Replace the first `Var(name)` with `replacement` in an expression.
+/// Returns `true` if the substitution was performed.
+fn substitute_var_in_expr(
+    expr: &mut Expr,
+    name: &str,
+    replacement: &mut Option<Expr>,
+) -> bool {
+    if replacement.is_none() {
+        return false;
+    }
+
+    if let Expr::Var(n) = expr {
+        if n.as_str() == name {
+            *expr = replacement.take().unwrap();
+            return true;
+        }
+        return false;
+    }
+
+    match expr {
+        Expr::Literal(_) | Expr::GlobalRef(_) | Expr::Var(_) => false,
+        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+            substitute_var_in_expr(lhs, name, replacement)
+                || substitute_var_in_expr(rhs, name, replacement)
+        }
+        Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
+            substitute_var_in_expr(lhs, name, replacement)
+                || substitute_var_in_expr(rhs, name, replacement)
+        }
+        Expr::Unary { expr: inner, .. }
+        | Expr::Cast { expr: inner, .. }
+        | Expr::TypeCheck { expr: inner, .. }
+        | Expr::Not(inner)
+        | Expr::CoroutineResume(inner) => substitute_var_in_expr(inner, name, replacement),
+        Expr::Field { object, .. } => substitute_var_in_expr(object, name, replacement),
+        Expr::Index { collection, index } => {
+            substitute_var_in_expr(collection, name, replacement)
+                || substitute_var_in_expr(index, name, replacement)
+        }
+        Expr::Call { args, .. } | Expr::CoroutineCreate { args, .. } => args
+            .iter_mut()
+            .any(|a| substitute_var_in_expr(a, name, replacement)),
+        Expr::CallIndirect { callee, args } => {
+            substitute_var_in_expr(callee, name, replacement)
+                || args
+                    .iter_mut()
+                    .any(|a| substitute_var_in_expr(a, name, replacement))
+        }
+        Expr::SystemCall { args, .. } => args
+            .iter_mut()
+            .any(|a| substitute_var_in_expr(a, name, replacement)),
+        Expr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            substitute_var_in_expr(cond, name, replacement)
+                || substitute_var_in_expr(then_val, name, replacement)
+                || substitute_var_in_expr(else_val, name, replacement)
+        }
+        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => elems
+            .iter_mut()
+            .any(|e| substitute_var_in_expr(e, name, replacement)),
+        Expr::StructInit { fields, .. } => fields
+            .iter_mut()
+            .any(|(_, v)| substitute_var_in_expr(v, name, replacement)),
+        Expr::Yield(v) => v
+            .as_mut()
+            .is_some_and(|e| substitute_var_in_expr(e, name, replacement)),
+    }
+}
+
+/// Replace the first `Var(name)` with `replacement` in a statement.
+/// Returns `true` if the substitution was performed.
+fn substitute_var_in_stmt(
+    stmt: &mut Stmt,
+    name: &str,
+    replacement: &mut Option<Expr>,
+) -> bool {
+    if replacement.is_none() {
+        return false;
+    }
+
+    match stmt {
+        Stmt::VarDecl { init, .. } => init
+            .as_mut()
+            .is_some_and(|e| substitute_var_in_expr(e, name, replacement)),
+        Stmt::Assign { target, value } => {
+            substitute_var_in_expr(target, name, replacement)
+                || substitute_var_in_expr(value, name, replacement)
+        }
+        Stmt::CompoundAssign { target, value, .. } => {
+            substitute_var_in_expr(target, name, replacement)
+                || substitute_var_in_expr(value, name, replacement)
+        }
+        Stmt::Expr(e) => substitute_var_in_expr(e, name, replacement),
+        Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            substitute_var_in_expr(cond, name, replacement)
+                || then_body
+                    .iter_mut()
+                    .any(|s| substitute_var_in_stmt(s, name, replacement))
+                || else_body
+                    .iter_mut()
+                    .any(|s| substitute_var_in_stmt(s, name, replacement))
+        }
+        Stmt::While { cond, body } => {
+            substitute_var_in_expr(cond, name, replacement)
+                || body
+                    .iter_mut()
+                    .any(|s| substitute_var_in_stmt(s, name, replacement))
+        }
+        Stmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            init.iter_mut()
+                .any(|s| substitute_var_in_stmt(s, name, replacement))
+                || substitute_var_in_expr(cond, name, replacement)
+                || update
+                    .iter_mut()
+                    .any(|s| substitute_var_in_stmt(s, name, replacement))
+                || body
+                    .iter_mut()
+                    .any(|s| substitute_var_in_stmt(s, name, replacement))
+        }
+        Stmt::Loop { body } => body
+            .iter_mut()
+            .any(|s| substitute_var_in_stmt(s, name, replacement)),
+        Stmt::Return(e) => e
+            .as_mut()
+            .is_some_and(|e| substitute_var_in_expr(e, name, replacement)),
+        Stmt::Dispatch { blocks, .. } => blocks
+            .iter_mut()
+            .any(|(_, stmts)| {
+                stmts
+                    .iter_mut()
+                    .any(|s| substitute_var_in_stmt(s, name, replacement))
+            }),
+        Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => false,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Compound assignment rewrite
 // ---------------------------------------------------------------------------
 
@@ -1118,6 +1555,223 @@ mod tests {
                 assert!(init.is_some());
             }
             other => panic!("Expected VarDecl for x, got: {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Single-use const folding tests
+    // -----------------------------------------------------------------------
+
+    fn const_decl(name: &str, init: Expr) -> Stmt {
+        Stmt::VarDecl {
+            name: name.to_string(),
+            ty: None,
+            init: Some(init),
+            mutable: false,
+        }
+    }
+
+    #[test]
+    fn fold_adjacent_pure() {
+        // const v17 = a && b; x = v17 ? 1 : 2;
+        // → x = (a && b) ? 1 : 2;
+        let logical_and = Expr::LogicalAnd {
+            lhs: Box::new(var("a")),
+            rhs: Box::new(var("b")),
+        };
+        let mut body = vec![
+            const_decl("v17", logical_and.clone()),
+            assign(
+                var("x"),
+                Expr::Ternary {
+                    cond: Box::new(var("v17")),
+                    then_val: Box::new(int(1)),
+                    else_val: Box::new(int(2)),
+                },
+            ),
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::Assign { value, .. } => match value {
+                Expr::Ternary { cond, .. } => {
+                    assert!(matches!(cond.as_ref(), Expr::LogicalAnd { .. }));
+                }
+                other => panic!("Expected Ternary, got: {other:?}"),
+            },
+            other => panic!("Expected Assign, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_adjacent_impure() {
+        // const v = call(); if (v) { ... }
+        // → if (call()) { ... }
+        let call = Expr::Call {
+            func: "f".to_string(),
+            args: vec![],
+        };
+        let mut body = vec![
+            const_decl("v", call),
+            Stmt::If {
+                cond: var("v"),
+                then_body: vec![assign(var("x"), int(1))],
+                else_body: vec![],
+            },
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::If { cond, .. } => {
+                assert!(matches!(cond, Expr::Call { .. }));
+            }
+            other => panic!("Expected If, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_no_fold_multi_use() {
+        // const v = a + b; x = v; y = v;
+        // → no fold (v used twice)
+        let mut body = vec![
+            const_decl(
+                "v",
+                Expr::Binary {
+                    op: BinOp::Add,
+                    lhs: Box::new(var("a")),
+                    rhs: Box::new(var("b")),
+                },
+            ),
+            assign(var("x"), var("v")),
+            assign(var("y"), var("v")),
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        assert_eq!(body.len(), 3);
+        assert!(matches!(&body[0], Stmt::VarDecl { .. }));
+    }
+
+    #[test]
+    fn fold_cascading() {
+        // const a = 1; const b = a + 2; x = b;
+        // → const a = 1; x = a + 2;  (fold b)
+        // → x = 1 + 2;               (fold a)
+        let mut body = vec![
+            const_decl("a", int(1)),
+            const_decl(
+                "b",
+                Expr::Binary {
+                    op: BinOp::Add,
+                    lhs: Box::new(var("a")),
+                    rhs: Box::new(int(2)),
+                },
+            ),
+            assign(var("x"), var("b")),
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::Assign { value, .. } => {
+                assert!(matches!(value, Expr::Binary { .. }));
+            }
+            other => panic!("Expected Assign, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fold_non_adjacent_pure_across_pure_decls() {
+        // const a = x + 1; const b = y + 2; z = a + b;
+        // b is adjacent to use → fold first. Then a becomes adjacent → fold.
+        let mut body = vec![
+            const_decl(
+                "a",
+                Expr::Binary {
+                    op: BinOp::Add,
+                    lhs: Box::new(var("x")),
+                    rhs: Box::new(int(1)),
+                },
+            ),
+            const_decl(
+                "b",
+                Expr::Binary {
+                    op: BinOp::Add,
+                    lhs: Box::new(var("y")),
+                    rhs: Box::new(int(2)),
+                },
+            ),
+            assign(
+                var("z"),
+                Expr::Binary {
+                    op: BinOp::Add,
+                    lhs: Box::new(var("a")),
+                    rhs: Box::new(var("b")),
+                },
+            ),
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        // Both a and b folded into the assignment.
+        assert_eq!(body.len(), 1);
+    }
+
+    #[test]
+    fn fold_no_fold_mutable() {
+        // let v = 1; x = v; — mutable, don't fold
+        let mut body = vec![
+            Stmt::VarDecl {
+                name: "v".to_string(),
+                ty: None,
+                init: Some(int(1)),
+                mutable: true,
+            },
+            assign(var("x"), var("v")),
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        assert_eq!(body.len(), 2);
+    }
+
+    #[test]
+    fn fold_hp_pattern() {
+        // const v35 = HP; HP = v35 - v11;
+        // → HP = HP - v11;
+        let mut body = vec![
+            const_decl("v35", var("HP")),
+            assign(
+                var("HP"),
+                Expr::Binary {
+                    op: BinOp::Sub,
+                    lhs: Box::new(var("v35")),
+                    rhs: Box::new(var("v11")),
+                },
+            ),
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::Assign { target, value } => {
+                assert_eq!(*target, var("HP"));
+                // value should be HP - v11 (v35 replaced with HP)
+                match value {
+                    Expr::Binary { lhs, rhs, .. } => {
+                        assert_eq!(**lhs, var("HP"));
+                        assert_eq!(**rhs, var("v11"));
+                    }
+                    other => panic!("Expected Binary, got: {other:?}"),
+                }
+            }
+            other => panic!("Expected Assign, got: {other:?}"),
         }
     }
 }
