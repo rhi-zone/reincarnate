@@ -1687,12 +1687,19 @@ fn emit_block_instructions(
                 // (e.g. a Call result) — deferring would move the side effect
                 // across block boundaries, changing evaluation order.
                 if let Some(r) = inst.result {
-                    if ctx.should_inline(r)
-                        && is_deferrable(&inst.op)
-                        && !has_side_effecting_operand(ctx, func, inst_id)
-                    {
-                        ctx.lazy_inlines.insert(r, inst_id);
-                        continue;
+                    let count = ctx.use_counts.get(&r).copied().unwrap_or(0);
+                    if is_deferrable(&inst.op) {
+                        if count == 0 {
+                            // Dead pure instruction — skip entirely.
+                            continue;
+                        }
+                        if count == 1
+                            && !has_side_effecting_operand(ctx, func, inst_id)
+                        {
+                            // Single-use pure instruction — defer for lazy inlining.
+                            ctx.lazy_inlines.insert(r, inst_id);
+                            continue;
+                        }
                     }
                 }
                 emit_inst(ctx, func, inst_id, out, indent)?;
