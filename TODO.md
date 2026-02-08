@@ -115,8 +115,9 @@ examples in the test project (`~/cc-project/comparison-notes.md`).
 
 - [x] **`["rt:?"]` runtime property access** — Fixed. Runtime multinames now
   resolve to proper indexed access (`array[index]`).
-- [ ] **Instruction reordering** — Some methods emit side-effecting calls in
-  the wrong order, changing semantics. Likely a stack simulation bug.
+- [x] **Instruction reordering** — Fixed. Side-effecting inline expressions
+  (Call/SystemCall results) are now flushed at block boundaries to preserve
+  evaluation order.
 - [ ] **Negative constant resolution** — At least one `Math.max` clamp emits
   a wrong positive constant instead of the correct negative value.
 
@@ -125,9 +126,10 @@ examples in the test project (`~/cc-project/comparison-notes.md`).
 - [x] **Early returns via control flow inversion** — Done. Guard clause
   detection flattens `if/else` when one branch terminates.
 - [x] **Default parameter values** — Done. HAS_OPTIONAL defaults emitted.
-- [ ] **Dead variable declarations** — Many methods declare unused
-  `let v###` variables. SSA artifacts (dead phi-merge variables) that survive
-  DCE. Need a pass or emitter check to skip variables never read.
+- [x] **Dead variable declarations** — Fixed. DCE Phase 5 eliminates unused
+  block parameters at the IR level (iterative non-branch-arg analysis). Emitter
+  buffers output and skips declaring params not referenced in the body. 31%
+  reduction (12k → 8.4k) across the test project.
 - [ ] **Complex loop decompilation** — Some while-loop bodies have unreachable
   code after `continue`, wrong variable assignments, and confused array
   accesses. Related to the `["rt:?"]` bug.
