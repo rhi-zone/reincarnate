@@ -873,7 +873,12 @@ fn emit_class(
     let extends = match &group.class_def.super_class {
         Some(sc) => {
             let base = sc.rsplit("::").next().unwrap_or(sc);
-            format!(" extends {}", sanitize_ident(base))
+            // `extends Object` is redundant in JS — all classes extend Object implicitly.
+            if base == "Object" {
+                String::new()
+            } else {
+                format!(" extends {}", sanitize_ident(base))
+            }
         }
         None => String::new(),
     };
@@ -1491,10 +1496,10 @@ mod tests {
         let mut module = mb.build();
         let out = emit_module_to_string(&mut module, &LoweringConfig::default()).unwrap();
 
-        // Class declaration with extends.
+        // Class declaration — `extends Object` is suppressed (redundant in JS).
         assert!(
-            out.contains("export class Phouka extends Object {"),
-            "Should have class decl:\n{out}"
+            out.contains("export class Phouka {"),
+            "Should have class decl without extends Object:\n{out}"
         );
         // Field.
         assert!(out.contains("  hp: number;"), "Should have field:\n{out}");
