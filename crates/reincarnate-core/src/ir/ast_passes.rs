@@ -1069,6 +1069,93 @@ fn find_unique_child_body<'a>(stmt: &'a mut Stmt, name: &str) -> Option<&'a mut 
 }
 
 // ---------------------------------------------------------------------------
+// Forwarding stub elimination
+// ---------------------------------------------------------------------------
+
+/// Remove `let vN: T; vM = vN;` stubs where `vN` is uninit and has no other refs.
+///
+/// These are structurizer artifacts from empty else-branches: an uninit phi
+/// variable is immediately forwarded to another phi. Both the decl and the
+/// forwarding assign are meaningless. Recurses into nested bodies.
+pub fn eliminate_forwarding_stubs(body: &mut Vec<Stmt>) {
+    loop {
+        if !try_eliminate_one_stub(body) {
+            break;
+        }
+    }
+    for stmt in body.iter_mut() {
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                eliminate_forwarding_stubs(then_body);
+                eliminate_forwarding_stubs(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                eliminate_forwarding_stubs(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                eliminate_forwarding_stubs(init);
+                eliminate_forwarding_stubs(update);
+                eliminate_forwarding_stubs(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    eliminate_forwarding_stubs(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn try_eliminate_one_stub(body: &mut Vec<Stmt>) -> bool {
+    for i in 0..body.len().saturating_sub(1) {
+        // Match: let vN: T; (uninit, mutable)
+        let name = match &body[i] {
+            Stmt::VarDecl {
+                name,
+                init: None,
+                mutable: true,
+                ..
+            } => name.clone(),
+            _ => continue,
+        };
+
+        // Next statement must be: vM = vN;
+        let is_forwarding = matches!(
+            &body[i + 1],
+            Stmt::Assign { value: Expr::Var(v), .. } if v == &name
+        );
+        if !is_forwarding {
+            continue;
+        }
+
+        // vN must have no other references in the body (only the forwarding assign).
+        let other_refs: usize = body[i + 2..]
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, &name))
+            .sum();
+        if other_refs != 0 {
+            continue;
+        }
+
+        // Remove both the decl and the forwarding assign.
+        body.remove(i + 1);
+        body.remove(i);
+        return true;
+    }
+    false
+}
+
+// ---------------------------------------------------------------------------
 // Self-assignment elimination
 // ---------------------------------------------------------------------------
 

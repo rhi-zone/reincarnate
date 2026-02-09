@@ -988,6 +988,7 @@ pub fn lower_function_linear(
         ast_passes::rewrite_minmax(&mut full_body);
     }
     ast_passes::eliminate_self_assigns(&mut full_body);
+    ast_passes::eliminate_forwarding_stubs(&mut full_body);
 
     // Fixpoint: narrowing enables merge, merge enables fold, fold may remove
     // statements that enable further narrowing.
