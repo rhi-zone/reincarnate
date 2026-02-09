@@ -1579,6 +1579,17 @@ fn try_absorb_phi_condition(body: &mut Vec<Stmt>) -> bool {
             continue;
         };
 
+        // vN must not appear between the decl and the outer if (ensures it's
+        // a dedicated phi variable, not a general-purpose variable with earlier
+        // assignments like `dodged = 1.0; ... if (x) { dodged = 4.0; }`).
+        let refs_before: usize = body[decl_idx + 1..i]
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, &var_name))
+            .sum();
+        if refs_before > 0 {
+            continue;
+        }
+
         // vN must not appear in the else_body at all.
         let else_refs = match &body[i] {
             Stmt::If { else_body, .. } => else_body
@@ -1617,10 +1628,7 @@ fn try_absorb_phi_condition(body: &mut Vec<Stmt>) -> bool {
 
         // Case A: use_else is empty — simple absorption.
         // Case B: use_else non-empty, use_then always exits — pull else out.
-        // Otherwise: skip (would require code duplication).
-        if !use_else.is_empty() && !body_always_exits(use_then) {
-            continue;
-        }
+        // Case C: use_else non-empty, neither exits — duplicate else into outer else.
 
         // Clone values before mutating.
         let assign_value = match &body[i] {
@@ -1638,24 +1646,40 @@ fn try_absorb_phi_condition(body: &mut Vec<Stmt>) -> bool {
         let mut replacement = Some(assign_value);
         substitute_var_in_expr(&mut new_cond, &var_name, &mut replacement);
 
-        // Build the merged if (no else — Case B's else becomes continuation).
+        let is_case_c = !use_else.is_empty() && !body_always_exits(&use_then);
+
+        // Build the merged if.
+        // Case A/B: no else on the merged if (Case B's else becomes continuation).
+        // Case C: keep the full else — the then-branch gets `if (E) { D } else { F }`.
         let merged_if = Stmt::If {
             cond: new_cond,
             then_body: use_then,
-            else_body: vec![],
+            else_body: if is_case_c { use_else.clone() } else { vec![] },
         };
 
         // Modify outer if's then_body: remove vN = E, append merged_if.
-        if let Stmt::If { then_body, .. } = &mut body[i] {
+        if let Stmt::If {
+            then_body,
+            else_body,
+            ..
+        } = &mut body[i]
+        {
             then_body.pop();
             then_body.push(merged_if);
+
+            // Case C: append use_else to outer else_body too — when vN is
+            // unassigned (falsy/undefined), the use-site if always takes
+            // the else path.
+            if is_case_c {
+                else_body.extend(use_else.clone());
+            }
         }
 
         // Remove the if(vN) statement.
         body.remove(i + 1);
 
         // Case B: insert use_else as continuation after body[i].
-        if !use_else.is_empty() {
+        if !use_else.is_empty() && !is_case_c {
             for (j, stmt) in use_else.into_iter().enumerate() {
                 body.insert(i + 1 + j, stmt);
             }
