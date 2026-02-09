@@ -1,8 +1,8 @@
 //! AVM2 class/instance → IR StructDef + method functions.
 
 use reincarnate_core::ir::{
-    ClassDef, Constant, Function, FunctionSig, MethodKind, Module, ModuleBuilder, StructDef, Type,
-    Visibility,
+    ClassDef, Constant, EntryPoint, Function, FunctionSig, MethodKind, Module, ModuleBuilder,
+    StructDef, Type, Visibility,
 };
 use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, Trait, TraitKind};
 
@@ -361,7 +361,11 @@ fn convert_default_value(pool: &ConstantPool, dv: &DefaultValue) -> Option<Const
 }
 
 /// Translate all classes and scripts in an ABC file into an IR module.
-pub fn translate_abc_to_module(abc: &AbcFile, module_name: &str) -> Result<Module, String> {
+pub fn translate_abc_to_module(
+    abc: &AbcFile,
+    module_name: &str,
+    document_class: Option<&str>,
+) -> Result<Module, String> {
     let mut mb = ModuleBuilder::new(module_name);
 
     // Translate classes
@@ -387,6 +391,7 @@ pub fn translate_abc_to_module(abc: &AbcFile, module_name: &str) -> Result<Modul
     }
 
     // Translate script initializers
+    let mut script_inits = Vec::new();
     for (i, script) in abc.scripts.iter().enumerate() {
         let func_name = format!("script{i}::init");
         let method_idx = &script.init_method;
@@ -403,9 +408,15 @@ pub fn translate_abc_to_module(abc: &AbcFile, module_name: &str) -> Result<Modul
                     params: vec![],
                     return_ty: return_type, ..Default::default() };
                 let func = translate_method_body(abc, body, &func_name, sig, &[], false)?;
-                mb.add_function(func);
+                let fid = mb.add_function(func);
+                script_inits.push(fid);
             }
         }
+    }
+
+    mb.set_init_order(script_inits);
+    if let Some(name) = document_class {
+        mb.set_entry_point(EntryPoint::ConstructClass(name.to_string()));
     }
 
     Ok(mb.build())

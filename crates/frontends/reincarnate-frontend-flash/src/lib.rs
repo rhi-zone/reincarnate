@@ -43,6 +43,20 @@ impl Frontend for FlashFrontend {
         let mut modules = Vec::new();
         let assets = assets::extract_assets(&swf.tags);
 
+        // Find the document class from SymbolClass (symbol ID 0).
+        let mut document_class: Option<String> = None;
+        for tag in &swf.tags {
+            if let swf::Tag::SymbolClass(symbols) = tag {
+                for link in symbols {
+                    if link.id == 0 {
+                        document_class = Some(
+                            link.class_name.to_string_lossy(swf::UTF_8).to_string(),
+                        );
+                    }
+                }
+            }
+        }
+
         // Extract ABC bytecode from DoAbc / DoAbc2 tags.
         for (tag_idx, tag) in swf.tags.iter().enumerate() {
             let abc_data = match tag {
@@ -66,7 +80,7 @@ impl Frontend for FlashFrontend {
                     message: format!("ABC parsing failed in tag {tag_idx}: {e}"),
                 })?;
 
-                let module = class::translate_abc_to_module(&abc, &module_name).map_err(|e| {
+                let module = class::translate_abc_to_module(&abc, &module_name, document_class.as_deref()).map_err(|e| {
                     CoreError::Parse {
                         file: input.source.clone(),
                         message: format!("translation failed in {module_name}: {e}"),
