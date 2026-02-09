@@ -5,6 +5,7 @@
 
 use super::ast::{Expr, Stmt};
 use super::inst::CmpKind;
+use super::value::Constant;
 
 // ---------------------------------------------------------------------------
 // Ternary rewrite
@@ -871,10 +872,48 @@ pub fn eliminate_self_assigns(body: &mut Vec<Stmt>) {
         }
     }
     body.retain(|stmt| !is_self_assign(stmt));
+
+    // Fix empty-then-body if/else by flipping condition.
+    // After self-assign removal, some if-bodies become empty while their
+    // else-body is non-empty: `if (c) {} else { body }` → `if (!c) { body }`.
+    for stmt in body.iter_mut() {
+        if let Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } = stmt
+        {
+            if then_body.is_empty() && !else_body.is_empty() {
+                // Replace cond with a placeholder, negate it, and put it back.
+                let old_cond = std::mem::replace(cond, Expr::Literal(Constant::Bool(false)));
+                *cond = negate_expr(old_cond);
+                std::mem::swap(then_body, else_body);
+            }
+        }
+    }
+
+    // Remove fully-empty if/else statements (both branches empty after cleanup).
+    body.retain(|stmt| {
+        !matches!(stmt, Stmt::If { then_body, else_body, .. }
+            if then_body.is_empty() && else_body.is_empty())
+    });
 }
 
 fn is_self_assign(stmt: &Stmt) -> bool {
     matches!(stmt, Stmt::Assign { target: Expr::Var(t), value: Expr::Var(v) } if t == v)
+}
+
+/// Negate an expression, folding into comparisons when possible.
+fn negate_expr(expr: Expr) -> Expr {
+    match expr {
+        Expr::Not(inner) => *inner,
+        Expr::Cmp { kind, lhs, rhs } => Expr::Cmp {
+            kind: kind.inverse(),
+            lhs,
+            rhs,
+        },
+        other => Expr::Not(Box::new(other)),
+    }
 }
 
 // ---------------------------------------------------------------------------
