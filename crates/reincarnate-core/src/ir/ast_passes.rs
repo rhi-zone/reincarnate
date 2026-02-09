@@ -1969,6 +1969,72 @@ pub fn invert_empty_then(body: &mut [Stmt]) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Eliminate unreachable code after exits
+// ---------------------------------------------------------------------------
+
+/// Remove statements after unconditional exits (return, break, continue,
+/// or if/else where both branches always exit).
+///
+/// Recurses into nested bodies first (children before parent), then scans
+/// the current body and truncates after the first unconditionally-exiting
+/// statement.
+pub fn eliminate_unreachable_after_exit(body: &mut Vec<Stmt>) {
+    // Recurse into children first.
+    for stmt in body.iter_mut() {
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                eliminate_unreachable_after_exit(then_body);
+                eliminate_unreachable_after_exit(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                eliminate_unreachable_after_exit(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                eliminate_unreachable_after_exit(init);
+                eliminate_unreachable_after_exit(update);
+                eliminate_unreachable_after_exit(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    eliminate_unreachable_after_exit(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Scan for unconditional exits and truncate.
+    for i in 0..body.len() {
+        let exits = match &body[i] {
+            Stmt::Return(_) | Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => true,
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                !else_body.is_empty()
+                    && body_always_exits(then_body)
+                    && body_always_exits(else_body)
+            }
+            _ => false,
+        };
+        if exits && i + 1 < body.len() {
+            body.truncate(i + 1);
+            break;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
