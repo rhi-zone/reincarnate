@@ -164,8 +164,8 @@ identified by comparing `takeDamage` / `reduceDamage` in Player.ts.
 
 ### Remaining `vN` Identifiers
 
-19 unique vN identifiers remain across emitted TypeScript (down from 683 → 77
-→ 28 → 19). Pass order: self_assigns → dup_assigns → forwarding_stubs → ternary →
+4 unique vN identifiers remain across emitted TypeScript (down from 683 → 77
+→ 28 → 19 → 4). Pass order: self_assigns → dup_assigns → forwarding_stubs → ternary →
 minmax → [fixpoint: forward_sub → ternary → absorb_phi → narrow → merge → fold] →
 compound_assign → post_increment.
 
@@ -325,7 +325,7 @@ accept — it's a single case and also non-adjacent (Pattern 1 applies too).
 
 | Pattern | Vars | Fix | Effort | Status |
 |---------|------|-----|--------|--------|
-| 1. Non-adjacent const before side-effect | 13 | Alias analysis or rename | Hard | Accept for now |
+| 1. Non-adjacent const before side-effect | 13 | Sink past local-only assigns | Medium | Done |
 | 2. Split-path phi boolean | 6 | Absorb into assigning branch | Medium | Done (6/7, Case C skipped) |
 | 3. Dup alias (object field set) | 4 | Relax sinking for pure paths | Medium | Done |
 | 4. Operand-stack pre-increment | 4 | Alias analysis or accept | Hard | Accept for now |
@@ -333,12 +333,13 @@ accept — it's a single case and also non-adjacent (Pattern 1 applies too).
 | 6. Method ref capture (far use) | 2 | Accept | N/A | Correct as-is |
 | 7. Return value capture | 1 | Accept | N/A | Correct as-is |
 | 8. Constant rand(1) | 1 | Constant fold | Easy | Accept (also non-adj) |
-| **Total** | **19** *(was 291)* | | | |
+| **Total** | **4** *(was 291)* | | | |
 
-Patterns 2, 3, 5 done. Pattern 2 absorbs phi conditions into assigning
-branches (6/7 cases; 1 Case C skipped — neither branch always exits).
-Overall 28 → 19 unique vN from clean emit. Remaining 19 are mostly
-eval-order preservation (Pattern 1) — correct as-is or need alias analysis.
+Patterns 1, 2, 3, 5 done. 4 unique vN remain from clean emit (683 → 4):
+- v115 (Mutations): Pattern 2 Case C — neither branch exits, needs code duplication
+- v16 (Inventory): field compound-assign intervening stmt
+- v19/v24 (Lottie): method refs captured 160 lines before use in choices()
+- v24 (Player): multi-use variable (assigned then returned)
 
 ### Architecture — Hybrid Lowering via Structured IR
 
