@@ -5,3 +5,15 @@ export { Flash_Exception } from "./flash_exception";
 export { Flash_Iterator } from "./flash_iterator";
 export { Flash_Memory } from "./flash_memory";
 export { Flash_XML } from "./flash_xml";
+export {
+  ByteArray,
+  DisplayObject,
+  DisplayObjectContainer,
+  Event,
+  EventDispatcher,
+  Font,
+  InteractiveObject,
+  MovieClip,
+  Proxy,
+  Sprite,
+} from "./flash_display";

@@ -21,6 +21,7 @@ const FLASH_EXCEPTION_TS: &str = include_str!("../runtime/flash_exception.ts");
 const FLASH_ITERATOR_TS: &str = include_str!("../runtime/flash_iterator.ts");
 const FLASH_MEMORY_TS: &str = include_str!("../runtime/flash_memory.ts");
 const FLASH_XML_TS: &str = include_str!("../runtime/flash_xml.ts");
+const FLASH_DISPLAY_TS: &str = include_str!("../runtime/flash_display.ts");
 
 /// All known generic system names that the runtime provides.
 pub const SYSTEM_NAMES: &[&str] = &["renderer", "audio", "input", "timing", "save", "ui"];
@@ -48,6 +49,7 @@ pub fn emit_runtime(output_dir: &Path) -> Result<(), CoreError> {
     fs::write(runtime_dir.join("flash_iterator.ts"), FLASH_ITERATOR_TS)?;
     fs::write(runtime_dir.join("flash_memory.ts"), FLASH_MEMORY_TS)?;
     fs::write(runtime_dir.join("flash_xml.ts"), FLASH_XML_TS)?;
+    fs::write(runtime_dir.join("flash_display.ts"), FLASH_DISPLAY_TS)?;
 
     Ok(())
 }
