@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 use super::ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
 use super::ast_passes;
 use super::block::BlockId;
-use super::func::Function;
+use super::func::{Function, MethodKind};
 use super::inst::{InstId, Op};
 use super::structurize::{BlockArgAssign, Shape};
 use super::ty::Type;
@@ -1195,6 +1195,24 @@ impl<'a> EmitCtx<'a> {
                     };
                     if let Some(src) = src {
                         value_names.entry(src).or_insert(name);
+                    }
+                }
+            }
+        }
+
+        // Deduplicate self-parameter name: values other than param 0 that share
+        // the self name should use a distinct local name to avoid `this = ...`.
+        let has_self = matches!(
+            func.method_kind,
+            MethodKind::Instance | MethodKind::Constructor | MethodKind::Getter | MethodKind::Setter
+        );
+        if has_self && !func.blocks[func.entry].params.is_empty() {
+            let self_value = func.blocks[func.entry].params[0].value;
+            if let Some(self_name) = value_names.get(&self_value).cloned() {
+                let alt_name = format!("_{self_name}");
+                for (vid, name) in value_names.iter_mut() {
+                    if *vid != self_value && *name == self_name {
+                        *name = alt_name.clone();
                     }
                 }
             }
