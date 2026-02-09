@@ -1641,10 +1641,26 @@ impl<'a> EmitCtx<'a> {
     }
 
     fn build_params(&self) -> Vec<(String, Type)> {
+        let mut seen = HashSet::new();
         self.func.blocks[self.func.entry]
             .params
             .iter()
-            .map(|p| (self.value_name(p.value), p.ty.clone()))
+            .map(|p| {
+                let mut name = self.value_name(p.value);
+                if !seen.insert(name.clone()) {
+                    // Duplicate parameter name — append a suffix.
+                    let base = name.clone();
+                    let mut i = 2;
+                    loop {
+                        name = format!("{base}{i}");
+                        if seen.insert(name.clone()) {
+                            break;
+                        }
+                        i += 1;
+                    }
+                }
+                (name, p.ty.clone())
+            })
             .collect()
     }
 
