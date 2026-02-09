@@ -1960,7 +1960,9 @@ impl<'a> EmitCtx<'a> {
             let cond_expr = self.build_val(cond);
             let then_stmts = vec![Stmt::Assign {
                 target: Expr::Var(self.value_name(phi)),
-                value: self.build_val(cond),
+                // Reuse the already-built cond expression — build_val(cond)
+                // would fail here because the lazy inline was consumed above.
+                value: cond_expr.clone(),
             }];
             let mut else_stmts = body_stmts;
             if rhs != phi {
@@ -2008,7 +2010,9 @@ impl<'a> EmitCtx<'a> {
             }
             let else_stmts = vec![Stmt::Assign {
                 target: Expr::Var(self.value_name(phi)),
-                value: self.build_val(cond),
+                // Reuse the already-built cond expression — build_val(cond)
+                // would fail here because the lazy inline was consumed above.
+                value: cond_expr.clone(),
             }];
             self.referenced_block_params.insert(phi);
             stmts.push(Stmt::If {
