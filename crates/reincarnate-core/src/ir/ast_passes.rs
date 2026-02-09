@@ -284,12 +284,26 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
         let adjacent = use_idx == i + 1;
 
         if !adjacent {
-            // Non-adjacent: only fold if all intervening statements are SE-free.
+            // Non-adjacent: only fold if all intervening statements are SE-free,
+            // OR if the init is a stable path expression (Var/Field chain) and
+            // no intervening statement reassigns a prefix of that path.
             let all_intervening_pure = body[i + 1..use_idx]
                 .iter()
                 .all(|s| !stmt_has_side_effects(s));
             if !all_intervening_pure {
-                continue;
+                let init = match &body[i] {
+                    Stmt::VarDecl {
+                        init: Some(init), ..
+                    } => init,
+                    _ => unreachable!(),
+                };
+                let can_sink = is_stable_path(init)
+                    && body[i + 1..use_idx]
+                        .iter()
+                        .all(|s| !stmt_assigns_to_prefix_of(s, init));
+                if !can_sink {
+                    continue;
+                }
             }
         }
 
@@ -361,6 +375,49 @@ fn expr_has_side_effects(expr: &Expr) -> bool {
         Expr::StructInit { fields, .. } => {
             fields.iter().any(|(_, v)| expr_has_side_effects(v))  // closure needed: tuple destructure
         }
+    }
+}
+
+/// Whether an expression is a stable path (Var or Var.field.field... chain).
+///
+/// Stable paths can be safely re-evaluated past field assignments to different
+/// targets because field writes don't change object identity.
+fn is_stable_path(expr: &Expr) -> bool {
+    match expr {
+        Expr::Var(_) => true,
+        Expr::Field { object, .. } => is_stable_path(object),
+        _ => false,
+    }
+}
+
+/// Whether a statement assigns to a prefix of the given path expression.
+///
+/// `this.foo` is a prefix of `this.foo` and `this.foo.bar`, but not of
+/// `this.baz` or `this.foo_other`. A prefix assignment would change what
+/// the path evaluates to, making it unsafe to sink past.
+fn stmt_assigns_to_prefix_of(stmt: &Stmt, path: &Expr) -> bool {
+    match stmt {
+        Stmt::Assign { target, .. } | Stmt::CompoundAssign { target, .. } => {
+            expr_is_prefix_of(target, path)
+        }
+        // Other statement types (calls, control flow) are conservatively unsafe.
+        _ => stmt_has_side_effects(stmt),
+    }
+}
+
+/// Whether `prefix` is a path prefix of `path`.
+///
+/// `this.foo` is a prefix of `this.foo` and `this.foo.bar`.
+/// `this.foo.bar` is NOT a prefix of `this.foo` (deeper path doesn't
+/// invalidate a shallower read).
+fn expr_is_prefix_of(prefix: &Expr, path: &Expr) -> bool {
+    if prefix == path {
+        return true;
+    }
+    // Walk up the path chain — if any ancestor matches the prefix, it's a hit.
+    match path {
+        Expr::Field { object, .. } => expr_is_prefix_of(prefix, object),
+        _ => false,
     }
 }
 
