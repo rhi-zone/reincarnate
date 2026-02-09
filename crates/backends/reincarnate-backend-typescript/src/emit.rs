@@ -674,10 +674,14 @@ fn emit_function(
     out: &mut String,
 ) -> Result<(), CoreError> {
     use crate::ast_printer::{self, PrintCtx};
-    use reincarnate_core::ir::lower_ast;
+    use reincarnate_core::ir::{linear, lower_ast};
 
     let shape = structurize::structurize(func);
-    let ast = lower_ast::lower_function(func, &shape, lowering_config);
+    let ast = if lowering_config.use_linear_lowering {
+        linear::lower_function_linear(func, &shape, lowering_config)
+    } else {
+        lower_ast::lower_function(func, &shape, lowering_config)
+    };
     let pctx = PrintCtx::for_function(class_names);
     ast_printer::print_function(&ast, &pctx, out);
     Ok(())
@@ -798,7 +802,7 @@ fn emit_class_method(
     out: &mut String,
 ) -> Result<(), CoreError> {
     use crate::ast_printer::{self, PrintCtx};
-    use reincarnate_core::ir::lower_ast;
+    use reincarnate_core::ir::{linear, lower_ast};
 
     let raw_name = func
         .name
@@ -813,7 +817,11 @@ fn emit_class_method(
     );
 
     let shape = structurize::structurize(func);
-    let ast = lower_ast::lower_function(func, &shape, lowering_config);
+    let ast = if lowering_config.use_linear_lowering {
+        linear::lower_function_linear(func, &shape, lowering_config)
+    } else {
+        lower_ast::lower_function(func, &shape, lowering_config)
+    };
     let pctx = if skip_self {
         PrintCtx::for_method(class_names, ancestors, method_names)
     } else {

@@ -17,7 +17,6 @@
 //!   values get `const`/`let` declarations. Produces the AST for existing
 //!   AST-to-AST passes.
 
-#![allow(dead_code)] // Phases 2 & 3 will consume these types.
 
 use std::collections::{HashMap, HashSet};
 
@@ -933,7 +932,7 @@ fn scan_alloc_stores(
 // -----------------------------------------------------------------------
 
 /// Lower a function through all 3 phases of the hybrid pipeline.
-pub(crate) fn lower_function_linear(
+pub fn lower_function_linear(
     func: &Function,
     shape: &Shape,
     config: &LoweringConfig,

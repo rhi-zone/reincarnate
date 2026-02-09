@@ -5,7 +5,7 @@ pub mod builder;
 pub mod coroutine;
 pub mod func;
 pub mod inst;
-pub(crate) mod linear;
+pub mod linear;
 pub mod lower_ast;
 pub mod module;
 pub mod printer;
