@@ -164,10 +164,12 @@ identified by comparing `takeDamage` / `reduceDamage` in Player.ts.
 
 ### Remaining `vN` Identifiers
 
-4 unique vN identifiers remain across emitted TypeScript (down from 683 → 77
-→ 28 → 19 → 4). Pass order: self_assigns → dup_assigns → forwarding_stubs → ternary →
+1 unique vN identifier remains across emitted TypeScript (down from 683 → 77
+→ 28 → 19 → 4 → 1). Pass order: self_assigns → dup_assigns → forwarding_stubs → ternary →
 minmax → [fixpoint: forward_sub → ternary → absorb_phi → narrow → merge → fold] →
-compound_assign → post_increment.
+compound_assign → post_increment. Three former vN (item, hug, returnDamage, itype)
+were actually named variables whose debug names weren't reaching the emitter;
+fixed by propagating names through Cast/Copy in flush_pending_reads and EmitCtx.
 
 #### Pattern 1: Non-adjacent const before side-effect (13 vars)
 
@@ -333,13 +335,12 @@ accept — it's a single case and also non-adjacent (Pattern 1 applies too).
 | 6. Method ref capture (far use) | 2 | Accept | N/A | Correct as-is |
 | 7. Return value capture | 1 | Accept | N/A | Correct as-is |
 | 8. Constant rand(1) | 1 | Constant fold | Easy | Accept (also non-adj) |
-| **Total** | **4** *(was 291)* | | | |
+| **Total** | **1** *(was 291)* | | | |
 
-Patterns 1, 2, 3, 5 done. 4 unique vN remain from clean emit (683 → 4):
+Patterns 1, 2, 3, 5 done. Debug name propagation eliminated 3 more (item, hug,
+returnDamage, itype — these were named in AS3 source but names didn't reach emitter).
+1 unique vN remains from clean emit (683 → 1):
 - v115 (Mutations): Pattern 2 Case C — neither branch exits, needs code duplication
-- v16 (Inventory): field compound-assign intervening stmt
-- v19/v24 (Lottie): method refs captured 160 lines before use in choices()
-- v24 (Player): multi-use variable (assigned then returned)
 
 ### Architecture — Hybrid Lowering via Structured IR
 
@@ -380,11 +381,79 @@ flush mechanisms. Pure inlining is provably correct (no ordering concerns).
 Side-effect handling is isolated. `LinearStmt` is thinner than the AST
 (ValueId refs vs String names) — net memory reduction vs current `LowerCtx`.
 
-### Low Priority (polish)
+### Optimizations — Future Directions
+
+The current pipeline focuses on faithful decompilation: reproduce what the
+original source did, with clean variable names and readable structure. Further
+optimization passes could improve output quality but each carries correctness
+risks that need careful analysis.
+
+#### Safe (no semantic change)
 
 - [ ] **Redundant type casts** — Eliminate `as number` etc. when the expression
-  already has the target type.
-- [ ] **Inline closures** — Filter/map callbacks extracted as named function
-  references instead of being inlined as arrow functions.
+  already has the target type. Pure type-level, no runtime effect.
+- [ ] **Constant `rand(n)` where n <= 1** — `rand(1)` always returns 0 (integer
+  range `[0, n)`). Could fold to literal 0. Only 1 known instance
+  (PhoukaScene).
+- [ ] **Dead store elimination** — Remove assignments whose values are never
+  read. Already partially done (dead decl removal); extending to non-decl
+  assigns requires liveness analysis.
 - [ ] **Condition inversion** — Structurizer sometimes inverts conditions.
-  Not a bug but reads backward vs the original source.
+  Not a bug but reads backward vs the original source. Heuristic to match
+  original branch polarity.
+
+#### Requires alias/purity analysis
+
+These optimizations reorder or eliminate reads through object references. In
+AS3, property access can invoke getters (`get foo(): T`), making `this.foo`
+potentially side-effecting. Inlining `const v = this.foo; ... use(v)` as
+`use(this.foo)` is only safe if:
+1. `foo` is a plain field (not a getter), AND
+2. Nothing between the capture and use mutates `foo`
+
+For (1), we'd need class hierarchy analysis to determine whether a property
+access hits a getter. The ABC metadata has trait definitions that distinguish
+`TRAIT_SLOT` (plain field) from `TRAIT_GETTER` (accessor), but virtual dispatch
+means a subclass could override a slot with a getter.
+
+For (2), we'd need alias analysis — does an intervening call (e.g.
+`takeDamage()`) mutate the field being read? In general this requires whole-
+program analysis or conservative assumptions.
+
+- [ ] **Cross-side-effect const sinking** — Sink `const v = expr` past
+  side-effecting statements when `expr` is provably pure and unaliased.
+  Would eliminate Patterns 1, 4, 5, 6 (the remaining 4 vN). Requires
+  purity analysis for method calls and field accesses.
+- [ ] **Method reference inlining** — `const v = this.method; ... v(args)` →
+  `this.method(args)`. Only safe if `method` is not a getter. The Lottie
+  case captures `this.giveLottieAnItem` and `this.hugTheShitOutOfYourHam`
+  160 lines before use — inlining changes evaluation order of the property
+  access.
+- [ ] **Field read deduplication** — `this.x` read twice → read once, reuse.
+  Unsafe if intervening code could mutate `this.x` or if `x` is a getter
+  with side effects.
+
+#### Requires control flow analysis
+
+- [ ] **Pattern 2 Case C (absorb_phi_condition)** — The one remaining Case C
+  instance (Mutations v115) needs the condition-use `if` body duplicated
+  into both branches. FFDec does this; we skip it because code duplication
+  is a different trade-off than decompilers usually make. Could be enabled
+  with a size threshold (e.g., only duplicate if body is ≤ N statements).
+- [ ] **Inline closures** — Filter/map callbacks extracted as named function
+  references instead of being inlined as arrow functions. Requires knowing
+  the function is only passed once.
+- [ ] **Loop variable promotion** — Some for-loop induction variables could
+  be declared in the `for` header (`for (let i = 0; ...)`) rather than
+  as separate `let` declarations. Requires scope analysis.
+
+#### Naming & readability (non-semantic)
+
+- [ ] **Rename remaining vN** — The 1 remaining vN (v115 in Mutations) could
+  get a descriptive name via heuristic (e.g., `hasSpeedChange`). Cosmetic only.
+- [x] **Op::Debug name propagation** — Fixed. 3 of 4 remaining vN were
+  actually named variables (`item`, `hug`, `returnDamage`, `itype`). Root
+  cause: Mem2Reg transferred names to Cast results, but the emitter lazily
+  inlined the Cast and materialized the source (GetField/block-param) without
+  the name. Fix: propagate names through Cast/Copy in flush_pending_reads
+  and EmitCtx::new.
