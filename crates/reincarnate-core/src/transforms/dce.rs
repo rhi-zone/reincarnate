@@ -229,11 +229,60 @@ fn eliminate_dead_block_params(func: &mut Function, reachable: &HashSet<BlockId>
 
     loop {
         // Collect values used by non-branch-arg operands in live instructions.
-        let used_values: HashSet<ValueId> = reachable
+        let mut used_values: HashSet<ValueId> = reachable
             .iter()
             .flat_map(|&bid| func.blocks[bid].insts.iter())
             .flat_map(|&iid| non_branch_arg_operands(&func.insts[iid].op))
             .collect();
+
+        // Propagate liveness backward through branch-arg chains: if a block
+        // param is live, all values passed to it via branch args are also live.
+        // This ensures chains like `v355 → br block82(v355)` where block82's
+        // param feeds a Return are correctly kept alive.
+        let mut worklist: VecDeque<ValueId> = VecDeque::new();
+
+        // Seed: all block params that are directly used.
+        for &block_id in reachable {
+            if block_id == func.entry {
+                continue;
+            }
+            for param in &func.blocks[block_id].params {
+                if used_values.contains(&param.value) {
+                    worklist.push_back(param.value);
+                }
+            }
+        }
+
+        // Build a map: block param ValueId → (BlockId, param index) for lookup.
+        let mut param_to_block: HashMap<ValueId, (BlockId, usize)> = HashMap::new();
+        for &block_id in reachable {
+            for (i, param) in func.blocks[block_id].params.iter().enumerate() {
+                param_to_block.insert(param.value, (block_id, i));
+            }
+        }
+
+        // Propagate: for each live block param, find all branch args that feed
+        // it and mark those values as live too.
+        while let Some(live_val) = worklist.pop_front() {
+            if let Some(&(target_block, param_idx)) = param_to_block.get(&live_val) {
+                // Find all branches to target_block and mark arg at param_idx live.
+                for &block_id in reachable {
+                    for &inst_id in &func.blocks[block_id].insts {
+                        for (tgt, args) in
+                            branch_target_args(&func.insts[inst_id].op)
+                        {
+                            if tgt == target_block {
+                                if let Some(&arg_val) = args.get(param_idx) {
+                                    if used_values.insert(arg_val) {
+                                        worklist.push_back(arg_val);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Find blocks with dead parameters and record which indices to keep.
         let mut dead_param_indices: HashMap<BlockId, Vec<bool>> = HashMap::new();
@@ -279,6 +328,31 @@ fn eliminate_dead_block_params(func: &mut Function, reachable: &HashSet<BlockId>
     }
 
     any_changed
+}
+
+/// Extract (target, args) pairs from branch instructions for liveness propagation.
+fn branch_target_args(op: &Op) -> Vec<(BlockId, &[ValueId])> {
+    match op {
+        Op::Br { target, args } => vec![(*target, args)],
+        Op::BrIf {
+            then_target,
+            then_args,
+            else_target,
+            else_args,
+            ..
+        } => vec![(*then_target, then_args), (*else_target, else_args)],
+        Op::Switch {
+            cases, default, ..
+        } => {
+            let mut result: Vec<(BlockId, &[ValueId])> = cases
+                .iter()
+                .map(|(_, target, args)| (*target, args.as_slice()))
+                .collect();
+            result.push((default.0, &default.1));
+            result
+        }
+        _ => vec![],
+    }
 }
 
 /// Extract operands excluding branch arguments (which only forward values to
