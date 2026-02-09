@@ -110,6 +110,8 @@ pub enum Expr {
     Yield(Option<Box<Expr>>),
     /// Logical NOT: `!expr` (formatting hint — distinct from bitwise NOT).
     Not(Box<Expr>),
+    /// Post-increment: `expr++` (returns old value, increments by 1).
+    PostIncrement(Box<Expr>),
 }
 
 /// Binary arithmetic/bitwise operators.

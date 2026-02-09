@@ -554,6 +554,10 @@ fn print_expr(expr: &Expr, ctx: &PrintCtx) -> String {
         Expr::Not(inner) => {
             format!("!{}", print_expr_operand(inner, ctx))
         }
+
+        Expr::PostIncrement(inner) => {
+            format!("{}++", print_expr_operand(inner, ctx))
+        }
     }
 }
 

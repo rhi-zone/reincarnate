@@ -3,7 +3,7 @@
 //! These run after Shape→AST lowering to detect and simplify patterns that
 //! are easier to match on the high-level AST than during lowering.
 
-use super::ast::{Expr, Stmt};
+use super::ast::{BinOp, Expr, Stmt};
 use super::inst::CmpKind;
 use super::value::Constant;
 
@@ -313,7 +313,8 @@ fn expr_has_side_effects(expr: &Expr) -> bool {
         | Expr::SystemCall { .. }
         | Expr::CoroutineCreate { .. }
         | Expr::CoroutineResume(_)
-        | Expr::Yield(_) => true,
+        | Expr::Yield(_)
+        | Expr::PostIncrement(_) => true,
         Expr::Literal(_) | Expr::Var(_) | Expr::GlobalRef(_) => false,
         Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
             expr_has_side_effects(lhs) || expr_has_side_effects(rhs)
@@ -366,7 +367,8 @@ fn count_var_refs_in_expr(expr: &Expr, name: &str) -> usize {
         | Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
-        | Expr::CoroutineResume(inner) => count_var_refs_in_expr(inner, name),
+        | Expr::CoroutineResume(inner)
+        | Expr::PostIncrement(inner) => count_var_refs_in_expr(inner, name),
         Expr::Field { object, .. } => count_var_refs_in_expr(object, name),
         Expr::Index { collection, index } => {
             count_var_refs_in_expr(collection, name) + count_var_refs_in_expr(index, name)
@@ -502,7 +504,8 @@ fn substitute_var_in_expr(
         | Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
-        | Expr::CoroutineResume(inner) => substitute_var_in_expr(inner, name, replacement),
+        | Expr::CoroutineResume(inner)
+        | Expr::PostIncrement(inner) => substitute_var_in_expr(inner, name, replacement),
         Expr::Field { object, .. } => substitute_var_in_expr(object, name, replacement),
         Expr::Index { collection, index } => {
             substitute_var_in_expr(collection, name, replacement)
@@ -859,7 +862,8 @@ fn expr_references_var(expr: &Expr, name: &str) -> bool {
         | Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
-        | Expr::CoroutineResume(inner) => expr_references_var(inner, name),
+        | Expr::CoroutineResume(inner)
+        | Expr::PostIncrement(inner) => expr_references_var(inner, name),
         Expr::Field { object, .. } => expr_references_var(object, name),
         Expr::Index { collection, index } => {
             expr_references_var(collection, name) || expr_references_var(index, name)
@@ -1300,6 +1304,148 @@ fn negate_expr(expr: Expr) -> Expr {
             rhs,
         },
         other => Expr::Not(Box::new(other)),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Post-increment rewrite
+// ---------------------------------------------------------------------------
+
+/// Rewrite read-modify-write patterns to post-increment.
+///
+/// Matches:
+/// ```text
+/// const vN = TARGET;
+/// TARGET = (vN as number) + 1;  // or: TARGET = vN + 1
+/// ... vN ...                     // exactly one remaining use
+/// ```
+/// and rewrites to:
+/// ```text
+/// ... TARGET++ ...
+/// ```
+///
+/// Recurses into all nested statement bodies.
+pub fn rewrite_post_increment(body: &mut Vec<Stmt>) {
+    // Rewrite at this level.
+    loop {
+        if !try_rewrite_one_post_increment(body) {
+            break;
+        }
+    }
+    // Recurse into nested bodies.
+    for stmt in body.iter_mut() {
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                rewrite_post_increment(then_body);
+                rewrite_post_increment(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                rewrite_post_increment(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                rewrite_post_increment(init);
+                rewrite_post_increment(update);
+                rewrite_post_increment(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    rewrite_post_increment(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Try to find and rewrite one post-increment pattern. Returns true if a
+/// rewrite was performed.
+fn try_rewrite_one_post_increment(body: &mut Vec<Stmt>) -> bool {
+    for i in 0..body.len().saturating_sub(1) {
+        // Match: const vN = TARGET;
+        let (var_name, target) = match &body[i] {
+            Stmt::VarDecl {
+                name,
+                init: Some(init),
+                mutable: false,
+                ..
+            } => (name.clone(), init.clone()),
+            _ => continue,
+        };
+
+        // Match: TARGET = (vN [as number]) + 1;
+        let is_increment = match &body[i + 1] {
+            Stmt::Assign { target: tgt, value } => {
+                tgt == &target && is_var_plus_one(value, &var_name)
+            }
+            _ => false,
+        };
+        if !is_increment {
+            continue;
+        }
+
+        // Count remaining uses of vN in body[i+2..].
+        let remaining_refs: usize = body[i + 2..]
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, &var_name))
+            .sum();
+
+        if remaining_refs == 1 {
+            // Substitute the single remaining use with TARGET++.
+            let inc_expr = Expr::PostIncrement(Box::new(target));
+            let mut replacement = Some(inc_expr);
+            for s in &mut body[i + 2..] {
+                if substitute_var_in_stmt(s, &var_name, &mut replacement) {
+                    break;
+                }
+            }
+            // Remove the const and the increment assignment.
+            body.remove(i + 1);
+            body.remove(i);
+            return true;
+        } else if remaining_refs == 0 {
+            // No remaining reads — emit TARGET++ as a bare expression statement.
+            let inc_expr = Expr::PostIncrement(Box::new(target));
+            body.remove(i + 1);
+            body[i] = Stmt::Expr(inc_expr);
+            return true;
+        }
+    }
+    false
+}
+
+/// Check whether `expr` is `vN + 1` or `(vN as T) + 1`.
+fn is_var_plus_one(expr: &Expr, var_name: &str) -> bool {
+    if let Expr::Binary {
+        op: BinOp::Add,
+        lhs,
+        rhs,
+    } = expr
+    {
+        let is_one = match rhs.as_ref() {
+            Expr::Literal(Constant::Int(1)) => true,
+            Expr::Literal(Constant::Float(f)) => *f == 1.0,
+            _ => false,
+        };
+        if !is_one {
+            return false;
+        }
+        // lhs is either Var(vN) or Cast { expr: Var(vN), .. }
+        match lhs.as_ref() {
+            Expr::Var(n) => n == var_name,
+            Expr::Cast { expr: inner, .. } => matches!(inner.as_ref(), Expr::Var(n) if n == var_name),
+            _ => false,
+        }
+    } else {
+        false
     }
 }
 
