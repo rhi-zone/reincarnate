@@ -91,6 +91,7 @@ const PACKAGE_JSON: &str = r#"{
 fn generate_main(modules: &[Module]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "import {{ timing }} from \"./runtime\";");
+    let _ = writeln!(out, "import {{ stage, flashTick }} from \"./runtime/flash\";");
 
     // Collect imports for all modules (same logic as before).
     let mut heuristic_entry: Option<String> = None;
@@ -225,6 +226,7 @@ fn metadata_entry_code(modules: &[Module]) -> Option<String> {
         EntryPoint::ConstructClass(fqn) => {
             let ident = resolve_class_short_name(modules, fqn);
             let _ = writeln!(code, "const app = new {ident}();");
+            let _ = writeln!(code, "stage.addChild(app);");
         }
         EntryPoint::CallFunction(fid) => {
             if let Some(name) = func_call_name(module, *fid) {
@@ -236,6 +238,7 @@ fn metadata_entry_code(modules: &[Module]) -> Option<String> {
     // Frame loop.
     let _ = writeln!(code, "\nfunction loop() {{");
     let _ = writeln!(code, "  timing.tick();");
+    let _ = writeln!(code, "  flashTick();");
     let _ = writeln!(code, "  requestAnimationFrame(loop);");
     let _ = writeln!(code, "}}");
     let _ = writeln!(code);
@@ -281,6 +284,7 @@ fn func_call_name(module: &Module, fid: FuncId) -> Option<String> {
 fn emit_game_loop(out: &mut String, func_name: &str) {
     let _ = writeln!(out, "function loop() {{");
     let _ = writeln!(out, "  timing.tick();");
+    let _ = writeln!(out, "  flashTick();");
     let _ = writeln!(out, "  {func_name}();");
     let _ = writeln!(out, "  requestAnimationFrame(loop);");
     let _ = writeln!(out, "}}");

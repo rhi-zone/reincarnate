@@ -53,6 +53,9 @@ const FLASH_STDLIB_CLASSES: &[&str] = &[
     "Timer",
     "TimerEvent",
     "URLRequest",
+    // Runtime values (not classes, but exported from the flash barrel).
+    "flashTick",
+    "stage",
 ];
 
 /// Emit a single module into `output_dir`.

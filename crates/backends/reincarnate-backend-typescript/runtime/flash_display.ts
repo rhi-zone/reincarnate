@@ -308,7 +308,9 @@ export class DisplayObjectContainer extends InteractiveObject {
     }
     this._children.push(child);
     child.parent = this;
-    child.stage = this.stage;
+    if (this.stage) {
+      setStageRecursive(child, this.stage);
+    }
     return child;
   }
 
@@ -318,7 +320,9 @@ export class DisplayObjectContainer extends InteractiveObject {
     }
     this._children.splice(index, 0, child);
     child.parent = this;
-    child.stage = this.stage;
+    if (this.stage) {
+      setStageRecursive(child, this.stage);
+    }
     return child;
   }
 
@@ -343,7 +347,9 @@ export class DisplayObjectContainer extends InteractiveObject {
     if (idx !== -1) {
       this._children.splice(idx, 1);
       child.parent = null;
-      child.stage = null;
+      if (child.stage) {
+        clearStageRecursive(child);
+      }
     }
     return child;
   }
@@ -353,7 +359,9 @@ export class DisplayObjectContainer extends InteractiveObject {
     if (child) {
       this._children.splice(index, 1);
       child.parent = null;
-      child.stage = null;
+      if (child.stage) {
+        clearStageRecursive(child);
+      }
     }
     return child;
   }
@@ -539,6 +547,32 @@ export class Loader extends DisplayObjectContainer {
 
   unloadAndStop(_gc = true): void {
     this.content = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Stage propagation helpers
+// ---------------------------------------------------------------------------
+
+function setStageRecursive(node: DisplayObject, stage: Stage): void {
+  node.stage = stage;
+  node.dispatchEvent(new Event(Event.ADDED_TO_STAGE, false, false));
+  if (node instanceof DisplayObjectContainer) {
+    const n = node.numChildren;
+    for (let i = 0; i < n; i++) {
+      setStageRecursive(node.getChildAt(i), stage);
+    }
+  }
+}
+
+function clearStageRecursive(node: DisplayObject): void {
+  node.dispatchEvent(new Event(Event.REMOVED_FROM_STAGE, false, false));
+  node.stage = null;
+  if (node instanceof DisplayObjectContainer) {
+    const n = node.numChildren;
+    for (let i = 0; i < n; i++) {
+      clearStageRecursive(node.getChildAt(i));
+    }
   }
 }
 

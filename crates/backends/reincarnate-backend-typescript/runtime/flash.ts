@@ -41,3 +41,4 @@ export {
 } from "./flash_text";
 export { URLRequest, SharedObject } from "./flash_net";
 export { ByteArray, Timer, Proxy } from "./flash_utils";
+export { stage, flashTick } from "./flash_runtime";
