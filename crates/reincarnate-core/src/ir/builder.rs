@@ -6,7 +6,7 @@ use super::block::{Block, BlockId, BlockParam};
 use super::func::{FuncId, Function, Visibility};
 use super::inst::{CmpKind, Inst, Op};
 use super::func::MethodKind;
-use super::module::{ClassDef, EnumDef, Global, Import, Module, StructDef};
+use super::module::{ClassDef, EnumDef, EntryPoint, Global, Import, Module, StructDef};
 use super::ty::{FunctionSig, Type};
 use super::value::{Constant, ValueId};
 
@@ -553,6 +553,14 @@ impl ModuleBuilder {
 
     pub fn add_class(&mut self, class: ClassDef) {
         self.module.classes.push(class);
+    }
+
+    pub fn set_entry_point(&mut self, entry: EntryPoint) {
+        self.module.entry_point = Some(entry);
+    }
+
+    pub fn set_init_order(&mut self, order: Vec<FuncId>) {
+        self.module.init_order = order;
     }
 
     pub fn build(self) -> Module {

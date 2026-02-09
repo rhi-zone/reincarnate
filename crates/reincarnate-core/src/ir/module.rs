@@ -5,6 +5,20 @@ use crate::entity::PrimaryMap;
 use super::func::{FuncId, Function, Visibility};
 use super::ty::Type;
 
+/// Describes how the application is started.
+///
+/// Engine-agnostic: each frontend maps its own entry mechanism to the
+/// appropriate variant.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EntryPoint {
+    /// Construct this class to start the application.
+    /// Flash document class, Java Applet, RPG Maker Scene_Boot, etc.
+    ConstructClass(String),
+    /// Call this function to start the application.
+    /// VB6 Sub Main, Director startMovie, Ren'Py label start, etc.
+    CallFunction(FuncId),
+}
+
 /// A struct definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructDef {
@@ -74,6 +88,12 @@ pub struct Module {
     pub imports: Vec<Import>,
     #[serde(default)]
     pub classes: Vec<ClassDef>,
+    /// How to start the application (set by frontends that know the answer).
+    #[serde(default)]
+    pub entry_point: Option<EntryPoint>,
+    /// Functions to call before the entry point (e.g. script initializers).
+    #[serde(default)]
+    pub init_order: Vec<FuncId>,
 }
 
 impl Module {
@@ -86,6 +106,8 @@ impl Module {
             globals: Vec::new(),
             imports: Vec::new(),
             classes: Vec::new(),
+            entry_point: None,
+            init_order: Vec::new(),
         }
     }
 }
