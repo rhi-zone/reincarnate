@@ -234,6 +234,20 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
             .map(|s| count_var_refs_in_stmt(s, &name))
             .sum();
 
+        // Dead declaration: no references and pure init → remove entirely.
+        if total_refs == 0 {
+            if let Stmt::VarDecl {
+                init: Some(init), ..
+            } = &body[i]
+            {
+                if !expr_has_side_effects(init) {
+                    body.remove(i);
+                    return true;
+                }
+            }
+            continue;
+        }
+
         if total_refs != 1 {
             continue;
         }
