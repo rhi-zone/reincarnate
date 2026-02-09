@@ -993,10 +993,14 @@ pub fn lower_function_linear(
         ast_passes::rewrite_minmax(&mut full_body);
     }
 
-    // Fixpoint: narrowing enables merge, merge enables fold, fold may remove
-    // statements that enable further narrowing.
+    // Fixpoint: forward sub enables ternary, ternary enables narrow/merge/fold,
+    // fold may remove statements that enable further forward sub.
     loop {
         let before = ast_passes::count_stmts(&full_body);
+        ast_passes::forward_substitute(&mut full_body);
+        if config.ternary {
+            ast_passes::rewrite_ternary(&mut full_body);
+        }
         ast_passes::narrow_var_scope(&mut full_body);
         ast_passes::merge_decl_init(&mut full_body);
         ast_passes::fold_single_use_consts(&mut full_body);

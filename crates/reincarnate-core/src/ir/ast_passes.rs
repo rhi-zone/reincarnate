@@ -218,6 +218,22 @@ pub fn fold_single_use_consts(body: &mut Vec<Stmt>) {
 /// Try to fold a single const. Returns `true` if a fold was performed.
 fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
     for i in 0..body.len() {
+        // Dead uninit decl: `let vN: T;` with no remaining references.
+        if let Stmt::VarDecl {
+            name,
+            init: None, ..
+        } = &body[i]
+        {
+            let refs: usize = body[i + 1..]
+                .iter()
+                .map(|s| count_var_refs_in_stmt(s, name))
+                .sum();
+            if refs == 0 {
+                body.remove(i);
+                return true;
+            }
+        }
+
         let name = match &body[i] {
             Stmt::VarDecl {
                 name,
@@ -618,6 +634,104 @@ fn substitute_var_in_stmt(
             }),
         Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => false,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Forward substitution
+// ---------------------------------------------------------------------------
+
+/// Forward-substitute single-use assigns into adjacent use sites.
+///
+/// For each `x = E;` at position i, if `x` appears exactly once in the
+/// remaining body and that use is at position i+1 (adjacent), substitute E
+/// directly into the use site and remove the assign.  Also removes dead
+/// assigns (zero refs remaining) — keeping E as a bare expression statement
+/// if it has side effects.
+///
+/// Adjacent substitution preserves evaluation order regardless of side effects,
+/// because no code executes between the assign and the use.
+///
+/// Recurses into nested bodies.
+pub fn forward_substitute(body: &mut Vec<Stmt>) {
+    // Substitute at this level first.
+    loop {
+        if !try_forward_substitute_one(body) {
+            break;
+        }
+    }
+    // Then recurse into nested bodies.
+    for stmt in body.iter_mut() {
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                forward_substitute(then_body);
+                forward_substitute(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                forward_substitute(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                forward_substitute(init);
+                forward_substitute(update);
+                forward_substitute(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    forward_substitute(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Try to forward-substitute one assign. Returns `true` if a substitution
+/// was performed.
+fn try_forward_substitute_one(body: &mut Vec<Stmt>) -> bool {
+    for i in 0..body.len() {
+        // Match: x = E; where x is a Var
+        let name = match &body[i] {
+            Stmt::Assign {
+                target: Expr::Var(name),
+                ..
+            } => name.clone(),
+            _ => continue,
+        };
+
+        // Count ALL references in the remaining body at this scope level.
+        let total_refs: usize = body[i + 1..]
+            .iter()
+            .map(|s| count_var_refs_in_stmt(s, &name))
+            .sum();
+
+        if total_refs != 1 {
+            continue;
+        }
+
+        // Adjacent check: the single use must be at position i+1.
+        if i + 1 >= body.len() || !stmt_references_var(&body[i + 1], &name) {
+            continue;
+        }
+
+        // Extract value and substitute at the use site.
+        let value = match body.remove(i) {
+            Stmt::Assign { value, .. } => value,
+            _ => unreachable!(),
+        };
+
+        let mut replacement = Some(value);
+        substitute_var_in_stmt(&mut body[i], &name, &mut replacement);
+        return true;
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
