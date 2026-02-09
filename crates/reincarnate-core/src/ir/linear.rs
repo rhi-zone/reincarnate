@@ -522,9 +522,9 @@ fn count_uses_in_stmts(
                     *counts.entry(*v).or_default() += 1;
                 }
             }
-            // LogicalOr/And: cond counted 2x (condition check + possible
-            // branch assignment in non-short-circuit path). Conservative;
-            // fold_single_use_consts recovers the inline in short-circuit.
+            // LogicalOr/And: cond used once (as lhs of `||`/`&&`).
+            // The short-circuit semantics combine the BrIf condition check
+            // and the value propagation into a single `||`/`&&` expression.
             LinearStmt::LogicalOr {
                 cond,
                 rhs_body,
@@ -537,7 +537,7 @@ fn count_uses_in_stmts(
                 rhs,
                 ..
             } => {
-                *counts.entry(*cond).or_default() += 2;
+                *counts.entry(*cond).or_default() += 1;
                 count_uses_in_stmts(func, rhs_body, counts);
                 *counts.entry(*rhs).or_default() += 1;
             }
@@ -1626,12 +1626,15 @@ impl<'a> EmitCtx<'a> {
     }
 
     fn emit_assign(&mut self, dst: ValueId, src: ValueId, stmts: &mut Vec<Stmt>) {
-        let target_name = self.value_name(dst);
-        let value = self.build_val(src);
-        // Skip self-assignment (coalesced values share the target name).
-        if matches!(&value, Expr::Var(name) if name == &target_name) {
+        // Skip identity assignments (same ValueId) — these are always no-ops.
+        if dst == src {
             return;
         }
+        let target_name = self.value_name(dst);
+        let value = self.build_val(src);
+        // Don't skip name-based self-assignments here — the ternary rewrite
+        // needs both branches to have assignments. Standalone self-assigns
+        // are cleaned up by eliminate_self_assigns after ternary rewriting.
         self.referenced_block_params.insert(dst);
         stmts.push(Stmt::Assign {
             target: Expr::Var(target_name),
@@ -1647,8 +1650,10 @@ impl<'a> EmitCtx<'a> {
         stmts: &mut Vec<Stmt>,
     ) {
         self.flush_side_effecting_inlines(stmts);
-        let cond_expr = self.build_val(cond);
 
+        // Emit bodies first so we know whether to negate the condition.
+        // The condition is defined in the header block, so emitting the
+        // bodies won't disturb its pending_lazy entry.
         let then_stmts = self.emit_stmts(then_body);
         let else_stmts = self.emit_stmts(else_body);
 
@@ -1656,25 +1661,28 @@ impl<'a> EmitCtx<'a> {
         let else_empty = else_stmts.is_empty();
 
         match (then_empty, else_empty) {
-            (true, true) => {}
+            (true, true) => {
+                // Consume the condition so it doesn't become a dangling lazy.
+                let _ = self.build_val(cond);
+            }
             (false, true) => {
                 stmts.push(Stmt::If {
-                    cond: cond_expr,
+                    cond: self.build_val(cond),
                     then_body: then_stmts,
                     else_body: Vec::new(),
                 });
             }
             (true, false) => {
-                let neg = Expr::Not(Box::new(cond_expr));
+                // Negate condition and use else as then — can invert CmpKind.
                 stmts.push(Stmt::If {
-                    cond: neg,
+                    cond: self.negate_cond(cond),
                     then_body: else_stmts,
                     else_body: Vec::new(),
                 });
             }
             (false, false) => {
                 stmts.push(Stmt::If {
-                    cond: cond_expr,
+                    cond: self.build_val(cond),
                     then_body: then_stmts,
                     else_body: else_stmts,
                 });
