@@ -172,13 +172,13 @@ hard to reason about.
 
 Replace with a three-phase hybrid pipeline:
 
-- [ ] **Phase 1: Shape → `LinearStmt`** — Walk the Shape tree and produce a
+- [x] **Phase 1: Shape → `LinearStmt`** — Walk the Shape tree and produce a
   flat `Vec<LinearStmt>` where every instruction is a `Def(ValueId, Op)`,
   control flow comes from shapes (`If(ValueId, Vec, Vec)`, `While`, etc.),
   and branch args become `Assign(ValueId, ValueId)`. No inlining decisions.
   Trivial ~200-line shape walk.
 
-- [ ] **Phase 2: Pure resolution on `LinearStmt`** — Single pass over the
+- [x] **Phase 2: Pure resolution on `LinearStmt`** — Single pass over the
   structured IR. Pure single-use values (`use_count == 1 && is_pure`) are
   substituted into their consumer (ValueId → expression tree). Constants
   always substituted. Scope lookups + cascading GetField marked as
@@ -186,7 +186,7 @@ Replace with a three-phase hybrid pipeline:
   ValueId equality. Name coalescing annotated (shared ValueIds → mutable
   assignment). This handles 90% of inlining with zero side-effect concerns.
 
-- [ ] **Phase 3: `LinearStmt` → AST** — Resolve remaining ValueIds to
+- [x] **Phase 3: `LinearStmt` → AST** — Resolve remaining ValueIds to
   variable names. Side-effecting single-use values inlined if no
   intervening side effects (the only hard case, now isolated to ~10% of
   values). Multi-use values get `const`/`let` declarations. Produces
