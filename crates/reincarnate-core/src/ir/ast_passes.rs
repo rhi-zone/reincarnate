@@ -1228,6 +1228,68 @@ fn is_self_assign(stmt: &Stmt) -> bool {
     matches!(stmt, Stmt::Assign { target: Expr::Var(t), value: Expr::Var(v) } if t == v)
 }
 
+/// Remove consecutive duplicate assignments (`x = a; x = a;` → `x = a;`).
+///
+/// Structurizer duplicate edges emit the same phi-assignment in both arms of a
+/// diamond that converge to the same merge block. After ternary/other rewrites
+/// these can end up adjacent. Recurses into nested bodies.
+pub fn eliminate_duplicate_assigns(body: &mut Vec<Stmt>) {
+    for stmt in body.iter_mut() {
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                eliminate_duplicate_assigns(then_body);
+                eliminate_duplicate_assigns(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                eliminate_duplicate_assigns(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                eliminate_duplicate_assigns(init);
+                eliminate_duplicate_assigns(update);
+                eliminate_duplicate_assigns(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    eliminate_duplicate_assigns(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Remove consecutive duplicate assigns.
+    let mut i = 0;
+    while i + 1 < body.len() {
+        let is_dup = match (&body[i], &body[i + 1]) {
+            (
+                Stmt::Assign {
+                    target: t1,
+                    value: v1,
+                },
+                Stmt::Assign {
+                    target: t2,
+                    value: v2,
+                },
+            ) => t1 == t2 && v1 == v2,
+            _ => false,
+        };
+        if is_dup {
+            body.remove(i + 1);
+        } else {
+            i += 1;
+        }
+    }
+}
+
 /// Negate an expression, folding into comparisons when possible.
 fn negate_expr(expr: Expr) -> Expr {
     match expr {
