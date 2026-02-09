@@ -222,8 +222,8 @@ fn metadata_entry_code(modules: &[Module]) -> Option<String> {
 
     // Emit entry point.
     match module.entry_point.as_ref()? {
-        EntryPoint::ConstructClass(name) => {
-            let ident = sanitize_ident(name);
+        EntryPoint::ConstructClass(fqn) => {
+            let ident = resolve_class_short_name(modules, fqn);
             let _ = writeln!(code, "const app = new {ident}();");
         }
         EntryPoint::CallFunction(fid) => {
@@ -242,6 +242,33 @@ fn metadata_entry_code(modules: &[Module]) -> Option<String> {
     let _ = writeln!(code, "requestAnimationFrame(loop);");
 
     Some(code)
+}
+
+/// Resolve a fully-qualified class name (e.g. `classes.CoC`) to the short
+/// class name from the module's ClassDef entries (e.g. `CoC`).
+fn resolve_class_short_name(modules: &[Module], fqn: &str) -> String {
+    // Split FQN into segments: "classes.CoC" → ["classes", "CoC"]
+    let segments: Vec<&str> = fqn.split('.').collect();
+    let short = segments.last().copied().unwrap_or(fqn);
+
+    // Try to match against ClassDef entries for precision.
+    for module in modules {
+        for class in &module.classes {
+            // Match by short name + namespace.
+            if class.name == short {
+                let fqn_from_class = if class.namespace.is_empty() {
+                    class.name.clone()
+                } else {
+                    format!("{}.{}", class.namespace.join("."), class.name)
+                };
+                if fqn_from_class == fqn {
+                    return sanitize_ident(&class.name);
+                }
+            }
+        }
+    }
+    // Fallback: just use the last segment.
+    sanitize_ident(short)
 }
 
 /// Get the sanitized call expression for a function by FuncId.
