@@ -1806,7 +1806,7 @@ impl<'a> EmitCtx<'a> {
         let op = self.func.insts[inst_id].op.clone();
         match &op {
             Op::Store { ptr, value } => {
-                let target = self.build_val(*ptr);
+                let target = Expr::Var(self.value_name(*ptr));
                 let val = self.build_val(*value);
                 stmts.push(Stmt::Assign { target, value: val });
             }
