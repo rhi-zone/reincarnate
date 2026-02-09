@@ -336,26 +336,32 @@ fn collect_system_names_from_funcs<'a>(
     used
 }
 
+/// Emit runtime imports for flat modules (files directly in `output_dir`).
 fn emit_runtime_imports(module: &Module, out: &mut String) {
     let systems =
         collect_system_names_from_funcs(module.functions.iter().map(|(_id, f)| f));
-    emit_runtime_imports_for(systems, out, 0);
+    emit_runtime_imports_with_prefix(systems, out, ".");
 }
 
-/// Emit runtime imports with path prefix adjusted for directory depth.
+/// Emit runtime imports for files inside a module directory.
 ///
-/// `depth` is the number of directories below the module dir. From depth `d`,
-/// the runtime path is `"../".repeat(d + 1) + "runtime"` (the `+1` accounts
-/// for the module dir being one level inside `output_dir`).
+/// `depth` is the number of namespace directories below the module dir. The
+/// module dir itself is one level inside `output_dir`, so the prefix traverses
+/// `depth + 1` parent directories.
 fn emit_runtime_imports_for(systems: BTreeSet<String>, out: &mut String, depth: usize) {
+    let prefix = "../".repeat(depth + 1);
+    let prefix = prefix.trim_end_matches('/');
+    emit_runtime_imports_with_prefix(systems, out, prefix);
+}
+
+fn emit_runtime_imports_with_prefix(
+    systems: BTreeSet<String>,
+    out: &mut String,
+    prefix: &str,
+) {
     if systems.is_empty() {
         return;
     }
-    let prefix = if depth == 0 {
-        ".".to_string()
-    } else {
-        "../".repeat(depth).trim_end_matches('/').to_string()
-    };
     let known: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
     let mut generic: Vec<&str> = Vec::new();
     let mut flash: Vec<String> = Vec::new();
@@ -1504,9 +1510,9 @@ mod tests {
 
         let content = fs::read_to_string(&class_file).unwrap();
 
-        // Runtime import should go up 2 levels (depth = 2 namespace segments).
+        // Runtime import should go up 3 levels (2 namespace segments + 1 module dir).
         assert!(
-            content.contains("from \"../../runtime\""),
+            content.contains("from \"../../../runtime\""),
             "Runtime import should use depth-relative path:\n{content}"
         );
 
