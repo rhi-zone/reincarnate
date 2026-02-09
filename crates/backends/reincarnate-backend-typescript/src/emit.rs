@@ -297,10 +297,67 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
 // Identifier sanitization
 // ---------------------------------------------------------------------------
 
+/// JS/TS reserved words that cannot be used as identifiers.
+///
+/// Includes ECMAScript reserved words, strict-mode reserved words, and
+/// TypeScript contextual keywords that cause parse errors as identifiers.
+const JS_RESERVED: &[&str] = &[
+    "arguments",
+    "async",
+    "await",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "eval",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "interface",
+    "let",
+    "new",
+    "null",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "undefined",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+];
+
 /// Sanitize a name into a valid JavaScript identifier.
 ///
 /// Replaces non-alphanumeric characters with `_` and prefixes with `_` if the
-/// name starts with a digit.
+/// name starts with a digit or is a reserved word.
 pub(crate) fn sanitize_ident(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     for ch in name.chars() {
@@ -314,6 +371,9 @@ pub(crate) fn sanitize_ident(name: &str) -> String {
         return "_".to_string();
     }
     if out.starts_with(|c: char| c.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    if JS_RESERVED.contains(&out.as_str()) {
         out.insert(0, '_');
     }
     out
@@ -1141,6 +1201,16 @@ mod tests {
         assert_eq!(sanitize_ident("4l9JT7u2nN1ZFk+5"), "_4l9JT7u2nN1ZFk_5");
         assert_eq!(sanitize_ident("l/YEs377IakicDh/"), "l_YEs377IakicDh_");
         assert_eq!(sanitize_ident("normal_name"), "normal_name");
+    }
+
+    #[test]
+    fn sanitize_ident_escapes_reserved_words() {
+        assert_eq!(sanitize_ident("function"), "_function");
+        assert_eq!(sanitize_ident("class"), "_class");
+        assert_eq!(sanitize_ident("this"), "_this");
+        assert_eq!(sanitize_ident("let"), "_let");
+        // Non-reserved words pass through unchanged.
+        assert_eq!(sanitize_ident("foo"), "foo");
     }
 
     #[test]
