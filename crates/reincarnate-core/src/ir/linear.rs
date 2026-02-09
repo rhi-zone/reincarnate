@@ -552,21 +552,26 @@ fn count_uses_in_stmts(
             // LogicalOr/And: cond used once (as lhs of `||`/`&&`).
             // The short-circuit semantics combine the BrIf condition check
             // and the value propagation into a single `||`/`&&` expression.
+            // When rhs == phi (nested logical op), the emitter skips the
+            // rhs reference, so don't count it — otherwise the inner phi
+            // looks multi-use and won't inline.
             LinearStmt::LogicalOr {
                 cond,
+                phi,
                 rhs_body,
                 rhs,
-                ..
             }
             | LinearStmt::LogicalAnd {
                 cond,
+                phi,
                 rhs_body,
                 rhs,
-                ..
             } => {
                 *counts.entry(*cond).or_default() += 1;
                 count_uses_in_stmts(func, rhs_body, counts);
-                *counts.entry(*rhs).or_default() += 1;
+                if *rhs != *phi {
+                    *counts.entry(*rhs).or_default() += 1;
+                }
             }
             LinearStmt::Dispatch { blocks, .. } => {
                 for (_, block_stmts) in blocks {
