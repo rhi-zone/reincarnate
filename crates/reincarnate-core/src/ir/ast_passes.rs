@@ -666,12 +666,44 @@ fn match_compound_assign(target: &Expr, value: &Expr) -> Option<Stmt> {
 /// (not at the top) to preserve correct evaluation order when the init
 /// expression references other variables.
 ///
-/// Only operates on top-level statements — does not recurse into nested bodies
-/// (block-param declarations only appear at the function top level).
+/// Recurses into nested bodies after merging at the current level.
 pub fn merge_decl_init(body: &mut Vec<Stmt>) {
+    // Merge at this level first.
     loop {
         if !try_merge_one_decl(body) {
             break;
+        }
+    }
+    // Then recurse into nested bodies.
+    for stmt in body.iter_mut() {
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                merge_decl_init(then_body);
+                merge_decl_init(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                merge_decl_init(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                merge_decl_init(init);
+                merge_decl_init(update);
+                merge_decl_init(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    merge_decl_init(block_body);
+                }
+            }
+            _ => {}
         }
     }
 }
