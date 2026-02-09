@@ -2,8 +2,8 @@
  * flash.utils package — ByteArray, Timer, Proxy.
  */
 
-import { EventDispatcher } from "./flash_display";
-import { TimerEvent } from "./flash_events";
+import { EventDispatcher } from "./display";
+import { TimerEvent } from "./events";
 
 // ---------------------------------------------------------------------------
 // ByteArray

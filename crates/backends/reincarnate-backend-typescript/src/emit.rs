@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -12,51 +12,32 @@ use reincarnate_core::pipeline::LoweringConfig;
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
 
-/// Flash standard library class names available from the runtime.
-///
-/// When a class references one of these as a superclass or type but the class
-/// is not defined in the current module, the emitter generates an import from
-/// the Flash runtime barrel (`runtime/flash`).
-const FLASH_STDLIB_CLASSES: &[&str] = &[
-    "AsyncErrorEvent",
-    "ByteArray",
-    "DisplayObject",
-    "DisplayObjectContainer",
-    "ErrorEvent",
-    "Event",
-    "EventDispatcher",
-    "FocusEvent",
-    "Font",
-    "Graphics",
-    "HTTPStatusEvent",
-    "IOErrorEvent",
-    "InteractiveObject",
-    "KeyboardEvent",
-    "Loader",
-    "LoaderInfo",
-    "Matrix",
-    "MouseEvent",
-    "MovieClip",
-    "Point",
-    "ProgressEvent",
-    "Proxy",
-    "Rectangle",
-    "SecurityErrorEvent",
-    "SharedObject",
-    "Sprite",
-    "Stage",
-    "TextEvent",
-    "TextField",
-    "TextFieldAutoSize",
-    "TextFieldType",
-    "TextFormat",
-    "Timer",
-    "TimerEvent",
-    "URLRequest",
-    // Runtime values (not classes, but exported from the flash barrel).
-    "flashTick",
-    "stage",
-];
+/// Map a Flash runtime class/value name to its sub-module path under
+/// `runtime/flash/`. Returns `None` for names not in the Flash stdlib.
+fn flash_stdlib_module(name: &str) -> Option<&'static str> {
+    Some(match name {
+        // flash/events
+        "Event" | "TextEvent" | "ErrorEvent" | "MouseEvent" | "KeyboardEvent"
+        | "FocusEvent" | "ProgressEvent" | "IOErrorEvent" | "SecurityErrorEvent"
+        | "HTTPStatusEvent" | "AsyncErrorEvent" | "TimerEvent" => "events",
+        // flash/display
+        "EventDispatcher" | "Graphics" | "DisplayObject" | "InteractiveObject"
+        | "DisplayObjectContainer" | "Sprite" | "MovieClip" | "LoaderInfo"
+        | "Loader" | "Stage" => "display",
+        // flash/geom
+        "Point" | "Rectangle" | "Matrix" => "geom",
+        // flash/text
+        "TextFieldType" | "TextFieldAutoSize" | "TextFormat" | "TextField"
+        | "Font" => "text",
+        // flash/net
+        "URLRequest" | "SharedObject" => "net",
+        // flash/utils
+        "ByteArray" | "Timer" | "Proxy" => "utils",
+        // flash/runtime
+        "stage" | "flashTick" => "runtime",
+        _ => return None,
+    })
+}
 
 /// Emit a single module into `output_dir`.
 ///
@@ -460,6 +441,21 @@ fn emit_runtime_imports_for(systems: BTreeSet<String>, out: &mut String, depth: 
     emit_runtime_imports_with_prefix(systems, out, prefix);
 }
 
+/// Map a Flash system name (e.g. `"Flash.Object"`) to its sub-module path
+/// under `runtime/flash/`. Returns `None` for non-Flash systems.
+fn flash_system_module(system: &str) -> Option<&'static str> {
+    Some(match system {
+        "Flash.Object" => "object",
+        "Flash.Class" => "class",
+        "Flash.Scope" => "scope",
+        "Flash.Exception" => "exception",
+        "Flash.Iterator" => "iterator",
+        "Flash.Memory" => "memory",
+        "Flash.XML" => "xml",
+        _ => return None,
+    })
+}
+
 fn emit_runtime_imports_with_prefix(
     systems: BTreeSet<String>,
     out: &mut String,
@@ -470,12 +466,22 @@ fn emit_runtime_imports_with_prefix(
     }
     let known: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
     let mut generic: Vec<&str> = Vec::new();
-    let mut flash: Vec<String> = Vec::new();
+    let mut flash_by_mod: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for sys in &systems {
         if known.contains(sys.as_str()) {
             generic.push(sys.as_str());
         } else {
-            flash.push(sanitize_ident(sys));
+            let module = flash_system_module(sys)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    sys.strip_prefix("Flash.")
+                        .unwrap_or(sys)
+                        .to_ascii_lowercase()
+                });
+            flash_by_mod
+                .entry(module)
+                .or_default()
+                .push(sanitize_ident(sys));
         }
     }
     if !generic.is_empty() {
@@ -485,14 +491,14 @@ fn emit_runtime_imports_with_prefix(
             generic.join(", ")
         );
     }
-    if !flash.is_empty() {
+    for (module, names) in &flash_by_mod {
         let _ = writeln!(
             out,
-            "import {{ {} }} from \"{prefix}/runtime/flash\";",
-            flash.join(", ")
+            "import {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+            names.join(", ")
         );
     }
-    if !generic.is_empty() || !flash.is_empty() {
+    if !generic.is_empty() || !flash_by_mod.is_empty() {
         out.push('\n');
     }
 }
@@ -526,7 +532,7 @@ fn collect_class_references(
         if short != self_name {
             if let Some(entry) = registry.lookup(sc) {
                 value_refs.insert(entry.short_name.clone());
-            } else if FLASH_STDLIB_CLASSES.contains(&short) {
+            } else if flash_stdlib_module(short).is_some() {
                 ext_value_refs.insert(short.to_string());
             }
         }
@@ -596,7 +602,7 @@ fn collect_type_refs_from_function(
 }
 
 /// If a type references a class in the registry, add its short name.
-/// If not in the registry but in `FLASH_STDLIB_CLASSES`, add to `ext_refs`.
+/// If not in the registry but in the Flash stdlib, add to `ext_refs`.
 fn collect_type_ref(
     ty: &Type,
     self_name: &str,
@@ -610,7 +616,7 @@ fn collect_type_ref(
             if short != self_name {
                 if let Some(entry) = registry.lookup(name) {
                     refs.insert(entry.short_name.clone());
-                } else if FLASH_STDLIB_CLASSES.contains(&short) {
+                } else if flash_stdlib_module(short).is_some() {
                     ext_refs.insert(short.to_string());
                 }
             }
@@ -666,31 +672,39 @@ fn emit_intra_imports(
         return;
     }
 
-    // External Flash stdlib imports from the runtime barrel.
+    // External Flash stdlib imports — grouped by sub-module.
     if has_ext {
         let prefix = "../".repeat(depth + 1);
         let prefix = prefix.trim_end_matches('/');
 
-        // Value imports.
-        let ext_vals: Vec<&str> = ext_value_refs.iter().map(|s| s.as_str()).collect();
-        if !ext_vals.is_empty() {
+        // Group value refs by module.
+        let mut val_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for name in &ext_value_refs {
+            if let Some(m) = flash_stdlib_module(name) {
+                val_by_mod.entry(m).or_default().push(name);
+            }
+        }
+        for (module, names) in &val_by_mod {
             let _ = writeln!(
                 out,
-                "import {{ {} }} from \"{prefix}/runtime/flash\";",
-                ext_vals.join(", ")
+                "import {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+                names.join(", ")
             );
         }
         // Type-only imports (not already covered by value imports).
-        let ext_types: Vec<&str> = ext_type_refs
-            .iter()
-            .filter(|s| !ext_value_refs.contains(*s))
-            .map(|s| s.as_str())
-            .collect();
-        if !ext_types.is_empty() {
+        let mut type_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        for name in &ext_type_refs {
+            if !ext_value_refs.contains(name) {
+                if let Some(m) = flash_stdlib_module(name) {
+                    type_by_mod.entry(m).or_default().push(name);
+                }
+            }
+        }
+        for (module, names) in &type_by_mod {
             let _ = writeln!(
                 out,
-                "import type {{ {} }} from \"{prefix}/runtime/flash\";",
-                ext_types.join(", ")
+                "import type {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+                names.join(", ")
             );
         }
     }

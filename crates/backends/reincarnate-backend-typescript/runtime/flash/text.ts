@@ -3,8 +3,8 @@
  * TextFieldAutoSize, Font.
  */
 
-import { Rectangle } from "./flash_geom";
-import { InteractiveObject } from "./flash_display";
+import { Rectangle } from "./geom";
+import { InteractiveObject } from "./display";
 
 // ---------------------------------------------------------------------------
 // TextFieldType

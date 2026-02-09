@@ -3,8 +3,8 @@
  * Loader, LoaderInfo, Stage.
  */
 
-import { Point, Rectangle, Matrix } from "./flash_geom";
-import { Event, ProgressEvent, IOErrorEvent } from "./flash_events";
+import { Point, Rectangle, Matrix } from "./geom";
+import { Event, ProgressEvent, IOErrorEvent } from "./events";
 
 // ---------------------------------------------------------------------------
 // EventDispatcher

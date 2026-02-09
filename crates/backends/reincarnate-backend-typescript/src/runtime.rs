@@ -13,21 +13,20 @@ const UI_TS: &str = include_str!("../runtime/ui.ts");
 const INDEX_TS: &str = include_str!("../runtime/index.ts");
 
 // Flash-specific runtime modules.
-const FLASH_INDEX_TS: &str = include_str!("../runtime/flash.ts");
-const FLASH_OBJECT_TS: &str = include_str!("../runtime/flash_object.ts");
-const FLASH_CLASS_TS: &str = include_str!("../runtime/flash_class.ts");
-const FLASH_SCOPE_TS: &str = include_str!("../runtime/flash_scope.ts");
-const FLASH_EXCEPTION_TS: &str = include_str!("../runtime/flash_exception.ts");
-const FLASH_ITERATOR_TS: &str = include_str!("../runtime/flash_iterator.ts");
-const FLASH_MEMORY_TS: &str = include_str!("../runtime/flash_memory.ts");
-const FLASH_XML_TS: &str = include_str!("../runtime/flash_xml.ts");
-const FLASH_GEOM_TS: &str = include_str!("../runtime/flash_geom.ts");
-const FLASH_EVENTS_TS: &str = include_str!("../runtime/flash_events.ts");
-const FLASH_DISPLAY_TS: &str = include_str!("../runtime/flash_display.ts");
-const FLASH_TEXT_TS: &str = include_str!("../runtime/flash_text.ts");
-const FLASH_NET_TS: &str = include_str!("../runtime/flash_net.ts");
-const FLASH_UTILS_TS: &str = include_str!("../runtime/flash_utils.ts");
-const FLASH_RUNTIME_TS: &str = include_str!("../runtime/flash_runtime.ts");
+const FLASH_OBJECT_TS: &str = include_str!("../runtime/flash/object.ts");
+const FLASH_CLASS_TS: &str = include_str!("../runtime/flash/class.ts");
+const FLASH_SCOPE_TS: &str = include_str!("../runtime/flash/scope.ts");
+const FLASH_EXCEPTION_TS: &str = include_str!("../runtime/flash/exception.ts");
+const FLASH_ITERATOR_TS: &str = include_str!("../runtime/flash/iterator.ts");
+const FLASH_MEMORY_TS: &str = include_str!("../runtime/flash/memory.ts");
+const FLASH_XML_TS: &str = include_str!("../runtime/flash/xml.ts");
+const FLASH_GEOM_TS: &str = include_str!("../runtime/flash/geom.ts");
+const FLASH_EVENTS_TS: &str = include_str!("../runtime/flash/events.ts");
+const FLASH_DISPLAY_TS: &str = include_str!("../runtime/flash/display.ts");
+const FLASH_TEXT_TS: &str = include_str!("../runtime/flash/text.ts");
+const FLASH_NET_TS: &str = include_str!("../runtime/flash/net.ts");
+const FLASH_UTILS_TS: &str = include_str!("../runtime/flash/utils.ts");
+const FLASH_RUNTIME_TS: &str = include_str!("../runtime/flash/runtime.ts");
 
 /// All known generic system names that the runtime provides.
 pub const SYSTEM_NAMES: &[&str] = &["renderer", "audio", "input", "timing", "save", "ui"];
@@ -47,21 +46,22 @@ pub fn emit_runtime(output_dir: &Path) -> Result<(), CoreError> {
     fs::write(runtime_dir.join("index.ts"), INDEX_TS)?;
 
     // Flash-specific systems.
-    fs::write(runtime_dir.join("flash.ts"), FLASH_INDEX_TS)?;
-    fs::write(runtime_dir.join("flash_object.ts"), FLASH_OBJECT_TS)?;
-    fs::write(runtime_dir.join("flash_class.ts"), FLASH_CLASS_TS)?;
-    fs::write(runtime_dir.join("flash_scope.ts"), FLASH_SCOPE_TS)?;
-    fs::write(runtime_dir.join("flash_exception.ts"), FLASH_EXCEPTION_TS)?;
-    fs::write(runtime_dir.join("flash_iterator.ts"), FLASH_ITERATOR_TS)?;
-    fs::write(runtime_dir.join("flash_memory.ts"), FLASH_MEMORY_TS)?;
-    fs::write(runtime_dir.join("flash_xml.ts"), FLASH_XML_TS)?;
-    fs::write(runtime_dir.join("flash_geom.ts"), FLASH_GEOM_TS)?;
-    fs::write(runtime_dir.join("flash_events.ts"), FLASH_EVENTS_TS)?;
-    fs::write(runtime_dir.join("flash_display.ts"), FLASH_DISPLAY_TS)?;
-    fs::write(runtime_dir.join("flash_text.ts"), FLASH_TEXT_TS)?;
-    fs::write(runtime_dir.join("flash_net.ts"), FLASH_NET_TS)?;
-    fs::write(runtime_dir.join("flash_utils.ts"), FLASH_UTILS_TS)?;
-    fs::write(runtime_dir.join("flash_runtime.ts"), FLASH_RUNTIME_TS)?;
+    let flash_dir = runtime_dir.join("flash");
+    fs::create_dir_all(&flash_dir)?;
+    fs::write(flash_dir.join("object.ts"), FLASH_OBJECT_TS)?;
+    fs::write(flash_dir.join("class.ts"), FLASH_CLASS_TS)?;
+    fs::write(flash_dir.join("scope.ts"), FLASH_SCOPE_TS)?;
+    fs::write(flash_dir.join("exception.ts"), FLASH_EXCEPTION_TS)?;
+    fs::write(flash_dir.join("iterator.ts"), FLASH_ITERATOR_TS)?;
+    fs::write(flash_dir.join("memory.ts"), FLASH_MEMORY_TS)?;
+    fs::write(flash_dir.join("xml.ts"), FLASH_XML_TS)?;
+    fs::write(flash_dir.join("geom.ts"), FLASH_GEOM_TS)?;
+    fs::write(flash_dir.join("events.ts"), FLASH_EVENTS_TS)?;
+    fs::write(flash_dir.join("display.ts"), FLASH_DISPLAY_TS)?;
+    fs::write(flash_dir.join("text.ts"), FLASH_TEXT_TS)?;
+    fs::write(flash_dir.join("net.ts"), FLASH_NET_TS)?;
+    fs::write(flash_dir.join("utils.ts"), FLASH_UTILS_TS)?;
+    fs::write(flash_dir.join("runtime.ts"), FLASH_RUNTIME_TS)?;
 
     Ok(())
 }

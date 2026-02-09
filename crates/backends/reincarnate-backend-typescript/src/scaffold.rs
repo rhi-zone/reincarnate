@@ -91,7 +91,7 @@ const PACKAGE_JSON: &str = r#"{
 fn generate_main(modules: &[Module]) -> String {
     let mut out = String::new();
     let _ = writeln!(out, "import {{ timing }} from \"./runtime\";");
-    let _ = writeln!(out, "import {{ stage, flashTick }} from \"./runtime/flash\";");
+    let _ = writeln!(out, "import {{ stage, flashTick }} from \"./runtime/flash/runtime\";");
 
     // Collect imports for all modules (same logic as before).
     let mut heuristic_entry: Option<String> = None;

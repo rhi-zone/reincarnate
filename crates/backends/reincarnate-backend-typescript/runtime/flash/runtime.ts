@@ -9,13 +9,13 @@ import {
   DisplayObjectContainer,
   Sprite,
   Graphics,
-} from "./flash_display";
+} from "./display";
 import {
   Event,
   MouseEvent as FlashMouseEvent,
   KeyboardEvent as FlashKeyboardEvent,
-} from "./flash_events";
-import { Rectangle } from "./flash_geom";
+} from "./events";
+import { Rectangle } from "./geom";
 
 // ---------------------------------------------------------------------------
 // Canvas + rendering context
