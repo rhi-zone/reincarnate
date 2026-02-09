@@ -1424,7 +1424,7 @@ mod tests {
 
         // Struct for class fields.
         mb.add_struct(StructDef {
-            name: "Phouka".into(),
+            name: "Fighter".into(),
             namespace: vec!["classes".into(), "Scenes".into()],
             fields: vec![("hp".into(), Type::Int(32))],
             visibility: Visibility::Public,
@@ -1434,10 +1434,10 @@ mod tests {
         let ctor_sig = FunctionSig {
             params: vec![Type::Dynamic],
             return_ty: Type::Void, ..Default::default() };
-        let mut fb = FunctionBuilder::new("Phouka::new", ctor_sig, Visibility::Public);
+        let mut fb = FunctionBuilder::new("Fighter::new", ctor_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
-            "Phouka".into(),
+            "Fighter".into(),
             MethodKind::Constructor,
         );
         fb.ret(None);
@@ -1447,10 +1447,10 @@ mod tests {
         let method_sig = FunctionSig {
             params: vec![Type::Dynamic, Type::Int(32)],
             return_ty: Type::Void, ..Default::default() };
-        let mut fb = FunctionBuilder::new("Phouka::attack", method_sig, Visibility::Public);
+        let mut fb = FunctionBuilder::new("Fighter::attack", method_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
-            "Phouka".into(),
+            "Fighter".into(),
             MethodKind::Instance,
         );
         let _this = fb.param(0);
@@ -1462,10 +1462,10 @@ mod tests {
         let static_sig = FunctionSig {
             params: vec![Type::Int(32)],
             return_ty: Type::Int(32), ..Default::default() };
-        let mut fb = FunctionBuilder::new("Phouka::create", static_sig, Visibility::Public);
+        let mut fb = FunctionBuilder::new("Fighter::create", static_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
-            "Phouka".into(),
+            "Fighter".into(),
             MethodKind::Static,
         );
         let p = fb.param(0);
@@ -1476,10 +1476,10 @@ mod tests {
         let getter_sig = FunctionSig {
             params: vec![Type::Dynamic],
             return_ty: Type::Int(32), ..Default::default() };
-        let mut fb = FunctionBuilder::new("Phouka::get_health", getter_sig, Visibility::Public);
+        let mut fb = FunctionBuilder::new("Fighter::get_health", getter_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
-            "Phouka".into(),
+            "Fighter".into(),
             MethodKind::Getter,
         );
         let this = fb.param(0);
@@ -1488,7 +1488,7 @@ mod tests {
         let getter_id = mb.add_function(fb.build());
 
         mb.add_class(ClassDef {
-            name: "Phouka".into(),
+            name: "Fighter".into(),
             namespace: vec!["classes".into(), "Scenes".into()],
             struct_index: 0,
             methods: vec![ctor_id, method_id, static_id, getter_id],
@@ -1501,7 +1501,7 @@ mod tests {
 
         // Class declaration — `extends Object` is suppressed (redundant in JS).
         assert!(
-            out.contains("export class Phouka {"),
+            out.contains("export class Fighter {"),
             "Should have class decl without extends Object:\n{out}"
         );
         // Field.
