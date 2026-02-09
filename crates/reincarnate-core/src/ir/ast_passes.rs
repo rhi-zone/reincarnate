@@ -499,9 +499,17 @@ fn count_var_refs_in_stmt(stmt: &Stmt, name: &str) -> usize {
             usize::from(n == name) + init.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name))
         }
         Stmt::Assign { target, value } => {
-            count_var_refs_in_expr(target, name) + count_var_refs_in_expr(value, name)
+            // A bare Var target is a write, not a read — don't count it.
+            // Complex targets (Field, Index) contain reads of sub-expressions.
+            let target_refs = if matches!(target, Expr::Var(v) if v == name) {
+                0
+            } else {
+                count_var_refs_in_expr(target, name)
+            };
+            target_refs + count_var_refs_in_expr(value, name)
         }
         Stmt::CompoundAssign { target, value, .. } => {
+            // CompoundAssign reads AND writes the target, so always count it.
             count_var_refs_in_expr(target, name) + count_var_refs_in_expr(value, name)
         }
         Stmt::Expr(e) => count_var_refs_in_expr(e, name),
@@ -649,10 +657,17 @@ fn substitute_var_in_stmt(
             .as_mut()
             .is_some_and(|e| substitute_var_in_expr(e, name, replacement)),
         Stmt::Assign { target, value } => {
-            substitute_var_in_expr(target, name, replacement)
-                || substitute_var_in_expr(value, name, replacement)
+            // A bare Var target is a write — don't substitute into it.
+            // Complex targets (Field, Index) contain reads that can be substituted.
+            let target_sub = if matches!(target, Expr::Var(v) if v == name) {
+                false
+            } else {
+                substitute_var_in_expr(target, name, replacement)
+            };
+            target_sub || substitute_var_in_expr(value, name, replacement)
         }
         Stmt::CompoundAssign { target, value, .. } => {
+            // CompoundAssign reads AND writes the target, so always substitute.
             substitute_var_in_expr(target, name, replacement)
                 || substitute_var_in_expr(value, name, replacement)
         }
