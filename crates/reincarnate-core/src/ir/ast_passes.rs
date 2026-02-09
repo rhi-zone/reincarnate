@@ -222,7 +222,6 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
             Stmt::VarDecl {
                 name,
                 init: Some(_),
-                mutable: false,
                 ..
             } => name.clone(),
             _ => continue,
@@ -1816,8 +1815,8 @@ mod tests {
     }
 
     #[test]
-    fn fold_no_fold_mutable() {
-        // let v = 1; x = v; — mutable, don't fold
+    fn fold_single_use_mutable() {
+        // let v = 1; x = v; — single-use mutable, fold it
         let mut body = vec![
             Stmt::VarDecl {
                 name: "v".to_string(),
@@ -1830,7 +1829,8 @@ mod tests {
 
         fold_single_use_consts(&mut body);
 
-        assert_eq!(body.len(), 2);
+        assert_eq!(body.len(), 1);
+        assert!(matches!(&body[0], Stmt::Assign { value, .. } if *value == int(1)));
     }
 
     #[test]
