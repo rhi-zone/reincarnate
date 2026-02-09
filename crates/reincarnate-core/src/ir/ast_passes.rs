@@ -1912,6 +1912,63 @@ fn recurse_into_stmt(stmt: &mut Stmt, pass: fn(&mut [Stmt])) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Invert empty-then if-blocks
+// ---------------------------------------------------------------------------
+
+/// Invert `if (x) {} else { ... }` to `if (!x) { ... }`.
+///
+/// When the then-body is empty and the else-body is non-empty, negates the
+/// condition and swaps the bodies. Recurses into all nested statement bodies.
+pub fn invert_empty_then(body: &mut [Stmt]) {
+    for stmt in body.iter_mut() {
+        // Recurse first (children before parent).
+        match stmt {
+            Stmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                invert_empty_then(then_body);
+                invert_empty_then(else_body);
+            }
+            Stmt::While { body, .. } | Stmt::Loop { body } => {
+                invert_empty_then(body);
+            }
+            Stmt::For {
+                init,
+                update,
+                body,
+                ..
+            } => {
+                invert_empty_then(init);
+                invert_empty_then(update);
+                invert_empty_then(body);
+            }
+            Stmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    invert_empty_then(block_body);
+                }
+            }
+            _ => {}
+        }
+
+        // Then try to invert this statement.
+        if let Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } = stmt
+        {
+            if then_body.is_empty() && !else_body.is_empty() {
+                let old_cond = std::mem::replace(cond, Expr::Literal(Constant::Null));
+                *cond = negate_expr(old_cond);
+                *then_body = std::mem::take(else_body);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

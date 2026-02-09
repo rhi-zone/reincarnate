@@ -986,6 +986,7 @@ pub fn lower_function_linear(
     ast_passes::eliminate_self_assigns(&mut full_body);
     ast_passes::eliminate_duplicate_assigns(&mut full_body);
     ast_passes::eliminate_forwarding_stubs(&mut full_body);
+    ast_passes::invert_empty_then(&mut full_body);
     if config.ternary {
         ast_passes::rewrite_ternary(&mut full_body);
     }
