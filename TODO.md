@@ -162,6 +162,292 @@ identified by comparing `takeDamage` / `reduceDamage` in Player.ts.
   `let x = c ? a : b`. Post-pass merges uninit decls with their first
   dominating assignment. 43% of split let decls merged (1768/4081).
 
+### Remaining `vN` Identifiers — Full Elimination Plan
+
+After the fixpoint pass pipeline (narrow → merge → fold), 293 `vN` declaration
+instances remain across 90 files (227 unique name strings). Goal: zero.
+
+Current pass order: ternary → minmax → eliminate_self_assigns →
+[fixpoint: narrow_var_scope → merge_decl_init → fold_single_use_consts] →
+compound_assign.
+
+#### Category A: Dead ternary dispatch tables (144 `let`, dead)
+
+```typescript
+let v4919: number = (0 !== select) ? ((1 !== select) ? ... : 1) : 0;
+}  // end of function — v4919 never read
+```
+
+AVM2 `lookupswitch` lowered to a ternary that maps the discriminant to a case
+index. The actual dispatch is the if/else chain *above* this expression. The
+ternary result is never consumed.
+
+**Fix**: `fold_single_use_consts` already eliminates dead `const` decls
+(total_refs == 0 && pure init). Extend it to also eliminate dead `let` decls
+with pure init (total_refs == 0 after excluding the declaration itself). This is
+the `let` counterpart of the existing dead-const elimination. Alternatively, add
+a dedicated dead-statement pass that removes any `VarDecl` with zero reads and
+a pure init.
+
+**Complexity**: Trivial — ~5 lines in `try_fold_one_const` or a new 10-line
+function.
+
+#### Category B: Dead impure consts (10 `const`, dead)
+
+```typescript
+const v736 = this.player.statusAffectv1(StatusAffects.Exgartuan) !== 2;
+// v736 never read
+```
+
+Condition eagerly evaluated but never consumed. Init contains method calls that
+may have side effects, so the declaration can't be blindly removed.
+
+**Fix**: Convert `const vN = expr;` to bare `expr;` (expression statement) when
+the result is unused. This preserves side effects while dropping the binding.
+The expression statement itself may then be eliminable by a subsequent pass if
+the call is provably pure, but that's a separate concern.
+
+**Complexity**: ~15 lines — new pass or extension to fold. Match `VarDecl` with
+init, zero reads, impure init → replace with `Stmt::Expr(init)`.
+
+#### Category C: Single-use impure consts, non-adjacent (19 `const`, single-use)
+
+```typescript
+const v89 = this.player.findPerk(PerkLib.Resolute) < 0;    // DECL
+damage = this.player.takeDamage(damage);                     // INTERVENING (impure)
+if (v89) {                                                   // USE
+```
+
+All 19 have exactly one intervening side-effecting statement between decl and
+use. Fold correctly refuses because the impure init can't be moved past the
+intervening side effect.
+
+**Fix**: These require proving that reordering is safe — the init expression
+doesn't alias the intervening mutation. Two approaches:
+
+1. **Sink the condition below the intervening stmt** — if the init reads fields
+   that the intervening stmt doesn't write, sinking is safe. In practice, most
+   are `findPerk()`, `hasCock()`, `rand()` whose results don't depend on
+   `takeDamage()`'s side effects. But proving this requires alias/purity analysis
+   on method calls.
+2. **Source-level reordering at the frontend** — AVM2 evaluates these conditions
+   before the intervening call. Our structurizer hoists them into consts. If we
+   instead defer condition evaluation to the branch point (lazier structurizing),
+   the const disappears naturally. This is the root cause fix.
+3. **Accept the const** — `const v89 = expr; if (v89)` is readable and correct.
+   The only cost is the synthetic name. A rename pass could assign meaningful
+   names based on the init expression (e.g., `isResolute`, `hasCock`).
+
+**Complexity**: Approach 1 is hard (alias analysis). Approach 2 is medium
+(structurizer change). Approach 3 is cosmetic only (rename pass, ~50 lines).
+
+#### Category D: Single-use pure consts, non-adjacent (11 `const`, single-use)
+
+```typescript
+const v16 = storage[slotNum].itype;
+_loc5.quantity -= 1.0;                                       // INTERVENING (impure)
+this.inventory.takeItem(v16 as ItemType, ...);               // USE
+```
+
+Same pattern as Category C but with pure inits. Fold refuses because the
+intervening statement has side effects. In all 11 cases the init reads a field
+that the intervening stmt doesn't modify, so reordering would be safe — but we
+don't have alias analysis to prove it.
+
+Two special cases with gap=163/164 (`Lottie.ts`): `const v24 = this.hugeFunc;
+const v19 = this.otherFunc;` — these are method references cached at function
+entry but used far later. Folding is safe but the distance means many
+intervening side effects.
+
+**Fix**: Same approaches as Category C. Pure inits are slightly easier to
+reason about — if the init is a simple field read (`x.y`) and no intervening
+stmt writes to `x.y`, sinking is safe. A conservative heuristic: allow sinking
+pure non-call inits past assignment statements that don't write to the same
+receiver.
+
+**Complexity**: Medium — ~40 lines for a conservative heuristic, or full alias
+analysis for complete coverage.
+
+#### Category E: Multi-use consts (49 total: 31 ternary, 4 impure, 14 pure)
+
+```typescript
+// 31 ternary consts: phi-input strings used in 2+ branch assignments
+const v90 = ("turns her " + ((flags !== 0) ? "lips" : "muzzle")) + " and ";
+v93 = v90;   // phi-assign branch 1
+v93 = v90;   // phi-assign branch 2 (duplicate structurizer edge)
+```
+
+The 31 ternary consts feed into `let` uninit phi variables (Category G) via
+duplicate branch edges. The const is multi-use because the structurizer emits
+the same assignment in both branches of a diamond.
+
+The 4 impure and 14 pure consts are genuinely multi-use — cached values read
+2+ times (NPC check flags, method references, property lookups).
+
+**Fix for the 31 ternary consts**: Deduplicate structurizer branch edges. When
+both arms of an if/else assign the same value to the same phi variable, emit
+the assignment once after the if/else instead of in both branches. This makes
+the const single-use, enabling fold. Or: detect `v = x; v = x;` (identical
+assigns in both branches) and collapse to a single assign after the merge.
+
+**Fix for the 18 genuinely multi-use**: These are correct — a named variable is
+the right representation when a value is used multiple times. Elimination
+requires either (a) duplicating the init expression at each use site (only safe
+for pure inits without large expressions) or (b) a rename pass for cosmetics.
+
+**Complexity**: Duplicate-edge fix is medium (~30 lines in structurizer or as
+an AST pass). Genuinely multi-use consts are irreducible without expression
+duplication.
+
+#### Category F: Single-use uninit lets / forwarding stubs (3 `let`, single-use)
+
+```typescript
+let v392: boolean;
+v408 = v392;   // forwarding: read uninitialized, assign to another phi
+```
+
+These are structurizer artifacts from empty else-branches. `v392` is declared,
+never assigned, and its undefined value is forwarded to another phi variable.
+This is a codegen bug — the else branch should either not exist or should assign
+a meaningful value.
+
+**Fix**: Detect `VarDecl` (uninit) immediately followed by `vN = vM;` where
+`vM` is the just-declared uninit var. Eliminate both statements (the decl and
+the forwarding assign). The receiving phi `vN` already has a value from the
+other branch. Or fix the structurizer to not emit empty-branch phi assignments.
+
+**Complexity**: Easy — ~10 lines as an AST pass, or fix in the structurizer's
+branch-arg emission.
+
+#### Category G: Multi-use uninit lets — 1 assign, 1 read (7 `let`)
+
+```typescript
+let v58: boolean;
+if (cond) {
+    v58 = expr;     // assigned in one branch only
+} else {
+    // different control flow (return, etc.)
+}
+if (v58) { ... }    // read after merge
+```
+
+Assigned in one if-branch, not assigned in the other (the else has early return
+or different logic). Read after the merge point. The variable may be
+`undefined` if the non-assigning branch is taken — matching original
+ActionScript semantics.
+
+**Fix**: `narrow_var_scope` can't push these because the use is outside the if.
+`merge_decl_init` can't merge because the assign is inside an if-body. Two
+approaches:
+
+1. **Hoist the init with a default** — rewrite to
+   `let v58: boolean = false; if (cond) { v58 = expr; }` then fold the init+use
+   if single-use. But we don't know the correct default.
+2. **Conditional expression** — if the else branch always returns/breaks (i.e.,
+   the code after the if is only reachable from the then-branch), the if is
+   really a guard clause. The assign dominates the use. Convert to
+   `const v58 = expr;` after the if. Requires dominator analysis on the AST.
+3. **Accept the let** — these 7 are semantically correct. A rename pass could
+   give them meaningful names.
+
+**Complexity**: Approach 2 is medium (AST-level dominator check, ~40 lines).
+Approach 3 is cosmetic.
+
+#### Category H: Multi-use uninit lets — 3+ assigns, 1 read (28 `let`)
+
+```typescript
+let vN: string;
+if (condA) {
+    vN = "text A";
+} else if (condB) {
+    vN = "text B";
+} else {
+    vN = "text C";
+}
+this.outputText(vN);
+```
+
+Classic 3-way phi merge. 20 are in KitsuneScene.ts (gender/anatomy text
+selection), 5 in Katherine.ts, 3 in Camp/Amily/Plains. All string or boolean.
+
+**Fix**: Rewrite the if/else-if chain to a nested ternary:
+`vN = condA ? "text A" : condB ? "text B" : "text C"`. This collapses the
+uninit decl + multi-branch assigns + single read into a single
+`const vN = ternary`. Then fold eliminates it if single-use.
+
+The ternary rewrite pass already handles 2-branch if/else → ternary. Extending
+it to handle if/else-if chains (3+ branches, all assigning to the same
+variable) would capture this pattern. The result is a nested ternary.
+
+**Complexity**: Medium — ~50 lines extending `rewrite_ternary`. Must detect
+chains where each branch assigns to the same variable and the last branch is
+unconditional.
+
+#### Category I: Multi-use uninit lets — 3+ assigns, 2+ reads (7 `let`)
+
+```typescript
+let v154: string;          // KitsuneScene.ts — 7 assigns, 3 reads
+let v151: string;          // KitsuneScene.ts — 3 assigns, 7 reads
+let v210: string;          // KitsuneScene.ts — 3 assigns, 4 reads
+let v236: string;          // KitsuneScene.ts — 4 assigns, 1 reads (reuse)
+let v597: boolean;         // Rubi.ts — 4 assigns, 1 reads
+let v3883: boolean;        // Camp.ts — 3 assigns, 1 read
+let v2271: boolean;        // Camp.ts — 3 assigns, 1 read
+```
+
+Genuinely multi-use phi variables. These are either read multiple times (text
+fragments used in several `outputText` calls) or assigned from many branches.
+They are correct mutable variables.
+
+**Fix**: These are irreducible without restructuring the control flow. A rename
+pass could give them meaningful names (e.g. derive from the outputText context
+or the condition). Otherwise, accept them.
+
+**Complexity**: Rename pass is ~50 lines. Structural elimination is not
+practical.
+
+#### Category J: Init `let` ternary, single-use non-adjacent (12 `let`)
+
+These are switch dispatch tables that ARE consumed once, but with side-effecting
+statements between the ternary and the use. Same as Category C but with `let`
+and ternary inits.
+
+**Fix**: Same as Category C — requires alias analysis or source-level
+reordering. Less impactful than Categories A/B.
+
+**Complexity**: Same as Category C.
+
+#### Category K: Init `let` non-ternary (1 `let`)
+
+```typescript
+// Rubi.ts
+let v647: boolean = (this.flags[...] < 30) && this.flags[...];
+```
+
+Single instance. Multi-use reassigned boolean. Correct mutable variable.
+
+**Fix**: Accept or rename.
+
+#### Summary: elimination roadmap by priority
+
+| Priority | Category | Count | Fix | Effort |
+|----------|----------|-------|-----|--------|
+| **1** | A: Dead ternary lets | 144 | Extend dead-decl elimination to `let` | Trivial |
+| **2** | B: Dead impure consts | 10 | `const vN = expr;` → `expr;` | Easy |
+| **3** | F: Forwarding stubs | 3 | Remove uninit-then-forward pattern | Easy |
+| **4** | H: 3-way phi → ternary | 28 | Extend ternary rewrite to if/else-if chains | Medium |
+| **5** | E: Duplicate branch edges | 31 | Deduplicate identical phi-assigns | Medium |
+| **6** | G: Single-assign guard | 7 | AST dominator check or accept | Medium |
+| **7** | C+D: Non-adjacent single-use | 30 | Alias/purity analysis or accept | Hard |
+| **8** | J: Non-adjacent ternary | 12 | Same as C+D | Hard |
+| **9** | I+K: Genuinely multi-use | 8 | Rename pass or accept | Cosmetic |
+| **10** | E: Genuinely multi-use const | 18 | Rename pass or accept | Cosmetic |
+| | **TOTAL** | **291** | | |
+
+Priorities 1–3 are easy wins (157 vars, ~30 lines of code). Priority 4–5
+(59 vars) are medium-effort structural improvements. Priorities 6–10 (75 vars)
+require either hard analysis or are cosmetic-only.
+
 ### Architecture — Hybrid Lowering via Structured IR
 
 The current `lower_ast.rs` (~1000 lines) interleaves three concerns: control
