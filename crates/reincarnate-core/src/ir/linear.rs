@@ -1038,43 +1038,114 @@ impl<'a> EmitCtx<'a> {
             .map(|p| p.value)
             .collect();
 
-        // Out-of-SSA name coalescing: propagate phi names to branch args.
-        for (_, block) in func.blocks.iter() {
-            let Some(&last_inst) = block.insts.last() else {
-                continue;
-            };
-            let mut propagate = |target: BlockId, args: &[ValueId]| {
-                let target_block = &func.blocks[target];
-                for (param, &src) in target_block.params.iter().zip(args.iter()) {
-                    if param.value == src {
-                        continue;
+        // Out-of-SSA name coalescing: bidirectional propagation across branch edges.
+        // Forward: named block param → unnamed branch arg.
+        // Reverse: when all named branch args agree → unnamed block param.
+        // Fixpoint: naming values in one direction may enable naming in the other.
+        loop {
+            let mut changed = false;
+
+            // Forward: propagate block-param names to branch args.
+            for (_, block) in func.blocks.iter() {
+                let Some(&last_inst) = block.insts.last() else {
+                    continue;
+                };
+                let mut propagate_fwd = |target: BlockId, args: &[ValueId]| {
+                    let target_block = &func.blocks[target];
+                    for (param, &src) in target_block.params.iter().zip(args.iter()) {
+                        if param.value == src || value_names.contains_key(&src) {
+                            continue;
+                        }
+                        if let Some(name) = value_names.get(&param.value) {
+                            let name = name.clone();
+                            value_names.insert(src, name);
+                            changed = true;
+                        }
                     }
-                    if let Some(name) = func.value_names.get(&param.value) {
-                        value_names.entry(src).or_insert_with(|| name.clone());
+                };
+                match &func.insts[last_inst].op {
+                    Op::Br { target, args } => propagate_fwd(*target, args),
+                    Op::BrIf {
+                        then_target,
+                        then_args,
+                        else_target,
+                        else_args,
+                        ..
+                    } => {
+                        propagate_fwd(*then_target, then_args);
+                        propagate_fwd(*else_target, else_args);
                     }
-                }
-            };
-            match &func.insts[last_inst].op {
-                Op::Br { target, args } => propagate(*target, args),
-                Op::BrIf {
-                    then_target,
-                    then_args,
-                    else_target,
-                    else_args,
-                    ..
-                } => {
-                    propagate(*then_target, then_args);
-                    propagate(*else_target, else_args);
-                }
-                Op::Switch {
-                    cases, default, ..
-                } => {
-                    for (_, target, args) in cases {
-                        propagate(*target, args);
+                    Op::Switch {
+                        cases, default, ..
+                    } => {
+                        for (_, target, args) in cases {
+                            propagate_fwd(*target, args);
+                        }
+                        propagate_fwd(default.0, &default.1);
                     }
-                    propagate(default.0, &default.1);
+                    _ => {}
                 }
-                _ => {}
+            }
+
+            // Reverse: propagate branch-arg names → unnamed block params.
+            // Only assign when all named args feeding a param agree on the same name.
+            let mut candidates: HashMap<ValueId, Option<String>> = HashMap::new();
+            for (_, block) in func.blocks.iter() {
+                let Some(&last_inst) = block.insts.last() else {
+                    continue;
+                };
+                let mut collect = |target: BlockId, args: &[ValueId]| {
+                    let target_block = &func.blocks[target];
+                    for (param, &src) in target_block.params.iter().zip(args.iter()) {
+                        if value_names.contains_key(&param.value) {
+                            continue;
+                        }
+                        if let Some(src_name) = value_names.get(&src) {
+                            candidates
+                                .entry(param.value)
+                                .and_modify(|existing| {
+                                    if let Some(prev) = existing {
+                                        if prev != src_name {
+                                            *existing = None; // conflict
+                                        }
+                                    }
+                                })
+                                .or_insert_with(|| Some(src_name.clone()));
+                        }
+                    }
+                };
+                match &func.insts[last_inst].op {
+                    Op::Br { target, args } => collect(*target, args),
+                    Op::BrIf {
+                        then_target,
+                        then_args,
+                        else_target,
+                        else_args,
+                        ..
+                    } => {
+                        collect(*then_target, then_args);
+                        collect(*else_target, else_args);
+                    }
+                    Op::Switch {
+                        cases, default, ..
+                    } => {
+                        for (_, target, args) in cases {
+                            collect(*target, args);
+                        }
+                        collect(default.0, &default.1);
+                    }
+                    _ => {}
+                }
+            }
+            for (param_value, candidate) in candidates {
+                if let Some(name) = candidate {
+                    value_names.insert(param_value, name);
+                    changed = true;
+                }
+            }
+
+            if !changed {
+                break;
             }
         }
 
