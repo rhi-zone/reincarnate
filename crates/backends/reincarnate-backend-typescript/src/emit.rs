@@ -300,6 +300,22 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             free_funcs.iter().map(|&fid| &module.functions[fid]),
         );
         emit_runtime_imports_for(systems, &mut out, 0);
+
+        // Scan free functions for Flash stdlib class references.
+        let mut ext_value_refs = BTreeSet::new();
+        let mut ext_type_refs = BTreeSet::new();
+        let mut _intra_val = BTreeSet::new();
+        let mut _intra_ty = BTreeSet::new();
+        for &fid in &free_funcs {
+            let func = &module.functions[fid];
+            collect_type_refs_from_function(
+                func, "", &registry,
+                &mut _intra_val, &mut _intra_ty,
+                &mut ext_value_refs, &mut ext_type_refs,
+            );
+        }
+        emit_flash_stdlib_imports(&ext_value_refs, &ext_type_refs, "..", &mut out);
+
         emit_imports(module, &mut out);
         emit_globals(module, &mut out);
         for &fid in &free_funcs {
@@ -589,6 +605,12 @@ fn collect_type_refs_from_function(
                         value_refs,
                         ext_value_refs,
                     );
+                } else {
+                    // Check Flash stdlib (e.g. "flash.display::MovieClip").
+                    let short = field.rsplit("::").next().unwrap_or(field);
+                    if short != self_name && flash_stdlib_module(short).is_some() {
+                        ext_value_refs.insert(short.to_string());
+                    }
                 }
             }
             _ => {}
@@ -655,6 +677,48 @@ fn collect_type_ref(
     }
 }
 
+/// Emit grouped `import` / `import type` statements for Flash stdlib references.
+fn emit_flash_stdlib_imports(
+    ext_value_refs: &BTreeSet<String>,
+    ext_type_refs: &BTreeSet<String>,
+    prefix: &str,
+    out: &mut String,
+) {
+    if ext_value_refs.is_empty() && ext_type_refs.is_empty() {
+        return;
+    }
+    // Group value refs by module.
+    let mut val_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for name in ext_value_refs {
+        if let Some(m) = flash_stdlib_module(name) {
+            val_by_mod.entry(m).or_default().push(name);
+        }
+    }
+    for (module, names) in &val_by_mod {
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+            names.join(", ")
+        );
+    }
+    // Type-only imports (not already covered by value imports).
+    let mut type_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    for name in ext_type_refs {
+        if !ext_value_refs.contains(name) {
+            if let Some(m) = flash_stdlib_module(name) {
+                type_by_mod.entry(m).or_default().push(name);
+            }
+        }
+    }
+    for (module, names) in &type_by_mod {
+        let _ = writeln!(
+            out,
+            "import type {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+            names.join(", ")
+        );
+    }
+}
+
 /// Emit `import` / `import type` statements for intra-module class references.
 fn emit_intra_imports(
     group: &ClassGroup,
@@ -676,37 +740,7 @@ fn emit_intra_imports(
     if has_ext {
         let prefix = "../".repeat(depth + 1);
         let prefix = prefix.trim_end_matches('/');
-
-        // Group value refs by module.
-        let mut val_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-        for name in &ext_value_refs {
-            if let Some(m) = flash_stdlib_module(name) {
-                val_by_mod.entry(m).or_default().push(name);
-            }
-        }
-        for (module, names) in &val_by_mod {
-            let _ = writeln!(
-                out,
-                "import {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
-                names.join(", ")
-            );
-        }
-        // Type-only imports (not already covered by value imports).
-        let mut type_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-        for name in &ext_type_refs {
-            if !ext_value_refs.contains(name) {
-                if let Some(m) = flash_stdlib_module(name) {
-                    type_by_mod.entry(m).or_default().push(name);
-                }
-            }
-        }
-        for (module, names) in &type_by_mod {
-            let _ = writeln!(
-                out,
-                "import type {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
-                names.join(", ")
-            );
-        }
+        emit_flash_stdlib_imports(&ext_value_refs, &ext_type_refs, prefix, out);
     }
 
     // Intra-module value imports.
