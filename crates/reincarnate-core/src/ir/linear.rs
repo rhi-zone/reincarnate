@@ -1456,7 +1456,11 @@ impl<'a> EmitCtx<'a> {
             .collect();
 
         for (v, iid) in to_flush {
-            self.pending_lazy.remove(&v);
+            // Skip if already consumed by a previous flush's build_expr_from_op
+            // (e.g., flushing v438=GetField(v437,"spe") consumed v437 via build_val).
+            if self.pending_lazy.remove(&v).is_none() {
+                continue;
+            }
             let op = self.func.insts[iid].op.clone();
             if let Some(expr) = self.build_expr_from_op(&op) {
                 let name = self.value_name(v);
