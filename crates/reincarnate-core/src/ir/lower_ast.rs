@@ -928,6 +928,23 @@ fn lower_block_instructions(
                     }
                 }
 
+                // Cascade always-inline through GetField/GetIndex on scope
+                // lookups. `GetField(findPropStrict("kFLAGS"), "kFLAGS")`
+                // should also always-inline so `kFLAGS` never materializes
+                // as a named variable.
+                if let Some(r) = inst.result {
+                    let object_always_inlined = match &inst.op {
+                        Op::GetField { object, .. } | Op::GetIndex { collection: object, .. } => {
+                            ctx.always_inlines.contains_key(object)
+                        }
+                        _ => false,
+                    };
+                    if object_always_inlined {
+                        ctx.always_inlines.insert(r, inst_id);
+                        continue;
+                    }
+                }
+
                 if let Some(r) = inst.result {
                     let count = ctx.use_count(r);
                     if is_deferrable(&inst.op) {
