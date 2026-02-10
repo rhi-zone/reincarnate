@@ -33,10 +33,4 @@ export const Flash_Class = {
     // When we're emitting flat functions, this is a no-op — the super
     // constructor ran at allocation time.
   },
-
-  initClass(base: any, name: string): any {
-    // Static initializer for a class. In the lifted output, classes are
-    // plain interfaces + factory functions, so this is a no-op stub.
-    return base;
-  },
 };
