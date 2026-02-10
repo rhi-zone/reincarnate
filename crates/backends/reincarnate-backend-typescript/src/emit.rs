@@ -5,51 +5,13 @@ use std::path::Path;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{
-    structurize, ClassDef, Expr, FuncId, Function, MethodKind, Module, Op, Stmt, StructDef, Type,
-    Visibility,
+    structurize, ClassDef, Expr, ExternalImport, FuncId, Function, MethodKind, Module, Op, Stmt,
+    StructDef, Type, Visibility,
 };
 use reincarnate_core::pipeline::LoweringConfig;
 
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
-
-/// Map a Flash package name (e.g. `"display"`, `"text"`) to its runtime
-/// module filename under `runtime/flash/`. This is the complete set of
-/// packages our runtime currently implements.
-fn flash_pkg_module(pkg: &str) -> Option<&'static str> {
-    Some(match pkg {
-        "display" => "display",
-        "events" => "events",
-        "geom" => "geom",
-        "net" => "net",
-        "text" => "text",
-        "utils" => "utils",
-        _ => return None,
-    })
-}
-
-/// Resolve a Flash stdlib reference to its (short_name, module) pair.
-///
-/// Accepts either a fully-qualified name (`"flash.text::TextFormatAlign"`) or
-/// one of the special runtime values (`"stage"`, `"flashTick"`).
-fn flash_stdlib_module(name: &str) -> Option<(&str, &'static str)> {
-    // Auto-detect from qualified name: "flash.text::TextFormatAlign" → ("TextFormatAlign", "text")
-    if let Some(idx) = name.find("::") {
-        let ns = &name[..idx];
-        let short = &name[idx + 2..];
-        if let Some(pkg) = ns.strip_prefix("flash.") {
-            let module = flash_pkg_module(pkg)?;
-            return Some((short, module));
-        }
-        return None;
-    }
-    // Fallback: special runtime values (not namespaced in IR).
-    let module = match name {
-        "stage" | "flashTick" => "runtime",
-        _ => return None,
-    };
-    Some((name, module))
-}
 
 /// Emit a single module into `output_dir`.
 ///
@@ -362,20 +324,16 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         );
         emit_runtime_imports_for(systems, &mut out, 0);
 
-        // Scan free functions for Flash stdlib class references.
-        let mut ext_value_refs = BTreeSet::new();
-        let mut ext_type_refs = BTreeSet::new();
-        let mut _intra_val = BTreeSet::new();
-        let mut _intra_ty = BTreeSet::new();
+        // Scan free functions for external class references.
+        let mut refs = RefSets::default();
         for &fid in &free_funcs {
             let func = &module.functions[fid];
             collect_type_refs_from_function(
-                func, "", &registry,
-                &mut _intra_val, &mut _intra_ty,
-                &mut ext_value_refs, &mut ext_type_refs,
+                func, "", &registry, &module.external_imports,
+                &mut refs,
             );
         }
-        emit_flash_stdlib_imports(&ext_value_refs, &ext_type_refs, "..", &mut out);
+        emit_external_imports(&refs.ext_value_refs, &refs.ext_type_refs, &module.external_imports, "..", &mut out);
 
         emit_imports(module, &mut out);
         emit_globals(module, &mut out);
@@ -597,6 +555,19 @@ fn emit_runtime_imports_with_prefix(
 // Intra-module imports (class-to-class references)
 // ---------------------------------------------------------------------------
 
+/// Bundled output sets for collecting class/type references.
+#[derive(Default)]
+struct RefSets {
+    /// Intra-module value refs (class constructor needed at runtime).
+    value_refs: BTreeSet<String>,
+    /// Intra-module type-only refs (erased at runtime).
+    type_refs: BTreeSet<String>,
+    /// External value refs (e.g. Flash stdlib runtime classes).
+    ext_value_refs: BTreeSet<String>,
+    /// External type-only refs.
+    ext_type_refs: BTreeSet<String>,
+}
+
 /// Collect type names referenced by a class group, split into value and type-only refs.
 ///
 /// **Value refs** (class constructor needed at runtime):
@@ -609,37 +580,35 @@ fn collect_class_references(
     group: &ClassGroup,
     module: &Module,
     registry: &ClassRegistry,
-) -> (BTreeSet<String>, BTreeSet<String>, BTreeSet<String>, BTreeSet<String>) {
+    external_imports: &BTreeMap<String, ExternalImport>,
+) -> RefSets {
     let self_name = &group.class_def.name;
-    let mut value_refs = BTreeSet::new();
-    let mut type_refs = BTreeSet::new();
-    let mut ext_value_refs = BTreeSet::new();
-    let mut ext_type_refs = BTreeSet::new();
+    let mut refs = RefSets::default();
 
     // Super class reference — runtime value (extends).
     if let Some(sc) = &group.class_def.super_class {
         let short = sc.rsplit("::").next().unwrap_or(sc);
         if short != self_name {
             if let Some(entry) = registry.lookup(sc) {
-                value_refs.insert(entry.short_name.clone());
-            } else if flash_stdlib_module(sc).is_some() {
-                ext_value_refs.insert(sc.to_string());
+                refs.value_refs.insert(entry.short_name.clone());
+            } else if external_imports.contains_key(sc) {
+                refs.ext_value_refs.insert(sc.to_string());
             }
         }
     }
 
     // Struct fields (class instance fields) — type-only.
     for (_name, ty) in &group.struct_def.fields {
-        collect_type_ref(ty, self_name, registry, &mut type_refs, &mut ext_type_refs);
+        collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
     }
 
     // Scan all method bodies for type references.
     for &fid in &group.methods {
         let func = &module.functions[fid];
-        collect_type_refs_from_function(func, self_name, registry, &mut value_refs, &mut type_refs, &mut ext_value_refs, &mut ext_type_refs);
+        collect_type_refs_from_function(func, self_name, registry, external_imports, &mut refs);
     }
 
-    (value_refs, type_refs, ext_value_refs, ext_type_refs)
+    refs
 }
 
 /// Scan a function's instructions and signature for type references.
@@ -647,15 +616,13 @@ fn collect_type_refs_from_function(
     func: &Function,
     self_name: &str,
     registry: &ClassRegistry,
-    value_refs: &mut BTreeSet<String>,
-    type_refs: &mut BTreeSet<String>,
-    ext_value_refs: &mut BTreeSet<String>,
-    ext_type_refs: &mut BTreeSet<String>,
+    external_imports: &BTreeMap<String, ExternalImport>,
+    refs: &mut RefSets,
 ) {
     // Return type and param types — type-only.
-    collect_type_ref(&func.sig.return_ty, self_name, registry, type_refs, ext_type_refs);
+    collect_type_ref(&func.sig.return_ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
     for ty in &func.sig.params {
-        collect_type_ref(ty, self_name, registry, type_refs, ext_type_refs);
+        collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
     }
 
     // Instructions.
@@ -663,11 +630,11 @@ fn collect_type_refs_from_function(
         match &inst.op {
             // TypeCheck emits `instanceof` — runtime value reference.
             Op::TypeCheck(_, ty) => {
-                collect_type_ref(ty, self_name, registry, value_refs, ext_value_refs);
+                collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
             }
             // Alloc and Cast are type assertions only — type-only.
             Op::Alloc(ty) | Op::Cast(_, ty) => {
-                collect_type_ref(ty, self_name, registry, type_refs, ext_type_refs);
+                collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
             }
             // GetField with a class name → runtime value reference (used with `new`).
             Op::GetField { field, .. } => {
@@ -676,15 +643,15 @@ fn collect_type_refs_from_function(
                         &Type::Struct(field.clone()),
                         self_name,
                         registry,
-                        value_refs,
-                        ext_value_refs,
+                        external_imports,
+                        &mut refs.value_refs,
+                        &mut refs.ext_value_refs,
                     );
                 } else {
-                    // Check Flash stdlib (e.g. "flash.display::MovieClip").
                     let short = field.rsplit("::").next().unwrap_or(field);
                     if short != self_name {
-                        if flash_stdlib_module(field).is_some() {
-                            ext_value_refs.insert(field.to_string());
+                        if external_imports.contains_key(field.as_str()) {
+                            refs.ext_value_refs.insert(field.to_string());
                         } else if field.contains("::") {
                             if let Some(ns) = field.split("::").next() {
                                 if ns.starts_with("flash.") {
@@ -703,16 +670,17 @@ fn collect_type_refs_from_function(
 
     // value_types — type-only.
     for (_vid, ty) in func.value_types.iter() {
-        collect_type_ref(ty, self_name, registry, type_refs, ext_type_refs);
+        collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
     }
 }
 
 /// If a type references a class in the registry, add its short name.
-/// If not in the registry but in the Flash stdlib, add to `ext_refs`.
+/// If not in the registry but in `external_imports`, add to `ext_refs`.
 fn collect_type_ref(
     ty: &Type,
     self_name: &str,
     registry: &ClassRegistry,
+    external_imports: &BTreeMap<String, ExternalImport>,
     refs: &mut BTreeSet<String>,
     ext_refs: &mut BTreeSet<String>,
 ) {
@@ -722,7 +690,7 @@ fn collect_type_ref(
             if short != self_name {
                 if let Some(entry) = registry.lookup(name) {
                     refs.insert(entry.short_name.clone());
-                } else if flash_stdlib_module(name).is_some() {
+                } else if external_imports.contains_key(name.as_str()) {
                     ext_refs.insert(name.to_string());
                 } else if name.contains("::") {
                     if let Some(ns) = name.split("::").next() {
@@ -734,85 +702,91 @@ fn collect_type_ref(
             }
         }
         Type::Array(inner) | Type::Option(inner) => {
-            collect_type_ref(inner, self_name, registry, refs, ext_refs);
+            collect_type_ref(inner, self_name, registry, external_imports, refs, ext_refs);
         }
         Type::Map(k, v) => {
-            collect_type_ref(k, self_name, registry, refs, ext_refs);
-            collect_type_ref(v, self_name, registry, refs, ext_refs);
+            collect_type_ref(k, self_name, registry, external_imports, refs, ext_refs);
+            collect_type_ref(v, self_name, registry, external_imports, refs, ext_refs);
         }
         Type::Tuple(elems) => {
             for elem in elems {
-                collect_type_ref(elem, self_name, registry, refs, ext_refs);
+                collect_type_ref(elem, self_name, registry, external_imports, refs, ext_refs);
             }
         }
         Type::Function(sig) => {
-            collect_type_ref(&sig.return_ty, self_name, registry, refs, ext_refs);
+            collect_type_ref(&sig.return_ty, self_name, registry, external_imports, refs, ext_refs);
             for p in &sig.params {
-                collect_type_ref(p, self_name, registry, refs, ext_refs);
+                collect_type_ref(p, self_name, registry, external_imports, refs, ext_refs);
             }
         }
         Type::Coroutine {
             yield_ty,
             return_ty,
         } => {
-            collect_type_ref(yield_ty, self_name, registry, refs, ext_refs);
-            collect_type_ref(return_ty, self_name, registry, refs, ext_refs);
+            collect_type_ref(yield_ty, self_name, registry, external_imports, refs, ext_refs);
+            collect_type_ref(return_ty, self_name, registry, external_imports, refs, ext_refs);
         }
         Type::Union(types) => {
             for t in types {
-                collect_type_ref(t, self_name, registry, refs, ext_refs);
+                collect_type_ref(t, self_name, registry, external_imports, refs, ext_refs);
             }
         }
         _ => {}
     }
 }
 
-/// Emit grouped `import` / `import type` statements for Flash stdlib references.
+/// Emit grouped `import` / `import type` statements for external runtime references.
 ///
-/// Names in `ext_value_refs` / `ext_type_refs` may be fully-qualified
-/// (`"flash.text::TextFormat"`) or short (`"stage"`).  `flash_stdlib_module`
-/// handles both forms and returns `(short_name, module)`.
-fn emit_flash_stdlib_imports(
+/// Names in `ext_value_refs` / `ext_type_refs` are qualified keys into
+/// `external_imports` (e.g. `"flash.text::TextFormat"` or `"stage"`).
+fn emit_external_imports(
     ext_value_refs: &BTreeSet<String>,
     ext_type_refs: &BTreeSet<String>,
+    external_imports: &BTreeMap<String, ExternalImport>,
     prefix: &str,
     out: &mut String,
 ) {
     if ext_value_refs.is_empty() && ext_type_refs.is_empty() {
         return;
     }
-    // Group value refs by module, resolving qualified → short names.
+    // Group value refs by module_path, resolving qualified → short names.
     let mut val_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for name in ext_value_refs {
-        if let Some((short, module)) = flash_stdlib_module(name) {
-            val_by_mod.entry(module).or_default().push(short);
+        if let Some(imp) = external_imports.get(name.as_str()) {
+            val_by_mod
+                .entry(&imp.module_path)
+                .or_default()
+                .push(&imp.short_name);
         }
     }
-    for (module, names) in &val_by_mod {
+    for (module_path, names) in &val_by_mod {
         let _ = writeln!(
             out,
-            "import {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+            "import {{ {} }} from \"{prefix}/runtime/{module_path}\";",
             names.join(", ")
         );
     }
     // Collect resolved short names from value refs for dedup.
     let val_short_names: HashSet<&str> = ext_value_refs
         .iter()
-        .filter_map(|n| flash_stdlib_module(n).map(|(s, _)| s))
+        .filter_map(|n| external_imports.get(n.as_str()).map(|i| i.short_name.as_str()))
         .collect();
     // Type-only imports (not already covered by value imports).
     let mut type_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for name in ext_type_refs {
-        if let Some((short, module)) = flash_stdlib_module(name) {
-            if !val_short_names.contains(short) {
-                type_by_mod.entry(module).or_default().push(short);
+        if let Some(imp) = external_imports.get(name.as_str()) {
+            if !val_short_names.contains(imp.short_name.as_str()) {
+                type_by_mod
+                    .entry(&imp.module_path)
+                    .or_default()
+                    .push(&imp.short_name);
             }
         }
     }
-    for (module, names) in &type_by_mod {
+    for (module_path, names) in &type_by_mod {
         let _ = writeln!(
             out,
-            "import type {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+            "import type {{ {} }} from \"{prefix}/runtime/{module_path}\";",
             names.join(", ")
         );
     }
@@ -827,31 +801,30 @@ fn emit_intra_imports(
     depth: usize,
     out: &mut String,
 ) {
-    let (value_refs, type_refs, ext_value_refs, ext_type_refs) =
-        collect_class_references(group, module, registry);
-    let has_intra = !value_refs.is_empty() || !type_refs.is_empty();
-    let has_ext = !ext_value_refs.is_empty() || !ext_type_refs.is_empty();
+    let refs = collect_class_references(group, module, registry, &module.external_imports);
+    let has_intra = !refs.value_refs.is_empty() || !refs.type_refs.is_empty();
+    let has_ext = !refs.ext_value_refs.is_empty() || !refs.ext_type_refs.is_empty();
     if !has_intra && !has_ext {
         return;
     }
 
-    // External Flash stdlib imports — grouped by sub-module.
+    // External runtime imports — grouped by sub-module.
     if has_ext {
         let prefix = "../".repeat(depth + 1);
         let prefix = prefix.trim_end_matches('/');
-        emit_flash_stdlib_imports(&ext_value_refs, &ext_type_refs, prefix, out);
+        emit_external_imports(&refs.ext_value_refs, &refs.ext_type_refs, &module.external_imports, prefix, out);
     }
 
     // Intra-module value imports.
-    for short_name in &value_refs {
+    for short_name in &refs.value_refs {
         if let Some(entry) = registry.classes.get(short_name) {
             let rel = relative_import_path(source_segments, &entry.path_segments);
             let _ = writeln!(out, "import {{ {short_name} }} from \"{rel}\";");
         }
     }
     // Intra-module type-only imports (names not already in value_refs).
-    for short_name in &type_refs {
-        if value_refs.contains(short_name) {
+    for short_name in &refs.type_refs {
+        if refs.value_refs.contains(short_name) {
             continue;
         }
         if let Some(entry) = registry.classes.get(short_name) {
