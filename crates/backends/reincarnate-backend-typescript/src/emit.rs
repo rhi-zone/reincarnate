@@ -5,7 +5,7 @@ use std::path::Path;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{
-    structurize, ClassDef, Expr, ExternalImport, FuncId, Function, MethodKind, Module, Op, Stmt,
+    structurize, ClassDef, ExternalImport, FuncId, Function, MethodKind, Module, Op,
     StructDef, Type, Visibility,
 };
 use reincarnate_core::pipeline::LoweringConfig;
@@ -931,13 +931,25 @@ fn emit_function(
     lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
-    use crate::ast_printer::{self, PrintCtx};
     use reincarnate_core::ir::linear;
 
     let shape = structurize::structurize(func);
     let ast = linear::lower_function_linear(func, &shape, lowering_config);
-    let pctx = PrintCtx::for_function(class_names);
-    ast_printer::print_function(&ast, &pctx, out);
+    let ctx = crate::lower::LowerCtx {
+        self_param_name: None,
+        flash: Some(crate::rewrites::flash::FlashLowerCtx {
+            class_names: class_names.clone(),
+            ancestors: HashSet::new(),
+            method_names: HashSet::new(),
+            instance_fields: HashSet::new(),
+            has_self: false,
+            suppress_super: false,
+            is_cinit: false,
+            static_fields: HashSet::new(),
+        }),
+    };
+    let js_func = crate::lower::lower_function(&ast, &ctx);
+    crate::ast_printer::print_function(&js_func, out);
     Ok(())
 }
 
@@ -1151,24 +1163,6 @@ fn emit_class(
     Ok(())
 }
 
-/// In JS class constructors, `super()` must precede any `this` access.
-/// AVM2 places constructSuper after field inits — hoist it to position 0.
-fn hoist_super_call(body: &mut Vec<Stmt>) {
-    let pos = body.iter().position(|s| {
-        matches!(
-            s,
-            Stmt::Expr(Expr::SystemCall { system, method, .. })
-            if system == "Flash.Class" && method == "constructSuper"
-        )
-    });
-    if let Some(i) = pos {
-        if i > 0 {
-            let stmt = body.remove(i);
-            body.insert(0, stmt);
-        }
-    }
-}
-
 /// Emit a single method inside a class body.
 fn emit_class_method(
     func: &mut Function,
@@ -1182,7 +1176,6 @@ fn emit_class_method(
     out: &mut String,
 ) -> Result<(), CoreError> {
     #![allow(clippy::too_many_arguments)]
-    use crate::ast_printer::{self, PrintCtx};
     use reincarnate_core::ir::linear;
 
     let raw_name = func
@@ -1202,15 +1195,33 @@ fn emit_class_method(
     );
 
     let shape = structurize::structurize(func);
-    let mut ast = linear::lower_function_linear(func, &shape, lowering_config);
-    if func.method_kind == MethodKind::Constructor {
-        hoist_super_call(&mut ast.body);
-    }
-    let mut pctx =
-        PrintCtx::for_method(class_names, ancestors, method_names, instance_fields);
-    pctx.suppress_super = suppress_super;
-    pctx.static_fields = static_fields.clone();
-    ast_printer::print_class_method(&ast, &raw_name, skip_self, &pctx, out);
+    let ast = linear::lower_function_linear(func, &shape, lowering_config);
+
+    // Determine self_param_name for `this` substitution.
+    let is_cinit = raw_name == "cinit" && matches!(func.method_kind, MethodKind::Static);
+    let self_param_name = if is_cinit {
+        ast.params.first().map(|(n, _)| n.clone())
+    } else if skip_self && !ast.params.is_empty() {
+        Some(ast.params[0].0.clone())
+    } else {
+        None
+    };
+
+    let ctx = crate::lower::LowerCtx {
+        self_param_name,
+        flash: Some(crate::rewrites::flash::FlashLowerCtx {
+            class_names: class_names.clone(),
+            ancestors: ancestors.clone(),
+            method_names: method_names.clone(),
+            instance_fields: instance_fields.clone(),
+            has_self: true,
+            suppress_super,
+            is_cinit,
+            static_fields: static_fields.clone(),
+        }),
+    };
+    let js_func = crate::lower::lower_function(&ast, &ctx);
+    crate::ast_printer::print_class_method(&js_func, &raw_name, skip_self, out);
     Ok(())
 }
 fn visibility_prefix(vis: Visibility) -> &'static str {

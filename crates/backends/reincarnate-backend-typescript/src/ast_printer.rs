@@ -1,134 +1,66 @@
 //! TypeScript AST printer.
 //!
-//! Converts `AstFunction` → TypeScript source. Handles all TS-specific
-//! concerns: type mapping, class hierarchy resolution, scope-lookup
-//! patterns, and identifier sanitization.
+//! Prints `JsFunction` → TypeScript source. Handles all TS-specific formatting:
+//! type annotations, identifier sanitization, precedence-based parenthesization.
+//! Contains zero engine knowledge — all SystemCall resolution happened during
+//! the `lower` pass.
 
-use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
-use reincarnate_core::ir::ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
-use reincarnate_core::ir::{CmpKind, Constant, MethodKind, Type, Visibility};
+use reincarnate_core::ir::ast::BinOp;
+use reincarnate_core::ir::{CmpKind, Constant, MethodKind, Type, UnaryOp, Visibility};
 
 use crate::emit::sanitize_ident;
+use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::types::ts_type;
 
-/// Context for printing a function/method body.
-pub struct PrintCtx {
-    /// Qualified class name → sanitized short name.
-    pub class_names: HashMap<String, String>,
-    /// Short names of the current class and all its ancestors.
-    pub ancestors: HashSet<String>,
-    /// Method short names visible in the class hierarchy.
-    pub method_names: HashSet<String>,
-    /// Instance field short names visible in the class hierarchy (from StructDef).
-    pub instance_fields: HashSet<String>,
-    /// Whether we are inside a method (have a `this`).
-    pub has_self: bool,
-    /// Name of the `self` parameter (e.g. "v0") — mapped to `this` during printing.
-    pub self_param_name: Option<String>,
-    /// Suppress `super()` calls (class has no real superclass, e.g. `extends Object`).
-    pub suppress_super: bool,
-    /// Whether we are inside a cinit (class static initializer).
-    pub is_cinit: bool,
-    /// Static field short names declared on the current class.
-    pub static_fields: HashSet<String>,
-}
-
-impl PrintCtx {
-    pub fn for_function(class_names: &HashMap<String, String>) -> Self {
-        Self {
-            class_names: class_names.clone(),
-            ancestors: HashSet::new(),
-            method_names: HashSet::new(),
-            instance_fields: HashSet::new(),
-            has_self: false,
-            self_param_name: None,
-            suppress_super: false,
-            is_cinit: false,
-            static_fields: HashSet::new(),
-        }
-    }
-
-    pub fn for_method(
-        class_names: &HashMap<String, String>,
-        ancestors: &HashSet<String>,
-        method_names: &HashSet<String>,
-        instance_fields: &HashSet<String>,
-    ) -> Self {
-        Self {
-            class_names: class_names.clone(),
-            ancestors: ancestors.clone(),
-            method_names: method_names.clone(),
-            instance_fields: instance_fields.clone(),
-            has_self: true,
-            self_param_name: None,
-            suppress_super: false,
-            is_cinit: false,
-            static_fields: HashSet::new(),
-        }
-    }
-}
+// ---------------------------------------------------------------------------
+// Function / method printing
+// ---------------------------------------------------------------------------
 
 /// Print a standalone function.
-pub fn print_function(
-    ast: &AstFunction,
-    ctx: &PrintCtx,
-    out: &mut String,
-) {
-    let vis = visibility_prefix(ast.visibility);
-    let star = if ast.is_generator { "*" } else { "" };
-    let params = print_params(&ast.params, &ast.body);
-    let ret_ty = ts_type(&ast.return_ty);
+pub fn print_function(js: &JsFunction, out: &mut String) {
+    let vis = visibility_prefix(js.visibility);
+    let star = if js.is_generator { "*" } else { "" };
+    let params = print_params(&js.params);
+    let ret_ty = ts_type(&js.return_ty);
 
     let _ = writeln!(
         out,
         "{vis}function{star} {}({params}): {ret_ty} {{",
-        sanitize_ident(&ast.name),
+        sanitize_ident(&js.name),
     );
 
-    print_stmts(&ast.body, ctx, out, "  ");
+    print_stmts(&js.body, out, "  ");
 
     let _ = writeln!(out, "}}\n");
 }
 
 /// Print a class method.
 pub fn print_class_method(
-    ast: &AstFunction,
+    js: &JsFunction,
     raw_name: &str,
     skip_self: bool,
-    ctx: &PrintCtx,
     out: &mut String,
 ) {
-    let params = if skip_self && !ast.params.is_empty() {
-        &ast.params[1..]
+    let params = if skip_self && !js.params.is_empty() {
+        &js.params[1..]
     } else {
-        &ast.params
+        &js.params
     };
-    let params_str = print_params_with_defaults(params, &ast.body);
-    let ret_ty = ts_type(&ast.return_ty);
-    let star = if ast.is_generator { "*" } else { "" };
+    let params_str = print_params(params);
+    let ret_ty = ts_type(&js.return_ty);
+    let star = if js.is_generator { "*" } else { "" };
 
     // cinit → static initializer block
-    if raw_name == "cinit" && matches!(ast.method_kind, MethodKind::Static) {
+    if raw_name == "cinit" && matches!(js.method_kind, MethodKind::Static) {
         let _ = writeln!(out, "  static {{");
-        let local_ctx = PrintCtx {
-            class_names: ctx.class_names.clone(),
-            ancestors: ctx.ancestors.clone(),
-            method_names: ctx.method_names.clone(),
-            instance_fields: ctx.instance_fields.clone(),
-            has_self: true,
-            self_param_name: ast.params.first().map(|(name, _)| name.clone()),
-            suppress_super: ctx.suppress_super,
-            is_cinit: true,
-            static_fields: ctx.static_fields.clone(),
-        };
-        print_stmts(&ast.body, &local_ctx, out, "    ");
+        print_stmts(&js.body, out, "    ");
         let _ = writeln!(out, "  }}\n");
         return;
     }
 
-    match ast.method_kind {
+    match js.method_kind {
         MethodKind::Constructor => {
             let _ = writeln!(out, "  constructor({params_str}) {{");
         }
@@ -156,55 +88,17 @@ pub fn print_class_method(
         }
     }
 
-    // Build a local context with self_param_name set for `this` substitution.
-    let local_ctx = if skip_self && !ast.params.is_empty() {
-        let mut lctx = PrintCtx {
-            class_names: ctx.class_names.clone(),
-            ancestors: ctx.ancestors.clone(),
-            method_names: ctx.method_names.clone(),
-            instance_fields: ctx.instance_fields.clone(),
-            has_self: ctx.has_self,
-            self_param_name: Some(ast.params[0].0.clone()),
-            suppress_super: ctx.suppress_super,
-            is_cinit: false,
-            static_fields: ctx.static_fields.clone(),
-        };
-        // Ensure has_self is true when we have a self param.
-        lctx.has_self = true;
-        lctx
-    } else {
-        PrintCtx {
-            class_names: ctx.class_names.clone(),
-            ancestors: ctx.ancestors.clone(),
-            method_names: ctx.method_names.clone(),
-            instance_fields: ctx.instance_fields.clone(),
-            has_self: ctx.has_self,
-            self_param_name: ctx.self_param_name.clone(),
-            suppress_super: ctx.suppress_super,
-            is_cinit: false,
-            static_fields: ctx.static_fields.clone(),
-        }
-    };
-
-    let indent = if matches!(ast.method_kind, MethodKind::Free) {
+    let indent = if matches!(js.method_kind, MethodKind::Free) {
         "  "
     } else {
         "    "
     };
-    print_stmts(&ast.body, &local_ctx, out, indent);
+    print_stmts(&js.body, out, indent);
 
     let _ = writeln!(out, "  }}");
 }
 
-fn print_params(params: &[(String, Type)], _body: &[Stmt]) -> String {
-    params
-        .iter()
-        .map(|(name, ty)| format!("{}: {}", sanitize_ident(name), ts_type(ty)))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-fn print_params_with_defaults(params: &[(String, Type)], _body: &[Stmt]) -> String {
+fn print_params(params: &[(String, Type)]) -> String {
     params
         .iter()
         .map(|(name, ty)| format!("{}: {}", sanitize_ident(name), ts_type(ty)))
@@ -216,15 +110,15 @@ fn print_params_with_defaults(params: &[(String, Type)], _body: &[Stmt]) -> Stri
 // Statement printing
 // ---------------------------------------------------------------------------
 
-fn print_stmts(stmts: &[Stmt], ctx: &PrintCtx, out: &mut String, indent: &str) {
+fn print_stmts(stmts: &[JsStmt], out: &mut String, indent: &str) {
     for stmt in stmts {
-        print_stmt(stmt, ctx, out, indent);
+        print_stmt(stmt, out, indent);
     }
 }
 
-fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
+fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
     match stmt {
-        Stmt::VarDecl {
+        JsStmt::VarDecl {
             name,
             ty,
             init,
@@ -234,14 +128,14 @@ fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
             let name_str = sanitize_ident(name);
             match (ty, init) {
                 (Some(ty), Some(init)) => {
-                    // Check if init is a cast to the same type — use annotation.
-                    if let Expr::Cast { expr, ty: cast_ty } = init {
+                    // Cast to the same type → use type annotation, strip cast.
+                    if let JsExpr::Cast { expr, ty: cast_ty } = init {
                         if cast_ty == ty {
                             let _ = writeln!(
                                 out,
                                 "{indent}{kw} {name_str}: {} = {};",
                                 ts_type(ty),
-                                print_expr(expr, ctx),
+                                print_expr(expr),
                             );
                             return;
                         }
@@ -250,26 +144,26 @@ fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
                         out,
                         "{indent}{kw} {name_str}: {} = {};",
                         ts_type(ty),
-                        print_expr(init, ctx),
+                        print_expr(init),
                     );
                 }
                 (Some(ty), None) => {
                     let _ = writeln!(out, "{indent}{kw} {name_str}: {};", ts_type(ty));
                 }
                 (None, Some(init)) => {
-                    // Check for cast — use type annotation instead of `as`.
-                    if let Expr::Cast { expr, ty } = init {
+                    // Cast → use type annotation instead of `as`.
+                    if let JsExpr::Cast { expr, ty } = init {
                         let _ = writeln!(
                             out,
                             "{indent}{kw} {name_str}: {} = {};",
                             ts_type(ty),
-                            print_expr(expr, ctx),
+                            print_expr(expr),
                         );
                     } else {
                         let _ = writeln!(
                             out,
                             "{indent}{kw} {name_str} = {};",
-                            print_expr(init, ctx),
+                            print_expr(init),
                         );
                     }
                 }
@@ -279,69 +173,30 @@ fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
             }
         }
 
-        Stmt::Assign { target, value } => {
+        JsStmt::Assign { target, value } => {
             let _ = writeln!(
                 out,
                 "{indent}{} = {};",
-                print_expr(target, ctx),
-                print_expr(value, ctx),
+                print_expr(target),
+                print_expr(value),
             );
         }
 
-        Stmt::CompoundAssign { target, op, value } => {
+        JsStmt::CompoundAssign { target, op, value } => {
             let _ = writeln!(
                 out,
                 "{indent}{} {}= {};",
-                print_expr(target, ctx),
+                print_expr(target),
                 binop_str(*op),
-                print_expr(value, ctx),
+                print_expr(value),
             );
         }
 
-        Stmt::Expr(expr) => {
-            if let Expr::SystemCall {
-                system,
-                method,
-                args,
-            } = expr
-            {
-                // constructSuper → super()
-                if system == "Flash.Class" && method == "constructSuper" {
-                    if ctx.suppress_super {
-                        return;
-                    }
-                    let rest_args: Vec<_> = args[1..]
-                        .iter()
-                        .map(|a| print_expr(a, ctx))
-                        .collect();
-                    let _ = writeln!(out, "{indent}super({});", rest_args.join(", "));
-                    return;
-                }
-                // Flash_Exception.throw(x) → throw x;
-                if system == "Flash.Exception" && method == "throw" && args.len() == 1 {
-                    let _ = writeln!(out, "{indent}throw {};", print_expr(&args[0], ctx));
-                    return;
-                }
-                // Flash_Class.setSuper(this, "prop", value) → super.prop = value;
-                if system == "Flash.Class"
-                    && method == "setSuper"
-                    && args.len() == 3
-                {
-                    if let Expr::Literal(Constant::String(name)) = &args[1] {
-                        let _ = writeln!(
-                            out,
-                            "{indent}super.{} = {};",
-                            sanitize_ident(name),
-                            print_expr(&args[2], ctx),
-                        );
-                        return;
-                    }
-                }
-            }
-            let _ = writeln!(out, "{indent}{};", print_expr(expr, ctx));
+        JsStmt::Expr(expr) => {
+            let _ = writeln!(out, "{indent}{};", print_expr(expr));
         }
 
-        Stmt::If {
+        JsStmt::If {
             cond,
             then_body,
             else_body,
@@ -351,48 +206,47 @@ fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
             }
             let inner = format!("{indent}  ");
             if else_body.is_empty() {
-                let _ = writeln!(out, "{indent}if ({}) {{", print_expr(cond, ctx));
-                print_stmts(then_body, ctx, out, &inner);
+                let _ = writeln!(out, "{indent}if ({}) {{", print_expr(cond));
+                print_stmts(then_body, out, &inner);
                 let _ = writeln!(out, "{indent}}}");
             } else {
-                let _ = writeln!(out, "{indent}if ({}) {{", print_expr(cond, ctx));
-                print_stmts(then_body, ctx, out, &inner);
+                let _ = writeln!(out, "{indent}if ({}) {{", print_expr(cond));
+                print_stmts(then_body, out, &inner);
                 let _ = writeln!(out, "{indent}}} else {{");
-                print_stmts(else_body, ctx, out, &inner);
+                print_stmts(else_body, out, &inner);
                 let _ = writeln!(out, "{indent}}}");
             }
         }
 
-        Stmt::While { cond, body } => {
-            let _ = writeln!(out, "{indent}while ({}) {{", print_expr(cond, ctx));
+        JsStmt::While { cond, body } => {
+            let _ = writeln!(out, "{indent}while ({}) {{", print_expr(cond));
             let inner = format!("{indent}  ");
-            print_stmts(body, ctx, out, &inner);
+            print_stmts(body, out, &inner);
             let _ = writeln!(out, "{indent}}}");
         }
 
-        Stmt::For {
+        JsStmt::For {
             init,
             cond,
             update,
             body,
         } => {
-            // For loops are emitted as a regular for loop structure.
             let inner = format!("{indent}  ");
-            print_stmts(init, ctx, out, indent);
-            let _ = writeln!(out, "{indent}while ({}) {{", print_expr(cond, ctx));
-            print_stmts(body, ctx, out, &inner);
-            print_stmts(update, ctx, out, &inner);
+            print_stmts(init, out, indent);
+            let _ = writeln!(out, "{indent}while ({}) {{", print_expr(cond));
+            print_stmts(body, out, &inner);
+            print_stmts(update, out, &inner);
             let _ = writeln!(out, "{indent}}}");
         }
 
-        Stmt::Loop { body } => {
+        JsStmt::Loop { body } => {
             let _ = writeln!(out, "{indent}while (true) {{");
             let inner = format!("{indent}  ");
-            print_stmts(body, ctx, out, &inner);
+            print_stmts(body, out, &inner);
             let _ = writeln!(out, "{indent}}}");
         }
 
-        Stmt::ForOf {
+        JsStmt::ForOf {
             binding,
             declare,
             iterable,
@@ -404,44 +258,49 @@ fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
                 out,
                 "{indent}for ({decl}{} of {}) {{",
                 sanitize_ident(binding),
-                print_expr(iterable, ctx),
+                print_expr(iterable),
             );
-            print_stmts(body, ctx, out, &inner);
+            print_stmts(body, out, &inner);
             let _ = writeln!(out, "{indent}}}");
         }
 
-        Stmt::Return(expr) => {
+        JsStmt::Return(expr) => {
             if let Some(e) = expr {
-                let _ = writeln!(out, "{indent}return {};", print_expr(e, ctx));
+                let _ = writeln!(out, "{indent}return {};", print_expr(e));
             } else {
                 let _ = writeln!(out, "{indent}return;");
             }
         }
 
-        Stmt::Break => {
+        JsStmt::Break => {
             let _ = writeln!(out, "{indent}break;");
         }
 
-        Stmt::Continue => {
+        JsStmt::Continue => {
             let _ = writeln!(out, "{indent}continue;");
         }
 
-        Stmt::LabeledBreak { depth } => {
+        JsStmt::LabeledBreak { depth } => {
             let _ = writeln!(out, "{indent}break L{depth};");
         }
 
-        Stmt::Dispatch { blocks, entry } => {
+        JsStmt::Dispatch { blocks, entry } => {
             let _ = writeln!(out, "{indent}let $block = {entry};");
             let _ = writeln!(out, "{indent}while (true) {{");
             let _ = writeln!(out, "{indent}  switch ($block) {{");
             for (idx, block_stmts) in blocks {
                 let _ = writeln!(out, "{indent}    case {idx}: {{");
                 let case_indent = format!("{indent}      ");
-                print_stmts(block_stmts, ctx, out, &case_indent);
+                print_stmts(block_stmts, out, &case_indent);
                 let _ = writeln!(out, "{indent}    }}");
             }
             let _ = writeln!(out, "{indent}  }}");
             let _ = writeln!(out, "{indent}}}");
+        }
+
+        // --- JS-specific statements ---
+        JsStmt::Throw(expr) => {
+            let _ = writeln!(out, "{indent}throw {};", print_expr(expr));
         }
     }
 }
@@ -450,44 +309,32 @@ fn print_stmt(stmt: &Stmt, ctx: &PrintCtx, out: &mut String, indent: &str) {
 // Expression printing
 // ---------------------------------------------------------------------------
 
-fn print_expr(expr: &Expr, ctx: &PrintCtx) -> String {
+fn print_expr(expr: &JsExpr) -> String {
     match expr {
-        Expr::Literal(c) => emit_constant(c),
+        JsExpr::Literal(c) => emit_constant(c),
 
-        Expr::Var(name) => {
-            if let Some(ref self_name) = ctx.self_param_name {
-                if name == self_name {
-                    return "this".into();
-                }
-            }
-            sanitize_ident(name)
-        }
+        JsExpr::Var(name) => sanitize_ident(name),
 
-        Expr::Binary { op, lhs, rhs } => {
-            let op_str = binop_str(*op);
-            // Handle scope-lookup stripping for binops.
-            if is_scope_lookup(lhs) {
-                return print_expr_operand(rhs, ctx);
-            }
-            if is_scope_lookup(rhs) {
-                return print_expr_operand(lhs, ctx);
-            }
+        JsExpr::This => "this".into(),
+
+        JsExpr::Binary { op, lhs, rhs } => {
             format!(
-                "{} {op_str} {}",
-                print_expr_operand(lhs, ctx),
-                print_expr_operand(rhs, ctx),
+                "{} {} {}",
+                print_expr_operand(lhs),
+                binop_str(*op),
+                print_expr_operand(rhs),
             )
         }
 
-        Expr::Unary { op, expr: inner } => {
+        JsExpr::Unary { op, expr: inner } => {
             let op_str = match op {
                 UnaryOp::Neg => "-",
                 UnaryOp::BitNot => "~",
             };
-            format!("{op_str}{}", print_expr_operand(inner, ctx))
+            format!("{op_str}{}", print_expr_operand(inner))
         }
 
-        Expr::Cmp { kind, lhs, rhs } => {
+        JsExpr::Cmp { kind, lhs, rhs } => {
             let has_null = is_null_literal(lhs) || is_null_literal(rhs);
             let op_str = if has_null {
                 match kind {
@@ -500,454 +347,219 @@ fn print_expr(expr: &Expr, ctx: &PrintCtx) -> String {
             };
             format!(
                 "{} {op_str} {}",
-                print_expr_operand(lhs, ctx),
-                print_expr_operand(rhs, ctx),
+                print_expr_operand(lhs),
+                print_expr_operand(rhs),
             )
         }
 
-        Expr::Field { object, field } => {
-            // Scope-lookup + GetField → resolve to `this.field` or bare name.
-            if let Some(args) = scope_lookup_args(object) {
-                let effective = field.rsplit("::").next().unwrap_or(field);
-                match resolve_scope_lookup(args, ctx) {
-                    ScopeResolution::Ancestor(ref class_name) => {
-                        let safe = sanitize_ident(effective);
-                        if ctx.is_cinit || ctx.instance_fields.contains(effective) {
-                            // In cinit `this` is the class; for instance fields
-                            // `this.field` is correct on the instance.
-                            return format!("this.{safe}");
-                        }
-                        // Static members live on the class constructor, not instances.
-                        let cls = sanitize_ident(class_name);
-                        return format!("{cls}.{safe}");
-                    }
-                    ScopeResolution::ScopeLookup => {
-                        // Check if the field is a known class name.
-                        if let Some(short) = ctx.class_names.get(field) {
-                            return short.clone();
-                        }
-                        let safe = sanitize_ident(effective);
-                        // In cinit, static fields must be accessed as this.field;
-                        // other scope lookups (class refs, globals) stay bare.
-                        if ctx.is_cinit && ctx.static_fields.contains(effective) {
-                            return format!("this.{safe}");
-                        }
-                        return safe;
-                    }
-                }
-            }
-            // Normal field access.
-            let effective_field = if field.contains("::") {
-                field.rsplit("::").next().unwrap_or(field)
-            } else {
-                field
-            };
-            if is_valid_js_ident(effective_field) {
-                format!("{}.{effective_field}", print_expr_operand(object, ctx))
+        JsExpr::Field { object, field } => {
+            if is_valid_js_ident(field) {
+                format!("{}.{field}", print_expr_operand(object))
             } else {
                 format!(
                     "{}[\"{}\"]",
-                    print_expr_operand(object, ctx),
-                    escape_js_string(effective_field),
+                    print_expr_operand(object),
+                    escape_js_string(field),
                 )
             }
         }
 
-        Expr::Index { collection, index } => {
+        JsExpr::Index { collection, index } => {
+            format!("{}[{}]", print_expr_operand(collection), print_expr(index))
+        }
+
+        JsExpr::Call { callee, args } => {
+            let args_str: Vec<_> = args.iter().map(print_expr).collect();
             format!(
-                "{}[{}]",
-                print_expr_operand(collection, ctx),
-                print_expr(index, ctx),
+                "{}({})",
+                print_expr_operand(callee),
+                args_str.join(", "),
             )
         }
 
-        Expr::Call { func: fname, args } => {
-            print_call(fname, args, ctx)
-        }
-
-        Expr::CallIndirect { callee, args } => {
-            let args_str: Vec<_> = args.iter().map(|a| print_expr(a, ctx)).collect();
-            format!("{}({})", print_expr(callee, ctx), args_str.join(", "))
-        }
-
-        Expr::SystemCall {
-            system,
-            method,
-            args,
-        } => {
-            print_system_call(system, method, args, ctx)
-        }
-
-        Expr::Ternary {
+        JsExpr::Ternary {
             cond,
             then_val,
             else_val,
         } => {
             format!(
                 "{} ? {} : {}",
-                print_expr_operand(cond, ctx),
-                print_expr_operand(then_val, ctx),
-                print_expr_operand(else_val, ctx),
+                print_expr_operand(cond),
+                print_expr_operand(then_val),
+                print_expr_operand(else_val),
             )
         }
 
-        Expr::LogicalOr { lhs, rhs } => {
+        JsExpr::LogicalOr { lhs, rhs } => {
             format!(
                 "{} || {}",
-                print_expr_operand(lhs, ctx),
-                print_expr_operand(rhs, ctx),
+                print_expr_operand(lhs),
+                print_expr_operand(rhs),
             )
         }
 
-        Expr::LogicalAnd { lhs, rhs } => {
+        JsExpr::LogicalAnd { lhs, rhs } => {
             format!(
                 "{} && {}",
-                print_expr_operand(lhs, ctx),
-                print_expr_operand(rhs, ctx),
+                print_expr_operand(lhs),
+                print_expr_operand(rhs),
             )
         }
 
-        Expr::Cast { expr: inner, ty } => {
-            format!("{} as {}", print_expr_operand(inner, ctx), ts_type(ty))
+        JsExpr::Cast { expr: inner, ty } => {
+            format!("{} as {}", print_expr_operand(inner), ts_type(ty))
         }
 
-        Expr::TypeCheck { expr: inner, ty } => {
-            print_type_check(inner, ty, ctx)
-        }
+        JsExpr::TypeCheck { expr: inner, ty } => print_type_check(inner, ty),
 
-        Expr::ArrayInit(elems) => {
-            let elems_str: Vec<_> = elems.iter().map(|e| print_expr(e, ctx)).collect();
+        JsExpr::ArrayInit(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(print_expr).collect();
             format!("[{}]", elems_str.join(", "))
         }
 
-        Expr::StructInit { name: _, fields } => {
-            let field_strs: Vec<_> = fields
+        JsExpr::ObjectInit(pairs) => {
+            if pairs.is_empty() {
+                return "{}".to_string();
+            }
+            let field_strs: Vec<_> = pairs
                 .iter()
                 .map(|(name, val)| {
                     if is_valid_js_ident(name) {
-                        format!("{name}: {}", print_expr(val, ctx))
+                        format!("{name}: {}", print_expr(val))
                     } else {
-                        format!("\"{}\": {}", escape_js_string(name), print_expr(val, ctx))
+                        format!("\"{}\": {}", escape_js_string(name), print_expr(val))
                     }
                 })
                 .collect();
             format!("{{ {} }}", field_strs.join(", "))
         }
 
-        Expr::TupleInit(elems) => {
-            let elems_str: Vec<_> = elems.iter().map(|e| print_expr(e, ctx)).collect();
+        JsExpr::TupleInit(elems) => {
+            let elems_str: Vec<_> = elems.iter().map(print_expr).collect();
             format!("[{}]", elems_str.join(", "))
         }
 
-        Expr::GlobalRef(name) => sanitize_ident(name),
+        JsExpr::Not(inner) => {
+            format!("!{}", print_expr_operand(inner))
+        }
 
-        Expr::CoroutineCreate { func: fname, args } => {
-            let args_str: Vec<_> = args.iter().map(|a| print_expr(a, ctx)).collect();
+        JsExpr::PostIncrement(inner) => {
+            format!("{}++", print_expr_operand(inner))
+        }
+
+        JsExpr::GeneratorCreate { func: fname, args } => {
+            let args_str: Vec<_> = args.iter().map(print_expr).collect();
             format!("{}({})", sanitize_ident(fname), args_str.join(", "))
         }
 
-        Expr::CoroutineResume(inner) => {
-            format!("{}.next()", print_expr(inner, ctx))
+        JsExpr::GeneratorResume(inner) => {
+            format!("{}.next()", print_expr(inner))
         }
 
-        Expr::Yield(v) => {
+        JsExpr::Yield(v) => {
             if let Some(inner) = v {
-                format!("yield {}", print_expr(inner, ctx))
+                format!("yield {}", print_expr(inner))
             } else {
                 "yield".into()
             }
         }
 
-        Expr::Not(inner) => {
-            format!("!{}", print_expr_operand(inner, ctx))
+        // --- JS-specific constructs ---
+        JsExpr::New { callee, args } => {
+            let args_str: Vec<_> = args.iter().map(print_expr).collect();
+            format!("new {}({})", print_expr(callee), args_str.join(", "))
         }
 
-        Expr::PostIncrement(inner) => {
-            format!("{}++", print_expr_operand(inner, ctx))
+        JsExpr::TypeOf(inner) => {
+            format!("typeof {}", print_expr_operand(inner))
+        }
+
+        JsExpr::In { key, object } => {
+            format!(
+                "{} in {}",
+                print_expr_operand(key),
+                print_expr_operand(object),
+            )
+        }
+
+        JsExpr::Delete { object, key } => {
+            format!("delete {}[{}]", print_expr_operand(object), print_expr(key))
+        }
+
+        JsExpr::SuperCall(args) => {
+            let args_str: Vec<_> = args.iter().map(print_expr).collect();
+            format!("super({})", args_str.join(", "))
+        }
+
+        JsExpr::SuperMethodCall { method, args } => {
+            let args_str: Vec<_> = args.iter().map(print_expr).collect();
+            format!("super.{}({})", sanitize_ident(method), args_str.join(", "))
+        }
+
+        JsExpr::SuperGet(prop) => {
+            format!("super.{}", sanitize_ident(prop))
+        }
+
+        JsExpr::SuperSet { prop, value } => {
+            format!(
+                "(super.{} = {})",
+                sanitize_ident(prop),
+                print_expr(value),
+            )
+        }
+
+        JsExpr::Activation => "({})".to_string(),
+
+        // --- Fallback: unmapped system call ---
+        JsExpr::SystemCall {
+            system,
+            method,
+            args,
+        } => {
+            let args_str: Vec<_> = args.iter().map(print_expr).collect();
+            let sys_ident = sanitize_ident(system);
+            let safe_method = if is_valid_js_ident(method) {
+                format!(".{method}")
+            } else {
+                format!("[\"{}\"]", escape_js_string(method))
+            };
+            format!("{sys_ident}{safe_method}({})", args_str.join(", "))
         }
     }
 }
 
 /// Print an expression as an operand (may need parenthesization).
-fn print_expr_operand(expr: &Expr, ctx: &PrintCtx) -> String {
+fn print_expr_operand(expr: &JsExpr) -> String {
     if needs_parens(expr) {
-        format!("({})", print_expr(expr, ctx))
+        format!("({})", print_expr(expr))
     } else {
-        print_expr(expr, ctx)
+        print_expr(expr)
     }
 }
 
 /// Whether an expression needs parentheses when used as an operand.
-fn needs_parens(expr: &Expr) -> bool {
+fn needs_parens(expr: &JsExpr) -> bool {
     matches!(
         expr,
-        Expr::Binary { .. }
-            | Expr::Cmp { .. }
-            | Expr::Ternary { .. }
-            | Expr::LogicalOr { .. }
-            | Expr::LogicalAnd { .. }
-            | Expr::Cast { .. }
-            | Expr::Unary { .. }
-            | Expr::Not(_)
+        JsExpr::Binary { .. }
+            | JsExpr::Cmp { .. }
+            | JsExpr::Ternary { .. }
+            | JsExpr::LogicalOr { .. }
+            | JsExpr::LogicalAnd { .. }
+            | JsExpr::Cast { .. }
+            | JsExpr::Unary { .. }
+            | JsExpr::Not(_)
+            | JsExpr::In { .. }
+            | JsExpr::SuperSet { .. }
     )
 }
 
 // ---------------------------------------------------------------------------
-// Pattern-specific printers
+// Type check printing
 // ---------------------------------------------------------------------------
 
-/// Detect whether an expression is a scope-lookup (findPropStrict/findProperty).
-fn is_scope_lookup(expr: &Expr) -> bool {
-    scope_lookup_args(expr).is_some()
-}
-
-/// Extract the args from a scope-lookup SystemCall, or None if not a scope lookup.
-fn scope_lookup_args(expr: &Expr) -> Option<&[Expr]> {
-    match expr {
-        Expr::SystemCall {
-            system,
-            method,
-            args,
-        } if system == "Flash.Scope"
-            && (method == "findPropStrict" || method == "findProperty") =>
-        {
-            Some(args)
-        }
-        _ => None,
-    }
-}
-
-/// Resolve the class name from a scope-lookup arg string constant.
-fn class_from_scope_arg(args: &[Expr]) -> Option<String> {
-    let arg = args.first()?;
-    if let Expr::Literal(Constant::String(s)) = arg {
-        let prefix = s.rsplit_once("::")?.0;
-        let class_name = prefix.rsplit_once(':')?.1;
-        Some(class_name.to_string())
-    } else {
-        None
-    }
-}
-
-/// Resolve a scope-lookup expression:
-/// - If the lookup is for an ancestor class → "this"
-/// - Otherwise → marks as a scope lookup (bare name resolution happens
-///   at the consumption site: Field, Call, etc.)
-fn resolve_scope_lookup(args: &[Expr], ctx: &PrintCtx) -> ScopeResolution {
-    if let Some(class_name) = class_from_scope_arg(args) {
-        if ctx.ancestors.contains(&class_name) {
-            return ScopeResolution::Ancestor(class_name);
-        }
-    }
-    ScopeResolution::ScopeLookup
-}
-
-enum ScopeResolution {
-    /// The lookup matched an ancestor class — carry the short class name.
-    Ancestor(String),
-    ScopeLookup,
-}
-
-/// Print a Call expression with TS-specific rewrites.
-fn print_call(fname: &str, args: &[Expr], ctx: &PrintCtx) -> String {
-    if fname.contains("::") && !args.is_empty() {
-        // Qualified name → method dispatch: receiver.method(rest_args)
-        let method = fname.rsplit("::").next().unwrap_or(fname);
-        let receiver = &args[0];
-        let rest_args: Vec<_> = args[1..].iter().map(|a| print_expr(a, ctx)).collect();
-        let rest_str = rest_args.join(", ");
-
-        if is_scope_lookup(receiver) {
-            let use_this =
-                (ctx.has_self && ctx.method_names.contains(method)) || ctx.is_cinit;
-            return if use_this {
-                format!("this.{}({rest_str})", sanitize_ident(method))
-            } else {
-                format!("{}({rest_str})", sanitize_ident(method))
-            };
-        }
-        return format!(
-            "{}.{}({rest_str})",
-            print_expr_operand(receiver, ctx),
-            sanitize_ident(method),
-        );
-    }
-
-    if !args.is_empty() && is_scope_lookup(&args[0]) {
-        // Scope-lookup receiver — strip it.
-        let rest_args: Vec<_> = args[1..].iter().map(|a| print_expr(a, ctx)).collect();
-        let rest_str = rest_args.join(", ");
-        let safe_name = sanitize_ident(fname);
-        return if ctx.has_self && ctx.method_names.contains(fname) {
-            format!("this.{safe_name}({rest_str})")
-        } else {
-            format!("{safe_name}({rest_str})")
-        };
-    }
-
-    // Global dotted call (e.g. Math.max, Math.min) — not a method dispatch.
-    if fname.contains('.') {
-        let args_str: Vec<_> = args.iter().map(|a| print_expr(a, ctx)).collect();
-        return format!("{fname}({})", args_str.join(", "));
-    }
-
-    if !args.is_empty() {
-        // Unqualified call with receiver: args[0].method(args[1..])
-        let receiver = &args[0];
-        let rest_args: Vec<_> = args[1..].iter().map(|a| print_expr(a, ctx)).collect();
-        let rest_str = rest_args.join(", ");
-        format!(
-            "{}.{}({rest_str})",
-            print_expr_operand(receiver, ctx),
-            sanitize_ident(fname),
-        )
-    } else {
-        format!("{}()", sanitize_ident(fname))
-    }
-}
-
-/// Print a SystemCall expression with TS-specific rewrites.
-fn print_system_call(
-    system: &str,
-    method: &str,
-    args: &[Expr],
-    ctx: &PrintCtx,
-) -> String {
-    // constructSuper → super()
-    if system == "Flash.Class" && method == "constructSuper" {
-        if ctx.suppress_super {
-            return "void 0".to_string();
-        }
-        let rest_args: Vec<_> = args[1..].iter().map(|a| print_expr(a, ctx)).collect();
-        return format!("super({})", rest_args.join(", "));
-    }
-
-    // newFunction → this.methodRef
-    if system == "Flash.Object" && method == "newFunction" && args.len() == 1 {
-        if let Expr::Literal(Constant::String(name)) = &args[0] {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            return format!("this.{}", sanitize_ident(short));
-        }
-    }
-
-    // construct → new
-    if system == "Flash.Object" && method == "construct" {
-        if let Some((ctor, rest)) = args.split_first() {
-            let rest_args: Vec<_> = rest.iter().map(|a| print_expr(a, ctx)).collect();
-            return format!("new {}({})", print_expr(ctor, ctx), rest_args.join(", "));
-        }
-    }
-
-    // findPropStrict/findProperty → resolve scope or emit `this`
-    if system == "Flash.Scope" && (method == "findPropStrict" || method == "findProperty") {
-        match resolve_scope_lookup(args, ctx) {
-            ScopeResolution::Ancestor(ref class_name) => {
-                if ctx.is_cinit {
-                    return "this".into();
-                }
-                return sanitize_ident(class_name);
-            }
-            ScopeResolution::ScopeLookup => {
-                // The scope lookup will be consumed by Field/Call site.
-                // If it reaches here as a standalone expression, skip it.
-                return String::new();
-            }
-        }
-    }
-
-    // Flash_Scope.newActivation() → ({})
-    if system == "Flash.Scope" && method == "newActivation" && args.is_empty() {
-        return "({})".to_string();
-    }
-
-    // Flash_Object.typeOf(x) → typeof x
-    if system == "Flash.Object" && method == "typeOf" && args.len() == 1 {
-        return format!("typeof {}", print_expr_operand(&args[0], ctx));
-    }
-
-    // Flash_Object.hasProperty(obj, k) → k in obj
-    if system == "Flash.Object" && method == "hasProperty" && args.len() == 2 {
-        return format!(
-            "{} in {}",
-            print_expr_operand(&args[1], ctx),
-            print_expr_operand(&args[0], ctx),
-        );
-    }
-
-    // Flash_Object.deleteProperty(obj, k) → delete obj[k]
-    if system == "Flash.Object" && method == "deleteProperty" && args.len() == 2 {
-        return format!(
-            "delete {}[{}]",
-            print_expr_operand(&args[0], ctx),
-            print_expr(&args[1], ctx),
-        );
-    }
-
-    // Flash_Object.newObject(k1, v1, k2, v2, ...) → { k1: v1, k2: v2 }
-    if system == "Flash.Object" && method == "newObject" {
-        if args.is_empty() {
-            return "{}".to_string();
-        }
-        if args.len().is_multiple_of(2) {
-            // Deduplicate keys (last value wins, matching JS/Flash runtime semantics).
-            let mut keys: Vec<String> = Vec::new();
-            let mut values: HashMap<String, String> = HashMap::new();
-            for pair in args.chunks_exact(2) {
-                let key = print_expr(&pair[0], ctx);
-                let val = print_expr(&pair[1], ctx);
-                if !values.contains_key(&key) {
-                    keys.push(key.clone());
-                }
-                values.insert(key, val);
-            }
-            let pairs: Vec<_> = keys
-                .iter()
-                .map(|k| format!("{k}: {}", values[k]))
-                .collect();
-            return format!("{{ {} }}", pairs.join(", "));
-        }
-    }
-
-    // Flash_Class.callSuper(this, "method", ...args) → super.method(...args)
-    if system == "Flash.Class" && method == "callSuper" && args.len() >= 2 {
-        if let Expr::Literal(Constant::String(name)) = &args[1] {
-            let rest: Vec<_> = args[2..].iter().map(|a| print_expr(a, ctx)).collect();
-            return format!("super.{}({})", sanitize_ident(name), rest.join(", "));
-        }
-    }
-
-    // Flash_Class.getSuper(this, "prop") → super.prop
-    if system == "Flash.Class" && method == "getSuper" && args.len() == 2 {
-        if let Expr::Literal(Constant::String(name)) = &args[1] {
-            return format!("super.{}", sanitize_ident(name));
-        }
-    }
-
-    // Flash_Class.setSuper(this, "prop", value) → (super.prop = value)
-    if system == "Flash.Class" && method == "setSuper" && args.len() == 3 {
-        if let Expr::Literal(Constant::String(name)) = &args[1] {
-            return format!(
-                "(super.{} = {})",
-                sanitize_ident(name),
-                print_expr(&args[2], ctx),
-            );
-        }
-    }
-
-    // Default system call.
-    let args_str: Vec<_> = args.iter().map(|a| print_expr(a, ctx)).collect();
-    let sys_ident = sanitize_ident(system);
-    let safe_method = if is_valid_js_ident(method) {
-        format!(".{method}")
-    } else {
-        format!("[\"{}\"]", escape_js_string(method))
-    };
-    format!("{sys_ident}{safe_method}({})", args_str.join(", "))
-}
-
-/// Print a TypeCheck expression.
-fn print_type_check(expr: &Expr, ty: &Type, ctx: &PrintCtx) -> String {
-    let operand = print_expr_operand(expr, ctx);
+fn print_type_check(expr: &JsExpr, ty: &Type) -> String {
+    let operand = print_expr_operand(expr);
     match ty {
         Type::Bool => format!("typeof {operand} === \"boolean\""),
         Type::Int(_) | Type::UInt(_) | Type::Float(_) => {
@@ -961,7 +573,7 @@ fn print_type_check(expr: &Expr, ty: &Type, ctx: &PrintCtx) -> String {
         Type::Union(types) => {
             let checks: Vec<_> = types
                 .iter()
-                .map(|t| print_type_check(expr, t, ctx))
+                .map(|t| print_type_check(expr, t))
                 .collect();
             format!("({})", checks.join(" || "))
         }
@@ -973,8 +585,8 @@ fn print_type_check(expr: &Expr, ty: &Type, ctx: &PrintCtx) -> String {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn is_null_literal(expr: &Expr) -> bool {
-    matches!(expr, Expr::Literal(Constant::Null))
+fn is_null_literal(expr: &JsExpr) -> bool {
+    matches!(expr, JsExpr::Literal(Constant::Null))
 }
 
 fn binop_str(op: BinOp) -> &'static str {
@@ -1003,7 +615,7 @@ fn cmp_str(kind: CmpKind) -> &'static str {
     }
 }
 
-fn is_valid_js_ident(name: &str) -> bool {
+pub fn is_valid_js_ident(name: &str) -> bool {
     !name.is_empty()
         && !name.starts_with(|c: char| c.is_ascii_digit())
         && name
@@ -1030,7 +642,7 @@ fn format_float(f: f64) -> String {
     }
 }
 
-fn escape_js_string(s: &str) -> String {
+pub fn escape_js_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {
