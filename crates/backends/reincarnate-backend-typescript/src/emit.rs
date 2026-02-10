@@ -1142,13 +1142,16 @@ fn emit_class(
     let ancestors = class_meta.ancestor_sets.get(&qualified).unwrap_or(&empty);
     let method_names = class_meta.method_name_sets.get(&qualified).unwrap_or(&empty);
     let instance_fields = class_meta.instance_field_sets.get(&qualified).unwrap_or(&empty);
+    let static_fields: HashSet<String> = group.class_def.static_fields.iter()
+        .map(|(name, _)| name.clone())
+        .collect();
 
     let suppress_super = extends.is_empty();
     for (i, &fid) in sorted_methods.iter().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, suppress_super, lowering_config, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, suppress_super, lowering_config, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -1182,6 +1185,7 @@ fn emit_class_method(
     ancestors: &HashSet<String>,
     method_names: &HashSet<String>,
     instance_fields: &HashSet<String>,
+    static_fields: &HashSet<String>,
     suppress_super: bool,
     lowering_config: &LoweringConfig,
     out: &mut String,
@@ -1214,6 +1218,7 @@ fn emit_class_method(
     let mut pctx =
         PrintCtx::for_method(class_names, ancestors, method_names, instance_fields);
     pctx.suppress_super = suppress_super;
+    pctx.static_fields = static_fields.clone();
     ast_printer::print_class_method(&ast, &raw_name, skip_self, &pctx, out);
     Ok(())
 }

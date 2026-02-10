@@ -31,6 +31,8 @@ pub struct PrintCtx {
     pub suppress_super: bool,
     /// Whether we are inside a cinit (class static initializer).
     pub is_cinit: bool,
+    /// Static field short names declared on the current class.
+    pub static_fields: HashSet<String>,
 }
 
 impl PrintCtx {
@@ -44,6 +46,7 @@ impl PrintCtx {
             self_param_name: None,
             suppress_super: false,
             is_cinit: false,
+            static_fields: HashSet::new(),
         }
     }
 
@@ -62,6 +65,7 @@ impl PrintCtx {
             self_param_name: None,
             suppress_super: false,
             is_cinit: false,
+            static_fields: HashSet::new(),
         }
     }
 }
@@ -117,6 +121,7 @@ pub fn print_class_method(
             self_param_name: ast.params.first().map(|(name, _)| name.clone()),
             suppress_super: ctx.suppress_super,
             is_cinit: true,
+            static_fields: ctx.static_fields.clone(),
         };
         print_stmts(&ast.body, &local_ctx, out, "    ");
         let _ = writeln!(out, "  }}\n");
@@ -162,6 +167,7 @@ pub fn print_class_method(
             self_param_name: Some(ast.params[0].0.clone()),
             suppress_super: ctx.suppress_super,
             is_cinit: false,
+            static_fields: ctx.static_fields.clone(),
         };
         // Ensure has_self is true when we have a self param.
         lctx.has_self = true;
@@ -176,6 +182,7 @@ pub fn print_class_method(
             self_param_name: ctx.self_param_name.clone(),
             suppress_super: ctx.suppress_super,
             is_cinit: false,
+            static_fields: ctx.static_fields.clone(),
         }
     };
 
@@ -520,7 +527,9 @@ fn print_expr(expr: &Expr, ctx: &PrintCtx) -> String {
                             return short.clone();
                         }
                         let safe = sanitize_ident(effective);
-                        if ctx.is_cinit {
+                        // In cinit, static fields must be accessed as this.field;
+                        // other scope lookups (class refs, globals) stay bare.
+                        if ctx.is_cinit && ctx.static_fields.contains(effective) {
                             return format!("this.{safe}");
                         }
                         return safe;
