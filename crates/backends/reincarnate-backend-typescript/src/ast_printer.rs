@@ -412,7 +412,16 @@ fn print_expr(expr: &Expr, ctx: &PrintCtx) -> String {
         }
 
         Expr::Cmp { kind, lhs, rhs } => {
-            let op_str = cmp_str(*kind);
+            let has_null = is_null_literal(lhs) || is_null_literal(rhs);
+            let op_str = if has_null {
+                match kind {
+                    CmpKind::Eq => "==",
+                    CmpKind::Ne => "!=",
+                    _ => cmp_str(*kind),
+                }
+            } else {
+                cmp_str(*kind)
+            };
             format!(
                 "{} {op_str} {}",
                 print_expr_operand(lhs, ctx),
@@ -781,6 +790,10 @@ fn print_type_check(expr: &Expr, ty: &Type, ctx: &PrintCtx) -> String {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+fn is_null_literal(expr: &Expr) -> bool {
+    matches!(expr, Expr::Literal(Constant::Null))
+}
 
 fn binop_str(op: BinOp) -> &'static str {
     match op {
