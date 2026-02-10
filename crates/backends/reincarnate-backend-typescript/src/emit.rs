@@ -937,18 +937,19 @@ fn emit_function(
     let ast = linear::lower_function_linear(func, &shape, lowering_config);
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
-        flash: Some(crate::rewrites::flash::FlashLowerCtx {
-            class_names: class_names.clone(),
-            ancestors: HashSet::new(),
-            method_names: HashSet::new(),
-            instance_fields: HashSet::new(),
-            has_self: false,
-            suppress_super: false,
-            is_cinit: false,
-            static_fields: HashSet::new(),
-        }),
     };
     let js_func = crate::lower::lower_function(&ast, &ctx);
+    let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
+        class_names: class_names.clone(),
+        ancestors: HashSet::new(),
+        method_names: HashSet::new(),
+        instance_fields: HashSet::new(),
+        has_self: false,
+        suppress_super: false,
+        is_cinit: false,
+        static_fields: HashSet::new(),
+    };
+    let js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     crate::ast_printer::print_function(&js_func, out);
     Ok(())
 }
@@ -1207,20 +1208,23 @@ fn emit_class_method(
         None
     };
 
-    let ctx = crate::lower::LowerCtx {
-        self_param_name,
-        flash: Some(crate::rewrites::flash::FlashLowerCtx {
-            class_names: class_names.clone(),
-            ancestors: ancestors.clone(),
-            method_names: method_names.clone(),
-            instance_fields: instance_fields.clone(),
-            has_self: true,
-            suppress_super,
-            is_cinit,
-            static_fields: static_fields.clone(),
-        }),
-    };
+    let ctx = crate::lower::LowerCtx { self_param_name };
     let js_func = crate::lower::lower_function(&ast, &ctx);
+    let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
+        class_names: class_names.clone(),
+        ancestors: ancestors.clone(),
+        method_names: method_names.clone(),
+        instance_fields: instance_fields.clone(),
+        has_self: true,
+        suppress_super,
+        is_cinit,
+        static_fields: static_fields.clone(),
+    };
+    let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
+    // Hoist super() to top of constructor body (after rewrite produces SuperCall nodes).
+    if func.method_kind == MethodKind::Constructor {
+        crate::rewrites::flash::hoist_super_call(&mut js_func.body);
+    }
     crate::ast_printer::print_class_method(&js_func, &raw_name, skip_self, out);
     Ok(())
 }
