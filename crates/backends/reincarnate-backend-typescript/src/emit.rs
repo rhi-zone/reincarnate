@@ -1047,7 +1047,8 @@ fn emit_class_method(
     if func.method_kind == MethodKind::Constructor {
         hoist_super_call(&mut ast.body);
     }
-    let mut pctx = if skip_self {
+    let is_cinit = raw_name == "cinit" && func.method_kind == MethodKind::Static;
+    let mut pctx = if skip_self || is_cinit {
         PrintCtx::for_method(class_names, ancestors, method_names)
     } else {
         PrintCtx::for_function(class_names)

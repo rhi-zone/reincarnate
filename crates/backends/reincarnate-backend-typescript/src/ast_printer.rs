@@ -27,6 +27,8 @@ pub struct PrintCtx {
     pub self_param_name: Option<String>,
     /// Suppress `super()` calls (class has no real superclass, e.g. `extends Object`).
     pub suppress_super: bool,
+    /// Whether we are inside a cinit (class static initializer).
+    pub is_cinit: bool,
 }
 
 impl PrintCtx {
@@ -38,6 +40,7 @@ impl PrintCtx {
             has_self: false,
             self_param_name: None,
             suppress_super: false,
+            is_cinit: false,
         }
     }
 
@@ -53,6 +56,7 @@ impl PrintCtx {
             has_self: true,
             self_param_name: None,
             suppress_super: false,
+            is_cinit: false,
         }
     }
 }
@@ -96,6 +100,23 @@ pub fn print_class_method(
     let ret_ty = ts_type(&ast.return_ty);
     let star = if ast.is_generator { "*" } else { "" };
 
+    // cinit → static initializer block
+    if raw_name == "cinit" && matches!(ast.method_kind, MethodKind::Static) {
+        let _ = writeln!(out, "  static {{");
+        let local_ctx = PrintCtx {
+            class_names: ctx.class_names.clone(),
+            ancestors: ctx.ancestors.clone(),
+            method_names: ctx.method_names.clone(),
+            has_self: true,
+            self_param_name: None,
+            suppress_super: ctx.suppress_super,
+            is_cinit: true,
+        };
+        print_stmts(&ast.body, &local_ctx, out, "    ");
+        let _ = writeln!(out, "  }}\n");
+        return;
+    }
+
     match ast.method_kind {
         MethodKind::Constructor => {
             let _ = writeln!(out, "  constructor({params_str}) {{");
@@ -133,6 +154,7 @@ pub fn print_class_method(
             has_self: ctx.has_self,
             self_param_name: Some(ast.params[0].0.clone()),
             suppress_super: ctx.suppress_super,
+            is_cinit: false,
         };
         // Ensure has_self is true when we have a self param.
         lctx.has_self = true;
@@ -145,6 +167,7 @@ pub fn print_class_method(
             has_self: ctx.has_self,
             self_param_name: ctx.self_param_name.clone(),
             suppress_super: ctx.suppress_super,
+            is_cinit: false,
         }
     };
 
@@ -443,6 +466,10 @@ fn print_expr(expr: &Expr, ctx: &PrintCtx) -> String {
                         if let Some(short) = ctx.class_names.get(field) {
                             return short.clone();
                         }
+                        if ctx.is_cinit {
+                            let safe = sanitize_ident(effective);
+                            return format!("this.{safe}");
+                        }
                         return sanitize_ident(effective);
                     }
                 }
@@ -670,7 +697,9 @@ fn print_call(fname: &str, args: &[Expr], ctx: &PrintCtx) -> String {
         let rest_str = rest_args.join(", ");
 
         if is_scope_lookup(receiver) {
-            return if ctx.has_self && ctx.method_names.contains(method) {
+            let use_this =
+                (ctx.has_self && ctx.method_names.contains(method)) || ctx.is_cinit;
+            return if use_this {
                 format!("this.{}({rest_str})", sanitize_ident(method))
             } else {
                 format!("{}({rest_str})", sanitize_ident(method))
