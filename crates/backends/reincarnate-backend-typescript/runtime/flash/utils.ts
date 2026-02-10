@@ -13,10 +13,38 @@ import { inflateRaw, deflateRaw, zlibCompress, zlibDecompress } from "./deflate"
 
 export const QN_KEY = Symbol("as3:qualifiedName");
 
+const _classRegistry = new Map<string, Function>();
+
+export function registerClass(ctor: Function): void {
+  const name = (ctor as any)[QN_KEY];
+  if (typeof name === "string") _classRegistry.set(name, ctor);
+}
+
 export function getQualifiedClassName(value: any): string {
   if (value == null) return "null";
   const ctor = typeof value === "function" ? value : value.constructor;
   return ctor?.[QN_KEY] ?? ctor?.name ?? typeof value;
+}
+
+export function getQualifiedSuperclassName(value: any): string | null {
+  if (value == null) return null;
+  const ctor = typeof value === "function" ? value : value.constructor;
+  if (!ctor) return null;
+  const parent = Object.getPrototypeOf(ctor.prototype)?.constructor;
+  if (!parent || parent === Object) return null;
+  return parent[QN_KEY] ?? parent.name ?? null;
+}
+
+export function getDefinitionByName(name: string): any {
+  const cls = _classRegistry.get(name);
+  if (cls) return cls;
+  // Fall back: strip package prefix and try as global.
+  const short = name.includes("::") ? name.split("::").pop()! : name;
+  for (const [qn, c] of _classRegistry) {
+    const s = qn.includes("::") ? qn.split("::").pop()! : qn;
+    if (s === short) return c;
+  }
+  throw new ReferenceError(`getDefinitionByName: '${name}' is not defined`);
 }
 
 export function describeType(value: any): any {

@@ -331,7 +331,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         emit_runtime_imports_for(systems, &mut out, depth);
         let prefix = "../".repeat(depth + 1);
         let prefix = prefix.trim_end_matches('/');
-        let _ = writeln!(out, "import {{ QN_KEY }} from \"{prefix}/runtime/flash/utils\";\n");
+        let _ = writeln!(out, "import {{ QN_KEY, registerClass }} from \"{prefix}/runtime/flash/utils\";\n");
         emit_intra_imports(group, module, &segments, &registry, depth, &mut out);
         emit_class(group, module, &class_names, &class_meta, lowering_config, &mut out)?;
 
@@ -1058,6 +1058,7 @@ fn emit_class(
     }
 
     let _ = writeln!(out, "}}\n");
+    let _ = writeln!(out, "registerClass({class_name});\n");
     Ok(())
 }
 
