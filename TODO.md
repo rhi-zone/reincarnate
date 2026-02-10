@@ -359,11 +359,11 @@ structural problems:
 
 **Migration plan (ordered):**
 
-- [ ] **Platform interface for TS runtime** — Extract browser API calls from
+- [x] **Platform interface for TS runtime** — Extracted browser API calls from
   `display.ts`, `runtime.ts`, `text.ts`, `net.ts`, `utils.ts` into a
-  `platform/` module. API shim imports from `platform/`, not from browser
-  globals. Start with a `browser.ts` implementation (move existing calls)
-  and a `null.ts` (no-ops for testing).
+  `platform/` module. `platform/browser.ts` implements Canvas 2D init, DOM
+  events, fetch, localStorage, timers, image loading. `platform/index.ts`
+  re-exports from browser. Swap target by changing the re-export source.
 
 - [ ] **Redesign system traits** — Replace `Renderer` (sprite-level) with
   `Graphics` (2D drawing primitives). Remove `Ui` (engine-level, not
