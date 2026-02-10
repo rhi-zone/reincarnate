@@ -562,6 +562,26 @@ export class Timer extends EventDispatcher {
 }
 
 // ---------------------------------------------------------------------------
+// Dictionary
+// ---------------------------------------------------------------------------
+
+/**
+ * AS3 Dictionary — a key/value map that supports arbitrary keys.
+ *
+ * Uses `Object.create(null)` as the backing store so that bracket-notation
+ * access works naturally for string keys (`dict[key]`).  Object-key support
+ * (the primary AS3 Dictionary differentiator) is not yet implemented — all
+ * current usages in the lifted codebase use string keys.
+ */
+export class Dictionary {
+  [key: string]: any;
+  constructor(_weakKeys?: boolean) {
+    // Wipe the prototype so only explicit entries appear in for-in / ownKeys.
+    Object.setPrototypeOf(this, null);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Proxy
 // ---------------------------------------------------------------------------
 

@@ -33,7 +33,7 @@ fn flash_stdlib_module(name: &str) -> Option<&'static str> {
         // flash/net
         "URLRequest" | "SharedObject" => "net",
         // flash/utils
-        "ByteArray" | "Timer" | "Proxy" => "utils",
+        "ByteArray" | "Dictionary" | "Timer" | "Proxy" => "utils",
         // flash/runtime
         "stage" | "flashTick" => "runtime",
         _ => return None,
