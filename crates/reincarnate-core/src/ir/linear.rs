@@ -1612,7 +1612,9 @@ impl<'a> EmitCtx<'a> {
         }
     }
 
-    /// Collect block-param declarations for non-entry blocks.
+    /// Collect block-param declarations for non-entry blocks, plus any
+    /// shared names that lack a block-param declaration (from Cast/Copy
+    /// name propagation).
     fn collect_block_param_decls(&self) -> Vec<Stmt> {
         let mut decls = Vec::new();
         let mut declared = HashSet::new();
@@ -1635,6 +1637,20 @@ impl<'a> EmitCtx<'a> {
                         mutable: true,
                     });
                 }
+            }
+        }
+        // Shared names without a block-param declaration need an uninit let.
+        // This happens when Cast/Copy name propagation creates duplicate names
+        // for a Cast result and its source — both emit Assign, but neither
+        // generates a VarDecl.
+        for name in &self.shared_names {
+            if declared.insert(name.clone()) {
+                decls.push(Stmt::VarDecl {
+                    name: name.clone(),
+                    ty: None,
+                    init: None,
+                    mutable: true,
+                });
             }
         }
         decls
