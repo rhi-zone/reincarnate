@@ -26,6 +26,7 @@ const FLASH_DISPLAY_TS: &str = include_str!("../runtime/flash/display.ts");
 const FLASH_TEXT_TS: &str = include_str!("../runtime/flash/text.ts");
 const FLASH_NET_TS: &str = include_str!("../runtime/flash/net.ts");
 const FLASH_AMF_TS: &str = include_str!("../runtime/flash/amf.ts");
+const FLASH_DEFLATE_TS: &str = include_str!("../runtime/flash/deflate.ts");
 const FLASH_UTILS_TS: &str = include_str!("../runtime/flash/utils.ts");
 const FLASH_RUNTIME_TS: &str = include_str!("../runtime/flash/runtime.ts");
 
@@ -62,6 +63,7 @@ pub fn emit_runtime(output_dir: &Path) -> Result<(), CoreError> {
     fs::write(flash_dir.join("text.ts"), FLASH_TEXT_TS)?;
     fs::write(flash_dir.join("net.ts"), FLASH_NET_TS)?;
     fs::write(flash_dir.join("amf.ts"), FLASH_AMF_TS)?;
+    fs::write(flash_dir.join("deflate.ts"), FLASH_DEFLATE_TS)?;
     fs::write(flash_dir.join("utils.ts"), FLASH_UTILS_TS)?;
     fs::write(flash_dir.join("runtime.ts"), FLASH_RUNTIME_TS)?;
 

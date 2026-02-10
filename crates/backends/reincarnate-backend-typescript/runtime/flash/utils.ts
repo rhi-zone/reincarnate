@@ -5,6 +5,7 @@
 import { EventDispatcher } from "./display";
 import { TimerEvent } from "./events";
 import { readAMF3, writeAMF3 } from "./amf";
+import { inflateRaw, deflateRaw, zlibCompress, zlibDecompress } from "./deflate";
 
 // ---------------------------------------------------------------------------
 // Qualified-name symbol + utility functions
@@ -235,9 +236,19 @@ export class ByteArray {
     if (this.position > this._length) this._length = this.position;
   }
 
-  writeMultiByte(value: string, _charSet: string): void {
-    // TextEncoder only supports UTF-8; other charsets are not available.
-    this.writeUTFBytes(value);
+  writeMultiByte(value: string, charSet: string): void {
+    const cs = charSet.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (cs === "iso88591" || cs === "latin1") {
+      // Direct codepoint-to-byte mapping for ISO-8859-1/Latin-1.
+      this._ensureCapacity(this.position + value.length);
+      const u8 = new Uint8Array(this._buffer);
+      for (let i = 0; i < value.length; i++) {
+        u8[this.position++] = value.charCodeAt(i) & 0xff;
+      }
+      if (this.position > this._length) this._length = this.position;
+    } else {
+      this.writeUTFBytes(value);
+    }
   }
 
   writeObject(object: any): void {
@@ -262,12 +273,34 @@ export class ByteArray {
     this.position = 0;
   }
 
-  compress(_algorithm = "zlib"): void {
-    // Compression requires a zlib implementation; no-op in this stub.
+  compress(algorithm = "zlib"): void {
+    const input = new Uint8Array(this._buffer, 0, this._length);
+    let result: Uint8Array;
+    if (algorithm === "deflate") {
+      result = deflateRaw(input);
+    } else {
+      result = zlibCompress(input);
+    }
+    this._buffer = new ArrayBuffer(result.length);
+    new Uint8Array(this._buffer).set(result);
+    this._view = new DataView(this._buffer);
+    this._length = result.length;
+    this.position = 0;
   }
 
-  uncompress(_algorithm = "zlib"): void {
-    // Decompression requires a zlib implementation; no-op in this stub.
+  uncompress(algorithm = "zlib"): void {
+    const input = new Uint8Array(this._buffer, 0, this._length);
+    let result: Uint8Array;
+    if (algorithm === "deflate") {
+      result = inflateRaw(input);
+    } else {
+      result = zlibDecompress(input);
+    }
+    this._buffer = new ArrayBuffer(result.length);
+    new Uint8Array(this._buffer).set(result);
+    this._view = new DataView(this._buffer);
+    this._length = result.length;
+    this.position = 0;
   }
 
   deflate(): void {
