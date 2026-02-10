@@ -490,6 +490,27 @@ export class DisplayObjectContainer extends InteractiveObject {
 }
 
 // ---------------------------------------------------------------------------
+// Drag state (module-level singleton)
+// ---------------------------------------------------------------------------
+
+/** @internal */
+export let _dragTarget: Sprite | null = null;
+/** @internal */
+export let _dragBounds: Rectangle | null = null;
+/** @internal */
+export let _dragLockCenter = false;
+/** @internal */
+export let _dragOffsetX = NaN;
+/** @internal */
+export let _dragOffsetY = NaN;
+
+/** @internal */
+export function _setDragOffset(ox: number, oy: number): void {
+  _dragOffsetX = ox;
+  _dragOffsetY = oy;
+}
+
+// ---------------------------------------------------------------------------
 // Sprite
 // ---------------------------------------------------------------------------
 
@@ -502,11 +523,20 @@ export class Sprite extends DisplayObjectContainer {
   useHandCursor = true;
 
   startDrag(lockCenter = false, bounds: Rectangle | null = null): void {
-    void lockCenter;
-    void bounds;
+    _dragTarget = this;
+    _dragLockCenter = lockCenter;
+    _dragBounds = bounds;
+    // NaN offset = first-move sentinel; computed on first mouse move.
+    _dragOffsetX = NaN;
+    _dragOffsetY = NaN;
   }
 
-  stopDrag(): void {}
+  stopDrag(): void {
+    if (_dragTarget === this) {
+      _dragTarget = null;
+      _dragBounds = null;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -704,21 +734,28 @@ export class LoaderInfo extends EventDispatcher {
 export class Loader extends DisplayObjectContainer {
   content: DisplayObject | null = null;
   contentLoaderInfo: LoaderInfo = new LoaderInfo();
+  private _abortController: AbortController | null = null;
 
   constructor() {
     super();
     this.contentLoaderInfo.loader = this;
   }
 
-  close(): void {}
+  close(): void {
+    if (this._abortController) {
+      this._abortController.abort();
+      this._abortController = null;
+    }
+  }
 
   load(request: any, _context?: any): void {
     const url: string = typeof request === "string" ? request : request?.url ?? "";
     this.contentLoaderInfo.url = url;
-    // Attempt to load as image via fetch.
+    this._abortController = new AbortController();
+    const signal = this._abortController.signal;
     if (typeof globalThis.fetch === "function") {
       globalThis
-        .fetch(url)
+        .fetch(url, { signal })
         .then((res) => {
           this.contentLoaderInfo.bytesTotal = Number(
             res.headers.get("content-length") ?? 0,
@@ -734,24 +771,56 @@ export class Loader extends DisplayObjectContainer {
           this.contentLoaderInfo.dispatchEvent(new Event(Event.COMPLETE));
         })
         .catch((err) => {
-          this.contentLoaderInfo.dispatchEvent(
-            new IOErrorEvent(IOErrorEvent.IO_ERROR, false, false, String(err)),
-          );
+          if (!signal.aborted) {
+            this.contentLoaderInfo.dispatchEvent(
+              new IOErrorEvent(IOErrorEvent.IO_ERROR, false, false, String(err)),
+            );
+          }
         });
     }
   }
 
   loadBytes(bytes: any, _context?: any): void {
-    void bytes;
-    this.contentLoaderInfo.dispatchEvent(new Event(Event.COMPLETE));
+    // Extract data from ByteArray (or ArrayBuffer) and attempt to create an image.
+    const data: ArrayBuffer = bytes._buffer
+      ? (bytes._buffer as ArrayBuffer).slice(0, bytes.length ?? bytes._length ?? 0)
+      : bytes;
+    const blob = new Blob([data]);
+    createImageBitmap(blob)
+      .then((bmp) => {
+        const sprite = new Sprite();
+        (sprite as any)._bitmap = bmp;
+        sprite.width = bmp.width;
+        sprite.height = bmp.height;
+        this.content = sprite;
+        this.addChild(sprite);
+        this.contentLoaderInfo.content = sprite;
+        this.contentLoaderInfo.bytesLoaded = data.byteLength;
+        this.contentLoaderInfo.bytesTotal = data.byteLength;
+        this.contentLoaderInfo.dispatchEvent(new Event(Event.COMPLETE));
+      })
+      .catch(() => {
+        // Not an image — still dispatch COMPLETE (some content types don't produce bitmaps).
+        this.contentLoaderInfo.bytesLoaded = data.byteLength;
+        this.contentLoaderInfo.bytesTotal = data.byteLength;
+        this.contentLoaderInfo.dispatchEvent(new Event(Event.COMPLETE));
+      });
   }
 
   unload(): void {
-    this.content = null;
+    if (this.content) {
+      this.removeChild(this.content);
+      this.content = null;
+    }
   }
 
   unloadAndStop(_gc = true): void {
-    this.content = null;
+    this.close();
+    if (this.content) {
+      this.removeChild(this.content);
+      this.content = null;
+    }
+    this.contentLoaderInfo.content = null;
   }
 }
 
@@ -801,5 +870,10 @@ export class Stage extends DisplayObjectContainer {
   fullScreenWidth = 0;
   fullScreenHeight = 0;
 
-  invalidate(): void {}
+  /** @internal */
+  _invalidated = false;
+
+  invalidate(): void {
+    this._invalidated = true;
+  }
 }

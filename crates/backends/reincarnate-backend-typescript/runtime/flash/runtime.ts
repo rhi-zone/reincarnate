@@ -11,6 +11,12 @@ import {
   Sprite,
   MovieClip,
   Graphics,
+  _dragTarget,
+  _dragBounds,
+  _dragLockCenter,
+  _dragOffsetX,
+  _dragOffsetY,
+  _setDragOffset,
 } from "./display";
 import {
   Event,
@@ -52,6 +58,12 @@ export function flashTick(): void {
 
   // Advance playing MovieClips and execute frame scripts.
   advanceMovieClips(stage);
+
+  // If Stage.invalidate() was called, dispatch RENDER before rendering.
+  if (stage._invalidated) {
+    stage._invalidated = false;
+    stage.dispatchEvent(new Event(Event.RENDER, false, false));
+  }
 
   // Clear canvas then render.
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -414,8 +426,37 @@ function canvasCoords(e: MouseEvent): [number, number] {
   return [e.clientX - rect.left, e.clientY - rect.top];
 }
 
+function updateDrag(sx: number, sy: number): void {
+  if (!_dragTarget) return;
+  // Compute offset on first move.
+  if (isNaN(_dragOffsetX)) {
+    if (_dragLockCenter) {
+      _setDragOffset(0, 0);
+    } else {
+      _setDragOffset(_dragTarget.x - sx, _dragTarget.y - sy);
+    }
+  }
+  let nx = sx + _dragOffsetX;
+  let ny = sy + _dragOffsetY;
+  // Apply bounds constraint.
+  if (_dragBounds) {
+    if (nx < _dragBounds.x) nx = _dragBounds.x;
+    if (ny < _dragBounds.y) ny = _dragBounds.y;
+    if (nx > _dragBounds.right) nx = _dragBounds.right;
+    if (ny > _dragBounds.bottom) ny = _dragBounds.bottom;
+  }
+  _dragTarget.x = nx;
+  _dragTarget.y = ny;
+}
+
 function dispatchFlashMouse(type: string, e: MouseEvent): void {
   const [sx, sy] = canvasCoords(e);
+
+  // Update drag target position on mouse move.
+  if (type === FlashMouseEvent.MOUSE_MOVE) {
+    updateDrag(sx, sy);
+  }
+
   // Find the deepest interactive object under the mouse.
   const target = hitTest(stage, sx, sy) ?? stage;
   // Compute local coordinates for the target.
