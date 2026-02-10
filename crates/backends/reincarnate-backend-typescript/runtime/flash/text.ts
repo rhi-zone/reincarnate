@@ -29,6 +29,15 @@ function _fontString(fmt: TextFormat, defaultFmt: TextFormat): string {
 }
 
 // ---------------------------------------------------------------------------
+// AntiAliasType
+// ---------------------------------------------------------------------------
+
+export class AntiAliasType {
+  static readonly ADVANCED = "advanced";
+  static readonly NORMAL = "normal";
+}
+
+// ---------------------------------------------------------------------------
 // TextFieldType
 // ---------------------------------------------------------------------------
 
@@ -45,6 +54,17 @@ export class TextFieldAutoSize {
   static readonly CENTER = "center";
   static readonly LEFT = "left";
   static readonly NONE = "none";
+  static readonly RIGHT = "right";
+}
+
+// ---------------------------------------------------------------------------
+// TextFormatAlign
+// ---------------------------------------------------------------------------
+
+export class TextFormatAlign {
+  static readonly CENTER = "center";
+  static readonly JUSTIFY = "justify";
+  static readonly LEFT = "left";
   static readonly RIGHT = "right";
 }
 

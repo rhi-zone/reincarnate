@@ -13,31 +13,42 @@ use reincarnate_core::pipeline::LoweringConfig;
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
 
-/// Map a Flash runtime class/value name to its sub-module path under
-/// `runtime/flash/`. Returns `None` for names not in the Flash stdlib.
-fn flash_stdlib_module(name: &str) -> Option<&'static str> {
-    Some(match name {
-        // flash/events
-        "Event" | "TextEvent" | "ErrorEvent" | "MouseEvent" | "KeyboardEvent"
-        | "FocusEvent" | "ProgressEvent" | "IOErrorEvent" | "SecurityErrorEvent"
-        | "HTTPStatusEvent" | "AsyncErrorEvent" | "TimerEvent" => "events",
-        // flash/display
-        "EventDispatcher" | "Graphics" | "DisplayObject" | "InteractiveObject"
-        | "DisplayObjectContainer" | "Sprite" | "MovieClip" | "FrameLabel"
-        | "Scene" | "LoaderInfo" | "Loader" | "Stage" => "display",
-        // flash/geom
-        "Point" | "Rectangle" | "Matrix" | "ColorTransform" | "Transform" => "geom",
-        // flash/text
-        "TextFieldType" | "TextFieldAutoSize" | "TextFormat" | "TextField"
-        | "Font" => "text",
-        // flash/net
-        "URLRequest" | "SharedObject" => "net",
-        // flash/utils
-        "ByteArray" | "Dictionary" | "Timer" | "Proxy" => "utils",
-        // flash/runtime
-        "stage" | "flashTick" => "runtime",
+/// Map a Flash package name (e.g. `"display"`, `"text"`) to its runtime
+/// module filename under `runtime/flash/`. This is the complete set of
+/// packages our runtime currently implements.
+fn flash_pkg_module(pkg: &str) -> Option<&'static str> {
+    Some(match pkg {
+        "display" => "display",
+        "events" => "events",
+        "geom" => "geom",
+        "net" => "net",
+        "text" => "text",
+        "utils" => "utils",
         _ => return None,
     })
+}
+
+/// Resolve a Flash stdlib reference to its (short_name, module) pair.
+///
+/// Accepts either a fully-qualified name (`"flash.text::TextFormatAlign"`) or
+/// one of the special runtime values (`"stage"`, `"flashTick"`).
+fn flash_stdlib_module(name: &str) -> Option<(&str, &'static str)> {
+    // Auto-detect from qualified name: "flash.text::TextFormatAlign" → ("TextFormatAlign", "text")
+    if let Some(idx) = name.find("::") {
+        let ns = &name[..idx];
+        let short = &name[idx + 2..];
+        if let Some(pkg) = ns.strip_prefix("flash.") {
+            let module = flash_pkg_module(pkg)?;
+            return Some((short, module));
+        }
+        return None;
+    }
+    // Fallback: special runtime values (not namespaced in IR).
+    let module = match name {
+        "stage" | "flashTick" => "runtime",
+        _ => return None,
+    };
+    Some((name, module))
 }
 
 /// Emit a single module into `output_dir`.
@@ -611,8 +622,8 @@ fn collect_class_references(
         if short != self_name {
             if let Some(entry) = registry.lookup(sc) {
                 value_refs.insert(entry.short_name.clone());
-            } else if flash_stdlib_module(short).is_some() {
-                ext_value_refs.insert(short.to_string());
+            } else if flash_stdlib_module(sc).is_some() {
+                ext_value_refs.insert(sc.to_string());
             }
         }
     }
@@ -671,8 +682,18 @@ fn collect_type_refs_from_function(
                 } else {
                     // Check Flash stdlib (e.g. "flash.display::MovieClip").
                     let short = field.rsplit("::").next().unwrap_or(field);
-                    if short != self_name && flash_stdlib_module(short).is_some() {
-                        ext_value_refs.insert(short.to_string());
+                    if short != self_name {
+                        if flash_stdlib_module(field).is_some() {
+                            ext_value_refs.insert(field.to_string());
+                        } else if field.contains("::") {
+                            if let Some(ns) = field.split("::").next() {
+                                if ns.starts_with("flash.") {
+                                    eprintln!(
+                                        "warning: unmapped Flash stdlib reference: {field}"
+                                    );
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -701,8 +722,14 @@ fn collect_type_ref(
             if short != self_name {
                 if let Some(entry) = registry.lookup(name) {
                     refs.insert(entry.short_name.clone());
-                } else if flash_stdlib_module(short).is_some() {
-                    ext_refs.insert(short.to_string());
+                } else if flash_stdlib_module(name).is_some() {
+                    ext_refs.insert(name.to_string());
+                } else if name.contains("::") {
+                    if let Some(ns) = name.split("::").next() {
+                        if ns.starts_with("flash.") {
+                            eprintln!("warning: unmapped Flash stdlib reference: {name}");
+                        }
+                    }
                 }
             }
         }
@@ -741,6 +768,10 @@ fn collect_type_ref(
 }
 
 /// Emit grouped `import` / `import type` statements for Flash stdlib references.
+///
+/// Names in `ext_value_refs` / `ext_type_refs` may be fully-qualified
+/// (`"flash.text::TextFormat"`) or short (`"stage"`).  `flash_stdlib_module`
+/// handles both forms and returns `(short_name, module)`.
 fn emit_flash_stdlib_imports(
     ext_value_refs: &BTreeSet<String>,
     ext_type_refs: &BTreeSet<String>,
@@ -750,11 +781,11 @@ fn emit_flash_stdlib_imports(
     if ext_value_refs.is_empty() && ext_type_refs.is_empty() {
         return;
     }
-    // Group value refs by module.
+    // Group value refs by module, resolving qualified → short names.
     let mut val_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for name in ext_value_refs {
-        if let Some(m) = flash_stdlib_module(name) {
-            val_by_mod.entry(m).or_default().push(name);
+        if let Some((short, module)) = flash_stdlib_module(name) {
+            val_by_mod.entry(module).or_default().push(short);
         }
     }
     for (module, names) in &val_by_mod {
@@ -764,12 +795,17 @@ fn emit_flash_stdlib_imports(
             names.join(", ")
         );
     }
+    // Collect resolved short names from value refs for dedup.
+    let val_short_names: HashSet<&str> = ext_value_refs
+        .iter()
+        .filter_map(|n| flash_stdlib_module(n).map(|(s, _)| s))
+        .collect();
     // Type-only imports (not already covered by value imports).
     let mut type_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     for name in ext_type_refs {
-        if !ext_value_refs.contains(name) {
-            if let Some(m) = flash_stdlib_module(name) {
-                type_by_mod.entry(m).or_default().push(name);
+        if let Some((short, module)) = flash_stdlib_module(name) {
+            if !val_short_names.contains(short) {
+                type_by_mod.entry(module).or_default().push(short);
             }
         }
     }
