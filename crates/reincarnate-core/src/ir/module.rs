@@ -75,6 +75,9 @@ pub struct ClassDef {
     /// Superclass qualified name, if any.
     pub super_class: Option<String>,
     pub visibility: Visibility,
+    /// Static (class-level) fields from Slot/Const traits on the Class object.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub static_fields: Vec<(String, Type)>,
 }
 
 /// A module — the top-level compilation unit.

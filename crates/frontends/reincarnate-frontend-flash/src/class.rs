@@ -16,6 +16,7 @@ pub struct ClassInfo {
     pub struct_def: StructDef,
     pub functions: Vec<Function>,
     pub super_class: Option<String>,
+    pub static_fields: Vec<(String, Type)>,
 }
 
 /// Translate a single AVM2 class (Instance + Class pair) into IR.
@@ -108,6 +109,9 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
         functions.push(func);
     }
 
+    // Extract static fields from class-level slot/const traits.
+    let static_fields = extract_fields(pool, &class.traits, class_private_ns.as_deref());
+
     // Static methods from class traits.
     // AVM2 register 0 is always reserved (global scope for statics), so
     // has_self = true keeps locals[] aligned with AVM2 register numbering.
@@ -145,6 +149,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
         struct_def,
         functions,
         super_class,
+        static_fields,
     })
 }
 
@@ -404,6 +409,7 @@ pub fn translate_abc_to_module(
             methods: method_ids,
             super_class: info.super_class,
             visibility: Visibility::Public,
+            static_fields: info.static_fields,
         });
     }
 

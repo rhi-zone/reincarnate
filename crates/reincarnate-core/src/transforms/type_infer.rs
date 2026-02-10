@@ -12,6 +12,8 @@ pub struct TypeInference;
 struct ModuleContext {
     /// Struct name → field name → field type.
     struct_fields: HashMap<String, HashMap<String, Type>>,
+    /// Class name → static field name → field type.
+    static_fields: HashMap<String, HashMap<String, Type>>,
     /// Global name → type.
     global_types: HashMap<String, Type>,
     /// Function name → return type.
@@ -57,13 +59,19 @@ impl ModuleContext {
             }
         }
 
-        // Build class_hierarchy from module.classes
+        // Build class_hierarchy and static_fields from module.classes
         let mut class_hierarchy: HashMap<String, Option<String>> = HashMap::new();
+        let mut static_fields_map: HashMap<String, HashMap<String, Type>> = HashMap::new();
         for class in &module.classes {
             let super_short = class.super_class.as_ref().map(|sc| {
                 sc.rsplit("::").next().unwrap_or(sc).to_string()
             });
             class_hierarchy.insert(class.name.clone(), super_short);
+            if !class.static_fields.is_empty() {
+                let fields: HashMap<String, Type> =
+                    class.static_fields.iter().cloned().collect();
+                static_fields_map.insert(class.name.clone(), fields);
+            }
         }
 
         // Build unique_method_types: bare names that resolve to a single return type
@@ -87,6 +95,7 @@ impl ModuleContext {
 
         Self {
             struct_fields,
+            static_fields: static_fields_map,
             global_types,
             func_return_types,
             method_return_types,
@@ -109,14 +118,22 @@ impl ModuleContext {
         None
     }
 
-    /// Resolve a field's type by walking the class hierarchy upward.
+    /// Resolve a field's type by walking the class hierarchy upward,
+    /// checking both instance and static fields.
     fn resolve_field_type(&self, class: &str, field: &str) -> Option<Type> {
         let bare = field.rsplit("::").next().unwrap_or(field);
         let mut current = Some(class.to_string());
         let max_depth = self.class_hierarchy.len();
         for _ in 0..=max_depth {
             let Some(cls) = current else { break };
+            // Check instance fields.
             if let Some(fields) = self.struct_fields.get(&cls) {
+                if let Some(ty) = fields.get(bare).or_else(|| fields.get(field)) {
+                    return Some(ty.clone());
+                }
+            }
+            // Check static fields.
+            if let Some(fields) = self.static_fields.get(&cls) {
                 if let Some(ty) = fields.get(bare).or_else(|| fields.get(field)) {
                     return Some(ty.clone());
                 }
@@ -880,6 +897,7 @@ mod tests {
             methods: vec![method_id],
             super_class: super_class.map(|s| s.to_string()),
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         (mb.build(), result)
     }
@@ -943,6 +961,7 @@ mod tests {
             methods: vec![parent_method_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         mb.add_class(ClassDef {
             name: "Naga".into(),
@@ -951,6 +970,7 @@ mod tests {
             methods: vec![],
             super_class: Some("Creature".to_string()),
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         let module = mb.build();
 
@@ -1002,6 +1022,7 @@ mod tests {
             methods: vec![method_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         let module = mb.build();
 
@@ -1134,6 +1155,7 @@ mod tests {
             methods: vec![m1_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         mb.add_class(ClassDef {
             name: "ClassB".into(),
@@ -1142,6 +1164,7 @@ mod tests {
             methods: vec![m2_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         let module = mb.build();
 

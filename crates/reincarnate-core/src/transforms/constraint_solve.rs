@@ -1026,6 +1026,7 @@ mod tests {
             methods: vec![method_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         let module = mb.build();
 

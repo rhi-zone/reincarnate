@@ -375,6 +375,7 @@ mod tests {
             methods: vec![init_id, render_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let module = mb.build();
@@ -420,6 +421,7 @@ mod tests {
             methods: vec![ctor_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         mb.set_entry_point(EntryPoint::ConstructClass("MyApp".into()));
@@ -494,6 +496,7 @@ mod tests {
             methods: vec![ctor_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         mb.set_entry_point(EntryPoint::ConstructClass("App".into()));

@@ -1756,6 +1756,7 @@ mod tests {
             methods: vec![ctor_id, method_id, static_id, getter_id],
             super_class: Some("Object".into()),
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -1820,6 +1821,7 @@ mod tests {
             methods: vec![ctor_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         // Free function.
@@ -1899,6 +1901,7 @@ mod tests {
             methods: vec![ctor_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -1969,6 +1972,7 @@ mod tests {
             methods: vec![monster_ctor],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         mb.add_class(ClassDef {
             name: "Swamp".into(),
@@ -1977,6 +1981,7 @@ mod tests {
             methods: vec![swamp_ctor],
             super_class: Some("classes::Monster".into()),
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -2023,6 +2028,7 @@ mod tests {
             methods: vec![ctor_id],
             super_class: Some("Parent".into()),
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -2099,6 +2105,7 @@ mod tests {
             methods: vec![ctor_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         mb.add_class(ClassDef {
             name: "Widget".into(),
@@ -2107,6 +2114,7 @@ mod tests {
             methods: vec![widget_ctor_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -2231,6 +2239,7 @@ mod tests {
             methods: vec![method_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -2283,6 +2292,7 @@ mod tests {
             methods: vec![],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         mb.add_class(ClassDef {
             name: "Child".into(),
@@ -2291,6 +2301,7 @@ mod tests {
             methods: vec![method_id],
             super_class: Some("classes::Base".into()),
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -2372,6 +2383,7 @@ mod tests {
             methods: vec![method_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
         mb.add_class(ClassDef {
             name: "Villain".into(),
@@ -2380,6 +2392,7 @@ mod tests {
             methods: vec![],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -2487,6 +2500,7 @@ mod tests {
             methods: vec![method_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
@@ -2700,6 +2714,7 @@ mod tests {
             methods: vec![base_method_id],
             super_class: None,
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         // Child class with a method that calls isNaga via scope lookup.
@@ -2723,6 +2738,7 @@ mod tests {
             methods: vec![child_method_id],
             super_class: Some("Base".into()),
             visibility: Visibility::Public,
+            static_fields: vec![],
         });
 
         let mut module = mb.build();
