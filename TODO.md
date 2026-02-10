@@ -375,7 +375,7 @@ structural problems:
   workspace root. The backend receives `runtime_dir` via `BackendInput`
   and copies it into output generically, without knowing what's inside it.
 
-- [ ] **IR import metadata** — Add `external_imports` to `Module` mapping
+- [x] **IR import metadata** — Add `external_imports` to `Module` mapping
   qualified names → `{ short_name, module_path }`. Flash frontend populates
   during extraction. Backend reads metadata instead of parsing `flash.*::`
   namespace strings. Eliminates `flash_pkg_module`, `flash_stdlib_module`,
