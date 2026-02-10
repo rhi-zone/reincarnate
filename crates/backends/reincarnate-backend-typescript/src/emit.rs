@@ -5,7 +5,8 @@ use std::path::Path;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{
-    structurize, ClassDef, FuncId, Function, MethodKind, Module, Op, StructDef, Type, Visibility,
+    structurize, ClassDef, Expr, FuncId, Function, MethodKind, Module, Op, Stmt, StructDef, Type,
+    Visibility,
 };
 use reincarnate_core::pipeline::LoweringConfig;
 
@@ -998,6 +999,24 @@ fn emit_class(
     Ok(())
 }
 
+/// In JS class constructors, `super()` must precede any `this` access.
+/// AVM2 places constructSuper after field inits — hoist it to position 0.
+fn hoist_super_call(body: &mut Vec<Stmt>) {
+    let pos = body.iter().position(|s| {
+        matches!(
+            s,
+            Stmt::Expr(Expr::SystemCall { system, method, .. })
+            if system == "Flash.Class" && method == "constructSuper"
+        )
+    });
+    if let Some(i) = pos {
+        if i > 0 {
+            let stmt = body.remove(i);
+            body.insert(0, stmt);
+        }
+    }
+}
+
 /// Emit a single method inside a class body.
 fn emit_class_method(
     func: &mut Function,
@@ -1024,7 +1043,10 @@ fn emit_class_method(
     );
 
     let shape = structurize::structurize(func);
-    let ast = linear::lower_function_linear(func, &shape, lowering_config);
+    let mut ast = linear::lower_function_linear(func, &shape, lowering_config);
+    if func.method_kind == MethodKind::Constructor {
+        hoist_super_call(&mut ast.body);
+    }
     let mut pctx = if skip_self {
         PrintCtx::for_method(class_names, ancestors, method_names)
     } else {
@@ -1823,6 +1845,9 @@ mod tests {
         let mut fb = FunctionBuilder::new("Child::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "Child".into(), MethodKind::Constructor);
         let this = fb.param(0);
+        // Place a field init before constructSuper — mimics AVM2 constructor order
+        let val = fb.const_int(0);
+        fb.set_field(this, "x", val);
         fb.system_call("Flash.Class", "constructSuper", &[this], Type::Void);
         fb.ret(None);
         let ctor_id = mb.add_function(fb.build());
@@ -1846,6 +1871,13 @@ mod tests {
         assert!(
             !out.contains("constructSuper"),
             "Should not have raw constructSuper call:\n{out}"
+        );
+        // super() must come before any this.field access
+        let super_pos = out.find("super();").expect("super() not found");
+        let field_pos = out.find("this.x").expect("this.x not found");
+        assert!(
+            super_pos < field_pos,
+            "super() must precede this.x access:\n{out}"
         );
     }
 
