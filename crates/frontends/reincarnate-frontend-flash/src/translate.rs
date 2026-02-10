@@ -1039,18 +1039,13 @@ fn translate_op(
                 stack.push(v);
             }
         }
-        Op::SetProperty { index } => {
+        Op::SetProperty { index } | Op::InitProperty { index } => {
+            // AVM2 stack order: ..., object, [ns], [name], value
+            // Pop value first, then resolve multiname (may pop runtime name),
+            // then pop object.
+            let val = stack.pop();
             let prop = resolve_property(pool, index, stack);
-            if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
-                match prop {
-                    PropertyAccess::Named(name) => fb.set_field(obj, &name, val),
-                    PropertyAccess::Indexed(idx) => fb.set_index(obj, idx, val),
-                }
-            }
-        }
-        Op::InitProperty { index } => {
-            let prop = resolve_property(pool, index, stack);
-            if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
+            if let (Some(val), Some(obj)) = (val, stack.pop()) {
                 match prop {
                     PropertyAccess::Named(name) => fb.set_field(obj, &name, val),
                     PropertyAccess::Indexed(idx) => fb.set_index(obj, idx, val),
@@ -1115,8 +1110,10 @@ fn translate_op(
             }
         }
         Op::SetSuper { index } => {
+            // AVM2 stack order: ..., object, [ns], [name], value
+            let val = stack.pop();
             let prop = resolve_property(pool, index, stack);
-            if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
+            if let (Some(val), Some(obj)) = (val, stack.pop()) {
                 let name_val = match prop {
                     PropertyAccess::Named(name) => fb.const_string(&name),
                     PropertyAccess::Indexed(idx) => idx,
