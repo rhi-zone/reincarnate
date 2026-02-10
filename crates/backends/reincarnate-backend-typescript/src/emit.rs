@@ -559,11 +559,23 @@ fn emit_runtime_imports_with_prefix(
         );
     }
     for (module, names) in &flash_by_mod {
-        let _ = writeln!(
-            out,
-            "import {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
-            names.join(", ")
-        );
+        if module == "exception" {
+            // exception.ts still uses a const object export because `throw`
+            // is a reserved keyword that can't be a top-level function name.
+            let _ = writeln!(
+                out,
+                "import {{ {} }} from \"{prefix}/runtime/flash/{module}\";",
+                names.join(", ")
+            );
+        } else {
+            // Namespace imports enable tree-shaking of individual methods.
+            for name in names {
+                let _ = writeln!(
+                    out,
+                    "import * as {name} from \"{prefix}/runtime/flash/{module}\";",
+                );
+            }
+        }
     }
     if !generic.is_empty() || !flash_by_mod.is_empty() {
         out.push('\n');

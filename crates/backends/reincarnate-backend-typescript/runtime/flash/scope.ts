@@ -13,34 +13,31 @@
  * objects used as closure capture containers.
  */
 
-// eslint-disable-next-line @typescript-eslint/naming-convention
-export const Flash_Scope = {
-  getOuterScope(): any {
-    return globalThis;
-  },
+export function getOuterScope(): any {
+  return globalThis;
+}
 
-  findPropStrict(name: string): never {
-    throw new ReferenceError(
-      `Flash_Scope.findPropStrict("${name}"): scope lookup was not resolved ` +
-      `at compile time — this is a compiler bug in ast_printer.rs`,
-    );
-  },
+export function findPropStrict(name: string): never {
+  throw new ReferenceError(
+    `Flash_Scope.findPropStrict("${name}"): scope lookup was not resolved ` +
+    `at compile time — this is a compiler bug in ast_printer.rs`,
+  );
+}
 
-  findProperty(name: string): never {
-    throw new ReferenceError(
-      `Flash_Scope.findProperty("${name}"): scope lookup was not resolved ` +
-      `at compile time — this is a compiler bug in ast_printer.rs`,
-    );
-  },
+export function findProperty(name: string): never {
+  throw new ReferenceError(
+    `Flash_Scope.findProperty("${name}"): scope lookup was not resolved ` +
+    `at compile time — this is a compiler bug in ast_printer.rs`,
+  );
+}
 
-  findDef(name: string): never {
-    throw new ReferenceError(
-      `Flash_Scope.findDef("${name}"): scope lookup was not resolved ` +
-      `at compile time — this is a compiler bug in ast_printer.rs`,
-    );
-  },
+export function findDef(name: string): never {
+  throw new ReferenceError(
+    `Flash_Scope.findDef("${name}"): scope lookup was not resolved ` +
+    `at compile time — this is a compiler bug in ast_printer.rs`,
+  );
+}
 
-  newActivation(): Record<string, any> {
-    return {};
-  },
-};
+export function newActivation(): Record<string, any> {
+  return {};
+}

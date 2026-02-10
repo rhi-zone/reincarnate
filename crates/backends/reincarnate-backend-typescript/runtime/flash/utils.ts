@@ -11,28 +11,27 @@ import { TimerEvent } from "./events";
 
 export const QN_KEY = Symbol("as3:qualifiedName");
 
-export const Flash_Utils = {
-  getQualifiedClassName(value: any): string {
-    if (value == null) return "null";
-    const ctor = typeof value === "function" ? value : value.constructor;
-    return ctor?.[QN_KEY] ?? ctor?.name ?? typeof value;
-  },
-  describeType(value: any): any {
-    // Enumerates own static properties as "constant" traits, matching
-    // AS3's describeType XML output for class constructors.
-    if (value == null) return { constant: [] };
-    if (typeof value === "function") {
-      const constants: any[] = [];
-      for (const name of Object.getOwnPropertyNames(value)) {
-        if (name === "prototype" || name === "length" || name === "name"
-            || name === "arguments" || name === "caller") continue;
-        constants.push({ name });
-      }
-      return { constant: constants };
+export function getQualifiedClassName(value: any): string {
+  if (value == null) return "null";
+  const ctor = typeof value === "function" ? value : value.constructor;
+  return ctor?.[QN_KEY] ?? ctor?.name ?? typeof value;
+}
+
+export function describeType(value: any): any {
+  // Enumerates own static properties as "constant" traits, matching
+  // AS3's describeType XML output for class constructors.
+  if (value == null) return { constant: [] };
+  if (typeof value === "function") {
+    const constants: any[] = [];
+    for (const name of Object.getOwnPropertyNames(value)) {
+      if (name === "prototype" || name === "length" || name === "name"
+          || name === "arguments" || name === "caller") continue;
+      constants.push({ name });
     }
-    return { constant: [] };
-  },
-};
+    return { constant: constants };
+  }
+  return { constant: [] };
+}
 
 // ---------------------------------------------------------------------------
 // ByteArray
