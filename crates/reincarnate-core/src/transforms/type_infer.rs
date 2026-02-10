@@ -108,6 +108,23 @@ impl ModuleContext {
         }
         None
     }
+
+    /// Resolve a field's type by walking the class hierarchy upward.
+    fn resolve_field_type(&self, class: &str, field: &str) -> Option<Type> {
+        let bare = field.rsplit("::").next().unwrap_or(field);
+        let mut current = Some(class.to_string());
+        let max_depth = self.class_hierarchy.len();
+        for _ in 0..=max_depth {
+            let Some(cls) = current else { break };
+            if let Some(fields) = self.struct_fields.get(&cls) {
+                if let Some(ty) = fields.get(bare).or_else(|| fields.get(field)) {
+                    return Some(ty.clone());
+                }
+            }
+            current = self.class_hierarchy.get(&cls).and_then(|s| s.clone());
+        }
+        None
+    }
 }
 
 /// Replace `old` with `new` only if `old` is `Dynamic` and `new` is not.
@@ -275,16 +292,10 @@ fn infer_inst_type(
             }
         }
 
-        // GetField: look up struct field type.
-        // Field names may be namespace-qualified (e.g. "pkg::Class::field"),
-        // so strip to the bare name for the struct_fields lookup.
+        // GetField: look up struct field type, walking class hierarchy.
         Op::GetField { object, field } => {
             if let Type::Struct(name) = &func.value_types[*object] {
-                let bare = field.rsplit("::").next().unwrap_or(field);
-                ctx.struct_fields
-                    .get(name)
-                    .and_then(|fields| fields.get(bare).or_else(|| fields.get(field)))
-                    .cloned()
+                ctx.resolve_field_type(name, field)
                     .unwrap_or(Type::Dynamic)
             } else {
                 return None;
