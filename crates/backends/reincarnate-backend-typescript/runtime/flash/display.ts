@@ -1,141 +1,10 @@
 /**
- * flash.display package — EventDispatcher, display hierarchy, Graphics,
- * Loader, LoaderInfo, Stage.
+ * flash.display package — display hierarchy, Graphics, Loader, LoaderInfo,
+ * Stage.
  */
 
 import { Point, Rectangle, Matrix, Transform, _getConcatenatedMatrix } from "./geom";
-import { Event, ProgressEvent, IOErrorEvent } from "./events";
-
-// ---------------------------------------------------------------------------
-// EventDispatcher
-// ---------------------------------------------------------------------------
-
-interface ListenerEntry {
-  listener: (event: Event) => void;
-  useCapture: boolean;
-  priority: number;
-}
-
-export class EventDispatcher {
-  private _listeners: Map<string, ListenerEntry[]> = new Map();
-
-  addEventListener(
-    type: string,
-    listener: (event: Event) => void,
-    useCapture = false,
-    priority = 0,
-    _useWeakReference = false,
-  ): void {
-    let list = this._listeners.get(type);
-    if (!list) {
-      list = [];
-      this._listeners.set(type, list);
-    }
-    // Avoid duplicate registrations with the same listener+capture combo.
-    for (const entry of list) {
-      if (entry.listener === listener && entry.useCapture === useCapture) return;
-    }
-    list.push({ listener, useCapture, priority });
-    // Stable sort by descending priority.
-    list.sort((a, b) => b.priority - a.priority);
-  }
-
-  removeEventListener(
-    type: string,
-    listener: (event: Event) => void,
-    useCapture = false,
-  ): void {
-    const list = this._listeners.get(type);
-    if (!list) return;
-    const idx = list.findIndex(
-      (e) => e.listener === listener && e.useCapture === useCapture,
-    );
-    if (idx !== -1) list.splice(idx, 1);
-  }
-
-  dispatchEvent(event: Event): boolean {
-    event.target = this;
-
-    // For bubbling events on DisplayObjects, do capture→target→bubble phases.
-    if (event.bubbles && this instanceof DisplayObject) {
-      // Build ancestor chain (root first).
-      const ancestors: DisplayObject[] = [];
-      let node = (this as unknown as DisplayObject).parent;
-      while (node) {
-        ancestors.push(node);
-        node = node.parent;
-      }
-      ancestors.reverse();
-
-      // Phase 1: CAPTURING_PHASE (eventPhase = 1)
-      event.eventPhase = 1;
-      for (const ancestor of ancestors) {
-        if (event._isPropagationStopped()) break;
-        ancestor._fireListeners(event, true);
-      }
-
-      // Phase 2: AT_TARGET (eventPhase = 2)
-      if (!event._isPropagationStopped()) {
-        event.eventPhase = 2;
-        this._fireListeners(event, false);
-      }
-
-      // Phase 3: BUBBLING_PHASE (eventPhase = 3)
-      event.eventPhase = 3;
-      for (let i = ancestors.length - 1; i >= 0; i--) {
-        if (event._isPropagationStopped()) break;
-        ancestors[i]._fireListeners(event, false);
-      }
-    } else {
-      // Non-bubbling or non-DisplayObject: target phase only.
-      event.eventPhase = 2;
-      event.currentTarget = this;
-      const list = this._listeners.get(event.type);
-      if (list) {
-        for (const entry of [...list]) {
-          entry.listener(event);
-          if (event._isImmediateStopped()) break;
-        }
-      }
-    }
-
-    return !event.isDefaultPrevented();
-  }
-
-  /** @internal Fire listeners on this object for a given phase. */
-  _fireListeners(event: Event, capturePhaseOnly: boolean): void {
-    event.currentTarget = this;
-    const list = this._listeners.get(event.type);
-    if (!list) return;
-    for (const entry of [...list]) {
-      // In capture phase (1), only fire useCapture=true listeners.
-      // In target phase (2), fire all listeners.
-      // In bubble phase (3), only fire useCapture=false listeners.
-      if (capturePhaseOnly && !entry.useCapture) continue;
-      if (!capturePhaseOnly && event.eventPhase === 3 && entry.useCapture) continue;
-      entry.listener(event);
-      if (event._isImmediateStopped()) break;
-    }
-  }
-
-  hasEventListener(type: string): boolean {
-    const list = this._listeners.get(type);
-    return !!list && list.length > 0;
-  }
-
-  willTrigger(type: string): boolean {
-    if (this.hasEventListener(type)) return true;
-    // Walk parent chain for DisplayObjects.
-    if (this instanceof DisplayObject) {
-      let node = (this as unknown as DisplayObject).parent;
-      while (node) {
-        if (node.hasEventListener(type)) return true;
-        node = node.parent;
-      }
-    }
-    return false;
-  }
-}
+import { EventDispatcher, Event, ProgressEvent, IOErrorEvent } from "./events";
 
 // ---------------------------------------------------------------------------
 // Graphics
@@ -368,6 +237,55 @@ export class DisplayObject extends EventDispatcher {
     const m = _getConcatenatedMatrix(this);
     return m.transformPoint(point);
   }
+
+  override dispatchEvent(event: Event): boolean {
+    event.target = this;
+
+    if (event.bubbles) {
+      // Build ancestor chain (root first).
+      const ancestors: DisplayObject[] = [];
+      let node: DisplayObjectContainer | null = this.parent;
+      while (node) {
+        ancestors.push(node);
+        node = node.parent;
+      }
+      ancestors.reverse();
+
+      // Phase 1: CAPTURING_PHASE (eventPhase = 1)
+      event.eventPhase = 1;
+      for (const ancestor of ancestors) {
+        if (event._isPropagationStopped()) break;
+        ancestor._fireListeners(event, true);
+      }
+
+      // Phase 2: AT_TARGET (eventPhase = 2)
+      if (!event._isPropagationStopped()) {
+        event.eventPhase = 2;
+        this._fireListeners(event, false);
+      }
+
+      // Phase 3: BUBBLING_PHASE (eventPhase = 3)
+      event.eventPhase = 3;
+      for (let i = ancestors.length - 1; i >= 0; i--) {
+        if (event._isPropagationStopped()) break;
+        ancestors[i]._fireListeners(event, false);
+      }
+
+      return !event.isDefaultPrevented();
+    }
+
+    return super.dispatchEvent(event);
+  }
+
+  override willTrigger(type: string): boolean {
+    if (this.hasEventListener(type)) return true;
+    let node: DisplayObjectContainer | null = this.parent;
+    while (node) {
+      if (node.hasEventListener(type)) return true;
+      node = node.parent;
+    }
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +404,31 @@ export class DisplayObjectContainer extends InteractiveObject {
     const tmp = this._children[index1];
     this._children[index1] = this._children[index2];
     this._children[index2] = tmp;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shape
+// ---------------------------------------------------------------------------
+
+export class Shape extends DisplayObject {
+  graphics: Graphics = new Graphics();
+}
+
+// ---------------------------------------------------------------------------
+// Bitmap
+// ---------------------------------------------------------------------------
+
+export class Bitmap extends DisplayObject {
+  bitmapData: any = null;
+  pixelSnapping = "auto";
+  smoothing = false;
+
+  constructor(bitmapData: any = null, pixelSnapping = "auto", smoothing = false) {
+    super();
+    this.bitmapData = bitmapData;
+    this.pixelSnapping = pixelSnapping;
+    this.smoothing = smoothing;
   }
 }
 

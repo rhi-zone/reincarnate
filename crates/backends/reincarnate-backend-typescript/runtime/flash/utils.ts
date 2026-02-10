@@ -2,8 +2,7 @@
  * flash.utils package — ByteArray, Timer, Proxy, getQualifiedClassName.
  */
 
-import { EventDispatcher } from "./display";
-import { TimerEvent } from "./events";
+import { EventDispatcher, TimerEvent } from "./events";
 import { readAMF3, writeAMF3 } from "./amf";
 import { inflateRaw, deflateRaw, zlibCompress, zlibDecompress } from "./deflate";
 import { xmlList } from "./xml";

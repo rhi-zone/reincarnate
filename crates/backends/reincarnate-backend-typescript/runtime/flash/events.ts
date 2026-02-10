@@ -1,6 +1,91 @@
 /**
- * flash.events package — Event base class and all standard event subclasses.
+ * flash.events package — EventDispatcher, Event, and all standard event
+ * subclasses.
  */
+
+// ---------------------------------------------------------------------------
+// EventDispatcher
+// ---------------------------------------------------------------------------
+
+interface ListenerEntry {
+  listener: (event: Event) => void;
+  useCapture: boolean;
+  priority: number;
+}
+
+export class EventDispatcher {
+  private _listeners: Map<string, ListenerEntry[]> = new Map();
+
+  addEventListener(
+    type: string,
+    listener: (event: Event) => void,
+    useCapture = false,
+    priority = 0,
+    _useWeakReference = false,
+  ): void {
+    let list = this._listeners.get(type);
+    if (!list) {
+      list = [];
+      this._listeners.set(type, list);
+    }
+    // Avoid duplicate registrations with the same listener+capture combo.
+    for (const entry of list) {
+      if (entry.listener === listener && entry.useCapture === useCapture) return;
+    }
+    list.push({ listener, useCapture, priority });
+    // Stable sort by descending priority.
+    list.sort((a, b) => b.priority - a.priority);
+  }
+
+  removeEventListener(
+    type: string,
+    listener: (event: Event) => void,
+    useCapture = false,
+  ): void {
+    const list = this._listeners.get(type);
+    if (!list) return;
+    const idx = list.findIndex(
+      (e) => e.listener === listener && e.useCapture === useCapture,
+    );
+    if (idx !== -1) list.splice(idx, 1);
+  }
+
+  dispatchEvent(event: Event): boolean {
+    event.target = this;
+    event.eventPhase = 2;
+    event.currentTarget = this;
+    const list = this._listeners.get(event.type);
+    if (list) {
+      for (const entry of [...list]) {
+        entry.listener(event);
+        if (event._isImmediateStopped()) break;
+      }
+    }
+    return !event.isDefaultPrevented();
+  }
+
+  /** @internal Fire listeners on this object for a given phase. */
+  _fireListeners(event: Event, capturePhaseOnly: boolean): void {
+    event.currentTarget = this;
+    const list = this._listeners.get(event.type);
+    if (!list) return;
+    for (const entry of [...list]) {
+      if (capturePhaseOnly && !entry.useCapture) continue;
+      if (!capturePhaseOnly && event.eventPhase === 3 && entry.useCapture) continue;
+      entry.listener(event);
+      if (event._isImmediateStopped()) break;
+    }
+  }
+
+  hasEventListener(type: string): boolean {
+    const list = this._listeners.get(type);
+    return !!list && list.length > 0;
+  }
+
+  willTrigger(type: string): boolean {
+    return this.hasEventListener(type);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Event
