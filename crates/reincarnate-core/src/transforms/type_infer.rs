@@ -439,7 +439,8 @@ fn infer_inst_type(
 }
 
 /// Find the common type among an iterator of types.
-/// Returns Dynamic if types disagree or the iterator is empty.
+/// Returns the single type if all agree, a `Union` if they differ,
+/// or `Dynamic` if any input is `Dynamic` or the iterator is empty.
 fn infer_common_type<'a>(mut types: impl Iterator<Item = &'a Type>) -> Type {
     let Some(first) = types.next() else {
         return Type::Dynamic;
@@ -447,12 +448,16 @@ fn infer_common_type<'a>(mut types: impl Iterator<Item = &'a Type>) -> Type {
     if *first == Type::Dynamic {
         return Type::Dynamic;
     }
+    let mut result = first.clone();
     for ty in types {
-        if ty != first {
+        if *ty == Type::Dynamic {
             return Type::Dynamic;
         }
+        if *ty != result {
+            result = union_type(result, ty.clone());
+        }
     }
-    first.clone()
+    result
 }
 
 /// Run type inference on a single function within the given module context.
@@ -755,9 +760,9 @@ mod tests {
         assert_eq!(func.blocks[merge].params[0].ty, Type::Int(64));
     }
 
-    /// Mixed types stay Dynamic: branches sending different types → param stays Dynamic.
+    /// Mixed types produce Union: branches sending different types → Union.
     #[test]
-    fn mixed_types_stay_dynamic() {
+    fn mixed_types_produce_union() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
             return_ty: Type::Dynamic, ..Default::default() };
@@ -791,8 +796,11 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let func = &module.functions[FuncId::new(0)];
-        // Different types → stays Dynamic.
-        assert_eq!(func.value_types[merge_vals[0]], Type::Dynamic);
+        // Different types → Union.
+        assert_eq!(
+            func.value_types[merge_vals[0]],
+            Type::Union(vec![Type::Int(64), Type::String])
+        );
     }
 
     /// GlobalRef resolves to the global's declared type.
@@ -1072,9 +1080,9 @@ mod tests {
         assert_eq!(func.value_types[select_val], Type::Int(64));
     }
 
-    /// Select with mixed types stays Dynamic.
+    /// Select with mixed types produces Union.
     #[test]
-    fn select_mixed_types_stays_dynamic() {
+    fn select_mixed_types_produces_union() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
             return_ty: Type::Dynamic, ..Default::default() };
@@ -1106,7 +1114,10 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let func = &module.functions[FuncId::new(0)];
-        assert_eq!(func.value_types[select_val], Type::Dynamic);
+        assert_eq!(
+            func.value_types[select_val],
+            Type::Union(vec![Type::Int(64), Type::String])
+        );
     }
 
     /// Ambiguous bare name stays Dynamic when multiple classes disagree on return type.
