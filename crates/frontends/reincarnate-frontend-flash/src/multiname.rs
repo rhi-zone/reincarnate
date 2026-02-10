@@ -253,6 +253,23 @@ pub fn resolve_type(pool: &ConstantPool, index: &Index<Multiname>) -> reincarnat
         return Type::Dynamic;
     }
 
+    // Inspect the raw multiname for generic types (Vector.<T>) before
+    // flattening to a string.
+    if let Some(Multiname::TypeName {
+        base_type,
+        parameters,
+    }) = pool_multiname(pool, index)
+    {
+        let base_name = resolve_multiname_index(pool, base_type);
+        if base_name == "__AS3__.vec::Vector" || base_name == "Vector" {
+            let elem = parameters
+                .first()
+                .map(|p| resolve_type(pool, p))
+                .unwrap_or(Type::Dynamic);
+            return Type::Array(Box::new(elem));
+        }
+    }
+
     let name = resolve_multiname_index(pool, index);
     match name.as_str() {
         "int" => Type::Int(32),
@@ -263,6 +280,9 @@ pub fn resolve_type(pool: &ConstantPool, index: &Index<Multiname>) -> reincarnat
         "void" => Type::Void,
         "*" | "Object" => Type::Dynamic,
         "Array" => Type::Array(Box::new(Type::Dynamic)),
+        "flash.utils::Dictionary" | "Dictionary" => {
+            Type::Map(Box::new(Type::Dynamic), Box::new(Type::Dynamic))
+        }
         _ => Type::Struct(name),
     }
 }
