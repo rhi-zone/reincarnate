@@ -472,6 +472,18 @@ String-based at IR level, resolved to concrete trait method calls at codegen. Ke
 
 Entity IDs are module-scoped: `FuncId(0)` in Module A ≠ `FuncId(0)` in Module B. Cross-module references use string-based imports. A linking pass builds the global symbol table.
 
+## Backend AST Design
+
+Each backend defines its own AST types (e.g. `JsStmt`/`JsExpr` for TypeScript) separate from the core `Stmt`/`Expr`. This two-type design is intentional:
+
+**Why not a single unified AST?** Backends need language-specific constructs (`new`, `typeof`, `in`, `delete`, `throw`, `super.*` for JS) that don't belong in core. Polluting core with JS-isms would violate engine neutrality.
+
+**Why not a generic/parameterized AST?** `Expr<Ext>` parameterized over an extension type still requires a deep copy when converting between `Expr<CoreExt>` and `Expr<JsExt>`, since every `Box` child changes type. No zero-copy win.
+
+**Why not a builder trait?** If the linearizer constructed through `trait AstSink`, it could produce backend AST directly — no intermediate core AST. But the AST normalization passes (forward substitution, ternary rewrite, constant folding, etc.) need to pattern-match and transform a concrete tree. The builder is write-only. Since the core AST is needed for the passes regardless, the builder can't eliminate it.
+
+**Current design:** IR → core AST → normalization passes → mechanical lowering → backend AST → engine-specific rewrites → printer. The mechanical lowering (`lower.rs`) is a boring O(n) tree copy — the cost of having two type hierarchies. Engine-specific rewrites (e.g. Flash) operate on the backend AST (`JsExpr` → `JsExpr`), keeping them decoupled from both the core types and the printer.
+
 ## AST Normalization Passes
 
 After the backend lowers IR to an AST (`Vec<Stmt>`), a pipeline of rewrite passes normalizes the output for readability. Passes run in a fixed order; some are in a fixpoint loop that iterates until no further changes occur.
