@@ -1177,7 +1177,10 @@ impl<'a> EmitCtx<'a> {
                     _ => {}
                 }
             }
-            for (param_value, candidate) in candidates {
+            // Sort candidates by ValueId for deterministic fixpoint convergence.
+            let mut sorted_candidates: Vec<_> = candidates.into_iter().collect();
+            sorted_candidates.sort_by_key(|(v, _)| v.index());
+            for (param_value, candidate) in sorted_candidates {
                 if let Some(name) = candidate {
                     value_names.insert(param_value, name);
                     changed = true;
@@ -1544,7 +1547,8 @@ impl<'a> EmitCtx<'a> {
 
     /// Flush all pending side-effecting inline expressions as statements.
     fn flush_side_effecting_inlines(&mut self, stmts: &mut Vec<Stmt>) {
-        let to_flush: Vec<ValueId> = self.side_effecting_inlines.keys().copied().collect();
+        let mut to_flush: Vec<ValueId> = self.side_effecting_inlines.keys().copied().collect();
+        to_flush.sort_by_key(|v| v.index());
         for v in to_flush {
             let expr = self.side_effecting_inlines.remove(&v).unwrap();
             self.se_flush_declared.insert(v);
@@ -1567,7 +1571,7 @@ impl<'a> EmitCtx<'a> {
 
     /// Flush deferred memory-read lazy inlines into real statements.
     fn flush_pending_reads(&mut self, stmts: &mut Vec<Stmt>) {
-        let to_flush: Vec<(ValueId, InstId)> = self
+        let mut to_flush: Vec<(ValueId, InstId)> = self
             .pending_lazy
             .iter()
             .filter(|(&v, &iid)| {
@@ -1579,6 +1583,8 @@ impl<'a> EmitCtx<'a> {
             })
             .map(|(&v, &iid)| (v, iid))
             .collect();
+        // Sort by ValueId for deterministic flush order.
+        to_flush.sort_by_key(|(v, _)| v.index());
 
         // Build map: unnamed flush value → named Cast/Copy consumer in pending_lazy.
         // When a GetField is flushed but its only consumer is a named Cast (e.g.
@@ -1702,7 +1708,10 @@ impl<'a> EmitCtx<'a> {
         // This happens when Cast/Copy name propagation creates duplicate names
         // for a Cast result and its source — both emit Assign, but neither
         // generates a VarDecl.
-        for name in &self.shared_names {
+        // Sort for deterministic declaration order.
+        let mut sorted_shared: Vec<_> = self.shared_names.iter().collect();
+        sorted_shared.sort();
+        for name in sorted_shared {
             if declared.insert(name.clone()) {
                 decls.push(Stmt::VarDecl {
                     name: name.clone(),

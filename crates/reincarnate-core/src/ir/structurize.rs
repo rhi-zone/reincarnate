@@ -344,23 +344,29 @@ struct NaturalLoop {
 fn detect_loops(cfg: &Cfg, idom: &HashMap<BlockId, BlockId>) -> Vec<NaturalLoop> {
     let mut loops: HashMap<BlockId, HashSet<BlockId>> = HashMap::new();
 
-    for (block, targets) in &cfg.succs {
-        for &target in targets {
-            if dominates(target, *block, idom) {
-                // Back edge: block → target (target is loop header).
-                let body = loops.entry(target).or_default();
-                // BFS backward from block to header to find loop body.
-                let mut queue = VecDeque::new();
-                if *block != target {
-                    body.insert(*block);
-                    queue.push_back(*block);
-                }
-                body.insert(target);
-                while let Some(cur) = queue.pop_front() {
-                    if let Some(preds) = cfg.preds.get(&cur) {
-                        for &pred in preds {
-                            if body.insert(pred) && pred != target {
-                                queue.push_back(pred);
+    // Sort succs keys for deterministic iteration order.
+    let mut sorted_blocks: Vec<_> = cfg.succs.keys().copied().collect();
+    sorted_blocks.sort_by_key(|b| b.index());
+
+    for block in sorted_blocks {
+        if let Some(targets) = cfg.succs.get(&block) {
+            for &target in targets {
+                if dominates(target, block, idom) {
+                    // Back edge: block → target (target is loop header).
+                    let body = loops.entry(target).or_default();
+                    // BFS backward from block to header to find loop body.
+                    let mut queue = VecDeque::new();
+                    if block != target {
+                        body.insert(block);
+                        queue.push_back(block);
+                    }
+                    body.insert(target);
+                    while let Some(cur) = queue.pop_front() {
+                        if let Some(preds) = cfg.preds.get(&cur) {
+                            for &pred in preds {
+                                if body.insert(pred) && pred != target {
+                                    queue.push_back(pred);
+                                }
                             }
                         }
                     }
@@ -369,10 +375,13 @@ fn detect_loops(cfg: &Cfg, idom: &HashMap<BlockId, BlockId>) -> Vec<NaturalLoop>
         }
     }
 
-    loops
+    // Sort by header for deterministic loop ordering.
+    let mut result: Vec<_> = loops
         .into_iter()
         .map(|(header, body)| NaturalLoop { header, body })
-        .collect()
+        .collect();
+    result.sort_by_key(|l| l.header.index());
+    result
 }
 
 // -------------------------------------------------------------------------
@@ -1195,7 +1204,10 @@ impl<'a> Structurizer<'a> {
 
     /// Find an exit from any block in the loop body.
     fn find_exit_in_body(&self, loop_body: &HashSet<BlockId>) -> Option<BlockId> {
-        for &block in loop_body {
+        // Sort for deterministic iteration order.
+        let mut sorted: Vec<_> = loop_body.iter().copied().collect();
+        sorted.sort_by_key(|b| b.index());
+        for block in sorted {
             if let Some(succs) = self.cfg.succs.get(&block) {
                 for &s in succs {
                     if !loop_body.contains(&s) {
