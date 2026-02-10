@@ -997,23 +997,20 @@ fn group_by_class(module: &Module) -> (Vec<ClassGroup>, Vec<FuncId>) {
 }
 
 /// Map an IR `Type` to the AS3-style type name used in describeType output.
-fn as3_type_name(ty: &Type) -> &'static str {
+fn as3_type_name(ty: &Type) -> String {
     match ty {
-        Type::Void => "void",
-        Type::Bool => "Boolean",
-        Type::Int(32) => "int",
-        Type::Int(_) => "int",
-        Type::UInt(32) => "uint",
-        Type::UInt(_) => "uint",
-        Type::Float(64) => "Number",
-        Type::Float(_) => "Number",
-        Type::String => "String",
-        Type::Array(_) => "Array",
-        Type::Map(_, _) => "Object",
-        Type::Option(_) => "*",
-        Type::Dynamic => "*",
-        Type::Struct(_) | Type::Enum(_) => "*",
-        _ => "*",
+        Type::Void => "void".into(),
+        Type::Bool => "Boolean".into(),
+        Type::Int(_) => "int".into(),
+        Type::UInt(_) => "uint".into(),
+        Type::Float(_) => "Number".into(),
+        Type::String => "String".into(),
+        Type::Array(_) => "Array".into(),
+        Type::Map(_, _) => "Object".into(),
+        Type::Struct(name) | Type::Enum(name) => {
+            name.rsplit("::").next().unwrap_or(name).into()
+        }
+        _ => "*".into(),
     }
 }
 
@@ -1040,29 +1037,33 @@ fn emit_register_class_traits(
     let mut instance_accessors: BTreeMap<String, (bool, bool)> = BTreeMap::new();
     for &fid in &group.methods {
         let func = &module.functions[fid];
-        let fname = &func.name;
+        // Strip class prefix: "Enum::toString" → "toString"
+        let short = func.name.rsplit("::").next().unwrap_or(&func.name);
         match func.method_kind {
             MethodKind::Constructor | MethodKind::Free => {}
             MethodKind::Instance => {
                 instance_traits.push(format!(
-                    "{{ name: \"{fname}\", kind: \"method\" }}"
+                    "{{ name: \"{short}\", kind: \"method\" }}"
                 ));
             }
             MethodKind::Static => {
                 // Skip class initializer
-                if fname == "cinit" || fname == "$cinit" {
+                if short == "cinit" || short == "$cinit" {
                     continue;
                 }
                 static_traits.push(format!(
-                    "{{ name: \"{fname}\", kind: \"method\" }}"
+                    "{{ name: \"{short}\", kind: \"method\" }}"
                 ));
             }
             MethodKind::Getter => {
-                let entry = instance_accessors.entry(fname.clone()).or_insert((false, false));
+                // Strip get_ prefix to match AS3 accessor names
+                let acc_name = short.strip_prefix("get_").unwrap_or(short);
+                let entry = instance_accessors.entry(acc_name.to_string()).or_insert((false, false));
                 entry.0 = true;
             }
             MethodKind::Setter => {
-                let entry = instance_accessors.entry(fname.clone()).or_insert((false, false));
+                let acc_name = short.strip_prefix("set_").unwrap_or(short);
+                let entry = instance_accessors.entry(acc_name.to_string()).or_insert((false, false));
                 entry.1 = true;
             }
         }
