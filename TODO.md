@@ -420,12 +420,10 @@ need a `Stmt::Throw` or `Expr::Delete`/`Expr::TypeOf`/`Expr::In`.
 - [x] **`Flash_Object.newObject(k1, v1, k2, v2, ...)`** (58) → `{ k1: v1, k2: v2 }`.
   Inlined in backend printer — pairs of string-key + value arguments emitted
   as object literal.
-- [ ] **`Flash_Object.newFunction("name")`** (318) → closure reference. These
-  are AVM2 `NewFunction` ops creating closures from method bodies. The
-  runtime stub is a no-op function — the real fix is resolving these to
-  actual method references (`this.methodName` or a local function). Requires
-  knowing which method `"anon_func789"` refers to. **Blocked on closure
-  support.**
+- [x] **`Flash_Object.newFunction("name")`** (318) → closure reference.
+  Frontend now recursively translates closure method bodies from
+  `Op::NewFunction` into private instance methods (`$closureN`). Backend
+  inlines the call as `this.$closureN`. Runtime stub removed.
 
 #### Tier 3 — Structural (super calls)
 
