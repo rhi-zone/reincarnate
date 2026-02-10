@@ -652,13 +652,9 @@ fn collect_type_refs_from_function(
                         if external_imports.contains_key(field.as_str()) {
                             refs.ext_value_refs.insert(field.to_string());
                         } else if field.contains("::") {
-                            if let Some(ns) = field.split("::").next() {
-                                if ns.starts_with("flash.") {
-                                    eprintln!(
-                                        "warning: unmapped Flash stdlib reference: {field}"
-                                    );
-                                }
-                            }
+                            eprintln!(
+                                "warning: unmapped external reference: {field}"
+                            );
                         }
                     }
                 }
@@ -692,11 +688,7 @@ fn collect_type_ref(
                 } else if external_imports.contains_key(name.as_str()) {
                     ext_refs.insert(name.to_string());
                 } else if name.contains("::") {
-                    if let Some(ns) = name.split("::").next() {
-                        if ns.starts_with("flash.") {
-                            eprintln!("warning: unmapped Flash stdlib reference: {name}");
-                        }
-                    }
+                    eprintln!("warning: unmapped external reference: {name}");
                 }
             }
         }
