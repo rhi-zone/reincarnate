@@ -18,8 +18,8 @@ export const Flash_Utils = {
     return ctor?.[QN_KEY] ?? ctor?.name ?? typeof value;
   },
   describeType(value: any): any {
-    // Minimal describeType: enumerates own static properties as "constant"
-    // traits.  The enum pattern iterates `.constant` to assign names.
+    // Enumerates own static properties as "constant" traits, matching
+    // AS3's describeType XML output for class constructors.
     if (value == null) return { constant: [] };
     if (typeof value === "function") {
       const constants: any[] = [];
