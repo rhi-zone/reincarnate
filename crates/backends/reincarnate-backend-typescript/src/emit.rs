@@ -26,7 +26,7 @@ fn flash_stdlib_module(name: &str) -> Option<&'static str> {
         | "DisplayObjectContainer" | "Sprite" | "MovieClip" | "LoaderInfo"
         | "Loader" | "Stage" => "display",
         // flash/geom
-        "Point" | "Rectangle" | "Matrix" => "geom",
+        "Point" | "Rectangle" | "Matrix" | "ColorTransform" | "Transform" => "geom",
         // flash/text
         "TextFieldType" | "TextFieldAutoSize" | "TextFormat" | "TextField"
         | "Font" => "text",

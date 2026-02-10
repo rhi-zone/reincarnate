@@ -421,3 +421,158 @@ export class Matrix {
     this.ty += dy;
   }
 }
+
+// ---------------------------------------------------------------------------
+// ColorTransform
+// ---------------------------------------------------------------------------
+
+export class ColorTransform {
+  redMultiplier: number;
+  greenMultiplier: number;
+  blueMultiplier: number;
+  alphaMultiplier: number;
+  redOffset: number;
+  greenOffset: number;
+  blueOffset: number;
+  alphaOffset: number;
+
+  constructor(
+    redMultiplier = 1,
+    greenMultiplier = 1,
+    blueMultiplier = 1,
+    alphaMultiplier = 1,
+    redOffset = 0,
+    greenOffset = 0,
+    blueOffset = 0,
+    alphaOffset = 0,
+  ) {
+    this.redMultiplier = redMultiplier;
+    this.greenMultiplier = greenMultiplier;
+    this.blueMultiplier = blueMultiplier;
+    this.alphaMultiplier = alphaMultiplier;
+    this.redOffset = redOffset;
+    this.greenOffset = greenOffset;
+    this.blueOffset = blueOffset;
+    this.alphaOffset = alphaOffset;
+  }
+
+  get color(): number {
+    return (
+      ((Math.round(this.redOffset) & 0xff) << 16) |
+      ((Math.round(this.greenOffset) & 0xff) << 8) |
+      (Math.round(this.blueOffset) & 0xff)
+    );
+  }
+
+  set color(value: number) {
+    this.redMultiplier = 0;
+    this.greenMultiplier = 0;
+    this.blueMultiplier = 0;
+    this.redOffset = (value >> 16) & 0xff;
+    this.greenOffset = (value >> 8) & 0xff;
+    this.blueOffset = value & 0xff;
+  }
+
+  concat(second: ColorTransform): void {
+    this.redOffset = this.redOffset + this.redMultiplier * second.redOffset;
+    this.greenOffset = this.greenOffset + this.greenMultiplier * second.greenOffset;
+    this.blueOffset = this.blueOffset + this.blueMultiplier * second.blueOffset;
+    this.alphaOffset = this.alphaOffset + this.alphaMultiplier * second.alphaOffset;
+    this.redMultiplier *= second.redMultiplier;
+    this.greenMultiplier *= second.greenMultiplier;
+    this.blueMultiplier *= second.blueMultiplier;
+    this.alphaMultiplier *= second.alphaMultiplier;
+  }
+
+  toString(): string {
+    return (
+      `(redMultiplier=${this.redMultiplier}, greenMultiplier=${this.greenMultiplier}, ` +
+      `blueMultiplier=${this.blueMultiplier}, alphaMultiplier=${this.alphaMultiplier}, ` +
+      `redOffset=${this.redOffset}, greenOffset=${this.greenOffset}, ` +
+      `blueOffset=${this.blueOffset}, alphaOffset=${this.alphaOffset})`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Transform
+// ---------------------------------------------------------------------------
+
+export class Transform {
+  matrix: Matrix = new Matrix();
+  colorTransform: ColorTransform = new ColorTransform();
+
+  /** @internal */
+  _owner: any;
+
+  constructor(owner: any) {
+    this._owner = owner;
+  }
+
+  get concatenatedMatrix(): Matrix {
+    return _getConcatenatedMatrix(this._owner);
+  }
+
+  get concatenatedColorTransform(): ColorTransform {
+    const result = new ColorTransform();
+    // Walk from root to this node, composing color transforms.
+    const chain: any[] = [];
+    let node = this._owner;
+    while (node) {
+      chain.push(node);
+      node = node.parent;
+    }
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const t = chain[i].transform;
+      if (t && t.colorTransform) {
+        result.concat(t.colorTransform);
+      }
+    }
+    return result;
+  }
+
+  get pixelBounds(): Rectangle {
+    const m = this.concatenatedMatrix;
+    const w = this._owner?.width ?? 0;
+    const h = this._owner?.height ?? 0;
+    // Transform the four corners of the local bounding box.
+    const corners = [
+      m.transformPoint(new Point(0, 0)),
+      m.transformPoint(new Point(w, 0)),
+      m.transformPoint(new Point(0, h)),
+      m.transformPoint(new Point(w, h)),
+    ];
+    let minX = corners[0].x, minY = corners[0].y;
+    let maxX = corners[0].x, maxY = corners[0].y;
+    for (let i = 1; i < 4; i++) {
+      if (corners[i].x < minX) minX = corners[i].x;
+      if (corners[i].y < minY) minY = corners[i].y;
+      if (corners[i].x > maxX) maxX = corners[i].x;
+      if (corners[i].y > maxY) maxY = corners[i].y;
+    }
+    return new Rectangle(minX, minY, maxX - minX, maxY - minY);
+  }
+}
+
+/**
+ * Compute the concatenated (world) matrix for a display object by walking
+ * the parent chain from root to leaf, composing local matrices.
+ */
+export function _getConcatenatedMatrix(obj: any): Matrix {
+  const chain: any[] = [];
+  let node = obj;
+  while (node) {
+    chain.push(node);
+    node = node.parent;
+  }
+  const result = new Matrix();
+  // Walk root → leaf.
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const n = chain[i];
+    const local = new Matrix();
+    const rot = (n.rotation ?? 0) * (Math.PI / 180);
+    local.createBox(n.scaleX ?? 1, n.scaleY ?? 1, rot, n.x ?? 0, n.y ?? 0);
+    result.concat(local);
+  }
+  return result;
+}

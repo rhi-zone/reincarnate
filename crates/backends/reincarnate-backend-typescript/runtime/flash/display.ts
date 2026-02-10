@@ -3,7 +3,7 @@
  * Loader, LoaderInfo, Stage.
  */
 
-import { Point, Rectangle, Matrix } from "./geom";
+import { Point, Rectangle, Matrix, Transform, _getConcatenatedMatrix } from "./geom";
 import { Event, ProgressEvent, IOErrorEvent } from "./events";
 
 // ---------------------------------------------------------------------------
@@ -241,16 +241,42 @@ export class DisplayObject extends EventDispatcher {
   scaleZ = 1;
   scrollRect: Rectangle | null = null;
   stage: Stage | null = null;
-  transform: any = null;
+  transform: Transform;
   visible = true;
   width = 0;
   x = 0;
   y = 0;
   z = 0;
 
+  constructor() {
+    super();
+    this.transform = new Transform(this);
+  }
+
   getBounds(targetCoordinateSpace: DisplayObject): Rectangle {
-    void targetCoordinateSpace;
-    return new Rectangle(this.x, this.y, this.width, this.height);
+    const selfMatrix = _getConcatenatedMatrix(this);
+    const targetMatrix = _getConcatenatedMatrix(targetCoordinateSpace);
+    // Compute the matrix that maps from self's local space to target's local space.
+    const inv = targetMatrix.clone();
+    inv.invert();
+    const combined = selfMatrix.clone();
+    combined.concat(inv);
+    // Transform 4 corners of local AABB.
+    const corners = [
+      combined.transformPoint(new Point(0, 0)),
+      combined.transformPoint(new Point(this.width, 0)),
+      combined.transformPoint(new Point(0, this.height)),
+      combined.transformPoint(new Point(this.width, this.height)),
+    ];
+    let minX = corners[0].x, minY = corners[0].y;
+    let maxX = corners[0].x, maxY = corners[0].y;
+    for (let i = 1; i < 4; i++) {
+      if (corners[i].x < minX) minX = corners[i].x;
+      if (corners[i].y < minY) minY = corners[i].y;
+      if (corners[i].x > maxX) maxX = corners[i].x;
+      if (corners[i].y > maxY) maxY = corners[i].y;
+    }
+    return new Rectangle(minX, minY, maxX - minX, maxY - minY);
   }
 
   getRect(targetCoordinateSpace: DisplayObject): Rectangle {
@@ -258,7 +284,9 @@ export class DisplayObject extends EventDispatcher {
   }
 
   globalToLocal(point: Point): Point {
-    return new Point(point.x - this.x, point.y - this.y);
+    const m = _getConcatenatedMatrix(this);
+    m.invert();
+    return m.transformPoint(point);
   }
 
   hitTestObject(obj: DisplayObject): boolean {
@@ -268,11 +296,15 @@ export class DisplayObject extends EventDispatcher {
   }
 
   hitTestPoint(x: number, y: number, _shapeFlag = false): boolean {
-    return this.getBounds(this).contains(x, y);
+    const m = _getConcatenatedMatrix(this);
+    m.invert();
+    const local = m.transformPoint(new Point(x, y));
+    return local.x >= 0 && local.x <= this.width && local.y >= 0 && local.y <= this.height;
   }
 
   localToGlobal(point: Point): Point {
-    return new Point(point.x + this.x, point.y + this.y);
+    const m = _getConcatenatedMatrix(this);
+    return m.transformPoint(point);
   }
 }
 
