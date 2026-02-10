@@ -1,9 +1,27 @@
 /**
- * flash.utils package — ByteArray, Timer, Proxy.
+ * flash.utils package — ByteArray, Timer, Proxy, getQualifiedClassName.
  */
 
 import { EventDispatcher } from "./display";
 import { TimerEvent } from "./events";
+
+// ---------------------------------------------------------------------------
+// Qualified-name symbol + utility functions
+// ---------------------------------------------------------------------------
+
+export const QN_KEY = Symbol("as3:qualifiedName");
+
+export const Flash_Utils = {
+  getQualifiedClassName(value: any): string {
+    if (value == null) return "null";
+    const ctor = typeof value === "function" ? value : value.constructor;
+    return ctor?.[QN_KEY] ?? ctor?.name ?? typeof value;
+  },
+  describeType(_value: any): any {
+    // TODO: XML type metadata
+    return null;
+  },
+};
 
 // ---------------------------------------------------------------------------
 // ByteArray
