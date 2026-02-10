@@ -80,6 +80,28 @@ fn find_frontend(engine: &EngineOrigin) -> Option<Box<dyn Frontend>> {
     }
 }
 
+/// Resolve the path to the engine-specific runtime source directory.
+///
+/// Uses `CARGO_MANIFEST_DIR` (compile-time) to locate `runtime/{engine}/{lang}/`
+/// relative to the workspace root. Returns `None` if the directory doesn't exist.
+fn resolve_runtime_dir(engine: &EngineOrigin, backend: &TargetBackend) -> Option<PathBuf> {
+    let engine_name = match engine {
+        EngineOrigin::Flash => "flash",
+        _ => return None,
+    };
+    let lang = match backend {
+        TargetBackend::TypeScript => "ts",
+        _ => return None,
+    };
+    // CARGO_MANIFEST_DIR points to crates/reincarnate-cli/
+    let cli_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let runtime_dir = cli_dir.join("../../runtime").join(engine_name).join(lang);
+    match runtime_dir.canonicalize() {
+        Ok(p) if p.is_dir() => Some(p),
+        _ => None,
+    }
+}
+
 fn find_backend(backend: &TargetBackend) -> Option<Box<dyn Backend>> {
     match backend {
         TargetBackend::TypeScript => {
@@ -188,6 +210,7 @@ fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String], preset: &str) -> Re
             assets: output.assets.clone(),
             output_dir: target.output_dir.clone(),
             lowering_config: lowering_config.clone(),
+            runtime_dir: resolve_runtime_dir(&manifest.engine, &target.backend),
         };
         eprintln!("[emit] emitting to {}...", target.output_dir.display());
         backend

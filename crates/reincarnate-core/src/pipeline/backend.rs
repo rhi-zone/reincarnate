@@ -15,6 +15,10 @@ pub struct BackendInput {
     pub output_dir: PathBuf,
     /// Configuration for AST lowering optimizations.
     pub lowering_config: LoweringConfig,
+    /// Path to the engine-specific runtime source directory.
+    /// When `Some`, the backend copies this directory into the output.
+    /// When `None`, runtime emission is skipped.
+    pub runtime_dir: Option<PathBuf>,
 }
 
 /// Backend trait — emits target code from IR.
