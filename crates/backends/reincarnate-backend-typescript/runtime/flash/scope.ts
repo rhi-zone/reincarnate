@@ -1,35 +1,46 @@
-/** Flash.Scope — AVM2 scope chain operations. */
+/**
+ * Flash.Scope — AVM2 scope chain operations.
+ *
+ * Scope lookups (findPropStrict, findProperty) are resolved at compile time
+ * by the ast_printer into `this.field`, `ClassName.field`, or bare names.
+ * They cannot be correctly resolved at runtime in ES modules because
+ * module-scoped names aren't accessible via string lookup.
+ *
+ * If a scope lookup reaches the runtime, it indicates a missing case in the
+ * compiler's scope resolution — the fix belongs in ast_printer.rs.
+ *
+ * newActivation is the only function called at runtime: it creates plain
+ * objects used as closure capture containers.
+ */
 
 // eslint-disable-next-line @typescript-eslint/naming-convention
 export const Flash_Scope = {
   getOuterScope(): any {
-    // In AVM2, the outer scope is the enclosing activation.
-    // In lifted TS, there's no scope chain — return the global object.
     return globalThis;
   },
 
-  findPropStrict(name: string): any {
-    // Walk the scope chain for a property, throw if not found.
-    // In lifted code, all names are resolved at compile time via imports.
-    // Fallback: check globalThis.
-    if (name in globalThis) return (globalThis as any)[name];
-    throw new ReferenceError(`${name} is not defined`);
+  findPropStrict(name: string): never {
+    throw new ReferenceError(
+      `Flash_Scope.findPropStrict("${name}"): scope lookup was not resolved ` +
+      `at compile time — this is a compiler bug in ast_printer.rs`,
+    );
   },
 
-  findProperty(name: string): any {
-    // Like findPropStrict but returns undefined instead of throwing.
-    if (name in globalThis) return (globalThis as any)[name];
-    return undefined;
+  findProperty(name: string): never {
+    throw new ReferenceError(
+      `Flash_Scope.findProperty("${name}"): scope lookup was not resolved ` +
+      `at compile time — this is a compiler bug in ast_printer.rs`,
+    );
   },
 
-  findDef(name: string): any {
-    // Find a class/interface definition by name.
-    if (name in globalThis) return (globalThis as any)[name];
-    return undefined;
+  findDef(name: string): never {
+    throw new ReferenceError(
+      `Flash_Scope.findDef("${name}"): scope lookup was not resolved ` +
+      `at compile time — this is a compiler bug in ast_printer.rs`,
+    );
   },
 
   newActivation(): Record<string, any> {
-    // Create a new activation object (local scope container).
     return {};
   },
 };
