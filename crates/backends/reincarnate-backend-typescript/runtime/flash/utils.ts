@@ -6,6 +6,7 @@ import { EventDispatcher, TimerEvent } from "./events";
 import { readAMF3, writeAMF3 } from "./amf";
 import { inflateRaw, deflateRaw, zlibCompress, zlibDecompress } from "./deflate";
 import { xmlList } from "./xml";
+import { scheduleInterval, cancelScheduledInterval } from "./platform";
 
 // ---------------------------------------------------------------------------
 // Qualified-name symbol + utility functions
@@ -542,7 +543,7 @@ export class Timer extends EventDispatcher {
   }
 
   private _startInterval(): void {
-    this._intervalId = setInterval(() => {
+    this._intervalId = scheduleInterval(() => {
       this._currentCount++;
       this.dispatchEvent(new TimerEvent(TimerEvent.TIMER));
       if (this._repeatCount > 0 && this._currentCount >= this._repeatCount) {
@@ -554,7 +555,7 @@ export class Timer extends EventDispatcher {
 
   private _stopInterval(): void {
     if (this._intervalId !== null) {
-      clearInterval(this._intervalId);
+      cancelScheduledInterval(this._intervalId);
       this._intervalId = null;
     }
   }

@@ -24,13 +24,18 @@ import {
   KeyboardEvent as FlashKeyboardEvent,
 } from "./events";
 import { Point, Rectangle, Matrix } from "./geom";
+import {
+  initCanvas,
+  addCanvasEventListener,
+  addDocumentEventListener,
+  getCanvasBounds,
+} from "./platform";
 
 // ---------------------------------------------------------------------------
 // Canvas + rendering context
 // ---------------------------------------------------------------------------
 
-const canvas = document.getElementById("reincarnate-canvas") as HTMLCanvasElement;
-const ctx = canvas.getContext("2d")!;
+const { canvas, ctx } = initCanvas("reincarnate-canvas");
 
 // ---------------------------------------------------------------------------
 // Singleton Stage
@@ -422,7 +427,7 @@ function hitTest(
 // ---------------------------------------------------------------------------
 
 function canvasCoords(e: MouseEvent): [number, number] {
-  const rect = canvas.getBoundingClientRect();
+  const rect = getCanvasBounds(canvas);
   return [e.clientX - rect.left, e.clientY - rect.top];
 }
 
@@ -479,15 +484,15 @@ function dispatchFlashMouse(type: string, e: MouseEvent): void {
   target.dispatchEvent(evt);
 }
 
-canvas.addEventListener("click", (e) => dispatchFlashMouse(FlashMouseEvent.CLICK, e));
-canvas.addEventListener("mousedown", (e) => dispatchFlashMouse(FlashMouseEvent.MOUSE_DOWN, e));
-canvas.addEventListener("mouseup", (e) => dispatchFlashMouse(FlashMouseEvent.MOUSE_UP, e));
-canvas.addEventListener("mousemove", (e) => dispatchFlashMouse(FlashMouseEvent.MOUSE_MOVE, e));
-canvas.addEventListener("dblclick", (e) => dispatchFlashMouse(FlashMouseEvent.DOUBLE_CLICK, e));
-canvas.addEventListener("mouseover", (e) => dispatchFlashMouse(FlashMouseEvent.MOUSE_OVER, e));
-canvas.addEventListener("mouseout", (e) => dispatchFlashMouse(FlashMouseEvent.MOUSE_OUT, e));
+addCanvasEventListener(canvas, "click", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.CLICK, e));
+addCanvasEventListener(canvas, "mousedown", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_DOWN, e));
+addCanvasEventListener(canvas, "mouseup", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_UP, e));
+addCanvasEventListener(canvas, "mousemove", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_MOVE, e));
+addCanvasEventListener(canvas, "dblclick", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.DOUBLE_CLICK, e));
+addCanvasEventListener(canvas, "mouseover", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_OVER, e));
+addCanvasEventListener(canvas, "mouseout", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_OUT, e));
 
-canvas.addEventListener("wheel", (e) => {
+addCanvasEventListener(canvas, "wheel", (e: WheelEvent) => {
   const [sx, sy] = canvasCoords(e);
   const target = hitTest(stage, sx, sy) ?? stage;
   const local = target.globalToLocal(new Point(sx, sy));
@@ -529,5 +534,5 @@ function dispatchFlashKey(type: string, e: KeyboardEvent): void {
   target.dispatchEvent(evt);
 }
 
-document.addEventListener("keydown", (e) => dispatchFlashKey(FlashKeyboardEvent.KEY_DOWN, e));
-document.addEventListener("keyup", (e) => dispatchFlashKey(FlashKeyboardEvent.KEY_UP, e));
+addDocumentEventListener("keydown", (e: KeyboardEvent) => dispatchFlashKey(FlashKeyboardEvent.KEY_DOWN, e));
+addDocumentEventListener("keyup", (e: KeyboardEvent) => dispatchFlashKey(FlashKeyboardEvent.KEY_UP, e));

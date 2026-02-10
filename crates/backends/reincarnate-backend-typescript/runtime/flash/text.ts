@@ -5,6 +5,7 @@
 
 import { Rectangle } from "./geom";
 import { InteractiveObject } from "./display";
+import { createMeasureContext } from "./platform";
 
 // ---------------------------------------------------------------------------
 // Shared off-screen canvas for text measurement
@@ -14,8 +15,7 @@ let _measureCtx: CanvasRenderingContext2D | null = null;
 
 function getMeasureCtx(): CanvasRenderingContext2D {
   if (!_measureCtx) {
-    const c = document.createElement("canvas");
-    _measureCtx = c.getContext("2d")!;
+    _measureCtx = createMeasureContext();
   }
   return _measureCtx;
 }

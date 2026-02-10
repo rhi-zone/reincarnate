@@ -30,6 +30,10 @@ const FLASH_DEFLATE_TS: &str = include_str!("../runtime/flash/deflate.ts");
 const FLASH_UTILS_TS: &str = include_str!("../runtime/flash/utils.ts");
 const FLASH_RUNTIME_TS: &str = include_str!("../runtime/flash/runtime.ts");
 
+// Platform abstraction layer.
+const FLASH_PLATFORM_INDEX_TS: &str = include_str!("../runtime/flash/platform/index.ts");
+const FLASH_PLATFORM_BROWSER_TS: &str = include_str!("../runtime/flash/platform/browser.ts");
+
 /// All known generic system names that the runtime provides.
 pub const SYSTEM_NAMES: &[&str] = &["renderer", "audio", "input", "timing", "save", "ui"];
 
@@ -66,6 +70,12 @@ pub fn emit_runtime(output_dir: &Path) -> Result<(), CoreError> {
     fs::write(flash_dir.join("deflate.ts"), FLASH_DEFLATE_TS)?;
     fs::write(flash_dir.join("utils.ts"), FLASH_UTILS_TS)?;
     fs::write(flash_dir.join("runtime.ts"), FLASH_RUNTIME_TS)?;
+
+    // Platform abstraction layer.
+    let platform_dir = flash_dir.join("platform");
+    fs::create_dir_all(&platform_dir)?;
+    fs::write(platform_dir.join("index.ts"), FLASH_PLATFORM_INDEX_TS)?;
+    fs::write(platform_dir.join("browser.ts"), FLASH_PLATFORM_BROWSER_TS)?;
 
     Ok(())
 }

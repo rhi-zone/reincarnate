@@ -5,6 +5,7 @@
 
 import { Point, Rectangle, Matrix, Transform, _getConcatenatedMatrix } from "./geom";
 import { EventDispatcher, Event, ProgressEvent, IOErrorEvent } from "./events";
+import { fetchResource, hasFetch, loadImageBitmap } from "./platform";
 
 // ---------------------------------------------------------------------------
 // Graphics
@@ -696,9 +697,8 @@ export class Loader extends DisplayObjectContainer {
     this.contentLoaderInfo.url = url;
     this._abortController = new AbortController();
     const signal = this._abortController.signal;
-    if (typeof globalThis.fetch === "function") {
-      globalThis
-        .fetch(url, { signal })
+    if (hasFetch()) {
+      fetchResource(url, { signal })
         .then((res) => {
           this.contentLoaderInfo.bytesTotal = Number(
             res.headers.get("content-length") ?? 0,
@@ -729,7 +729,7 @@ export class Loader extends DisplayObjectContainer {
       ? (bytes._buffer as ArrayBuffer).slice(0, bytes.length ?? bytes._length ?? 0)
       : bytes;
     const blob = new Blob([data]);
-    createImageBitmap(blob)
+    loadImageBitmap(blob)
       .then((bmp) => {
         const sprite = new Sprite();
         (sprite as any)._bitmap = bmp;

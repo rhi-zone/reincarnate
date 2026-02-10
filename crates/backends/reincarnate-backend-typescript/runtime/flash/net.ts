@@ -4,6 +4,14 @@
  */
 
 import { EventDispatcher, Event, IOErrorEvent, ProgressEvent, SecurityErrorEvent } from "./events";
+import {
+  fetchResource,
+  hasFetch,
+  loadLocal,
+  saveLocal,
+  removeLocal,
+  triggerDownload,
+} from "./platform";
 
 // ---------------------------------------------------------------------------
 // URLRequest
@@ -51,9 +59,8 @@ export class URLLoader extends EventDispatcher {
 
   load(request: URLRequest): void {
     const url = request.url;
-    if (typeof globalThis.fetch !== "function") return;
-    globalThis
-      .fetch(url, { method: request.method })
+    if (!hasFetch()) return;
+    fetchResource(url, { method: request.method })
       .then((res) => {
         this.bytesTotal = Number(res.headers.get("content-length") ?? 0);
         if (this.dataFormat === URLLoaderDataFormat.BINARY) {
@@ -107,15 +114,10 @@ export class FileReference extends EventDispatcher {
   }
 
   save(data: any, defaultFileName?: string): void {
-    // Best-effort download via browser API.
+    // Best-effort download via platform API.
     try {
       const blob = new Blob([typeof data === "string" ? data : JSON.stringify(data)]);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = defaultFileName ?? "download";
-      a.click();
-      URL.revokeObjectURL(url);
+      triggerDownload(blob, defaultFileName ?? "download");
       this.dispatchEvent(new Event(Event.COMPLETE));
     } catch {
       this.dispatchEvent(
@@ -147,9 +149,7 @@ export class SharedObject {
   clear(): void {
     this._data = {};
     this.size = 0;
-    if (typeof localStorage !== "undefined") {
-      localStorage.removeItem(SHARED_OBJECT_PREFIX + this._name);
-    }
+    removeLocal(SHARED_OBJECT_PREFIX + this._name);
   }
 
   close(): void {}
@@ -157,9 +157,7 @@ export class SharedObject {
   flush(_minDiskSpace = 0): string {
     const json = JSON.stringify(this._data);
     this.size = json.length;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(SHARED_OBJECT_PREFIX + this._name, json);
-    }
+    saveLocal(SHARED_OBJECT_PREFIX + this._name, json);
     return "flushed";
   }
 
@@ -174,15 +172,13 @@ export class SharedObject {
   static getLocal(name: string, _localPath: string | null = null, _secure = false): SharedObject {
     const so = new SharedObject();
     so._name = name;
-    if (typeof localStorage !== "undefined") {
-      const stored = localStorage.getItem(SHARED_OBJECT_PREFIX + name);
-      if (stored) {
-        try {
-          so._data = JSON.parse(stored);
-          so.size = stored.length;
-        } catch {
-          so._data = {};
-        }
+    const stored = loadLocal(SHARED_OBJECT_PREFIX + name);
+    if (stored) {
+      try {
+        so._data = JSON.parse(stored);
+        so.size = stored.length;
+      } catch {
+        so._data = {};
       }
     }
     return so;
