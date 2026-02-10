@@ -52,6 +52,143 @@ Frontends parse engine-specific formats and emit untyped IR. Type inference reco
 
 RPG Maker MV/MZ is a special case: since the engine already runs in JavaScript, it may be more practical to compile event scripts and optimize the existing engine rather than full recompilation.
 
+## Library Replacement (HLE)
+
+Reincarnate works like a console recompiler: user logic is faithfully
+translated, but **original runtime libraries are detected and replaced** with
+native equivalents. This is the HLE (High-Level Emulation) approach — instead
+of emulating the original runtime instruction-by-instruction, we recognize
+API boundaries and swap in modern implementations.
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Original binary                    │
+│  ┌──────────────┐  ┌─────────────────────────────┐  │
+│  │  User logic   │  │  Runtime libraries           │  │
+│  │  (game code)  │  │  (flash.display, flash.text) │  │
+│  └──────┬───────┘  └──────────────┬──────────────┘  │
+│         │                         │                  │
+└─────────┼─────────────────────────┼──────────────────┘
+          │                         │
+          ▼                         ▼
+   Recompiled to IR          Detected at boundary,
+   → transforms              replaced with native
+   → codegen                 implementation
+          │                         │
+          ▼                         ▼
+   ┌──────────────┐  ┌─────────────────────────────┐
+   │  Translated   │  │  Replacement runtime         │
+   │  user code    │──│  (canvas renderer, DOM text,  │
+   │  (.ts / .rs)  │  │   Web Audio, etc.)           │
+   └──────────────┘  └─────────────────────────────┘
+```
+
+### Why this matters
+
+Every legacy runtime has a standard library: Flash has `flash.display`,
+`flash.events`, `flash.text`; Director has `Lingo` built-ins; VB6 has COM
+controls and the VB runtime. These libraries define the app's interaction
+with rendering, input, persistence, etc.
+
+The recompiler's job is two-fold:
+1. **Translate user logic** — faithful recompilation of the app's own code
+2. **Replace runtime libraries** — swap the original runtime with a modern
+   implementation that provides the same API surface
+
+This separation is what makes the output actually *run*. Translating
+`MovieClip.gotoAndStop(3)` to TypeScript is useless without a `MovieClip`
+class that does the right thing. The replacement runtime IS the optimization.
+
+### Library boundary detection
+
+The frontend is responsible for identifying library boundaries. For Flash,
+the `flash.*::` namespace cleanly separates stdlib from user code. The
+frontend marks these references in the IR so downstream passes know which
+calls cross the boundary.
+
+What the frontend produces:
+
+```
+IR instruction:   GetField "flash.text::TextFormatAlign"
+IR metadata:      external_lib = "flash.text", short_name = "TextFormatAlign"
+```
+
+The backend consumes the metadata to emit imports. It never parses namespace
+strings — that's the frontend's domain knowledge.
+
+### Replacement runtime as a swappable package
+
+Each frontend ships one or more **replacement runtime packages** — standalone
+libraries that implement the original runtime's API surface in the target
+language. These are separate from both the frontend and the backend:
+
+```
+reincarnate-frontend-flash/
+  runtime/                    ← Flash replacement runtime (TypeScript)
+    flash-display/
+    flash-events/
+    flash-text/
+    ...
+
+reincarnate-frontend-director/
+  runtime/                    ← Director replacement runtime
+    lingo-builtins/
+    ...
+```
+
+Key properties:
+- **Swappable** — You can have multiple implementations at different fidelity
+  levels: a minimal stub runtime for testing, a full-fidelity runtime for
+  production, an optimized native runtime that skips Flash semantics entirely
+- **Granular** — Replace `flash.display` with a Canvas2D implementation but
+  keep `flash.text` as a DOM-based implementation. Mix and match per package.
+- **Backend-agnostic** — The TypeScript replacement runtime is `.ts` files;
+  a Rust replacement runtime would be `.rs` files with the same API surface.
+  The backend copies/links whichever runtime matches its target language.
+
+### Optimization through replacement
+
+The biggest performance wins come from replacing library implementations, not
+from optimizing user code. Examples:
+
+| Original | Stub (correctness) | Optimized (native) |
+|----------|-------------------|-------------------|
+| `flash.display` (display list) | JS class hierarchy | Canvas2D direct draw, skip display list |
+| `flash.text.TextField` | DOM measurement | Pre-measured glyph atlas |
+| `flash.events` (bubbling) | Full capture/bubble | Flat listener dispatch |
+| `flash.net.SharedObject` | localStorage wrapper | IndexedDB with sync API |
+
+A project can start with stub implementations and progressively replace
+individual packages with optimized versions — same user code, better runtime.
+
+### Pipeline with library replacement
+
+```
+Source binary
+      │
+      ▼
+┌──────────┐
+│ Frontend  │ → IR + library boundary metadata
+└────┬─────┘
+     │
+     ▼
+┌──────────┐
+│ Transforms│ → optimized IR (user logic only; library calls untouched)
+└────┬─────┘
+     │
+     ▼
+┌──────────┐     ┌───────────────────┐
+│ Backend   │ ←── │ Replacement runtime │  (selected per frontend × target)
+└────┬─────┘     └───────────────────┘
+     │
+     ▼
+  Output (.ts/.rs) + runtime package
+```
+
+The backend's job: emit user code + wire up imports to the replacement
+runtime. The frontend's job: detect library boundaries and attach metadata.
+The runtime's job: make `MovieClip.gotoAndStop(3)` actually work.
+
 ## Codegen Backends
 
 ### Rust Source (primary)
