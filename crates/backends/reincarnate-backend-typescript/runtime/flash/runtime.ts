@@ -17,7 +17,7 @@ import {
   MouseEvent as FlashMouseEvent,
   KeyboardEvent as FlashKeyboardEvent,
 } from "./events";
-import { Point, Rectangle } from "./geom";
+import { Point, Rectangle, Matrix } from "./geom";
 
 // ---------------------------------------------------------------------------
 // Canvas + rendering context
@@ -109,6 +109,40 @@ function renderDisplayList(
 // Graphics command replay
 // ---------------------------------------------------------------------------
 
+function buildGradient(
+  c: CanvasRenderingContext2D,
+  type: string,
+  colors: number[],
+  alphas: number[],
+  ratios: number[],
+  matrix: Matrix | null,
+): CanvasGradient {
+  let grad: CanvasGradient;
+  if (type === "radial") {
+    // Flash radial gradient: centered circle mapped through matrix.
+    if (matrix) {
+      grad = c.createRadialGradient(matrix.tx, matrix.ty, 0, matrix.tx, matrix.ty,
+        Math.max(Math.abs(matrix.a), Math.abs(matrix.d)) * 819.2);
+    } else {
+      grad = c.createRadialGradient(0, 0, 0, 0, 0, 100);
+    }
+  } else {
+    // Linear gradient.
+    if (matrix) {
+      const hw = Math.abs(matrix.a) * 819.2;
+      grad = c.createLinearGradient(matrix.tx - hw, matrix.ty, matrix.tx + hw, matrix.ty);
+    } else {
+      grad = c.createLinearGradient(-100, 0, 100, 0);
+    }
+  }
+  for (let i = 0; i < colors.length; i++) {
+    const stop = (ratios[i] ?? 0) / 255;
+    const alpha = alphas[i] ?? 1;
+    grad.addColorStop(stop, colorToCSS(colors[i], alpha));
+  }
+  return grad;
+}
+
 function renderGraphics(gfx: Graphics, c: CanvasRenderingContext2D): void {
   const cmds = gfx._commands;
   if (cmds.length === 0) return;
@@ -122,6 +156,34 @@ function renderGraphics(gfx: Graphics, c: CanvasRenderingContext2D): void {
         if (fillActive) c.fill();
         c.beginPath();
         c.fillStyle = colorToCSS(cmd.args[0], cmd.args[1]);
+        fillActive = true;
+        break;
+      }
+      case "beginGradientFill": {
+        if (fillActive) c.fill();
+        c.beginPath();
+        const [gType, gColors, gAlphas, gRatios, gMatrix] = cmd.args;
+        c.fillStyle = buildGradient(c, gType, gColors, gAlphas, gRatios, gMatrix);
+        fillActive = true;
+        break;
+      }
+      case "beginBitmapFill": {
+        if (fillActive) c.fill();
+        c.beginPath();
+        const [bitmap, bMatrix, bRepeat, bSmooth] = cmd.args;
+        const source = bitmap as HTMLImageElement | HTMLCanvasElement | ImageBitmap;
+        if (source) {
+          const repeat = bRepeat !== false ? "repeat" : "no-repeat";
+          const pattern = c.createPattern(source, repeat);
+          if (pattern) {
+            if (bMatrix) {
+              const m = bMatrix as Matrix;
+              pattern.setTransform(new DOMMatrix([m.a, m.b, m.c, m.d, m.tx, m.ty]));
+            }
+            c.fillStyle = pattern;
+          }
+          c.imageSmoothingEnabled = bSmooth !== false;
+        }
         fillActive = true;
         break;
       }
@@ -144,6 +206,11 @@ function renderGraphics(gfx: Graphics, c: CanvasRenderingContext2D): void {
           c.strokeStyle = colorToCSS(color, alpha);
           strokeActive = true;
         }
+        break;
+      }
+      case "lineGradientStyle": {
+        const [lgType, lgColors, lgAlphas, lgRatios, lgMatrix] = cmd.args;
+        c.strokeStyle = buildGradient(c, lgType, lgColors, lgAlphas, lgRatios, lgMatrix);
         break;
       }
       case "moveTo": {
@@ -177,13 +244,69 @@ function renderGraphics(gfx: Graphics, c: CanvasRenderingContext2D): void {
         c.roundRect(rx, ry, rw, rh, [rew / 2, reh / 2]);
         break;
       }
-      case "beginBitmapFill":
-      case "beginGradientFill":
-      case "lineGradientStyle":
-      case "drawPath":
-      case "drawTriangles":
-        // TODO: implement advanced fill/stroke modes
+      case "drawPath": {
+        const [pathCmds, pathData, winding] = cmd.args as [number[], number[], string];
+        let di = 0;
+        c.beginPath();
+        for (const pcmd of pathCmds) {
+          switch (pcmd) {
+            case 1: // moveTo
+              c.moveTo(pathData[di++], pathData[di++]);
+              break;
+            case 2: // lineTo
+              c.lineTo(pathData[di++], pathData[di++]);
+              break;
+            case 3: // curveTo
+              c.quadraticCurveTo(pathData[di++], pathData[di++], pathData[di++], pathData[di++]);
+              break;
+            case 4: // wideMoveTo (extra 0,0 pair)
+              di += 2;
+              c.moveTo(pathData[di++], pathData[di++]);
+              break;
+            case 5: // wideLineTo (extra 0,0 pair)
+              di += 2;
+              c.lineTo(pathData[di++], pathData[di++]);
+              break;
+            case 6: // cubicCurveTo
+              c.bezierCurveTo(
+                pathData[di++], pathData[di++],
+                pathData[di++], pathData[di++],
+                pathData[di++], pathData[di++],
+              );
+              break;
+          }
+        }
+        if (fillActive) c.fill(winding === "nonZero" ? "nonzero" : "evenodd");
+        if (strokeActive) c.stroke();
         break;
+      }
+      case "drawTriangles": {
+        const [verts, indices, _uvtData, _culling] = cmd.args as [number[], number[] | null, any, any];
+        // Draw flat-color triangles (no UV texture mapping).
+        if (indices) {
+          for (let i = 0; i < indices.length; i += 3) {
+            const i0 = indices[i] * 2, i1 = indices[i + 1] * 2, i2 = indices[i + 2] * 2;
+            c.beginPath();
+            c.moveTo(verts[i0], verts[i0 + 1]);
+            c.lineTo(verts[i1], verts[i1 + 1]);
+            c.lineTo(verts[i2], verts[i2 + 1]);
+            c.closePath();
+            if (fillActive) c.fill();
+            if (strokeActive) c.stroke();
+          }
+        } else {
+          for (let i = 0; i < verts.length; i += 6) {
+            c.beginPath();
+            c.moveTo(verts[i], verts[i + 1]);
+            c.lineTo(verts[i + 2], verts[i + 3]);
+            c.lineTo(verts[i + 4], verts[i + 5]);
+            c.closePath();
+            if (fillActive) c.fill();
+            if (strokeActive) c.stroke();
+          }
+        }
+        break;
+      }
     }
   }
 
