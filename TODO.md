@@ -403,26 +403,23 @@ need a `Stmt::Throw` or `Expr::Delete`/`Expr::TypeOf`/`Expr::In`.
 - [x] **`Flash_Iterator.hasNext2` / `nextValue` / `nextName`** (was ~56 loops) →
   `for (const x of Object.values/keys(...))`. Done via `rewrite_foreach_loops`
   AST pass. Two non-loop one-shot checks remain (correct).
-- [ ] **`Flash_Exception.throw(x)`** (21) → `throw x;`. The runtime is literally
-  `throw value`. Needs `Stmt::Throw(Expr)` or inline in backend printer.
-- [ ] **`Flash_Scope.newActivation()`** (52) → `{}`. The runtime returns a plain
-  empty object. Replace with `Expr::StructInit { name: "", fields: [] }` or
-  an object literal `{}` in the backend.
-- [ ] **`Flash_Object.typeOf(x)`** (4) → `typeof x`. AVM2 typeOf matches JS
-  typeof for `"function"`, `"number"`, `"boolean"`, `"string"` — all cases
-  used here. Add `Expr::TypeOf(Box<Expr>)` or lower to `Expr::Unary`.
-- [ ] **`Flash_Object.hasProperty(obj, k)`** (14) → `k in obj`. The runtime is
-  `name in Object(obj)` with null guard, but callers already null-guard.
-  Could use `Expr::Binary { op: BinOp::In, ... }` or a new `Expr::In`.
-- [ ] **`Flash_Object.deleteProperty(obj, k)`** (14) → `delete obj[k]`. The
-  runtime wraps `delete` in try/catch. Add `Expr::Delete(Box<Expr>)` or
-  `Stmt::Expr(Expr::Unary { op: UnaryOp::Delete, ... })`.
+- [x] **`Flash_Exception.throw(x)`** (21) → `throw x;`. Inlined in backend
+  printer's `Stmt::Expr` handler.
+- [x] **`Flash_Scope.newActivation()`** (52) → `({})`. Inlined in backend
+  printer as parenthesized empty object (parens needed when const-folded
+  into field access targets like `({}).slot1`).
+- [x] **`Flash_Object.typeOf(x)`** (4) → `typeof x`. Inlined in backend
+  printer's `print_system_call`.
+- [x] **`Flash_Object.hasProperty(obj, k)`** (14) → `k in obj`. Inlined in
+  backend printer's `print_system_call`.
+- [x] **`Flash_Object.deleteProperty(obj, k)`** (14) → `delete obj[k]`.
+  Inlined in backend printer's `print_system_call`.
 
 #### Tier 2 — Simple expression rewrites
 
-- [ ] **`Flash_Object.newObject(k1, v1, k2, v2, ...)`** (58) → `{ k1: v1, k2: v2 }`.
-  Pairs of string-key + value arguments. Emit as `Expr::StructInit`. Needs
-  IR-level or AST-level transform to parse the flat arg list into pairs.
+- [x] **`Flash_Object.newObject(k1, v1, k2, v2, ...)`** (58) → `{ k1: v1, k2: v2 }`.
+  Inlined in backend printer — pairs of string-key + value arguments emitted
+  as object literal.
 - [ ] **`Flash_Object.newFunction("name")`** (318) → closure reference. These
   are AVM2 `NewFunction` ops creating closures from method bodies. The
   runtime stub is a no-op function — the real fix is resolving these to
@@ -434,14 +431,13 @@ need a `Stmt::Throw` or `Expr::Delete`/`Expr::TypeOf`/`Expr::In`.
 
 These need the backend to emit `super.x` syntax instead of function calls.
 
-- [ ] **`Flash_Class.callSuper(this, "method", ...args)`** (94) →
-  `super.method(...args)`. Needs the backend printer to detect this
-  SystemCall pattern and emit `super.method()` syntax directly, similar to
-  how `constructSuper` → `super()` is already handled.
-- [ ] **`Flash_Class.getSuper(this, "prop")`** (30) → `super.prop`. Super
-  property read. Same backend pattern.
-- [ ] **`Flash_Class.setSuper(this, "prop", value)`** (21) → `super.prop = value`.
-  Super property write.
+- [x] **`Flash_Class.callSuper(this, "method", ...args)`** (94) →
+  `super.method(...args)`. Inlined in backend printer's `print_system_call`.
+- [x] **`Flash_Class.getSuper(this, "prop")`** (30) → `super.prop`. Inlined
+  in backend printer's `print_system_call`.
+- [x] **`Flash_Class.setSuper(this, "prop", value)`** (21) → `super.prop = value`.
+  Inlined in both `print_system_call` (expression) and `print_stmt`
+  (statement context for clean `super.prop = value;` without parens).
 
 #### Tier 4 — Keep as runtime
 
