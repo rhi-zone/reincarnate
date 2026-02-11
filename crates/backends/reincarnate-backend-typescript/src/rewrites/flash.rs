@@ -556,6 +556,12 @@ fn rewrite_system_call(
         }
     }
 
+    // applyType(base, ...typeArgs) → Array
+    // Vector is the only parameterized type in AS3; generics are erased in TS.
+    if system == "Flash.Object" && method == "applyType" {
+        return Some(JsExpr::Var("Array".to_string()));
+    }
+
     // construct → new Ctor(args)
     if system == "Flash.Object" && method == "construct" && !args.is_empty() {
         let callee = rewrite_expr(args[0].clone(), ctx);

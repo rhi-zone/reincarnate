@@ -467,7 +467,15 @@ fn print_expr(expr: &JsExpr) -> String {
         // --- JS-specific constructs ---
         JsExpr::New { callee, args } => {
             let args_str: Vec<_> = args.iter().map(print_expr).collect();
-            format!("new {}({})", print_expr(callee), args_str.join(", "))
+            // Parenthesize call-expression callees: `new (f(a,b))()` not `new f(a,b)()`
+            // because `new f(a,b)()` parses as `(new f(a,b))()` in JS.
+            let callee_str = match callee.as_ref() {
+                JsExpr::Call { .. } | JsExpr::SystemCall { .. } => {
+                    format!("({})", print_expr(callee))
+                }
+                _ => print_expr(callee),
+            };
+            format!("new {}({})", callee_str, args_str.join(", "))
         }
 
         JsExpr::TypeOf(inner) => {
