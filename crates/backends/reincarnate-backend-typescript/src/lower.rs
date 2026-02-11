@@ -137,7 +137,7 @@ fn lower_stmt(stmt: &Stmt, ctx: &LowerCtx) -> JsStmt {
 // ---------------------------------------------------------------------------
 
 /// Lower a single expression from core AST to JS AST.
-pub fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
+fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
     match expr {
         Expr::Literal(c) => JsExpr::Literal(c.clone()),
 
@@ -250,7 +250,7 @@ pub fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
 }
 
 /// Lower a slice of expressions.
-pub fn lower_exprs(exprs: &[Expr], ctx: &LowerCtx) -> Vec<JsExpr> {
+fn lower_exprs(exprs: &[Expr], ctx: &LowerCtx) -> Vec<JsExpr> {
     exprs.iter().map(|e| lower_expr(e, ctx)).collect()
 }
 

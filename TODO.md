@@ -394,10 +394,11 @@ structural problems:
 - [x] **Backend-local JS AST + scoped rewrites** — Done. `JsStmt`/`JsExpr`
   types in `js_ast.rs` with JS-specific variants (Throw, New, TypeOf, In,
   Delete, SuperCall, SuperMethodCall, SuperGet, SuperSet, Activation, This).
-  Lowering pass in `lower.rs` converts core `Vec<Stmt>` → `Vec<JsStmt>`,
-  applying Flash rewrites during the walk. Flash-specific rewrites in
-  `rewrites/flash.rs` (FlashLowerCtx, scope resolution, SystemCall → JS
-  construct mapping). Printer in `ast_printer.rs` handles `JsStmt`/`JsExpr`
+  Mechanical lowering pass in `lower.rs` converts core `Vec<Stmt>` →
+  `Vec<JsStmt>` with SystemCalls passed through as-is. Flash-specific
+  rewrites in `rewrites/flash.rs` (FlashRewriteCtx, scope resolution,
+  SystemCall → JS construct mapping) run as a post-lowering `JsExpr → JsExpr`
+  tree walk. Printer in `ast_printer.rs` handles `JsStmt`/`JsExpr`
   faithfully with zero engine knowledge. Object literal keys now unquoted
   for valid JS identifiers; `in` expressions correctly parenthesized.
 
