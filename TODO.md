@@ -517,26 +517,14 @@ risks that need careful analysis.
 
 - [ ] **Redundant type casts** — Eliminate `as number` etc. when the expression
   already has the target type. Pure type-level, no runtime effect.
-- [ ] **Separate AsType from Coerce/Convert in IR** — The frontend maps both
-  AVM2 `AsType` (AS3 `as` operator: type-check-or-null) and `Coerce`/`Convert`
-  opcodes (actual runtime coercion: string→number, etc.) to the same IR
-  `Op::Cast`. These have completely different runtime semantics:
-  - **AsType** (`x as Foo`): returns x if `x is Foo`, null otherwise. For
-    classes/interfaces this now correctly emits `asType(x, Foo)`. For primitives
-    it still emits a TS type assertion (`x as number`), which is a no-op — the
-    null-on-failure semantics are lost.
-  - **Coerce/Convert** (`CoerceI`, `CoerceD`, `ConvertS`, etc.): actual runtime
-    coercion. Should emit `Number(x)`, `int(x)`, `String(x)`, `Boolean(x)`.
-    Currently emits `x as number` (TS assertion, no-op at runtime), silently
-    dropping the coercion when source and target types differ.
-  Fix: either add a flag to `Op::Cast` distinguishing the two semantics, or
-  introduce a separate `Op::Coerce` IR op. Then the backend can emit `asType()`
-  for AsType and coercion calls for Coerce/Convert.
-- [ ] **Demote `asType()` to compile-time `as T`** — When type inference can
-  prove a value is always the target type, the runtime `asType(x, Foo)` call
-  is unnecessary overhead. Replace with a TS type assertion (`x as Foo`) in
-  those cases. Requires the inference pass to propagate through Cast ops and
-  compare the inferred type against the cast target.
+- [x] **Separate AsType from Coerce/Convert in IR** — `Op::Cast` now carries
+  `CastKind` (AsType | Coerce). Coerce emits `Number()`, `int()`, `uint()`,
+  `String()`, `Boolean()`. AsType+Struct emits `asType()`. Redundant casts
+  eliminated by `red_cast_elim` + `linear.rs` same-type check.
+- [x] **Demote `asType()` to compile-time `as T`** — Already handled:
+  `red_cast_elim` converts `Cast(v, ty, _)` → `Copy(v)` when value type matches,
+  and `linear.rs` drops Cast entirely when types match. No `asType()` emitted
+  for same-type casts.
 - [ ] **Constant `rand(n)` where n <= 1** — `rand(1)` always returns 0 (integer
   range `[0, n)`). Could fold to literal 0. Only 1 known instance
   (PhoukaScene).
