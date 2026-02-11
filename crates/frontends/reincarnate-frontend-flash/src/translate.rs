@@ -889,44 +889,44 @@ fn translate_op(
         }
         Op::CoerceB | Op::ConvertB => {
             if let Some(a) = stack.pop() {
-                let v = fb.cast(a, Type::Bool);
+                let v = fb.coerce(a, Type::Bool);
                 stack.push(v);
             }
         }
         Op::CoerceD | Op::ConvertD => {
             if let Some(a) = stack.pop() {
-                let v = fb.cast(a, Type::Float(64));
+                let v = fb.coerce(a, Type::Float(64));
                 stack.push(v);
             }
         }
         Op::CoerceI | Op::ConvertI => {
             if let Some(a) = stack.pop() {
-                let v = fb.cast(a, Type::Int(32));
+                let v = fb.coerce(a, Type::Int(32));
                 stack.push(v);
             }
         }
         Op::CoerceU | Op::ConvertU => {
             if let Some(a) = stack.pop() {
-                let v = fb.cast(a, Type::UInt(32));
+                let v = fb.coerce(a, Type::UInt(32));
                 stack.push(v);
             }
         }
         Op::CoerceS | Op::ConvertS => {
             if let Some(a) = stack.pop() {
-                let v = fb.cast(a, Type::String);
+                let v = fb.coerce(a, Type::String);
                 stack.push(v);
             }
         }
         Op::CoerceO | Op::ConvertO => {
             if let Some(a) = stack.pop() {
-                let v = fb.cast(a, Type::Dynamic);
+                let v = fb.coerce(a, Type::Dynamic);
                 stack.push(v);
             }
         }
         Op::Coerce { index } => {
             if let Some(a) = stack.pop() {
                 let ty = resolve_type(pool, index);
-                let v = fb.cast(a, ty);
+                let v = fb.coerce(a, ty);
                 stack.push(v);
             }
         }
