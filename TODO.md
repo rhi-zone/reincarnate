@@ -517,6 +517,13 @@ risks that need careful analysis.
 
 - [ ] **Redundant type casts** — Eliminate `as number` etc. when the expression
   already has the target type. Pure type-level, no runtime effect.
+- [ ] **Primitive coercion opcodes** — AVM2 `CoerceI`/`CoerceD`/`ConvertI`/
+  `ConvertD` etc. are runtime coercions (e.g. string→number), but the frontend
+  emits `Cast` which becomes `x as number` (a TS type assertion, no-op at
+  runtime). When the source type differs from the target, this silently drops
+  the coercion. Fix: emit `Number(x)`, `int(x)`, `String(x)` for cross-type
+  coerce/convert opcodes instead of Cast. Most in-practice casts are same-type
+  (eliminated by redundant cast pass) but cross-type cases are incorrect.
 - [ ] **Demote `asType()` to compile-time `as T`** — When type inference can
   prove a value is always the target type, the runtime `asType(x, Foo)` call
   is unnecessary overhead. Replace with a TS type assertion (`x as Foo`) in
