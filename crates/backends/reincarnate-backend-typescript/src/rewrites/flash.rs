@@ -199,16 +199,157 @@ pub fn rewrite_flash_function(mut func: JsFunction, ctx: &FlashRewriteCtx) -> Js
     func
 }
 
-/// Move the first `super()` call to position 0 in a constructor body.
+/// Move the first `super()` call as early as possible in a constructor body,
+/// without hoisting it above statements that define variables it depends on.
 pub fn hoist_super_call(body: &mut Vec<JsStmt>) {
     let pos = body
         .iter()
         .position(|s| matches!(s, JsStmt::Expr(JsExpr::SuperCall(_))));
-    if let Some(i) = pos {
-        if i > 0 {
-            let stmt = body.remove(i);
-            body.insert(0, stmt);
+    let Some(i) = pos else { return };
+    if i == 0 {
+        return;
+    }
+    // Collect all variable names referenced by the super call's arguments.
+    let mut needed = HashSet::new();
+    if let JsStmt::Expr(JsExpr::SuperCall(args)) = &body[i] {
+        for arg in args {
+            collect_expr_vars(arg, &mut needed);
         }
+    }
+    // Find the latest statement before `i` that writes to any needed variable.
+    let target = if needed.is_empty() {
+        0
+    } else {
+        let mut last_dep: Option<usize> = None;
+        for (j, s) in body.iter().enumerate().take(i) {
+            if stmt_writes_any(s, &needed) {
+                last_dep = Some(j);
+            }
+        }
+        match last_dep {
+            Some(j) => j + 1,
+            None => 0,
+        }
+    };
+    if target < i {
+        let stmt = body.remove(i);
+        body.insert(target, stmt);
+    }
+}
+
+/// Collect all `Var` name references in a JS expression.
+fn collect_expr_vars(expr: &JsExpr, out: &mut HashSet<String>) {
+    match expr {
+        JsExpr::Var(name) => {
+            out.insert(name.clone());
+        }
+        JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => {}
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs }
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
+        }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        } => {
+            collect_expr_vars(lhs, out);
+            collect_expr_vars(rhs, out);
+        }
+        JsExpr::Unary { expr: e, .. }
+        | JsExpr::Cast { expr: e, .. }
+        | JsExpr::TypeCheck { expr: e, .. }
+        | JsExpr::Not(e)
+        | JsExpr::PostIncrement(e)
+        | JsExpr::TypeOf(e)
+        | JsExpr::GeneratorResume(e) => collect_expr_vars(e, out),
+        JsExpr::Field { object, .. } => collect_expr_vars(object, out),
+        JsExpr::Index { collection, index } => {
+            collect_expr_vars(collection, out);
+            collect_expr_vars(index, out);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            collect_expr_vars(callee, out);
+            for a in args {
+                collect_expr_vars(a, out);
+            }
+        }
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            collect_expr_vars(cond, out);
+            collect_expr_vars(then_val, out);
+            collect_expr_vars(else_val, out);
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) | JsExpr::SuperCall(elems) => {
+            for e in elems {
+                collect_expr_vars(e, out);
+            }
+        }
+        JsExpr::ObjectInit(pairs) => {
+            for (_, e) in pairs {
+                collect_expr_vars(e, out);
+            }
+        }
+        JsExpr::SuperMethodCall { args, .. }
+        | JsExpr::GeneratorCreate { args, .. }
+        | JsExpr::SystemCall { args, .. } => {
+            for a in args {
+                collect_expr_vars(a, out);
+            }
+        }
+        JsExpr::SuperSet { value, .. } => collect_expr_vars(value, out),
+        JsExpr::Yield(opt) => {
+            if let Some(e) = opt {
+                collect_expr_vars(e, out);
+            }
+        }
+    }
+}
+
+/// Check whether a statement declares or assigns any variable in `vars`.
+/// Recurses into nested bodies (if/else, loops) to find assignments.
+fn stmt_writes_any(stmt: &JsStmt, vars: &HashSet<String>) -> bool {
+    match stmt {
+        JsStmt::VarDecl { name, .. } => vars.contains(name.as_str()),
+        JsStmt::Assign {
+            target: JsExpr::Var(name),
+            ..
+        }
+        | JsStmt::CompoundAssign {
+            target: JsExpr::Var(name),
+            ..
+        } => vars.contains(name.as_str()),
+        JsStmt::If {
+            then_body,
+            else_body,
+            ..
+        } => {
+            then_body.iter().any(|s| stmt_writes_any(s, vars))
+                || else_body.iter().any(|s| stmt_writes_any(s, vars))
+        }
+        JsStmt::While { body, .. }
+        | JsStmt::Loop { body }
+        | JsStmt::ForOf { body, .. } => body.iter().any(|s| stmt_writes_any(s, vars)),
+        JsStmt::For {
+            init,
+            body,
+            update,
+            ..
+        } => {
+            init.iter().any(|s| stmt_writes_any(s, vars))
+                || body.iter().any(|s| stmt_writes_any(s, vars))
+                || update.iter().any(|s| stmt_writes_any(s, vars))
+        }
+        JsStmt::Dispatch { blocks, .. } => blocks
+            .iter()
+            .any(|(_, stmts)| stmts.iter().any(|s| stmt_writes_any(s, vars))),
+        _ => false,
     }
 }
 
