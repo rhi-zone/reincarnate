@@ -3546,4 +3546,143 @@ mod tests {
         );
     }
 
+    #[test]
+    fn coerce_int_emits_int_call() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Int(32), ..Default::default() };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let coerced = fb.coerce(x, Type::Int(32));
+            fb.ret(Some(coerced));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("int(v0)"),
+            "Coerce+Int(32) should emit int():\n{out}"
+        );
+    }
+
+    #[test]
+    fn coerce_float_emits_number_call() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Float(64), ..Default::default() };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let coerced = fb.coerce(x, Type::Float(64));
+            fb.ret(Some(coerced));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("Number(v0)"),
+            "Coerce+Float(64) should emit Number():\n{out}"
+        );
+    }
+
+    #[test]
+    fn coerce_uint_emits_uint_call() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::UInt(32), ..Default::default() };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let coerced = fb.coerce(x, Type::UInt(32));
+            fb.ret(Some(coerced));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("uint(v0)"),
+            "Coerce+UInt(32) should emit uint():\n{out}"
+        );
+    }
+
+    #[test]
+    fn coerce_string_emits_string_call() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::String, ..Default::default() };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let coerced = fb.coerce(x, Type::String);
+            fb.ret(Some(coerced));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("String(v0)"),
+            "Coerce+String should emit String():\n{out}"
+        );
+    }
+
+    #[test]
+    fn coerce_bool_emits_boolean_call() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Bool, ..Default::default() };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let coerced = fb.coerce(x, Type::Bool);
+            fb.ret(Some(coerced));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("Boolean(v0)"),
+            "Coerce+Bool should emit Boolean():\n{out}"
+        );
+    }
+
+    #[test]
+    fn coerce_struct_emits_ts_assertion() {
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Dynamic],
+                return_ty: Type::Struct("Monster".into()), ..Default::default() };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            let coerced = fb.coerce(x, Type::Struct("Monster".into()));
+            fb.ret(Some(coerced));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            out.contains("as Monster"),
+            "Coerce+Struct should emit TS assertion:\n{out}"
+        );
+        assert!(
+            !out.contains("asType"),
+            "Coerce+Struct should NOT use asType():\n{out}"
+        );
+    }
+
+    #[test]
+    fn redundant_astype_eliminated() {
+        // When value is already typed as the target, Cast should be eliminated.
+        let out = build_and_emit(|mb| {
+            let sig = FunctionSig {
+                params: vec![Type::Struct("Monster".into())],
+                return_ty: Type::Struct("Monster".into()), ..Default::default() };
+            let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+            let x = fb.param(0);
+            // Cast to same type — should be eliminated by linear lowering.
+            let casted = fb.cast(x, Type::Struct("Monster".into()));
+            fb.ret(Some(casted));
+            mb.add_function(fb.build());
+        });
+
+        assert!(
+            !out.contains("asType"),
+            "Redundant asType should be eliminated:\n{out}"
+        );
+    }
+
 }
