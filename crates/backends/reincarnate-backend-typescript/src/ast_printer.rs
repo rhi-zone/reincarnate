@@ -631,7 +631,7 @@ pub fn is_valid_js_ident(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
 }
 
-fn emit_constant(c: &Constant) -> String {
+pub(crate) fn emit_constant(c: &Constant) -> String {
     match c {
         Constant::Null => "null".into(),
         Constant::Bool(b) => b.to_string(),

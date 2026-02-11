@@ -35,6 +35,10 @@ pub struct FlashRewriteCtx {
     pub static_fields: HashSet<String>,
     /// Static method short name → owning class short name (across hierarchy).
     pub static_method_owners: HashMap<String, String>,
+    /// Instance Const fields promoted to static readonly — `this.FIELD` → `ClassName.FIELD`.
+    pub const_instance_fields: HashSet<String>,
+    /// Short name of the current class (for `this.CONST` → `ClassName.CONST` rewrites).
+    pub class_short_name: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -595,10 +599,21 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             rhs: Box::new(rewrite_expr(*rhs, ctx)),
         },
 
-        JsExpr::Field { object, field } => JsExpr::Field {
-            object: Box::new(rewrite_expr(*object, ctx)),
-            field,
-        },
+        JsExpr::Field { object, field } => {
+            let object = Box::new(rewrite_expr(*object, ctx));
+            // Rewrite this.CONST → ClassName.CONST for promoted instance Const fields.
+            if matches!(*object, JsExpr::This) {
+                if let Some(ref class_name) = ctx.class_short_name {
+                    if ctx.const_instance_fields.contains(&field) {
+                        return JsExpr::Field {
+                            object: Box::new(JsExpr::Var(class_name.clone())),
+                            field,
+                        };
+                    }
+                }
+            }
+            JsExpr::Field { object, field }
+        }
 
         JsExpr::Index { collection, index } => JsExpr::Index {
             collection: Box::new(rewrite_expr(*collection, ctx)),

@@ -1035,6 +1035,8 @@ fn emit_function(
         is_cinit: false,
         static_fields: HashSet::new(),
         static_method_owners: HashMap::new(),
+        const_instance_fields: HashSet::new(),
+        class_short_name: None,
     };
     let js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     crate::ast_printer::print_function(&js_func, out);
@@ -1122,8 +1124,14 @@ fn emit_register_class_traits(
         ));
     }
 
-    // Collect static traits and more instance traits from methods
+    // Collect static traits: fields from class_def + static methods
     let mut static_traits = Vec::new();
+    for (name, ty, _) in &group.class_def.static_fields {
+        let type_name = as3_type_name(ty);
+        static_traits.push(format!(
+            "{{ name: \"{name}\", kind: \"variable\", type: \"{type_name}\" }}"
+        ));
+    }
     // Track getter/setter pairs to coalesce into accessors
     let mut instance_accessors: BTreeMap<String, (bool, bool)> = BTreeMap::new();
     for &fid in &group.methods {
@@ -1210,11 +1218,29 @@ fn emit_class(
     let qualified = qualified_class_name(&group.class_def);
     let _ = writeln!(out, "  static [QN_KEY] = \"{qualified}\";");
 
-    // Fields from struct def.
-    for (name, ty, _default) in &group.struct_def.fields {
-        let _ = writeln!(out, "  {}: {};", sanitize_ident(name), ts_type(ty));
+    // Static fields from ClassDef (class-level Slot/Const + promoted instance Consts).
+    for (name, ty, default) in &group.class_def.static_fields {
+        let ident = sanitize_ident(name);
+        let ts = ts_type(ty);
+        if let Some(val) = default {
+            let _ = writeln!(out, "  static readonly {ident}: {ts} = {};", crate::ast_printer::emit_constant(val));
+        } else {
+            let _ = writeln!(out, "  static {ident}: {ts};");
+        }
     }
-    if !group.struct_def.fields.is_empty() && !group.methods.is_empty() {
+
+    // Instance fields from struct def.
+    for (name, ty, default) in &group.struct_def.fields {
+        let ident = sanitize_ident(name);
+        let ts = ts_type(ty);
+        if let Some(val) = default {
+            let _ = writeln!(out, "  {ident}: {ts} = {};", crate::ast_printer::emit_constant(val));
+        } else {
+            let _ = writeln!(out, "  {ident}: {ts};");
+        }
+    }
+    let has_fields = !group.struct_def.fields.is_empty() || !group.class_def.static_fields.is_empty();
+    if has_fields && !group.methods.is_empty() {
         out.push('\n');
     }
 
@@ -1238,13 +1264,18 @@ fn emit_class(
     let static_fields: HashSet<String> = group.class_def.static_fields.iter()
         .map(|(name, _, _)| name.clone())
         .collect();
+    // Const instance fields promoted to static — entries with a value.
+    let const_instance_fields: HashSet<String> = group.class_def.static_fields.iter()
+        .filter(|(_, _, val)| val.is_some())
+        .map(|(name, _, _)| name.clone())
+        .collect();
 
     let suppress_super = extends.is_empty();
     for (i, &fid) in sorted_methods.iter().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, suppress_super, lowering_config, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, suppress_super, &const_instance_fields, &class_name, lowering_config, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -1263,6 +1294,8 @@ fn emit_class_method(
     static_fields: &HashSet<String>,
     static_method_owners: &HashMap<String, String>,
     suppress_super: bool,
+    const_instance_fields: &HashSet<String>,
+    class_short_name: &str,
     lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -1310,6 +1343,8 @@ fn emit_class_method(
         is_cinit,
         static_fields: static_fields.clone(),
         static_method_owners: static_method_owners.clone(),
+        const_instance_fields: const_instance_fields.clone(),
+        class_short_name: Some(class_short_name.to_string()),
     };
     let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     // Hoist super() to top of constructor body (after rewrite produces SuperCall nodes).
