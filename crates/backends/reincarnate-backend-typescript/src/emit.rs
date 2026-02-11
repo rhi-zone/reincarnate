@@ -696,6 +696,18 @@ fn collect_class_references(
         }
     }
 
+    // Interface references — runtime value (registerInterface needs constructors).
+    for iface in &group.class_def.interfaces {
+        let short = iface.rsplit("::").next().unwrap_or(iface);
+        if short != self_name {
+            if let Some(entry) = registry.lookup(iface) {
+                refs.value_refs.insert(entry.short_name.clone());
+            } else if external_imports.contains_key(iface.as_str()) {
+                refs.ext_value_refs.insert(iface.to_string());
+            }
+        }
+    }
+
     // Struct fields (class instance fields) — type-only.
     for (_name, ty, _) in &group.struct_def.fields {
         collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
@@ -748,9 +760,17 @@ fn collect_type_refs_from_function(
             Op::TypeCheck(_, ty) => {
                 collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
             }
-            // Alloc and Cast are type assertions only — type-only.
-            Op::Alloc(ty) | Op::Cast(_, ty) => {
+            // Alloc is type-only. Cast with Struct/Enum emits asType() — runtime value ref.
+            Op::Alloc(ty) => {
                 collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+            }
+            Op::Cast(_, ty) => {
+                let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
+                if is_struct_or_enum {
+                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
+                } else {
+                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+                }
             }
             // GetField with a class name → runtime value reference (used with `new`).
             Op::GetField { field, .. } => {
@@ -1284,7 +1304,8 @@ fn emit_class(
         None => String::new(),
     };
 
-    let _ = writeln!(out, "{vis}class {class_name}{extends} {{");
+    let abstract_kw = if group.class_def.is_interface { "abstract " } else { "" };
+    let _ = writeln!(out, "{vis}{abstract_kw}class {class_name}{extends} {{");
     let qualified = qualified_class_name(&group.class_def);
     let _ = writeln!(out, "  static [QN_KEY] = \"{qualified}\";");
 
@@ -1315,7 +1336,16 @@ fn emit_class(
     }
 
     // Methods — sorted: constructor first, then instance, static, getters, setters.
-    let mut sorted_methods: Vec<FuncId> = group.methods.clone();
+    // For interfaces, skip the constructor (AS3 interfaces have no constructor bodies).
+    let mut sorted_methods: Vec<FuncId> = group.methods.iter()
+        .copied()
+        .filter(|&fid| {
+            if group.class_def.is_interface && module.functions[fid].method_kind == MethodKind::Constructor {
+                return false;
+            }
+            true
+        })
+        .collect();
     sorted_methods.sort_by_key(|&fid| match module.functions[fid].method_kind {
         MethodKind::Constructor => 0,
         MethodKind::Instance => 1,
@@ -1351,7 +1381,20 @@ fn emit_class(
 
     let _ = writeln!(out, "}}\n");
     let _ = writeln!(out, "registerClass({class_name});\n");
-    emit_register_class_traits(group, module, out);
+    // Skip registerClassTraits for interfaces (they have no runtime traits).
+    if !group.class_def.is_interface {
+        emit_register_class_traits(group, module, out);
+    }
+    // Emit registerInterface for implementing classes.
+    if !group.class_def.interfaces.is_empty() {
+        let iface_names: Vec<String> = group.class_def.interfaces.iter()
+            .map(|name| {
+                let short = name.rsplit("::").next().unwrap_or(name);
+                sanitize_ident(short)
+            })
+            .collect();
+        let _ = writeln!(out, "registerInterface({class_name}, {});\n", iface_names.join(", "));
+    }
     Ok(())
 }
 
