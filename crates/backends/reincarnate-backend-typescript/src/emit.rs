@@ -1349,7 +1349,10 @@ fn emit_class_method(
     let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     // Hoist super() to top of constructor body (after rewrite produces SuperCall nodes).
     if func.method_kind == MethodKind::Constructor {
-        crate::rewrites::flash::hoist_super_call(&mut js_func.body);
+        crate::rewrites::flash::hoist_super_call(
+            &mut js_func.body,
+            Some(class_short_name),
+        );
     }
     crate::ast_printer::print_class_method(&js_func, &raw_name, skip_self, out);
     Ok(())

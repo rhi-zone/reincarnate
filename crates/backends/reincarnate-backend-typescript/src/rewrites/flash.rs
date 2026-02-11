@@ -214,14 +214,15 @@ pub fn rewrite_flash_function(mut func: JsFunction, ctx: &FlashRewriteCtx) -> Js
 
 /// Move the first `super()` call as early as possible in a constructor body,
 /// without hoisting it above statements that define variables it depends on.
-pub fn hoist_super_call(body: &mut Vec<JsStmt>) {
+///
+/// When `class_name` is provided, also rewrites `this.field` references in
+/// `super()` arguments to `ClassName.prototype.field`, since ES6 forbids
+/// accessing `this` before `super()` in derived class constructors.
+pub fn hoist_super_call(body: &mut Vec<JsStmt>, class_name: Option<&str>) {
     let pos = body
         .iter()
         .position(|s| matches!(s, JsStmt::Expr(JsExpr::SuperCall(_))));
     let Some(i) = pos else { return };
-    if i == 0 {
-        return;
-    }
     // Collect all variable names referenced by the super call's arguments.
     let mut needed = HashSet::new();
     if let JsStmt::Expr(JsExpr::SuperCall(args)) = &body[i] {
@@ -247,6 +248,22 @@ pub fn hoist_super_call(body: &mut Vec<JsStmt>) {
     if target < i {
         let stmt = body.remove(i);
         body.insert(target, stmt);
+    }
+
+    // Rewrite `this.field` → `ClassName.prototype.field` in super() args.
+    // ES6 forbids `this` before `super()` in derived class constructors, but
+    // AVM2 allows it. Method references (the common case) live on the prototype.
+    if let Some(cn) = class_name {
+        let pos = body
+            .iter()
+            .position(|s| matches!(s, JsStmt::Expr(JsExpr::SuperCall(_))));
+        if let Some(idx) = pos {
+            if let JsStmt::Expr(JsExpr::SuperCall(args)) = &mut body[idx] {
+                for arg in args.iter_mut() {
+                    rewrite_this_to_prototype(arg, cn);
+                }
+            }
+        }
     }
 }
 
@@ -322,6 +339,92 @@ fn collect_expr_vars(expr: &JsExpr, out: &mut HashSet<String>) {
                 collect_expr_vars(e, out);
             }
         }
+    }
+}
+
+/// Replace `this.field` with `ClassName.prototype.field` inside a `super()` argument.
+/// AVM2 allows `this` before `super()`, but ES6 does not; method references live on
+/// the prototype and are accessible without `this`.
+fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
+    match expr {
+        JsExpr::Field { object, .. } if matches!(object.as_ref(), JsExpr::This) => {
+            *object = Box::new(JsExpr::Field {
+                object: Box::new(JsExpr::Var(class_name.to_string())),
+                field: "prototype".to_string(),
+            });
+        }
+        // Recurse into subexpressions.
+        JsExpr::Field { object, .. } => rewrite_this_to_prototype(object, class_name),
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs }
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
+        }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        } => {
+            rewrite_this_to_prototype(lhs, class_name);
+            rewrite_this_to_prototype(rhs, class_name);
+        }
+        JsExpr::Unary { expr: e, .. }
+        | JsExpr::Cast { expr: e, .. }
+        | JsExpr::TypeCheck { expr: e, .. }
+        | JsExpr::Not(e)
+        | JsExpr::PostIncrement(e)
+        | JsExpr::TypeOf(e)
+        | JsExpr::GeneratorResume(e) => rewrite_this_to_prototype(e, class_name),
+        JsExpr::Index { collection, index } => {
+            rewrite_this_to_prototype(collection, class_name);
+            rewrite_this_to_prototype(index, class_name);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            rewrite_this_to_prototype(callee, class_name);
+            for a in args {
+                rewrite_this_to_prototype(a, class_name);
+            }
+        }
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            rewrite_this_to_prototype(cond, class_name);
+            rewrite_this_to_prototype(then_val, class_name);
+            rewrite_this_to_prototype(else_val, class_name);
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) | JsExpr::SuperCall(elems) => {
+            for e in elems {
+                rewrite_this_to_prototype(e, class_name);
+            }
+        }
+        JsExpr::ObjectInit(pairs) => {
+            for (_, e) in pairs {
+                rewrite_this_to_prototype(e, class_name);
+            }
+        }
+        JsExpr::SuperMethodCall { args, .. }
+        | JsExpr::GeneratorCreate { args, .. }
+        | JsExpr::SystemCall { args, .. } => {
+            for a in args {
+                rewrite_this_to_prototype(a, class_name);
+            }
+        }
+        JsExpr::SuperSet { value, .. } => rewrite_this_to_prototype(value, class_name),
+        JsExpr::Yield(opt) => {
+            if let Some(e) = opt {
+                rewrite_this_to_prototype(e, class_name);
+            }
+        }
+        // Leaves: no recursion needed.
+        JsExpr::Literal(_)
+        | JsExpr::Var(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => {}
     }
 }
 
