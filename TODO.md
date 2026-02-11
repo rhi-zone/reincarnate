@@ -517,6 +517,11 @@ risks that need careful analysis.
 
 - [ ] **Redundant type casts** — Eliminate `as number` etc. when the expression
   already has the target type. Pure type-level, no runtime effect.
+- [ ] **Demote `asType()` to compile-time `as T`** — When type inference can
+  prove a value is always the target type, the runtime `asType(x, Foo)` call
+  is unnecessary overhead. Replace with a TS type assertion (`x as Foo`) in
+  those cases. Requires the inference pass to propagate through Cast ops and
+  compare the inferred type against the cast target.
 - [ ] **Constant `rand(n)` where n <= 1** — `rand(1)` always returns 0 (integer
   range `[0, n)`). Could fold to literal 0. Only 1 known instance
   (PhoukaScene).

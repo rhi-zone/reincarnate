@@ -17,6 +17,8 @@ pub struct ClassInfo {
     pub functions: Vec<Function>,
     pub super_class: Option<String>,
     pub static_fields: Vec<(String, Type, Option<Constant>)>,
+    pub is_interface: bool,
+    pub interfaces: Vec<String>,
 }
 
 /// Translate a single AVM2 class (Instance + Class pair) into IR.
@@ -43,6 +45,14 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     } else {
         None
     };
+
+    // Interface metadata.
+    let is_interface = instance.is_interface;
+    let interfaces: Vec<String> = instance
+        .interfaces
+        .iter()
+        .map(|idx| resolve_multiname_index(pool, idx))
+        .collect();
 
     // Build StructDef from instance Slot traits (mutable instance fields).
     // Instance Const traits become static readonly fields on the class.
@@ -153,6 +163,8 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
         functions,
         super_class,
         static_fields,
+        is_interface,
+        interfaces,
     })
 }
 
@@ -457,6 +469,8 @@ pub fn translate_abc_to_module(
             super_class: info.super_class,
             visibility: Visibility::Public,
             static_fields: info.static_fields,
+            is_interface: info.is_interface,
+            interfaces: info.interfaces,
         });
     }
 
@@ -565,6 +579,16 @@ fn populate_external_imports(module: &mut Module) {
         .collect();
     for sc in &super_classes {
         try_register_external(sc, module);
+    }
+
+    // Interface references.
+    let iface_names: Vec<String> = module
+        .classes
+        .iter()
+        .flat_map(|c| c.interfaces.iter().cloned())
+        .collect();
+    for iface in &iface_names {
+        try_register_external(iface, module);
     }
 
     // Struct fields (class instance fields + standalone structs).

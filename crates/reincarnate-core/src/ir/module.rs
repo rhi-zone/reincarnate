@@ -94,6 +94,12 @@ pub struct ClassDef {
     /// Static (class-level) fields from Slot/Const traits on the Class object.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub static_fields: Vec<(String, Type, Option<Constant>)>,
+    /// Whether this class is an interface (emitted as `abstract class`).
+    #[serde(default)]
+    pub is_interface: bool,
+    /// Interfaces implemented by this class (short names).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub interfaces: Vec<String>,
 }
 
 /// A module — the top-level compilation unit.

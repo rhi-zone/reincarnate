@@ -906,6 +906,8 @@ mod tests {
             super_class: super_class.map(|s| s.to_string()),
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         (mb.build(), result)
     }
@@ -970,6 +972,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         mb.add_class(ClassDef {
             name: "Naga".into(),
@@ -979,6 +983,8 @@ mod tests {
             super_class: Some("Creature".to_string()),
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         let module = mb.build();
 
@@ -1031,6 +1037,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         let module = mb.build();
 
@@ -1167,6 +1175,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         mb.add_class(ClassDef {
             name: "ClassB".into(),
@@ -1176,6 +1186,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         let module = mb.build();
 

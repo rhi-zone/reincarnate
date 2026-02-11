@@ -1970,6 +1970,8 @@ mod tests {
             super_class: Some("Object".into()),
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2035,6 +2037,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         // Free function.
@@ -2115,6 +2119,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2186,6 +2192,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         mb.add_class(ClassDef {
             name: "Swamp".into(),
@@ -2195,6 +2203,8 @@ mod tests {
             super_class: Some("classes::Monster".into()),
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2242,6 +2252,8 @@ mod tests {
             super_class: Some("Parent".into()),
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2319,6 +2331,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         mb.add_class(ClassDef {
             name: "Widget".into(),
@@ -2328,6 +2342,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2453,6 +2469,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2506,6 +2524,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         mb.add_class(ClassDef {
             name: "Child".into(),
@@ -2515,6 +2535,8 @@ mod tests {
             super_class: Some("classes::Base".into()),
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2597,6 +2619,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
         mb.add_class(ClassDef {
             name: "Villain".into(),
@@ -2606,6 +2630,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2714,6 +2740,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -2928,6 +2956,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         // Child class with a method that calls isNaga via scope lookup.
@@ -2952,6 +2982,8 @@ mod tests {
             super_class: Some("Base".into()),
             visibility: Visibility::Public,
             static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();
@@ -3293,6 +3325,8 @@ mod tests {
             super_class: None,
             visibility: Visibility::Public,
             static_fields: vec![("debugBuild".into(), Type::Bool, None)],
+            is_interface: false,
+            interfaces: vec![],
         });
 
         let mut module = mb.build();

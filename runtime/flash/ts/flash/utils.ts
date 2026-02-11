@@ -27,6 +27,44 @@ export namespace uint {
 }
 
 // ---------------------------------------------------------------------------
+// Interface registry — runtime type checking for interfaces
+// ---------------------------------------------------------------------------
+
+const _interfaceRegistry = new Map<Function, Set<Function>>();
+
+/** Register that `ctor` implements the given interface constructors. */
+export function registerInterface(ctor: Function, ...ifaces: Function[]): void {
+  let set = _interfaceRegistry.get(ctor);
+  if (!set) {
+    set = new Set();
+    _interfaceRegistry.set(ctor, set);
+  }
+  for (const iface of ifaces) set.add(iface);
+}
+
+/** AS3 `is` operator — works for both classes and interfaces. */
+export function isType(value: any, type: Function): boolean {
+  if (value == null) return false;
+  if (value instanceof type) return true;
+  // Walk prototype chain checking interface registry.
+  let proto = Object.getPrototypeOf(value);
+  while (proto != null) {
+    const ctor = proto.constructor;
+    if (ctor) {
+      const ifaces = _interfaceRegistry.get(ctor);
+      if (ifaces && ifaces.has(type)) return true;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
+}
+
+/** AS3 `as` operator — returns value if it matches, null otherwise. */
+export function asType(value: any, type: Function): any {
+  return isType(value, type) ? value : null;
+}
+
+// ---------------------------------------------------------------------------
 // Qualified-name symbol + utility functions
 // ---------------------------------------------------------------------------
 
