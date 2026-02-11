@@ -35,6 +35,7 @@ pub fn lower_function(ast: &AstFunction, ctx: &LowerCtx) -> JsFunction {
         is_generator: ast.is_generator,
         visibility: ast.visibility,
         method_kind: ast.method_kind,
+        has_rest_param: ast.has_rest_param,
     }
 }
 

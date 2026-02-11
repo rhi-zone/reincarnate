@@ -17,7 +17,7 @@
     "tick": "flashTick();"
   },
   "class_preamble": {
-    "names": ["QN_KEY", "registerClass", "registerClassTraits"],
+    "names": ["QN_KEY", "registerClass", "registerClassTraits", "int", "uint"],
     "path": "flash/utils"
   }
 }

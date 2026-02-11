@@ -1440,6 +1440,7 @@ fn translate_op(
                         params: closure_params,
                         return_ty: closure_return,
                         defaults: closure_defaults,
+                        has_rest_param: false,
                     };
                     match translate_method_body(
                         abc,

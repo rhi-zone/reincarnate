@@ -4,7 +4,7 @@ use reincarnate_core::ir::{
     ClassDef, Constant, EntryPoint, ExternalImport, Function, FunctionSig, MethodKind, Module,
     ModuleBuilder, Op, StructDef, Type, Visibility,
 };
-use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, Trait, TraitKind};
+use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, MethodFlags, Trait, TraitKind};
 
 use crate::multiname::{pool_string, resolve_multiname_index, resolve_multiname_structured, resolve_type, NsKind};
 use crate::translate::translate_method_body;
@@ -357,6 +357,15 @@ fn translate_class_method(
         );
     }
 
+    // AVM2 NEED_REST: the method receives extra arguments as an Array in the
+    // next register after the declared params.  Add an Array(Dynamic) param
+    // so translate_method_body initializes the register from the function arg.
+    let has_rest = method.flags.contains(MethodFlags::NEED_REST);
+    if has_rest {
+        param_types.push(Type::Array(Box::new(Type::Dynamic)));
+        param_names.push(None); // name comes from Op::Debug
+    }
+
     // Trim trailing None values to keep defaults vec minimal.
     while defaults.last() == Some(&None) {
         defaults.pop();
@@ -368,6 +377,7 @@ fn translate_class_method(
         params: param_types,
         return_ty: return_type,
         defaults,
+        has_rest_param: has_rest,
     };
 
     let func = translate_method_body(abc, body, func_name, sig, &param_names, has_self, inner_functions)?;

@@ -216,4 +216,6 @@ pub struct AstFunction {
     pub is_generator: bool,
     pub visibility: Visibility,
     pub method_kind: MethodKind,
+    /// Whether the last parameter is a rest/variadic parameter (`...args`).
+    pub has_rest_param: bool,
 }

@@ -41,6 +41,15 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
     let class_meta = ClassMeta::build(module);
 
     emit_runtime_imports(module, &mut out, runtime_config);
+    if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"./runtime/{}\";",
+            preamble.names.join(", "),
+            preamble.path,
+        );
+        out.push('\n');
+    }
     emit_imports(module, &mut out);
     emit_structs(module, &mut out);
     emit_enums(module, &mut out);
@@ -420,6 +429,17 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             free_funcs.iter().map(|&fid| &module.functions[fid]),
         );
         emit_runtime_imports_for(systems, &mut out, 0, runtime_config);
+        if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+            let prefix = "../";
+            let prefix = prefix.trim_end_matches('/');
+            let _ = writeln!(
+                out,
+                "import {{ {} }} from \"{prefix}/runtime/{}\";",
+                preamble.names.join(", "),
+                preamble.path,
+            );
+            out.push('\n');
+        }
 
         // Scan free functions for external class references.
         let mut refs = RefSets::default();

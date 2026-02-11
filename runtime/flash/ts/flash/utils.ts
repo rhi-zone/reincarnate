@@ -9,6 +9,24 @@ import { xmlList } from "./xml";
 import { scheduleInterval, cancelScheduledInterval } from "./platform";
 
 // ---------------------------------------------------------------------------
+// AS3 global casting functions: int() and uint()
+// ---------------------------------------------------------------------------
+
+/** AS3 `int()` — truncate to signed 32-bit integer. */
+export function int(x: number): number { return x | 0; }
+export namespace int {
+  export const MAX_VALUE = 2147483647;
+  export const MIN_VALUE = -2147483648;
+}
+
+/** AS3 `uint()` — truncate to unsigned 32-bit integer. */
+export function uint(x: number): number { return x >>> 0; }
+export namespace uint {
+  export const MAX_VALUE = 4294967295;
+  export const MIN_VALUE = 0;
+}
+
+// ---------------------------------------------------------------------------
 // Qualified-name symbol + utility functions
 // ---------------------------------------------------------------------------
 

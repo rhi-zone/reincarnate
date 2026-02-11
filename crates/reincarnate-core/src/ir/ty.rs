@@ -55,6 +55,9 @@ pub struct FunctionSig {
     /// Default values for parameters (parallel vec, `None` = no default).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub defaults: Vec<Option<super::value::Constant>>,
+    /// Whether the last parameter is a rest/variadic parameter (`...args`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub has_rest_param: bool,
 }
 
 impl Default for FunctionSig {
@@ -63,6 +66,7 @@ impl Default for FunctionSig {
             params: Vec::new(),
             return_ty: Type::Void,
             defaults: Vec::new(),
+            has_rest_param: false,
         }
     }
 }

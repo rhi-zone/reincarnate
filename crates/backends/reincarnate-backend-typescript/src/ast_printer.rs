@@ -22,7 +22,7 @@ use crate::types::ts_type;
 pub fn print_function(js: &JsFunction, out: &mut String) {
     let vis = visibility_prefix(js.visibility);
     let star = if js.is_generator { "*" } else { "" };
-    let params = print_params(&js.params);
+    let params = print_params(&js.params, js.has_rest_param);
     let ret_ty = ts_type(&js.return_ty);
 
     let _ = writeln!(
@@ -48,7 +48,7 @@ pub fn print_class_method(
     } else {
         &js.params
     };
-    let params_str = print_params(params);
+    let params_str = print_params(params, js.has_rest_param);
     let ret_ty = ts_type(&js.return_ty);
     let star = if js.is_generator { "*" } else { "" };
 
@@ -98,10 +98,18 @@ pub fn print_class_method(
     let _ = writeln!(out, "  }}");
 }
 
-fn print_params(params: &[(String, Type)]) -> String {
+fn print_params(params: &[(String, Type)], has_rest_param: bool) -> String {
     params
         .iter()
-        .map(|(name, ty)| format!("{}: {}", sanitize_ident(name), ts_type(ty)))
+        .enumerate()
+        .map(|(i, (name, ty))| {
+            let prefix = if has_rest_param && i == params.len() - 1 {
+                "..."
+            } else {
+                ""
+            };
+            format!("{prefix}{}: {}", sanitize_ident(name), ts_type(ty))
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }

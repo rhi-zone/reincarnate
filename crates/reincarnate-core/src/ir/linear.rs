@@ -1032,6 +1032,7 @@ pub fn lower_function_linear(
         is_generator: func.coroutine.is_some(),
         visibility: func.visibility,
         method_kind: func.method_kind,
+        has_rest_param: func.sig.has_rest_param,
     }
 }
 
