@@ -36,7 +36,7 @@ pub struct FlashRewriteCtx {
     /// Static method short name → owning class short name (across hierarchy).
     pub static_method_owners: HashMap<String, String>,
     /// Const field short name → owning class short name (across hierarchy).
-    pub const_field_owners: HashMap<String, String>,
+    pub static_field_owners: HashMap<String, String>,
     /// Instance Const fields promoted to static readonly — `this.FIELD` → `ClassName.FIELD`.
     pub const_instance_fields: HashSet<String>,
     /// Short name of the current class (for `this.CONST` → `ClassName.CONST` rewrites).
@@ -137,7 +137,7 @@ fn resolve_field(object: &JsExpr, field: &str, ctx: &FlashRewriteCtx) -> Option<
                         object: Box::new(JsExpr::Var(class_name.clone())),
                         field: effective.to_string(),
                     }
-                } else if let Some(owner) = ctx.const_field_owners.get(effective) {
+                } else if let Some(owner) = ctx.static_field_owners.get(effective) {
                     JsExpr::Field {
                         object: Box::new(JsExpr::Var(owner.clone())),
                         field: effective.to_string(),
@@ -872,10 +872,14 @@ fn rewrite_system_call(
         return Some(JsExpr::Var("Array".to_string()));
     }
 
-    // construct → new Ctor(args)
+    // construct → new Ctor(args)  (but `new Object()` → `{}`)
     if system == "Flash.Object" && method == "construct" && !args.is_empty() {
         let callee = rewrite_expr(args[0].clone(), ctx);
         let rest = rewrite_exprs(args[1..].to_vec(), ctx);
+        // `new Object()` with no constructor args → empty object literal
+        if rest.is_empty() && matches!(&callee, JsExpr::Var(name) if name == "Object") {
+            return Some(JsExpr::ObjectInit(Vec::new()));
+        }
         return Some(JsExpr::New {
             callee: Box::new(callee),
             args: rest,

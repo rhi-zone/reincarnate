@@ -127,7 +127,7 @@ struct ClassMeta {
     method_name_sets: HashMap<String, HashSet<String>>,
     instance_field_sets: HashMap<String, HashSet<String>>,
     static_method_owner_map: HashMap<String, HashMap<String, String>>,
-    const_field_owner_map: HashMap<String, HashMap<String, String>>,
+    static_field_owner_map: HashMap<String, HashMap<String, String>>,
 }
 
 impl ClassMeta {
@@ -137,7 +137,7 @@ impl ClassMeta {
             method_name_sets: build_method_name_sets(module),
             instance_field_sets: build_instance_field_sets(module),
             static_method_owner_map: build_static_method_owner_map(module),
-            const_field_owner_map: build_const_field_owner_map(module),
+            static_field_owner_map: build_static_field_owner_map(module),
         }
     }
 }
@@ -246,10 +246,11 @@ fn build_static_method_owner_map(module: &Module) -> HashMap<String, HashMap<Str
     result
 }
 
-/// Build a mapping from qualified class name → map of const field short name →
+/// Build a mapping from qualified class name → map of static field short name →
 /// owning class short name, walking the ancestor chain. This mirrors
-/// `build_static_method_owner_map` but for `static readonly` constant fields.
-fn build_const_field_owner_map(module: &Module) -> HashMap<String, HashMap<String, String>> {
+/// `build_static_method_owner_map` but for static fields (both `readonly` with
+/// values and mutable ones assigned in cinit).
+fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<String, String>> {
     let class_by_short: HashMap<&str, &ClassDef> =
         module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
 
@@ -258,13 +259,11 @@ fn build_const_field_owner_map(module: &Module) -> HashMap<String, HashMap<Strin
         let mut owners: HashMap<String, String> = HashMap::new();
         let mut current = class;
         loop {
-            for (name, _, val) in &current.static_fields {
-                if val.is_some() {
-                    // Most-derived wins: don't overwrite if already present.
-                    owners
-                        .entry(name.clone())
-                        .or_insert_with(|| current.name.clone());
-                }
+            for (name, _, _) in &current.static_fields {
+                // Most-derived wins: don't overwrite if already present.
+                owners
+                    .entry(name.clone())
+                    .or_insert_with(|| current.name.clone());
             }
             match current.super_class {
                 Some(ref sc) => {
@@ -402,8 +401,8 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let qualified = qualified_class_name(&group.class_def);
         let empty_smo = HashMap::new();
         let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        let const_field_owners = class_meta.const_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        emit_intra_imports(group, module, &segments, &registry, static_method_owners, const_field_owners, depth, &mut out);
+        let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
+        emit_intra_imports(group, module, &segments, &registry, static_method_owners, static_field_owners, depth, &mut out);
         emit_class(group, module, &class_names, &class_meta, lowering_config, &mut out)?;
 
         let path = file_dir.join(format!("{short_name}.ts"));
@@ -660,7 +659,7 @@ fn collect_class_references(
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     static_method_owners: &HashMap<String, String>,
-    const_field_owners: &HashMap<String, String>,
+    static_field_owners: &HashMap<String, String>,
 ) -> RefSets {
     let self_name = &group.class_def.name;
     let mut refs = RefSets::default();
@@ -685,7 +684,7 @@ fn collect_class_references(
     // Scan all method bodies for type references.
     for &fid in &group.methods {
         let func = &module.functions[fid];
-        collect_type_refs_from_function(func, self_name, registry, external_imports, static_method_owners, const_field_owners, &mut refs);
+        collect_type_refs_from_function(func, self_name, registry, external_imports, static_method_owners, static_field_owners, &mut refs);
     }
 
     refs
@@ -698,7 +697,7 @@ fn collect_type_refs_from_function(
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     static_method_owners: &HashMap<String, String>,
-    const_field_owners: &HashMap<String, String>,
+    static_field_owners: &HashMap<String, String>,
     refs: &mut RefSets,
 ) {
     use reincarnate_core::ir::Constant;
@@ -774,7 +773,7 @@ fn collect_type_refs_from_function(
                             }
                         }
                     }
-                    if let Some(owner) = const_field_owners.get(bare) {
+                    if let Some(owner) = static_field_owners.get(bare) {
                         if owner != self_name {
                             if let Some(entry) = registry.lookup(owner) {
                                 refs.value_refs.insert(entry.short_name.clone());
@@ -915,11 +914,11 @@ fn emit_intra_imports(
     source_segments: &[String],
     registry: &ClassRegistry,
     static_method_owners: &HashMap<String, String>,
-    const_field_owners: &HashMap<String, String>,
+    static_field_owners: &HashMap<String, String>,
     depth: usize,
     out: &mut String,
 ) {
-    let refs = collect_class_references(group, module, registry, &module.external_imports, static_method_owners, const_field_owners);
+    let refs = collect_class_references(group, module, registry, &module.external_imports, static_method_owners, static_field_owners);
     let has_intra = !refs.value_refs.is_empty() || !refs.type_refs.is_empty();
     let has_ext = !refs.ext_value_refs.is_empty() || !refs.ext_type_refs.is_empty();
     if !has_intra && !has_ext {
@@ -1085,7 +1084,7 @@ fn emit_function(
         is_cinit: false,
         static_fields: HashSet::new(),
         static_method_owners: HashMap::new(),
-        const_field_owners: HashMap::new(),
+        static_field_owners: HashMap::new(),
         const_instance_fields: HashSet::new(),
         class_short_name: None,
     };
@@ -1312,7 +1311,7 @@ fn emit_class(
     let method_names = class_meta.method_name_sets.get(&qualified).unwrap_or(&empty_set);
     let instance_fields = class_meta.instance_field_sets.get(&qualified).unwrap_or(&empty_set);
     let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_map);
-    let const_field_owners = class_meta.const_field_owner_map.get(&qualified).unwrap_or(&empty_map);
+    let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_map);
     let static_fields: HashSet<String> = group.class_def.static_fields.iter()
         .map(|(name, _, _)| name.clone())
         .collect();
@@ -1327,7 +1326,7 @@ fn emit_class(
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, const_field_owners, suppress_super, &const_instance_fields, &class_name, lowering_config, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, lowering_config, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -1345,7 +1344,7 @@ fn emit_class_method(
     instance_fields: &HashSet<String>,
     static_fields: &HashSet<String>,
     static_method_owners: &HashMap<String, String>,
-    const_field_owners: &HashMap<String, String>,
+    static_field_owners: &HashMap<String, String>,
     suppress_super: bool,
     const_instance_fields: &HashSet<String>,
     class_short_name: &str,
@@ -1396,7 +1395,7 @@ fn emit_class_method(
         is_cinit,
         static_fields: static_fields.clone(),
         static_method_owners: static_method_owners.clone(),
-        const_field_owners: const_field_owners.clone(),
+        static_field_owners: static_field_owners.clone(),
         const_instance_fields: const_instance_fields.clone(),
         class_short_name: Some(class_short_name.to_string()),
     };
