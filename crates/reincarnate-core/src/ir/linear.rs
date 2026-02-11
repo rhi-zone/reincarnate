@@ -134,21 +134,17 @@ fn linearize_into(
             for (i, part) in parts.iter().enumerate() {
                 let next_is_loop = matches!(
                     parts.get(i + 1),
-                    Some(Shape::WhileLoop { .. })
-                        | Some(Shape::ForLoop { .. })
-                        | Some(Shape::Loop { .. })
+                    Some(Shape::ForLoop { .. })
                 );
 
-                // When a non-Block shape precedes a loop in a Seq, its
+                // When a non-Block shape precedes a ForLoop in a Seq, its
                 // trailing assigns already set the loop header's block
-                // params — the loop's own init_assigns would duplicate them.
+                // params — the ForLoop's own init_assigns would duplicate them.
                 let this_skip_init = if i > 0 {
                     let prev = &parts[i - 1];
                     let is_loop = matches!(
                         part,
-                        Shape::WhileLoop { .. }
-                            | Shape::ForLoop { .. }
-                            | Shape::Loop { .. }
+                        Shape::ForLoop { .. }
                     );
                     is_loop && !matches!(prev, Shape::Block(_))
                 } else {
@@ -158,7 +154,7 @@ fn linearize_into(
                 linearize_into(func, part, out, this_skip_init);
 
                 // After a Block, emit Br target assignments — unless the
-                // next shape is a loop (it captures its own init assigns).
+                // next shape is a ForLoop (it has its own init_assigns field).
                 if let Shape::Block(block_id) = part {
                     if !next_is_loop {
                         emit_br_assigns(func, *block_id, out);
