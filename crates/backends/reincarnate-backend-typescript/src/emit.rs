@@ -11,6 +11,7 @@ use reincarnate_core::ir::{
 use reincarnate_core::pipeline::LoweringConfig;
 use reincarnate_core::project::RuntimeConfig;
 
+use crate::js_ast::{JsExpr, JsStmt};
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
 
@@ -1471,9 +1472,33 @@ fn emit_class_method(
             Some(class_short_name),
         );
     }
+    // Filter cinit: remove assignments that duplicate static readonly field defaults,
+    // and skip emitting entirely if the body is empty after filtering.
+    if is_cinit {
+        js_func.body.retain(|stmt| {
+            !is_redundant_static_assign(stmt, const_instance_fields)
+        });
+        if js_func.body.is_empty() {
+            return Ok(());
+        }
+    }
     crate::ast_printer::print_class_method(&js_func, &raw_name, skip_self, out);
     Ok(())
 }
+/// Whether a cinit statement is a redundant assignment to a field that already
+/// has a `static readonly` default value on the class.
+fn is_redundant_static_assign(stmt: &JsStmt, const_fields: &HashSet<String>) -> bool {
+    if let JsStmt::Assign {
+        target: JsExpr::Field { object, field },
+        ..
+    } = stmt
+    {
+        matches!(**object, JsExpr::This) && const_fields.contains(field)
+    } else {
+        false
+    }
+}
+
 fn visibility_prefix(vis: Visibility) -> &'static str {
     match vis {
         Visibility::Public => "export ",
