@@ -403,6 +403,51 @@ export class InteractiveObject extends DisplayObject {
 }
 
 // ---------------------------------------------------------------------------
+// SimpleButton
+// ---------------------------------------------------------------------------
+
+export class SimpleButton extends InteractiveObject {
+  _downState: DisplayObject | null = null;
+  _enabled = true;
+  _hitTestState: DisplayObject | null = null;
+  _overState: DisplayObject | null = null;
+  _soundTransform: SoundTransform | null = null;
+  _trackAsMenu = false;
+  _upState: DisplayObject | null = null;
+  _useHandCursor = true;
+
+  get downState() { return this._downState; }
+  set downState(v: DisplayObject | null) { this._downState = v; }
+  get enabled() { return this._enabled; }
+  set enabled(v: boolean) { this._enabled = v; }
+  get hitTestState() { return this._hitTestState; }
+  set hitTestState(v: DisplayObject | null) { this._hitTestState = v; }
+  get overState() { return this._overState; }
+  set overState(v: DisplayObject | null) { this._overState = v; }
+  get soundTransform() { return this._soundTransform; }
+  set soundTransform(v: SoundTransform | null) { this._soundTransform = v; }
+  get trackAsMenu() { return this._trackAsMenu; }
+  set trackAsMenu(v: boolean) { this._trackAsMenu = v; }
+  get upState() { return this._upState; }
+  set upState(v: DisplayObject | null) { this._upState = v; }
+  get useHandCursor() { return this._useHandCursor; }
+  set useHandCursor(v: boolean) { this._useHandCursor = v; }
+
+  constructor(
+    upState: DisplayObject | null = null,
+    overState: DisplayObject | null = null,
+    downState: DisplayObject | null = null,
+    hitTestState: DisplayObject | null = null,
+  ) {
+    super();
+    this._upState = upState;
+    this._overState = overState;
+    this._downState = downState;
+    this._hitTestState = hitTestState;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // DisplayObjectContainer
 // ---------------------------------------------------------------------------
 

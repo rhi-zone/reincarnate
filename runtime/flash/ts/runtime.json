@@ -842,8 +842,9 @@
     "flash/display": [
       "IBitmapDrawable", "IGraphicsData", "IGraphicsFill", "IGraphicsPath",
       "IGraphicsStroke", "Graphics", "DisplayObject", "InteractiveObject",
-      "DisplayObjectContainer", "Shape", "BitmapData", "Bitmap", "Sprite",
-      "FrameLabel", "Scene", "MovieClip", "LoaderInfo", "Loader", "Stage"
+      "SimpleButton", "DisplayObjectContainer", "Shape", "BitmapData",
+      "Bitmap", "Sprite", "FrameLabel", "Scene", "MovieClip", "LoaderInfo",
+      "Loader", "Stage"
     ],
     "flash/events": [
       "IEventDispatcher", "EventDispatcher", "Event", "TextEvent",
