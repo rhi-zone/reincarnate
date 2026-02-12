@@ -162,7 +162,7 @@ export class TextField extends InteractiveObject {
   _selectionBeginIndex = 0;
   _selectionEndIndex = 0;
   _sharpness = 0;
-  _styleSheet: object | null = null;
+  _styleSheet: any = null;
   _textColor = 0x000000;
   _textHeight = 0;
   _textWidth = 0;
@@ -226,7 +226,7 @@ export class TextField extends InteractiveObject {
   get sharpness() { return this._sharpness; }
   set sharpness(v: number) { this._sharpness = v; }
   get styleSheet() { return this._styleSheet; }
-  set styleSheet(v: object | null) { this._styleSheet = v; }
+  set styleSheet(v: any) { this._styleSheet = v; }
   get textColor() { return this._textColor; }
   set textColor(v: number) { this._textColor = v; }
   get textHeight() { return this._textHeight; }

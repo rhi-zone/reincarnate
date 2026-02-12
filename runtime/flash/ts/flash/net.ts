@@ -36,7 +36,7 @@ export class URLRequest {
   _method = "GET";
   _data: object | string | null = null;
   _contentType = "application/x-www-form-urlencoded";
-  _requestHeaders: object[] = [];
+  _requestHeaders: any[] = [];
   _digest: string | null = null;
 
   get url() { return this._url; }
@@ -48,7 +48,7 @@ export class URLRequest {
   get contentType() { return this._contentType; }
   set contentType(v: string) { this._contentType = v; }
   get requestHeaders() { return this._requestHeaders; }
-  set requestHeaders(v: object[]) { this._requestHeaders = v; }
+  set requestHeaders(v: any[]) { this._requestHeaders = v; }
   get digest() { return this._digest; }
   set digest(v: string | null) { this._digest = v; }
 
@@ -130,7 +130,7 @@ export class URLLoader extends EventDispatcher {
 export class FileReference extends EventDispatcher {
   _creationDate: Date | null = null;
   _creator: string | null = null;
-  _data: ArrayBuffer | null = null;
+  _data: any = null;
   _extension: string | null = null;
   _modificationDate: Date | null = null;
   _name: string | null = null;
@@ -142,7 +142,7 @@ export class FileReference extends EventDispatcher {
   get creator() { return this._creator; }
   set creator(v: string | null) { this._creator = v; }
   get data() { return this._data; }
-  set data(v: ArrayBuffer | null) { this._data = v; }
+  set data(v: any) { this._data = v; }
   get extension() { return this._extension; }
   set extension(v: string | null) { this._extension = v; }
   get modificationDate() { return this._modificationDate; }
@@ -192,13 +192,13 @@ export class SharedObject {
   private _name = "";
   private _data: Record<string, any> = {};
   _size = 0;
-  _client: object | null = null;
+  _client: any = null;
   _objectEncoding = 3;
 
   get size() { return this._size; }
   set size(v: number) { this._size = v; }
   get client() { return this._client; }
-  set client(v: object | null) { this._client = v; }
+  set client(v: any) { this._client = v; }
   get objectEncoding() { return this._objectEncoding; }
   set objectEncoding(v: number) { this._objectEncoding = v; }
 

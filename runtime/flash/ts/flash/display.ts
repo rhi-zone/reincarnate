@@ -376,7 +376,7 @@ export class DisplayObject extends EventDispatcher {
 // ---------------------------------------------------------------------------
 
 export class InteractiveObject extends DisplayObject {
-  _contextMenu: object | null = null;
+  _contextMenu: any = null;
   _doubleClickEnabled = false;
   _focusRect: boolean | null = null;
   _mouseEnabled = true;
@@ -384,7 +384,7 @@ export class InteractiveObject extends DisplayObject {
   _tabIndex = -1;
 
   get contextMenu() { return this._contextMenu; }
-  set contextMenu(v: object | null) { this._contextMenu = v; }
+  set contextMenu(v: any) { this._contextMenu = v; }
   get doubleClickEnabled() { return this._doubleClickEnabled; }
   set doubleClickEnabled(v: boolean) { this._doubleClickEnabled = v; }
   get focusRect() { return this._focusRect; }
@@ -573,7 +573,7 @@ export class Sprite extends DisplayObjectContainer {
   _dropTarget: DisplayObject | null = null;
   _graphics: Graphics = new Graphics();
   _hitArea: Sprite | null = null;
-  _soundTransform: object | null = null;
+  _soundTransform: any = null;
   _useHandCursor = true;
 
   get buttonMode() { return this._buttonMode; }
@@ -585,7 +585,7 @@ export class Sprite extends DisplayObjectContainer {
   get hitArea() { return this._hitArea; }
   set hitArea(v: Sprite | null) { this._hitArea = v; }
   get soundTransform() { return this._soundTransform; }
-  set soundTransform(v: object | null) { this._soundTransform = v; }
+  set soundTransform(v: any) { this._soundTransform = v; }
   get useHandCursor() { return this._useHandCursor; }
   set useHandCursor(v: boolean) { this._useHandCursor = v; }
 
@@ -878,7 +878,7 @@ _timelineFactories.set("Bitmap", () => new Bitmap());
 
 export class LoaderInfo extends EventDispatcher {
   _actionScriptVersion = 3;
-  _applicationDomain: object | null = null;
+  _applicationDomain: any = null;
   _bytes: ArrayBuffer | null = null;
   _bytesLoaded = 0;
   _bytesTotal = 0;
@@ -899,7 +899,7 @@ export class LoaderInfo extends EventDispatcher {
   get actionScriptVersion() { return this._actionScriptVersion; }
   set actionScriptVersion(v: number) { this._actionScriptVersion = v; }
   get applicationDomain() { return this._applicationDomain; }
-  set applicationDomain(v: object | null) { this._applicationDomain = v; }
+  set applicationDomain(v: any) { this._applicationDomain = v; }
   get bytes() { return this._bytes; }
   set bytes(v: ArrayBuffer | null) { this._bytes = v; }
   get bytesLoaded() { return this._bytesLoaded; }

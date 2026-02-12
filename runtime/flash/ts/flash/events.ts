@@ -144,8 +144,8 @@ export class Event {
   _type: string;
   _bubbles: boolean;
   _cancelable: boolean;
-  _target: object | null = null;
-  _currentTarget: object | null = null;
+  _target: any = null;
+  _currentTarget: any = null;
   _eventPhase: number = 0;
 
   get type() { return this._type; }
@@ -155,9 +155,9 @@ export class Event {
   get cancelable() { return this._cancelable; }
   set cancelable(v: boolean) { this._cancelable = v; }
   get target() { return this._target; }
-  set target(v: object | null) { this._target = v; }
+  set target(v: any) { this._target = v; }
   get currentTarget() { return this._currentTarget; }
-  set currentTarget(v: object | null) { this._currentTarget = v; }
+  set currentTarget(v: any) { this._currentTarget = v; }
   get eventPhase() { return this._eventPhase; }
   set eventPhase(v: number) { this._eventPhase = v; }
 
@@ -299,7 +299,7 @@ export class MouseEvent extends Event {
   _localY: number;
   _stageX: number = 0;
   _stageY: number = 0;
-  _relatedObject: object | null = null;
+  _relatedObject: any = null;
   _ctrlKey: boolean;
   _altKey: boolean;
   _shiftKey: boolean;
@@ -318,7 +318,7 @@ export class MouseEvent extends Event {
   get stageY() { return this._stageY; }
   set stageY(v: number) { this._stageY = v; }
   get relatedObject() { return this._relatedObject; }
-  set relatedObject(v: object | null) { this._relatedObject = v; }
+  set relatedObject(v: any) { this._relatedObject = v; }
   get ctrlKey() { return this._ctrlKey; }
   set ctrlKey(v: boolean) { this._ctrlKey = v; }
   get altKey() { return this._altKey; }
@@ -342,7 +342,7 @@ export class MouseEvent extends Event {
     cancelable = false,
     localX = 0,
     localY = 0,
-    relatedObject: object | null = null,
+    relatedObject: any = null,
     ctrlKey = false,
     altKey = false,
     shiftKey = false,
@@ -481,14 +481,14 @@ export class FocusEvent extends Event {
   static readonly KEY_FOCUS_CHANGE = "keyFocusChange";
   static readonly MOUSE_FOCUS_CHANGE = "mouseFocusChange";
 
-  _relatedObject: object | null;
+  _relatedObject: any;
   _shiftKey: boolean;
   _keyCode: number;
   _direction: string;
   _isRelatedObjectInaccessible: boolean;
 
   get relatedObject() { return this._relatedObject; }
-  set relatedObject(v: object | null) { this._relatedObject = v; }
+  set relatedObject(v: any) { this._relatedObject = v; }
   get shiftKey() { return this._shiftKey; }
   set shiftKey(v: boolean) { this._shiftKey = v; }
   get keyCode() { return this._keyCode; }
@@ -502,7 +502,7 @@ export class FocusEvent extends Event {
     type: string,
     bubbles = true,
     cancelable = false,
-    relatedObject: object | null = null,
+    relatedObject: any = null,
     shiftKey = false,
     keyCode = 0,
     direction = "none",
@@ -659,13 +659,13 @@ export class HTTPStatusEvent extends Event {
   static readonly HTTP_RESPONSE_STATUS = "httpResponseStatus";
 
   _status: number;
-  _responseHeaders: object[] = [];
+  _responseHeaders: any[] = [];
   _responseURL: string = "";
 
   get status() { return this._status; }
   set status(v: number) { this._status = v; }
   get responseHeaders() { return this._responseHeaders; }
-  set responseHeaders(v: object[]) { this._responseHeaders = v; }
+  set responseHeaders(v: any[]) { this._responseHeaders = v; }
   get responseURL() { return this._responseURL; }
   set responseURL(v: string) { this._responseURL = v; }
 
