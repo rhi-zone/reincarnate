@@ -154,7 +154,10 @@ pub fn translate_method_body(
                 if let Some(param_vals) = block_param_values.get(&op_idx) {
                     stack.extend_from_slice(param_vals);
                 }
-                scope_stack.clear();
+                // Note: scope_stack is NOT cleared here. Scope values are set up in
+                // the entry block (which dominates all others) and their SSA ValueIds
+                // remain valid across block boundaries. Clearing them caused
+                // GetScopeObject to return null in non-entry blocks.
             }
         } else if op_idx == 0 {
             // Entry block — stack starts empty, just locals.
