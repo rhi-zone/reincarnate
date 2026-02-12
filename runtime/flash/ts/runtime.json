@@ -223,6 +223,8 @@
         "loader": "*",
         "loaderURL": "string",
         "parameters": "*",
+        "isURLInaccessible": "boolean",
+        "parentAllowsChild": "boolean",
         "sameDomain": "boolean",
         "sharedEvents": "EventDispatcher",
         "swfVersion": "int",

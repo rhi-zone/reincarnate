@@ -182,6 +182,7 @@ fn collect_external_members(
 /// Falls back to external type definitions for pure-external types.
 fn validate_member_accesses(
     func: &Function,
+    function_class: Option<&str>,
     class_meta: &ClassMeta,
     registry: &ClassRegistry,
     short_to_qualified: &HashMap<String, String>,
@@ -195,7 +196,7 @@ fn validate_member_accesses(
         };
         let bare = field.rsplit("::").next().unwrap_or(field);
         // Skip fields that are themselves class names (constructor references).
-        if registry.lookup(field).is_some() {
+        if registry.lookup(field).is_some() || type_defs.contains_key(bare) {
             continue;
         }
         let ty = &func.value_types[object];
@@ -205,11 +206,33 @@ fn validate_member_accesses(
         };
         let short = type_name.rsplit("::").next().unwrap_or(type_name);
         // Try direct qualified-name lookup first (handles duplicate short names).
-        // Fall back to short-name lookup.
+        // Fall back to function's own class (disambiguates collisions like two
+        // classes with the same short name), then to short-name lookup.
         let qualified = if class_meta.instance_field_sets.contains_key(type_name)
             || class_meta.method_name_sets.contains_key(type_name)
         {
             type_name
+        } else if let Some(fc) = function_class {
+            let fc_short = fc.rsplit("::").next().unwrap_or(fc);
+            if fc_short == short {
+                fc
+            } else {
+                match short_to_qualified.get(short) {
+                    Some(qn) => qn.as_str(),
+                    None => {
+                        if type_defs.contains_key(short) {
+                            let ext_members = collect_external_members(short, type_defs);
+                            if !ext_members.contains(bare) {
+                                eprintln!(
+                                    "warning: {short} has no member '{bare}' (in {})",
+                                    func.name
+                                );
+                            }
+                        }
+                        continue;
+                    }
+                }
+            }
         } else {
             match short_to_qualified.get(short) {
                 Some(qn) => qn.as_str(),
@@ -249,6 +272,14 @@ fn validate_member_accesses(
             .get(qualified)
             .is_some_and(|m| m.contains_key(bare));
         if !has_instance_field && !has_method && !has_static_field && !has_static_method {
+            // Final fallback: check external type_defs (handles local interfaces
+            // that also have external type definitions with field metadata).
+            if type_defs.contains_key(short) {
+                let ext_members = collect_external_members(short, type_defs);
+                if ext_members.contains(bare) {
+                    continue;
+                }
+            }
             eprintln!(
                 "warning: {short} has no member '{bare}' (in {})",
                 func.name
@@ -626,7 +657,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
 
         // Validate member accesses before emitting (warnings only).
         for &fid in &group.methods {
-            validate_member_accesses(&module.functions[fid], &class_meta, &registry, &short_to_qualified, type_defs);
+            validate_member_accesses(&module.functions[fid], Some(&qualified), &class_meta, &registry, &short_to_qualified, type_defs);
         }
 
         emit_class(group, module, &class_names, &class_meta, lowering_config, &mut out)?;
