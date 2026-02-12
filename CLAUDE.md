@@ -45,7 +45,7 @@ From ecosystem-wide session analysis:
 
 - **Question scope early:** Before implementing, ask whether it belongs in this crate/module
 - **Check consistency:** Look at how similar things are done elsewhere in the codebase
-- **Implement fully:** No silent arbitrary caps, incomplete pagination, or unexposed trait methods
+- **Implement fully:** No silent arbitrary caps, incomplete pagination, or unexposed trait methods. The test project (`~/cc-project/`) is one example input, not the universe — fixing only the cases it exercises is a half measure. If a class of bug exists, fix the entire class. If a pattern applies to all properties on a type, apply it to all of them, not just the ones that happen to blow up today.
 - **Name for purpose:** Avoid names that describe one consumer
 - **Verify before stating:** Don't assert API behavior or codebase facts without checking
 
