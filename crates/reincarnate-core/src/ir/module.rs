@@ -56,6 +56,9 @@ pub struct Global {
     pub ty: Type,
     pub visibility: Visibility,
     pub mutable: bool,
+    /// Optional compile-time default value (from script trait Slot/Const).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub init: Option<Constant>,
 }
 
 /// An import from another module.

@@ -844,6 +844,7 @@ mod tests {
             ty: Type::Int(64),
             visibility: Visibility::Private,
             mutable: true,
+            init: None,
         });
         mb.add_function(func);
         let module = mb.build();

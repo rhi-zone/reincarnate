@@ -245,6 +245,7 @@ mod tests {
             ty: Type::Struct("Point".into()),
             visibility: Visibility::Public,
             mutable: false,
+            init: None,
         });
         let mod_a = mb_a.build();
 

@@ -601,13 +601,19 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         }
 
         for global in &module.globals {
-            let kw = if global.mutable { "let" } else { "const" };
-            let _ = writeln!(
-                out,
-                "export {kw} {}: {};",
-                sanitize_ident(&global.name),
-                ts_type(&global.ty)
-            );
+            // const without initializer is invalid JS — demote to let.
+            let kw = if global.mutable || global.init.is_none() { "let" } else { "const" };
+            let ident = sanitize_ident(&global.name);
+            let ts = ts_type(&global.ty);
+            if let Some(val) = &global.init {
+                let _ = writeln!(
+                    out,
+                    "export {kw} {ident}: {ts} = {};",
+                    crate::ast_printer::emit_constant(val)
+                );
+            } else {
+                let _ = writeln!(out, "export {kw} {ident}: {ts};");
+            }
         }
         let path = module_dir.join("_globals.ts");
         fs::write(&path, &out).map_err(CoreError::Io)?;
@@ -1396,13 +1402,19 @@ fn emit_enums(module: &Module, out: &mut String) {
 fn emit_globals(module: &Module, out: &mut String) {
     for global in &module.globals {
         let vis = visibility_prefix(global.visibility);
-        let kw = if global.mutable { "let" } else { "const" };
-        let _ = writeln!(
-            out,
-            "{vis}{kw} {}: {};",
-            sanitize_ident(&global.name),
-            ts_type(&global.ty)
-        );
+        // const without initializer is invalid JS — demote to let.
+        let kw = if global.mutable || global.init.is_none() { "let" } else { "const" };
+        let ident = sanitize_ident(&global.name);
+        let ts = ts_type(&global.ty);
+        if let Some(val) = &global.init {
+            let _ = writeln!(
+                out,
+                "{vis}{kw} {ident}: {ts} = {};",
+                crate::ast_printer::emit_constant(val)
+            );
+        } else {
+            let _ = writeln!(out, "{vis}{kw} {ident}: {ts};");
+        }
     }
     if !module.globals.is_empty() {
         out.push('\n');
@@ -1950,17 +1962,20 @@ mod tests {
                 ty: Type::Int(64),
                 visibility: Visibility::Public,
                 mutable: true,
+                init: None,
             });
             mb.add_global(Global {
                 name: "MAX_SIZE".into(),
                 ty: Type::Int(64),
                 visibility: Visibility::Private,
                 mutable: false,
+                init: None,
             });
         });
 
         assert!(out.contains("export let counter: number;"));
-        assert!(out.contains("const MAX_SIZE: number;"));
+        // const without init demoted to let
+        assert!(out.contains("let MAX_SIZE: number;"));
     }
 
     #[test]

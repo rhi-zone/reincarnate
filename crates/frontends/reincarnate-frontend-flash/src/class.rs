@@ -493,15 +493,15 @@ pub fn translate_abc_to_module(
                         continue;
                     }
                     let ty = resolve_type(&abc.constant_pool, type_name);
-                    let default = value
+                    let init = value
                         .as_ref()
                         .and_then(|dv| convert_default_value(&abc.constant_pool, dv));
-                    let _ = default; // Global decl only — default assigned in script init
                     mb.add_global(Global {
                         name,
                         ty,
                         visibility: Visibility::Public,
                         mutable: true,
+                        init,
                     });
                 }
                 TraitKind::Const {
@@ -512,15 +512,15 @@ pub fn translate_abc_to_module(
                         continue;
                     }
                     let ty = resolve_type(&abc.constant_pool, type_name);
-                    let default = value
+                    let init = value
                         .as_ref()
                         .and_then(|dv| convert_default_value(&abc.constant_pool, dv));
-                    let _ = default;
                     mb.add_global(Global {
                         name,
                         ty,
                         visibility: Visibility::Public,
                         mutable: false,
+                        init,
                     });
                 }
                 _ => {}

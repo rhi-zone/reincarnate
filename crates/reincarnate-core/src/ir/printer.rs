@@ -708,12 +708,14 @@ fn choose(v0: bool, v1: i64, v2: i64) -> i64 {
             ty: Type::Int(64),
             visibility: Visibility::Private,
             mutable: true,
+            init: None,
         });
         mb.add_global(Global {
             name: "PI".into(),
             ty: Type::Float(64),
             visibility: Visibility::Private,
             mutable: false,
+            init: None,
         });
 
         // Add a simple function

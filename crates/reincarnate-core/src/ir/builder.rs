@@ -667,6 +667,7 @@ mod tests {
             ty: Type::Int(64),
             visibility: Visibility::Private,
             mutable: true,
+            init: None,
         });
         let module = mb.build();
 
