@@ -71,6 +71,34 @@ impl Default for FunctionSig {
     }
 }
 
+/// Parse a type notation string (from `runtime.json` type_definitions) into an IR `Type`.
+///
+/// | Notation     | IR Type               |
+/// |--------------|-----------------------|
+/// | `"number"`   | `Type::Float(64)`     |
+/// | `"int"`      | `Type::Int(32)`       |
+/// | `"uint"`     | `Type::UInt(32)`      |
+/// | `"boolean"`  | `Type::Bool`          |
+/// | `"string"`   | `Type::String`        |
+/// | `"void"`     | `Type::Void`          |
+/// | `"*"`        | `Type::Dynamic`       |
+/// | `"Function"` | `Type::Dynamic`       |
+/// | `"Array"`    | `Type::Array(Dynamic)`|
+/// | `"ClassName"`| `Type::Struct(name)`  |
+pub fn parse_type_notation(s: &str) -> Type {
+    match s {
+        "number" => Type::Float(64),
+        "int" => Type::Int(32),
+        "uint" => Type::UInt(32),
+        "boolean" => Type::Bool,
+        "string" => Type::String,
+        "void" => Type::Void,
+        "*" | "any" | "Function" | "Object" | "Class" => Type::Dynamic,
+        "Array" => Type::Array(Box::new(Type::Dynamic)),
+        name => Type::Struct(name.to_string()),
+    }
+}
+
 /// Constraint generated during type inference.
 #[derive(Debug, Clone)]
 pub enum TypeConstraint {

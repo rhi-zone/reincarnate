@@ -4,4 +4,6 @@ pub mod runtime;
 
 pub use asset::{Asset, AssetCatalog, AssetKind};
 pub use manifest::{EngineOrigin, ProjectManifest, TargetBackend, TargetConfig};
-pub use runtime::{ImportGroup, RuntimeConfig, ScaffoldConfig, SystemModule};
+pub use runtime::{
+    ExternalMethodSig, ExternalTypeDef, ImportGroup, RuntimeConfig, ScaffoldConfig, SystemModule,
+};

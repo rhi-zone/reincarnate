@@ -185,14 +185,24 @@ fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String], preset: &str) -> Re
         .extract(input)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
+    // Resolve runtime early so we can attach type_definitions to modules
+    // before running transforms (type inference needs them).
+    let first_backend = manifest.targets.first().map(|t| &t.backend);
+    let early_runtime = first_backend.and_then(|b| resolve_runtime(&manifest.engine, b));
+    let external_type_defs = early_runtime
+        .as_ref()
+        .map(|rt| rt.config.type_definitions.clone())
+        .unwrap_or_default();
+
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let (pass_config, lowering_config) = Preset::resolve(preset, &skip_refs)
         .ok_or_else(|| anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")"))?;
     let pipeline = default_pipeline(&pass_config);
 
     let mut modules = Vec::new();
-    for module in output.modules {
+    for mut module in output.modules {
         eprintln!("[emit] transforming module: {}", module.name);
+        module.external_type_defs = external_type_defs.clone();
         let module = pipeline.run(module).map_err(|e| anyhow::anyhow!("{e}"))?;
         modules.push(module);
     }

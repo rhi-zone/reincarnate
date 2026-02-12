@@ -18,6 +18,10 @@ pub struct RuntimeConfig {
     /// When `None`, no class preamble is emitted.
     #[serde(default)]
     pub class_preamble: Option<ImportGroup>,
+    /// External type definitions (runtime-provided classes/interfaces).
+    /// Keyed by short type name (e.g. `"DisplayObject"`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub type_definitions: BTreeMap<String, ExternalTypeDef>,
 }
 
 /// A single system module mapping.
@@ -47,4 +51,32 @@ pub struct ScaffoldConfig {
 pub struct ImportGroup {
     pub names: Vec<String>,
     pub path: String,
+}
+
+/// Describes an external (runtime-provided) type's members.
+///
+/// Used by transforms to continue type inference through external types
+/// (e.g. `DisplayObject.visible → Bool`) and by the backend to validate
+/// member accesses against known runtime APIs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalTypeDef {
+    /// Parent type name, if any (e.g. `"EventDispatcher"` for `DisplayObject`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extends: Option<String>,
+    /// Instance fields: field name → type notation string.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: BTreeMap<String, String>,
+    /// Instance methods: method name → signature.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub methods: BTreeMap<String, ExternalMethodSig>,
+}
+
+/// Signature of an external method.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalMethodSig {
+    /// Parameter types as type notation strings.
+    #[serde(default)]
+    pub params: Vec<String>,
+    /// Return type as a type notation string.
+    pub returns: String,
 }

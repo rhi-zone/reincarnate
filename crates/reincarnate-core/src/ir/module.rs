@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::entity::PrimaryMap;
 
+use crate::project::ExternalTypeDef;
+
 use super::value::Constant;
 use super::func::{FuncId, Function, Visibility};
 use super::ty::Type;
@@ -121,6 +123,12 @@ pub struct Module {
     /// can emit import statements without engine-specific parsing.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub external_imports: BTreeMap<String, ExternalImport>,
+    /// External type definitions from the runtime package.
+    /// Populated by the CLI before running transforms so that type inference
+    /// and constraint solving can resolve fields/methods on external types.
+    /// Skipped during serialization to avoid bloating IR JSON output.
+    #[serde(default, skip_serializing)]
+    pub external_type_defs: BTreeMap<String, ExternalTypeDef>,
 }
 
 impl Module {
@@ -135,6 +143,7 @@ impl Module {
             classes: Vec::new(),
             entry_point: None,
             external_imports: BTreeMap::new(),
+            external_type_defs: BTreeMap::new(),
         }
     }
 }

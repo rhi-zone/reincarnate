@@ -25,5 +25,5 @@ pub use module::{
 pub use structurize::{
     build_cfg, compute_dominators_lt, dominates, structurize, BlockArgAssign, Cfg, Shape,
 };
-pub use ty::{FunctionSig, Type, TypeConstraint, TypeVarId};
+pub use ty::{parse_type_notation, FunctionSig, Type, TypeConstraint, TypeVarId};
 pub use value::{Constant, ValueId};

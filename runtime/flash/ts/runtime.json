@@ -19,5 +19,815 @@
   "class_preamble": {
     "names": ["QN_KEY", "registerClass", "registerClassTraits", "registerInterface", "isType", "asType", "int", "uint"],
     "path": "flash/utils"
+  },
+  "type_definitions": {
+    "EventDispatcher": {
+      "fields": {},
+      "methods": {
+        "addEventListener": { "params": ["string", "*", "boolean", "int", "boolean"], "returns": "void" },
+        "removeEventListener": { "params": ["string", "*", "boolean"], "returns": "void" },
+        "dispatchEvent": { "params": ["Event"], "returns": "boolean" },
+        "hasEventListener": { "params": ["string"], "returns": "boolean" },
+        "willTrigger": { "params": ["string"], "returns": "boolean" }
+      }
+    },
+    "IEventDispatcher": {
+      "methods": {
+        "addEventListener": { "params": ["string", "*", "boolean", "int", "boolean"], "returns": "void" },
+        "removeEventListener": { "params": ["string", "*", "boolean"], "returns": "void" },
+        "dispatchEvent": { "params": ["Event"], "returns": "boolean" },
+        "hasEventListener": { "params": ["string"], "returns": "boolean" },
+        "willTrigger": { "params": ["string"], "returns": "boolean" }
+      }
+    },
+    "DisplayObject": {
+      "extends": "EventDispatcher",
+      "fields": {
+        "alpha": "number",
+        "blendMode": "string",
+        "cacheAsBitmap": "boolean",
+        "filters": "Array",
+        "height": "number",
+        "loaderInfo": "*",
+        "mask": "*",
+        "mouseX": "number",
+        "mouseY": "number",
+        "name": "string",
+        "opaqueBackground": "*",
+        "parent": "DisplayObjectContainer",
+        "root": "*",
+        "rotation": "number",
+        "rotationX": "number",
+        "rotationY": "number",
+        "rotationZ": "number",
+        "scale9Grid": "*",
+        "scaleX": "number",
+        "scaleY": "number",
+        "scaleZ": "number",
+        "scrollRect": "*",
+        "stage": "Stage",
+        "transform": "Transform",
+        "visible": "boolean",
+        "width": "number",
+        "x": "number",
+        "y": "number",
+        "z": "number"
+      },
+      "methods": {
+        "getBounds": { "params": ["DisplayObject"], "returns": "Rectangle" },
+        "getRect": { "params": ["DisplayObject"], "returns": "Rectangle" },
+        "globalToLocal": { "params": ["Point"], "returns": "Point" },
+        "hitTestObject": { "params": ["DisplayObject"], "returns": "boolean" },
+        "hitTestPoint": { "params": ["number", "number", "boolean"], "returns": "boolean" },
+        "localToGlobal": { "params": ["Point"], "returns": "Point" }
+      }
+    },
+    "InteractiveObject": {
+      "extends": "DisplayObject",
+      "fields": {
+        "contextMenu": "*",
+        "doubleClickEnabled": "boolean",
+        "focusRect": "*",
+        "mouseEnabled": "boolean",
+        "tabEnabled": "boolean",
+        "tabIndex": "int"
+      }
+    },
+    "DisplayObjectContainer": {
+      "extends": "InteractiveObject",
+      "fields": {
+        "mouseChildren": "boolean",
+        "numChildren": "int",
+        "tabChildren": "boolean"
+      },
+      "methods": {
+        "addChild": { "params": ["DisplayObject"], "returns": "DisplayObject" },
+        "addChildAt": { "params": ["DisplayObject", "int"], "returns": "DisplayObject" },
+        "contains": { "params": ["DisplayObject"], "returns": "boolean" },
+        "getChildAt": { "params": ["int"], "returns": "DisplayObject" },
+        "getChildByName": { "params": ["string"], "returns": "*" },
+        "getChildIndex": { "params": ["DisplayObject"], "returns": "int" },
+        "removeChild": { "params": ["DisplayObject"], "returns": "DisplayObject" },
+        "removeChildAt": { "params": ["int"], "returns": "DisplayObject" },
+        "removeChildren": { "params": ["int", "int"], "returns": "void" },
+        "setChildIndex": { "params": ["DisplayObject", "int"], "returns": "void" },
+        "swapChildren": { "params": ["DisplayObject", "DisplayObject"], "returns": "void" },
+        "swapChildrenAt": { "params": ["int", "int"], "returns": "void" }
+      }
+    },
+    "Shape": {
+      "extends": "DisplayObject",
+      "fields": {
+        "graphics": "Graphics"
+      }
+    },
+    "Bitmap": {
+      "extends": "DisplayObject",
+      "fields": {
+        "bitmapData": "*",
+        "pixelSnapping": "string",
+        "smoothing": "boolean"
+      }
+    },
+    "Sprite": {
+      "extends": "DisplayObjectContainer",
+      "fields": {
+        "buttonMode": "boolean",
+        "dropTarget": "*",
+        "graphics": "Graphics",
+        "hitArea": "*",
+        "soundTransform": "*",
+        "useHandCursor": "boolean"
+      },
+      "methods": {
+        "startDrag": { "params": ["boolean", "*"], "returns": "void" },
+        "stopDrag": { "params": [], "returns": "void" }
+      }
+    },
+    "MovieClip": {
+      "extends": "Sprite",
+      "fields": {
+        "currentFrame": "int",
+        "currentFrameLabel": "*",
+        "currentLabel": "*",
+        "currentLabels": "Array",
+        "currentScene": "*",
+        "enabled": "boolean",
+        "framesLoaded": "int",
+        "isPlaying": "boolean",
+        "scenes": "Array",
+        "totalFrames": "int",
+        "trackAsMenu": "boolean"
+      },
+      "methods": {
+        "addFrameScript": { "params": [], "returns": "void" },
+        "gotoAndPlay": { "params": ["*", "*"], "returns": "void" },
+        "gotoAndStop": { "params": ["*", "*"], "returns": "void" },
+        "nextFrame": { "params": [], "returns": "void" },
+        "nextScene": { "params": [], "returns": "void" },
+        "play": { "params": [], "returns": "void" },
+        "prevFrame": { "params": [], "returns": "void" },
+        "prevScene": { "params": [], "returns": "void" },
+        "stop": { "params": [], "returns": "void" }
+      }
+    },
+    "Stage": {
+      "extends": "DisplayObjectContainer",
+      "fields": {
+        "align": "string",
+        "color": "uint",
+        "displayState": "string",
+        "focus": "*",
+        "frameRate": "number",
+        "fullScreenHeight": "number",
+        "fullScreenSourceRect": "*",
+        "fullScreenWidth": "number",
+        "quality": "string",
+        "scaleMode": "string",
+        "showDefaultContextMenu": "boolean",
+        "stageFocusRect": "boolean",
+        "stageHeight": "number",
+        "stageWidth": "number"
+      },
+      "methods": {
+        "invalidate": { "params": [], "returns": "void" }
+      }
+    },
+    "Loader": {
+      "extends": "DisplayObjectContainer",
+      "fields": {
+        "content": "*",
+        "contentLoaderInfo": "LoaderInfo"
+      },
+      "methods": {
+        "close": { "params": [], "returns": "void" },
+        "load": { "params": ["*", "*"], "returns": "void" },
+        "loadBytes": { "params": ["*", "*"], "returns": "void" },
+        "unload": { "params": [], "returns": "void" },
+        "unloadAndStop": { "params": ["boolean"], "returns": "void" }
+      }
+    },
+    "LoaderInfo": {
+      "extends": "EventDispatcher",
+      "fields": {
+        "actionScriptVersion": "int",
+        "applicationDomain": "*",
+        "bytes": "*",
+        "bytesLoaded": "number",
+        "bytesTotal": "number",
+        "childAllowsParent": "boolean",
+        "content": "*",
+        "contentType": "string",
+        "frameRate": "number",
+        "height": "number",
+        "loader": "*",
+        "loaderURL": "string",
+        "parameters": "*",
+        "sameDomain": "boolean",
+        "sharedEvents": "EventDispatcher",
+        "swfVersion": "int",
+        "url": "string",
+        "width": "number"
+      }
+    },
+    "Graphics": {
+      "methods": {
+        "beginBitmapFill": { "params": ["*", "*", "boolean", "boolean"], "returns": "void" },
+        "beginFill": { "params": ["uint", "number"], "returns": "void" },
+        "beginGradientFill": { "params": ["string", "Array", "Array", "Array", "*", "string", "string", "number"], "returns": "void" },
+        "clear": { "params": [], "returns": "void" },
+        "copyFrom": { "params": ["Graphics"], "returns": "void" },
+        "curveTo": { "params": ["number", "number", "number", "number"], "returns": "void" },
+        "drawCircle": { "params": ["number", "number", "number"], "returns": "void" },
+        "drawEllipse": { "params": ["number", "number", "number", "number"], "returns": "void" },
+        "drawPath": { "params": ["Array", "Array", "string"], "returns": "void" },
+        "drawRect": { "params": ["number", "number", "number", "number"], "returns": "void" },
+        "drawRoundRect": { "params": ["number", "number", "number", "number", "number", "number"], "returns": "void" },
+        "drawTriangles": { "params": ["Array", "*", "*", "string"], "returns": "void" },
+        "endFill": { "params": [], "returns": "void" },
+        "lineGradientStyle": { "params": ["string", "Array", "Array", "Array", "*", "string", "string", "number"], "returns": "void" },
+        "lineStyle": { "params": ["number", "uint", "number", "boolean", "string", "*", "*", "number"], "returns": "void" },
+        "lineTo": { "params": ["number", "number"], "returns": "void" },
+        "moveTo": { "params": ["number", "number"], "returns": "void" }
+      }
+    },
+    "FrameLabel": {
+      "fields": {
+        "name": "string",
+        "frame": "int"
+      }
+    },
+    "Scene": {
+      "fields": {
+        "name": "string",
+        "labels": "Array",
+        "numFrames": "int"
+      }
+    },
+    "Event": {
+      "fields": {
+        "type": "string",
+        "bubbles": "boolean",
+        "cancelable": "boolean",
+        "target": "*",
+        "currentTarget": "*",
+        "eventPhase": "int"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "Event" },
+        "formatToString": { "params": ["string"], "returns": "string" },
+        "isDefaultPrevented": { "params": [], "returns": "boolean" },
+        "preventDefault": { "params": [], "returns": "void" },
+        "stopImmediatePropagation": { "params": [], "returns": "void" },
+        "stopPropagation": { "params": [], "returns": "void" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "TextEvent": {
+      "extends": "Event",
+      "fields": {
+        "text": "string"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "TextEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "ErrorEvent": {
+      "extends": "TextEvent",
+      "fields": {
+        "errorID": "int"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "ErrorEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "MouseEvent": {
+      "extends": "Event",
+      "fields": {
+        "localX": "number",
+        "localY": "number",
+        "stageX": "number",
+        "stageY": "number",
+        "relatedObject": "*",
+        "ctrlKey": "boolean",
+        "altKey": "boolean",
+        "shiftKey": "boolean",
+        "buttonDown": "boolean",
+        "delta": "int",
+        "clickCount": "int",
+        "commandKey": "boolean",
+        "controlKey": "boolean"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "MouseEvent" },
+        "updateAfterEvent": { "params": [], "returns": "void" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "KeyboardEvent": {
+      "extends": "Event",
+      "fields": {
+        "charCode": "uint",
+        "keyCode": "uint",
+        "keyLocation": "uint",
+        "ctrlKey": "boolean",
+        "altKey": "boolean",
+        "shiftKey": "boolean"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "KeyboardEvent" },
+        "updateAfterEvent": { "params": [], "returns": "void" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "FocusEvent": {
+      "extends": "Event",
+      "fields": {
+        "relatedObject": "*",
+        "shiftKey": "boolean",
+        "keyCode": "uint",
+        "direction": "string",
+        "isRelatedObjectInaccessible": "boolean"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "FocusEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "ProgressEvent": {
+      "extends": "Event",
+      "fields": {
+        "bytesLoaded": "number",
+        "bytesTotal": "number"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "ProgressEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "IOErrorEvent": {
+      "extends": "ErrorEvent",
+      "methods": {
+        "clone": { "params": [], "returns": "IOErrorEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "SecurityErrorEvent": {
+      "extends": "ErrorEvent",
+      "methods": {
+        "clone": { "params": [], "returns": "SecurityErrorEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "HTTPStatusEvent": {
+      "extends": "Event",
+      "fields": {
+        "status": "int",
+        "responseHeaders": "Array",
+        "responseURL": "string"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "HTTPStatusEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "AsyncErrorEvent": {
+      "extends": "ErrorEvent",
+      "fields": {
+        "error": "*"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "AsyncErrorEvent" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "TimerEvent": {
+      "extends": "Event",
+      "methods": {
+        "clone": { "params": [], "returns": "TimerEvent" },
+        "updateAfterEvent": { "params": [], "returns": "void" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "TextField": {
+      "extends": "InteractiveObject",
+      "fields": {
+        "alwaysShowSelection": "boolean",
+        "antiAliasType": "string",
+        "autoSize": "string",
+        "background": "boolean",
+        "backgroundColor": "uint",
+        "border": "boolean",
+        "borderColor": "uint",
+        "bottomScrollV": "int",
+        "caretIndex": "int",
+        "condenseWhite": "boolean",
+        "defaultTextFormat": "TextFormat",
+        "displayAsPassword": "boolean",
+        "embedFonts": "boolean",
+        "gridFitType": "string",
+        "htmlText": "string",
+        "length": "int",
+        "maxChars": "int",
+        "maxScrollH": "int",
+        "maxScrollV": "int",
+        "mouseWheelEnabled": "boolean",
+        "multiline": "boolean",
+        "numLines": "int",
+        "restrict": "*",
+        "scrollH": "int",
+        "scrollV": "int",
+        "selectable": "boolean",
+        "selectionBeginIndex": "int",
+        "selectionEndIndex": "int",
+        "sharpness": "number",
+        "styleSheet": "*",
+        "text": "string",
+        "textColor": "uint",
+        "textHeight": "number",
+        "textWidth": "number",
+        "thickness": "number",
+        "type": "string",
+        "useRichTextClipboard": "boolean",
+        "wordWrap": "boolean"
+      },
+      "methods": {
+        "appendText": { "params": ["string"], "returns": "void" },
+        "getTextFormat": { "params": ["int", "int"], "returns": "TextFormat" },
+        "setTextFormat": { "params": ["TextFormat", "int", "int"], "returns": "void" },
+        "replaceSelectedText": { "params": ["string"], "returns": "void" },
+        "replaceText": { "params": ["int", "int", "string"], "returns": "void" },
+        "setSelection": { "params": ["int", "int"], "returns": "void" },
+        "getCharBoundaries": { "params": ["int"], "returns": "*" },
+        "getCharIndexAtPoint": { "params": ["number", "number"], "returns": "int" },
+        "getLineIndexAtPoint": { "params": ["number", "number"], "returns": "int" },
+        "getLineIndexOfChar": { "params": ["int"], "returns": "int" },
+        "getLineLength": { "params": ["int"], "returns": "int" },
+        "getLineMetrics": { "params": ["int"], "returns": "*" },
+        "getLineOffset": { "params": ["int"], "returns": "int" },
+        "getLineText": { "params": ["int"], "returns": "string" },
+        "getFirstCharInParagraph": { "params": ["int"], "returns": "int" },
+        "getParagraphLength": { "params": ["int"], "returns": "int" },
+        "getImageReference": { "params": ["string"], "returns": "*" }
+      }
+    },
+    "TextFormat": {
+      "fields": {
+        "align": "*",
+        "blockIndent": "*",
+        "bold": "*",
+        "bullet": "*",
+        "color": "*",
+        "display": "*",
+        "font": "*",
+        "indent": "*",
+        "italic": "*",
+        "kerning": "*",
+        "leading": "*",
+        "leftMargin": "*",
+        "letterSpacing": "*",
+        "rightMargin": "*",
+        "size": "*",
+        "tabStops": "*",
+        "target": "*",
+        "underline": "*",
+        "url": "*"
+      }
+    },
+    "Font": {
+      "fields": {
+        "fontName": "string",
+        "fontStyle": "string",
+        "fontType": "string"
+      },
+      "methods": {
+        "hasGlyphs": { "params": ["string"], "returns": "boolean" }
+      }
+    },
+    "Point": {
+      "fields": {
+        "x": "number",
+        "y": "number",
+        "length": "number"
+      },
+      "methods": {
+        "add": { "params": ["Point"], "returns": "Point" },
+        "clone": { "params": [], "returns": "Point" },
+        "copyFrom": { "params": ["Point"], "returns": "void" },
+        "equals": { "params": ["Point"], "returns": "boolean" },
+        "normalize": { "params": ["number"], "returns": "void" },
+        "offset": { "params": ["number", "number"], "returns": "void" },
+        "setTo": { "params": ["number", "number"], "returns": "void" },
+        "subtract": { "params": ["Point"], "returns": "Point" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "Rectangle": {
+      "fields": {
+        "x": "number",
+        "y": "number",
+        "width": "number",
+        "height": "number",
+        "top": "number",
+        "bottom": "number",
+        "left": "number",
+        "right": "number",
+        "topLeft": "Point",
+        "bottomRight": "Point",
+        "size": "Point"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "Rectangle" },
+        "contains": { "params": ["number", "number"], "returns": "boolean" },
+        "containsPoint": { "params": ["Point"], "returns": "boolean" },
+        "containsRect": { "params": ["Rectangle"], "returns": "boolean" },
+        "copyFrom": { "params": ["Rectangle"], "returns": "void" },
+        "equals": { "params": ["Rectangle"], "returns": "boolean" },
+        "inflate": { "params": ["number", "number"], "returns": "void" },
+        "inflatePoint": { "params": ["Point"], "returns": "void" },
+        "intersection": { "params": ["Rectangle"], "returns": "Rectangle" },
+        "intersects": { "params": ["Rectangle"], "returns": "boolean" },
+        "isEmpty": { "params": [], "returns": "boolean" },
+        "offset": { "params": ["number", "number"], "returns": "void" },
+        "offsetPoint": { "params": ["Point"], "returns": "void" },
+        "setEmpty": { "params": [], "returns": "void" },
+        "setTo": { "params": ["number", "number", "number", "number"], "returns": "void" },
+        "toString": { "params": [], "returns": "string" },
+        "union": { "params": ["Rectangle"], "returns": "Rectangle" }
+      }
+    },
+    "Matrix": {
+      "fields": {
+        "a": "number",
+        "b": "number",
+        "c": "number",
+        "d": "number",
+        "tx": "number",
+        "ty": "number"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "Matrix" },
+        "concat": { "params": ["Matrix"], "returns": "void" },
+        "createBox": { "params": ["number", "number", "number", "number", "number"], "returns": "void" },
+        "createGradientBox": { "params": ["number", "number", "number", "number", "number"], "returns": "void" },
+        "deltaTransformPoint": { "params": ["Point"], "returns": "Point" },
+        "identity": { "params": [], "returns": "void" },
+        "invert": { "params": [], "returns": "void" },
+        "rotate": { "params": ["number"], "returns": "void" },
+        "scale": { "params": ["number", "number"], "returns": "void" },
+        "setTo": { "params": ["number", "number", "number", "number", "number", "number"], "returns": "void" },
+        "toString": { "params": [], "returns": "string" },
+        "transformPoint": { "params": ["Point"], "returns": "Point" },
+        "translate": { "params": ["number", "number"], "returns": "void" }
+      }
+    },
+    "ColorTransform": {
+      "fields": {
+        "redMultiplier": "number",
+        "greenMultiplier": "number",
+        "blueMultiplier": "number",
+        "alphaMultiplier": "number",
+        "redOffset": "number",
+        "greenOffset": "number",
+        "blueOffset": "number",
+        "alphaOffset": "number",
+        "color": "uint"
+      },
+      "methods": {
+        "concat": { "params": ["ColorTransform"], "returns": "void" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "Transform": {
+      "fields": {
+        "matrix": "Matrix",
+        "colorTransform": "ColorTransform",
+        "concatenatedMatrix": "Matrix",
+        "concatenatedColorTransform": "ColorTransform",
+        "pixelBounds": "Rectangle"
+      }
+    },
+    "URLRequest": {
+      "fields": {
+        "url": "string",
+        "method": "string",
+        "data": "*",
+        "contentType": "string",
+        "requestHeaders": "Array",
+        "digest": "*"
+      }
+    },
+    "URLLoader": {
+      "extends": "EventDispatcher",
+      "fields": {
+        "bytesLoaded": "number",
+        "bytesTotal": "number",
+        "data": "*",
+        "dataFormat": "string"
+      },
+      "methods": {
+        "close": { "params": [], "returns": "void" },
+        "load": { "params": ["URLRequest"], "returns": "void" }
+      }
+    },
+    "FileReference": {
+      "extends": "EventDispatcher",
+      "fields": {
+        "creationDate": "*",
+        "creator": "*",
+        "data": "*",
+        "extension": "*",
+        "modificationDate": "*",
+        "name": "*",
+        "size": "number",
+        "type": "*"
+      },
+      "methods": {
+        "browse": { "params": ["*"], "returns": "boolean" },
+        "cancel": { "params": [], "returns": "void" },
+        "download": { "params": ["URLRequest", "string"], "returns": "void" },
+        "load": { "params": [], "returns": "void" },
+        "save": { "params": ["*", "string"], "returns": "void" },
+        "upload": { "params": ["URLRequest", "string", "boolean"], "returns": "void" }
+      }
+    },
+    "SharedObject": {
+      "fields": {
+        "data": "*",
+        "size": "number",
+        "client": "*",
+        "objectEncoding": "int"
+      },
+      "methods": {
+        "clear": { "params": [], "returns": "void" },
+        "close": { "params": [], "returns": "void" },
+        "flush": { "params": ["int"], "returns": "string" },
+        "setDirty": { "params": ["string"], "returns": "void" },
+        "setProperty": { "params": ["string", "*"], "returns": "void" }
+      }
+    },
+    "ByteArray": {
+      "fields": {
+        "position": "uint",
+        "endian": "string",
+        "objectEncoding": "uint",
+        "length": "uint",
+        "bytesAvailable": "uint"
+      },
+      "methods": {
+        "readBoolean": { "params": [], "returns": "boolean" },
+        "readByte": { "params": [], "returns": "int" },
+        "readShort": { "params": [], "returns": "int" },
+        "readInt": { "params": [], "returns": "int" },
+        "readFloat": { "params": [], "returns": "number" },
+        "readDouble": { "params": [], "returns": "number" },
+        "readUnsignedByte": { "params": [], "returns": "uint" },
+        "readUnsignedShort": { "params": [], "returns": "uint" },
+        "readUnsignedInt": { "params": [], "returns": "uint" },
+        "readUTF": { "params": [], "returns": "string" },
+        "readUTFBytes": { "params": ["uint"], "returns": "string" },
+        "readMultiByte": { "params": ["uint", "string"], "returns": "string" },
+        "readObject": { "params": [], "returns": "*" },
+        "readBytes": { "params": ["ByteArray", "uint", "uint"], "returns": "void" },
+        "writeBoolean": { "params": ["boolean"], "returns": "void" },
+        "writeByte": { "params": ["int"], "returns": "void" },
+        "writeShort": { "params": ["int"], "returns": "void" },
+        "writeInt": { "params": ["int"], "returns": "void" },
+        "writeFloat": { "params": ["number"], "returns": "void" },
+        "writeDouble": { "params": ["number"], "returns": "void" },
+        "writeUnsignedInt": { "params": ["uint"], "returns": "void" },
+        "writeUTF": { "params": ["string"], "returns": "void" },
+        "writeUTFBytes": { "params": ["string"], "returns": "void" },
+        "writeMultiByte": { "params": ["string", "string"], "returns": "void" },
+        "writeObject": { "params": ["*"], "returns": "void" },
+        "writeBytes": { "params": ["ByteArray", "uint", "uint"], "returns": "void" },
+        "clear": { "params": [], "returns": "void" },
+        "compress": { "params": ["string"], "returns": "void" },
+        "uncompress": { "params": ["string"], "returns": "void" },
+        "deflate": { "params": [], "returns": "void" },
+        "inflate": { "params": [], "returns": "void" },
+        "toString": { "params": [], "returns": "string" }
+      }
+    },
+    "Timer": {
+      "extends": "EventDispatcher",
+      "fields": {
+        "currentCount": "int",
+        "delay": "number",
+        "repeatCount": "int",
+        "running": "boolean"
+      },
+      "methods": {
+        "reset": { "params": [], "returns": "void" },
+        "start": { "params": [], "returns": "void" },
+        "stop": { "params": [], "returns": "void" }
+      }
+    },
+    "Dictionary": {
+      "methods": {}
+    },
+    "Proxy": {
+      "methods": {
+        "callProperty": { "params": ["string"], "returns": "*" },
+        "deleteProperty": { "params": ["string"], "returns": "boolean" },
+        "getDescendants": { "params": ["string"], "returns": "*" },
+        "getProperty": { "params": ["string"], "returns": "*" },
+        "hasProperty": { "params": ["string"], "returns": "boolean" },
+        "isAttribute": { "params": ["string"], "returns": "boolean" },
+        "nextName": { "params": ["int"], "returns": "string" },
+        "nextNameIndex": { "params": ["int"], "returns": "int" },
+        "nextValue": { "params": ["int"], "returns": "*" },
+        "setProperty": { "params": ["string", "*"], "returns": "void" }
+      }
+    },
+    "BitmapData": {
+      "fields": {
+        "width": "int",
+        "height": "int",
+        "transparent": "boolean",
+        "rect": "Rectangle"
+      },
+      "methods": {
+        "clone": { "params": [], "returns": "BitmapData" },
+        "dispose": { "params": [], "returns": "void" },
+        "getPixel": { "params": ["int", "int"], "returns": "uint" },
+        "getPixel32": { "params": ["int", "int"], "returns": "uint" },
+        "setPixel": { "params": ["int", "int", "uint"], "returns": "void" },
+        "setPixel32": { "params": ["int", "int", "uint"], "returns": "void" },
+        "lock": { "params": [], "returns": "void" },
+        "unlock": { "params": [], "returns": "void" },
+        "fillRect": { "params": ["Rectangle", "uint"], "returns": "void" },
+        "copyPixels": { "params": ["BitmapData", "Rectangle", "Point"], "returns": "void" },
+        "draw": { "params": ["*", "*", "*", "*", "*", "boolean"], "returns": "void" }
+      }
+    },
+    "StyleSheet": {
+      "extends": "EventDispatcher",
+      "fields": {
+        "styleNames": "Array"
+      },
+      "methods": {
+        "getStyle": { "params": ["string"], "returns": "*" },
+        "setStyle": { "params": ["string", "*"], "returns": "void" },
+        "parseCSS": { "params": ["string"], "returns": "void" },
+        "clear": { "params": [], "returns": "void" },
+        "transform": { "params": ["*"], "returns": "*" }
+      }
+    },
+    "SimpleButton": {
+      "extends": "InteractiveObject",
+      "fields": {
+        "downState": "*",
+        "enabled": "boolean",
+        "hitTestState": "*",
+        "overState": "*",
+        "soundTransform": "*",
+        "trackAsMenu": "boolean",
+        "upState": "*",
+        "useHandCursor": "boolean"
+      }
+    },
+    "ICellRenderer": {
+      "fields": {
+        "data": "*",
+        "listData": "*",
+        "selected": "boolean",
+        "x": "number",
+        "y": "number",
+        "width": "number",
+        "height": "number",
+        "visible": "boolean"
+      },
+      "methods": {
+        "setSize": { "params": ["number", "number"], "returns": "void" },
+        "setMouseState": { "params": ["string"], "returns": "void" }
+      }
+    },
+    "IFocusManager": {
+      "fields": {
+        "defaultButton": "*",
+        "defaultButtonEnabled": "boolean",
+        "nextTabIndex": "int",
+        "showFocusIndicator": "boolean"
+      },
+      "methods": {
+        "activate": { "params": [], "returns": "void" },
+        "deactivate": { "params": [], "returns": "void" },
+        "findFocusManagerComponent": { "params": ["InteractiveObject"], "returns": "*" },
+        "getNextFocusManagerComponent": { "params": ["boolean"], "returns": "*" },
+        "getFocus": { "params": [], "returns": "InteractiveObject" },
+        "setFocus": { "params": ["InteractiveObject"], "returns": "void" },
+        "hideFocus": { "params": [], "returns": "void" },
+        "showFocus": { "params": [], "returns": "void" }
+      }
+    },
+    "IFocusManagerGroup": {
+      "fields": {
+        "groupName": "string",
+        "selected": "boolean"
+      }
+    }
   }
 }
