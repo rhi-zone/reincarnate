@@ -547,11 +547,15 @@ const FLASH_PACKAGES: &[&str] = &[
     "desktop",
     "display",
     "events",
+    "filters",
     "geom",
+    "media",
     "net",
     "security",
+    "system",
     "text",
     "text.ime",
+    "ui",
     "utils",
 ];
 

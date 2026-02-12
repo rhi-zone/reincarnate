@@ -6,7 +6,12 @@
 import { Point, Rectangle, Matrix, Transform, _getConcatenatedMatrix } from "./geom";
 import { EventDispatcher, Event, ProgressEvent, IOErrorEvent } from "./events";
 import { fetchResource, hasFetch, loadImageBitmap } from "./platform";
-import { getInstanceTraits, getDefinitionByName } from "./utils";
+import { getInstanceTraits, getDefinitionByName, ByteArray } from "./utils";
+import type { BitmapFilter } from "./filters";
+import type { ContextMenu } from "./ui";
+import type { SoundTransform } from "./media";
+import type { ApplicationDomain, LoaderContext } from "./system";
+import type { URLRequest } from "./net";
 
 // ---------------------------------------------------------------------------
 // AS3 display interfaces
@@ -41,7 +46,7 @@ export class Graphics {
   _commands: DrawCommand[] = [];
 
   beginBitmapFill(
-    _bitmap: any,
+    _bitmap: BitmapData,
     _matrix: Matrix | null = null,
     _repeat = true,
     _smooth = false,
@@ -176,7 +181,7 @@ export class DisplayObject extends EventDispatcher {
   _alpha = 1;
   _blendMode: string = "normal";
   _cacheAsBitmap = false;
-  _filters: any[] = [];
+  _filters: BitmapFilter[] = [];
   _height = 0;
   _loaderInfo: LoaderInfo | null = null;
   _mask: DisplayObject | null = null;
@@ -210,7 +215,7 @@ export class DisplayObject extends EventDispatcher {
   get cacheAsBitmap() { return this._cacheAsBitmap; }
   set cacheAsBitmap(v: boolean) { this._cacheAsBitmap = v; }
   get filters() { return this._filters; }
-  set filters(v: any[]) { this._filters = v; }
+  set filters(v: BitmapFilter[]) { this._filters = v; }
   get height() { return this._height; }
   set height(v: number) { this._height = v; }
   get loaderInfo() { return this._loaderInfo; }
@@ -376,7 +381,7 @@ export class DisplayObject extends EventDispatcher {
 // ---------------------------------------------------------------------------
 
 export class InteractiveObject extends DisplayObject {
-  _contextMenu: any = null;
+  _contextMenu: ContextMenu | null = null;
   _doubleClickEnabled = false;
   _focusRect: boolean | null = null;
   _mouseEnabled = true;
@@ -384,7 +389,7 @@ export class InteractiveObject extends DisplayObject {
   _tabIndex = -1;
 
   get contextMenu() { return this._contextMenu; }
-  set contextMenu(v: any) { this._contextMenu = v; }
+  set contextMenu(v: ContextMenu | null) { this._contextMenu = v; }
   get doubleClickEnabled() { return this._doubleClickEnabled; }
   set doubleClickEnabled(v: boolean) { this._doubleClickEnabled = v; }
   get focusRect() { return this._focusRect; }
@@ -520,22 +525,128 @@ export class Shape extends DisplayObject {
 }
 
 // ---------------------------------------------------------------------------
+// BitmapData
+// ---------------------------------------------------------------------------
+
+export class BitmapData {
+  private _width: number;
+  private _height: number;
+  private _transparent: boolean;
+  private _pixels: Uint32Array;
+  private _disposed = false;
+
+  constructor(width: number, height: number, transparent = true, fillColor = 0xffffffff) {
+    this._width = width;
+    this._height = height;
+    this._transparent = transparent;
+    this._pixels = new Uint32Array(width * height);
+    if (fillColor !== 0) this._pixels.fill(fillColor >>> 0);
+  }
+
+  get width(): number { return this._width; }
+  get height(): number { return this._height; }
+  get transparent(): boolean { return this._transparent; }
+
+  get rect(): Rectangle {
+    return new Rectangle(0, 0, this._width, this._height);
+  }
+
+  clone(): BitmapData {
+    const bd = new BitmapData(this._width, this._height, this._transparent);
+    bd._pixels.set(this._pixels);
+    return bd;
+  }
+
+  dispose(): void {
+    this._pixels = new Uint32Array(0);
+    this._width = 0;
+    this._height = 0;
+    this._disposed = true;
+  }
+
+  getPixel(x: number, y: number): number {
+    return (this._pixels[y * this._width + x] ?? 0) & 0x00ffffff;
+  }
+
+  getPixel32(x: number, y: number): number {
+    return this._pixels[y * this._width + x] ?? 0;
+  }
+
+  setPixel(x: number, y: number, color: number): void {
+    if (x >= 0 && x < this._width && y >= 0 && y < this._height) {
+      const i = y * this._width + x;
+      this._pixels[i] = (this._pixels[i] & 0xff000000) | (color & 0x00ffffff);
+    }
+  }
+
+  setPixel32(x: number, y: number, color: number): void {
+    if (x >= 0 && x < this._width && y >= 0 && y < this._height) {
+      this._pixels[y * this._width + x] = color >>> 0;
+    }
+  }
+
+  fillRect(rect: Rectangle, color: number): void {
+    const x0 = Math.max(0, rect.x | 0);
+    const y0 = Math.max(0, rect.y | 0);
+    const x1 = Math.min(this._width, (rect.x + rect.width) | 0);
+    const y1 = Math.min(this._height, (rect.y + rect.height) | 0);
+    const c = color >>> 0;
+    for (let y = y0; y < y1; y++) {
+      const row = y * this._width;
+      for (let x = x0; x < x1; x++) {
+        this._pixels[row + x] = c;
+      }
+    }
+  }
+
+  copyPixels(
+    sourceBitmapData: BitmapData,
+    sourceRect: Rectangle,
+    destPoint: Point,
+  ): void {
+    const sx0 = Math.max(0, sourceRect.x | 0);
+    const sy0 = Math.max(0, sourceRect.y | 0);
+    const sw = Math.min(sourceBitmapData._width - sx0, sourceRect.width | 0);
+    const sh = Math.min(sourceBitmapData._height - sy0, sourceRect.height | 0);
+    const dx = destPoint.x | 0;
+    const dy = destPoint.y | 0;
+    for (let row = 0; row < sh; row++) {
+      const srcOff = (sy0 + row) * sourceBitmapData._width + sx0;
+      const dstOff = (dy + row) * this._width + dx;
+      for (let col = 0; col < sw; col++) {
+        this._pixels[dstOff + col] = sourceBitmapData._pixels[srcOff + col];
+      }
+    }
+  }
+
+  draw(_source: IBitmapDrawable): void {
+    // Full draw() requires a 2D rasteriser; no-op for now.
+  }
+
+  lock(): void { /* no-op; optimisation hint */ }
+  unlock(): void { /* no-op */ }
+
+  /** @internal — expose raw pixels for Canvas rendering */
+  _getPixels(): Uint32Array { return this._pixels; }
+}
+
+// ---------------------------------------------------------------------------
 // Bitmap
 // ---------------------------------------------------------------------------
 
 export class Bitmap extends DisplayObject {
-  _bitmapData: any /* BitmapData */ | null = null;
+  _bitmapData: BitmapData | null = null;
   _pixelSnapping = "auto";
   _smoothing = false;
 
   get bitmapData() { return this._bitmapData; }
-  set bitmapData(v: any /* BitmapData */ | null) { this._bitmapData = v; }
+  set bitmapData(v: BitmapData | null) { this._bitmapData = v; }
   get pixelSnapping() { return this._pixelSnapping; }
   set pixelSnapping(v: string) { this._pixelSnapping = v; }
   get smoothing() { return this._smoothing; }
   set smoothing(v: boolean) { this._smoothing = v; }
 
-  constructor(bitmapData: any /* BitmapData */ | null = null, pixelSnapping = "auto", smoothing = false) {
+  constructor(bitmapData: BitmapData | null = null, pixelSnapping = "auto", smoothing = false) {
     super();
     this._bitmapData = bitmapData;
     this._pixelSnapping = pixelSnapping;
@@ -573,7 +684,7 @@ export class Sprite extends DisplayObjectContainer {
   _dropTarget: DisplayObject | null = null;
   _graphics: Graphics = new Graphics();
   _hitArea: Sprite | null = null;
-  _soundTransform: any = null;
+  _soundTransform: SoundTransform | null = null;
   _useHandCursor = true;
 
   get buttonMode() { return this._buttonMode; }
@@ -585,7 +696,7 @@ export class Sprite extends DisplayObjectContainer {
   get hitArea() { return this._hitArea; }
   set hitArea(v: Sprite | null) { this._hitArea = v; }
   get soundTransform() { return this._soundTransform; }
-  set soundTransform(v: any) { this._soundTransform = v; }
+  set soundTransform(v: SoundTransform | null) { this._soundTransform = v; }
   get useHandCursor() { return this._useHandCursor; }
   set useHandCursor(v: boolean) { this._useHandCursor = v; }
 
@@ -878,7 +989,7 @@ _timelineFactories.set("Bitmap", () => new Bitmap());
 
 export class LoaderInfo extends EventDispatcher {
   _actionScriptVersion = 3;
-  _applicationDomain: any = null;
+  _applicationDomain: ApplicationDomain | null = null;
   _bytes: ArrayBuffer | null = null;
   _bytesLoaded = 0;
   _bytesTotal = 0;
@@ -899,7 +1010,7 @@ export class LoaderInfo extends EventDispatcher {
   get actionScriptVersion() { return this._actionScriptVersion; }
   set actionScriptVersion(v: number) { this._actionScriptVersion = v; }
   get applicationDomain() { return this._applicationDomain; }
-  set applicationDomain(v: any) { this._applicationDomain = v; }
+  set applicationDomain(v: ApplicationDomain | null) { this._applicationDomain = v; }
   get bytes() { return this._bytes; }
   set bytes(v: ArrayBuffer | null) { this._bytes = v; }
   get bytesLoaded() { return this._bytesLoaded; }
@@ -960,8 +1071,8 @@ export class Loader extends DisplayObjectContainer {
     }
   }
 
-  load(request: any, _context?: any): void {
-    const url: string = typeof request === "string" ? request : request?.url ?? "";
+  load(request: URLRequest, _context?: LoaderContext): void {
+    const url = request.url;
     this.contentLoaderInfo.url = url;
     this._abortController = new AbortController();
     const signal = this._abortController.signal;
@@ -991,11 +1102,10 @@ export class Loader extends DisplayObjectContainer {
     }
   }
 
-  loadBytes(bytes: any, _context?: any): void {
-    // Extract data from ByteArray (or ArrayBuffer) and attempt to create an image.
-    const data: ArrayBuffer = bytes._buffer
-      ? (bytes._buffer as ArrayBuffer).slice(0, bytes.length ?? bytes._length ?? 0)
-      : bytes;
+  loadBytes(bytes: ByteArray, _context?: LoaderContext): void {
+    // Extract raw ArrayBuffer from ByteArray and attempt to create an image.
+    const ba = bytes as any;
+    const data: ArrayBuffer = (ba._buffer as ArrayBuffer).slice(0, bytes.length);
     const blob = new Blob([data]);
     loadImageBitmap(blob)
       .then((bmp) => {

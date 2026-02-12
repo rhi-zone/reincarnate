@@ -28,6 +28,36 @@ export abstract class IDynamicPropertyWriter {
 }
 
 // ---------------------------------------------------------------------------
+// URLRequestHeader
+// ---------------------------------------------------------------------------
+
+export class URLRequestHeader {
+  name: string;
+  value: string;
+
+  constructor(name = "", value = "") {
+    this.name = name;
+    this.value = value;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// FileFilter
+// ---------------------------------------------------------------------------
+
+export class FileFilter {
+  description: string;
+  extension: string;
+  macType: string | null;
+
+  constructor(description: string, extension: string, macType: string | null = null) {
+    this.description = description;
+    this.extension = extension;
+    this.macType = macType;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // URLRequest
 // ---------------------------------------------------------------------------
 
@@ -36,7 +66,7 @@ export class URLRequest {
   _method = "GET";
   _data: object | string | null = null;
   _contentType = "application/x-www-form-urlencoded";
-  _requestHeaders: any[] = [];
+  _requestHeaders: URLRequestHeader[] = [];
   _digest: string | null = null;
 
   get url() { return this._url; }
@@ -48,7 +78,7 @@ export class URLRequest {
   get contentType() { return this._contentType; }
   set contentType(v: string) { this._contentType = v; }
   get requestHeaders() { return this._requestHeaders; }
-  set requestHeaders(v: any[]) { this._requestHeaders = v; }
+  set requestHeaders(v: URLRequestHeader[]) { this._requestHeaders = v; }
   get digest() { return this._digest; }
   set digest(v: string | null) { this._digest = v; }
 
@@ -154,7 +184,7 @@ export class FileReference extends EventDispatcher {
   get type() { return this._type; }
   set type(v: string | null) { this._type = v; }
 
-  browse(_typeFilter?: any[]): boolean {
+  browse(_typeFilter?: FileFilter[]): boolean {
     return false;
   }
 

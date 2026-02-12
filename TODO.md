@@ -110,6 +110,13 @@ Measured on CoC.ts (36k lines) after TypeInference + ConstraintSolve.
 - [x] **Warning categorization** — Unmapped external reference warnings now
   filter private namespace member accesses and `fl.*` authoring library types.
   Flash stdlib references get specific package-level warnings.
+- [ ] **Per-export validation for flash packages** — `FLASH_PACKAGES` in the
+  frontend gates package-level import resolution, but doesn't validate that the
+  specific class name (e.g. `IME`) is actually exported by the runtime module
+  (e.g. `flash/system`). A class in a known package silently generates an
+  `import { X } from "flash/Y"` that will fail at runtime if `X` doesn't exist.
+  Fix: validate short names against `type_definitions` in runtime.json, or scan
+  the actual runtime module exports at emit time.
 - [x] **Script globals extraction** — AVM2 script `Slot`/`Const` traits
   extracted as IR `Global` entries via `ModuleBuilder.add_global()`. Class
   traits filtered by name to avoid duplicates. Emitted as `_globals.ts`.

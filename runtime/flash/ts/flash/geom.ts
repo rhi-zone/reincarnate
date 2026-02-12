@@ -2,6 +2,8 @@
  * flash.geom package — Point, Rectangle, Matrix.
  */
 
+import type { DisplayObject } from "./display";
+
 // ---------------------------------------------------------------------------
 // Point
 // ---------------------------------------------------------------------------
@@ -508,9 +510,9 @@ export class Transform {
   set colorTransform(v: ColorTransform) { this._colorTransform = v; }
 
   /** @internal */
-  _owner: any;
+  _owner: DisplayObject;
 
-  constructor(owner: any) {
+  constructor(owner: DisplayObject) {
     this._owner = owner;
   }
 
@@ -521,8 +523,8 @@ export class Transform {
   get concatenatedColorTransform(): ColorTransform {
     const result = new ColorTransform();
     // Walk from root to this node, composing color transforms.
-    const chain: any[] = [];
-    let node = this._owner;
+    const chain: DisplayObject[] = [];
+    let node: DisplayObject | null = this._owner;
     while (node) {
       chain.push(node);
       node = node.parent;
@@ -563,9 +565,9 @@ export class Transform {
  * Compute the concatenated (world) matrix for a display object by walking
  * the parent chain from root to leaf, composing local matrices.
  */
-export function _getConcatenatedMatrix(obj: any): Matrix {
-  const chain: any[] = [];
-  let node = obj;
+export function _getConcatenatedMatrix(obj: DisplayObject): Matrix {
+  const chain: DisplayObject[] = [];
+  let node: DisplayObject | null = obj;
   while (node) {
     chain.push(node);
     node = node.parent;

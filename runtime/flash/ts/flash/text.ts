@@ -5,6 +5,7 @@
 
 import { Rectangle } from "./geom";
 import { InteractiveObject, registerTimelineFactory } from "./display";
+import { EventDispatcher } from "./events";
 import { createMeasureContext } from "./platform";
 
 // ---------------------------------------------------------------------------
@@ -66,6 +67,75 @@ export class TextFormatAlign {
   static readonly JUSTIFY = "justify";
   static readonly LEFT = "left";
   static readonly RIGHT = "right";
+}
+
+// ---------------------------------------------------------------------------
+// TextLineMetrics
+// ---------------------------------------------------------------------------
+
+export class TextLineMetrics {
+  x: number;
+  width: number;
+  height: number;
+  ascent: number;
+  descent: number;
+  leading: number;
+
+  constructor(x: number, width: number, height: number, ascent: number, descent: number, leading: number) {
+    this.x = x;
+    this.width = width;
+    this.height = height;
+    this.ascent = ascent;
+    this.descent = descent;
+    this.leading = leading;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// StyleSheet
+// ---------------------------------------------------------------------------
+
+export class StyleSheet extends EventDispatcher {
+  private _styles: Record<string, Record<string, string>> = {};
+
+  get styleNames(): string[] {
+    return Object.keys(this._styles);
+  }
+
+  clear(): void {
+    this._styles = {};
+  }
+
+  getStyle(styleName: string): Record<string, string> {
+    return this._styles[styleName] ?? {};
+  }
+
+  setStyle(styleName: string, styleObject: Record<string, string>): void {
+    this._styles[styleName] = styleObject;
+  }
+
+  parseCSS(CSSText: string): void {
+    // Minimal CSS parser: extract selectors and property blocks.
+    const re = /([^{]+)\{([^}]*)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(CSSText)) !== null) {
+      const selector = match[1].trim();
+      const props: Record<string, string> = {};
+      for (const decl of match[2].split(";")) {
+        const colon = decl.indexOf(":");
+        if (colon === -1) continue;
+        const key = decl.substring(0, colon).trim();
+        const value = decl.substring(colon + 1).trim();
+        if (key) props[key] = value;
+      }
+      this._styles[selector] = props;
+    }
+  }
+
+  transform(formatObject: TextFormat): TextFormat {
+    // In AS3 this applies CSS styles to a TextFormat. Return as-is for the shim.
+    return formatObject;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +232,7 @@ export class TextField extends InteractiveObject {
   _selectionBeginIndex = 0;
   _selectionEndIndex = 0;
   _sharpness = 0;
-  _styleSheet: any = null;
+  _styleSheet: StyleSheet | null = null;
   _textColor = 0x000000;
   _textHeight = 0;
   _textWidth = 0;
@@ -226,7 +296,7 @@ export class TextField extends InteractiveObject {
   get sharpness() { return this._sharpness; }
   set sharpness(v: number) { this._sharpness = v; }
   get styleSheet() { return this._styleSheet; }
-  set styleSheet(v: any) { this._styleSheet = v; }
+  set styleSheet(v: StyleSheet | null) { this._styleSheet = v; }
   get textColor() { return this._textColor; }
   set textColor(v: number) { this._textColor = v; }
   get textHeight() { return this._textHeight; }
@@ -390,7 +460,7 @@ export class TextField extends InteractiveObject {
     return lines[lineIndex]?.length ?? 0;
   }
 
-  getLineMetrics(lineIndex: number): any {
+  getLineMetrics(lineIndex: number): TextLineMetrics {
     const lineText = this.getLineText(lineIndex);
     const lineOffset = this.getLineOffset(lineIndex);
     const fmt = this.getTextFormat(lineOffset, lineOffset + Math.max(lineText.length, 1));
@@ -401,7 +471,7 @@ export class TextField extends InteractiveObject {
     const descent = tm.actualBoundingBoxDescent ?? (fmt.size ?? this.defaultTextFormat.size ?? 12) * 0.2;
     const leading = fmt.leading ?? this.defaultTextFormat.leading ?? 0;
     const height = ascent + descent + leading;
-    return { ascent, descent, height, leading, width: tm.width, x: 0 };
+    return new TextLineMetrics(0, tm.width, height, ascent, descent, leading);
   }
 
   getLineOffset(lineIndex: number): number {
