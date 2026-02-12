@@ -108,7 +108,7 @@ export function getDefinitionByName(name: string): any {
 // Trait registry — populated by registerClassTraits() calls from emitted code
 // ---------------------------------------------------------------------------
 
-interface TraitInfo {
+export interface TraitInfo {
   name: string;
   kind: "constant" | "variable" | "method" | "accessor";
   type?: string;
@@ -126,6 +126,12 @@ const _traitRegistry = new Map<Function, ClassTraits>();
 
 export function registerClassTraits(ctor: Function, instance: TraitInfo[], staticT: TraitInfo[]): void {
   _traitRegistry.set(ctor, { instanceTraits: instance, staticTraits: staticT });
+}
+
+/** Return instance traits for a class constructor, or null if none registered. */
+export function getInstanceTraits(ctor: Function): TraitInfo[] | null {
+  const entry = _traitRegistry.get(ctor);
+  return entry ? entry.instanceTraits : null;
 }
 
 /** Wraps a type name string with .toString() and .indexOf() like AS3 XML text nodes. */

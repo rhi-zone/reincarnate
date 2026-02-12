@@ -4,7 +4,7 @@
  */
 
 import { Rectangle } from "./geom";
-import { InteractiveObject } from "./display";
+import { InteractiveObject, registerTimelineFactory } from "./display";
 import { createMeasureContext } from "./platform";
 
 // ---------------------------------------------------------------------------
@@ -395,3 +395,6 @@ export class Font {
     Font._registry.push(instance);
   }
 }
+
+// Register TextField as a timeline-child factory for display.ts auto-creation.
+registerTimelineFactory("TextField", () => new TextField());

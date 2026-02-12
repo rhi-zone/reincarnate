@@ -6,6 +6,7 @@
 import { Point, Rectangle, Matrix, Transform, _getConcatenatedMatrix } from "./geom";
 import { EventDispatcher, Event, ProgressEvent, IOErrorEvent } from "./events";
 import { fetchResource, hasFetch, loadImageBitmap } from "./platform";
+import { getInstanceTraits, getDefinitionByName } from "./utils";
 
 // ---------------------------------------------------------------------------
 // AS3 display interfaces
@@ -550,6 +551,11 @@ export class MovieClip extends Sprite {
   /** @internal */
   _prevFrame = 1;
 
+  constructor() {
+    super();
+    _initTimelineChildren(this);
+  }
+
   addFrameScript(...args: any[]): void {
     // Arguments are pairs: (0-based frameIndex, callback | null)
     for (let i = 0; i < args.length - 1; i += 2) {
@@ -664,6 +670,81 @@ export class MovieClip extends Sprite {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Timeline child auto-creation
+// ---------------------------------------------------------------------------
+
+/** Factory map for built-in display types that can be auto-created as timeline children. */
+const _timelineFactories = new Map<string, () => DisplayObject>();
+
+/** Register a factory for a display type name (used by text.ts for TextField). */
+export function registerTimelineFactory(typeName: string, factory: () => DisplayObject): void {
+  _timelineFactories.set(typeName, factory);
+}
+
+/** Check whether a constructor's prototype chain includes DisplayObject. */
+function _isDisplayObjectSubclass(ctor: Function): boolean {
+  let proto = ctor.prototype;
+  while (proto != null) {
+    if (proto === DisplayObject.prototype) return true;
+    proto = Object.getPrototypeOf(proto);
+  }
+  return false;
+}
+
+/**
+ * Auto-create timeline children for a MovieClip instance.
+ *
+ * In Flash, children placed on the FLA timeline are created and added to the
+ * display list BEFORE the AS3 constructor runs.  This function replicates that
+ * behaviour by reading the trait registry (populated by registerClassTraits)
+ * and instantiating "variable"-kind traits whose types are DisplayObject
+ * subclasses.
+ */
+function _initTimelineChildren(obj: MovieClip): void {
+  const traits = getInstanceTraits(obj.constructor);
+  if (!traits) return;
+
+  for (const trait of traits) {
+    if (trait.kind !== "variable" || !trait.type) continue;
+
+    // Skip if already initialised by the class body or a super constructor.
+    if ((obj as any)[trait.name] != null) continue;
+
+    // Try built-in factory first (MovieClip, Sprite, Shape, Bitmap, TextField).
+    let factory = _timelineFactories.get(trait.type);
+
+    // Fall back to getDefinitionByName for user-defined types (UIScrollBar, etc.).
+    if (!factory) {
+      try {
+        const ctor = getDefinitionByName(trait.type);
+        if (typeof ctor === "function" && _isDisplayObjectSubclass(ctor)) {
+          factory = () => new (ctor as any)();
+        }
+      } catch {
+        // Type not registered — skip this trait.
+      }
+    }
+
+    if (!factory) continue;
+
+    try {
+      const child = factory();
+      child.name = trait.name;
+      obj.addChild(child);
+      (obj as any)[trait.name] = child;
+    } catch {
+      // Constructor may require arguments we can't provide — skip.
+    }
+  }
+}
+
+// Register built-in display type factories.
+_timelineFactories.set("MovieClip", () => new MovieClip());
+_timelineFactories.set("Sprite", () => new Sprite());
+_timelineFactories.set("Shape", () => new Shape());
+_timelineFactories.set("Bitmap", () => new Bitmap());
 
 // ---------------------------------------------------------------------------
 // LoaderInfo
