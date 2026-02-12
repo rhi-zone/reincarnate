@@ -63,9 +63,12 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
     if module.classes.is_empty() {
         emit_functions(module, &class_names, &no_mutable_globals, lowering_config, &mut out)?;
     } else {
+        // Single-file mode: no circular imports (all classes in one scope).
+        let no_late_bound = HashSet::new();
+        let no_short_to_qualified = HashMap::new();
         let (class_groups, free_funcs) = group_by_class(module);
         for group in &class_groups {
-            emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, lowering_config, &mut out)?;
+            emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, lowering_config, &mut out)?;
         }
         for &fid in &free_funcs {
             emit_function(&mut module.functions[fid], &class_names, &no_mutable_globals, lowering_config, &mut out)?;
@@ -674,14 +677,15 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let empty_smo = HashMap::new();
         let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_smo);
         let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        emit_intra_imports(group, module, &segments, &registry, static_method_owners, static_field_owners, &global_names, &mutable_global_names, module_exports, depth, &mut out);
+        let descendants = compute_descendant_names(&short_name, &class_meta.ancestor_sets);
+        let late_bound = emit_intra_imports(group, module, &segments, &registry, static_method_owners, static_field_owners, &global_names, &mutable_global_names, module_exports, &descendants, &short_to_qualified, depth, &mut out);
 
         // Validate member accesses before emitting (warnings only).
         for &fid in &group.methods {
             validate_member_accesses(&module.functions[fid], Some(&qualified), &class_meta, &registry, &short_to_qualified, type_defs);
         }
 
-        emit_class(group, module, &class_names, &class_meta, &mutable_global_names, lowering_config, &mut out)?;
+        emit_class(group, module, &class_names, &class_meta, &mutable_global_names, &late_bound, &short_to_qualified, lowering_config, &mut out)?;
 
         let path = file_dir.join(format!("{short_name}.ts"));
         fs::write(&path, &out).map_err(CoreError::Io)?;
@@ -965,6 +969,8 @@ struct RefSets {
     value_refs: BTreeSet<String>,
     /// Intra-module type-only refs (erased at runtime).
     type_refs: BTreeSet<String>,
+    /// Intra-module value refs from TypeCheck/AsType only (may be late-bound).
+    typecheck_value_refs: BTreeSet<String>,
     /// External value refs (e.g. Flash stdlib runtime classes).
     ext_value_refs: BTreeSet<String>,
     /// External type-only refs.
@@ -1068,9 +1074,15 @@ fn collect_type_refs_from_function(
     // Instructions.
     for (_inst_id, inst) in func.insts.iter() {
         match &inst.op {
-            // TypeCheck emits `instanceof` — runtime value reference.
+            // TypeCheck emits `isType()` — runtime value reference, collected
+            // separately so circular imports can be detected and late-bound.
             Op::TypeCheck(_, ty) => {
-                collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
+                let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
+                if is_struct_or_enum {
+                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.typecheck_value_refs, &mut refs.ext_value_refs);
+                } else {
+                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
+                }
             }
             // Alloc is type-only. Cast with Struct/Enum: AsType needs runtime value, Coerce is type-only.
             Op::Alloc(ty) => {
@@ -1079,8 +1091,9 @@ fn collect_type_refs_from_function(
             Op::Cast(_, ty, kind) => {
                 let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
                 if is_struct_or_enum && *kind == CastKind::AsType {
-                    // AsType needs runtime constructor for asType() call
-                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
+                    // AsType needs runtime constructor — collected separately
+                    // so circular imports can be detected and late-bound.
+                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.typecheck_value_refs, &mut refs.ext_value_refs);
                 } else {
                     collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
                 }
@@ -1321,7 +1334,27 @@ fn validate_module_export(
     }
 }
 
+/// Compute the set of short names that are descendants of `self_name` in the
+/// class hierarchy. A class X is a descendant of Y if Y appears in X's ancestor
+/// set (and X ≠ Y).
+fn compute_descendant_names(
+    self_name: &str,
+    ancestor_sets: &HashMap<String, HashSet<String>>,
+) -> HashSet<String> {
+    let mut descendants = HashSet::new();
+    for (qualified, ancestors) in ancestor_sets {
+        let short = qualified.rsplit("::").next().unwrap_or(qualified);
+        if short != self_name && ancestors.contains(self_name) {
+            descendants.insert(short.to_string());
+        }
+    }
+    descendants
+}
+
 /// Emit `import` / `import type` statements for intra-module class references.
+///
+/// Returns the set of short names that are late-bound (circular TypeCheck/AsType
+/// refs that should use `getDefinitionByName()` instead of a static import).
 #[allow(clippy::too_many_arguments)]
 fn emit_intra_imports(
     group: &ClassGroup,
@@ -1333,15 +1366,38 @@ fn emit_intra_imports(
     global_names: &HashSet<String>,
     mutable_global_names: &HashSet<String>,
     module_exports: &BTreeMap<String, Vec<String>>,
+    descendants: &HashSet<String>,
+    short_to_qualified: &HashMap<String, String>,
     depth: usize,
     out: &mut String,
-) {
+) -> HashSet<String> {
     let refs = collect_class_references(group, module, registry, &module.external_imports, static_method_owners, static_field_owners, global_names);
-    let has_intra = !refs.value_refs.is_empty() || !refs.type_refs.is_empty();
+
+    // Compute late-bound set: typecheck refs that are descendants and NOT also
+    // referenced as regular value refs (e.g. `new X()` or `extends X`).
+    let mut late_bound: HashSet<String> = HashSet::new();
+    for name in &refs.typecheck_value_refs {
+        if descendants.contains(name.as_str()) && !refs.value_refs.contains(name) {
+            // Only late-bind if we have a qualified name to resolve at runtime.
+            if short_to_qualified.contains_key(name.as_str()) {
+                late_bound.insert(name.clone());
+            }
+        }
+    }
+
+    // Merge non-late-bound typecheck refs back into value_refs for import generation.
+    let mut effective_value_refs = refs.value_refs.clone();
+    for name in &refs.typecheck_value_refs {
+        if !late_bound.contains(name) {
+            effective_value_refs.insert(name.clone());
+        }
+    }
+
+    let has_intra = !effective_value_refs.is_empty() || !refs.type_refs.is_empty();
     let has_ext = !refs.ext_value_refs.is_empty() || !refs.ext_type_refs.is_empty();
     let has_globals = !refs.globals_used.is_empty();
     if !has_intra && !has_ext && !has_globals {
-        return;
+        return late_bound;
     }
 
     // External runtime imports — grouped by sub-module.
@@ -1352,7 +1408,7 @@ fn emit_intra_imports(
     }
 
     // Intra-module value imports.
-    for short_name in &refs.value_refs {
+    for short_name in &effective_value_refs {
         if let Some(entry) = registry.classes.get(short_name) {
             let rel = relative_import_path(source_segments, &entry.path_segments);
             let _ = writeln!(out, "import {{ {short_name} }} from \"{rel}\";");
@@ -1360,7 +1416,7 @@ fn emit_intra_imports(
     }
     // Intra-module type-only imports (names not already in value_refs).
     for short_name in &refs.type_refs {
-        if refs.value_refs.contains(short_name) {
+        if effective_value_refs.contains(short_name) {
             continue;
         }
         if let Some(entry) = registry.classes.get(short_name) {
@@ -1387,6 +1443,226 @@ fn emit_intra_imports(
         let _ = writeln!(out, "import {{ {} }} from \"{globals_path}\";", import_names.join(", "));
     }
     out.push('\n');
+    late_bound
+}
+
+// ---------------------------------------------------------------------------
+// Late-bound type check rewriting
+// ---------------------------------------------------------------------------
+
+/// Replace `isType(x, Foo)` / `asType(x, Foo)` with late-bound variants using
+/// `getDefinitionByName("qualified::Name")` for types whose static import would
+/// create a circular dependency.
+fn rewrite_late_bound_types(
+    body: &mut [JsStmt],
+    late_bound: &HashSet<String>,
+    short_to_qualified: &HashMap<String, String>,
+) {
+    if late_bound.is_empty() {
+        return;
+    }
+    for stmt in body.iter_mut() {
+        rewrite_late_bound_stmt(stmt, late_bound, short_to_qualified);
+    }
+}
+
+fn rewrite_late_bound_stmt(
+    stmt: &mut JsStmt,
+    late_bound: &HashSet<String>,
+    short_to_qualified: &HashMap<String, String>,
+) {
+    match stmt {
+        JsStmt::VarDecl { init: Some(expr), .. } => {
+            rewrite_late_bound_expr(expr, late_bound, short_to_qualified);
+        }
+        JsStmt::Assign { target, value } => {
+            rewrite_late_bound_expr(target, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(value, late_bound, short_to_qualified);
+        }
+        JsStmt::CompoundAssign { target, value, .. } => {
+            rewrite_late_bound_expr(target, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(value, late_bound, short_to_qualified);
+        }
+        JsStmt::Expr(expr) | JsStmt::Throw(expr) => {
+            rewrite_late_bound_expr(expr, late_bound, short_to_qualified);
+        }
+        JsStmt::Return(Some(expr)) => {
+            rewrite_late_bound_expr(expr, late_bound, short_to_qualified);
+        }
+        JsStmt::If { cond, then_body, else_body } => {
+            rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
+            rewrite_late_bound_types(then_body, late_bound, short_to_qualified);
+            rewrite_late_bound_types(else_body, late_bound, short_to_qualified);
+        }
+        JsStmt::While { cond, body } => {
+            rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
+            rewrite_late_bound_types(body, late_bound, short_to_qualified);
+        }
+        JsStmt::For { init, cond, update, body } => {
+            rewrite_late_bound_types(init, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
+            rewrite_late_bound_types(update, late_bound, short_to_qualified);
+            rewrite_late_bound_types(body, late_bound, short_to_qualified);
+        }
+        JsStmt::Loop { body } => {
+            rewrite_late_bound_types(body, late_bound, short_to_qualified);
+        }
+        JsStmt::ForOf { iterable, body, .. } => {
+            rewrite_late_bound_expr(iterable, late_bound, short_to_qualified);
+            rewrite_late_bound_types(body, late_bound, short_to_qualified);
+        }
+        JsStmt::Dispatch { blocks, .. } => {
+            for (_, stmts) in blocks {
+                rewrite_late_bound_types(stmts, late_bound, short_to_qualified);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn rewrite_late_bound_expr(
+    expr: &mut JsExpr,
+    late_bound: &HashSet<String>,
+    short_to_qualified: &HashMap<String, String>,
+) {
+    // First, check if this expression itself needs rewriting.
+    let needs_rewrite = match expr {
+        JsExpr::TypeCheck { ty: Type::Struct(name) | Type::Enum(name), .. } => {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            late_bound.contains(short)
+        }
+        JsExpr::Cast { ty: Type::Struct(name) | Type::Enum(name), kind: CastKind::AsType, .. } => {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            late_bound.contains(short)
+        }
+        _ => false,
+    };
+
+    if needs_rewrite {
+        let dummy = JsExpr::Literal(Constant::Null);
+        let old = std::mem::replace(expr, dummy);
+        match old {
+            JsExpr::TypeCheck { expr: inner, ty } => {
+                let name = match &ty {
+                    Type::Struct(n) | Type::Enum(n) => n,
+                    _ => unreachable!(),
+                };
+                let short = name.rsplit("::").next().unwrap_or(name);
+                let qualified = short_to_qualified.get(short).map_or_else(
+                    || name.clone(),
+                    |q| q.clone(),
+                );
+                *expr = JsExpr::Call {
+                    callee: Box::new(JsExpr::Var("isType".into())),
+                    args: vec![
+                        *inner,
+                        JsExpr::Call {
+                            callee: Box::new(JsExpr::Var("getDefinitionByName".into())),
+                            args: vec![JsExpr::Literal(Constant::String(qualified))],
+                        },
+                    ],
+                };
+            }
+            JsExpr::Cast { expr: inner, ty, .. } => {
+                let name = match &ty {
+                    Type::Struct(n) | Type::Enum(n) => n,
+                    _ => unreachable!(),
+                };
+                let short = name.rsplit("::").next().unwrap_or(name);
+                let qualified = short_to_qualified.get(short).map_or_else(
+                    || name.clone(),
+                    |q| q.clone(),
+                );
+                *expr = JsExpr::Call {
+                    callee: Box::new(JsExpr::Var("asType".into())),
+                    args: vec![
+                        *inner,
+                        JsExpr::Call {
+                            callee: Box::new(JsExpr::Var("getDefinitionByName".into())),
+                            args: vec![JsExpr::Literal(Constant::String(qualified))],
+                        },
+                    ],
+                };
+            }
+            _ => unreachable!(),
+        }
+        // Recurse into the newly created expression's children.
+        rewrite_late_bound_expr(expr, late_bound, short_to_qualified);
+        return;
+    }
+
+    // Recurse into child expressions.
+    match expr {
+        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
+            rewrite_late_bound_expr(lhs, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(rhs, late_bound, short_to_qualified);
+        }
+        JsExpr::Unary { expr: inner, .. } | JsExpr::Not(inner)
+        | JsExpr::PostIncrement(inner) | JsExpr::TypeOf(inner)
+        | JsExpr::GeneratorResume(inner) => {
+            rewrite_late_bound_expr(inner, late_bound, short_to_qualified);
+        }
+        JsExpr::Cast { expr: inner, .. } | JsExpr::TypeCheck { expr: inner, .. } => {
+            rewrite_late_bound_expr(inner, late_bound, short_to_qualified);
+        }
+        JsExpr::Field { object, .. } => {
+            rewrite_late_bound_expr(object, late_bound, short_to_qualified);
+        }
+        JsExpr::Index { collection, index } => {
+            rewrite_late_bound_expr(collection, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(index, late_bound, short_to_qualified);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            rewrite_late_bound_expr(callee, late_bound, short_to_qualified);
+            for arg in args {
+                rewrite_late_bound_expr(arg, late_bound, short_to_qualified);
+            }
+        }
+        JsExpr::Ternary { cond, then_val, else_val } => {
+            rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(then_val, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(else_val, late_bound, short_to_qualified);
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) => {
+            for elem in elems {
+                rewrite_late_bound_expr(elem, late_bound, short_to_qualified);
+            }
+        }
+        JsExpr::ObjectInit(pairs) => {
+            for (_, val) in pairs {
+                rewrite_late_bound_expr(val, late_bound, short_to_qualified);
+            }
+        }
+        JsExpr::In { key, object } | JsExpr::Delete { object, key } => {
+            rewrite_late_bound_expr(key, late_bound, short_to_qualified);
+            rewrite_late_bound_expr(object, late_bound, short_to_qualified);
+        }
+        JsExpr::SuperCall(args) | JsExpr::GeneratorCreate { args, .. } => {
+            for arg in args {
+                rewrite_late_bound_expr(arg, late_bound, short_to_qualified);
+            }
+        }
+        JsExpr::SuperMethodCall { args, .. } => {
+            for arg in args {
+                rewrite_late_bound_expr(arg, late_bound, short_to_qualified);
+            }
+        }
+        JsExpr::SuperSet { value, .. } => {
+            rewrite_late_bound_expr(value, late_bound, short_to_qualified);
+        }
+        JsExpr::Yield(Some(inner)) => {
+            rewrite_late_bound_expr(inner, late_bound, short_to_qualified);
+        }
+        JsExpr::SystemCall { args, .. } => {
+            for arg in args {
+                rewrite_late_bound_expr(arg, late_bound, short_to_qualified);
+            }
+        }
+        // Leaf nodes — nothing to recurse into.
+        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This
+        | JsExpr::Activation | JsExpr::SuperGet(_) | JsExpr::Yield(None) => {}
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1763,12 +2039,15 @@ fn emit_register_class_traits(
 }
 
 /// Emit a TypeScript class from a `ClassGroup`.
+#[allow(clippy::too_many_arguments)]
 fn emit_class(
     group: &ClassGroup,
     module: &mut Module,
     class_names: &HashMap<String, String>,
     class_meta: &ClassMeta,
     mutable_global_names: &HashSet<String>,
+    late_bound: &HashSet<String>,
+    short_to_qualified: &HashMap<String, String>,
     lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -1860,7 +2139,7 @@ fn emit_class(
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, lowering_config, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, lowering_config, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -1896,6 +2175,8 @@ fn emit_class_method(
     const_instance_fields: &HashSet<String>,
     class_short_name: &str,
     mutable_global_names: &HashSet<String>,
+    late_bound: &HashSet<String>,
+    short_to_qualified: &HashMap<String, String>,
     lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -1949,6 +2230,7 @@ fn emit_class_method(
     };
     let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
+    rewrite_late_bound_types(&mut js_func.body, late_bound, short_to_qualified);
     // Hoist super() to top of constructor body (after rewrite produces SuperCall nodes).
     if func.method_kind == MethodKind::Constructor {
         crate::rewrites::flash::hoist_super_call(
