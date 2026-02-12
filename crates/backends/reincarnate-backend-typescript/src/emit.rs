@@ -1160,7 +1160,12 @@ fn emit_intra_imports(
     }
     // Module-level globals.
     if has_globals {
-        let globals_path = format!("{}/_globals", "../".repeat(depth));
+        let globals_path = if depth == 0 {
+            "./_globals".to_string()
+        } else {
+            let prefix = "../".repeat(depth);
+            format!("{}_globals", prefix)
+        };
         let names: Vec<_> = refs.globals_used.iter().map(|s| s.as_str()).collect();
         let _ = writeln!(out, "import {{ {} }} from \"{globals_path}\";", names.join(", "));
     }
