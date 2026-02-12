@@ -18,6 +18,10 @@ export namespace int {
   export const MAX_VALUE = 2147483647;
   export const MIN_VALUE = -2147483648;
 }
+/** `value is int` — true when value is a signed 32-bit integer. */
+Object.defineProperty(int, Symbol.hasInstance, {
+  value: (v: unknown) => typeof v === "number" && v === (v | 0),
+});
 
 /** AS3 `uint()` — truncate to unsigned 32-bit integer. */
 export function uint(x: number): number { return x >>> 0; }
@@ -25,6 +29,10 @@ export namespace uint {
   export const MAX_VALUE = 4294967295;
   export const MIN_VALUE = 0;
 }
+/** `value is uint` — true when value is an unsigned 32-bit integer. */
+Object.defineProperty(uint, Symbol.hasInstance, {
+  value: (v: unknown) => typeof v === "number" && v === (v >>> 0),
+});
 
 // ---------------------------------------------------------------------------
 // Interface registry — runtime type checking for interfaces
@@ -41,6 +49,17 @@ export function registerInterface(ctor: Function, ...ifaces: Function[]): void {
   }
   for (const iface of ifaces) set.add(iface);
 }
+
+/**
+ * AS3 `Class` type — represents "a class constructor".
+ * Uses Symbol.hasInstance so `isType(x, Class)` works via `instanceof`.
+ * Identifies registered class constructors by the presence of QN_KEY.
+ * (QN_KEY is defined later in this file but only accessed at call time.)
+ */
+export function Class(): never { throw new Error("Class is not constructible"); }
+Object.defineProperty(Class, Symbol.hasInstance, {
+  value: (instance: unknown) => typeof instance === "function" && QN_KEY in (instance as object),
+});
 
 /** AS3 `is` operator — works for both classes and interfaces. */
 export function isType(value: any, type: Function): boolean {
