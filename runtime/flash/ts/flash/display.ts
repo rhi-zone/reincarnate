@@ -183,6 +183,10 @@ export class DisplayObject extends EventDispatcher {
   _x = 0;
   _y = 0;
 
+  _scaleX = 1;
+  _scaleY = 1;
+  _visible = true;
+
   get height() { return this._height; }
   set height(v: number) { this._height = v; }
   get width() { return this._width; }
@@ -191,6 +195,12 @@ export class DisplayObject extends EventDispatcher {
   set x(v: number) { this._x = v; }
   get y() { return this._y; }
   set y(v: number) { this._y = v; }
+  get scaleX() { return this._scaleX; }
+  set scaleX(v: number) { this._scaleX = v; }
+  get scaleY() { return this._scaleY; }
+  set scaleY(v: number) { this._scaleY = v; }
+  get visible() { return this._visible; }
+  set visible(v: boolean) { this._visible = v; }
 
   loaderInfo: LoaderInfo | null = null;
   mask: DisplayObject | null = null;
@@ -205,13 +215,10 @@ export class DisplayObject extends EventDispatcher {
   rotationY = 0;
   rotationZ = 0;
   scale9Grid: Rectangle | null = null;
-  scaleX = 1;
-  scaleY = 1;
   scaleZ = 1;
   scrollRect: Rectangle | null = null;
   stage: Stage | null = null;
   transform: Transform;
-  visible = true;
   z = 0;
 
   constructor() {
@@ -553,7 +560,9 @@ export class MovieClip extends Sprite {
   currentLabel: string | null = null;
   currentLabels: FrameLabel[] = [];
   currentScene: Scene | null = null;
-  enabled = true;
+  _enabled = true;
+  get enabled() { return this._enabled; }
+  set enabled(v: boolean) { this._enabled = v; }
   framesLoaded = 1;
   isPlaying = false;
   scenes: Scene[] = [];
