@@ -123,6 +123,31 @@ Measured on CoC.ts (36k lines) after TypeInference + ConstraintSolve.
   are from types inheriting Flash stdlib classes. Need structured member
   metadata from runtime type definitions to validate these.
 
+### Discarded AVM2 Metadata
+
+The Flash frontend currently extracts core structure (classes, methods, fields,
+globals) but discards several categories of ABC metadata that could improve
+output fidelity:
+
+- [ ] **Exception handler metadata** — `from`/`to` byte offsets,
+  `variable_name`, `type_name`. Currently exception handlers are not modeled
+  in the IR (no try/catch).
+- [ ] **Class flags** — `is_sealed`, `is_final`. Could emit `final` modifier
+  or sealed-class patterns in TypeScript.
+- [ ] **Protected namespace** — Per-class protected namespace from
+  `Instance.protected_namespace`. Used for `protected` member visibility in
+  AS3.
+- [ ] **Trait metadata annotations** — `TraitKind::Metadata` entries
+  (attributes like `[Embed]`, `[Bindable]`, custom annotations).
+- [ ] **Trait `is_override` / `is_final` flags** — Method trait attributes.
+  `is_override` maps to TypeScript `override` keyword; `is_final` has no
+  direct TS equivalent but documents intent.
+- [ ] **Slot/dispatch IDs** — Trait `slot_id` and `disp_id` values. Used for
+  AVM2 vtable layout but irrelevant to source-level decompilation.
+- [ ] **`DebugLine` source line info** — `Op::DebugLine` opcodes carry
+  original source line numbers. Could emit `// line N` comments or source
+  maps.
+
 ## Output Quality — FFDec Comparison
 
 Compared our TypeScript output against JPEXS FFDec's ActionScript decompilation
