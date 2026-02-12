@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::CoreError;
-use crate::ir::ty::FunctionSig;
+use crate::ir::ty::{parse_type_notation, FunctionSig};
 use crate::ir::{BlockId, Function, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
@@ -228,6 +228,37 @@ impl ConstraintModuleContext {
                 .as_ref()
                 .map(|sc| sc.rsplit("::").next().unwrap_or(sc).to_string());
             class_hierarchy.insert(class.name.clone(), super_short);
+        }
+
+        // Extend with external type definitions from runtime.
+        for (name, ext) in &module.external_type_defs {
+            // class_hierarchy
+            class_hierarchy
+                .entry(name.clone())
+                .or_insert_with(|| ext.extends.clone());
+            // struct_fields
+            if !ext.fields.is_empty() {
+                let fields: HashMap<String, Type> = ext
+                    .fields
+                    .iter()
+                    .map(|(f, t)| (f.clone(), parse_type_notation(t)))
+                    .collect();
+                struct_fields.entry(name.clone()).or_default().extend(fields);
+            }
+            // method_sigs: build FunctionSig from external method signatures
+            for (method, ext_sig) in &ext.methods {
+                method_sigs
+                    .entry((name.clone(), method.clone()))
+                    .or_insert_with(|| FunctionSig {
+                        params: ext_sig
+                            .params
+                            .iter()
+                            .map(|p| parse_type_notation(p))
+                            .collect(),
+                        return_ty: parse_type_notation(&ext_sig.returns),
+                        ..Default::default()
+                    });
+            }
         }
 
         // Build unique_method_sigs: bare names that resolve to a single signature.
