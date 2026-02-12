@@ -9,7 +9,7 @@ use reincarnate_core::ir::{
     StructDef, Type, Visibility,
 };
 use reincarnate_core::pipeline::LoweringConfig;
-use reincarnate_core::project::RuntimeConfig;
+use reincarnate_core::project::{ExternalTypeDef, RuntimeConfig};
 
 use crate::js_ast::{JsExpr, JsStmt};
 use crate::runtime::SYSTEM_NAMES;
@@ -39,7 +39,9 @@ pub fn emit_module(
 pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConfig, runtime_config: Option<&RuntimeConfig>) -> Result<String, CoreError> {
     let mut out = String::new();
     let class_names = build_class_names(module);
-    let class_meta = ClassMeta::build(module);
+    let empty_type_defs = BTreeMap::new();
+    let type_defs = runtime_config.map(|c| &c.type_definitions).unwrap_or(&empty_type_defs);
+    let class_meta = ClassMeta::build(module, type_defs);
 
     emit_runtime_imports(module, &mut out, runtime_config);
     if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
@@ -141,15 +143,35 @@ struct ClassMeta {
 }
 
 impl ClassMeta {
-    fn build(module: &Module) -> Self {
+    fn build(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> Self {
         Self {
-            ancestor_sets: build_ancestor_sets(module),
-            method_name_sets: build_method_name_sets(module),
-            instance_field_sets: build_instance_field_sets(module),
+            ancestor_sets: build_ancestor_sets(module, type_defs),
+            method_name_sets: build_method_name_sets(module, type_defs),
+            instance_field_sets: build_instance_field_sets(module, type_defs),
             static_method_owner_map: build_static_method_owner_map(module),
             static_field_owner_map: build_static_field_owner_map(module),
         }
     }
+}
+
+/// Collect all member names (fields + methods) for an external type,
+/// walking its `extends` chain through type_defs.
+fn collect_external_members(
+    start: &str,
+    type_defs: &BTreeMap<String, ExternalTypeDef>,
+) -> HashSet<String> {
+    let mut members = HashSet::new();
+    let mut current = Some(start);
+    while let Some(name) = current {
+        if let Some(def) = type_defs.get(name) {
+            members.extend(def.fields.keys().cloned());
+            members.extend(def.methods.keys().cloned());
+            current = def.extends.as_deref();
+        } else {
+            break;
+        }
+    }
+    members
 }
 
 /// Validate member accesses in a function against known type definitions.
@@ -157,11 +179,13 @@ impl ClassMeta {
 /// Checks `GetField` and `SetField` operations: if the object has a known
 /// `Struct` type, verifies that the field exists in the class hierarchy's
 /// instance fields, method names (getters/setters), or static fields.
+/// Falls back to external type definitions for pure-external types.
 fn validate_member_accesses(
     func: &Function,
     class_meta: &ClassMeta,
     registry: &ClassRegistry,
     short_to_qualified: &HashMap<String, String>,
+    type_defs: &BTreeMap<String, ExternalTypeDef>,
 ) {
     for (_iid, inst) in func.insts.iter() {
         let (object, field) = match &inst.op {
@@ -182,7 +206,19 @@ fn validate_member_accesses(
         let short = type_name.rsplit("::").next().unwrap_or(type_name);
         let qualified = match short_to_qualified.get(short) {
             Some(qn) => qn.as_str(),
-            None => continue, // External type — can't validate
+            None => {
+                // Pure-external type — validate against type_defs.
+                if type_defs.contains_key(short) {
+                    let ext_members = collect_external_members(short, type_defs);
+                    if !ext_members.contains(bare) {
+                        eprintln!(
+                            "warning: {short} has no member '{bare}' (in {})",
+                            func.name
+                        );
+                    }
+                }
+                continue;
+            }
         };
         let has_instance_field = class_meta
             .instance_field_sets
@@ -217,7 +253,7 @@ fn validate_member_accesses(
 ///
 /// For each class, the set includes the class's own short name and the short
 /// names of all superclasses reachable via `super_class` links within the module.
-fn build_ancestor_sets(module: &Module) -> HashMap<String, HashSet<String>> {
+fn build_ancestor_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
     let class_by_short: HashMap<&str, &ClassDef> =
         module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
 
@@ -226,12 +262,28 @@ fn build_ancestor_sets(module: &Module) -> HashMap<String, HashSet<String>> {
         let mut ancestors = HashSet::new();
         ancestors.insert(class.name.clone());
         let mut current = class;
+        let mut external_start: Option<&str> = None;
         while let Some(ref sc) = current.super_class {
             let short = sc.rsplit("::").next().unwrap_or(sc);
             ancestors.insert(short.to_string());
             match class_by_short.get(short) {
                 Some(parent) => current = parent,
-                None => break,
+                None => {
+                    external_start = Some(short);
+                    break;
+                }
+            }
+        }
+        // Continue walking through external type definitions.
+        let mut ext_cur = external_start;
+        while let Some(ext_name) = ext_cur {
+            if let Some(def) = type_defs.get(ext_name) {
+                ext_cur = def.extends.as_deref();
+                if let Some(parent) = ext_cur {
+                    ancestors.insert(parent.to_string());
+                }
+            } else {
+                break;
             }
         }
         result.insert(qualified_class_name(class), ancestors);
@@ -241,7 +293,7 @@ fn build_ancestor_sets(module: &Module) -> HashMap<String, HashSet<String>> {
 
 /// Build a mapping from qualified class name → set of all method short names
 /// visible through the class hierarchy (own methods + all ancestor methods).
-fn build_method_name_sets(module: &Module) -> HashMap<String, HashSet<String>> {
+fn build_method_name_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
     let class_by_short: HashMap<&str, &ClassDef> =
         module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
 
@@ -249,6 +301,7 @@ fn build_method_name_sets(module: &Module) -> HashMap<String, HashSet<String>> {
     for class in &module.classes {
         let mut names = HashSet::new();
         let mut current = class;
+        let mut external_parent: Option<&str> = None;
         loop {
             for &fid in &current.methods {
                 if let Some(f) = module.functions.get(fid) {
@@ -266,10 +319,23 @@ fn build_method_name_sets(module: &Module) -> HashMap<String, HashSet<String>> {
                     let short = sc.rsplit("::").next().unwrap_or(sc);
                     match class_by_short.get(short) {
                         Some(parent) => current = parent,
-                        None => break,
+                        None => {
+                            external_parent = Some(short);
+                            break;
+                        }
                     }
                 }
                 None => break,
+            }
+        }
+        // Continue walking through external type definitions.
+        let mut ext_cur = external_parent;
+        while let Some(ext_name) = ext_cur {
+            if let Some(def) = type_defs.get(ext_name) {
+                names.extend(def.methods.keys().cloned());
+                ext_cur = def.extends.as_deref();
+            } else {
+                break;
             }
         }
         result.insert(qualified_class_name(class), names);
@@ -354,7 +420,7 @@ fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<Stri
 
 /// Build a mapping from qualified class name → set of all instance field short
 /// names visible through the class hierarchy (own fields + all ancestor fields).
-fn build_instance_field_sets(module: &Module) -> HashMap<String, HashSet<String>> {
+fn build_instance_field_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
     let class_by_short: HashMap<&str, &ClassDef> =
         module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
 
@@ -362,6 +428,7 @@ fn build_instance_field_sets(module: &Module) -> HashMap<String, HashSet<String>
     for class in &module.classes {
         let mut fields = HashSet::new();
         let mut current = class;
+        let mut external_parent: Option<&str> = None;
         loop {
             let struct_def = &module.structs[current.struct_index];
             for (name, _ty, _) in &struct_def.fields {
@@ -372,10 +439,23 @@ fn build_instance_field_sets(module: &Module) -> HashMap<String, HashSet<String>
                     let short = sc.rsplit("::").next().unwrap_or(sc);
                     match class_by_short.get(short) {
                         Some(parent) => current = parent,
-                        None => break,
+                        None => {
+                            external_parent = Some(short);
+                            break;
+                        }
                     }
                 }
                 None => break,
+            }
+        }
+        // Continue walking through external type definitions.
+        let mut ext_cur = external_parent;
+        while let Some(ext_name) = ext_cur {
+            if let Some(def) = type_defs.get(ext_name) {
+                fields.extend(def.fields.keys().cloned());
+                ext_cur = def.extends.as_deref();
+            } else {
+                break;
             }
         }
         result.insert(qualified_class_name(class), fields);
@@ -431,7 +511,9 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     let (class_groups, free_funcs) = group_by_class(module);
     let registry = ClassRegistry::from_module(module);
     let class_names = build_class_names(module);
-    let class_meta = ClassMeta::build(module);
+    let empty_type_defs = BTreeMap::new();
+    let type_defs = runtime_config.map(|c| &c.type_definitions).unwrap_or(&empty_type_defs);
+    let class_meta = ClassMeta::build(module, type_defs);
     let global_names: HashSet<String> = module.globals.iter().map(|g| g.name.clone()).collect();
     let short_to_qualified: HashMap<String, String> = module
         .classes
@@ -516,7 +598,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
 
         // Validate member accesses before emitting (warnings only).
         for &fid in &group.methods {
-            validate_member_accesses(&module.functions[fid], &class_meta, &registry, &short_to_qualified);
+            validate_member_accesses(&module.functions[fid], &class_meta, &registry, &short_to_qualified, type_defs);
         }
 
         emit_class(group, module, &class_names, &class_meta, lowering_config, &mut out)?;
