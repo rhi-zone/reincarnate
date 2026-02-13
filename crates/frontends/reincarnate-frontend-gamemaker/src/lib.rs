@@ -173,7 +173,7 @@ fn translate_scripts(
         let code_entry = &code.entries[code_idx];
         let code_name = dw.resolve_string(code_entry.name).unwrap_or_default();
         let clean_name = strip_script_prefix(&script_name);
-        let func_name = naming::snake_to_camel(clean_name);
+        let func_name = clean_name.to_string();
 
         let locals = code_locals_map.get(&code_name).copied();
 
