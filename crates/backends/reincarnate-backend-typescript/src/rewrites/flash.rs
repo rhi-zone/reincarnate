@@ -7,8 +7,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use reincarnate_core::ir::{CastKind, Constant, Type};
+use reincarnate_core::ir::{CastKind, Constant, Type, ValueId};
 
+use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 
 // ---------------------------------------------------------------------------
@@ -1655,5 +1656,56 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
         JsExpr::Yield(Some(e)) => eliminate_dead_activations_in_expr(e),
         JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This | JsExpr::Activation
         | JsExpr::SuperGet(_) | JsExpr::Yield(None) => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Import extraction for Flash scope-lookup SystemCalls
+// ---------------------------------------------------------------------------
+
+/// Collect import references from Flash.Scope findPropStrict/findProperty calls.
+///
+/// Scope lookups may resolve to static methods/fields on ancestor classes, class
+/// coercions, or module-level globals. This produces the value/type imports that
+/// the emitter needs.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn collect_flash_scope_refs(
+    args: &[ValueId],
+    const_strings: &HashMap<ValueId, &str>,
+    self_name: &str,
+    registry: &ClassRegistry,
+    static_method_owners: &HashMap<String, String>,
+    static_field_owners: &HashMap<String, String>,
+    global_names: &HashSet<String>,
+    refs: &mut RefSets,
+) {
+    if let Some(&scope_str) = args.first().and_then(|v| const_strings.get(v)) {
+        // Extract the bare name from the scope arg.
+        let bare = scope_str.rsplit("::").next().unwrap_or(scope_str);
+        if let Some(owner) = static_method_owners.get(bare) {
+            if owner != self_name {
+                if let Some(entry) = registry.lookup(owner) {
+                    refs.value_refs.insert(entry.short_name.clone());
+                }
+            }
+        }
+        if let Some(owner) = static_field_owners.get(bare) {
+            if owner != self_name {
+                if let Some(entry) = registry.lookup(owner) {
+                    refs.value_refs.insert(entry.short_name.clone());
+                }
+            }
+        }
+        // Class coercion: FindPropStrict("ClassName") + CallPropLex("ClassName", 1)
+        // resolves to asType(obj, ClassName) — need the class as a value import.
+        if bare != self_name {
+            if let Some(entry) = registry.lookup(bare) {
+                refs.value_refs.insert(entry.short_name.clone());
+            }
+        }
+        // Module-level globals (package variables).
+        if global_names.contains(bare) {
+            refs.globals_used.insert(bare.to_string());
+        }
     }
 }

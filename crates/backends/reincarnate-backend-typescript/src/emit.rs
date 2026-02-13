@@ -17,7 +17,7 @@ use crate::types::ts_type;
 
 /// Which engine's rewrite pass to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum EngineKind {
+pub(crate) enum EngineKind {
     Flash,
     GameMaker,
 }
@@ -104,15 +104,15 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
 // ClassRegistry — maps qualified names to filesystem paths for imports
 // ---------------------------------------------------------------------------
 
-struct ClassEntry {
-    short_name: String,
+pub(crate) struct ClassEntry {
+    pub(crate) short_name: String,
     /// Path segments from module root, e.g. ["classes", "Scenes", "Swamp", "Swamp"].
-    path_segments: Vec<String>,
+    pub(crate) path_segments: Vec<String>,
 }
 
-struct ClassRegistry {
+pub(crate) struct ClassRegistry {
     /// Keyed by both qualified name and bare name (fallback).
-    classes: HashMap<String, ClassEntry>,
+    pub(crate) classes: HashMap<String, ClassEntry>,
 }
 
 impl ClassRegistry {
@@ -142,7 +142,7 @@ impl ClassRegistry {
         Self { classes }
     }
 
-    fn lookup(&self, name: &str) -> Option<&ClassEntry> {
+    pub(crate) fn lookup(&self, name: &str) -> Option<&ClassEntry> {
         self.classes.get(name).or_else(|| {
             // Try extracting the short name after `::`
             let short = name.rsplit("::").next()?;
@@ -778,7 +778,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let empty_smo = HashMap::new();
         let smo = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_smo);
         let sfo = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        let refs = collect_class_references(group, module, &registry, &module.external_imports, smo, sfo, &global_names);
+        let refs = collect_class_references(group, module, &registry, &module.external_imports, smo, sfo, &global_names, engine);
         direct_value_imports.insert(
             sanitize_ident(&group.class_def.name),
             refs.value_refs,
@@ -828,7 +828,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let empty_smo = HashMap::new();
         let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_smo);
         let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        let late_bound = emit_intra_imports(group, module, &segments, &registry, static_method_owners, static_field_owners, &global_names, &mutable_global_names, module_exports, &transitive_value_imports, &short_to_qualified, depth, &mut out);
+        let late_bound = emit_intra_imports(group, module, &segments, &registry, static_method_owners, static_field_owners, &global_names, &mutable_global_names, module_exports, &transitive_value_imports, &short_to_qualified, depth, engine, &mut out);
 
         // Validate member accesses before emitting (warnings only).
         for &fid in &group.methods {
@@ -871,7 +871,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             let func = &module.functions[fid];
             collect_type_refs_from_function(
                 func, "", &registry, &module.external_imports,
-                &HashMap::new(), &HashMap::new(), &global_names, &mut refs,
+                &HashMap::new(), &HashMap::new(), &global_names, engine, &mut refs,
             );
         }
         emit_external_imports(&refs.ext_value_refs, &refs.ext_type_refs, &module.external_imports, module_exports, "..", &mut out);
@@ -1177,19 +1177,19 @@ fn warn_unmapped_reference(name: &str) {
 
 /// Bundled output sets for collecting class/type references.
 #[derive(Default)]
-struct RefSets {
+pub(crate) struct RefSets {
     /// Intra-module value refs (class constructor needed at runtime).
-    value_refs: BTreeSet<String>,
+    pub(crate) value_refs: BTreeSet<String>,
     /// Intra-module type-only refs (erased at runtime).
-    type_refs: BTreeSet<String>,
+    pub(crate) type_refs: BTreeSet<String>,
     /// Intra-module value refs from TypeCheck/AsType only (may be late-bound).
-    typecheck_value_refs: BTreeSet<String>,
+    pub(crate) typecheck_value_refs: BTreeSet<String>,
     /// External value refs (e.g. Flash stdlib runtime classes).
-    ext_value_refs: BTreeSet<String>,
+    pub(crate) ext_value_refs: BTreeSet<String>,
     /// External type-only refs.
-    ext_type_refs: BTreeSet<String>,
+    pub(crate) ext_type_refs: BTreeSet<String>,
     /// Module-level globals referenced via scope lookups.
-    globals_used: BTreeSet<String>,
+    pub(crate) globals_used: BTreeSet<String>,
 }
 
 /// Collect type names referenced by a class group, split into value and type-only refs.
@@ -1209,6 +1209,7 @@ fn collect_class_references(
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     global_names: &HashSet<String>,
+    engine: EngineKind,
 ) -> RefSets {
     let self_name = &group.class_def.name;
     let mut refs = RefSets::default();
@@ -1245,7 +1246,7 @@ fn collect_class_references(
     // Scan all method bodies for type references.
     for &fid in &group.methods {
         let func = &module.functions[fid];
-        collect_type_refs_from_function(func, self_name, registry, external_imports, static_method_owners, static_field_owners, global_names, &mut refs);
+        collect_type_refs_from_function(func, self_name, registry, external_imports, static_method_owners, static_field_owners, global_names, engine, &mut refs);
     }
 
     refs
@@ -1261,6 +1262,7 @@ fn collect_type_refs_from_function(
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     global_names: &HashSet<String>,
+    engine: EngineKind,
     refs: &mut RefSets,
 ) {
     use reincarnate_core::ir::Constant;
@@ -1333,41 +1335,26 @@ fn collect_type_refs_from_function(
                     }
                 }
             }
-            // Scope-lookup SystemCalls may resolve to static methods on ancestor
-            // classes, producing ClassName.method() references in the output.
-            // Add the owning class as a value import.
-            Op::SystemCall { system, method, args }
-                if system == "Flash.Scope"
-                    && (method == "findPropStrict" || method == "findProperty") =>
-            {
-                if let Some(&scope_str) = args.first().and_then(|v| const_strings.get(v)) {
-                    // Extract the bare name from the scope arg.
-                    let bare = scope_str.rsplit("::").next().unwrap_or(scope_str);
-                    if let Some(owner) = static_method_owners.get(bare) {
-                        if owner != self_name {
-                            if let Some(entry) = registry.lookup(owner) {
-                                refs.value_refs.insert(entry.short_name.clone());
-                            }
-                        }
+            // Engine-specific SystemCall import extraction — delegated to rewrite modules.
+            Op::SystemCall { system, method, args } => {
+                match engine {
+                    EngineKind::Flash if system == "Flash.Scope"
+                        && (method == "findPropStrict" || method == "findProperty") =>
+                    {
+                        crate::rewrites::flash::collect_flash_scope_refs(
+                            args, &const_strings, self_name, registry,
+                            static_method_owners, static_field_owners, global_names, refs,
+                        );
                     }
-                    if let Some(owner) = static_field_owners.get(bare) {
-                        if owner != self_name {
-                            if let Some(entry) = registry.lookup(owner) {
-                                refs.value_refs.insert(entry.short_name.clone());
-                            }
-                        }
+                    EngineKind::GameMaker if system == "GameMaker.Instance"
+                        && (method == "getOn" || method == "setOn")
+                        && !args.is_empty() =>
+                    {
+                        crate::rewrites::gamemaker::collect_gamemaker_instance_refs(
+                            args, &const_strings, self_name, registry, external_imports, refs,
+                        );
                     }
-                    // Class coercion: FindPropStrict("ClassName") + CallPropLex("ClassName", 1)
-                    // resolves to asType(obj, ClassName) — need the class as a value import.
-                    if bare != self_name {
-                        if let Some(entry) = registry.lookup(bare) {
-                            refs.value_refs.insert(entry.short_name.clone());
-                        }
-                    }
-                    // Module-level globals (package variables).
-                    if global_names.contains(bare) {
-                        refs.globals_used.insert(bare.to_string());
-                    }
+                    _ => {}
                 }
             }
             _ => {}
@@ -1607,9 +1594,10 @@ fn emit_intra_imports(
     transitive_value_imports: &HashMap<String, HashSet<String>>,
     short_to_qualified: &HashMap<String, String>,
     depth: usize,
+    engine: EngineKind,
     out: &mut String,
 ) -> HashSet<String> {
-    let refs = collect_class_references(group, module, registry, &module.external_imports, static_method_owners, static_field_owners, global_names);
+    let refs = collect_class_references(group, module, registry, &module.external_imports, static_method_owners, static_field_owners, global_names, engine);
 
     // Compute late-bound set: typecheck refs whose targets transitively import
     // this class (i.e. adding a static import would create a cycle), and that

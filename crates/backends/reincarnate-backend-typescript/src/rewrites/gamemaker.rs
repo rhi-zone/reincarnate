@@ -3,9 +3,12 @@
 //! Resolves GameMaker SystemCall nodes into native JavaScript constructs.
 //! Much simpler than Flash — only 8 SystemCall patterns to handle.
 
-use reincarnate_core::ir::value::Constant;
-use reincarnate_core::ir::Type;
+use std::collections::{BTreeMap, HashMap};
 
+use reincarnate_core::ir::value::Constant;
+use reincarnate_core::ir::{ExternalImport, Type, ValueId};
+
+use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 
 /// Rewrite a function's body, resolving GameMaker SystemCalls.
@@ -428,5 +431,33 @@ fn try_rewrite_system_call(
             })
         }
         _ => None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Import extraction for GameMaker instance SystemCalls
+// ---------------------------------------------------------------------------
+
+/// Collect import references from GameMaker.Instance getOn/setOn calls.
+///
+/// When the first argument is a const string naming an object class, the rewrite
+/// pass produces `ObjName.instances[0].field` — so the object class needs a
+/// value import.
+pub(crate) fn collect_gamemaker_instance_refs(
+    args: &[ValueId],
+    const_strings: &HashMap<ValueId, &str>,
+    self_name: &str,
+    registry: &ClassRegistry,
+    external_imports: &BTreeMap<String, ExternalImport>,
+    refs: &mut RefSets,
+) {
+    if let Some(&obj_name) = args.first().and_then(|v| const_strings.get(v)) {
+        if obj_name != self_name {
+            if let Some(entry) = registry.lookup(obj_name) {
+                refs.value_refs.insert(entry.short_name.clone());
+            } else if external_imports.contains_key(obj_name) {
+                refs.ext_value_refs.insert(obj_name.to_string());
+            }
+        }
     }
 }
