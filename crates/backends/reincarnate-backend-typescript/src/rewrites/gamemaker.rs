@@ -262,6 +262,25 @@ fn try_rewrite_system_call(
                 args: vec![field, val],
             })
         }
+        // GameMaker.Instance.getField(target, field) → target[field]
+        ("GameMaker.Instance", "getField") if args.len() == 2 => {
+            let field = args.pop().unwrap();
+            let target = args.pop().unwrap();
+            Some(JsExpr::Index {
+                collection: Box::new(target),
+                index: Box::new(field),
+            })
+        }
+        // GameMaker.Instance.setField(target, field, val) → setInstanceField(target, field, val)
+        ("GameMaker.Instance", "setField") if args.len() == 3 => {
+            let val = args.pop().unwrap();
+            let field = args.pop().unwrap();
+            let target = args.pop().unwrap();
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Var("setInstanceField".into())),
+                args: vec![target, field, val],
+            })
+        }
         // GameMaker.Instance.withBegin/withEnd — complex block construct, pass through.
         ("GameMaker.Instance", "withBegin") => None,
         ("GameMaker.Instance", "withEnd") => None,

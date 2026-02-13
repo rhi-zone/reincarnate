@@ -58,6 +58,10 @@ impl Frontend for GameMakerFrontend {
         // Build variable lookup: variable_id → (name, instance_type).
         let variables = build_variable_table(&dw, vari)?;
 
+        // Build linked-list reference maps for correct name resolution.
+        let func_ref_map = build_func_ref_map(func, dw.data());
+        let vari_ref_map = build_vari_ref_map(vari, dw.data());
+
         // Build code_locals lookup: code entry name → CodeLocals.
         let code_locals_map = build_code_locals_map(&dw, func)?;
 
@@ -71,7 +75,7 @@ impl Frontend for GameMakerFrontend {
 
         // Translate scripts.
         let (script_ok, script_err) =
-            translate_scripts(&dw, code, scpt, &function_names, &variables, &code_locals_map, &mut mb, &input)?;
+            translate_scripts(&dw, code, scpt, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &input)?;
         eprintln!("[gamemaker] translated {script_ok} scripts ({script_err} errors)");
 
         // Translate objects → ClassDefs with event handler methods.
@@ -80,6 +84,8 @@ impl Frontend for GameMakerFrontend {
             code,
             &function_names,
             &variables,
+            &func_ref_map,
+            &vari_ref_map,
             &code_locals_map,
             &mut mb,
             &obj_names,
@@ -92,7 +98,7 @@ impl Frontend for GameMakerFrontend {
 
         // Translate global init scripts (GLOB chunk).
         let glob_count = translate_global_inits(
-            &dw, code, &function_names, &variables, &code_locals_map, &mut mb,
+            &dw, code, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb,
         );
         if glob_count > 0 {
             eprintln!("[gamemaker] translated {glob_count} global init scripts");
@@ -100,7 +106,7 @@ impl Frontend for GameMakerFrontend {
 
         // Translate room creation code.
         let room_count = translate_room_creation(
-            &dw, code, &function_names, &variables, &code_locals_map, &mut mb,
+            &dw, code, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb,
         );
         if room_count > 0 {
             eprintln!("[gamemaker] translated {room_count} room creation scripts");
@@ -133,6 +139,8 @@ fn translate_scripts(
     scpt: &datawin::chunks::scpt::Scpt,
     function_names: &HashMap<u32, String>,
     variables: &[(String, i32)],
+    func_ref_map: &HashMap<usize, usize>,
+    vari_ref_map: &HashMap<usize, usize>,
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
     input: &FrontendInput,
@@ -171,6 +179,9 @@ fn translate_scripts(
             dw,
             function_names,
             variables,
+            func_ref_map,
+            vari_ref_map,
+            bytecode_offset: code_entry.bytecode_offset,
             locals,
             has_self: false,
             has_other: false,
@@ -193,11 +204,14 @@ fn translate_scripts(
 }
 
 /// Translate global init scripts from GLOB chunk.
+#[allow(clippy::too_many_arguments)]
 fn translate_global_inits(
     dw: &DataWin,
     code: &datawin::chunks::code::Code,
     function_names: &HashMap<u32, String>,
     variables: &[(String, i32)],
+    func_ref_map: &HashMap<usize, usize>,
+    vari_ref_map: &HashMap<usize, usize>,
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
 ) -> usize {
@@ -226,6 +240,9 @@ fn translate_global_inits(
             dw,
             function_names,
             variables,
+            func_ref_map,
+            vari_ref_map,
+            bytecode_offset: code_entry.bytecode_offset,
             locals,
             has_self: false,
             has_other: false,
@@ -241,11 +258,14 @@ fn translate_global_inits(
 }
 
 /// Translate room creation code from ROOM chunk.
+#[allow(clippy::too_many_arguments)]
 fn translate_room_creation(
     dw: &DataWin,
     code: &datawin::chunks::code::Code,
     function_names: &HashMap<u32, String>,
     variables: &[(String, i32)],
+    func_ref_map: &HashMap<usize, usize>,
+    vari_ref_map: &HashMap<usize, usize>,
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
 ) -> usize {
@@ -277,6 +297,9 @@ fn translate_room_creation(
             dw,
             function_names,
             variables,
+            func_ref_map,
+            vari_ref_map,
+            bytecode_offset: code_entry.bytecode_offset,
             locals,
             has_self: false,
             has_other: false,
@@ -324,6 +347,73 @@ fn build_function_names(
         names.insert(idx as u32, name);
     }
     Ok(names)
+}
+
+/// Walk FUNC linked lists to build: absolute_bytecode_address → func_entry_index.
+///
+/// Each FunctionEntry has a linked list of call sites. `first_address` is the
+/// absolute offset in `data` of the first reference, and each reference site's
+/// raw u32 value encodes the next site's address.
+fn build_func_ref_map(
+    func: &datawin::chunks::func::Func,
+    data: &[u8],
+) -> HashMap<usize, usize> {
+    let mut map = HashMap::new();
+    for (i, entry) in func.functions.iter().enumerate() {
+        if entry.first_address < 0 || entry.occurrences == 0 {
+            continue;
+        }
+        let mut addr = entry.first_address as usize;
+        for _ in 0..entry.occurrences {
+            map.insert(addr, i);
+            if addr + 4 > data.len() {
+                break;
+            }
+            let raw = u32::from_le_bytes(
+                data[addr..addr + 4].try_into().unwrap(),
+            );
+            // For FUNC references, the full u32 is the next address.
+            let next = raw as usize;
+            if next == 0 || next == addr {
+                break;
+            }
+            addr = next;
+        }
+    }
+    map
+}
+
+/// Walk VARI linked lists to build: absolute_bytecode_address → vari_entry_index.
+///
+/// Each VariableEntry has a linked list of reference sites. The raw u32 at each
+/// site packs: lower 24 bits = next address, upper bits = ref_type.
+fn build_vari_ref_map(
+    vari: &datawin::chunks::vari::Vari,
+    data: &[u8],
+) -> HashMap<usize, usize> {
+    let mut map = HashMap::new();
+    for (i, entry) in vari.variables.iter().enumerate() {
+        if entry.first_address < 0 || entry.occurrences == 0 {
+            continue;
+        }
+        let mut addr = entry.first_address as usize;
+        for _ in 0..entry.occurrences {
+            map.insert(addr, i);
+            if addr + 4 > data.len() {
+                break;
+            }
+            let raw = u32::from_le_bytes(
+                data[addr..addr + 4].try_into().unwrap(),
+            );
+            // Lower 24 bits = next address (upper bits are ref_type).
+            let next = (raw & 0x00FF_FFFF) as usize;
+            if next == 0 || next == addr {
+                break;
+            }
+            addr = next;
+        }
+    }
+    map
 }
 
 /// Build variable_id → (name, instance_type) from VARI entries.

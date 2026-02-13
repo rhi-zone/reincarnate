@@ -10,11 +10,14 @@ use reincarnate_core::ir::{Constant, Type};
 use crate::translate::{self, TranslateCtx};
 
 /// Translate all objects from the OBJT chunk into ClassDefs.
+#[allow(clippy::too_many_arguments)]
 pub fn translate_objects(
     dw: &DataWin,
     code: &datawin::chunks::code::Code,
     function_names: &HashMap<u32, String>,
     variables: &[(String, i32)],
+    func_ref_map: &HashMap<usize, usize>,
+    vari_ref_map: &HashMap<usize, usize>,
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
     obj_names: &[String],
@@ -85,6 +88,9 @@ pub fn translate_objects(
                         dw,
                         function_names,
                         variables,
+                        func_ref_map,
+                        vari_ref_map,
+                        bytecode_offset: code_entry.bytecode_offset,
                         locals,
                         has_self: true,
                         has_other: is_collision,

@@ -16,10 +16,16 @@ use reincarnate_core::ir::value::ValueId;
 pub struct TranslateCtx<'a> {
     /// The DataWin file (for string resolution).
     pub dw: &'a DataWin,
-    /// FUNC function entries: function_id → resolved name.
+    /// FUNC function entries: entry_index → resolved name.
     pub function_names: &'a HashMap<u32, String>,
-    /// VARI variable entries: variable_id → (name, instance_type).
+    /// VARI variable entries: entry_index → (name, instance_type).
     pub variables: &'a [(String, i32)],
+    /// FUNC linked-list reference map: absolute bytecode address → func entry index.
+    pub func_ref_map: &'a HashMap<usize, usize>,
+    /// VARI linked-list reference map: absolute bytecode address → vari entry index.
+    pub vari_ref_map: &'a HashMap<usize, usize>,
+    /// Absolute file offset where this code entry's bytecode begins.
+    pub bytecode_offset: usize,
     /// Code-local variable names: local_index → name.
     pub locals: Option<&'a CodeLocals>,
     /// Whether this is an instance method (has self param).
@@ -256,14 +262,18 @@ fn resolve_branch_target(
     Ok((target, block))
 }
 
-/// Resolve a variable reference to its name.
-fn resolve_variable_name(var_ref: &VariableRef, ctx: &TranslateCtx) -> String {
-    let id = var_ref.variable_id as usize;
-    if id < ctx.variables.len() {
-        ctx.variables[id].0.clone()
-    } else {
-        format!("var_{id}")
+/// Resolve a variable reference to its name using the VARI linked-list reference map.
+///
+/// The variable operand word is at `inst.offset + 4` within the code entry's bytecode.
+/// We compute the absolute file address and look it up in the pre-built reference map.
+fn resolve_variable_name(inst: &Instruction, ctx: &TranslateCtx) -> String {
+    let abs_addr = ctx.bytecode_offset + inst.offset + 4;
+    if let Some(&vari_idx) = ctx.vari_ref_map.get(&abs_addr) {
+        if vari_idx < ctx.variables.len() {
+            return ctx.variables[vari_idx].0.clone();
+        }
     }
+    format!("var_unknown_{:x}", inst.offset)
 }
 
 /// Map GML DataType to IR Type.
@@ -635,9 +645,12 @@ fn translate_instruction(
         // ============================================================
         Opcode::Call => {
             if let Operand::Call { function_id, argc } = inst.operand {
-                let func_name = ctx.function_names.get(&function_id).cloned().unwrap_or_else(|| {
-                    format!("func_{function_id}")
-                });
+                // The function_id word is at inst.offset + 4 (after the instruction word).
+                let abs_addr = ctx.bytecode_offset + inst.offset + 4;
+                let func_name = ctx.func_ref_map.get(&abs_addr)
+                    .and_then(|&idx| ctx.function_names.get(&(idx as u32)))
+                    .cloned()
+                    .unwrap_or_else(|| format!("func_unknown_{function_id}"));
                 let mut args = Vec::with_capacity(argc as usize);
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);
@@ -806,7 +819,7 @@ fn translate_push_variable(
     var_ref: &VariableRef,
     instance: i16,
 ) -> Result<(), String> {
-    let var_name = resolve_variable_name(var_ref, ctx);
+    let var_name = resolve_variable_name(inst, ctx);
 
     match InstanceType::from_i16(instance) {
         Some(InstanceType::Local) => {
@@ -867,7 +880,13 @@ fn translate_push_variable(
         }
         Some(InstanceType::Stacktop) => {
             let target = pop(stack, inst)?;
-            let val = fb.get_field(target, &var_name, Type::Dynamic);
+            let name_val = fb.const_string(&var_name);
+            let val = fb.system_call(
+                "GameMaker.Instance",
+                "getField",
+                &[target, name_val],
+                Type::Dynamic,
+            );
             stack.push(val);
         }
         Some(InstanceType::Arg) => {
@@ -910,7 +929,7 @@ fn translate_pop(
 ) -> Result<(), String> {
     if let Operand::Variable { var_ref, instance } = &inst.operand {
         let value = pop(stack, inst)?;
-        let var_name = resolve_variable_name(var_ref, ctx);
+        let var_name = resolve_variable_name(inst, ctx);
 
         match InstanceType::from_i16(*instance) {
             Some(InstanceType::Local) => {
@@ -972,7 +991,13 @@ fn translate_pop(
             }
             Some(InstanceType::Stacktop) => {
                 let target = pop(stack, inst)?;
-                fb.set_field(target, &var_name, value);
+                let name_val = fb.const_string(&var_name);
+                fb.system_call(
+                    "GameMaker.Instance",
+                    "setField",
+                    &[target, name_val, value],
+                    Type::Void,
+                );
             }
             _ => {
                 if *instance >= 0 {
