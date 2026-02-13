@@ -10,6 +10,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::entity::EntityRef;
+use crate::ir::value::Constant;
 use crate::ir::{BlockId, Function, Op, ValueId};
 use crate::transforms::util::{branch_targets, value_operands};
 
@@ -25,7 +26,7 @@ pub struct BlockArgAssign {
 }
 
 /// A structured control-flow shape recovered from the block-based CFG.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Shape {
     /// Emit one block's non-terminator instructions.
     Block(BlockId),
@@ -86,6 +87,14 @@ pub enum Shape {
         phi: ValueId,
         rhs_body: Box<Shape>,
         rhs: ValueId,
+    },
+    /// `switch (value) { case X: ...; ... default: ...; }`
+    Switch {
+        block: BlockId,
+        value: ValueId,
+        cases: Vec<(Constant, Vec<BlockArgAssign>, Box<Shape>)>,
+        default_assigns: Vec<BlockArgAssign>,
+        default_body: Box<Shape>,
     },
     /// Fallback dispatch for irreducible CFG subgraphs.
     Dispatch {
@@ -919,9 +928,48 @@ impl<'a> Structurizer<'a> {
                 }
             }
 
-            Op::Switch { .. } => {
-                // Fallback: emit block as-is (dispatch will handle it).
-                Shape::Block(block)
+            Op::Switch {
+                value,
+                cases,
+                default,
+            } => {
+                // Find the merge point (immediate post-dominator of the switch block).
+                let merge = self
+                    .ipdom
+                    .get(&block)
+                    .copied()
+                    .filter(|&m| m != block);
+
+                let mut case_shapes = Vec::with_capacity(cases.len());
+                for (constant, target, args) in cases {
+                    let assigns = self.branch_assigns(*target, args);
+                    let body = self.structurize_region(*target, merge, loop_body);
+                    case_shapes.push((constant.clone(), assigns, Box::new(body)));
+                }
+
+                let default_assigns =
+                    self.branch_assigns(default.0, &default.1);
+                let default_body =
+                    self.structurize_region(default.0, merge, loop_body);
+
+                let switch_shape = Shape::Switch {
+                    block,
+                    value: *value,
+                    cases: case_shapes,
+                    default_assigns,
+                    default_body: Box::new(default_body),
+                };
+
+                if let Some(m) = merge {
+                    if m != block {
+                        let rest = self.structurize_region(m, until, loop_body);
+                        Shape::Seq(vec![switch_shape, rest])
+                    } else {
+                        switch_shape
+                    }
+                } else {
+                    switch_shape
+                }
             }
 
             _ => Shape::Block(block),

@@ -327,6 +327,29 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
             let _ = writeln!(out, "{indent}}}");
         }
 
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            let _ = writeln!(out, "{indent}switch ({}) {{", print_expr(value));
+            let case_indent = format!("{indent}  ");
+            for (constant, case_stmts) in cases {
+                let _ = writeln!(
+                    out,
+                    "{indent}  case {}:",
+                    emit_constant(constant)
+                );
+                print_stmts(case_stmts, out, &case_indent);
+                let _ = writeln!(out, "{indent}    break;");
+            }
+            if !default_body.is_empty() {
+                let _ = writeln!(out, "{indent}  default:");
+                print_stmts(default_body, out, &case_indent);
+            }
+            let _ = writeln!(out, "{indent}}}");
+        }
+
         // --- JS-specific statements ---
         JsStmt::Throw(expr) => {
             let _ = writeln!(out, "{indent}throw {};", print_expr(expr));

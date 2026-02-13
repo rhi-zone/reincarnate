@@ -96,6 +96,12 @@ pub(crate) enum LinearStmt {
         rhs_body: Vec<LinearStmt>,
         rhs: ValueId,
     },
+    /// Switch statement: `switch (value) { case X: ...; default: ...; }`.
+    Switch {
+        value: ValueId,
+        cases: Vec<(Constant, Vec<LinearStmt>)>,
+        default_body: Vec<LinearStmt>,
+    },
     /// Dispatch (fallback for irreducible CFGs).
     Dispatch {
         blocks: Vec<(usize, Vec<LinearStmt>)>,
@@ -296,6 +302,34 @@ fn linearize_into(
                 phi: *phi,
                 rhs_body: rhs_stmts,
                 rhs: *rhs,
+            });
+        }
+
+        Shape::Switch {
+            block,
+            value,
+            cases,
+            default_assigns,
+            default_body,
+        } => {
+            emit_block_insts(func, *block, out);
+
+            let mut case_stmts = Vec::with_capacity(cases.len());
+            for (constant, assigns, body) in cases {
+                let mut stmts = Vec::new();
+                emit_arg_assigns(assigns, &mut stmts);
+                linearize_into(func, body, &mut stmts, false);
+                case_stmts.push((constant.clone(), stmts));
+            }
+
+            let mut default_stmts = Vec::new();
+            emit_arg_assigns(default_assigns, &mut default_stmts);
+            linearize_into(func, default_body, &mut default_stmts, false);
+
+            out.push(LinearStmt::Switch {
+                value: *value,
+                cases: case_stmts,
+                default_body: default_stmts,
             });
         }
 
@@ -574,6 +608,17 @@ fn count_uses_in_stmts(
                     count_uses_in_stmts(func, block_stmts, counts);
                 }
             }
+            LinearStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
+                *counts.entry(*value).or_default() += 1;
+                for (_, case_stmts) in cases {
+                    count_uses_in_stmts(func, case_stmts, counts);
+                }
+                count_uses_in_stmts(func, default_body, counts);
+            }
             LinearStmt::Break | LinearStmt::Continue | LinearStmt::LabeledBreak { .. } => {}
         }
     }
@@ -645,6 +690,16 @@ fn collect_dead_uses(
                 for (_, block_stmts) in blocks {
                     collect_dead_uses(func, block_stmts, counts, dead, changed);
                 }
+            }
+            LinearStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_stmts) in cases {
+                    collect_dead_uses(func, case_stmts, counts, dead, changed);
+                }
+                collect_dead_uses(func, default_body, counts, dead, changed);
             }
             _ => {}
         }
@@ -863,6 +918,30 @@ fn classify_defs(
                     );
                 }
             }
+            LinearStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_stmts) in cases {
+                    classify_defs(
+                        func,
+                        case_stmts,
+                        counts,
+                        constant_inlines,
+                        always_inlines,
+                        lazy_inlines,
+                    );
+                }
+                classify_defs(
+                    func,
+                    default_body,
+                    counts,
+                    constant_inlines,
+                    always_inlines,
+                    lazy_inlines,
+                );
+            }
             _ => {}
         }
     }
@@ -949,6 +1028,16 @@ fn scan_alloc_stores(
                 for (_, block_stmts) in blocks {
                     scan_alloc_stores(func, block_stmts, alloc_inits, skip_stores);
                 }
+            }
+            LinearStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_stmts) in cases {
+                    scan_alloc_stores(func, case_stmts, alloc_inits, skip_stores);
+                }
+                scan_alloc_stores(func, default_body, alloc_inits, skip_stores);
             }
             _ => {}
         }
@@ -1829,6 +1918,24 @@ impl<'a> EmitCtx<'a> {
                 stmts.push(Stmt::Dispatch {
                     blocks: dispatch_blocks,
                     entry: *entry,
+                });
+            }
+            LinearStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
+                let val = self.build_val(*value);
+                let mut case_stmts = Vec::new();
+                for (constant, body) in cases {
+                    let emitted = self.emit_stmts(body);
+                    case_stmts.push((constant.clone(), emitted));
+                }
+                let default_stmts = self.emit_stmts(default_body);
+                stmts.push(Stmt::Switch {
+                    value: val,
+                    cases: case_stmts,
+                    default_body: default_stmts,
                 });
             }
         }

@@ -115,6 +115,17 @@ fn rewrite_stmt(stmt: &mut JsStmt) {
                 rewrite_stmts(stmts);
             }
         }
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            rewrite_expr(value);
+            for (_, stmts) in cases {
+                rewrite_stmts(stmts);
+            }
+            rewrite_stmts(default_body);
+        }
         JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
     }
 }

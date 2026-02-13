@@ -231,6 +231,12 @@ pub enum JsStmt {
         blocks: Vec<(usize, Vec<JsStmt>)>,
         entry: usize,
     },
+    /// Switch statement: `switch (value) { case X: ...; default: ...; }`.
+    Switch {
+        value: JsExpr,
+        cases: Vec<(Constant, Vec<JsStmt>)>,
+        default_body: Vec<JsStmt>,
+    },
 
     // --- JS-specific statements ---
     /// `throw expr;`.

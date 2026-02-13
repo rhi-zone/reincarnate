@@ -433,6 +433,13 @@ fn collect_stmts_vars(stmts: &[JsStmt], out: &mut HashSet<String>) {
                     collect_stmts_vars(stmts, out);
                 }
             }
+            JsStmt::Switch { value, cases, default_body } => {
+                collect_expr_vars(value, out);
+                for (_, stmts) in cases {
+                    collect_stmts_vars(stmts, out);
+                }
+                collect_stmts_vars(default_body, out);
+            }
             JsStmt::VarDecl { init: None, .. } | JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
         }
     }
@@ -607,6 +614,10 @@ fn stmt_writes_any(stmt: &JsStmt, vars: &HashSet<String>) -> bool {
         JsStmt::Dispatch { blocks, .. } => blocks
             .iter()
             .any(|(_, stmts)| stmts.iter().any(|s| stmt_writes_any(s, vars))),
+        JsStmt::Switch { cases, default_body, .. } => {
+            cases.iter().any(|(_, stmts)| stmts.iter().any(|s| stmt_writes_any(s, vars)))
+                || default_body.iter().any(|s| stmt_writes_any(s, vars))
+        }
         _ => false,
     }
 }
@@ -758,6 +769,15 @@ fn rewrite_stmt(stmt: JsStmt, ctx: &FlashRewriteCtx) -> Option<JsStmt> {
                 .map(|(idx, stmts)| (idx, rewrite_stmts(stmts, ctx)))
                 .collect(),
             entry,
+        },
+
+        JsStmt::Switch { value, cases, default_body } => JsStmt::Switch {
+            value: rewrite_expr(value, ctx),
+            cases: cases
+                .into_iter()
+                .map(|(c, stmts)| (c, rewrite_stmts(stmts, ctx)))
+                .collect(),
+            default_body: rewrite_stmts(default_body, ctx),
         },
     })
 }
@@ -1235,6 +1255,13 @@ fn bind_method_refs_stmt(stmt: &mut JsStmt, bindable: &HashSet<String>) {
                 bind_method_refs_stmts(stmts, bindable);
             }
         }
+        JsStmt::Switch { value, cases, default_body } => {
+            bind_method_refs_expr(value, bindable, false);
+            for (_, stmts) in cases.iter_mut() {
+                bind_method_refs_stmts(stmts, bindable);
+            }
+            bind_method_refs_stmts(default_body, bindable);
+        }
         JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {
         }
     }
@@ -1434,6 +1461,11 @@ fn stmt_references_var(stmt: &JsStmt, name: &str) -> bool {
         JsStmt::Dispatch { blocks, .. } => {
             blocks.iter().any(|(_, stmts)| stmts_reference_var(stmts, name))
         }
+        JsStmt::Switch { value, cases, default_body } => {
+            expr_references_var(value, name)
+                || cases.iter().any(|(_, stmts)| stmts_reference_var(stmts, name))
+                || stmts_reference_var(default_body, name)
+        }
         JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {
             false
         }
@@ -1560,6 +1592,13 @@ fn eliminate_dead_activations_in_stmt(stmt: &mut JsStmt) {
             for (_, stmts) in blocks {
                 eliminate_dead_activations(stmts);
             }
+        }
+        JsStmt::Switch { value, cases, default_body } => {
+            eliminate_dead_activations_in_expr(value);
+            for (_, stmts) in cases {
+                eliminate_dead_activations(stmts);
+            }
+            eliminate_dead_activations(default_body);
         }
         JsStmt::VarDecl { init: None, .. } | JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
     }

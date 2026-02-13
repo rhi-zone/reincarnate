@@ -206,6 +206,12 @@ pub enum Stmt {
     LabeledBreak {
         depth: usize,
     },
+    /// Switch statement: `switch (value) { case X: ...; default: ...; }`
+    Switch {
+        value: Expr,
+        cases: Vec<(Constant, Vec<Stmt>)>,
+        default_body: Vec<Stmt>,
+    },
     /// Dispatch (fallback for irreducible CFGs).
     Dispatch {
         blocks: Vec<(usize, Vec<Stmt>)>,

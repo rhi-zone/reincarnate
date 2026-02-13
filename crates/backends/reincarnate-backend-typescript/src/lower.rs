@@ -130,6 +130,19 @@ fn lower_stmt(stmt: &Stmt, ctx: &LowerCtx) -> JsStmt {
                 .collect(),
             entry: *entry,
         },
+
+        Stmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => JsStmt::Switch {
+            value: lower_expr(value, ctx),
+            cases: cases
+                .iter()
+                .map(|(c, stmts)| (c.clone(), lower_stmts(stmts, ctx)))
+                .collect(),
+            default_body: lower_stmts(default_body, ctx),
+        },
     }
 }
 

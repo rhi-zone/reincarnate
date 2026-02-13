@@ -210,6 +210,16 @@ pub fn fold_single_use_consts(body: &mut Vec<Stmt>) {
                     fold_single_use_consts(block_body);
                 }
             }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    fold_single_use_consts(case_body);
+                }
+                fold_single_use_consts(default_body);
+            }
             _ => {}
         }
     }
@@ -436,6 +446,16 @@ fn remove_dead_assigns(body: &mut Vec<Stmt>, name: &str) {
                     remove_dead_assigns(block_body, name);
                 }
             }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    remove_dead_assigns(case_body, name);
+                }
+                remove_dead_assigns(default_body, name);
+            }
             _ => {}
         }
         // Check if this statement is a bare assign to the dead variable.
@@ -646,6 +666,22 @@ fn count_var_refs_in_stmt(stmt: &Stmt, name: &str) -> usize {
             .flat_map(|(_, stmts)| stmts.iter())
             .map(|s| count_var_refs_in_stmt(s, name))
             .sum(),
+        Stmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            count_var_refs_in_expr(value, name)
+                + cases
+                    .iter()
+                    .flat_map(|(_, stmts)| stmts.iter())
+                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .sum::<usize>()
+                + default_body
+                    .iter()
+                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .sum::<usize>()
+        }
         Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => 0,
     }
 }
@@ -816,6 +852,21 @@ fn substitute_var_in_stmt(
                     .iter_mut()
                     .any(|s| substitute_var_in_stmt(s, name, replacement))
             }),
+        Stmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            substitute_var_in_expr(value, name, replacement)
+                || cases.iter_mut().any(|(_, stmts)| {
+                    stmts
+                        .iter_mut()
+                        .any(|s| substitute_var_in_stmt(s, name, replacement))
+                })
+                || default_body
+                    .iter_mut()
+                    .any(|s| substitute_var_in_stmt(s, name, replacement))
+        }
         Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => false,
     }
 }
@@ -871,6 +922,16 @@ pub fn forward_substitute(body: &mut Vec<Stmt>) {
                 for (_, block_body) in blocks {
                     forward_substitute(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    forward_substitute(case_body);
+                }
+                forward_substitute(default_body);
             }
             _ => {}
         }
@@ -989,6 +1050,16 @@ pub fn rewrite_foreach_loops(body: &mut [Stmt]) {
                 for (_, block_body) in blocks {
                     rewrite_foreach_loops(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    rewrite_foreach_loops(case_body);
+                }
+                rewrite_foreach_loops(default_body);
             }
             _ => {}
         }
@@ -1426,6 +1497,16 @@ pub fn merge_decl_init(body: &mut Vec<Stmt>) {
                     merge_decl_init(block_body);
                 }
             }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    merge_decl_init(case_body);
+                }
+                merge_decl_init(default_body);
+            }
             _ => {}
         }
     }
@@ -1551,6 +1632,18 @@ fn stmt_references_var(stmt: &Stmt, name: &str) -> bool {
             .iter()
             .any(|(_, stmts)| stmts.iter().any(|s| stmt_references_var(s, name))),
 
+        Stmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            expr_references_var(value, name)
+                || cases
+                    .iter()
+                    .any(|(_, stmts)| stmts.iter().any(|s| stmt_references_var(s, name)))
+                || default_body.iter().any(|s| stmt_references_var(s, name))
+        }
+
         Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => false,
     }
 }
@@ -1655,6 +1748,16 @@ pub fn narrow_var_scope(body: &mut Vec<Stmt>) {
                 for (_, block_body) in blocks {
                     narrow_var_scope(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    narrow_var_scope(case_body);
+                }
+                narrow_var_scope(default_body);
             }
             _ => {}
         }
@@ -1796,6 +1899,32 @@ fn find_unique_child_body<'a>(stmt: &'a mut Stmt, name: &str) -> Option<&'a mut 
             }
             found.map(|idx| &mut blocks[idx].1)
         }
+        Stmt::Switch {
+            cases,
+            default_body,
+            ..
+        } => {
+            let mut found_case = None;
+            let in_default = default_body.iter().any(|s| stmt_references_var(s, name));
+            for (idx, (_, case_body)) in cases.iter().enumerate() {
+                if case_body.iter().any(|s| stmt_references_var(s, name)) {
+                    if found_case.is_some() || in_default {
+                        return None; // multiple branches reference it
+                    }
+                    found_case = Some(idx);
+                }
+            }
+            if let Some(idx) = found_case {
+                if in_default {
+                    return None;
+                }
+                Some(&mut cases[idx].1)
+            } else if in_default {
+                Some(default_body)
+            } else {
+                None
+            }
+        }
         // Not a compound statement — can't narrow into it.
         _ => None,
     }
@@ -1843,6 +1972,16 @@ pub fn eliminate_forwarding_stubs(body: &mut Vec<Stmt>) {
                 for (_, block_body) in blocks {
                     eliminate_forwarding_stubs(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    eliminate_forwarding_stubs(case_body);
+                }
+                eliminate_forwarding_stubs(default_body);
             }
             _ => {}
         }
@@ -1926,6 +2065,16 @@ pub fn eliminate_self_assigns(body: &mut Vec<Stmt>) {
                     eliminate_self_assigns(block_body);
                 }
             }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    eliminate_self_assigns(case_body);
+                }
+                eliminate_self_assigns(default_body);
+            }
             _ => {}
         }
     }
@@ -1994,6 +2143,16 @@ pub fn eliminate_duplicate_assigns(body: &mut Vec<Stmt>) {
                 for (_, block_body) in blocks {
                     eliminate_duplicate_assigns(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    eliminate_duplicate_assigns(case_body);
+                }
+                eliminate_duplicate_assigns(default_body);
             }
             _ => {}
         }
@@ -2090,6 +2249,16 @@ pub fn absorb_phi_condition(body: &mut Vec<Stmt>) {
                 for (_, block_body) in blocks {
                     absorb_phi_condition(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    absorb_phi_condition(case_body);
+                }
+                absorb_phi_condition(default_body);
             }
             _ => {}
         }
@@ -2302,6 +2471,16 @@ pub fn rewrite_post_increment(body: &mut Vec<Stmt>) {
                     rewrite_post_increment(block_body);
                 }
             }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    rewrite_post_increment(case_body);
+                }
+                rewrite_post_increment(default_body);
+            }
             _ => {}
         }
     }
@@ -2413,6 +2592,14 @@ pub fn count_stmts(body: &[Stmt]) -> usize {
             Stmt::Dispatch { blocks, .. } => {
                 1 + blocks.iter().map(|(_, b)| count_stmts(b)).sum::<usize>()
             }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                1 + cases.iter().map(|(_, b)| count_stmts(b)).sum::<usize>()
+                    + count_stmts(default_body)
+            }
             _ => 1,
         })
         .sum()
@@ -2449,6 +2636,16 @@ fn recurse_into_stmt(stmt: &mut Stmt, pass: fn(&mut [Stmt])) {
             for (_, block_body) in blocks {
                 pass(block_body);
             }
+        }
+        Stmt::Switch {
+            cases,
+            default_body,
+            ..
+        } => {
+            for (_, case_body) in cases {
+                pass(case_body);
+            }
+            pass(default_body);
         }
         _ => {}
     }
@@ -2491,6 +2688,16 @@ pub fn invert_empty_then(body: &mut [Stmt]) {
                 for (_, block_body) in blocks {
                     invert_empty_then(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    invert_empty_then(case_body);
+                }
+                invert_empty_then(default_body);
             }
             _ => {}
         }
@@ -2550,6 +2757,16 @@ pub fn eliminate_unreachable_after_exit(body: &mut Vec<Stmt>) {
                 for (_, block_body) in blocks {
                     eliminate_unreachable_after_exit(block_body);
                 }
+            }
+            Stmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    eliminate_unreachable_after_exit(case_body);
+                }
+                eliminate_unreachable_after_exit(default_body);
             }
             _ => {}
         }
@@ -2648,6 +2865,17 @@ fn simplify_ternary_in_stmt(stmt: &mut Stmt) {
             for (_, block_body) in blocks {
                 simplify_ternary_to_logical(block_body);
             }
+        }
+        Stmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            simplify_ternary_in_expr(value);
+            for (_, case_body) in cases {
+                simplify_ternary_to_logical(case_body);
+            }
+            simplify_ternary_to_logical(default_body);
         }
         Stmt::Return(None) | Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => {}
     }
