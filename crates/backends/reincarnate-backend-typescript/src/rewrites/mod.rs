@@ -5,3 +5,4 @@
 //! pass only activates Flash rewrites when a Flash runtime is present.
 
 pub mod flash;
+pub mod gamemaker;

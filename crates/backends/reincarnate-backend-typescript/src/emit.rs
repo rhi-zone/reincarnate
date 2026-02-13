@@ -15,6 +15,23 @@ use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::runtime::SYSTEM_NAMES;
 use crate::types::ts_type;
 
+/// Which engine's rewrite pass to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EngineKind {
+    Flash,
+    GameMaker,
+}
+
+/// Detect engine from runtime config system_modules keys.
+fn detect_engine(runtime_config: Option<&RuntimeConfig>) -> EngineKind {
+    if let Some(cfg) = runtime_config {
+        if cfg.system_modules.keys().any(|k| k.starts_with("GameMaker.")) {
+            return EngineKind::GameMaker;
+        }
+    }
+    EngineKind::Flash
+}
+
 /// Emit a single module into `output_dir`.
 ///
 /// If the module has classes, emits a directory with one file per class plus
@@ -64,18 +81,19 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
 
     // Single-file mode — globals are in the same scope, no ESM setter rewrite needed.
     let no_mutable_globals = HashSet::new();
+    let engine = detect_engine(runtime_config);
     if module.classes.is_empty() {
-        emit_functions(module, &class_names, &known_classes, &no_mutable_globals, lowering_config, &mut out)?;
+        emit_functions(module, &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &mut out)?;
     } else {
         // Single-file mode: no circular imports (all classes in one scope).
         let no_late_bound = HashSet::new();
         let no_short_to_qualified = HashMap::new();
         let (class_groups, free_funcs) = group_by_class(module);
         for group in &class_groups {
-            emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, &known_classes, lowering_config, &mut out)?;
+            emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, &known_classes, lowering_config, engine, &mut out)?;
         }
         for &fid in &free_funcs {
-            emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, &mut out)?;
+            emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &mut out)?;
         }
     }
 
@@ -672,6 +690,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     if let Some(rc) = runtime_config {
         known_classes.extend(rc.type_definitions.keys().cloned());
     }
+    let engine = detect_engine(runtime_config);
     let mut barrel_exports: Vec<String> = Vec::new();
 
     // Globals → _globals.ts (at module root).
@@ -781,7 +800,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             validate_member_accesses(&module.functions[fid], Some(&qualified), &class_meta, &registry, &short_to_qualified, type_defs);
         }
 
-        emit_class(group, module, &class_names, &class_meta, &mutable_global_names, &late_bound, &short_to_qualified, &known_classes, lowering_config, &mut out)?;
+        emit_class(group, module, &class_names, &class_meta, &mutable_global_names, &late_bound, &short_to_qualified, &known_classes, lowering_config, engine, &mut out)?;
 
         let path = file_dir.join(format!("{short_name}.ts"));
         fs::write(&path, &out).map_err(CoreError::Io)?;
@@ -835,7 +854,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
 
         emit_imports(module, &mut out);
         for &fid in &free_funcs {
-            emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, &mut out)?;
+            emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &mut out)?;
         }
         let path = module_dir.join("_init.ts");
         fs::write(&path, &out).map_err(CoreError::Io)?;
@@ -1978,10 +1997,11 @@ fn emit_functions(
     known_classes: &HashSet<String>,
     mutable_global_names: &HashSet<String>,
     lowering_config: &LoweringConfig,
+    engine: EngineKind,
     out: &mut String,
 ) -> Result<(), CoreError> {
     for id in module.functions.keys().collect::<Vec<_>>() {
-        emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, out)?;
+        emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, out)?;
     }
     Ok(())
 }
@@ -1992,6 +2012,7 @@ fn emit_function(
     known_classes: &HashSet<String>,
     mutable_global_names: &HashSet<String>,
     lowering_config: &LoweringConfig,
+    engine: EngineKind,
     out: &mut String,
 ) -> Result<(), CoreError> {
     use reincarnate_core::ir::linear;
@@ -2002,24 +2023,29 @@ fn emit_function(
         self_param_name: None,
     };
     let js_func = crate::lower::lower_function(&ast, &ctx);
-    let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
-        class_names: class_names.clone(),
-        ancestors: HashSet::new(),
-        method_names: HashSet::new(),
-        instance_fields: HashSet::new(),
-        has_self: false,
-        suppress_super: false,
-        is_cinit: false,
-        static_fields: HashSet::new(),
-        static_method_owners: HashMap::new(),
-        static_field_owners: HashMap::new(),
-        const_instance_fields: HashSet::new(),
-        class_short_name: None,
-        bindable_methods: HashSet::new(),
-        closure_bodies: HashMap::new(),
-        known_classes: known_classes.clone(),
+    let mut js_func = match engine {
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func),
+        EngineKind::Flash => {
+            let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
+                class_names: class_names.clone(),
+                ancestors: HashSet::new(),
+                method_names: HashSet::new(),
+                instance_fields: HashSet::new(),
+                has_self: false,
+                suppress_super: false,
+                is_cinit: false,
+                static_fields: HashSet::new(),
+                static_method_owners: HashMap::new(),
+                static_field_owners: HashMap::new(),
+                const_instance_fields: HashSet::new(),
+                class_short_name: None,
+                bindable_methods: HashSet::new(),
+                closure_bodies: HashMap::new(),
+                known_classes: known_classes.clone(),
+            };
+            crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx)
+        }
     };
-    let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
     crate::ast_printer::print_function(&js_func, out);
     Ok(())
@@ -2187,6 +2213,7 @@ fn emit_class(
     short_to_qualified: &HashMap<String, String>,
     known_classes: &HashSet<String>,
     lowering_config: &LoweringConfig,
+    engine: EngineKind,
     out: &mut String,
 ) -> Result<(), CoreError> {
     let class_name = sanitize_ident(&group.class_def.name);
@@ -2293,24 +2320,27 @@ fn emit_class(
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, &closure_bodies, known_classes, lowering_config, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, &closure_bodies, known_classes, lowering_config, engine, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
-    let _ = writeln!(out, "registerClass({class_name});\n");
-    // Skip registerClassTraits for interfaces (they have no runtime traits).
-    if !group.class_def.is_interface {
-        emit_register_class_traits(group, module, out);
-    }
-    // Emit registerInterface for implementing classes.
-    if !group.class_def.interfaces.is_empty() {
-        let iface_names: Vec<String> = group.class_def.interfaces.iter()
-            .map(|name| {
-                let short = name.rsplit("::").next().unwrap_or(name);
-                sanitize_ident(short)
-            })
-            .collect();
-        let _ = writeln!(out, "registerInterface({class_name}, {});\n", iface_names.join(", "));
+    // Flash-specific class registration.
+    if engine == EngineKind::Flash {
+        let _ = writeln!(out, "registerClass({class_name});\n");
+        // Skip registerClassTraits for interfaces (they have no runtime traits).
+        if !group.class_def.is_interface {
+            emit_register_class_traits(group, module, out);
+        }
+        // Emit registerInterface for implementing classes.
+        if !group.class_def.interfaces.is_empty() {
+            let iface_names: Vec<String> = group.class_def.interfaces.iter()
+                .map(|name| {
+                    let short = name.rsplit("::").next().unwrap_or(name);
+                    sanitize_ident(short)
+                })
+                .collect();
+            let _ = writeln!(out, "registerInterface({class_name}, {});\n", iface_names.join(", "));
+        }
     }
     Ok(())
 }
@@ -2372,6 +2402,7 @@ fn emit_class_method(
     closure_bodies: &HashMap<String, JsFunction>,
     known_classes: &HashSet<String>,
     lowering_config: &LoweringConfig,
+    engine: EngineKind,
     out: &mut String,
 ) -> Result<(), CoreError> {
     #![allow(clippy::too_many_arguments)]
@@ -2409,33 +2440,39 @@ fn emit_class_method(
 
     let ctx = crate::lower::LowerCtx { self_param_name };
     let js_func = crate::lower::lower_function(&ast, &ctx);
-    let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
-        class_names: class_names.clone(),
-        ancestors: ancestors.clone(),
-        method_names: method_names.clone(),
-        instance_fields: instance_fields.clone(),
-        has_self: true,
-        suppress_super,
-        is_cinit,
-        static_fields: static_fields.clone(),
-        static_method_owners: static_method_owners.clone(),
-        static_field_owners: static_field_owners.clone(),
-        const_instance_fields: const_instance_fields.clone(),
-        class_short_name: Some(class_short_name.to_string()),
-        bindable_methods: if is_cinit || matches!(func.method_kind, MethodKind::Static | MethodKind::Closure) {
-            HashSet::new()
-        } else {
-            bindable_methods.clone()
-        },
-        closure_bodies: closure_bodies.clone(),
-        known_classes: known_classes.clone(),
+    let mut js_func = match engine {
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func),
+        EngineKind::Flash => {
+            let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
+                class_names: class_names.clone(),
+                ancestors: ancestors.clone(),
+                method_names: method_names.clone(),
+                instance_fields: instance_fields.clone(),
+                has_self: true,
+                suppress_super,
+                is_cinit,
+                static_fields: static_fields.clone(),
+                static_method_owners: static_method_owners.clone(),
+                static_field_owners: static_field_owners.clone(),
+                const_instance_fields: const_instance_fields.clone(),
+                class_short_name: Some(class_short_name.to_string()),
+                bindable_methods: if is_cinit || matches!(func.method_kind, MethodKind::Static | MethodKind::Closure) {
+                    HashSet::new()
+                } else {
+                    bindable_methods.clone()
+                },
+                closure_bodies: closure_bodies.clone(),
+                known_classes: known_classes.clone(),
+            };
+            let mut jf = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
+            crate::rewrites::flash::eliminate_dead_activations(&mut jf.body);
+            jf
+        }
     };
-    let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
-    crate::rewrites::flash::eliminate_dead_activations(&mut js_func.body);
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
     rewrite_late_bound_types(&mut js_func.body, late_bound, short_to_qualified);
     // Hoist super() to top of constructor body (after rewrite produces SuperCall nodes).
-    if func.method_kind == MethodKind::Constructor {
+    if engine == EngineKind::Flash && func.method_kind == MethodKind::Constructor {
         crate::rewrites::flash::hoist_super_call(
             &mut js_func.body,
             Some(class_short_name),
