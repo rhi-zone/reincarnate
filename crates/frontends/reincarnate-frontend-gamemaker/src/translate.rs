@@ -656,7 +656,6 @@ fn translate_instruction(
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);
                 }
-                args.reverse();
                 let result = fb.call(&func_name, &args, Type::Dynamic);
                 stack.push(result);
             }
@@ -668,7 +667,6 @@ fn translate_instruction(
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);
                 }
-                args.reverse();
                 let result = fb.call_indirect(callee, &args, Type::Dynamic);
                 stack.push(result);
             }
