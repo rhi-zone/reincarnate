@@ -17,42 +17,45 @@ export { Colors, HAligns, VAligns } from "./color";
 
 const noop = function () {};
 
-let __gml_draw_handle = 0;
-let __gml_current_room: GMLRoom | null = null;
-let __gml_is_stepping = false;
-let __gml_to_step: GMLObject[] = [];
-let __gml_drawgui_used = false;
+let drawHandle = 0;
+let currentRoom: GMLRoom | null = null;
+let isStepping = false;
+let pendingStep: GMLObject[] = [];
+let drawguiUsed = false;
 
 export let room = 0;
 export let room_speed = 60;
 export let fps_real = 1;
 
 /** All live instances in the current room. */
-export const __gml_room_variables: GMLObject[] = [];
+export const roomVariables: GMLObject[] = [];
 
 /** Registered class constructors (indexed by OBJT order). */
-let __gml_classes: (typeof GMLObject)[] = [];
+let classes: (typeof GMLObject)[] = [];
 
 /** Room data array. */
-let __gml_room_datas: Room[] = [];
+let roomDatas: Room[] = [];
 
 /** Sprite data array. */
-export let __gml_sprites: Sprite[] = [];
+export let sprites: Sprite[] = [];
 
 /** Texture data array. */
-export let __gml_textures: Texture[] = [];
+export let textures: Texture[] = [];
 
 /** Loaded texture sheet images. */
-export const __gml_texture_sheets: HTMLImageElement[] = [];
+export const textureSheets: HTMLImageElement[] = [];
 
 /** Font data array. */
-export let __gml_fonts: Font[] = [];
+export let fonts: Font[] = [];
 
 /** Classes enum (name→index). */
-let __gml_classes_enum: Record<string, number> = {};
+let classesEnum: Record<string, number> = {};
 
 /** Room instances list. */
-const __gml_room_instances: GMLRoom[] = [];
+const roomInstances: GMLRoom[] = [];
+
+/** Symbol for the internal "active" flag (mouse hover state). */
+export const ACTIVE = Symbol("active");
 
 // ---- Timing ----
 
@@ -80,9 +83,9 @@ export class GMLObject {
   image_alpha = 1;
   persistent = false;
   depth = 0;
-  __alarm: number[] | null = null;
-  __active = false;
-  __visible = true;
+  #alarm: number[] | null = null;
+  [ACTIVE] = false;
+  visible = true;
 
   static __instances: GMLObject[] = [];
 
@@ -94,13 +97,13 @@ export class GMLObject {
   }
 
   get alarm(): number[] {
-    if (this.__alarm === null) {
-      this.__alarm = [];
+    if (this.#alarm === null) {
+      this.#alarm = [];
     }
-    return this.__alarm;
+    return this.#alarm;
   }
   set alarm(val: number[]) {
-    this.__alarm = val;
+    this.#alarm = val;
   }
 
   get id(): GMLObject { return this; }
@@ -109,7 +112,7 @@ export class GMLObject {
   destroy(): void {}
 
   draw(): void {
-    if (this.sprite_index === undefined || !this.__visible) return;
+    if (this.sprite_index === undefined || !this.visible) return;
     drawSprite(this.sprite_index, this.image_index, this.x, this.y, this);
   }
 
@@ -123,8 +126,6 @@ export class GMLObject {
   step(): void {}
   endstep(): void {}
   drawgui(): void {}
-
-  [key: string]: any;
 }
 
 // Alarm stubs
@@ -174,10 +175,10 @@ class GMLRoom {
     ctx.fillRect(0, 0, getCanvas().width, getCanvas().height);
 
     const oldRoom = room;
-    __gml_is_stepping = true;
+    isStepping = true;
 
     // Alarms
-    for (const instance of __gml_room_variables) {
+    for (const instance of roomVariables) {
       if (instance.alarm.length !== 0) {
         for (let i = 0; i < 12; i++) {
           if (instance.alarm[i]) {
@@ -194,9 +195,9 @@ class GMLRoom {
     }
 
     // Begin step
-    let toStep: GMLObject[] = __gml_room_variables;
+    let toStep: GMLObject[] = roomVariables;
     while (toStep.length !== 0) {
-      __gml_to_step = [];
+      pendingStep = [];
       for (const instance of toStep) {
         if ((instance as any).beginstep === noop) continue;
         instance.xprevious = instance.x;
@@ -204,37 +205,37 @@ class GMLRoom {
         instance.beginstep();
         if (oldRoom !== room) break;
       }
-      toStep = __gml_to_step;
+      toStep = pendingStep;
     }
 
     // Step
-    toStep = __gml_room_variables;
+    toStep = roomVariables;
     while (toStep.length !== 0) {
-      __gml_to_step = [];
+      pendingStep = [];
       for (const instance of toStep) {
         if ((instance as any).step === noop) continue;
         instance.step();
         if (oldRoom !== room) break;
       }
-      toStep = __gml_to_step;
+      toStep = pendingStep;
     }
 
     // End step
-    toStep = __gml_room_variables;
+    toStep = roomVariables;
     while (toStep.length !== 0) {
-      __gml_to_step = [];
+      pendingStep = [];
       for (const instance of toStep) {
         if ((instance as any).endstep === noop) continue;
         instance.endstep();
         if (oldRoom !== room) break;
       }
-      toStep = __gml_to_step;
+      toStep = pendingStep;
     }
 
-    __gml_is_stepping = false;
+    isStepping = false;
 
     // Draw (sorted by depth, descending)
-    const sorted = __gml_room_variables.slice().sort((a, b) => b.depth - a.depth);
+    const sorted = roomVariables.slice().sort((a, b) => b.depth - a.depth);
     for (const instance of sorted) {
       if ((instance as any).draw === noop) continue;
       instance.draw();
@@ -242,7 +243,7 @@ class GMLRoom {
     }
 
     // Draw GUI
-    if (__gml_drawgui_used) {
+    if (drawguiUsed) {
       for (const instance of sorted) {
         if ((instance as any).drawgui === noop) continue;
         instance.drawgui();
@@ -254,13 +255,13 @@ class GMLRoom {
   }
 
   create(restart = false): void {
-    const idx = __gml_room_instances.indexOf(this);
-    const data = __gml_room_datas[idx];
+    const idx = roomInstances.indexOf(this);
+    const data = roomDatas[idx];
     if (!data) return;
 
     const instances: GMLObject[] = [];
     for (const obj of data.objs) {
-      const clazz = __gml_classes[obj.obj];
+      const clazz = classes[obj.obj];
       if (!clazz) continue;
       const proto = clazz.prototype;
       if (!proto.persistent || instance_number_internal(clazz) === 0) {
@@ -273,7 +274,7 @@ class GMLRoom {
   }
 
   destroy(restart = false): void {
-    for (const obj of __gml_room_variables.slice()) {
+    for (const obj of roomVariables.slice()) {
       if (restart || !obj.persistent) {
         instance_destroy_internal(obj);
       }
@@ -293,15 +294,15 @@ function instance_create_internal(x: number, y: number, clazz: typeof GMLObject,
   }
   instance.xstart = instance.x = x;
   instance.ystart = instance.y = y;
-  __gml_room_variables.push(instance);
+  roomVariables.push(instance);
   if (!roomStart) {
     instance.create();
   }
-  if (!__gml_drawgui_used && (instance as any).drawgui !== noop) {
-    __gml_drawgui_used = true;
+  if (!drawguiUsed && (instance as any).drawgui !== noop) {
+    drawguiUsed = true;
   }
-  if (__gml_is_stepping) {
-    __gml_to_step.push(instance);
+  if (isStepping) {
+    pendingStep.push(instance);
   }
   return instance;
 }
@@ -315,8 +316,8 @@ function instance_destroy_internal(instance: GMLObject): void {
     if (idx > -1) arr.splice(idx, 1);
     c = Object.getPrototypeOf(c);
   }
-  const idx = __gml_room_variables.indexOf(instance);
-  if (idx > -1) __gml_room_variables.splice(idx, 1);
+  const idx = roomVariables.indexOf(instance);
+  if (idx > -1) roomVariables.splice(idx, 1);
 }
 
 function instance_number_internal(clazz: typeof GMLObject): number {
@@ -328,7 +329,7 @@ function instance_number_internal(clazz: typeof GMLObject): number {
 // ---- Public instance API (called from emitted code) ----
 
 export function instance_create(x: number, y: number, classIndex: number): GMLObject {
-  const clazz = __gml_classes[classIndex];
+  const clazz = classes[classIndex];
   return instance_create_internal(x, y, clazz);
 }
 
@@ -338,13 +339,13 @@ export function instance_destroy(instance?: GMLObject): void {
 }
 
 export function instance_exists(classIndex: number): boolean {
-  const clazz = __gml_classes[classIndex];
+  const clazz = classes[classIndex];
   if (!clazz) return false;
   return clazz.instances.length > 0;
 }
 
 export function instance_number(classIndex: number): number {
-  const clazz = __gml_classes[classIndex];
+  const clazz = classes[classIndex];
   if (!clazz) return 0;
   return instance_number_internal(clazz);
 }
@@ -352,20 +353,20 @@ export function instance_number(classIndex: number): number {
 // ---- Room navigation ----
 
 export function room_goto(id: number, restart = false): void {
-  const oldRoom = __gml_current_room;
+  const oldRoom = currentRoom;
   if (oldRoom !== null) {
-    for (const instance of __gml_room_variables) {
+    for (const instance of roomVariables) {
       instance.roomend();
     }
     oldRoom.destroy(restart);
   }
-  const newRoom = __gml_room_instances[id];
-  __gml_current_room = newRoom;
+  const newRoom = roomInstances[id];
+  currentRoom = newRoom;
   room = id;
-  room_speed = __gml_room_datas[id]?.speed ?? 60;
-  resizeCanvas(__gml_room_datas[id]?.size.width ?? 800, __gml_room_datas[id]?.size.height ?? 600);
+  room_speed = roomDatas[id]?.speed ?? 60;
+  resizeCanvas(roomDatas[id]?.size.width ?? 800, roomDatas[id]?.size.height ?? 600);
   newRoom.create(restart);
-  for (const instance of __gml_room_variables) {
+  for (const instance of roomVariables) {
     instance.roomstart();
   }
   activateMouse(mouse_x(), mouse_y(), true);
@@ -380,12 +381,12 @@ export function game_restart(): void { room_goto(0, true); }
 
 function drawit(): void {
   const start = performance.now();
-  if (__gml_current_room) __gml_current_room.draw();
+  if (currentRoom) currentRoom.draw();
   const end = performance.now();
   const elapsed = end - start;
   const newfps = 1000 / Math.max(0.01, elapsed);
   fps_real = 0.9 * fps_real + 0.1 * newfps;
-  __gml_draw_handle = scheduleFrame(drawit, Math.max(0, 1000 / room_speed - elapsed));
+  drawHandle = scheduleFrame(drawit, Math.max(0, 1000 / room_speed - elapsed));
 }
 
 // ---- Game startup ----
@@ -401,12 +402,12 @@ export interface GameConfig {
 }
 
 export async function startGame(config: GameConfig): Promise<void> {
-  __gml_room_datas = config.rooms;
-  __gml_sprites = config.sprites;
-  __gml_textures = config.textures;
-  __gml_fonts = config.fonts;
-  __gml_classes = config.classes;
-  __gml_classes_enum = config.Classes;
+  roomDatas = config.rooms;
+  sprites = config.sprites;
+  textures = config.textures;
+  fonts = config.fonts;
+  classes = config.classes;
+  classesEnum = config.Classes;
 
   // Populate Sprites enum from sprite data
   for (let i = 0; i < config.sprites.length; i++) {
@@ -420,7 +421,7 @@ export async function startGame(config: GameConfig): Promise<void> {
 
   // Create room instances
   for (let i = 0; i < config.rooms.length; i++) {
-    __gml_room_instances.push(new GMLRoom());
+    roomInstances.push(new GMLRoom());
   }
 
   // Init canvas and input
@@ -436,7 +437,7 @@ export async function startGame(config: GameConfig): Promise<void> {
     sheetPromises.push(loadImage(`assets/textures/texture_${i}.png`));
   }
   const sheets = await Promise.all(sheetPromises);
-  __gml_texture_sheets.push(...sheets);
+  textureSheets.push(...sheets);
 
   // Start
   room_goto(config.initialRoom);

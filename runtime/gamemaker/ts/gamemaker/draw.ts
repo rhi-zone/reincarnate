@@ -1,12 +1,12 @@
 /** GML drawing functions — sprites, text, primitives. */
 
 import { getCtx, getTintCanvas, getTintCtx } from "./platform";
-import { __gml_sprites, __gml_textures, __gml_texture_sheets, __gml_fonts } from "./runtime";
+import { sprites, textures, textureSheets, fonts } from "./runtime";
 import { Colors, HAligns, VAligns, gmlColorToCss } from "./color";
 
-let __gml_alpha = 1;
+let drawAlpha = 1;
 
-const __gml_draw_config = {
+const drawConfig = {
   color: Colors.c_white,
   font: 0,
   valign: VAligns.fa_top,
@@ -17,14 +17,14 @@ const __gml_draw_config = {
 
 // ---- Draw config setters ----
 
-export function draw_set_color(color: number): void { __gml_draw_config.color = color; }
-export function draw_set_font(font: number): void { __gml_draw_config.font = font; }
-export function draw_set_halign(halign: number): void { __gml_draw_config.halign = halign; }
-export function draw_set_valign(valign: number): void { __gml_draw_config.valign = valign; }
+export function draw_set_color(color: number): void { drawConfig.color = color; }
+export function draw_set_font(font: number): void { drawConfig.font = font; }
+export function draw_set_halign(halign: number): void { drawConfig.halign = halign; }
+export function draw_set_valign(valign: number): void { drawConfig.valign = valign; }
 
-export function draw_set_alpha(alpha: number): void { __gml_alpha = alpha; }
-export function draw_get_alpha(): number { return __gml_alpha; }
-export function draw_get_colour(): number { return __gml_draw_config.color; }
+export function draw_set_alpha(alpha: number): void { drawAlpha = alpha; }
+export function draw_get_alpha(): number { return drawAlpha; }
+export function draw_get_colour(): number { return drawConfig.color; }
 
 // ---- Sprite drawing ----
 
@@ -34,16 +34,16 @@ export function drawSprite(
 ): void {
   const ctx = getCtx();
   const alpha = opts?.image_alpha ?? 1;
-  if (alpha !== __gml_alpha) {
-    ctx.globalAlpha = __gml_alpha = alpha;
+  if (alpha !== drawAlpha) {
+    ctx.globalAlpha = drawAlpha = alpha;
   }
-  const sprite = __gml_sprites[spriteIndex];
+  const sprite = sprites[spriteIndex];
   if (!sprite) return;
   const texIdx = sprite.textures[imageIndex] ?? sprite.textures[0];
   if (texIdx === undefined) return;
-  const tex = __gml_textures[texIdx];
+  const tex = textures[texIdx];
   if (!tex) return;
-  const sheet = __gml_texture_sheets[tex.sheetId];
+  const sheet = textureSheets[tex.sheetId];
   if (!sheet) return;
 
   const xscale = opts?.image_xscale;
@@ -81,14 +81,14 @@ export function draw_sprite_ext(
   ctx.translate(x, y);
   ctx.scale(xscale, yscale);
   if (rot !== 0) ctx.rotate(-rot * Math.PI / 180);
-  if (alpha !== __gml_alpha) ctx.globalAlpha = __gml_alpha = alpha;
-  const sprite = __gml_sprites[spriteIndex];
+  if (alpha !== drawAlpha) ctx.globalAlpha = drawAlpha = alpha;
+  const sprite = sprites[spriteIndex];
   if (sprite) {
     const texIdx = sprite.textures[imageIndex] ?? sprite.textures[0];
     if (texIdx !== undefined) {
-      const tex = __gml_textures[texIdx];
+      const tex = textures[texIdx];
       if (tex) {
-        const sheet = __gml_texture_sheets[tex.sheetId];
+        const sheet = textureSheets[tex.sheetId];
         if (sheet) {
           ctx.drawImage(
             sheet, tex.src.x, tex.src.y, tex.src.w, tex.src.h,
@@ -107,11 +107,11 @@ export function draw_self(): void {
 }
 
 export function sprite_get_width(spriteIndex: number): number {
-  return __gml_sprites[spriteIndex]?.size.width ?? 0;
+  return sprites[spriteIndex]?.size.width ?? 0;
 }
 
 export function sprite_get_height(spriteIndex: number): number {
-  return __gml_sprites[spriteIndex]?.size.height ?? 0;
+  return sprites[spriteIndex]?.size.height ?? 0;
 }
 
 // ---- Text drawing ----
@@ -122,7 +122,7 @@ const fontLookups: Map<number, Map<number, any>>[] = [];
 function getFontLookup(fontIdx: number): Map<number, any> {
   if (!fontLookups[fontIdx]) {
     const map = new Map<number, any>();
-    const font = __gml_fonts[fontIdx];
+    const font = fonts[fontIdx];
     if (font) {
       for (const c of font.chars) {
         map.set(c.char, c);
@@ -138,42 +138,42 @@ const colorFontCache: Map<number, any>[][] = [];
 
 export function draw_text(x: number, y: number, text: string): void {
   const ctx = getCtx();
-  const font = __gml_fonts[__gml_draw_config.font];
+  const font = fonts[drawConfig.font];
   if (!font) return;
-  const lookup = getFontLookup(__gml_draw_config.font);
+  const lookup = getFontLookup(drawConfig.font);
   const lines = String(text).split("#");
   const mGlyph = lookup.get(77); // 'M'
-  const lineHeight = __gml_draw_config.ext.sep === -1
+  const lineHeight = drawConfig.ext.sep === -1
     ? (mGlyph?.frame.height ?? 16)
-    : __gml_draw_config.ext.sep;
+    : drawConfig.ext.sep;
   const height = lineHeight * lines.length;
 
-  if (__gml_alpha !== 1) {
-    ctx.globalAlpha = __gml_alpha = 1;
+  if (drawAlpha !== 1) {
+    ctx.globalAlpha = drawAlpha = 1;
   }
 
   let y2 = y;
-  if (__gml_draw_config.valign === VAligns.fa_middle) y2 -= Math.ceil(height / 2);
-  else if (__gml_draw_config.valign === VAligns.fa_bottom) y2 -= height;
+  if (drawConfig.valign === VAligns.fa_middle) y2 -= Math.ceil(height / 2);
+  else if (drawConfig.valign === VAligns.fa_bottom) y2 -= height;
 
   // Word-wrap if w > 0
-  if (__gml_draw_config.ext.w > 0) {
-    wrapLines(lines, lookup, __gml_draw_config.ext.w);
+  if (drawConfig.ext.w > 0) {
+    wrapLines(lines, lookup, drawConfig.ext.w);
   }
 
   const texIdx = font.texture;
-  const tex = __gml_textures[texIdx];
+  const tex = textures[texIdx];
   if (!tex) return;
-  let sheet: CanvasImageSource = __gml_texture_sheets[tex.sheetId];
+  let sheet: CanvasImageSource = textureSheets[tex.sheetId];
   if (!sheet) return;
   let bx = tex.src.x;
   let by = tex.src.y;
 
   // Color tinting
-  if (__gml_draw_config.color !== 0xffffff) {
+  if (drawConfig.color !== 0xffffff) {
     bx = 0;
     by = 0;
-    const cached = getCachedColorFont(__gml_draw_config.font, __gml_draw_config.color, sheet, tex);
+    const cached = getCachedColorFont(drawConfig.font, drawConfig.color, sheet, tex);
     if (cached) sheet = cached;
   }
 
@@ -184,8 +184,8 @@ export function draw_text(x: number, y: number, text: string): void {
       if (g) width += g.shift;
     }
     let x2 = x;
-    if (__gml_draw_config.halign === HAligns.fa_center) x2 -= Math.ceil(width / 2);
-    else if (__gml_draw_config.halign === HAligns.fa_right) x2 -= width;
+    if (drawConfig.halign === HAligns.fa_center) x2 -= Math.ceil(width / 2);
+    else if (drawConfig.halign === HAligns.fa_right) x2 -= width;
 
     for (const ch of line) {
       const g = lookup.get(ch.charCodeAt(0));
@@ -202,23 +202,23 @@ export function draw_text(x: number, y: number, text: string): void {
 }
 
 export function draw_text_ext(x: number, y: number, text: string, sep: number, w: number): void {
-  const old = __gml_draw_config.ext;
-  __gml_draw_config.ext = { sep, w };
+  const old = drawConfig.ext;
+  drawConfig.ext = { sep, w };
   draw_text(x, y, text);
-  __gml_draw_config.ext = old;
+  drawConfig.ext = old;
 }
 
 export function draw_text_color(
   x: number, y: number, text: string,
   c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
 ): void {
-  const oldColor = __gml_draw_config.color;
-  const oldAlpha = __gml_alpha;
-  __gml_draw_config.color = c1;
-  __gml_alpha = alpha;
+  const oldColor = drawConfig.color;
+  const oldAlpha = drawAlpha;
+  drawConfig.color = c1;
+  drawAlpha = alpha;
   draw_text(x, y, text);
-  __gml_draw_config.color = oldColor;
-  __gml_alpha = oldAlpha;
+  drawConfig.color = oldColor;
+  drawAlpha = oldAlpha;
 }
 
 export function draw_text_transformed(
@@ -238,22 +238,22 @@ export function draw_text_ext_color(
   x: number, y: number, text: string, sep: number, w: number,
   c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
 ): void {
-  const oldColor = __gml_draw_config.color;
-  const oldAlpha = __gml_alpha;
-  const oldExt = __gml_draw_config.ext;
-  __gml_draw_config.color = c1;
-  __gml_alpha = alpha;
-  __gml_draw_config.ext = { sep, w };
+  const oldColor = drawConfig.color;
+  const oldAlpha = drawAlpha;
+  const oldExt = drawConfig.ext;
+  drawConfig.color = c1;
+  drawAlpha = alpha;
+  drawConfig.ext = { sep, w };
   draw_text(x, y, text);
-  __gml_draw_config.color = oldColor;
-  __gml_alpha = oldAlpha;
-  __gml_draw_config.ext = oldExt;
+  drawConfig.color = oldColor;
+  drawAlpha = oldAlpha;
+  drawConfig.ext = oldExt;
 }
 
 export function string_height_ext(text: string, sep: number, w: number): number {
-  const font = __gml_fonts[__gml_draw_config.font];
+  const font = fonts[drawConfig.font];
   if (!font) return 0;
-  const lookup = getFontLookup(__gml_draw_config.font);
+  const lookup = getFontLookup(drawConfig.font);
   const mGlyph = lookup.get(77);
   const h = sep === -1 ? (mGlyph?.frame.height ?? 16) : sep;
   const lines = String(text).split("#");
@@ -265,7 +265,7 @@ export function string_height_ext(text: string, sep: number, w: number): number 
 
 export function draw_rectangle(x1: number, y1: number, x2: number, y2: number, outline: boolean): void {
   const ctx = getCtx();
-  const css = gmlColorToCss(__gml_draw_config.color);
+  const css = gmlColorToCss(drawConfig.color);
   if (outline) {
     ctx.strokeStyle = css;
     ctx.strokeRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1);
@@ -276,7 +276,7 @@ export function draw_rectangle(x1: number, y1: number, x2: number, y2: number, o
 }
 
 export function draw_set_ext(sep: number, w: number): void {
-  __gml_draw_config.ext = { sep, w };
+  drawConfig.ext = { sep, w };
 }
 
 // ---- Helpers ----

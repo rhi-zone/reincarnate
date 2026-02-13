@@ -1,22 +1,22 @@
 /** GML ini file functions — backed by localStorage. */
 
-let __gml_ini_path = "";
-let __gml_ini_contents: Record<string, Record<string, string>> = {};
-let __gml_game_name = "";
+let iniPath = "";
+let iniContents: Record<string, Record<string, string>> = {};
+let gameName = "";
 
-export function __gml_set_game_name(name: string): void {
-  __gml_game_name = name;
+export function setGameName(name: string): void {
+  gameName = name;
 }
 
 export function ini_open(path: string): void {
-  __gml_ini_path = path;
-  const raw = localStorage.getItem("__gml_fs_" + __gml_game_name + "_" + path);
+  iniPath = path;
+  const raw = localStorage.getItem("__gml_fs_" + gameName + "_" + path);
   ini_open_from_string(raw);
 }
 
 export function ini_open_from_string(str: string | null): void {
   if (!str) {
-    __gml_ini_contents = {};
+    iniContents = {};
     return;
   }
   const sections: Record<string, Record<string, string>> = {};
@@ -33,7 +33,7 @@ export function ini_open_from_string(str: string | null): void {
     }
     sections[name] = section;
   }
-  __gml_ini_contents = sections;
+  iniContents = sections;
 }
 
 export function ini_read_real(section: string, key: string, defaultVal: number): number {
@@ -41,7 +41,7 @@ export function ini_read_real(section: string, key: string, defaultVal: number):
 }
 
 export function ini_read_string(section: string, key: string, defaultVal: string): string {
-  const val = (__gml_ini_contents[section] || {})[key];
+  const val = (iniContents[section] || {})[key];
   return val === undefined ? defaultVal : val;
 }
 
@@ -50,41 +50,41 @@ export function ini_write_real(section: string, key: string, value: number): voi
 }
 
 export function ini_write_string(section: string, key: string, value: string): void {
-  if (__gml_ini_contents[section] === undefined) {
-    __gml_ini_contents[section] = {};
+  if (iniContents[section] === undefined) {
+    iniContents[section] = {};
   }
-  __gml_ini_contents[section][key] = String(value);
+  iniContents[section][key] = String(value);
 }
 
 export function ini_section_exists(section: string): boolean {
-  return __gml_ini_contents[section] !== undefined;
+  return iniContents[section] !== undefined;
 }
 
 export function ini_key_exists(section: string, key: string): boolean {
-  return __gml_ini_contents[section] !== undefined && __gml_ini_contents[section][key] !== undefined;
+  return iniContents[section] !== undefined && iniContents[section][key] !== undefined;
 }
 
 export function ini_section_delete(section: string): void {
-  delete __gml_ini_contents[section];
+  delete iniContents[section];
 }
 
 export function ini_key_delete(section: string, key: string): void {
-  if (__gml_ini_contents[section]) {
-    delete __gml_ini_contents[section][key];
+  if (iniContents[section]) {
+    delete iniContents[section][key];
   }
 }
 
 export function ini_close(): string {
   let result = "";
-  for (const section in __gml_ini_contents) {
+  for (const section in iniContents) {
     result += `[${section}]\n`;
-    for (const key in __gml_ini_contents[section]) {
-      result += `${key}=${__gml_ini_contents[section][key]}\n`;
+    for (const key in iniContents[section]) {
+      result += `${key}=${iniContents[section][key]}\n`;
     }
     result += "\n";
   }
-  localStorage.setItem("__gml_fs_" + __gml_game_name + "_" + __gml_ini_path, result);
-  __gml_ini_path = "";
-  __gml_ini_contents = {};
+  localStorage.setItem("__gml_fs_" + gameName + "_" + iniPath, result);
+  iniPath = "";
+  iniContents = {};
   return result;
 }

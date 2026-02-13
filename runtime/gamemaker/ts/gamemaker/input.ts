@@ -1,77 +1,66 @@
 /** GML input handling — mouse, keyboard. */
 
-import { getCanvas, onMouseMove, onMouseDown, onMouseUp, onKeyDown } from "./platform";
-import { __gml_room_variables, __gml_sprites, GMLObject } from "./runtime";
+import { onMouseMove, onMouseDown, onMouseUp, onKeyDown } from "./platform";
+import { roomVariables, sprites, ACTIVE } from "./runtime";
 
-let _mouse_x = 0;
-let _mouse_y = 0;
+interface ButtonState { pressed: boolean; released: boolean; held: boolean; }
 
-let __gml_left_pressed = false;
-let __gml_right_pressed = false;
-let __gml_middle_pressed = false;
-let __gml_left_released = false;
-let __gml_right_released = false;
-let __gml_middle_released = false;
-let __gml_left_held = false;
-let __gml_right_held = false;
+const mouse = {
+  x: 0,
+  y: 0,
+  buttons: [
+    { pressed: false, released: false, held: false }, // mb_left (GML 1)
+    { pressed: false, released: false, held: false }, // mb_right (GML 2)
+    { pressed: false, released: false, held: false }, // mb_middle (GML 3)
+  ] as ButtonState[],
+};
+
+// DOM button (0=left, 1=middle, 2=right) → mouse.buttons index (0=left, 1=right, 2=middle)
+const domButtonMap = [0, 2, 1];
 
 export let keyboard_string = "";
 
 const noop = function () {};
 
-export function mouse_x(): number { return _mouse_x; }
-export function mouse_y(): number { return _mouse_y; }
+export function mouse_x(): number { return mouse.x; }
+export function mouse_y(): number { return mouse.y; }
 
 export function mouse_check_button(button: number): boolean {
-  switch (button) {
-    case 1: return __gml_left_held;
-    case 2: return __gml_right_held;
-    default: return false;
-  }
+  return mouse.buttons[button - 1]?.held ?? false;
 }
 
 export function mouse_check_button_pressed(button: number): boolean {
-  switch (button) {
-    case 1: return __gml_left_pressed;
-    case 2: return __gml_right_pressed;
-    default: return false;
-  }
+  return mouse.buttons[button - 1]?.pressed ?? false;
 }
 
 export function mouse_check_button_released(button: number): boolean {
-  switch (button) {
-    case 1: return __gml_left_released;
-    case 2: return __gml_right_released;
-    default: return false;
-  }
+  return mouse.buttons[button - 1]?.released ?? false;
 }
 
 export function resetFrameInput(): void {
-  __gml_left_pressed = false;
-  __gml_right_pressed = false;
-  __gml_middle_pressed = false;
-  __gml_left_released = false;
-  __gml_right_released = false;
-  __gml_middle_released = false;
+  for (const b of mouse.buttons) {
+    b.pressed = false;
+    b.released = false;
+  }
 }
 
 export function activateMouse(ax: number, ay: number, override = false): void {
-  for (const obj of __gml_room_variables) {
+  for (const obj of roomVariables) {
     if (obj.sprite_index === undefined) continue;
-    const sprite = __gml_sprites[obj.sprite_index];
+    const sprite = sprites[obj.sprite_index];
     if (!sprite) continue;
     const bx = obj.x;
     const by = obj.y;
     const lx = (ax - bx + sprite.origin.x) / obj.image_xscale;
     const ly = (ay - by + sprite.origin.y) / obj.image_yscale;
     if (lx >= 0 && ly >= 0 && lx < sprite.size.width && ly < sprite.size.height) {
-      if (override || !obj.__active) {
-        obj.__active = true;
+      if (override || !obj[ACTIVE]) {
+        obj[ACTIVE] = true;
         obj.mouseenter();
       }
     } else {
-      if (override || obj.__active) {
-        obj.__active = false;
+      if (override || obj[ACTIVE]) {
+        obj[ACTIVE] = false;
         obj.mouseleave();
       }
     }
@@ -80,25 +69,19 @@ export function activateMouse(ax: number, ay: number, override = false): void {
 
 export function setupInput(): void {
   onMouseMove((x, y) => {
-    _mouse_x = x;
-    _mouse_y = y;
+    mouse.x = x;
+    mouse.y = y;
     activateMouse(x, y);
   });
 
   onMouseDown((button) => {
-    switch (button) {
-      case 0: __gml_left_pressed = true; __gml_left_held = true; break;
-      case 1: __gml_middle_pressed = true; break;
-      case 2: __gml_right_pressed = true; __gml_right_held = true; break;
-    }
+    const b = mouse.buttons[domButtonMap[button]];
+    if (b) { b.pressed = true; b.held = true; }
   });
 
   onMouseUp((button) => {
-    switch (button) {
-      case 0: __gml_left_released = true; __gml_left_held = false; break;
-      case 1: __gml_middle_released = true; break;
-      case 2: __gml_right_released = true; __gml_right_held = false; break;
-    }
+    const b = mouse.buttons[domButtonMap[button]];
+    if (b) { b.released = true; b.held = false; }
   });
 
   onKeyDown((key, keyCode) => {
@@ -118,7 +101,7 @@ export function setupInput(): void {
 
 export function dispatchKeyPress(keyCode: number): void {
   const id = "keypress" + keyCode;
-  for (const obj of __gml_room_variables) {
+  for (const obj of roomVariables) {
     if ((obj as any)[id] !== noop) {
       (obj as any)[id]();
     }
