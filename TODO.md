@@ -636,3 +636,37 @@ program analysis or conservative assumptions.
   inlined the Cast and materialized the source (GetField/block-param) without
   the name. Fix: propagate names through Cast/Copy in flush_pending_reads
   and EmitCtx::new.
+
+## GameMaker Frontend
+
+### Critical
+
+- [ ] **`Op::MethodCall` IR node + remove `receiver_is_first_arg`** — The shared
+  `lower_call` in the backend has a `receiver_is_first_arg` bool on `LowerCtx`
+  to distinguish Flash (first arg = receiver → `receiver.method(rest)`) from
+  GameMaker (all args are plain function args). This is a hack. The proper fix
+  is to add `Op::MethodCall { receiver, method, args }` to the core IR so Flash
+  uses it for `CallProperty`/`CallPropVoid` and `Op::Call` remains purely for
+  free function calls. Then `lower_call` doesn't need the flag — it always emits
+  free calls, and `Op::MethodCall` always emits `receiver.method(args)`.
+
+### High Priority (correctness)
+
+- [ ] **Switch statement reconstruction** — GML compiles switch/case to
+  `Dup` + `Cmp` + `Bf` (branch-if-false) sequences. Currently emitted as
+  if-chains. The last case often loses its `if` guard (bare comparison
+  expression + unconditional assignment). Needs pattern detection in the
+  frontend to emit `Op::Switch` or a new shape variant.
+- [ ] **Named object singleton accessors** — `getInstanceField(3, "dice_type")`
+  should resolve the numeric object index to the object name, e.g.
+  `Stats.instances[0].dice_type`. The object names are available from the
+  Classes enum. Needs context threading from the module to the rewrite pass.
+
+### Medium Priority (output quality)
+
+- [ ] **Sprite constant resolution** — `this.sprite_index = 34` should be
+  `this.sprite_index = Sprites.spr_dice`. Requires mapping sprite indices to
+  enum names at emission time (the Sprites enum already exists in data output).
+- [ ] **Duplicate variable declarations** — Some event handlers emit the same
+  `let i` multiple times in one scope. Likely a structurizer issue with loop
+  variables that get separate block-param declarations.
