@@ -118,4 +118,9 @@ impl VariableRef {
             ref_type: ((raw >> 24) & 0xF8) as u8,
         }
     }
+
+    /// Encode back to the raw u32 format.
+    pub fn to_raw(self) -> u32 {
+        (self.variable_id & 0x00FF_FFFF) | ((self.ref_type as u32) << 24)
+    }
 }

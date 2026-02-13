@@ -1,4 +1,5 @@
 use datawin::bytecode::decode;
+use datawin::bytecode::encode;
 use datawin::chunks::audo::Audo;
 use datawin::chunks::code::Code;
 use datawin::chunks::font::Font;
@@ -1052,4 +1053,95 @@ fn chronicon_round_trip() {
         "round-trip size mismatch"
     );
     assert_eq!(data, reassembled, "round-trip byte mismatch");
+}
+
+// ── Phase 8: Bytecode Encoder Round-Trip ──────────────────────────
+
+#[test]
+fn bounty_bytecode_round_trip() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let (code, _gen8) = parse_code_for(&data);
+
+    let mut total = 0;
+    let mut matched = 0;
+    for (i, entry) in code.entries.iter().enumerate() {
+        let bc = code.entry_bytecode(i, &data).unwrap();
+        let instructions = decode::decode(bc).unwrap();
+        let encoded = encode::encode(&instructions);
+
+        total += 1;
+        if bc == encoded.as_slice() {
+            matched += 1;
+        } else {
+            let name = entry.name.resolve(&data).unwrap_or_default();
+            for (j, (a, b)) in bc.iter().zip(encoded.iter()).enumerate() {
+                if a != b {
+                    panic!(
+                        "bytecode round-trip mismatch in {} at byte {:#x}: expected {:#04x}, got {:#04x}",
+                        name, j, a, b
+                    );
+                }
+            }
+            if bc.len() != encoded.len() {
+                panic!(
+                    "bytecode round-trip length mismatch in {}: {} vs {}",
+                    name,
+                    bc.len(),
+                    encoded.len()
+                );
+            }
+        }
+    }
+
+    assert_eq!(matched, total, "not all entries matched");
+    eprintln!(
+        "Bounty bytecode round-trip: {}/{} entries matched",
+        matched, total
+    );
+}
+
+#[test]
+fn undertale_bytecode_round_trip() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let (code, _gen8) = parse_code_for(&data);
+
+    let mut total = 0;
+    let mut matched = 0;
+    let mut first_error = None;
+    for (i, entry) in code.entries.iter().enumerate() {
+        let bc = code.entry_bytecode(i, &data).unwrap();
+        let instructions = decode::decode(bc).unwrap();
+        let encoded = encode::encode(&instructions);
+
+        total += 1;
+        if bc == encoded.as_slice() {
+            matched += 1;
+        } else if first_error.is_none() {
+            let name = entry.name.resolve(&data).unwrap_or_default();
+            first_error = Some(format!(
+                "first mismatch in {} (entry {}): orig={} bytes, encoded={} bytes",
+                name,
+                i,
+                bc.len(),
+                encoded.len()
+            ));
+        }
+    }
+
+    if let Some(err) = first_error {
+        panic!(
+            "bytecode round-trip: {}/{} matched, {}",
+            matched, total, err
+        );
+    }
+    eprintln!(
+        "Undertale bytecode round-trip: {}/{} entries matched",
+        matched, total
+    );
 }

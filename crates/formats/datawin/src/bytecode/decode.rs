@@ -87,7 +87,6 @@ pub fn decode(bytecode: &[u8]) -> Result<Vec<Instruction>> {
         let type2_raw = ((word >> 20) & 0xF) as u8;
         let type1_raw = ((word >> 16) & 0xF) as u8;
         let val16 = (word & 0xFFFF) as u16;
-        let byte1 = ((word >> 8) & 0xFF) as u8;
 
         let opcode = Opcode::from_u8(opcode_byte).ok_or_else(|| Error::Parse {
             context: "bytecode",
@@ -97,7 +96,7 @@ pub fn decode(bytecode: &[u8]) -> Result<Vec<Instruction>> {
         let type1 = DataType::from_u8(type1_raw).unwrap_or(DataType::Int16);
         let type2 = DataType::from_u8(type2_raw).unwrap_or(DataType::Int16);
 
-        let operand = decode_operand(opcode, type1, type2, val16, byte1, bytecode, &mut pos)?;
+        let operand = decode_operand(opcode, type1, type2, val16, word, bytecode, &mut pos)?;
 
         instructions.push(Instruction {
             offset: inst_offset,
@@ -196,7 +195,7 @@ fn decode_operand(
     type1: DataType,
     _type2: DataType,
     val16: u16,
-    byte1: u8,
+    word: u32,
     bytecode: &[u8],
     pos: &mut usize,
 ) -> Result<Operand> {
@@ -221,10 +220,9 @@ fn decode_operand(
             })
         }
 
-        // Branch instructions: 24-bit signed offset in lower 3 bytes of the word
+        // Branch instructions: 24-bit signed offset in bits 23-0 of the word
         Opcode::B | Opcode::Bt | Opcode::Bf | Opcode::PushEnv | Opcode::PopEnv => {
-            // Reconstruct the full word from byte1 and val16
-            let raw24 = ((byte1 as u32) << 16) | (val16 as u32);
+            let raw24 = word & 0x00FF_FFFF;
             // Sign-extend from 24 bits
             let offset = if raw24 & 0x80_0000 != 0 {
                 (raw24 | 0xFF00_0000) as i32
@@ -235,11 +233,12 @@ fn decode_operand(
             Ok(Operand::Branch(offset * 4))
         }
 
-        // Comparison: comparison kind in byte1
+        // Comparison: comparison kind in bits 15-8
         Opcode::Cmp => {
-            let kind = ComparisonKind::from_u8(byte1).ok_or_else(|| Error::Parse {
+            let cmp_byte = ((word >> 8) & 0xFF) as u8;
+            let kind = ComparisonKind::from_u8(cmp_byte).ok_or_else(|| Error::Parse {
                 context: "bytecode",
-                message: format!("unknown comparison kind {}", byte1),
+                message: format!("unknown comparison kind {}", cmp_byte),
             })?;
             Ok(Operand::Comparison(kind))
         }
