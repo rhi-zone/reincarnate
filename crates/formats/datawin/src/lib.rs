@@ -17,4 +17,5 @@ pub mod writer;
 
 pub use error::{Error, Result};
 pub use reader::ChunkIndex;
+pub use string_table::{StringRef, StringTable};
 pub use version::BytecodeVersion;
