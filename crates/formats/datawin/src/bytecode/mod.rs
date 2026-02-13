@@ -1,1 +1,3 @@
-// Stub — implemented in Phase 3.
+pub mod decode;
+pub mod opcode;
+pub mod types;

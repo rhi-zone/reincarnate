@@ -1,3 +1,5 @@
+use datawin::bytecode::decode;
+use datawin::chunks::code::Code;
 use datawin::chunks::gen8::Gen8;
 use datawin::reader::ChunkIndex;
 use datawin::string_table::StringTable;
@@ -178,4 +180,117 @@ fn chronicon_gen8() {
     assert_eq!(gen8.room_order.len(), 6);
     assert!(!gen8.gms2_data.is_empty(), "GMS2 data should be present");
     assert_eq!(gen8.gms2_data.len(), 68);
+}
+
+// ── Phase 3: CODE + Bytecode Decoder ────────────────────────────────
+
+fn parse_code_for(data: &[u8]) -> (Code, Gen8) {
+    let index = ChunkIndex::parse(data).unwrap();
+    let gen8_data = index.chunk_data(data, b"GEN8").unwrap();
+    let gen8 = Gen8::parse(gen8_data).unwrap();
+    let code_entry = index.find(b"CODE").unwrap();
+    let code_data = index.chunk_data(data, b"CODE").unwrap();
+    let code = Code::parse(code_data, code_entry.data_offset(), gen8.bytecode_version).unwrap();
+    (code, gen8)
+}
+
+#[test]
+fn bounty_code_entries() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let (code, _gen8) = parse_code_for(&data);
+
+    assert_eq!(code.entries.len(), 197);
+
+    // First entry should be a gml_Script
+    let first = &code.entries[0];
+    let name = first.name.resolve(&data).unwrap();
+    assert_eq!(name, "gml_Script_button_click");
+    assert_eq!(first.length, 324);
+    assert_eq!(first.locals_count, 1);
+}
+
+#[test]
+fn bounty_decode_all_bytecode() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let (code, _gen8) = parse_code_for(&data);
+
+    let mut total_instructions = 0;
+    for (i, entry) in code.entries.iter().enumerate() {
+        let bc = code
+            .entry_bytecode(i, &data)
+            .unwrap_or_else(|| panic!("bytecode for entry {}", i));
+        let instructions = decode::decode(bc)
+            .unwrap_or_else(|e| {
+                let name = entry.name.resolve(&data).unwrap_or_default();
+                panic!("decode entry {} ({}): {}", i, name, e)
+            });
+        total_instructions += instructions.len();
+    }
+
+    // Bounty should have a reasonable number of instructions
+    assert!(
+        total_instructions > 1000,
+        "expected >1000 instructions total, got {}",
+        total_instructions
+    );
+    eprintln!(
+        "Bounty: {} entries, {} total instructions",
+        code.entries.len(),
+        total_instructions
+    );
+}
+
+#[test]
+fn undertale_code_entries() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let (code, _gen8) = parse_code_for(&data);
+
+    // Undertale should have many code entries
+    assert!(
+        code.entries.len() > 100,
+        "expected >100 code entries, got {}",
+        code.entries.len()
+    );
+}
+
+#[test]
+fn undertale_decode_all_bytecode() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let (code, _gen8) = parse_code_for(&data);
+
+    let mut total_instructions = 0;
+    let mut errors = 0;
+    for (i, entry) in code.entries.iter().enumerate() {
+        let bc = code
+            .entry_bytecode(i, &data)
+            .unwrap_or_else(|| panic!("bytecode for entry {}", i));
+        match decode::decode(bc) {
+            Ok(insts) => total_instructions += insts.len(),
+            Err(e) => {
+                let name = entry.name.resolve(&data).unwrap_or_default();
+                eprintln!("  decode error in {}: {}", name, e);
+                errors += 1;
+            }
+        }
+    }
+
+    eprintln!(
+        "Undertale: {} entries, {} total instructions, {} errors",
+        code.entries.len(),
+        total_instructions,
+        errors
+    );
+    assert_eq!(errors, 0, "all entries should decode without errors");
 }
