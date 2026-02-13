@@ -579,6 +579,24 @@ fn generate_constraints(
                     }
                 }
 
+                // MethodCall: constrain args to sig params if resolvable.
+                Op::MethodCall {
+                    receiver,
+                    method: name,
+                    args,
+                } => {
+                    let receiver_ty = Some(&func.value_types[*receiver]);
+                    if let Some(sig) = ctx.resolve_func_sig(name, receiver_ty, &func.sig) {
+                        // Skip the first param (receiver) in the signature.
+                        for (arg, param_ty) in args.iter().zip(sig.params.iter().skip(1)) {
+                            solver.constrain_value_to_type(*arg, param_ty);
+                        }
+                        if let Some(r) = result {
+                            solver.constrain_value_to_type(r, &sig.return_ty);
+                        }
+                    }
+                }
+
                 // No additional constraints for these:
                 Op::Const(_)
                 | Op::Load(_)

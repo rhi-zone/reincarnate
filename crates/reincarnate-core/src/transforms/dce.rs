@@ -138,6 +138,7 @@ fn has_side_effects(op: &Op) -> bool {
             | Op::Call { .. }
             | Op::CallIndirect { .. }
             | Op::SystemCall { .. }
+            | Op::MethodCall { .. }
             // Coroutine operations
             | Op::CoroutineCreate { .. }
             | Op::CoroutineResume(_)

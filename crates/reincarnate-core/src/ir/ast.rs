@@ -62,6 +62,12 @@ pub enum Expr {
         method: String,
         args: Vec<Expr>,
     },
+    /// Method call: `receiver.method(args...)`.
+    MethodCall {
+        receiver: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+    },
     /// Ternary: `cond ? then_val : else_val`.
     Ternary {
         cond: Box<Expr>,

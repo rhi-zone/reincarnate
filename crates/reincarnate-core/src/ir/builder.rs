@@ -416,6 +416,23 @@ impl FunctionBuilder {
         )
     }
 
+    pub fn call_method(
+        &mut self,
+        receiver: ValueId,
+        method: impl Into<String>,
+        args: &[ValueId],
+        ret_ty: Type,
+    ) -> ValueId {
+        self.emit(
+            Op::MethodCall {
+                receiver,
+                method: method.into(),
+                args: args.to_vec(),
+            },
+            ret_ty,
+        )
+    }
+
     pub fn system_call(
         &mut self,
         system: impl Into<String>,

@@ -411,6 +411,17 @@ impl fmt::Display for Function {
                         fmt_value_list(args, f)?;
                         write!(f, ")")?;
                     }
+                    Op::MethodCall {
+                        receiver,
+                        method,
+                        args,
+                    } => {
+                        write!(f, "call_method ")?;
+                        fmt_value(*receiver, f)?;
+                        write!(f, ".{method:?}(")?;
+                        fmt_value_list(args, f)?;
+                        write!(f, ")")?;
+                    }
 
                     Op::Cast(val, ty, kind) => {
                         match kind {

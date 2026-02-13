@@ -382,6 +382,29 @@ fn infer_inst_type(
             }
         }
 
+        // MethodCall: use receiver type to look up method return type.
+        Op::MethodCall {
+            receiver,
+            method,
+            args: _,
+        } => {
+            let bare = method.rsplit("::").next().unwrap_or(method);
+            if let Type::Struct(class) = &func.value_types[*receiver] {
+                ctx.resolve_method_return_type(class, bare)
+                    .unwrap_or_else(|| {
+                        ctx.unique_method_types
+                            .get(bare)
+                            .cloned()
+                            .unwrap_or(Type::Dynamic)
+                    })
+            } else {
+                ctx.unique_method_types
+                    .get(bare)
+                    .cloned()
+                    .unwrap_or(Type::Dynamic)
+            }
+        }
+
         // Copy: propagate source type.
         Op::Copy(v) => func.value_types[*v].clone(),
 

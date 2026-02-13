@@ -1248,16 +1248,12 @@ fn translate_op(
                         stack.push(v);
                     }
                     PropertyAccess::Named(name) => {
-                        let mut call_args = vec![obj];
-                        call_args.extend(args);
-                        let v = fb.call(&name, &call_args, Type::Dynamic);
+                        let v = fb.call_method(obj, &name, &args, Type::Dynamic);
                         stack.push(v);
                     }
                     PropertyAccess::Indexed(idx) => {
                         let callee = fb.get_index(obj, idx, Type::Dynamic);
-                        let mut call_args = vec![obj];
-                        call_args.extend(args);
-                        let v = fb.call_indirect(callee, &call_args, Type::Dynamic);
+                        let v = fb.call_indirect(callee, &args, Type::Dynamic);
                         stack.push(v);
                     }
                 }
@@ -1274,15 +1270,11 @@ fn translate_op(
                         fb.system_call("Flash.Utils", method, &args, Type::Void);
                     }
                     PropertyAccess::Named(name) => {
-                        let mut call_args = vec![obj];
-                        call_args.extend(args);
-                        fb.call(&name, &call_args, Type::Void);
+                        fb.call_method(obj, &name, &args, Type::Void);
                     }
                     PropertyAccess::Indexed(idx) => {
                         let callee = fb.get_index(obj, idx, Type::Dynamic);
-                        let mut call_args = vec![obj];
-                        call_args.extend(args);
-                        fb.call_indirect(callee, &call_args, Type::Void);
+                        fb.call_indirect(callee, &args, Type::Void);
                     }
                 }
             }
@@ -1299,16 +1291,12 @@ fn translate_op(
                         stack.push(v);
                     }
                     PropertyAccess::Named(name) => {
-                        let mut call_args = vec![obj];
-                        call_args.extend(args);
-                        let v = fb.call(&name, &call_args, Type::Dynamic);
+                        let v = fb.call_method(obj, &name, &args, Type::Dynamic);
                         stack.push(v);
                     }
                     PropertyAccess::Indexed(idx) => {
                         let callee = fb.get_index(obj, idx, Type::Dynamic);
-                        let mut call_args = vec![obj];
-                        call_args.extend(args);
-                        let v = fb.call_indirect(callee, &call_args, Type::Dynamic);
+                        let v = fb.call_indirect(callee, &args, Type::Dynamic);
                         stack.push(v);
                     }
                 }
@@ -1353,9 +1341,7 @@ fn translate_op(
             let args = pop_n(stack, n);
             if let Some(receiver) = stack.pop() {
                 let func_name = format!("method{}", index.0);
-                let mut call_args = vec![receiver];
-                call_args.extend(args);
-                let v = fb.call(&func_name, &call_args, Type::Dynamic);
+                let v = fb.call_method(receiver, &func_name, &args, Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1364,9 +1350,7 @@ fn translate_op(
             let args = pop_n(stack, n);
             if let Some(receiver) = stack.pop() {
                 let func_name = format!("disp{index}");
-                let mut call_args = vec![receiver];
-                call_args.extend(args);
-                let v = fb.call(&func_name, &call_args, Type::Dynamic);
+                let v = fb.call_method(receiver, &func_name, &args, Type::Dynamic);
                 stack.push(v);
             }
         }

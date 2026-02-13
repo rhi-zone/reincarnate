@@ -168,6 +168,12 @@ pub enum Op {
         method: String,
         args: Vec<ValueId>,
     },
+    /// Method call on a receiver: `receiver.method(args...)`.
+    MethodCall {
+        receiver: ValueId,
+        method: String,
+        args: Vec<ValueId>,
+    },
 
     // -- Type operations --
     /// Cast a value to a type.

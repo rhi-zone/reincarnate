@@ -17,10 +17,6 @@ use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 pub struct LowerCtx {
     /// Self parameter name — the IR parameter that maps to `this`.
     pub self_param_name: Option<String>,
-    /// Whether unqualified `Call` args follow the receiver convention:
-    /// first arg = receiver, rest = method arguments (Flash/AVM2).
-    /// When false, all args are plain function arguments (GameMaker/GML).
-    pub receiver_is_first_arg: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +192,18 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
             args: lower_exprs(args, ctx),
         },
 
+        Expr::MethodCall {
+            receiver,
+            method,
+            args,
+        } => JsExpr::Call {
+            callee: Box::new(JsExpr::Field {
+                object: Box::new(lower_expr(receiver, ctx)),
+                field: method.clone(),
+            }),
+            args: lower_exprs(args, ctx),
+        },
+
         Expr::Ternary {
             cond,
             then_val,
@@ -282,24 +290,9 @@ fn lower_field(object: &Expr, field: &str, ctx: &LowerCtx) -> JsExpr {
 // Call lowering
 // ---------------------------------------------------------------------------
 
-/// Lower a Call expression, handling qualified names and receiver-based dispatch.
+/// Lower a Call expression, handling dotted paths and free function calls.
 fn lower_call(fname: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
-    // Case 1: Qualified name (contains `::`) with args → method dispatch.
-    if fname.contains("::") && !args.is_empty() {
-        let method = fname.rsplit("::").next().unwrap_or(fname);
-        let receiver = &args[0];
-        let rest = &args[1..];
-
-        return JsExpr::Call {
-            callee: Box::new(JsExpr::Field {
-                object: Box::new(lower_expr(receiver, ctx)),
-                field: method.to_string(),
-            }),
-            args: lower_exprs(rest, ctx),
-        };
-    }
-
-    // Case 2: Dotted name (e.g. Math.max) → global function call.
+    // Dotted name (e.g. Math.max) → global function call.
     if fname.contains('.') {
         return JsExpr::Call {
             callee: Box::new(build_dotted_path(fname)),
@@ -307,21 +300,7 @@ fn lower_call(fname: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
         };
     }
 
-    // Case 3: Unqualified with args + receiver convention → receiver.method(rest).
-    // This is the Flash/AVM2 convention where the first arg is the method receiver.
-    if ctx.receiver_is_first_arg && !args.is_empty() {
-        let receiver = &args[0];
-        let rest = &args[1..];
-        return JsExpr::Call {
-            callee: Box::new(JsExpr::Field {
-                object: Box::new(lower_expr(receiver, ctx)),
-                field: fname.to_string(),
-            }),
-            args: lower_exprs(rest, ctx),
-        };
-    }
-
-    // Case 4: Free function call (no receiver convention, or no args).
+    // Free function call.
     JsExpr::Call {
         callee: Box::new(JsExpr::Var(fname.to_string())),
         args: lower_exprs(args, ctx),

@@ -360,6 +360,7 @@ fn expr_has_side_effects(expr: &Expr) -> bool {
         Expr::Call { .. }
         | Expr::CallIndirect { .. }
         | Expr::SystemCall { .. }
+        | Expr::MethodCall { .. }
         | Expr::CoroutineCreate { .. }
         | Expr::CoroutineResume(_)
         | Expr::Yield(_)
@@ -534,6 +535,12 @@ fn count_var_refs_in_expr(expr: &Expr, name: &str) -> usize {
         Expr::SystemCall { args, .. } => {
             args.iter().map(|a| count_var_refs_in_expr(a, name)).sum()
         }
+        Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            count_var_refs_in_expr(receiver, name)
+                + args.iter().map(|a| count_var_refs_in_expr(a, name)).sum::<usize>()
+        }
         Expr::Ternary {
             cond,
             then_val,
@@ -695,6 +702,14 @@ fn substitute_var_in_expr(
         Expr::SystemCall { args, .. } => args
             .iter_mut()
             .any(|a| substitute_var_in_expr(a, name, replacement)),
+        Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            substitute_var_in_expr(receiver, name, replacement)
+                || args
+                    .iter_mut()
+                    .any(|a| substitute_var_in_expr(a, name, replacement))
+        }
         Expr::Ternary {
             cond,
             then_val,
@@ -1568,6 +1583,12 @@ fn expr_references_var(expr: &Expr, name: &str) -> bool {
             expr_references_var(callee, name) || args.iter().any(|a| expr_references_var(a, name))
         }
         Expr::SystemCall { args, .. } => args.iter().any(|a| expr_references_var(a, name)),
+        Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            expr_references_var(receiver, name)
+                || args.iter().any(|a| expr_references_var(a, name))
+        }
         Expr::Ternary {
             cond,
             then_val,
@@ -2671,6 +2692,14 @@ fn simplify_ternary_in_expr(expr: &mut Expr) {
             }
         }
         Expr::SystemCall { args, .. } => {
+            for a in args {
+                simplify_ternary_in_expr(a);
+            }
+        }
+        Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            simplify_ternary_in_expr(receiver);
             for a in args {
                 simplify_ternary_in_expr(a);
             }

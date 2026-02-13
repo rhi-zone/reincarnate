@@ -1465,6 +1465,16 @@ impl<'a> EmitCtx<'a> {
                 }
             }
 
+            Op::MethodCall {
+                receiver,
+                method,
+                args,
+            } => Expr::MethodCall {
+                receiver: Box::new(self.build_val(*receiver)),
+                method: method.clone(),
+                args: args.iter().map(|a| self.build_val(*a)).collect(),
+            },
+
             Op::Cast(v, ty, kind) => {
                 if self
                     .func
@@ -2242,6 +2252,7 @@ fn is_side_effecting_op(op: &Op) -> bool {
         Op::Call { .. }
             | Op::CallIndirect { .. }
             | Op::SystemCall { .. }
+            | Op::MethodCall { .. }
             | Op::Yield(..)
             | Op::CoroutineResume(..)
     )

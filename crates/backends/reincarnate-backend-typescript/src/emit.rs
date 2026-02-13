@@ -2021,7 +2021,6 @@ fn emit_function(
     let ast = linear::lower_function_linear(func, &shape, lowering_config);
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
-        receiver_is_first_arg: matches!(engine, EngineKind::Flash),
     };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
@@ -2378,7 +2377,6 @@ fn compile_closures(
         // it with JsExpr::This.
         let ctx = crate::lower::LowerCtx {
             self_param_name: None,
-            receiver_is_first_arg: true, // Flash closures use receiver convention
         };
         let js_func = crate::lower::lower_function(&ast, &ctx);
         result.insert(short, js_func);
@@ -2442,10 +2440,7 @@ fn emit_class_method(
         None
     };
 
-    let ctx = crate::lower::LowerCtx {
-        self_param_name,
-        receiver_is_first_arg: matches!(engine, EngineKind::Flash),
-    };
+    let ctx = crate::lower::LowerCtx { self_param_name };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
         EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func),
@@ -3458,10 +3453,11 @@ mod tests {
             let receiver = fb.param(0);
             let arg1 = fb.const_string("text");
             let arg2 = fb.const_bool(true);
-            // Qualified call: receiver.outputText("text", true)
-            let result = fb.call(
-                "classes:BaseContent::outputText",
-                &[receiver, arg1, arg2],
+            // Method call: receiver.outputText("text", true)
+            let result = fb.call_method(
+                receiver,
+                "outputText",
+                &[arg1, arg2],
                 Type::Dynamic,
             );
             fb.ret(Some(result));
@@ -3871,7 +3867,7 @@ mod tests {
 
     #[test]
     fn call_unqualified_strips_scope_receiver() {
-        // findPropStrict("rand") + call("rand", [scope, x]) → rand(x)
+        // findPropStrict("rand") + call_method(scope, "rand", [x]) → rand(x)
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64)],
@@ -3881,7 +3877,7 @@ mod tests {
             let name = fb.const_string("rand");
             let scope =
                 fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
-            let result = fb.call("rand", &[scope, x], Type::Int(64));
+            let result = fb.call_method(scope, "rand", &[x], Type::Int(64));
             fb.ret(Some(result));
             mb.add_function(fb.build());
         });
@@ -3898,7 +3894,7 @@ mod tests {
 
     #[test]
     fn call_qualified_strips_scope_receiver() {
-        // findPropStrict("flash.net::registerClassAlias") + call with qualified name
+        // findPropStrict("flash.net::registerClassAlias") + call_method with qualified name
         // → registerClassAlias("Foo", Foo)
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
@@ -3910,7 +3906,7 @@ mod tests {
                 fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             let alias = fb.const_string("Foo");
             let cls = fb.const_string("FooCls");
-            fb.call("flash.net::registerClassAlias", &[scope, alias, cls], Type::Void);
+            fb.call_method(scope, "registerClassAlias", &[alias, cls], Type::Void);
             fb.ret(None);
             mb.add_function(fb.build());
         });
@@ -3930,9 +3926,8 @@ mod tests {
     }
 
     #[test]
-    fn call_unqualified_non_scope_emits_method_dispatch() {
-        // Unqualified call without scope lookup → receiver.method(rest) pattern
-        // (matches AVM2 callproperty semantics where args[0] is the receiver).
+    fn call_method_emits_receiver_dot_method() {
+        // MethodCall with explicit receiver → receiver.method(args).
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64), Type::Int(64)],
@@ -3940,14 +3935,14 @@ mod tests {
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let a = fb.param(0);
             let b = fb.param(1);
-            let result = fb.call("add", &[a, b], Type::Int(64));
+            let result = fb.call_method(a, "add", &[b], Type::Int(64));
             fb.ret(Some(result));
             mb.add_function(fb.build());
         });
 
         assert!(
             out.contains("v0.add(v1)"),
-            "Should emit receiver.method(rest) for non-scope unqualified call:\n{out}"
+            "Should emit receiver.method(args) for MethodCall:\n{out}"
         );
     }
 
@@ -4055,7 +4050,7 @@ mod tests {
         let name = fb.const_string("isNaga");
         let scope =
             fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
-        let result = fb.call("isNaga", &[scope], Type::Bool);
+        let result = fb.call_method(scope, "isNaga", &[], Type::Bool);
         fb.ret(Some(result));
         let child_method_id = mb.add_function(fb.build());
 
@@ -4086,22 +4081,21 @@ mod tests {
 
     #[test]
     fn unqualified_callproperty_emits_receiver_dot_method() {
-        // AVM2 callproperty pattern: call "isNaga"(player) → player.isNaga()
-        // No findPropStrict — args[0] is the real receiver.
+        // MethodCall pattern: call_method(player, "isNaga", []) → player.isNaga()
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
                 return_ty: Type::Bool, ..Default::default() };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let player = fb.param(0);
-            let result = fb.call("isNaga", &[player], Type::Bool);
+            let result = fb.call_method(player, "isNaga", &[], Type::Bool);
             fb.ret(Some(result));
             mb.add_function(fb.build());
         });
 
         assert!(
             out.contains("v0.isNaga()"),
-            "Should emit receiver.method() for callproperty pattern:\n{out}"
+            "Should emit receiver.method() for MethodCall:\n{out}"
         );
     }
 
