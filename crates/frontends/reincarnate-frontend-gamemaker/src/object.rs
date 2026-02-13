@@ -5,6 +5,7 @@ use datawin::DataWin;
 use reincarnate_core::ir::builder::ModuleBuilder;
 use reincarnate_core::ir::func::{MethodKind, Visibility};
 use reincarnate_core::ir::module::{ClassDef, StructDef};
+use reincarnate_core::ir::{Constant, Type};
 
 use crate::translate::{self, TranslateCtx};
 
@@ -25,13 +26,28 @@ pub fn translate_objects(
     for (obj_idx, obj) in objt.objects.iter().enumerate() {
         let obj_name = &obj_names[obj_idx];
 
-        // Create empty StructDef for instance fields.
-        // GML is dynamically typed — fields populated from VARI in lib.rs.
+        // Build instance field defaults from OBJT properties.
+        let mut fields = Vec::new();
+        if obj.sprite_index >= 0 {
+            fields.push((
+                "sprite_index".into(),
+                Type::Int(32),
+                Some(Constant::Int(obj.sprite_index as i64)),
+            ));
+        }
+        if obj.depth != 0 {
+            fields.push((
+                "depth".into(),
+                Type::Int(32),
+                Some(Constant::Int(obj.depth as i64)),
+            ));
+        }
+
         let struct_index = mb.struct_count();
         mb.add_struct(StructDef {
             name: obj_name.clone(),
             namespace: Vec::new(),
-            fields: Vec::new(),
+            fields,
             visibility: Visibility::Public,
         });
 
@@ -77,11 +93,10 @@ pub fn translate_objects(
                         Ok(mut func) => {
                             func.namespace = Vec::new();
                             func.class = Some(obj_name.clone());
-                            func.method_kind = if event_name == "create" {
-                                MethodKind::Constructor
-                            } else {
-                                MethodKind::Instance
-                            };
+                            // All event handlers are instance methods.
+                            // `create` is called by the runtime after construction,
+                            // not as a JS constructor.
+                            func.method_kind = MethodKind::Instance;
                             let fid = mb.add_function(func);
                             method_ids.push(fid);
                             translated += 1;
@@ -95,8 +110,9 @@ pub fn translate_objects(
             }
         }
 
-        // Resolve parent object.
-        let super_class = resolve_parent(obj, obj_names);
+        // Resolve parent object. Root objects extend GMLObject.
+        let super_class = resolve_parent(obj, obj_names)
+            .or_else(|| Some("GMLObject".into()));
 
         mb.add_class(ClassDef {
             name: obj_name.clone(),
