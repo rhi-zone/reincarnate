@@ -1,4 +1,5 @@
 mod assets;
+mod data;
 mod object;
 mod translate;
 
@@ -105,10 +106,14 @@ impl Frontend for GameMakerFrontend {
         }
 
         // Extract assets (textures, audio).
-        let assets = assets::extract_assets(&dw);
+        let mut assets = assets::extract_assets(&dw);
         if !assets.assets.is_empty() {
             eprintln!("[gamemaker] extracted {} assets", assets.assets.len());
         }
+
+        // Generate data files (sprites, textures, fonts, rooms, objects).
+        data::generate_data_files(&dw, &mut assets, &obj_names);
+        eprintln!("[gamemaker] generated data files");
 
         let module = mb.build();
 
