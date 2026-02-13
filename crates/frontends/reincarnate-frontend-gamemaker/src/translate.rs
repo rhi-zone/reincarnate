@@ -95,7 +95,7 @@ pub fn translate_code_entry(
     }
 
     // Allocate locals.
-    let locals = allocate_locals(&mut fb, ctx);
+    let mut locals = allocate_locals(&mut fb, ctx);
 
     // Pass 3: Translate instructions.
     let mut stack: Vec<ValueId> = Vec::new();
@@ -132,7 +132,7 @@ pub fn translate_code_entry(
             &mut fb,
             &mut stack,
             &block_map,
-            &locals,
+            &mut locals,
             ctx,
             &mut terminated,
             &block_entry_depths,
@@ -503,14 +503,14 @@ fn arg_name(ctx: &TranslateCtx, i: u16) -> Option<String> {
 fn allocate_locals(
     fb: &mut FunctionBuilder,
     ctx: &TranslateCtx,
-) -> HashMap<u32, ValueId> {
+) -> HashMap<String, ValueId> {
     let mut locals = HashMap::new();
     if let Some(code_locals) = ctx.locals {
         for local in &code_locals.locals {
-            let slot = fb.alloc(Type::Dynamic);
-            locals.insert(local.index, slot);
             if let Ok(name) = local.name.resolve(ctx.dw.data()) {
-                fb.name_value(slot, name);
+                let slot = fb.alloc(Type::Dynamic);
+                fb.name_value(slot, name.clone());
+                locals.insert(name, slot);
             }
         }
     }
@@ -753,7 +753,7 @@ fn translate_instruction(
     fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
     block_map: &HashMap<usize, BlockId>,
-    locals: &HashMap<u32, ValueId>,
+    locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx,
     terminated: &mut bool,
     block_entry_depths: &HashMap<usize, usize>,
@@ -1063,7 +1063,7 @@ fn translate_push(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
-    locals: &HashMap<u32, ValueId>,
+    locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx,
 ) -> Result<(), String> {
     match &inst.operand {
@@ -1095,7 +1095,7 @@ fn translate_push_variable(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
-    locals: &HashMap<u32, ValueId>,
+    locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx,
     var_ref: &VariableRef,
     instance: i16,
@@ -1105,14 +1105,15 @@ fn translate_push_variable(
     match InstanceType::from_i16(instance) {
         Some(InstanceType::Local) => {
             // Local variable: load from alloc slot.
-            if let Some(&slot) = locals.get(&var_ref.variable_id) {
+            if let Some(&slot) = locals.get(&var_name) {
                 let val = fb.load(slot, Type::Dynamic);
                 stack.push(val);
             } else {
-                // Fallback: create an on-the-fly alloc.
+                // Fallback: create an on-the-fly alloc and register it for reuse.
                 let slot = fb.alloc(Type::Dynamic);
+                fb.name_value(slot, var_name.clone());
+                locals.insert(var_name, slot);
                 let val = fb.load(slot, Type::Dynamic);
-                fb.name_value(slot, var_name);
                 stack.push(val);
             }
         }
@@ -1209,21 +1210,22 @@ fn translate_pop(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
-    locals: &HashMap<u32, ValueId>,
+    locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx,
 ) -> Result<(), String> {
-    if let Operand::Variable { var_ref, instance } = &inst.operand {
+    if let Operand::Variable { instance, .. } = &inst.operand {
         let value = pop(stack, inst)?;
         let var_name = resolve_variable_name(inst, ctx);
 
         match InstanceType::from_i16(*instance) {
             Some(InstanceType::Local) => {
-                if let Some(&slot) = locals.get(&var_ref.variable_id) {
+                if let Some(&slot) = locals.get(&var_name) {
                     fb.store(slot, value);
                 } else {
-                    // Orphan local — create slot.
+                    // Orphan local — create slot and register for reuse.
                     let slot = fb.alloc(Type::Dynamic);
-                    fb.name_value(slot, var_name);
+                    fb.name_value(slot, var_name.clone());
+                    locals.insert(var_name, slot);
                     fb.store(slot, value);
                 }
             }
