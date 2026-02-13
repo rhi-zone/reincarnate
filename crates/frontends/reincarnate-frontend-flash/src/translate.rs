@@ -10,7 +10,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use reincarnate_core::ir::{
     BlockId, CmpKind, Constant, Function, FunctionBuilder, FunctionSig, Type, ValueId, Visibility,
 };
-use swf::avm2::types::{AbcFile, MethodBody, Op};
+use swf::avm2::types::{AbcFile, MethodBody, MethodFlags, Op, TraitKind};
 
 use crate::abc::{
     offset_to_index_map, parse_bytecode, resolve_branch_target, resolve_switch_target, LocatedOp,
@@ -121,6 +121,21 @@ pub fn translate_method_body(
     // type argument instead of falling back to Dynamic.
     let mut class_value_hints: HashMap<ValueId, String> = HashMap::new();
 
+    // Map activation object slot IDs to their real variable names from body traits.
+    // AVM2 MethodBody.traits maps slot IDs to variable names for activation objects.
+    let activation_slot_names: HashMap<u32, String> = body
+        .traits
+        .iter()
+        .filter_map(|t| {
+            let slot_id = match &t.kind {
+                TraitKind::Slot { slot_id, .. } | TraitKind::Const { slot_id, .. } => *slot_id,
+                _ => return None,
+            };
+            let name = resolve_multiname_index(&abc.constant_pool, &t.name);
+            Some((slot_id, name))
+        })
+        .collect();
+
     // For exception handler entry blocks, record the param values.
     for &start in &exception_entries {
         if let Some(&block) = block_map.get(&start) {
@@ -186,6 +201,7 @@ pub fn translate_method_body(
             func_name,
             inner_functions,
             &mut class_value_hints,
+            &activation_slot_names,
         );
     }
 
@@ -556,6 +572,7 @@ fn translate_op(
     func_name: &str,
     inner_functions: &mut Vec<Function>,
     class_value_hints: &mut HashMap<ValueId, String>,
+    activation_slot_names: &HashMap<u32, String>,
 ) {
     let pool = &abc.constant_pool;
     let loc = &ops[op_idx];
@@ -1098,14 +1115,20 @@ fn translate_op(
         }
         Op::GetSlot { index } => {
             if let Some(obj) = stack.pop() {
-                let slot_name = format!("slot{index}");
+                let slot_name = activation_slot_names
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| format!("slot{index}"));
                 let v = fb.get_field(obj, &slot_name, Type::Dynamic);
                 stack.push(v);
             }
         }
         Op::SetSlot { index } => {
             if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let slot_name = format!("slot{index}");
+                let slot_name = activation_slot_names
+                    .get(index)
+                    .cloned()
+                    .unwrap_or_else(|| format!("slot{index}"));
                 fb.set_field(obj, &slot_name, val);
             }
         }
@@ -1462,11 +1485,16 @@ fn translate_op(
                         closure_defaults.pop();
                     }
                     let closure_return = resolve_type(pool, &closure_method.return_type);
+                    let has_rest = closure_method.flags.contains(MethodFlags::NEED_REST);
+                    if has_rest {
+                        closure_params.push(Type::Array(Box::new(Type::Dynamic)));
+                        closure_param_names.push(None);
+                    }
                     let closure_sig = FunctionSig {
                         params: closure_params,
                         return_ty: closure_return,
                         defaults: closure_defaults,
-                        has_rest_param: false,
+                        has_rest_param: has_rest,
                     };
                     match translate_method_body(
                         abc,
