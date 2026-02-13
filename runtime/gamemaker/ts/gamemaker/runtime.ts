@@ -36,6 +36,9 @@ let classes: (typeof GMLObject)[] = [];
 /** Room data array. */
 let roomDatas: Room[] = [];
 
+/** Per-room creation code functions (sparse, indexed by room index). */
+let roomCreationCode: (() => void)[] = [];
+
 /** Sprite data array. */
 export let sprites: Sprite[] = [];
 
@@ -271,6 +274,9 @@ class GMLRoom {
     for (const instance of instances) {
       instance.create();
     }
+    // Room creation code runs after all instance creation events (GML semantics).
+    const creationCode = roomCreationCode[idx];
+    if (creationCode) creationCode();
   }
 
   destroy(restart = false): void {
@@ -379,14 +385,14 @@ export function game_restart(): void { room_goto(0, true); }
 
 // ---- Game loop ----
 
-function drawit(): void {
+function runFrame(): void {
   const start = performance.now();
   if (currentRoom) currentRoom.draw();
   const end = performance.now();
   const elapsed = end - start;
   const newfps = 1000 / Math.max(0.01, elapsed);
   fps_real = 0.9 * fps_real + 0.1 * newfps;
-  drawHandle = scheduleFrame(drawit, Math.max(0, 1000 / room_speed - elapsed));
+  drawHandle = scheduleFrame(runFrame, Math.max(0, 1000 / room_speed - elapsed));
 }
 
 // ---- Game startup ----
@@ -399,6 +405,7 @@ export interface GameConfig {
   classes: (typeof GMLObject)[];
   Classes: Record<string, number>;
   initialRoom: number;
+  roomCreationCode?: (() => void)[];
 }
 
 export async function startGame(config: GameConfig): Promise<void> {
@@ -408,6 +415,7 @@ export async function startGame(config: GameConfig): Promise<void> {
   fonts = config.fonts;
   classes = config.classes;
   classesEnum = config.Classes;
+  roomCreationCode = config.roomCreationCode ?? [];
 
   // Populate Sprites enum from sprite data
   for (let i = 0; i < config.sprites.length; i++) {
@@ -441,5 +449,5 @@ export async function startGame(config: GameConfig): Promise<void> {
 
   // Start
   room_goto(config.initialRoom);
-  drawit();
+  runFrame();
 }

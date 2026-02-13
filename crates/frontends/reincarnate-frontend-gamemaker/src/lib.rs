@@ -4,7 +4,7 @@ pub mod naming;
 mod object;
 mod translate;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 
 use datawin::DataWin;
@@ -105,12 +105,13 @@ impl Frontend for GameMakerFrontend {
         }
 
         // Translate room creation code.
-        let room_count = translate_room_creation(
+        let (room_count, room_creation_code) = translate_room_creation(
             &dw, code, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &obj_names,
         );
         if room_count > 0 {
             eprintln!("[gamemaker] translated {room_count} room creation scripts");
         }
+        mb.set_room_creation_code(room_creation_code);
 
         // Extract assets (textures, audio).
         let mut assets = assets::extract_assets(&dw);
@@ -264,6 +265,9 @@ fn translate_global_inits(
 }
 
 /// Translate room creation code from ROOM chunk.
+///
+/// Returns `(count, room_creation_code)` where `room_creation_code` maps
+/// room index → function name for rooms that have creation code.
 #[allow(clippy::too_many_arguments)]
 fn translate_room_creation(
     dw: &DataWin,
@@ -275,14 +279,15 @@ fn translate_room_creation(
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
     obj_names: &[String],
-) -> usize {
+) -> (usize, BTreeMap<usize, String>) {
     let room = match dw.room() {
         Ok(r) => r,
-        Err(_) => return 0,
+        Err(_) => return (0, BTreeMap::new()),
     };
 
     let mut count = 0;
-    for room_entry in &room.rooms {
+    let mut creation_code_map = BTreeMap::new();
+    for (room_idx, room_entry) in room.rooms.iter().enumerate() {
         if room_entry.creation_code_id < 0 {
             continue;
         }
@@ -317,10 +322,11 @@ fn translate_room_creation(
 
         if let Ok(func) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
             mb.add_function(func);
+            creation_code_map.insert(room_idx, func_name);
             count += 1;
         }
     }
-    count
+    (count, creation_code_map)
 }
 
 /// Register global variables from VARI.

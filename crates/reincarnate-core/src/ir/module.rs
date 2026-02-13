@@ -137,6 +137,10 @@ pub struct Module {
     /// Used by type inference and constraint solving to infer return types.
     #[serde(default, skip_serializing)]
     pub external_function_sigs: BTreeMap<String, ExternalMethodSig>,
+    /// Room creation code: maps room index → function name.
+    /// Populated by frontends so the scaffold can wire up per-room init functions.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub room_creation_code: BTreeMap<usize, String>,
 }
 
 impl Module {
@@ -153,6 +157,7 @@ impl Module {
             external_imports: BTreeMap::new(),
             external_type_defs: BTreeMap::new(),
             external_function_sigs: BTreeMap::new(),
+            room_creation_code: BTreeMap::new(),
         }
     }
 }

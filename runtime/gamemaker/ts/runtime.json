@@ -14,7 +14,7 @@
       { "names": ["fonts"], "path": "data/fonts" },
       { "names": ["Classes"], "path": "data/objects" }
     ],
-    "entry": "startGame({ rooms, sprites, textures, fonts, classes: [{classes}], Classes, initialRoom: Rooms.Init });"
+    "entry": "startGame({ rooms, sprites, textures, fonts, classes: [{classes}], Classes, initialRoom: Rooms.Init, roomCreationCode: [{roomCreationCode}] });"
   },
   "class_preamble": {
     "names": ["GMLObject", "Sprites", "Colors", "HAligns", "VAligns"],

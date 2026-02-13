@@ -137,7 +137,14 @@ fn generate_main(modules: &[Module], runtime_config: Option<&RuntimeConfig>) -> 
     // If the scaffold has a custom entry template, use it.
     if let Some(entry) = runtime_config.and_then(|c| c.scaffold.entry.as_deref()) {
         let class_list = class_names.join(", ");
-        let _ = writeln!(out, "{}", entry.replace("{classes}", &class_list));
+        let room_creation_code = build_room_creation_code_array(modules);
+        let _ = writeln!(
+            out,
+            "{}",
+            entry
+                .replace("{classes}", &class_list)
+                .replace("{roomCreationCode}", &room_creation_code)
+        );
     } else if let Some(code) = metadata_entry_code(modules, runtime_config) {
         // Prefer metadata-based entry point over heuristic.
         out.push_str(&code);
@@ -328,6 +335,33 @@ fn emit_game_loop(out: &mut String, func_name: &str, runtime_config: Option<&Run
     let _ = writeln!(out, "}}");
     let _ = writeln!(out);
     let _ = writeln!(out, "requestAnimationFrame(loop);");
+}
+
+/// Build a sparse array string from room_creation_code mappings across all modules.
+///
+/// E.g. `{0: "roomInitCreate", 3: "roomFooCreate"}` becomes
+/// `"roomInitCreate, undefined, undefined, roomFooCreate"`.
+fn build_room_creation_code_array(modules: &[Module]) -> String {
+    // Merge all modules' room_creation_code maps (typically only one module).
+    let mut merged = std::collections::BTreeMap::new();
+    for module in modules {
+        for (&idx, name) in &module.room_creation_code {
+            merged.insert(idx, sanitize_ident(name));
+        }
+    }
+    if merged.is_empty() {
+        return String::new();
+    }
+    let max_idx = *merged.keys().next_back().unwrap();
+    let mut entries = Vec::with_capacity(max_idx + 1);
+    for i in 0..=max_idx {
+        if let Some(name) = merged.get(&i) {
+            entries.push(name.as_str());
+        } else {
+            entries.push("undefined");
+        }
+    }
+    entries.join(", ")
 }
 
 fn is_entry_candidate(name: &str) -> bool {

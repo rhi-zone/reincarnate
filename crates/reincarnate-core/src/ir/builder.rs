@@ -584,6 +584,10 @@ impl ModuleBuilder {
         self.module.external_imports.insert(qualified_name, import);
     }
 
+    pub fn set_room_creation_code(&mut self, map: std::collections::BTreeMap<usize, String>) {
+        self.module.room_creation_code = map;
+    }
+
     pub fn build(self) -> Module {
         self.module
     }
