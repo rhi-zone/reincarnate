@@ -18,6 +18,7 @@ use datawin::chunks::vari::Vari;
 use datawin::reader::ChunkIndex;
 use datawin::string_table::StringTable;
 use datawin::version::BytecodeVersion;
+use datawin::DataWin;
 
 fn load_if_exists(path: &str) -> Option<Vec<u8>> {
     std::fs::read(path).ok()
@@ -943,4 +944,112 @@ fn chronicon_room() {
     assert_eq!(r0.width, 4000);
     assert_eq!(r0.height, 4000);
     eprintln!("Chronicon: {} rooms", room.rooms.len());
+}
+
+// ── Phase 7: DataWin Lazy Wrapper + Round-Trip Writer ─────────────
+
+#[test]
+fn bounty_datawin_lazy() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let dw = DataWin::parse(data).unwrap();
+
+    // Lazy access — each chunk parsed on first call
+    assert_eq!(dw.gen8().unwrap().bytecode_version, BytecodeVersion::V15);
+    assert_eq!(dw.bytecode_version().unwrap(), BytecodeVersion::V15);
+    assert_eq!(dw.strings().unwrap().len(), 2281);
+    assert_eq!(dw.code().unwrap().entries.len(), 197);
+    assert_eq!(dw.func().unwrap().functions.len(), 101);
+    assert_eq!(dw.vari().unwrap().variables.len(), 610);
+    assert_eq!(dw.objt().unwrap().objects.len(), 86);
+    assert_eq!(dw.scpt().unwrap().scripts.len(), 61);
+    assert_eq!(dw.sprt().unwrap().sprites.len(), 41);
+    assert_eq!(dw.tpag().unwrap().items.len(), 118);
+    assert_eq!(dw.txtr().unwrap().textures.len(), 1);
+    assert_eq!(dw.font().unwrap().fonts.len(), 3);
+    assert_eq!(dw.room().unwrap().rooms.len(), 30);
+    assert_eq!(dw.optn().unwrap().constants.len(), 0);
+
+    // Optional chunks
+    assert!(dw.glob().unwrap().is_none());
+    assert!(dw.lang().unwrap().is_none());
+
+    // String resolution
+    let gen8 = dw.gen8().unwrap();
+    let name = dw.resolve_string(gen8.name).unwrap();
+    assert!(!name.is_empty());
+}
+
+#[test]
+fn undertale_datawin_lazy() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let dw = DataWin::parse(data).unwrap();
+
+    assert_eq!(dw.bytecode_version().unwrap(), BytecodeVersion::V16);
+    assert_eq!(dw.index().len(), 24);
+    assert!(dw.has_chunk(b"LANG"));
+    assert!(dw.has_chunk(b"GLOB"));
+    assert!(dw.glob().unwrap().is_some());
+    assert!(dw.lang().unwrap().is_some());
+}
+
+#[test]
+fn bounty_round_trip() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let chunks = datawin::writer::extract_chunks(&index, &data);
+    let reassembled = datawin::writer::assemble_form(&chunks);
+
+    assert_eq!(
+        data.len(),
+        reassembled.len(),
+        "round-trip size mismatch: {} vs {}",
+        data.len(),
+        reassembled.len()
+    );
+    assert_eq!(data, reassembled, "round-trip byte mismatch");
+}
+
+#[test]
+fn undertale_round_trip() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let chunks = datawin::writer::extract_chunks(&index, &data);
+    let reassembled = datawin::writer::assemble_form(&chunks);
+
+    assert_eq!(
+        data.len(),
+        reassembled.len(),
+        "round-trip size mismatch"
+    );
+    assert_eq!(data, reassembled, "round-trip byte mismatch");
+}
+
+#[test]
+fn chronicon_round_trip() {
+    let Some(data) = load_if_exists(CHRONICON_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let chunks = datawin::writer::extract_chunks(&index, &data);
+    let reassembled = datawin::writer::assemble_form(&chunks);
+
+    assert_eq!(
+        data.len(),
+        reassembled.len(),
+        "round-trip size mismatch"
+    );
+    assert_eq!(data, reassembled, "round-trip byte mismatch");
 }

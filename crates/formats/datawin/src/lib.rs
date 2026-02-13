@@ -15,6 +15,7 @@ pub mod string_table;
 pub mod version;
 pub mod writer;
 
+pub use datawin::DataWin;
 pub use error::{Error, Result};
 pub use reader::ChunkIndex;
 pub use string_table::{StringRef, StringTable};
