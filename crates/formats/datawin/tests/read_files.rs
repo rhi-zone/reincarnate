@@ -2,6 +2,8 @@ use datawin::bytecode::decode;
 use datawin::chunks::code::Code;
 use datawin::chunks::func::Func;
 use datawin::chunks::gen8::Gen8;
+use datawin::chunks::objt::Objt;
+use datawin::chunks::scpt::Scpt;
 use datawin::chunks::vari::Vari;
 use datawin::reader::ChunkIndex;
 use datawin::string_table::StringTable;
@@ -397,4 +399,185 @@ fn undertale_vari() {
         vari.instance_var_count_max,
         vari.max_local_var_count
     );
+}
+
+// ── Phase 5: SCPT + OBJT ─────────────────────────────────────────
+
+#[test]
+fn bounty_scpt() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let scpt_entry = index.find(b"SCPT").unwrap();
+    let scpt_data = index.chunk_data(&data, b"SCPT").unwrap();
+    let scpt = Scpt::parse(scpt_data, scpt_entry.data_offset(), &data).unwrap();
+
+    assert_eq!(scpt.scripts.len(), 61);
+
+    // First script
+    let s0 = &scpt.scripts[0];
+    assert_eq!(s0.name.resolve(&data).unwrap(), "button_click");
+    assert_eq!(s0.code_id, 0);
+
+    // Scripts should map to sequential code IDs
+    for (i, s) in scpt.scripts.iter().enumerate() {
+        assert_eq!(
+            s.code_id, i as u32,
+            "script {} code_id mismatch",
+            s.name.resolve(&data).unwrap_or_default()
+        );
+    }
+}
+
+#[test]
+fn bounty_objt() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let objt_data = index.chunk_data(&data, b"OBJT").unwrap();
+    let objt = Objt::parse(objt_data, &data).unwrap();
+
+    assert_eq!(objt.objects.len(), 86);
+
+    // First object
+    let obj0 = &objt.objects[0];
+    assert_eq!(obj0.name.resolve(&data).unwrap(), "obj_button_base");
+    assert_eq!(obj0.sprite_index, 0);
+    assert!(obj0.visible);
+    assert!(!obj0.solid);
+    assert_eq!(obj0.depth, 0);
+    assert!(!obj0.persistent);
+    assert_eq!(obj0.parent_index, -100);
+    assert_eq!(obj0.mask_index, -1);
+
+    // Default physics values
+    assert!(!obj0.physics_enabled);
+    assert!((obj0.physics_density - 0.5).abs() < f32::EPSILON);
+    assert!((obj0.physics_restitution - 0.1).abs() < f32::EPSILON);
+    assert!((obj0.physics_friction - 0.2).abs() < f32::EPSILON);
+    assert!(obj0.physics_awake);
+    assert!(!obj0.physics_kinematic);
+    assert!(obj0.physics_vertices.is_empty());
+
+    // Event structure
+    assert_eq!(obj0.events.len(), 12);
+
+    // Create event (type 0): 1 sub-entry with subtype 0
+    assert_eq!(obj0.events[0].len(), 1);
+    assert_eq!(obj0.events[0][0].subtype, 0);
+    assert_eq!(obj0.events[0][0].actions.len(), 1);
+
+    // Mouse event (type 6): 2 sub-entries (mouse enter=11, mouse leave=10)
+    assert_eq!(obj0.events[6].len(), 2);
+    assert_eq!(obj0.events[6][0].subtype, 11); // mouse enter
+    assert_eq!(obj0.events[6][1].subtype, 10); // mouse leave
+
+    // All events should have valid code IDs
+    let (code, _) = parse_code_for(&data);
+    for event_list in &obj0.events {
+        for event in event_list {
+            for action in &event.actions {
+                assert!(
+                    (action.code_id as usize) < code.entries.len(),
+                    "code_id {} out of range (max {})",
+                    action.code_id,
+                    code.entries.len()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn bounty_objt_code_linkage() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let objt_data = index.chunk_data(&data, b"OBJT").unwrap();
+    let objt = Objt::parse(objt_data, &data).unwrap();
+    let (code, _) = parse_code_for(&data);
+
+    // Verify code entry names match object+event naming convention
+    let obj0 = &objt.objects[0];
+    let obj_name = obj0.name.resolve(&data).unwrap();
+
+    let event_type_names = [
+        "Create", "Destroy", "Alarm", "Step", "Collision", "Keyboard", "Mouse", "Other", "Draw",
+        "KeyPress", "KeyRelease", "Trigger",
+    ];
+
+    for (type_idx, event_list) in obj0.events.iter().enumerate() {
+        for event in event_list {
+            for action in &event.actions {
+                let code_name = code.entries[action.code_id as usize]
+                    .name
+                    .resolve(&data)
+                    .unwrap();
+                let expected_suffix = format!(
+                    "gml_Object_{}_{}_{}",
+                    obj_name, event_type_names[type_idx], event.subtype
+                );
+                assert_eq!(
+                    code_name, expected_suffix,
+                    "code entry name mismatch for {}.{}.{}",
+                    obj_name, event_type_names[type_idx], event.subtype
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn undertale_scpt() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let scpt_entry = index.find(b"SCPT").unwrap();
+    let scpt_data = index.chunk_data(&data, b"SCPT").unwrap();
+    let scpt = Scpt::parse(scpt_data, scpt_entry.data_offset(), &data).unwrap();
+
+    assert!(
+        scpt.scripts.len() > 100,
+        "expected >100 scripts, got {}",
+        scpt.scripts.len()
+    );
+    eprintln!("Undertale: {} scripts", scpt.scripts.len());
+}
+
+#[test]
+fn undertale_objt() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let objt_data = index.chunk_data(&data, b"OBJT").unwrap();
+    let objt = Objt::parse(objt_data, &data).unwrap();
+
+    assert!(
+        objt.objects.len() > 100,
+        "expected >100 objects, got {}",
+        objt.objects.len()
+    );
+
+    // All objects should have at least 12 event types (13 for v16+)
+    for (i, obj) in objt.objects.iter().enumerate() {
+        assert!(
+            obj.events.len() >= 12,
+            "object {} ({}) has {} event types, expected >= 12",
+            i,
+            obj.name.resolve(&data).unwrap_or_default(),
+            obj.events.len()
+        );
+    }
+
+    eprintln!("Undertale: {} objects", objt.objects.len());
 }
