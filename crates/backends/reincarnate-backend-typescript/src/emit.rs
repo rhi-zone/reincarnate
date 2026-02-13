@@ -145,6 +145,8 @@ struct ClassMeta {
     instance_field_sets: HashMap<String, HashSet<String>>,
     static_method_owner_map: HashMap<String, HashMap<String, String>>,
     static_field_owner_map: HashMap<String, HashMap<String, String>>,
+    /// Instance/Free method names that are bindable (excludes getters, setters, statics, constructors).
+    bindable_method_sets: HashMap<String, HashSet<String>>,
 }
 
 impl ClassMeta {
@@ -155,6 +157,7 @@ impl ClassMeta {
             instance_field_sets: build_instance_field_sets(module, type_defs),
             static_method_owner_map: build_static_method_owner_map(module),
             static_field_owner_map: build_static_field_owner_map(module),
+            bindable_method_sets: build_bindable_method_sets(module, type_defs),
         }
     }
 }
@@ -390,6 +393,59 @@ fn build_method_name_sets(module: &Module, type_defs: &BTreeMap<String, External
                                 }
                                 _ => {}
                             }
+                        }
+                    }
+                }
+            }
+            match current.super_class {
+                Some(ref sc) => {
+                    let short = sc.rsplit("::").next().unwrap_or(sc);
+                    match resolve_parent(sc, &class_by_qualified, &class_by_short) {
+                        Some(parent) => current = parent,
+                        None => {
+                            external_parent = Some(short);
+                            break;
+                        }
+                    }
+                }
+                None => break,
+            }
+        }
+        // Continue walking through external type definitions.
+        let mut ext_cur = external_parent;
+        while let Some(ext_name) = ext_cur {
+            if let Some(def) = type_defs.get(ext_name) {
+                names.extend(def.methods.keys().cloned());
+                ext_cur = def.extends.as_deref();
+            } else {
+                break;
+            }
+        }
+        result.insert(qualified_class_name(class), names);
+    }
+    result
+}
+
+/// Build a mapping from qualified class name → set of bindable method short names.
+/// Only includes Instance and Free methods — excludes Getter, Setter, Static,
+/// and Constructor.  Does NOT include bare getter/setter property names.
+fn build_bindable_method_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
+    let class_by_short: HashMap<&str, &ClassDef> =
+        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
+    let class_by_qualified: HashMap<String, &ClassDef> =
+        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+
+    let mut result = HashMap::new();
+    for class in &module.classes {
+        let mut names = HashSet::new();
+        let mut current = class;
+        let mut external_parent: Option<&str> = None;
+        loop {
+            for &fid in &current.methods {
+                if let Some(f) = module.functions.get(fid) {
+                    if matches!(f.method_kind, MethodKind::Instance | MethodKind::Free) {
+                        if let Some(short) = f.name.rsplit("::").next() {
+                            names.insert(short.to_string());
                         }
                     }
                 }
@@ -1939,6 +1995,7 @@ fn emit_function(
         static_field_owners: HashMap::new(),
         const_instance_fields: HashSet::new(),
         class_short_name: None,
+        bindable_methods: HashSet::new(),
     };
     let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
@@ -2183,6 +2240,7 @@ fn emit_class(
     let instance_fields = class_meta.instance_field_sets.get(&qualified).unwrap_or(&empty_set);
     let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_map);
     let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_map);
+    let bindable_methods = class_meta.bindable_method_sets.get(&qualified).unwrap_or(&empty_set);
     let static_fields: HashSet<String> = group.class_def.static_fields.iter()
         .map(|(name, _, _)| name.clone())
         .collect();
@@ -2197,7 +2255,7 @@ fn emit_class(
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, lowering_config, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, lowering_config, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -2235,6 +2293,7 @@ fn emit_class_method(
     mutable_global_names: &HashSet<String>,
     late_bound: &HashSet<String>,
     short_to_qualified: &HashMap<String, String>,
+    bindable_methods: &HashSet<String>,
     lowering_config: &LoweringConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -2285,6 +2344,7 @@ fn emit_class_method(
         static_field_owners: static_field_owners.clone(),
         const_instance_fields: const_instance_fields.clone(),
         class_short_name: Some(class_short_name.to_string()),
+        bindable_methods: bindable_methods.clone(),
     };
     let mut js_func = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);

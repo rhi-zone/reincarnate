@@ -9,6 +9,27 @@ import { xmlList } from "./xml";
 import { scheduleInterval, cancelScheduledInterval } from "./platform";
 
 // ---------------------------------------------------------------------------
+// AS3 method closure auto-binding
+// ---------------------------------------------------------------------------
+
+const _bindCache = new WeakMap<Function, WeakMap<object, Function>>();
+
+/** Cache-backed method bind — identity-stable so removeEventListener works. */
+export function as3Bind<T extends (...args: any[]) => any>(thisArg: any, fn: T): T {
+    let fnCache = _bindCache.get(fn);
+    if (!fnCache) {
+        fnCache = new WeakMap();
+        _bindCache.set(fn, fnCache);
+    }
+    let bound = fnCache.get(thisArg) as T | undefined;
+    if (!bound) {
+        bound = fn.bind(thisArg) as T;
+        fnCache.set(thisArg, bound);
+    }
+    return bound;
+}
+
+// ---------------------------------------------------------------------------
 // AS3 global casting functions: int() and uint()
 // ---------------------------------------------------------------------------
 
