@@ -1454,4 +1454,102 @@ pub fn eliminate_dead_activations(body: &mut Vec<JsStmt>) {
             });
         }
     }
+
+    // Recurse into nested arrow function bodies.
+    for stmt in body.iter_mut() {
+        eliminate_dead_activations_in_stmt(stmt);
+    }
+}
+
+/// Recurse into statement bodies to eliminate dead activations in nested scopes.
+fn eliminate_dead_activations_in_stmt(stmt: &mut JsStmt) {
+    match stmt {
+        JsStmt::VarDecl { init: Some(e), .. } | JsStmt::Expr(e) | JsStmt::Return(Some(e)) | JsStmt::Throw(e) => {
+            eliminate_dead_activations_in_expr(e);
+        }
+        JsStmt::Assign { target, value } | JsStmt::CompoundAssign { target, value, .. } => {
+            eliminate_dead_activations_in_expr(target);
+            eliminate_dead_activations_in_expr(value);
+        }
+        JsStmt::If { cond, then_body, else_body } => {
+            eliminate_dead_activations_in_expr(cond);
+            eliminate_dead_activations(then_body);
+            eliminate_dead_activations(else_body);
+        }
+        JsStmt::While { cond, body } => {
+            eliminate_dead_activations_in_expr(cond);
+            eliminate_dead_activations(body);
+        }
+        JsStmt::For { init, cond, update, body } => {
+            eliminate_dead_activations(init);
+            eliminate_dead_activations_in_expr(cond);
+            eliminate_dead_activations(update);
+            eliminate_dead_activations(body);
+        }
+        JsStmt::Loop { body } => eliminate_dead_activations(body),
+        JsStmt::ForOf { iterable, body, .. } => {
+            eliminate_dead_activations_in_expr(iterable);
+            eliminate_dead_activations(body);
+        }
+        JsStmt::Dispatch { blocks, .. } => {
+            for (_, stmts) in blocks {
+                eliminate_dead_activations(stmts);
+            }
+        }
+        JsStmt::VarDecl { init: None, .. } | JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
+    }
+}
+
+/// Recurse into expressions to find and clean arrow function bodies.
+fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
+    match expr {
+        JsExpr::ArrowFunction { body, .. } => {
+            eliminate_dead_activations(body);
+        }
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs }
+        | JsExpr::In { key: lhs, object: rhs }
+        | JsExpr::Delete { object: lhs, key: rhs } => {
+            eliminate_dead_activations_in_expr(lhs);
+            eliminate_dead_activations_in_expr(rhs);
+        }
+        JsExpr::Unary { expr: e, .. }
+        | JsExpr::Cast { expr: e, .. }
+        | JsExpr::TypeCheck { expr: e, .. }
+        | JsExpr::Not(e)
+        | JsExpr::PostIncrement(e)
+        | JsExpr::TypeOf(e)
+        | JsExpr::GeneratorResume(e) => eliminate_dead_activations_in_expr(e),
+        JsExpr::Field { object, .. } => eliminate_dead_activations_in_expr(object),
+        JsExpr::Index { collection, index } => {
+            eliminate_dead_activations_in_expr(collection);
+            eliminate_dead_activations_in_expr(index);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            eliminate_dead_activations_in_expr(callee);
+            for a in args { eliminate_dead_activations_in_expr(a); }
+        }
+        JsExpr::Ternary { cond, then_val, else_val } => {
+            eliminate_dead_activations_in_expr(cond);
+            eliminate_dead_activations_in_expr(then_val);
+            eliminate_dead_activations_in_expr(else_val);
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) | JsExpr::SuperCall(elems) => {
+            for e in elems { eliminate_dead_activations_in_expr(e); }
+        }
+        JsExpr::ObjectInit(pairs) => {
+            for (_, e) in pairs { eliminate_dead_activations_in_expr(e); }
+        }
+        JsExpr::SuperMethodCall { args, .. }
+        | JsExpr::GeneratorCreate { args, .. }
+        | JsExpr::SystemCall { args, .. } => {
+            for a in args { eliminate_dead_activations_in_expr(a); }
+        }
+        JsExpr::SuperSet { value, .. } => eliminate_dead_activations_in_expr(value),
+        JsExpr::Yield(Some(e)) => eliminate_dead_activations_in_expr(e),
+        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This | JsExpr::Activation
+        | JsExpr::SuperGet(_) | JsExpr::Yield(None) => {}
+    }
 }
