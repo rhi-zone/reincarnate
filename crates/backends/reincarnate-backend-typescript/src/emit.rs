@@ -806,10 +806,13 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         fs::create_dir_all(&file_dir).map_err(CoreError::Io)?;
 
         let mut out = String::new();
-        let systems = collect_system_names_from_funcs(
-            group.methods.iter().map(|&fid| &module.functions[fid]),
-        );
+        let class_funcs = || group.methods.iter().map(|&fid| &module.functions[fid]);
+        let systems = collect_system_names_from_funcs(class_funcs());
         emit_runtime_imports_for(systems, &mut out, depth, runtime_config);
+        let calls = collect_call_names_from_funcs(class_funcs());
+        let func_prefix = "../".repeat(depth + 1);
+        let func_prefix = func_prefix.trim_end_matches('/');
+        emit_function_imports_with_prefix(&calls, &mut out, func_prefix, runtime_config);
         if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
             let prefix = "../".repeat(depth + 1);
             let prefix = prefix.trim_end_matches('/');
@@ -845,10 +848,11 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     // Free functions → _init.ts (at module root, depth 0).
     if !free_funcs.is_empty() {
         let mut out = String::new();
-        let systems = collect_system_names_from_funcs(
-            free_funcs.iter().map(|&fid| &module.functions[fid]),
-        );
+        let free_fn_iter = || free_funcs.iter().map(|&fid| &module.functions[fid]);
+        let systems = collect_system_names_from_funcs(free_fn_iter());
         emit_runtime_imports_for(systems, &mut out, 0, runtime_config);
+        let calls = collect_call_names_from_funcs(free_fn_iter());
+        emit_function_imports_with_prefix(&calls, &mut out, "..", runtime_config);
         if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
             let prefix = "../";
             let prefix = prefix.trim_end_matches('/');
@@ -1008,9 +1012,11 @@ fn collect_system_names_from_funcs<'a>(
 
 /// Emit runtime imports for flat modules (files directly in `output_dir`).
 fn emit_runtime_imports(module: &Module, out: &mut String, runtime_config: Option<&RuntimeConfig>) {
-    let systems =
-        collect_system_names_from_funcs(module.functions.iter().map(|(_id, f)| f));
+    let all_funcs = || module.functions.iter().map(|(_id, f)| f);
+    let systems = collect_system_names_from_funcs(all_funcs());
     emit_runtime_imports_with_prefix(systems, out, ".", runtime_config);
+    let calls = collect_call_names_from_funcs(all_funcs());
+    emit_function_imports_with_prefix(&calls, out, ".", runtime_config);
 }
 
 /// Emit runtime imports for files inside a module directory.
@@ -1075,6 +1081,66 @@ fn emit_runtime_imports_with_prefix(
         }
     }
     if !generic.is_empty() || !by_mod.is_empty() {
+        out.push('\n');
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Function-level imports (runtime stdlib free functions)
+// ---------------------------------------------------------------------------
+
+/// Collect all direct `Call` function names from a set of IR functions.
+fn collect_call_names_from_funcs<'a>(
+    funcs: impl Iterator<Item = &'a Function>,
+) -> BTreeSet<String> {
+    let mut used = BTreeSet::new();
+    for func in funcs {
+        for (_inst_id, inst) in func.insts.iter() {
+            if let Op::Call { func: name, .. } = &inst.op {
+                used.insert(name.clone());
+            }
+        }
+    }
+    used
+}
+
+/// Emit import statements for runtime-provided free functions.
+///
+/// Scans `call_names` against `function_modules` in the runtime config,
+/// groups matches by module path, and emits one import per module.
+fn emit_function_imports_with_prefix(
+    call_names: &BTreeSet<String>,
+    out: &mut String,
+    prefix: &str,
+    runtime_config: Option<&RuntimeConfig>,
+) {
+    let Some(cfg) = runtime_config else { return };
+    if cfg.function_modules.is_empty() {
+        return;
+    }
+    // Build reverse map: function_name → module_path.
+    let mut func_to_module: HashMap<&str, &str> = HashMap::new();
+    for group in &cfg.function_modules {
+        for name in &group.names {
+            func_to_module.insert(name.as_str(), group.path.as_str());
+        }
+    }
+    // Group needed imports by module path.
+    let mut by_mod: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
+    for name in call_names {
+        if let Some(&path) = func_to_module.get(name.as_str()) {
+            by_mod.entry(path).or_default().insert(name.as_str());
+        }
+    }
+    for (module, names) in &by_mod {
+        let names: Vec<&str> = names.iter().copied().collect();
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"{prefix}/runtime/{module}\";",
+            names.join(", "),
+        );
+    }
+    if !by_mod.is_empty() {
         out.push('\n');
     }
 }

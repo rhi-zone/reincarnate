@@ -33,6 +33,11 @@ pub struct RuntimeConfig {
     /// Used to warn when generated imports reference names a module doesn't export.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub module_exports: BTreeMap<String, Vec<String>>,
+    /// Maps runtime-provided free functions to their module paths.
+    /// Used by the emitter to generate import statements for `Call` ops
+    /// that reference runtime stdlib functions (e.g. `floor` → `gamemaker/math`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub function_modules: Vec<ImportGroup>,
 }
 
 /// A single system module mapping.
