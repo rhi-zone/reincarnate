@@ -1,9 +1,19 @@
 use datawin::bytecode::decode;
+use datawin::chunks::audo::Audo;
 use datawin::chunks::code::Code;
+use datawin::chunks::font::Font;
 use datawin::chunks::func::Func;
 use datawin::chunks::gen8::Gen8;
+use datawin::chunks::glob::Glob;
+use datawin::chunks::lang::Lang;
 use datawin::chunks::objt::Objt;
+use datawin::chunks::optn::Optn;
+use datawin::chunks::room::Room;
 use datawin::chunks::scpt::Scpt;
+use datawin::chunks::sond::Sond;
+use datawin::chunks::sprt::Sprt;
+use datawin::chunks::tpag::Tpag;
+use datawin::chunks::txtr::Txtr;
 use datawin::chunks::vari::Vari;
 use datawin::reader::ChunkIndex;
 use datawin::string_table::StringTable;
@@ -580,4 +590,357 @@ fn undertale_objt() {
     }
 
     eprintln!("Undertale: {} objects", objt.objects.len());
+}
+
+// ── Phase 6: Asset Chunks ─────────────────────────────────────────
+
+#[test]
+fn bounty_sprt() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let sprt_data = index.chunk_data(&data, b"SPRT").unwrap();
+    let sprt = Sprt::parse(sprt_data, &data).unwrap();
+
+    assert_eq!(sprt.sprites.len(), 41);
+
+    let s0 = &sprt.sprites[0];
+    assert_eq!(s0.width, 200);
+    assert_eq!(s0.height, 40);
+    assert_eq!(s0.tpag_indices.len(), 5);
+}
+
+#[test]
+fn bounty_tpag() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let tpag_data = index.chunk_data(&data, b"TPAG").unwrap();
+    let tpag = Tpag::parse(tpag_data, &data).unwrap();
+
+    assert_eq!(tpag.items.len(), 118);
+
+    let t0 = &tpag.items[0];
+    assert_eq!(t0.source_width, 200);
+    assert_eq!(t0.source_height, 40);
+    assert_eq!(t0.texture_page_id, 0);
+}
+
+#[test]
+fn bounty_txtr() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let txtr_data = index.chunk_data(&data, b"TXTR").unwrap();
+    let txtr = Txtr::parse(txtr_data, &data).unwrap();
+
+    assert_eq!(txtr.textures.len(), 1);
+
+    // Texture data should start with PNG magic
+    let tex_data = txtr.texture_data(0, &data).unwrap();
+    assert_eq!(&tex_data[..4], b"\x89PNG");
+}
+
+#[test]
+fn bounty_font() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let font_data = index.chunk_data(&data, b"FONT").unwrap();
+    let font = Font::parse(font_data, &data).unwrap();
+
+    assert_eq!(font.fonts.len(), 3);
+
+    let f0 = &font.fonts[0];
+    assert_eq!(f0.size, 12);
+    assert_eq!(f0.range_start, 0x20);
+    assert_eq!(f0.range_end, 0x7F);
+    assert_eq!(f0.glyphs.len(), 96); // 0x20..=0x7F
+    assert!((f0.scale_x - 1.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn bounty_room() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let room_data = index.chunk_data(&data, b"ROOM").unwrap();
+    let room = Room::parse(room_data, &data).unwrap();
+
+    assert_eq!(room.rooms.len(), 30);
+
+    let r0 = &room.rooms[0];
+    assert_eq!(r0.width, 640);
+    assert_eq!(r0.height, 480);
+    assert_eq!(r0.speed, 60);
+}
+
+#[test]
+fn bounty_optn() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let optn_data = index.chunk_data(&data, b"OPTN").unwrap();
+    let optn = Optn::parse(optn_data).unwrap();
+
+    // Bounty has no user-defined constants
+    assert_eq!(optn.constants.len(), 0);
+}
+
+#[test]
+fn undertale_optn() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let optn_data = index.chunk_data(&data, b"OPTN").unwrap();
+    let optn = Optn::parse(optn_data).unwrap();
+
+    assert_eq!(optn.constants.len(), 2);
+}
+
+#[test]
+fn undertale_sprt() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let sprt_data = index.chunk_data(&data, b"SPRT").unwrap();
+    let sprt = Sprt::parse(sprt_data, &data).unwrap();
+
+    assert_eq!(sprt.sprites.len(), 2583);
+    eprintln!("Undertale: {} sprites", sprt.sprites.len());
+}
+
+#[test]
+fn undertale_tpag() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let tpag_data = index.chunk_data(&data, b"TPAG").unwrap();
+    let tpag = Tpag::parse(tpag_data, &data).unwrap();
+
+    assert_eq!(tpag.items.len(), 6550);
+    eprintln!("Undertale: {} texture page items", tpag.items.len());
+}
+
+#[test]
+fn undertale_txtr() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let txtr_data = index.chunk_data(&data, b"TXTR").unwrap();
+    let txtr = Txtr::parse(txtr_data, &data).unwrap();
+
+    assert_eq!(txtr.textures.len(), 26);
+
+    // All textures should have PNG data
+    for i in 0..txtr.textures.len() {
+        let tex_data = txtr.texture_data(i, &data).unwrap();
+        assert_eq!(
+            &tex_data[..4],
+            b"\x89PNG",
+            "texture {} should be PNG",
+            i
+        );
+    }
+}
+
+#[test]
+fn undertale_sond() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let sond_data = index.chunk_data(&data, b"SOND").unwrap();
+    let sond = Sond::parse(sond_data, &data).unwrap();
+
+    assert_eq!(sond.sounds.len(), 443);
+
+    // Check volume is in valid range
+    for s in &sond.sounds {
+        assert!(
+            (0.0..=1.0).contains(&s.volume),
+            "sound volume {} out of range",
+            s.volume
+        );
+    }
+    eprintln!("Undertale: {} sounds", sond.sounds.len());
+}
+
+#[test]
+fn undertale_audo() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let audo_entry = index.find(b"AUDO").unwrap();
+    let audo_data = index.chunk_data(&data, b"AUDO").unwrap();
+    let audo = Audo::parse(audo_data, audo_entry.data_offset()).unwrap();
+
+    assert_eq!(audo.entries.len(), 231);
+
+    // First audio entry should have RIFF/WAV header
+    let audio = audo.audio_data(0, &data).unwrap();
+    assert_eq!(&audio[..4], b"RIFF", "first audio entry should be WAV");
+    eprintln!("Undertale: {} audio entries", audo.entries.len());
+}
+
+#[test]
+fn undertale_font() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let font_data = index.chunk_data(&data, b"FONT").unwrap();
+    let font = Font::parse(font_data, &data).unwrap();
+
+    assert_eq!(font.fonts.len(), 20);
+    eprintln!("Undertale: {} fonts", font.fonts.len());
+}
+
+#[test]
+fn undertale_room() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let room_data = index.chunk_data(&data, b"ROOM").unwrap();
+    let room = Room::parse(room_data, &data).unwrap();
+
+    assert_eq!(room.rooms.len(), 336);
+
+    let r0 = &room.rooms[0];
+    assert_eq!(r0.width, 640);
+    assert_eq!(r0.height, 480);
+    assert_eq!(r0.speed, 30);
+    eprintln!("Undertale: {} rooms", room.rooms.len());
+}
+
+#[test]
+fn undertale_glob() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let glob_data = index.chunk_data(&data, b"GLOB").unwrap();
+    let glob = Glob::parse(glob_data).unwrap();
+
+    // Undertale's GLOB is empty
+    eprintln!("Undertale: {} global scripts", glob.script_ids.len());
+}
+
+#[test]
+fn undertale_lang() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let lang_data = index.chunk_data(&data, b"LANG").unwrap();
+    let lang = Lang::parse(lang_data).unwrap();
+
+    assert_eq!(lang.entry_count, 1);
+    eprintln!(
+        "Undertale: {} language entries (count={})",
+        lang.entries.len(),
+        lang.entry_count
+    );
+}
+
+#[test]
+fn chronicon_sprt() {
+    let Some(data) = load_if_exists(CHRONICON_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let sprt_data = index.chunk_data(&data, b"SPRT").unwrap();
+    let sprt = Sprt::parse(sprt_data, &data).unwrap();
+
+    assert_eq!(sprt.sprites.len(), 1569);
+    eprintln!("Chronicon: {} sprites", sprt.sprites.len());
+}
+
+#[test]
+fn chronicon_tpag() {
+    let Some(data) = load_if_exists(CHRONICON_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let tpag_data = index.chunk_data(&data, b"TPAG").unwrap();
+    let tpag = Tpag::parse(tpag_data, &data).unwrap();
+
+    assert_eq!(tpag.items.len(), 16989);
+    eprintln!("Chronicon: {} texture page items", tpag.items.len());
+}
+
+#[test]
+fn chronicon_txtr() {
+    let Some(data) = load_if_exists(CHRONICON_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let txtr_data = index.chunk_data(&data, b"TXTR").unwrap();
+    let txtr = Txtr::parse(txtr_data, &data).unwrap();
+
+    assert_eq!(txtr.textures.len(), 10);
+    eprintln!("Chronicon: {} textures", txtr.textures.len());
+}
+
+#[test]
+fn chronicon_sond() {
+    let Some(data) = load_if_exists(CHRONICON_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let sond_data = index.chunk_data(&data, b"SOND").unwrap();
+    let sond = Sond::parse(sond_data, &data).unwrap();
+
+    assert_eq!(sond.sounds.len(), 1357);
+    eprintln!("Chronicon: {} sounds", sond.sounds.len());
+}
+
+#[test]
+fn chronicon_room() {
+    let Some(data) = load_if_exists(CHRONICON_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let room_data = index.chunk_data(&data, b"ROOM").unwrap();
+    let room = Room::parse(room_data, &data).unwrap();
+
+    assert_eq!(room.rooms.len(), 6);
+
+    let r0 = &room.rooms[0];
+    assert_eq!(r0.width, 4000);
+    assert_eq!(r0.height, 4000);
+    eprintln!("Chronicon: {} rooms", room.rooms.len());
 }

@@ -1,6 +1,16 @@
+pub mod audo;
 pub mod code;
+pub mod font;
 pub mod func;
 pub mod gen8;
+pub mod glob;
+pub mod lang;
 pub mod objt;
+pub mod optn;
+pub mod room;
 pub mod scpt;
+pub mod sond;
+pub mod sprt;
+pub mod tpag;
+pub mod txtr;
 pub mod vari;
