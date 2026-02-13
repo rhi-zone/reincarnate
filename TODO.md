@@ -684,3 +684,18 @@ assigned from `variable_global_get()` or untyped argument passthrough.
 - [x] **Duplicate variable declarations** — Fixed: locals map was keyed by
   `local.index` (CodeLocals slot) but looked up by `var_ref.variable_id` (VARI
   index). Keyed by variable name instead.
+
+### GML Runtime — Missing Function Implementations
+
+Functions listed in `function_modules` (runtime.json) but not yet implemented
+in the corresponding TypeScript modules. Generated imports will reference these,
+causing compile errors if any emitted code calls them.
+
+**draw.ts** — missing draw_text variants:
+- [ ] `draw_text_ext_transformed` — draw text with line sep, width, and transform
+- [ ] `draw_text_transformed_color` — draw text with transform and per-corner colors
+- [ ] `draw_text_ext_transformed_color` — draw text with all options combined
+
+**color.ts** — missing color functions from gml.js reference:
+- [ ] `color_get_hue` — extract hue component (0–255) from a GML color
+- [ ] `make_color_hsv` — create color from hue, saturation, value

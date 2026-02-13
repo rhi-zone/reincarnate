@@ -105,6 +105,7 @@ Do not:
 - Cut corners with fallbacks - implement properly for each case
 - Write stubs that return null/undefined — implement the function or don't add it. A `return null` stub is a landmine that crashes at runtime with a misleading error. If the full implementation is complex, implement the subset that covers the actual usage patterns.
 - Mark as done prematurely - note what remains
+- Dismiss known issues as "fine for now" — if you discover a gap, mismatch, or missing implementation during your work, add it to TODO.md immediately. Do not assume future sessions will rediscover the same issue. Every known problem must be written down before moving on.
 - Use path dependencies in Cargo.toml - causes clippy to stash changes across repos
 - Use `--no-verify` - fix the issue or fix the hook
 - Assume tools are missing - check if `nix develop` is available for the right environment
