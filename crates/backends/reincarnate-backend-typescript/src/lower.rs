@@ -17,6 +17,10 @@ use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 pub struct LowerCtx {
     /// Self parameter name — the IR parameter that maps to `this`.
     pub self_param_name: Option<String>,
+    /// Whether unqualified `Call` args follow the receiver convention:
+    /// first arg = receiver, rest = method arguments (Flash/AVM2).
+    /// When false, all args are plain function arguments (GameMaker/GML).
+    pub receiver_is_first_arg: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -303,8 +307,9 @@ fn lower_call(fname: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
         };
     }
 
-    // Case 3: Unqualified with args → receiver.method(rest).
-    if !args.is_empty() {
+    // Case 3: Unqualified with args + receiver convention → receiver.method(rest).
+    // This is the Flash/AVM2 convention where the first arg is the method receiver.
+    if ctx.receiver_is_first_arg && !args.is_empty() {
         let receiver = &args[0];
         let rest = &args[1..];
         return JsExpr::Call {
@@ -316,10 +321,10 @@ fn lower_call(fname: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
         };
     }
 
-    // Case 4: Bare function call with no args.
+    // Case 4: Free function call (no receiver convention, or no args).
     JsExpr::Call {
         callee: Box::new(JsExpr::Var(fname.to_string())),
-        args: Vec::new(),
+        args: lower_exprs(args, ctx),
     }
 }
 

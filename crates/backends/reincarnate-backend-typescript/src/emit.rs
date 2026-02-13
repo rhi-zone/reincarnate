@@ -2021,6 +2021,7 @@ fn emit_function(
     let ast = linear::lower_function_linear(func, &shape, lowering_config);
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
+        receiver_is_first_arg: matches!(engine, EngineKind::Flash),
     };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
@@ -2377,6 +2378,7 @@ fn compile_closures(
         // it with JsExpr::This.
         let ctx = crate::lower::LowerCtx {
             self_param_name: None,
+            receiver_is_first_arg: true, // Flash closures use receiver convention
         };
         let js_func = crate::lower::lower_function(&ast, &ctx);
         result.insert(short, js_func);
@@ -2440,7 +2442,10 @@ fn emit_class_method(
         None
     };
 
-    let ctx = crate::lower::LowerCtx { self_param_name };
+    let ctx = crate::lower::LowerCtx {
+        self_param_name,
+        receiver_is_first_arg: matches!(engine, EngineKind::Flash),
+    };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
         EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func),
