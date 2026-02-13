@@ -1,6 +1,8 @@
 use datawin::bytecode::decode;
 use datawin::chunks::code::Code;
+use datawin::chunks::func::Func;
 use datawin::chunks::gen8::Gen8;
+use datawin::chunks::vari::Vari;
 use datawin::reader::ChunkIndex;
 use datawin::string_table::StringTable;
 use datawin::version::BytecodeVersion;
@@ -293,4 +295,106 @@ fn undertale_decode_all_bytecode() {
         errors
     );
     assert_eq!(errors, 0, "all entries should decode without errors");
+}
+
+// ── Phase 4: FUNC + VARI ───────────────────────────────────────────
+
+#[test]
+fn bounty_func() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let gen8 = Gen8::parse(index.chunk_data(&data, b"GEN8").unwrap()).unwrap();
+    let func_data = index.chunk_data(&data, b"FUNC").unwrap();
+    let func = Func::parse(func_data, gen8.bytecode_version).unwrap();
+
+    assert_eq!(func.functions.len(), 101);
+    assert_eq!(func.code_locals.len(), 197);
+
+    // First function
+    let f0 = &func.functions[0];
+    let name = f0.name.resolve(&data).unwrap();
+    assert_eq!(name, "mouse_check_button_pressed");
+    assert_eq!(f0.occurrences, 2);
+
+    // First code locals entry
+    let cl0 = &func.code_locals[0];
+    let cl_name = cl0.name.resolve(&data).unwrap();
+    assert_eq!(cl_name, "gml_Script_button_click");
+    assert_eq!(cl0.locals.len(), 1);
+    assert_eq!(cl0.locals[0].name.resolve(&data).unwrap(), "arguments");
+}
+
+#[test]
+fn bounty_vari() {
+    let Some(data) = load_if_exists(&bounty_path()) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let gen8 = Gen8::parse(index.chunk_data(&data, b"GEN8").unwrap()).unwrap();
+    let vari_data = index.chunk_data(&data, b"VARI").unwrap();
+    let vari = Vari::parse(vari_data, gen8.bytecode_version).unwrap();
+
+    assert_eq!(vari.variables.len(), 610);
+    assert_eq!(vari.instance_var_count_max, 206);
+    assert_eq!(vari.max_local_var_count, 12);
+
+    // First variable
+    let v0 = &vari.variables[0];
+    assert_eq!(v0.name.resolve(&data).unwrap(), "prototype");
+    assert_eq!(v0.instance_type, -1); // self
+    assert_eq!(v0.var_id, 0);
+}
+
+#[test]
+fn undertale_func() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let gen8 = Gen8::parse(index.chunk_data(&data, b"GEN8").unwrap()).unwrap();
+    let func_data = index.chunk_data(&data, b"FUNC").unwrap();
+    let func = Func::parse(func_data, gen8.bytecode_version).unwrap();
+
+    assert!(
+        func.functions.len() > 100,
+        "expected >100 functions, got {}",
+        func.functions.len()
+    );
+    // Code locals should match code entry count
+    assert!(func.code_locals.len() > 100);
+
+    eprintln!(
+        "Undertale: {} functions, {} code_locals entries",
+        func.functions.len(),
+        func.code_locals.len()
+    );
+}
+
+#[test]
+fn undertale_vari() {
+    let Some(data) = load_if_exists(UNDERTALE_PATH) else {
+        eprintln!("skipping");
+        return;
+    };
+    let index = ChunkIndex::parse(&data).unwrap();
+    let gen8 = Gen8::parse(index.chunk_data(&data, b"GEN8").unwrap()).unwrap();
+    let vari_data = index.chunk_data(&data, b"VARI").unwrap();
+    let vari = Vari::parse(vari_data, gen8.bytecode_version).unwrap();
+
+    assert!(
+        vari.variables.len() > 100,
+        "expected >100 variables, got {}",
+        vari.variables.len()
+    );
+    eprintln!(
+        "Undertale: {} variables, instance_var_max={}, max_local={}",
+        vari.variables.len(),
+        vari.instance_var_count_max,
+        vari.max_local_var_count
+    );
 }
