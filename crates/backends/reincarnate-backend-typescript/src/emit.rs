@@ -817,7 +817,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let func_prefix = "../".repeat(depth + 1);
         let func_prefix = func_prefix.trim_end_matches('/');
         emit_function_imports_with_prefix(&calls, &mut out, func_prefix, runtime_config);
-        emit_free_function_imports(&calls, &free_func_names, func_prefix, &mut out);
+        emit_free_function_imports(&calls, &free_func_names, depth, &mut out);
         if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
             let prefix = "../".repeat(depth + 1);
             let prefix = prefix.trim_end_matches('/');
@@ -1157,7 +1157,7 @@ fn emit_function_imports_with_prefix(
 fn emit_free_function_imports(
     call_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
-    prefix: &str,
+    depth: usize,
     out: &mut String,
 ) {
     let needed: BTreeSet<&str> = call_names
@@ -1169,6 +1169,13 @@ fn emit_free_function_imports(
         return;
     }
     let names: Vec<&str> = needed.into_iter().collect();
+    // _init.ts lives in module_dir, so we go up `depth` levels (one per
+    // namespace segment).  depth=0 → "./_init", depth=1 → "../_init", etc.
+    let prefix = if depth == 0 {
+        ".".to_string()
+    } else {
+        "../".repeat(depth).trim_end_matches('/').to_string()
+    };
     let _ = writeln!(out, "import {{ {} }} from \"{prefix}/_init\";", names.join(", "));
     out.push('\n');
 }
