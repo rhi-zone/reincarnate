@@ -1130,13 +1130,25 @@ fn translate_push_variable(
                 let val = fb.get_field(self_param, &var_name, Type::Dynamic);
                 stack.push(val);
             } else {
-                // Script context: use global ref as fallback.
-                let val = fb.global_ref(&var_name, Type::Dynamic);
+                // Script context without self: variable is a global.
+                let name_val = fb.const_string(&var_name);
+                let val = fb.system_call(
+                    "GameMaker.Global",
+                    "get",
+                    &[name_val],
+                    Type::Dynamic,
+                );
                 stack.push(val);
             }
         }
         Some(InstanceType::Global) => {
-            let val = fb.global_ref(&var_name, Type::Dynamic);
+            let name_val = fb.const_string(&var_name);
+            let val = fb.system_call(
+                "GameMaker.Global",
+                "get",
+                &[name_val],
+                Type::Dynamic,
+            );
             stack.push(val);
         }
         Some(InstanceType::Other) => {
@@ -1202,8 +1214,14 @@ fn translate_push_variable(
                 );
                 stack.push(val);
             } else {
-                // Unknown instance type.
-                let val = fb.global_ref(&var_name, Type::Dynamic);
+                // Unknown instance type — treat as global.
+                let name_val = fb.const_string(&var_name);
+                let val = fb.system_call(
+                    "GameMaker.Global",
+                    "get",
+                    &[name_val],
+                    Type::Dynamic,
+                );
                 stack.push(val);
             }
         }
