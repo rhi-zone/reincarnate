@@ -104,6 +104,22 @@ fn generate_sprites(dw: &DataWin, catalog: &mut AssetCatalog) {
     });
 }
 
+/// Extract PascalCase sprite names indexed by sprite ID.
+pub fn extract_sprite_names(dw: &DataWin) -> Vec<String> {
+    let sprt = match dw.sprt() {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    sprt.sprites
+        .iter()
+        .enumerate()
+        .map(|(i, sprite)| {
+            let raw = dw.resolve_string(sprite.name).unwrap_or_else(|_| format!("spr_{i}"));
+            naming::sprite_name_to_pascal(&raw)
+        })
+        .collect()
+}
+
 /// Generate `data/fonts.ts` from FONT entries.
 fn generate_fonts(dw: &DataWin, catalog: &mut AssetCatalog) {
     let font = match dw.font() {

@@ -135,6 +135,9 @@ impl Frontend for GameMakerFrontend {
         data::generate_data_files(&dw, &mut assets, &obj_names);
         eprintln!("[gamemaker] generated data files");
 
+        // Populate sprite names for constant resolution at emit time.
+        mb.set_sprite_names(data::extract_sprite_names(&dw));
+
         let module = mb.build();
 
         Ok(FrontendOutput {

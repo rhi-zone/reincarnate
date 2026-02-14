@@ -141,6 +141,11 @@ pub struct Module {
     /// Populated by frontends so the scaffold can wire up per-room init functions.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub room_creation_code: BTreeMap<usize, String>,
+    /// Sprite names indexed by sprite ID. Contains PascalCase names matching
+    /// the `Sprites` enum keys in data output. Used to resolve `sprite_index`
+    /// field defaults to named constants instead of raw integers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sprite_names: Vec<String>,
 }
 
 impl Module {
@@ -158,6 +163,7 @@ impl Module {
             external_type_defs: BTreeMap::new(),
             external_function_sigs: BTreeMap::new(),
             room_creation_code: BTreeMap::new(),
+            sprite_names: Vec::new(),
         }
     }
 }

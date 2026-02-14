@@ -656,6 +656,31 @@ fn build_instance_field_sets(module: &Module, type_defs: &BTreeMap<String, Exter
 }
 
 /// Build a qualified name from a ClassDef's namespace + name.
+/// Check if a struct has a `sprite_index` field whose default can be resolved
+/// to a named sprite constant.
+fn needs_sprite_import(struct_def: &StructDef, sprite_names: &[String]) -> bool {
+    if sprite_names.is_empty() {
+        return false;
+    }
+    struct_def.fields.iter().any(|(name, _, default)| {
+        name == "sprite_index"
+            && matches!(default, Some(Constant::Int(idx)) if (*idx as usize) < sprite_names.len())
+    })
+}
+
+/// Try to resolve a sprite_index field default to a `Sprites.Name` string.
+fn resolve_sprite_constant(name: &str, val: &Constant, sprite_names: &[String]) -> Option<String> {
+    if name != "sprite_index" || sprite_names.is_empty() {
+        return None;
+    }
+    if let Constant::Int(idx) = val {
+        let idx = *idx as usize;
+        sprite_names.get(idx).map(|n| format!("Sprites.{n}"))
+    } else {
+        None
+    }
+}
+
 fn qualified_class_name(class: &ClassDef) -> String {
     if class.namespace.is_empty() {
         class.name.clone()
@@ -834,6 +859,13 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_smo);
         let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
         let late_bound = emit_intra_imports(group, module, &segments, &registry, static_method_owners, static_field_owners, &global_names, &mutable_global_names, module_exports, &transitive_value_imports, &short_to_qualified, depth, engine, &mut out);
+
+        // Import Sprites if any instance field uses a resolved sprite constant.
+        if needs_sprite_import(&group.struct_def, &module.sprite_names) {
+            let prefix = "../".repeat(depth + 1);
+            let prefix = prefix.trim_end_matches('/');
+            let _ = writeln!(out, "import {{ Sprites }} from \"{prefix}/data/sprites\";");
+        }
 
         // Validate member accesses before emitting (warnings only).
         for &fid in &group.methods {
@@ -2413,7 +2445,11 @@ fn emit_class(
         let ident = sanitize_ident(name);
         let ts = ts_type(ty);
         if let Some(val) = default {
-            let _ = writeln!(out, "  {ident}: {ts} = {};", crate::ast_printer::emit_constant(val));
+            if let Some(resolved) = resolve_sprite_constant(name, val, &module.sprite_names) {
+                let _ = writeln!(out, "  {ident}: {ts} = {resolved};");
+            } else {
+                let _ = writeln!(out, "  {ident}: {ts} = {};", crate::ast_printer::emit_constant(val));
+            }
         } else {
             let _ = writeln!(out, "  {ident}: {ts};");
         }
