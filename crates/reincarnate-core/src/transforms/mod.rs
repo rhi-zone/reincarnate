@@ -21,6 +21,10 @@ pub use type_infer::TypeInference;
 
 use crate::pipeline::{PassConfig, TransformPipeline};
 
+#[cfg(test)]
+mod interaction_tests;
+
+
 /// Build a transform pipeline based on the given pass configuration.
 pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     let mut pipeline = TransformPipeline::new();
