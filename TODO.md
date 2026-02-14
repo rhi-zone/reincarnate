@@ -26,11 +26,17 @@ Still open (not transform-pass scope):
 - [ ] **End-to-end regression tests** — Snapshot tests for both frontends.
   - **Flash**: 15 new vN identifiers regressed in `91fe86e` (MethodCall
     refactor). Pre-existing 5 vN (hasNext2 one-shot, split-path phi).
-  - **GML**: `get_race` body wrong — cfg-simplify + structurizer interaction
-    orphans ternary patterns.
-- [ ] **cfg-simplify + structurizer/linearizer interaction** — cfg-simplify's
-  trivial param elimination breaks ternary detection in the linearizer.
-  This is a pre-existing bug, not a transform-pass issue.
+  - **GML**: ~~`get_race` body wrong~~ — Fixed. Root cause was two GML
+    frontend bugs: (1) 2D array access (ref_type=0) not handled, and
+    (2) `Dup(N)` only duplicating 1 value. Not a cfg-simplify issue.
+- [x] **GML 2D array access + `argument[N]` parameter access** — Fixed.
+  In GM:S bytecode, `ref_type == 0` with `instance >= 0` indicates a 2D
+  array access that pops 2 indices from the stack. The frontend was treating
+  these as plain field accesses on numbered objects (e.g. `ButtonBase`).
+  Fix: `is_2d_array_access()` helper detects the pattern; Push pops 2
+  indices and pushes value, Pop pops value + 2 indices. For `argument`
+  specifically, the 2D index maps to `fb.param(offset + N)`. Also fixed
+  `Dup(N)` to correctly duplicate N+1 values (was always duplicating 1).
 
 ## Known Bugs (found by adversarial tests)
 

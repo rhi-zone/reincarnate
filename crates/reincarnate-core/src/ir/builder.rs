@@ -130,6 +130,19 @@ impl FunctionBuilder {
         self.func.value_names.contains_key(&v)
     }
 
+    /// If `value` was produced by a `Const` instruction, return the constant.
+    pub fn try_get_const(&self, value: ValueId) -> Option<&Constant> {
+        for inst in self.func.insts.values() {
+            if inst.result == Some(value) {
+                if let Op::Const(c) = &inst.op {
+                    return Some(c);
+                }
+                return None;
+            }
+        }
+        None
+    }
+
     /// Consume the builder and return the constructed `Function`.
     pub fn build(self) -> Function {
         self.func

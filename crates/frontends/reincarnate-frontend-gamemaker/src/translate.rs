@@ -62,6 +62,8 @@ pub fn translate_code_entry(
         return build_empty_function(func_name, ctx);
     }
 
+
+
     // Pass 1: Find basic block boundaries.
     let block_starts = find_block_starts(&instructions);
 
@@ -519,22 +521,58 @@ fn parse_argument_index(name: &str) -> Option<usize> {
 }
 
 /// Scan instructions for implicit `argument0`..`argumentN` references
-/// (variables with Builtin/Own instance type whose name matches `argumentN`).
+/// (variables with Builtin/Own instance type whose name matches `argumentN`)
+/// and `argument[N]` references (Stacktop instance type with name "argument"
+/// preceded by a constant integer push).
 /// Returns the number of implicit arguments (max index + 1), or 0 if none found.
 fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> u16 {
     let mut max_idx: Option<usize> = None;
-    for inst in instructions {
-        if let Operand::Variable { instance, .. } = &inst.operand {
+    for (i, inst) in instructions.iter().enumerate() {
+        if let Operand::Variable { var_ref, instance } = &inst.operand {
             let it = InstanceType::from_i16(*instance);
             if matches!(it, Some(InstanceType::Own) | Some(InstanceType::Builtin)) {
                 let name = resolve_variable_name(inst, ctx);
                 if let Some(idx) = parse_argument_index(&name) {
                     max_idx = Some(max_idx.map_or(idx, |m: usize| m.max(idx)));
                 }
+            } else if matches!(it, Some(InstanceType::Stacktop)) {
+                let name = resolve_variable_name(inst, ctx);
+                if name == "argument" {
+                    // argument[N] pattern (GMS2): preceding instruction pushes the index.
+                    if let Some(idx) = preceding_const_int(instructions, i) {
+                        let idx = idx as usize;
+                        max_idx = Some(max_idx.map_or(idx, |m: usize| m.max(idx)));
+                    }
+                }
+            } else if is_2d_array_access(var_ref, *instance) {
+                let name = resolve_variable_name(inst, ctx);
+                if name == "argument" {
+                    // argument[N] pattern (GM:S): 2D array access, dim2 is the index.
+                    // Pattern: pushi -1, pushi N, push/pop [obj].argument
+                    // dim2 is 1 instruction back from this one.
+                    if let Some(idx) = preceding_const_int(instructions, i) {
+                        let idx = idx as usize;
+                        max_idx = Some(max_idx.map_or(idx, |m: usize| m.max(idx)));
+                    }
+                }
             }
         }
     }
     max_idx.map_or(0, |m| (m + 1) as u16)
+}
+
+/// Extract a constant integer from the instruction preceding `idx`, if any.
+fn preceding_const_int(instructions: &[Instruction], idx: usize) -> Option<i64> {
+    if idx == 0 {
+        return None;
+    }
+    let prev = &instructions[idx - 1];
+    match prev.operand {
+        Operand::Int16(v) => Some(v as i64),
+        Operand::Int32(v) => Some(v as i64),
+        Operand::Int64(v) => Some(v),
+        _ => None,
+    }
 }
 
 /// Get a name for argument index `i`.
@@ -638,13 +676,26 @@ fn comparison_to_cmp_kind(cmp: ComparisonKind) -> CmpKind {
     }
 }
 
+/// Check if a variable operand represents a 2D array access.
+///
+/// In older GameMaker bytecode (pre-GMS2), array variable access uses
+/// `ref_type == 0` with a non-negative instance type. Two index values
+/// (2D indices) are popped from the stack before the variable is accessed.
+/// This is distinct from `ref_type == 0xA0` (160) which uses singleton
+/// instance field access without popping indices.
+fn is_2d_array_access(var_ref: &VariableRef, instance: i16) -> bool {
+    instance >= 0 && var_ref.ref_type == 0
+}
+
 /// Compute the stack effect (pops, pushes) of an instruction.
 fn stack_effect(inst: &Instruction) -> (usize, usize) {
     match inst.opcode {
         Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn => {
-            if let Operand::Variable { instance, .. } = &inst.operand {
+            if let Operand::Variable { var_ref, instance } = &inst.operand {
                 if matches!(InstanceType::from_i16(*instance), Some(InstanceType::Stacktop)) {
                     (1, 1)
+                } else if is_2d_array_access(var_ref, *instance) {
+                    (2, 1) // pops 2D indices, pushes value
                 } else {
                     (0, 1)
                 }
@@ -658,12 +709,21 @@ fn stack_effect(inst: &Instruction) -> (usize, usize) {
         Opcode::And | Opcode::Or | Opcode::Xor | Opcode::Shl | Opcode::Shr => (2, 1),
         Opcode::Cmp => (2, 1),
         Opcode::Conv => (1, 1),
-        Opcode::Dup => (0, 1),
+        Opcode::Dup => {
+            // Dup(N) duplicates the top N+1 values on the stack.
+            if let Operand::Dup(n) = inst.operand {
+                (0, n as usize + 1)
+            } else {
+                (0, 1)
+            }
+        }
         Opcode::Popz => (1, 0),
         Opcode::Pop => {
-            if let Operand::Variable { instance, .. } = &inst.operand {
+            if let Operand::Variable { var_ref, instance } = &inst.operand {
                 if matches!(InstanceType::from_i16(*instance), Some(InstanceType::Stacktop)) {
                     (2, 0)
+                } else if is_2d_array_access(var_ref, *instance) {
+                    (3, 0) // pops value + 2D indices
                 } else {
                     (1, 0)
                 }
@@ -962,11 +1022,19 @@ fn translate_instruction(
             let _ = pop(stack, inst)?;
         }
         Opcode::Dup => {
-            if let Some(&top) = stack.last() {
-                let copied = fb.copy(top);
-                stack.push(copied);
+            let count = if let Operand::Dup(n) = inst.operand {
+                n as usize + 1
             } else {
-                return Err(format!("{:#x}: Dup on empty stack", inst.offset));
+                1
+            };
+            if stack.len() < count {
+                return Err(format!("{:#x}: Dup({}) on stack of depth {}", inst.offset, count - 1, stack.len()));
+            }
+            let start = stack.len() - count;
+            let to_dup: Vec<ValueId> = stack[start..].to_vec();
+            for &v in &to_dup {
+                let copied = fb.copy(v);
+                stack.push(copied);
             }
         }
 
@@ -1165,6 +1233,48 @@ fn translate_push_variable(
 ) -> Result<(), String> {
     let var_name = resolve_variable_name(inst, ctx);
 
+    // Handle 2D array access (ref_type == 0 with non-negative instance).
+    // The instruction pops 2 indices from the stack (dim1, dim2).
+    if is_2d_array_access(var_ref, instance) {
+        let index = pop(stack, inst)?; // dim2 (the meaningful index)
+        let _dim1 = pop(stack, inst)?; // dim1 (usually -1, ignored)
+        if var_name == "argument" {
+            // argument[N] → function parameter access
+            if let Some(Constant::Int(idx)) = fb.try_get_const(index) {
+                let param_offset = if ctx.has_self { 1 } else { 0 }
+                    + if ctx.has_other { 1 } else { 0 };
+                let param = fb.param(param_offset + *idx as usize);
+                stack.push(param);
+            } else {
+                // Dynamic index — fall back to getField
+                let name_val = fb.const_string(&var_name);
+                let val = fb.system_call(
+                    "GameMaker.Instance",
+                    "getField",
+                    &[index, name_val],
+                    Type::Dynamic,
+                );
+                stack.push(val);
+            }
+        } else {
+            // 2D array field access on a specific object
+            let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
+                fb.const_string(name)
+            } else {
+                fb.const_int(instance as i64)
+            };
+            let name_val = fb.const_string(&var_name);
+            let val = fb.system_call(
+                "GameMaker.Instance",
+                "getOn",
+                &[obj_id, name_val, index],
+                Type::Dynamic,
+            );
+            stack.push(val);
+        }
+        return Ok(());
+    }
+
     // The GameMaker compiler sometimes uses the owning object's index (or a
     // parent's index) as the instance type for self-references instead of -1
     // (Own). Normalize here.
@@ -1255,14 +1365,34 @@ fn translate_push_variable(
         }
         Some(InstanceType::Stacktop) => {
             let target = pop(stack, inst)?;
-            let name_val = fb.const_string(&var_name);
-            let val = fb.system_call(
-                "GameMaker.Instance",
-                "getField",
-                &[target, name_val],
-                Type::Dynamic,
-            );
-            stack.push(val);
+            if var_name == "argument" {
+                // argument[N] → function parameter access
+                if let Some(Constant::Int(idx)) = fb.try_get_const(target) {
+                    let param_offset = if ctx.has_self { 1 } else { 0 }
+                        + if ctx.has_other { 1 } else { 0 };
+                    let param = fb.param(param_offset + *idx as usize);
+                    stack.push(param);
+                } else {
+                    // Dynamic index — fall back to getField
+                    let name_val = fb.const_string(&var_name);
+                    let val = fb.system_call(
+                        "GameMaker.Instance",
+                        "getField",
+                        &[target, name_val],
+                        Type::Dynamic,
+                    );
+                    stack.push(val);
+                }
+            } else {
+                let name_val = fb.const_string(&var_name);
+                let val = fb.system_call(
+                    "GameMaker.Instance",
+                    "getField",
+                    &[target, name_val],
+                    Type::Dynamic,
+                );
+                stack.push(val);
+            }
         }
         Some(InstanceType::Arg) => {
             // Argument variable: map to function parameter.
@@ -1312,9 +1442,51 @@ fn translate_pop(
     locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx,
 ) -> Result<(), String> {
-    if let Operand::Variable { instance, .. } = &inst.operand {
+    if let Operand::Variable { var_ref, instance } = &inst.operand {
         let value = pop(stack, inst)?;
         let var_name = resolve_variable_name(inst, ctx);
+
+        // Handle 2D array access (ref_type == 0 with non-negative instance).
+        // The instruction pops value + 2 indices from the stack.
+        if is_2d_array_access(var_ref, *instance) {
+            let index = pop(stack, inst)?; // dim2 (the meaningful index)
+            let _dim1 = pop(stack, inst)?; // dim1 (usually -1, ignored)
+            if var_name == "argument" {
+                // argument[N] = value → store to function parameter slot
+                if let Some(Constant::Int(idx)) = fb.try_get_const(index) {
+                    let param_offset = if ctx.has_self { 1 } else { 0 }
+                        + if ctx.has_other { 1 } else { 0 };
+                    let param = fb.param(param_offset + *idx as usize);
+                    let slot = fb.alloc(Type::Dynamic);
+                    fb.store(slot, param);
+                    fb.store(slot, value);
+                } else {
+                    // Dynamic index — fall back to setField
+                    let name_val = fb.const_string(&var_name);
+                    fb.system_call(
+                        "GameMaker.Instance",
+                        "setField",
+                        &[index, name_val, value],
+                        Type::Void,
+                    );
+                }
+            } else {
+                // 2D array field store on a specific object
+                let obj_id = if let Some(name) = ctx.obj_names.get(*instance as usize) {
+                    fb.const_string(name)
+                } else {
+                    fb.const_int(*instance as i64)
+                };
+                let name_val = fb.const_string(&var_name);
+                fb.system_call(
+                    "GameMaker.Instance",
+                    "setOn",
+                    &[obj_id, name_val, index, value],
+                    Type::Void,
+                );
+            }
+            return Ok(());
+        }
 
         // Normalize self-referencing instance types (see translate_push_variable).
         let instance = if *instance >= 0
@@ -1398,13 +1570,34 @@ fn translate_pop(
             }
             Some(InstanceType::Stacktop) => {
                 let target = pop(stack, inst)?;
-                let name_val = fb.const_string(&var_name);
-                fb.system_call(
-                    "GameMaker.Instance",
-                    "setField",
-                    &[target, name_val, value],
-                    Type::Void,
-                );
+                if var_name == "argument" {
+                    // argument[N] = value → store to function parameter slot
+                    if let Some(Constant::Int(idx)) = fb.try_get_const(target) {
+                        let param_offset = if ctx.has_self { 1 } else { 0 }
+                            + if ctx.has_other { 1 } else { 0 };
+                        let param = fb.param(param_offset + *idx as usize);
+                        let slot = fb.alloc(Type::Dynamic);
+                        fb.store(slot, param);
+                        fb.store(slot, value);
+                    } else {
+                        // Dynamic index — fall back to setField
+                        let name_val = fb.const_string(&var_name);
+                        fb.system_call(
+                            "GameMaker.Instance",
+                            "setField",
+                            &[target, name_val, value],
+                            Type::Void,
+                        );
+                    }
+                } else {
+                    let name_val = fb.const_string(&var_name);
+                    fb.system_call(
+                        "GameMaker.Instance",
+                        "setField",
+                        &[target, name_val, value],
+                        Type::Void,
+                    );
+                }
             }
             _ => {
                 if instance >= 0 {
