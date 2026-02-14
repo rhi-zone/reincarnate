@@ -204,6 +204,7 @@ fn translate_scripts(
             obj_names,
             class_name: None,
             self_object_index: None,
+            ancestor_indices: HashSet::new(),
             script_names,
         };
 
@@ -271,6 +272,7 @@ fn translate_global_inits(
             obj_names,
             class_name: None,
             self_object_index: None,
+            ancestor_indices: HashSet::new(),
             script_names,
         };
 
@@ -338,6 +340,7 @@ fn translate_room_creation(
             obj_names,
             class_name: None,
             self_object_index: None,
+            ancestor_indices: HashSet::new(),
             script_names,
         };
 

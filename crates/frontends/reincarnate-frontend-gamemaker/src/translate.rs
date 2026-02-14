@@ -44,6 +44,9 @@ pub struct TranslateCtx<'a> {
     /// type instead of -1 (Own). When `instance >= 0` and matches this index,
     /// the access should be treated as `self.field`, not a cross-object reference.
     pub self_object_index: Option<usize>,
+    /// Object indices of all ancestors in the parent chain.
+    /// When `instance >= 0` matches any ancestor, the access is also self (inherited field).
+    pub ancestor_indices: HashSet<usize>,
     /// Set of clean script names (for injecting self at call sites).
     pub script_names: &'a HashSet<String>,
 }
@@ -1162,11 +1165,13 @@ fn translate_push_variable(
 ) -> Result<(), String> {
     let var_name = resolve_variable_name(inst, ctx);
 
-    // The GameMaker compiler sometimes uses the owning object's index as the
-    // instance type for self-references instead of -1 (Own). Normalize here.
+    // The GameMaker compiler sometimes uses the owning object's index (or a
+    // parent's index) as the instance type for self-references instead of -1
+    // (Own). Normalize here.
     let instance = if instance >= 0
-        && ctx.self_object_index == Some(instance as usize)
         && ctx.has_self
+        && (ctx.self_object_index == Some(instance as usize)
+            || ctx.ancestor_indices.contains(&(instance as usize)))
     {
         -1 // Treat as Own (self)
     } else {
@@ -1313,8 +1318,9 @@ fn translate_pop(
 
         // Normalize self-referencing instance types (see translate_push_variable).
         let instance = if *instance >= 0
-            && ctx.self_object_index == Some(*instance as usize)
             && ctx.has_self
+            && (ctx.self_object_index == Some(*instance as usize)
+                || ctx.ancestor_indices.contains(&(*instance as usize)))
         {
             -1
         } else {

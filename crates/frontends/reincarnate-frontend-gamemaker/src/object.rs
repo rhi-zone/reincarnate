@@ -113,6 +113,7 @@ pub fn translate_objects(
                         obj_names,
                         class_name: Some(obj_name),
                         self_object_index: Some(obj_idx),
+                        ancestor_indices: build_ancestor_chain(&objt.objects, obj_idx),
                         script_names,
                     };
 
@@ -165,6 +166,24 @@ fn resolve_parent(obj: &ObjectEntry, obj_names: &[String]) -> Option<String> {
     }
     let idx = obj.parent_index as usize;
     obj_names.get(idx).cloned()
+}
+
+/// Walk the parent chain collecting all ancestor object indices.
+fn build_ancestor_chain(objs: &[ObjectEntry], obj_idx: usize) -> HashSet<usize> {
+    let mut ancestors = HashSet::new();
+    let mut current = obj_idx;
+    loop {
+        let parent = objs[current].parent_index;
+        if parent < 0 {
+            break;
+        }
+        let parent_idx = parent as usize;
+        if parent_idx >= objs.len() || !ancestors.insert(parent_idx) {
+            break; // Out of bounds or cycle detected
+        }
+        current = parent_idx;
+    }
+    ancestors
 }
 
 /// Produce an event handler name that matches the runtime dispatch convention.
