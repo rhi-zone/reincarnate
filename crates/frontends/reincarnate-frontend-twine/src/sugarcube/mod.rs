@@ -5,6 +5,7 @@
 //! and `[[link|passage]]` shorthand navigation.
 
 pub mod ast;
+pub mod expr;
 pub mod lexer;
 pub mod macros;
 
