@@ -974,8 +974,12 @@ fn try_forward_substitute_one(body: &mut Vec<Stmt>) -> bool {
             continue;
         }
 
-        // Adjacent check: the single use must be at position i+1.
-        if i + 1 >= body.len() || !stmt_references_var(&body[i + 1], &name) {
+        // Adjacent check: the single use (read) must be at position i+1.
+        // Use count_var_refs_in_stmt (reads only) — not stmt_references_var
+        // which also counts writes. If the adjacent stmt only *writes* the var
+        // (e.g., nested assign target), we'd remove the assignment and the
+        // substitute would find no read to replace, silently dropping the value.
+        if i + 1 >= body.len() || count_var_refs_in_stmt(&body[i + 1], &name) == 0 {
             continue;
         }
 
@@ -4164,5 +4168,59 @@ mod tests {
             }
             other => panic!("Expected If, got: {other:?}"),
         }
+    }
+
+    // Regression: forward_substitute used stmt_references_var (which counts
+    // writes) for adjacency check, but count_var_refs_in_stmt (reads only)
+    // for the total count. When the adjacent stmt only *wrote* the var in a
+    // nested assign target, the substitute found no read to replace, silently
+    // dropping the value expression.
+    //
+    // Pattern:
+    //   let i;
+    //   i = cond ? 1 : 0;       ← assign to i
+    //   if (x) { i = 0; }       ← nested write to i (not a read)
+    //   return i;                ← the single read
+    //
+    // Bug: forward_substitute saw total_refs=1, adjacent stmt "references" i
+    // (via the write), removed the assign, but substitute_var_in_stmt found
+    // no read in the if stmt to replace → ternary expression silently dropped.
+    #[test]
+    fn forward_sub_no_consume_nested_write_only() {
+        let mut body = vec![
+            Stmt::VarDecl {
+                name: "i".to_string(),
+                ty: None,
+                init: None,
+                mutable: true,
+            },
+            assign(
+                var("i"),
+                Expr::Ternary {
+                    cond: Box::new(var("cond")),
+                    then_val: Box::new(int(1)),
+                    else_val: Box::new(int(0)),
+                },
+            ),
+            Stmt::If {
+                cond: var("x"),
+                then_body: vec![assign(var("i"), int(0))],
+                else_body: vec![],
+            },
+            Stmt::Return(Some(var("i"))),
+        ];
+
+        forward_substitute(&mut body);
+
+        // The ternary assign must NOT be consumed — it should remain because
+        // the adjacent if only writes i, not reads it.
+        let has_ternary_assign = body.iter().any(|s| {
+            matches!(s, Stmt::Assign { target, value }
+                if *target == var("i") && matches!(value, Expr::Ternary { .. }))
+        });
+        assert!(
+            has_ternary_assign,
+            "Ternary assign `i = cond ? 1 : 0` was incorrectly consumed: {body:?}"
+        );
     }
 }

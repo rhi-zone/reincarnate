@@ -26,9 +26,13 @@ Still open (not transform-pass scope):
 - [ ] **End-to-end regression tests** — Snapshot tests for both frontends.
   - **Flash**: 15 new vN identifiers regressed in `91fe86e` (MethodCall
     refactor). Pre-existing 5 vN (hasNext2 one-shot, split-path phi).
-  - **GML**: ~~`get_race` body wrong~~ — Fixed. Root cause was two GML
-    frontend bugs: (1) 2D array access (ref_type=0) not handled, and
-    (2) `Dup(N)` only duplicating 1 value. Not a cfg-simplify issue.
+  - **GML**: ~~`get_race` body wrong~~ — Fixed in two rounds:
+    (1) GML frontend bugs: 2D array access and `Dup(N)` duplication count.
+    (2) `forward_substitute` adjacency check used `stmt_references_var`
+    (counts writes) but total-ref check used `count_var_refs_in_stmt`
+    (reads only). When adjacent stmt only *wrote* the var in a nested
+    assign target, substitute found no read to replace, silently dropping
+    the value. Fix: use `count_var_refs_in_stmt` for adjacency too.
 - [x] **GML 2D array access + `argument[N]` parameter access** — Fixed.
   In GM:S bytecode, `ref_type == 0` with `instance >= 0` indicates a 2D
   array access that pops 2 indices from the stack. The frontend was treating
