@@ -97,12 +97,15 @@ fn encode_instruction(inst: &Instruction, out: &mut Vec<u8>) {
             out.extend_from_slice(&word.to_le_bytes());
         }
 
-        Operand::Break(val) => {
+        Operand::Break { signal, extra } => {
             let word = ((opcode as u32) << 24)
                 | ((type2 as u32) << 20)
                 | ((type1 as u32) << 16)
-                | (*val as u32);
+                | (*signal as u32);
             out.extend_from_slice(&word.to_le_bytes());
+            if let Some(val) = extra {
+                out.extend_from_slice(&val.to_le_bytes());
+            }
         }
 
         Operand::None => {

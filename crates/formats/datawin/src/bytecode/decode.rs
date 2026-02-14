@@ -49,8 +49,8 @@ pub enum Operand {
     Call { function_id: u32, argc: u16 },
     /// Dup: extra parameter in lower 16 bits.
     Dup(u16),
-    /// Break: signal type in lower 16 bits.
-    Break(u16),
+    /// Break: signal type in lower 16 bits, optional Int32 extra operand.
+    Break { signal: u16, extra: Option<i32> },
 }
 
 /// Decode bytecode for a single code entry.
@@ -261,7 +261,14 @@ fn decode_operand(
         }),
 
         Opcode::Dup => Ok(Operand::Dup(val16)),
-        Opcode::Break => Ok(Operand::Break(val16)),
+        Opcode::Break => {
+            let extra = if type1 == DataType::Int32 {
+                Some(read_i32(bytecode, pos)?)
+            } else {
+                None
+            };
+            Ok(Operand::Break { signal: val16, extra })
+        }
 
         // All others: no operand
         _ => Ok(Operand::None),

@@ -148,6 +148,8 @@ impl Opcode {
             Self::Pop => true,
             // Call always has extra data (function ID)
             Self::Call => true,
+            // Break with Int32 type has extra data (e.g. pushref)
+            Self::Break => type1 == 0x2,
             _ => false,
         }
     }
@@ -175,6 +177,8 @@ impl Opcode {
                 }
             }
             Self::Call => 1, // Function reference
+            // Break with Int32 type has 1 extra word (e.g. pushref)
+            Self::Break => if type1 == 0x2 { 1 } else { 0 },
             _ => 0,
         }
     }

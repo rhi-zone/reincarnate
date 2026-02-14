@@ -767,11 +767,14 @@ fn stack_effect(inst: &Instruction) -> (usize, usize) {
         Opcode::PushEnv => (1, 0),
         Opcode::PopEnv => (0, 0),
         Opcode::Break => {
-            if let Operand::Break(signal) = inst.operand {
+            if let Operand::Break { signal, .. } = inst.operand {
                 match signal {
-                    0xFFFF | 0xFFFC | 0xFFFB => (0, 0),
-                    0xFFFE => (2, 1),
-                    0xFFFD => (3, 0),
+                    0xFFFF | 0xFFFC | 0xFFFB => (0, 0), // chkindex, pushac, setowner
+                    0xFFFE => (2, 1),                     // pushaf
+                    0xFFFD => (3, 0),                     // popaf
+                    0xFFF5 => (0, 1),                     // pushref — pushes function ref
+                    0xFFFA | 0xFFF9 => (0, 0),            // isstaticok, setstatic — nop
+                    0xFFF8 | 0xFFF7 => (0, 0),            // savearef, restorearef — nop
                     _ => (0, 0),
                 }
             } else {
@@ -1164,7 +1167,7 @@ fn translate_instruction(
         // Break (special signals)
         // ============================================================
         Opcode::Break => {
-            if let Operand::Break(signal) = inst.operand {
+            if let Operand::Break { signal, .. } = inst.operand {
                 match signal {
                     0xFFFF => {} // chkindex — nop for decompilation
                     0xFFFE => {
@@ -1186,6 +1189,22 @@ fn translate_instruction(
                         // For decompilation, treat as a nop (value already on stack).
                     }
                     0xFFFB => {} // setowner — nop for decompilation
+                    0xFFFA => {} // isstaticok — static init guard, nop for decompilation
+                    0xFFF9 => {} // setstatic — set static scope, nop for decompilation
+                    0xFFF8 => {} // savearef — save array ref to temp, nop for decompilation
+                    0xFFF7 => {} // restorearef — restore array ref from temp, nop for decompilation
+                    0xFFF5 => {
+                        // pushref — push function reference onto stack.
+                        // The extra Int32 operand is part of the FUNC reference chain.
+                        // Resolve the function name the same way Call does.
+                        let abs_addr = ctx.bytecode_offset + inst.offset;
+                        let func_name = ctx.func_ref_map.get(&abs_addr)
+                            .and_then(|&idx| ctx.function_names.get(&(idx as u32)))
+                            .cloned()
+                            .unwrap_or_else(|| format!("func_ref_unknown_{:#x}", abs_addr));
+                        let val = fb.global_ref(&func_name, Type::Dynamic);
+                        stack.push(val);
+                    }
                     _ => {
                         // Unknown break signal, emit as system call.
                         let sig_val = fb.const_int(signal as i64);
