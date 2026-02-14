@@ -1180,10 +1180,10 @@ mod tests {
 
     #[test]
     fn simple_link() {
-        let node = first_node("[[Bedroom]]");
+        let node = first_node("[[Kitchen]]");
         if let NodeKind::Link(link) = &node.kind {
-            assert!(matches!(&link.text, LinkText::Plain(s) if s == "Bedroom"));
-            assert!(matches!(&link.target, LinkTarget::Name(s) if s == "Bedroom"));
+            assert!(matches!(&link.text, LinkText::Plain(s) if s == "Kitchen"));
+            assert!(matches!(&link.target, LinkTarget::Name(s) if s == "Kitchen"));
         } else {
             panic!("expected Link");
         }
@@ -1191,10 +1191,10 @@ mod tests {
 
     #[test]
     fn link_with_text() {
-        let node = first_node("[[Leave|Orphanage]]");
+        let node = first_node("[[Leave|Lobby]]");
         if let NodeKind::Link(link) = &node.kind {
             assert!(matches!(&link.text, LinkText::Plain(s) if s == "Leave"));
-            assert!(matches!(&link.target, LinkTarget::Name(s) if s == "Orphanage"));
+            assert!(matches!(&link.target, LinkTarget::Name(s) if s == "Lobby"));
         } else {
             panic!("expected Link");
         }
@@ -1202,7 +1202,7 @@ mod tests {
 
     #[test]
     fn link_with_variable_target() {
-        let node = first_node("[[Back|$exitPassage]]");
+        let node = first_node("[[Back|$prevRoom]]");
         if let NodeKind::Link(link) = &node.kind {
             assert!(matches!(&link.text, LinkText::Plain(s) if s == "Back"));
             assert!(matches!(&link.target, LinkTarget::Expr(_)));
@@ -1213,10 +1213,10 @@ mod tests {
 
     #[test]
     fn link_with_arrow() {
-        let node = first_node("[[Go home->Home]]");
+        let node = first_node("[[Go back->Foyer]]");
         if let NodeKind::Link(link) = &node.kind {
-            assert!(matches!(&link.text, LinkText::Plain(s) if s == "Go home"));
-            assert!(matches!(&link.target, LinkTarget::Name(s) if s == "Home"));
+            assert!(matches!(&link.text, LinkText::Plain(s) if s == "Go back"));
+            assert!(matches!(&link.target, LinkTarget::Name(s) if s == "Foyer"));
         } else {
             panic!("expected Link");
         }
@@ -1500,7 +1500,7 @@ mod tests {
 
     #[test]
     fn link_inside_if() {
-        let src = "<<if $x>>[[Go|Room]]<</if>>";
+        let src = "<<if $x>>[[Go|Lobby]]<</if>>";
         let node = first_node(src);
         if let NodeKind::Macro(m) = &node.kind {
             assert_eq!(m.name, "if");
@@ -1513,7 +1513,7 @@ mod tests {
 
     #[test]
     fn macro_inside_link_macro() {
-        let src = "<<link [[Leave|Start]]>><<set $x to 1>><</link>>";
+        let src = "<<link [[Leave|Menu]]>><<set $x to 1>><</link>>";
         let node = first_node(src);
         if let NodeKind::Macro(m) = &node.kind {
             assert_eq!(m.name, "link");
@@ -1592,7 +1592,7 @@ mod tests {
 
     #[test]
     fn mixed_content() {
-        let src = "Hello $name! <<if $x is 1>><span class=\"blue\">yes</span><<else>>no<</if>> [[Back|Start]]";
+        let src = "Hello $name! <<if $x is 1>><span class=\"blue\">yes</span><<else>>no<</if>> [[Back|Menu]]";
         let ast = parse_str(src);
         assert!(ast.errors.is_empty(), "errors: {:?}", ast.errors);
         // Should have: Text, VarInterp, Text, Macro(if), Text, Link
@@ -1600,15 +1600,15 @@ mod tests {
     }
 
     #[test]
-    fn real_world_passage() {
-        let src = r#"<<set $outside to 0>><<set $location to "home">>
+    fn complex_passage() {
+        let src = r#"<<set $score to 0>><<set $room to "lobby">>
 
-<<if $options.images is 1>>
-	<img class="resize" src="img/misc/banner.png">
+<<if $config.debug is 1>>
+	<img class="icon" src="img/debug.png">
 <</if>>
 
-[[Bedroom]]
-[[Garden]]"#;
+[[Kitchen]]
+[[Attic]]"#;
         let ast = parse_str(src);
         assert!(ast.errors.is_empty(), "errors: {:?}", ast.errors);
         // Should parse without errors
