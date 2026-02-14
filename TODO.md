@@ -60,6 +60,11 @@ inputs that stress correctness invariants.
     fields instead of function parameters. cfg-simplify + structurizer
     interaction orphans ternary patterns.
 
+## Known Bugs (found by adversarial tests)
+
+- [ ] **Mem2Reg: no escape analysis** — Allocs passed to calls are still promoted. If the callee modifies the pointed-to value, the Load after the call returns stale data. Need to mark allocs as escaped when their ValueId appears as an argument to Call/SystemCall. (`mem2reg.rs::alloc_escapes_via_call`, `#[ignore]`)
+- [ ] **TypeInference: circular block params stay Dynamic** — Has an internal fixpoint loop, but `infer_common_type` short-circuits to Dynamic when ANY incoming arg is Dynamic. Back-edge args depend on the header param's type (chicken-and-egg), so circular block params never converge. Fix: skip Dynamic args during block-param join. ConstraintSolve handles this in practice. (`type_infer.rs::circular_block_params`, `#[ignore]`)
+
 ## Future
 
 - [x] Type inference pass — forward dataflow (refine `Dynamic` via propagation)

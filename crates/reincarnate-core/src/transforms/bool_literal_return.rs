@@ -533,6 +533,121 @@ mod tests {
         assert!(!result.changed);
     }
 
+    // ---- Adversarial tests ----
+
+    /// Some paths return 0/1, one returns 42 → not bool.
+    #[test]
+    fn mixed_paths_one_non_bool() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool, Type::Bool],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
+        let c1 = fb.param(0);
+        let c2 = fb.param(1);
+        let b1 = fb.create_block();
+        let b2 = fb.create_block();
+        let b3 = fb.create_block();
+        fb.br_if(c1, b1, &[], b2, &[]);
+
+        fb.switch_to_block(b1);
+        let one = fb.const_int(1);
+        fb.ret(Some(one));
+
+        fb.switch_to_block(b2);
+        fb.br_if(c2, b3, &[], b3, &[]);
+
+        fb.switch_to_block(b3);
+        // Returns 42 on a third path — poisons the whole function.
+        let forty_two = fb.const_int(42);
+        fb.ret(Some(forty_two));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let result = BoolLiteralReturn.apply(mb.build()).unwrap();
+        assert!(
+            !result.changed,
+            "mix of 0/1 and 42 should NOT become Bool"
+        );
+    }
+
+    /// 0/1 values flow through multi-level block params and are still recognized.
+    #[test]
+    fn bool_through_multi_level_block_params() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool, Type::Bool],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
+        let c1 = fb.param(0);
+        let c2 = fb.param(1);
+
+        // Level 1: branch, producing 0 or 1 into merge1.
+        let then1 = fb.create_block();
+        let else1 = fb.create_block();
+        let (merge1, m1) = fb.create_block_with_params(&[Type::Dynamic]);
+        fb.br_if(c1, then1, &[], else1, &[]);
+
+        fb.switch_to_block(then1);
+        let one = fb.const_int(1);
+        fb.br(merge1, &[one]);
+
+        fb.switch_to_block(else1);
+        let zero = fb.const_int(0);
+        fb.br(merge1, &[zero]);
+
+        // Level 2: branch again, forwarding the merge1 param into merge2.
+        fb.switch_to_block(merge1);
+        let then2 = fb.create_block();
+        let else2 = fb.create_block();
+        let (merge2, m2) = fb.create_block_with_params(&[Type::Dynamic]);
+        fb.br_if(c2, then2, &[], else2, &[]);
+
+        fb.switch_to_block(then2);
+        fb.br(merge2, &[m1[0]]);
+
+        fb.switch_to_block(else2);
+        let zero2 = fb.const_int(0);
+        fb.br(merge2, &[zero2]);
+
+        fb.switch_to_block(merge2);
+        fb.ret(Some(m2[0]));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let result = BoolLiteralReturn.apply(mb.build()).unwrap();
+        assert!(result.changed, "multi-level block param flow of 0/1 should become Bool");
+        assert_eq!(
+            result.module.functions[FuncId::new(0)].sig.return_ty,
+            Type::Bool
+        );
+    }
+
+    /// Value flows through a Copy before being returned — still recognized as 0/1.
+    #[test]
+    fn bool_through_copy() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
+        let one = fb.const_int(1);
+        let copied = fb.copy(one);
+        fb.ret(Some(copied));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let result = BoolLiteralReturn.apply(mb.build()).unwrap();
+        assert!(result.changed, "Copy of int 1 should trace back to bool leaf");
+        assert_eq!(
+            result.module.functions[FuncId::new(0)].sig.return_ty,
+            Type::Bool
+        );
+    }
+
     #[test]
     fn mixed_returns_unchanged() {
         let sig = FunctionSig {

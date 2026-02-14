@@ -662,6 +662,52 @@ mod tests {
         assert!(has_store, "Store should be preserved as a side effect");
     }
 
+    // ---- Adversarial tests ----
+
+    /// 10 dead values each depending on the previous.
+    #[test]
+    fn dead_chain_depth() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut v = fb.const_int(1);
+        for _ in 0..9 {
+            let next = fb.add(v, v);
+            v = next;
+        }
+        // None of the chain feeds the return.
+        fb.ret(None);
+
+        let func = apply_dce(fb.build());
+        let entry = func.entry;
+        assert_eq!(block_inst_count(&func, entry), 1, "all dead chain should be removed");
+    }
+
+    /// Value used by both live and dead instruction — value kept.
+    #[test]
+    fn shared_value_live_and_dead_uses() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0);
+        let c = fb.const_int(2);
+        let live_use = fb.add(p, c);     // feeds return
+        let _dead_use = fb.mul(p, c);    // unused
+        fb.ret(Some(live_use));
+
+        let func = apply_dce(fb.build());
+        let entry = func.entry;
+        // const 2, add, return should survive. mul should be removed.
+        let has_mul = func.blocks[entry].insts.iter()
+            .any(|&id| matches!(func.insts[id].op, Op::Mul(_, _)));
+        assert!(!has_mul, "dead mul should be eliminated");
+        let has_add = func.blocks[entry].insts.iter()
+            .any(|&id| matches!(func.insts[id].op, Op::Add(_, _)));
+        assert!(has_add, "live add should be preserved");
+    }
+
     /// SystemCall result unused — call preserved due to side effects.
     #[test]
     fn system_call_kept() {

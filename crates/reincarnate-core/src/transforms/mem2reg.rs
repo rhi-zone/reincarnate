@@ -876,6 +876,81 @@ mod tests {
         }
     }
 
+    // ---- Adversarial tests ----
+
+    /// Alloc passed to call (escapes) — should not be promoted.
+    // BUG: Mem2Reg doesn't perform escape analysis — allocs passed to calls
+    // are still promoted. This test documents the missing behavior.
+    #[test]
+    #[ignore]
+    fn alloc_escapes_via_call() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let ptr = fb.alloc(Type::Int(64));
+        let one = fb.const_int(1);
+        fb.store(ptr, one);
+        let _call = fb.call("escape", &[ptr], Type::Void);
+        let loaded = fb.load(ptr, Type::Int(64));
+        fb.ret(Some(loaded));
+
+        let func = apply_mem2reg(fb.build());
+        let entry = func.entry;
+        let has_load = func.blocks[entry].insts.iter()
+            .any(|&id| matches!(func.insts[id].op, Op::Load(_)));
+        assert!(has_load, "escaped alloc should keep Load");
+    }
+
+    /// Diamond with stores in both arms → phi at merge.
+    #[test]
+    fn diamond_store_merge() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let cond = fb.param(0);
+        let ptr = fb.alloc(Type::Int(64));
+        let init = fb.const_int(0);
+        fb.store(ptr, init);
+
+        let then_b = fb.create_block();
+        let else_b = fb.create_block();
+        let merge = fb.create_block();
+
+        fb.br_if(cond, then_b, &[], else_b, &[]);
+
+        fb.switch_to_block(then_b);
+        let ten = fb.const_int(10);
+        fb.store(ptr, ten);
+        fb.br(merge, &[]);
+
+        fb.switch_to_block(else_b);
+        let twenty = fb.const_int(20);
+        fb.store(ptr, twenty);
+        fb.br(merge, &[]);
+
+        fb.switch_to_block(merge);
+        let loaded = fb.load(ptr, Type::Int(64));
+        fb.ret(Some(loaded));
+
+        let func = apply_mem2reg(fb.build());
+        // Merge should have a phi param.
+        assert!(
+            !func.blocks[merge].params.is_empty(),
+            "merge block should have phi from diamond stores"
+        );
+        // No Load should remain.
+        for (_, block) in func.blocks.iter() {
+            for &inst_id in &block.insts {
+                assert!(
+                    !matches!(func.insts[inst_id].op, Op::Load(_)),
+                    "no Load should remain"
+                );
+            }
+        }
+    }
+
     /// Store in loop — phi placement for back-edge.
     #[test]
     fn alloc_store_in_loop_phi() {

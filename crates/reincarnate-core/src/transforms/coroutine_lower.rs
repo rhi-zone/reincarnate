@@ -1311,6 +1311,90 @@ mod tests {
         assert!(has_switch, "entry should have state dispatch");
     }
 
+    // ---- Adversarial tests ----
+
+    /// Yield in both branches of an if.
+    #[test]
+    fn yield_in_both_branches() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Void, ..Default::default() };
+        let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
+        let cond = fb.param(0);
+        let then_b = fb.create_block();
+        let else_b = fb.create_block();
+        let merge = fb.create_block();
+
+        fb.br_if(cond, then_b, &[], else_b, &[]);
+
+        fb.switch_to_block(then_b);
+        let v1 = fb.const_int(1);
+        let _r1 = fb.yield_(Some(v1), Type::Dynamic);
+        fb.br(merge, &[]);
+
+        fb.switch_to_block(else_b);
+        let v2 = fb.const_int(2);
+        let _r2 = fb.yield_(Some(v2), Type::Dynamic);
+        fb.br(merge, &[]);
+
+        fb.switch_to_block(merge);
+        fb.ret(None);
+
+        let mut func = fb.build();
+        func.coroutine = Some(CoroutineInfo {
+            yield_ty: Type::Int(64),
+            return_ty: Type::Void,
+        });
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+        let (module, changed) = apply_lowering(module);
+        assert!(changed);
+        // Should have 3 states (0=entry, 1=yield-in-then, 2=yield-in-else).
+        let func = &module.functions[FuncId::new(0)];
+        let entry = func.entry;
+        let switch_inst = func.blocks[entry].insts.iter()
+            .find(|&&id| matches!(func.insts[id].op, Op::Switch { .. }));
+        assert!(switch_inst.is_some());
+        if let Op::Switch { cases, .. } = &func.insts[*switch_inst.unwrap()].op {
+            assert_eq!(cases.len(), 3, "2 yields → 3 states");
+        }
+    }
+
+    /// Three yields in a row.
+    #[test]
+    fn multiple_yields_sequence() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void, ..Default::default() };
+        let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
+        for i in 1..=3 {
+            let v = fb.const_int(i);
+            let _r = fb.yield_(Some(v), Type::Dynamic);
+        }
+        fb.ret(None);
+        let mut func = fb.build();
+        func.coroutine = Some(CoroutineInfo {
+            yield_ty: Type::Int(64),
+            return_ty: Type::Void,
+        });
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+        let (module, changed) = apply_lowering(module);
+        assert!(changed);
+        // 4 states: 0=entry, 1=after-yield1, 2=after-yield2, 3=after-yield3
+        let func = &module.functions[FuncId::new(0)];
+        let entry = func.entry;
+        let switch_inst = func.blocks[entry].insts.iter()
+            .find(|&&id| matches!(func.insts[id].op, Op::Switch { .. }));
+        if let Op::Switch { cases, .. } = &func.insts[*switch_inst.unwrap()].op {
+            assert_eq!(cases.len(), 4, "3 yields → 4 states");
+        }
+    }
+
     /// Cross-yield liveness: value defined before yield, used after → saved to struct field.
     #[test]
     fn cross_yield_liveness() {

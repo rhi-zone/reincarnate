@@ -1205,6 +1205,55 @@ mod tests {
         assert_eq!(func.value_types[p], Type::Dynamic, "conflicting constraints → Dynamic");
     }
 
+    // ---- Adversarial tests ----
+
+    /// Cycle in constraints: A=B, B=C, C=A with concrete type on one.
+    #[test]
+    fn cycle_in_constraints() {
+        // Three Copy instructions forming a chain, one with a concrete type.
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let a = fb.param(0);
+        let b = fb.copy(a);
+        let c = fb.copy(b);
+        // Return c — constrains chain to Int(64) from return type.
+        fb.ret(Some(c));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let result = ConstraintSolve.apply(module).unwrap();
+        let func = &result.module.functions[FuncId::new(0)];
+        // All should resolve to Int(64) from the return type constraint.
+        assert_eq!(func.value_types[a], Type::Int(64));
+        assert_eq!(func.value_types[b], Type::Int(64));
+        assert_eq!(func.value_types[c], Type::Int(64));
+    }
+
+    /// Many variables all chained — tests union-find scalability.
+    #[test]
+    fn many_chained_variables() {
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut v = fb.param(0);
+        for _ in 0..50 {
+            v = fb.copy(v);
+        }
+        fb.ret(Some(v));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        // Should complete without performance issues.
+        let result = ConstraintSolve.apply(module).unwrap();
+        let func = &result.module.functions[FuncId::new(0)];
+        assert_eq!(func.value_types[v], Type::Int(64));
+    }
+
     #[test]
     fn set_field_constrains_value() {
         // SetField on a known struct constrains the value to the field type.

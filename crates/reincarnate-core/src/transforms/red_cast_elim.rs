@@ -163,6 +163,83 @@ mod tests {
         assert!(matches!(c2_inst.op, Op::Copy(_)));
     }
 
+    // ---- Adversarial tests ----
+
+    /// Dynamic value cast to Int is NOT redundant (type mismatch).
+    #[test]
+    fn dynamic_to_int_not_redundant() {
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0); // Dynamic
+        let cast = fb.cast(p, Type::Int(64));
+        fb.ret(Some(cast));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let result = RedundantCastElimination.apply(mb.build()).unwrap();
+        assert!(!result.changed, "Dynamic → Int cast is NOT redundant");
+    }
+
+    /// AsType(x: Foo, Foo) where source is Struct → redundant, becomes Copy.
+    #[test]
+    fn astype_same_struct() {
+        let sig = FunctionSig {
+            params: vec![Type::Struct("Foo".into())],
+            return_ty: Type::Struct("Foo".into()),
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0);
+        // cast() produces AsType kind.
+        let cast = fb.cast(p, Type::Struct("Foo".into()));
+        fb.ret(Some(cast));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let result = RedundantCastElimination.apply(mb.build()).unwrap();
+        assert!(result.changed, "AsType(Foo, Foo) should be redundant");
+        let func = &result.module.functions[FuncId::new(0)];
+        let inst = func
+            .insts
+            .values()
+            .find(|i| i.result == Some(cast))
+            .unwrap();
+        assert!(
+            matches!(inst.op, Op::Copy(_)),
+            "same-struct AsType should become Copy"
+        );
+    }
+
+    /// Coerce(x: Int(32), Int(32)) → redundant Copy.
+    #[test]
+    fn coerce_same_primitive() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(32)],
+            return_ty: Type::Int(32),
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0);
+        let coerced = fb.coerce(p, Type::Int(32));
+        fb.ret(Some(coerced));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let result = RedundantCastElimination.apply(mb.build()).unwrap();
+        assert!(result.changed, "Coerce(Int(32), Int(32)) should be redundant");
+        let func = &result.module.functions[FuncId::new(0)];
+        let inst = func
+            .insts
+            .values()
+            .find(|i| i.result == Some(coerced))
+            .unwrap();
+        assert!(matches!(inst.op, Op::Copy(_)));
+    }
+
     /// Non-redundant cast (Int → Bool) is left unchanged.
     #[test]
     fn non_redundant_cast_unchanged() {

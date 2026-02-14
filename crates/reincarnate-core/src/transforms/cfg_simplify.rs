@@ -1387,6 +1387,70 @@ mod tests {
         assert!(func.blocks[dead].insts.is_empty(), "unreachable block should be cleared");
     }
 
+    // ---- Adversarial tests ----
+
+    /// Long empty chain: 20 empty forwarding blocks.
+    #[test]
+    fn long_empty_chain() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+
+        let mut blocks = Vec::new();
+        for _ in 0..20 {
+            blocks.push(fb.create_block());
+        }
+
+        fb.br(blocks[0], &[]);
+        for i in 0..19 {
+            fb.switch_to_block(blocks[i]);
+            fb.br(blocks[i + 1], &[]);
+        }
+        fb.switch_to_block(blocks[19]);
+        fb.ret(None);
+
+        let func = apply_cfg_simplify(fb.build());
+        let entry = func.entry;
+        let last_inst = *func.blocks[entry].insts.last().unwrap();
+        assert!(
+            matches!(func.insts[last_inst].op, Op::Return(_)),
+            "20 empty blocks should collapse to Return in entry"
+        );
+    }
+
+    /// Diamond with asymmetric params (different arg counts).
+    #[test]
+    fn diamond_asymmetric_args() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let cond = fb.param(0);
+        let then_b = fb.create_block();
+        let else_b = fb.create_block();
+        let (merge, merge_params) = fb.create_block_with_params(&[Type::Int(64)]);
+
+        let a = fb.const_int(42);
+        let b = fb.const_int(99);
+        fb.br_if(cond, then_b, &[], else_b, &[]);
+
+        fb.switch_to_block(then_b);
+        fb.br(merge, &[a]);
+
+        fb.switch_to_block(else_b);
+        fb.br(merge, &[b]);
+
+        fb.switch_to_block(merge);
+        fb.ret(Some(merge_params[0]));
+
+        // Should not panic.
+        let func = apply_cfg_simplify(fb.build());
+        let entry = func.entry;
+        let last_inst = *func.blocks[entry].insts.last().unwrap();
+        assert!(matches!(func.insts[last_inst].op, Op::Return(Some(_))));
+    }
+
     /// Diamond with block params flowing through merge point.
     #[test]
     fn block_params_through_diamond() {

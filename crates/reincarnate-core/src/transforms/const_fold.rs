@@ -563,4 +563,87 @@ mod tests {
         let func = apply_fold(fb.build());
         assert!(matches!(&find_inst_for(&func, product).op, Op::Const(Constant::Int(9))));
     }
+
+    // ---- Adversarial tests ----
+
+    /// Same constant used in foldable and non-foldable contexts.
+    #[test]
+    fn shared_constant_folded_and_used() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let param = fb.param(0);
+        let c = fb.const_int(5);
+        let fold_me = fb.add(c, c);     // foldable: 5+5=10
+        let keep_me = fb.add(param, c);  // not foldable: param+5
+        let result = fb.add(fold_me, keep_me);
+        fb.ret(Some(result));
+
+        let func = apply_fold(fb.build());
+        assert!(matches!(&find_inst_for(&func, fold_me).op, Op::Const(Constant::Int(10))));
+        assert!(matches!(&find_inst_for(&func, keep_me).op, Op::Add(_, _)));
+    }
+
+    /// i64::MAX + 1 wraps correctly (wrapping_add).
+    #[test]
+    fn overflow_wraps() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let a = fb.const_int(i64::MAX);
+        let b = fb.const_int(1);
+        let sum = fb.add(a, b);
+        fb.ret(Some(sum));
+
+        let func = apply_fold(fb.build());
+        // i64::MAX + 1 wraps to i64::MIN.
+        assert!(matches!(
+            &find_inst_for(&func, sum).op,
+            Op::Const(Constant::Int(v)) if *v == i64::MIN
+        ));
+    }
+
+    /// NaN arithmetic: NaN + 1.0 should fold to NaN.
+    #[test]
+    fn float_nan_propagation() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Float(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let nan = fb.const_float(f64::NAN);
+        let one = fb.const_float(1.0);
+        let sum = fb.add(nan, one);
+        fb.ret(Some(sum));
+
+        let func = apply_fold(fb.build());
+        if let Op::Const(Constant::Float(v)) = &find_inst_for(&func, sum).op {
+            assert!(v.is_nan(), "NaN + 1.0 should be NaN");
+        } else {
+            panic!("expected float constant");
+        }
+    }
+
+    /// Deeply chained folds: 10-deep chain folds completely.
+    #[test]
+    fn deeply_chained_folds() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut acc = fb.const_int(0);
+        for i in 1..=10 {
+            let c = fb.const_int(i);
+            acc = fb.add(acc, c);
+        }
+        fb.ret(Some(acc));
+
+        let func = apply_fold(fb.build());
+        // 0+1+2+...+10 = 55
+        assert!(matches!(
+            &find_inst_for(&func, acc).op,
+            Op::Const(Constant::Int(55))
+        ));
+    }
 }
