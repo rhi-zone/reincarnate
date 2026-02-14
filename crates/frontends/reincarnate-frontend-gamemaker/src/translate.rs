@@ -74,8 +74,14 @@ pub fn translate_code_entry(
         param_idx += 1;
     }
     for i in 0..effective_arg_count {
-        let name = arg_name(ctx, i)
-            .unwrap_or_else(|| format!("argument{i}"));
+        // For declared args, use debug names from code_locals.
+        // For implicit args (argumentN pattern), always use argumentN —
+        // code_locals indices can collide with unrelated locals.
+        let name = if i < ctx.arg_count {
+            arg_name(ctx, i).unwrap_or_else(|| format!("argument{i}"))
+        } else {
+            format!("argument{i}")
+        };
         fb.name_value(fb.param(param_idx), name);
         param_idx += 1;
     }
