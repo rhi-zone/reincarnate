@@ -139,6 +139,7 @@ Test projects live under `~/reincarnate/<engine>/<game>/`:
 - Flash: `~/reincarnate/flash/cc/`
 - GML (GMS1): `~/reincarnate/gamemaker/bounty/`
 - GML (GMS2): `~/reincarnate/gamemaker/deadestate/`
+- Twine: `~/reincarnate/twine/` (subfolders `dol/`, `trc/`)
 
 ## Crate Structure
 

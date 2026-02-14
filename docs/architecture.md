@@ -44,13 +44,36 @@ Frontends parse engine-specific formats and emit untyped IR. Type inference reco
 | **RPG Maker MV/MZ** | JSON event scripts + JS engine | Patch-in-place (compile JSON events, optimize engine, inject plugins) |
 | **GameMaker** | GML bytecode | Full recompilation |
 | **Director/Shockwave** | Lingo scripts | Full recompilation |
-| **Twine / Inform** | Story formats | Full recompilation |
+| **Twine (SugarCube)** | SugarCube macro DSL in HTML | Full recompilation |
+| **Twine (Harlowe)** | Harlowe hook/macro syntax in HTML | Full recompilation |
+| **Inform** | Story formats | Full recompilation |
 | **VB6** | P-Code | Full recompilation |
 | **Java Applets** | JVM bytecode | Full recompilation |
 | **Silverlight** | .NET IL | Full recompilation |
 | **HyperCard / ToolBook** | Stack formats | Full recompilation |
 
 RPG Maker MV/MZ is a special case: since the engine already runs in JavaScript, it may be more practical to compile event scripts and optimize the existing engine rather than full recompilation.
+
+### Twine story format coverage
+
+The Twine frontend targets **SugarCube** and **Harlowe** only. Two other story
+formats exist but are not supported:
+
+- **Snowman** — Not a scripting language. Passages contain raw JavaScript with
+  `<% %>` template tags and jQuery. There is no macro DSL to parse — it's
+  already JavaScript. Lifting it would be pointless: the source is the target.
+  Very few published games use it.
+
+- **Chapbook** — Minimal adoption. Uses a unique "inserts + modifiers" syntax
+  with no meaningful ecosystem. Community forum threads are mostly people
+  looking for example games, which speaks to the format's obscurity. Not worth
+  the parser investment until there's real demand.
+
+SugarCube and Harlowe cover the overwhelming majority of Twine games in the
+wild. SugarCube dominates large/complex projects; Harlowe is the Twine 2
+default and is common for shorter works. Harlowe is arguably the higher-value
+target — its runtime is slower, its save system is barely functional, and its
+syntax actively resists extension and debugging.
 
 ## Library Replacement (HLE)
 

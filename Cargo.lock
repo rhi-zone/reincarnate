@@ -415,6 +415,7 @@ dependencies = [
  "reincarnate-core",
  "reincarnate-frontend-flash",
  "reincarnate-frontend-gamemaker",
+ "reincarnate-frontend-twine",
  "serde_json",
 ]
 
@@ -440,6 +441,13 @@ name = "reincarnate-frontend-gamemaker"
 version = "0.1.0"
 dependencies = [
  "datawin",
+ "reincarnate-core",
+]
+
+[[package]]
+name = "reincarnate-frontend-twine"
+version = "0.1.0"
+dependencies = [
  "reincarnate-core",
 ]
 

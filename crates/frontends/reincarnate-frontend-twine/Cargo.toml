@@ -1,0 +1,10 @@
+[package]
+name = "reincarnate-frontend-twine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Twine frontend for the Reincarnate legacy software lifting framework"
+
+[dependencies]
+reincarnate-core = { path = "../../reincarnate-core" }

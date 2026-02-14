@@ -86,6 +86,7 @@ fn find_frontend(engine: &EngineOrigin) -> Option<Box<dyn Frontend>> {
     match engine {
         EngineOrigin::Flash => Some(Box::new(reincarnate_frontend_flash::FlashFrontend)),
         EngineOrigin::GameMaker => Some(Box::new(reincarnate_frontend_gamemaker::GameMakerFrontend)),
+        EngineOrigin::Twine => Some(Box::new(reincarnate_frontend_twine::TwineFrontend)),
         _ => None,
     }
 }
