@@ -1236,11 +1236,13 @@ fn translate_push_variable(
     // Handle 2D array access (ref_type == 0 with non-negative instance).
     // The instruction pops 2 indices from the stack (dim1, dim2).
     if is_2d_array_access(var_ref, instance) {
-        let index = pop(stack, inst)?; // dim2 (the meaningful index)
-        let _dim1 = pop(stack, inst)?; // dim1 (usually -1, ignored)
+        // Stack layout: [dim2, dim1] with dim1 on top.
+        // dim1 is the meaningful first-dimension index.
+        let dim1 = pop(stack, inst)?; // first-dimension index (top of stack)
+        let _dim2 = pop(stack, inst)?; // second-dimension (ignored for 1D)
         if var_name == "argument" {
             // argument[N] → function parameter access
-            if let Some(Constant::Int(idx)) = fb.try_get_const(index) {
+            if let Some(Constant::Int(idx)) = fb.try_get_const(dim1) {
                 let param_offset = if ctx.has_self { 1 } else { 0 }
                     + if ctx.has_other { 1 } else { 0 };
                 let param = fb.param(param_offset + *idx as usize);
@@ -1251,25 +1253,25 @@ fn translate_push_variable(
                 let val = fb.system_call(
                     "GameMaker.Instance",
                     "getField",
-                    &[index, name_val],
+                    &[dim1, name_val],
                     Type::Dynamic,
                 );
                 stack.push(val);
             }
         } else {
-            // 2D array field access on a specific object.
-            // dim2 == -1 is a sentinel meaning scalar (non-array) access.
+            // Array field access on a specific object.
+            // dim1 == -1 means scalar (non-indexed) access.
             let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
                 fb.const_string(name)
             } else {
                 fb.const_int(instance as i64)
             };
             let name_val = fb.const_string(&var_name);
-            let is_scalar = matches!(fb.try_get_const(index), Some(Constant::Int(-1)));
+            let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
             let args: Vec<ValueId> = if is_scalar {
                 vec![obj_id, name_val]
             } else {
-                vec![obj_id, name_val, index]
+                vec![obj_id, name_val, dim1]
             };
             let val = fb.system_call(
                 "GameMaker.Instance",
@@ -1450,17 +1452,19 @@ fn translate_pop(
     ctx: &TranslateCtx,
 ) -> Result<(), String> {
     if let Operand::Variable { var_ref, instance } = &inst.operand {
-        let value = pop(stack, inst)?;
         let var_name = resolve_variable_name(inst, ctx);
 
         // Handle 2D array access (ref_type == 0 with non-negative instance).
-        // The instruction pops value + 2 indices from the stack.
+        // Stack layout: [value, dim2, dim1] with dim1 on top.
+        // dim1 is the meaningful first-dimension index; dim2 is the second
+        // dimension (or a don't-care value for 1D arrays).
         if is_2d_array_access(var_ref, *instance) {
-            let index = pop(stack, inst)?; // dim2 (the meaningful index)
-            let _dim1 = pop(stack, inst)?; // dim1 (usually -1, ignored)
+            let dim1 = pop(stack, inst)?; // first-dimension index (top of stack)
+            let _dim2 = pop(stack, inst)?; // second-dimension (ignored for 1D)
+            let value = pop(stack, inst)?; // value to store (bottom)
             if var_name == "argument" {
                 // argument[N] = value → store to function parameter slot
-                if let Some(Constant::Int(idx)) = fb.try_get_const(index) {
+                if let Some(Constant::Int(idx)) = fb.try_get_const(dim1) {
                     let param_offset = if ctx.has_self { 1 } else { 0 }
                         + if ctx.has_other { 1 } else { 0 };
                     let param = fb.param(param_offset + *idx as usize);
@@ -1473,24 +1477,24 @@ fn translate_pop(
                     fb.system_call(
                         "GameMaker.Instance",
                         "setField",
-                        &[index, name_val, value],
+                        &[dim1, name_val, value],
                         Type::Void,
                     );
                 }
             } else {
-                // 2D array field store on a specific object.
-                // dim2 == -1 is a sentinel meaning scalar (non-array) access.
+                // Array field store on a specific object.
+                // dim1 == -1 means scalar (non-indexed) access.
                 let obj_id = if let Some(name) = ctx.obj_names.get(*instance as usize) {
                     fb.const_string(name)
                 } else {
                     fb.const_int(*instance as i64)
                 };
                 let name_val = fb.const_string(&var_name);
-                let is_scalar = matches!(fb.try_get_const(index), Some(Constant::Int(-1)));
+                let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
                 let args: Vec<ValueId> = if is_scalar {
                     vec![obj_id, name_val, value]
                 } else {
-                    vec![obj_id, name_val, index, value]
+                    vec![obj_id, name_val, dim1, value]
                 };
                 fb.system_call(
                     "GameMaker.Instance",
@@ -1501,6 +1505,9 @@ fn translate_pop(
             }
             return Ok(());
         }
+
+        // Non-2D-array Pop: single value on top of stack.
+        let value = pop(stack, inst)?;
 
         // Normalize self-referencing instance types (see translate_push_variable).
         let instance = if *instance >= 0
