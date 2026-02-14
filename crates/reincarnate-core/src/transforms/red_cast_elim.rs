@@ -49,6 +49,42 @@ mod tests {
     use crate::ir::ty::FunctionSig;
     use crate::ir::{FuncId, Type, Visibility};
 
+    // ---- Identity & idempotency tests ----
+
+    /// All casts cross types (Int → Bool) → no changes.
+    #[test]
+    fn identity_no_change() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Bool, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let val = fb.const_int(1); // Int(64)
+        let cast = fb.cast(val, Type::Bool);
+        fb.ret(Some(cast));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let result = RedundantCastElimination.apply(module).unwrap();
+        assert!(!result.changed);
+    }
+
+    /// Redundant cast elimination is idempotent.
+    #[test]
+    fn idempotent_after_transform() {
+        use crate::transforms::util::test_helpers::assert_idempotent;
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Bool, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let a = fb.const_int(1);
+        let b = fb.const_int(1);
+        let val = fb.cmp(crate::ir::CmpKind::Eq, a, b);
+        let cast = fb.cast(val, Type::Bool);
+        fb.ret(Some(cast));
+        assert_idempotent(&RedundantCastElimination, fb.build());
+    }
+
     /// Redundant cast (Bool → Bool) is rewritten to Copy.
     #[test]
     fn redundant_cast_rewritten_to_copy() {

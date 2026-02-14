@@ -757,6 +757,44 @@ mod tests {
     use crate::ir::ty::FunctionSig;
     use crate::ir::{ClassDef, CmpKind, FuncId, Global, StructDef, Visibility};
 
+    // ---- Identity & idempotency tests ----
+
+    /// All types already concrete → no changes.
+    #[test]
+    fn identity_no_change() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0);
+        let c = fb.const_int(42);
+        let sum = fb.add(p, c);
+        fb.ret(Some(sum));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let result = TypeInference.apply(module).unwrap();
+        assert!(!result.changed);
+    }
+
+    /// Type inference is idempotent.
+    #[test]
+    fn idempotent_after_transform() {
+        use crate::transforms::util::test_helpers::assert_idempotent;
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let a = fb.const_int(42);
+        let b = fb.const_int(10);
+        let sum = fb.add(a, b);
+        fb.ret(Some(sum));
+        let mut func = fb.build();
+        func.value_types[sum] = Type::Dynamic;
+        assert_idempotent(&TypeInference, func);
+    }
+
     /// Constants propagate: pushbyte 42 + add should infer Int(64) for the add result.
     #[test]
     fn constants_propagate_through_arithmetic() {

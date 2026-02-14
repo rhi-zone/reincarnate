@@ -249,6 +249,50 @@ mod tests {
     use crate::ir::ty::FunctionSig;
     use crate::ir::{FuncId, Visibility};
 
+    // ---- Identity & idempotency tests ----
+
+    /// Function with already-Bool return type → no changes.
+    #[test]
+    fn identity_no_change() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
+        let v = fb.const_bool(true);
+        fb.ret(Some(v));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let result = BoolLiteralReturn.apply(module).unwrap();
+        assert!(!result.changed);
+    }
+
+    /// Bool literal return is idempotent.
+    #[test]
+    fn idempotent_after_transform() {
+        use crate::transforms::util::test_helpers::assert_idempotent;
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
+        let cond = fb.param(0);
+        let then_block = fb.create_block();
+        let else_block = fb.create_block();
+        fb.br_if(cond, then_block, &[], else_block, &[]);
+        fb.switch_to_block(then_block);
+        let one = fb.const_int(1);
+        fb.ret(Some(one));
+        fb.switch_to_block(else_block);
+        let zero = fb.const_int(0);
+        fb.ret(Some(zero));
+        assert_idempotent(&BoolLiteralReturn, fb.build());
+    }
+
     #[test]
     fn basic_bool_inference() {
         let sig = FunctionSig {

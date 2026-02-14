@@ -1272,6 +1272,40 @@ mod tests {
         );
     }
 
+    // ---- Identity & idempotency tests ----
+
+    /// Single-block function with no simplification opportunities → changed == false.
+    #[test]
+    fn identity_no_change() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0);
+        fb.ret(Some(p));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let result = CfgSimplify.apply(module).unwrap();
+        assert!(!result.changed);
+    }
+
+    /// CFG simplification is idempotent.
+    #[test]
+    fn idempotent_after_transform() {
+        use crate::transforms::util::test_helpers::assert_idempotent;
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let block_b = fb.create_block();
+        fb.br(block_b, &[]);
+        fb.switch_to_block(block_b);
+        fb.ret(None);
+        assert_idempotent(&CfgSimplify, fb.build());
+    }
+
     /// BrIf with different targets is not collapsed.
     #[test]
     fn collapse_same_target_brif_preserves_different_targets() {

@@ -736,6 +736,55 @@ mod tests {
     use crate::ir::ty::FunctionSig;
     use crate::ir::{ClassDef, FuncId, StructDef, Visibility};
 
+    // ---- Identity & idempotency tests ----
+
+    /// No type variables, all concrete → no changes.
+    #[test]
+    fn identity_no_change() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0);
+        fb.ret(Some(p));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let result = ConstraintSolve.apply(module).unwrap();
+        assert!(!result.changed);
+    }
+
+    /// Constraint solving is idempotent.
+    #[test]
+    fn idempotent_after_transform() {
+        let callee_sig = FunctionSig {
+            params: vec![Type::Int(32)],
+            return_ty: Type::Void, ..Default::default() };
+        let mut callee_fb = FunctionBuilder::new("foo", callee_sig, Visibility::Private);
+        callee_fb.ret(None);
+        let callee = callee_fb.build();
+
+        let caller_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void, ..Default::default() };
+        let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
+        let arg = caller_fb.param(0);
+        caller_fb.call("foo", &[arg], Type::Void);
+        caller_fb.ret(None);
+        let caller = caller_fb.build();
+
+        // Build module with both functions for idempotency test.
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(callee);
+        mb.add_function(caller);
+        let module = mb.build();
+        let r1 = ConstraintSolve.apply(module).unwrap();
+        assert!(r1.changed);
+        let r2 = ConstraintSolve.apply(r1.module).unwrap();
+        assert!(!r2.changed);
+    }
+
     // -- UnionFind unit tests --
 
     #[test]

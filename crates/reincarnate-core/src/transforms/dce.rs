@@ -567,6 +567,41 @@ mod tests {
         assert!(func.blocks[else_block].params.is_empty());
     }
 
+    // ---- Identity & idempotency tests ----
+
+    /// All instructions are live (feed return) → changed == false.
+    #[test]
+    fn identity_no_change() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64), Type::Int(64)],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let a = fb.param(0);
+        let b = fb.param(1);
+        let sum = fb.add(a, b);
+        fb.ret(Some(sum));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let result = DeadCodeElimination.apply(module).unwrap();
+        assert!(!result.changed);
+    }
+
+    /// DCE is idempotent.
+    #[test]
+    fn idempotent_after_transform() {
+        use crate::transforms::util::test_helpers::assert_idempotent;
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let _a = fb.const_int(1);
+        let _b = fb.const_int(2);
+        fb.ret(None);
+        assert_idempotent(&DeadCodeElimination, fb.build());
+    }
+
     /// Unreachable block is cleared: block with no predecessors has its instructions removed.
     #[test]
     fn unreachable_block_cleared() {

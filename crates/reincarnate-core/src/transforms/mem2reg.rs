@@ -776,6 +776,36 @@ mod tests {
         }
     }
 
+    // ---- Identity & idempotency tests ----
+
+    /// Idempotent: second run reports no change after arena compaction.
+    ///
+    /// Mem2Reg leaves dead instructions in the arena (the pipeline's compact_insts
+    /// handles cleanup). We compact between runs to test semantic idempotency.
+    #[test]
+    fn idempotent_after_transform() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64), ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let p = fb.param(0);
+        let c = fb.copy(p);
+        fb.ret(Some(c));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let r1 = Mem2Reg.apply(module).unwrap();
+        assert!(r1.changed);
+        // Compact to remove dead instructions left by Copy elimination.
+        let mut module = r1.module;
+        for func in module.functions.values_mut() {
+            func.compact_insts();
+        }
+        let r2 = Mem2Reg.apply(module).unwrap();
+        assert!(!r2.changed, "mem2reg should be idempotent after compaction");
+    }
+
     #[test]
     fn unchanged_returns_false() {
         let sig = FunctionSig {
