@@ -289,9 +289,13 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
             continue;
         }
 
-        // Find the statement containing the single use.
+        // Find the statement containing the single use (read, not bare write).
+        // Must use count_var_refs_in_stmt (which skips bare Var writes) rather
+        // than stmt_references_var (which counts writes too) — otherwise we'd
+        // target a write-only statement, the substitute would find nothing to
+        // replace, and the init expression would be silently dropped.
         let use_idx = (i + 1..body.len())
-            .find(|&j| stmt_references_var(&body[j], &name))
+            .find(|&j| count_var_refs_in_stmt(&body[j], &name) > 0)
             .unwrap();
 
         let adjacent = use_idx == i + 1;
