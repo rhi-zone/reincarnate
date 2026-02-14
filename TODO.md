@@ -911,16 +911,8 @@ causing compile errors if any emitted code calls them.
 
 ### Known Issues
 
-- [ ] **Double-bracket array wrapping in navigation calls** (1211 TRC, 62 DoL)
-  — `<<back [[game|$return]]>>` emits as `Navigation.back([[resolve("game") |
-  State.get("return")]])` instead of `Navigation.back("$return")` or
-  `Navigation.goto("$return")`. Root cause: `parse_macro_args` catch-all
-  (parser.rs:378) doesn't recognize `[[...]]` as SugarCube link syntax —
-  it sends the raw text to `parse_expr()` which interprets `[[ ]]` as nested
-  JS array literals and `|` as bitwise OR. The fix: `back`, `return`, `goto`,
-  and `include` need the same `[[...]]` link-syntax detection that
-  `parse_link_macro_args` (parser.rs:792) already does for `<<link>>`. When
-  `[[text|passage]]` is detected, extract the passage target (right of `|`)
-  and emit `MacroArgs::Expr(passage_expr)` or `MacroArgs::LinkArgs`. Same
-  applies for `[[passage]]` (no pipe) → `MacroArgs::Expr(Str(passage))`.
-  Affects `Navigation.back`, `Navigation.include`, potentially `Navigation.goto`.
+- [x] **Double-bracket array wrapping in navigation calls** — Fixed.
+  Navigation macros (back, return, goto, include) now detect `[[...]]` link
+  syntax and extract passage targets, handling all separator forms (`|`, `->`,
+  `<-`). Variable references (`$var`, `_var`) parsed as expressions; bare
+  passage names as string literals. (was 1211 TRC, 62 DoL → 0)
