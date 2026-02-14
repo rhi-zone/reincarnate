@@ -911,10 +911,16 @@ causing compile errors if any emitted code calls them.
 
 ### Known Issues
 
-- [ ] **Double-bracket array wrapping in navigation calls** — Calls like
-  `SugarCube_Navigation.back([[SugarCube_Engine.resolve("game") | ...]])` emit
-  with spurious `[[...]]` double-bracketing around arguments. The frontend
-  translator appears to produce an ArrayInit wrapping the argument list for
-  some macro argument forms (raw args parsed as link syntax?). The backend and
-  runtime are correct — this is a frontend argument lowering issue. Observed
-  in TRC output for `<<back>>` / `<<return>>` macros with expression targets.
+- [ ] **Double-bracket array wrapping in navigation calls** (1211 TRC, 62 DoL)
+  — `<<back [[game|$return]]>>` emits as `Navigation.back([[resolve("game") |
+  State.get("return")]])` instead of `Navigation.back("$return")` or
+  `Navigation.goto("$return")`. Root cause: `parse_macro_args` catch-all
+  (parser.rs:378) doesn't recognize `[[...]]` as SugarCube link syntax —
+  it sends the raw text to `parse_expr()` which interprets `[[ ]]` as nested
+  JS array literals and `|` as bitwise OR. The fix: `back`, `return`, `goto`,
+  and `include` need the same `[[...]]` link-syntax detection that
+  `parse_link_macro_args` (parser.rs:792) already does for `<<link>>`. When
+  `[[text|passage]]` is detected, extract the passage target (right of `|`)
+  and emit `MacroArgs::Expr(passage_expr)` or `MacroArgs::LinkArgs`. Same
+  applies for `[[passage]]` (no pipe) → `MacroArgs::Expr(Str(passage))`.
+  Affects `Navigation.back`, `Navigation.include`, potentially `Navigation.goto`.
