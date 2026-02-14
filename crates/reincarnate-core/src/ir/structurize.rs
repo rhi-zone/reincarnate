@@ -2574,4 +2574,210 @@ mod tests {
             "Expected Block(exit_path) before Break in shape, got: {shape:?}"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Regression tests for bug fixes
+    // -----------------------------------------------------------------------
+
+    // Regression: 1b0fcf1 — switch cases must capture trailing merge assigns
+    // (block argument assignments when falling through to the merge block).
+    #[test]
+    fn test_switch_trailing_merge_assigns() {
+        // entry: switch(val) { case 0 → case0, case 1 → case1, default → default_blk }
+        // case0:       v1 = const 10; br merge(v1)
+        // case1:       v2 = const 20; br merge(v2)
+        // default_blk: v3 = const 30; br merge(v3)
+        // merge(v_phi): return v_phi
+        use crate::ir::value::Constant;
+
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("switch_trailing", sig, Visibility::Public);
+        let val = fb.param(0);
+
+        let case0 = fb.create_block();
+        let case1 = fb.create_block();
+        let default_blk = fb.create_block();
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Int(64)]);
+
+        fb.switch(
+            val,
+            vec![
+                (Constant::Int(0), case0, vec![]),
+                (Constant::Int(1), case1, vec![]),
+            ],
+            (default_blk, vec![]),
+        );
+
+        fb.switch_to_block(case0);
+        let v1 = fb.const_int(10);
+        fb.br(merge, &[v1]);
+
+        fb.switch_to_block(case1);
+        let v2 = fb.const_int(20);
+        fb.br(merge, &[v2]);
+
+        fb.switch_to_block(default_blk);
+        let v3 = fb.const_int(30);
+        fb.br(merge, &[v3]);
+
+        fb.switch_to_block(merge);
+        let v_phi = merge_vals[0];
+        fb.ret(Some(v_phi));
+
+        let mut func = fb.build();
+        let shape = structurize(&mut func);
+
+        // Find the Switch shape and verify trailing assigns are captured.
+        fn find_switch(shape: &Shape) -> Option<&Shape> {
+            match shape {
+                s @ Shape::Switch { .. } => Some(s),
+                Shape::Seq(parts) => parts.iter().find_map(find_switch),
+                _ => None,
+            }
+        }
+
+        let sw = find_switch(&shape).expect("Expected Switch in shape");
+        if let Shape::Switch {
+            cases,
+            default_trailing_assigns,
+            ..
+        } = sw
+        {
+            // Each case should have trailing assigns that set v_phi.
+            for (i, case) in cases.iter().enumerate() {
+                assert!(
+                    case.trailing_assigns
+                        .iter()
+                        .any(|a| a.dst == v_phi),
+                    "Case {i} should have trailing assign to v_phi, got: {:?}",
+                    case.trailing_assigns
+                );
+            }
+            // Default should also have trailing assigns.
+            assert!(
+                default_trailing_assigns
+                    .iter()
+                    .any(|a| a.dst == v_phi),
+                "Default should have trailing assign to v_phi, got: {default_trailing_assigns:?}"
+            );
+        } else {
+            unreachable!();
+        }
+    }
+
+    // Regression: 4345260 — loop_exit_shape must not greedily consume blocks
+    // that are also reachable from the normal loop exit path.
+    #[test]
+    fn test_loop_exit_not_greedy() {
+        // Setup: loop with two exit paths that converge on a shared post-loop block.
+        //
+        //   entry:     br header
+        //   header:    br_if cond, body, post_loop   (normal exit)
+        //   body:      br_if inner, exit_prep, header
+        //   exit_prep: <store>; br post_loop          (break exit path)
+        //   post_loop: <some work>; return
+        //
+        // Both the normal exit (header→post_loop) and the break exit
+        // (exit_prep→post_loop) converge on post_loop. The loop_exit_shape
+        // must NOT consume post_loop as part of the break chain, since
+        // post_loop is also the normal loop continuation.
+        let sig = FunctionSig {
+            params: vec![Type::Bool, Type::Bool],
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("not_greedy", sig, Visibility::Public);
+        let cond = fb.param(0);
+        let inner = fb.param(1);
+
+        let header = fb.create_block();
+        let body = fb.create_block();
+        let exit_prep = fb.create_block();
+        let post_loop = fb.create_block();
+
+        fb.br(header, &[]);
+
+        fb.switch_to_block(header);
+        fb.br_if(cond, body, &[], post_loop, &[]);
+
+        fb.switch_to_block(body);
+        fb.br_if(inner, exit_prep, &[], header, &[]);
+
+        fb.switch_to_block(exit_prep);
+        let ptr = fb.alloc(Type::Int(64));
+        let val = fb.const_int(99);
+        fb.store(ptr, val);
+        fb.br(post_loop, &[]);
+
+        fb.switch_to_block(post_loop);
+        let result = fb.const_int(42);
+        fb.ret(Some(result));
+
+        let mut func = fb.build();
+        let shape = structurize(&mut func);
+
+        // post_loop should appear AFTER the loop as a continuation block,
+        // not consumed inside the loop's break path. Verify post_loop is
+        // in the top-level sequence, not nested inside a Loop body.
+        fn is_block_at_top_level(shape: &Shape, target: BlockId) -> bool {
+            match shape {
+                Shape::Block(b) => *b == target,
+                Shape::Seq(parts) => parts.iter().any(|p| is_block_at_top_level(p, target)),
+                _ => false,
+            }
+        }
+
+        fn is_block_inside_loop(shape: &Shape, target: BlockId) -> bool {
+            match shape {
+                Shape::Loop { body, .. } => contains_block(body, target),
+                Shape::Seq(parts) => parts.iter().any(|p| is_block_inside_loop(p, target)),
+                Shape::WhileLoop { body, .. } | Shape::ForLoop { body, .. } => {
+                    contains_block(body, target)
+                }
+                _ => false,
+            }
+        }
+
+        fn contains_block(shape: &Shape, target: BlockId) -> bool {
+            match shape {
+                Shape::Block(b) => *b == target,
+                Shape::Seq(parts) => parts.iter().any(|p| contains_block(p, target)),
+                Shape::IfElse {
+                    then_body,
+                    else_body,
+                    ..
+                } => contains_block(then_body, target) || contains_block(else_body, target),
+                Shape::WhileLoop { body, .. }
+                | Shape::ForLoop { body, .. }
+                | Shape::Loop { body, .. } => contains_block(body, target),
+                Shape::LogicalOr { rhs_body, .. } | Shape::LogicalAnd { rhs_body, .. } => {
+                    contains_block(rhs_body, target)
+                }
+                Shape::Switch {
+                    cases,
+                    default_body,
+                    ..
+                } => {
+                    cases.iter().any(|c| contains_block(&c.body, target))
+                        || contains_block(default_body, target)
+                }
+                _ => false,
+            }
+        }
+
+        // post_loop should be at the top level (after the loop), not consumed
+        // inside the loop body.
+        assert!(
+            is_block_at_top_level(&shape, post_loop),
+            "post_loop should be at top level, got: {shape:?}"
+        );
+        assert!(
+            !is_block_inside_loop(&shape, post_loop),
+            "post_loop should NOT be consumed inside loop body, got: {shape:?}"
+        );
+    }
 }
