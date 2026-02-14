@@ -881,6 +881,24 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         }
         emit_external_imports(&refs.ext_value_refs, &refs.ext_type_refs, &module.external_imports, module_exports, "..", &mut out);
 
+        // Intra-module class imports for free functions.
+        let init_segments = vec!["_init".to_string()];
+        for short_name in &refs.value_refs {
+            if let Some(entry) = registry.classes.get(short_name) {
+                let rel = relative_import_path(&init_segments, &entry.path_segments);
+                let _ = writeln!(out, "import {{ {short_name} }} from \"{rel}\";");
+            }
+        }
+        for short_name in &refs.type_refs {
+            if refs.value_refs.contains(short_name) {
+                continue;
+            }
+            if let Some(entry) = registry.classes.get(short_name) {
+                let rel = relative_import_path(&init_segments, &entry.path_segments);
+                let _ = writeln!(out, "import type {{ {short_name} }} from \"{rel}\";");
+            }
+        }
+
         // Globals imports for free functions.
         if !refs.globals_used.is_empty() {
             let mut import_names: Vec<String> = Vec::new();
