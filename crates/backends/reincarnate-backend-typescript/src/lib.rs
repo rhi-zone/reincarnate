@@ -1,3 +1,4 @@
+pub mod ast_passes;
 pub mod ast_printer;
 pub mod emit;
 pub mod js_ast;
