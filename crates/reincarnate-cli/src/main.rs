@@ -100,6 +100,7 @@ fn resolve_runtime(engine: &EngineOrigin, backend: &TargetBackend) -> Option<Run
     let engine_name = match engine {
         EngineOrigin::Flash => "flash",
         EngineOrigin::GameMaker => "gamemaker",
+        EngineOrigin::Twine => "twine",
         _ => return None,
     };
     let lang = match backend {
