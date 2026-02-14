@@ -1,0 +1,17 @@
+{
+  "system_modules": {
+    "SugarCube.State": { "path": "sugarcube/state" },
+    "SugarCube.Output": { "path": "sugarcube/output" },
+    "SugarCube.Navigation": { "path": "sugarcube/navigation" },
+    "SugarCube.Engine": { "path": "sugarcube/engine" },
+    "SugarCube.Audio": { "path": "sugarcube/audio" },
+    "SugarCube.DOM": { "path": "sugarcube/dom" },
+    "SugarCube.Input": { "path": "sugarcube/input" },
+    "SugarCube.Widget": { "path": "sugarcube/widget" }
+  },
+  "scaffold": {},
+  "class_preamble": null,
+  "type_definitions": {},
+  "function_signatures": {},
+  "function_modules": []
+}
