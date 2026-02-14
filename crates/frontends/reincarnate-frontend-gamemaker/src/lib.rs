@@ -4,7 +4,7 @@ pub mod naming;
 mod object;
 mod translate;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 
 use datawin::DataWin;
@@ -68,6 +68,17 @@ impl Frontend for GameMakerFrontend {
         // Pre-resolve object names for event naming and parent resolution.
         let obj_names = resolve_object_names(&dw, objt)?;
 
+        // Build set of clean script names (for self-injection at call sites).
+        let script_names: HashSet<String> = scpt
+            .scripts
+            .iter()
+            .filter_map(|s| {
+                dw.resolve_string(s.name)
+                    .ok()
+                    .map(|n| strip_script_prefix(&n).to_string())
+            })
+            .collect();
+
         let mut mb = ModuleBuilder::new(&game_name);
 
         // Register global variables from VARI.
@@ -75,7 +86,7 @@ impl Frontend for GameMakerFrontend {
 
         // Translate scripts.
         let (script_ok, script_err) =
-            translate_scripts(&dw, code, scpt, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &input, &obj_names)?;
+            translate_scripts(&dw, code, scpt, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &input, &obj_names, &script_names)?;
         eprintln!("[gamemaker] translated {script_ok} scripts ({script_err} errors)");
 
         // Translate objects → ClassDefs with event handler methods.
@@ -89,6 +100,7 @@ impl Frontend for GameMakerFrontend {
             &code_locals_map,
             &mut mb,
             &obj_names,
+            &script_names,
         )
         .map_err(|e| CoreError::Parse {
             file: input.source.clone(),
@@ -98,7 +110,7 @@ impl Frontend for GameMakerFrontend {
 
         // Translate global init scripts (GLOB chunk).
         let glob_count = translate_global_inits(
-            &dw, code, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &obj_names,
+            &dw, code, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &obj_names, &script_names,
         );
         if glob_count > 0 {
             eprintln!("[gamemaker] translated {glob_count} global init scripts");
@@ -106,7 +118,7 @@ impl Frontend for GameMakerFrontend {
 
         // Translate room creation code.
         let (room_count, room_creation_code) = translate_room_creation(
-            &dw, code, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &obj_names,
+            &dw, code, &function_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &mut mb, &obj_names, &script_names,
         );
         if room_count > 0 {
             eprintln!("[gamemaker] translated {room_count} room creation scripts");
@@ -146,6 +158,7 @@ fn translate_scripts(
     mb: &mut ModuleBuilder,
     input: &FrontendInput,
     obj_names: &[String],
+    script_names: &HashSet<String>,
 ) -> Result<(usize, usize), CoreError> {
     let mut translated = 0;
     let mut errors = 0;
@@ -185,11 +198,12 @@ fn translate_scripts(
             vari_ref_map,
             bytecode_offset: code_entry.bytecode_offset,
             locals,
-            has_self: false,
+            has_self: true,
             has_other: false,
             arg_count: code_entry.args_count & 0x7FFF,
             obj_names,
             class_name: None,
+            script_names,
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
@@ -219,6 +233,7 @@ fn translate_global_inits(
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
     obj_names: &[String],
+    script_names: &HashSet<String>,
 ) -> usize {
     let glob = match dw.glob() {
         Ok(Some(g)) => g,
@@ -254,6 +269,7 @@ fn translate_global_inits(
             arg_count: code_entry.args_count & 0x7FFF,
             obj_names,
             class_name: None,
+            script_names,
         };
 
         if let Ok(func) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
@@ -279,6 +295,7 @@ fn translate_room_creation(
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
     obj_names: &[String],
+    script_names: &HashSet<String>,
 ) -> (usize, BTreeMap<usize, String>) {
     let room = match dw.room() {
         Ok(r) => r,
@@ -318,6 +335,7 @@ fn translate_room_creation(
             arg_count: code_entry.args_count & 0x7FFF,
             obj_names,
             class_name: None,
+            script_names,
         };
 
         if let Ok(func) = translate::translate_code_entry(bytecode, &func_name, &ctx) {

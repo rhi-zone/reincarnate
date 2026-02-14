@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use datawin::chunks::objt::{event_type, ObjectEntry};
 use datawin::DataWin;
@@ -21,6 +21,7 @@ pub fn translate_objects(
     code_locals_map: &HashMap<String, &datawin::chunks::func::CodeLocals>,
     mb: &mut ModuleBuilder,
     obj_names: &[String],
+    script_names: &HashSet<String>,
 ) -> Result<(usize, usize), String> {
     let objt = dw.objt().map_err(|e| e.to_string())?;
     let mut translated = 0;
@@ -97,6 +98,7 @@ pub fn translate_objects(
                         arg_count: code_entry.args_count & 0x7FFF,
                         obj_names,
                         class_name: Some(obj_name),
+                        script_names,
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {

@@ -39,6 +39,8 @@ pub struct TranslateCtx<'a> {
     pub obj_names: &'a [String],
     /// Class name for event handlers (used to type the self parameter).
     pub class_name: Option<&'a str>,
+    /// Set of clean script names (for injecting self at call sites).
+    pub script_names: &'a HashSet<String>,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
@@ -978,9 +980,18 @@ fn translate_instruction(
                     .and_then(|&idx| ctx.function_names.get(&(idx as u32)))
                     .cloned()
                     .unwrap_or_else(|| format!("func_unknown_{function_id}"));
-                let mut args = Vec::with_capacity(argc as usize);
+                let mut args = Vec::with_capacity(argc as usize + 1);
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);
+                }
+                // Scripts receive the caller's instance as an implicit first arg.
+                if ctx.script_names.contains(&func_name) {
+                    let self_val = if ctx.has_self {
+                        fb.param(0)
+                    } else {
+                        fb.const_null()
+                    };
+                    args.insert(0, self_val);
                 }
                 let result = fb.call(&func_name, &args, Type::Dynamic);
                 stack.push(result);
