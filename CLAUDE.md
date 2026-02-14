@@ -45,7 +45,7 @@ From ecosystem-wide session analysis:
 
 - **Question scope early:** Before implementing, ask whether it belongs in this crate/module
 - **Check consistency:** Look at how similar things are done elsewhere in the codebase
-- **Implement fully:** No silent arbitrary caps, incomplete pagination, or unexposed trait methods. The test project (`~/cc-project/`) is one example input, not the universe — fixing only the cases it exercises is a half measure. If a class of bug exists, fix the entire class. If a pattern applies to all properties on a type, apply it to all of them, not just the ones that happen to blow up today.
+- **Implement fully:** No silent arbitrary caps, incomplete pagination, or unexposed trait methods. The test projects (`~/cc-project/` for Flash, `~/Bounty/` for GML) are example inputs, not the universe — fixing only the cases they exercise is a half measure. If a class of bug exists, fix the entire class. If a pattern applies to all properties on a type, apply it to all of them, not just the ones that happen to blow up today.
 - **Name for purpose:** Avoid names that describe one consumer
 - **Verify before stating:** Don't assert API behavior or codebase facts without checking
 
@@ -130,7 +130,7 @@ cargo run -p reincarnate-cli -- info --manifest ~/cc-project/reincarnate.json
 
 The `--manifest` flag defaults to `reincarnate.json` in the current directory. Use `--skip-pass` to disable specific transform passes (e.g. `--skip-pass type-inference --skip-pass constant-folding`).
 
-Test project is at `~/cc-project/` (Flash SWF → TypeScript).
+Test projects: `~/cc-project/` (Flash SWF → TypeScript), `~/Bounty/` (GameMaker GML → TypeScript).
 
 ## Crate Structure
 
