@@ -658,6 +658,23 @@ program analysis or conservative assumptions.
 - [x] **Named object singleton accessors** — Done. Numeric instance IDs
   resolved to named singletons (e.g. `Stats.instances[0].dice_type`)
   using object names from OBJT chunk.
+- [x] **Self-referencing instance types** — Done. The GM compiler uses the
+  owning object's index as instance type for self-variable access. Normalized
+  to -1 (Own) when instance matches `self_object_index`.
+- [x] **Object persistent/visible flags** — Done. Emit `persistent` and
+  `visible` from OBJT as class instance fields when they differ from defaults.
+- [ ] **Parent class self-references** — When an object inherits from
+  a parent, bytecode may use the parent's object index as instance type for
+  inherited field accesses. Currently these produce cross-object `getOn/setOn`
+  instead of self-access. Need to walk the parent chain in TranslateCtx.
+- [ ] **Empty switch cases in roomstart** — Switch/case bodies contain
+  string assignments in the bytecode but they're being lost during
+  decompilation (all cases emit as empty `break`). Investigate whether
+  the string constant assignments are being DCE'd or dropped.
+- [ ] **ButtonBase alarm/advantages/inventory** — Stats.create() references
+  `ButtonBase.instances[0].alarm`, `.advantages`, `.inventory` with
+  instance type 0 (ButtonBase). In the original GML these may be genuine
+  cross-object references or may need parent-chain normalization.
 
 ### Type Inference Results
 
