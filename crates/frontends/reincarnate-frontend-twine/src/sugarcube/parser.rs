@@ -49,7 +49,35 @@ impl<'a> Parser<'a> {
     }
 
     fn remaining(&self) -> &'a str {
-        &self.src[self.pos..]
+        // Safety: ensure we're on a char boundary
+        let pos = self.snap_to_char_boundary(self.pos);
+        &self.src[pos..]
+    }
+
+    /// Snap a byte position forward to the nearest UTF-8 char boundary.
+    fn snap_to_char_boundary(&self, pos: usize) -> usize {
+        let mut p = pos;
+        while p < self.bytes.len() && !self.src.is_char_boundary(p) {
+            p += 1;
+        }
+        p
+    }
+
+    /// Advance past the current UTF-8 character (1-4 bytes).
+    fn advance_char(&mut self) {
+        if self.pos < self.bytes.len() {
+            let b = self.bytes[self.pos];
+            let width = if b < 0x80 {
+                1
+            } else if b < 0xE0 {
+                2
+            } else if b < 0xF0 {
+                3
+            } else {
+                4
+            };
+            self.pos = (self.pos + width).min(self.bytes.len());
+        }
     }
 
     fn error(&mut self, span: Span, msg: impl Into<String>) {
@@ -402,7 +430,7 @@ impl<'a> Parser<'a> {
                 b'/' if self.pos + 1 < self.bytes.len() && self.bytes[self.pos + 1] == b'/' => {
                     // Line comment — skip to end of line
                     while !self.at_end() && self.ch() != b'\n' {
-                        self.pos += 1;
+                        self.advance_char();
                     }
                 }
                 b'/' if self.pos + 1 < self.bytes.len() && self.bytes[self.pos + 1] == b'*' => {
@@ -416,13 +444,14 @@ impl<'a> Parser<'a> {
                             self.pos += 2;
                             break;
                         }
-                        self.pos += 1;
+                        self.advance_char();
                     }
                 }
-                _ => self.pos += 1,
+                _ => self.advance_char(),
             }
         }
-        &self.src[start..self.pos]
+        let end = self.snap_to_char_boundary(self.pos);
+        &self.src[start..end]
     }
 
     fn skip_string(&mut self, quote: u8) {
@@ -434,9 +463,9 @@ impl<'a> Parser<'a> {
                 return;
             }
             if c == b'\\' {
-                self.pos += 1; // skip escape
+                self.pos += 1; // skip escape char
             }
-            self.pos += 1;
+            self.advance_char();
         }
     }
 
@@ -450,7 +479,7 @@ impl<'a> Parser<'a> {
             if self.ch() == b'\\' {
                 self.pos += 1;
             }
-            self.pos += 1;
+            self.advance_char();
         }
     }
 
@@ -804,9 +833,10 @@ impl<'a> Parser<'a> {
                 b']' => depth -= 1,
                 _ => {}
             }
-            self.pos += 1;
+            self.advance_char();
         }
-        let content = &self.src[content_start..self.pos];
+        let end = self.snap_to_char_boundary(self.pos);
+        let content = &self.src[content_start..end];
 
         // Skip closing ]]
         if self.remaining().starts_with("]]") {
@@ -844,10 +874,11 @@ impl<'a> Parser<'a> {
                     _ => {}
                 }
                 if sdepth > 0 {
-                    self.pos += 1;
+                    self.advance_char();
                 }
             }
-            let setter_src = &self.src[setter_start..self.pos];
+            let setter_end = self.snap_to_char_boundary(self.pos);
+            let setter_src = &self.src[setter_start..setter_end];
             if !self.at_end() {
                 self.pos += 1; // skip ]
             }
@@ -1008,19 +1039,20 @@ impl<'a> Parser<'a> {
                     let q = self.ch();
                     self.pos += 1;
                     while !self.at_end() && self.ch() != q {
-                        self.pos += 1;
+                        self.advance_char();
                     }
                     if !self.at_end() {
                         self.pos += 1;
                     }
                 }
-                _ => self.pos += 1,
+                _ => self.advance_char(),
             }
         }
-        let html = self.src[start..self.pos].to_string();
+        let end = self.snap_to_char_boundary(self.pos);
+        let html = self.src[start..end].to_string();
         Node {
             kind: NodeKind::Html(html),
-            span: Span::new(start, self.pos),
+            span: Span::new(start, end),
         }
     }
 
@@ -1029,6 +1061,11 @@ impl<'a> Parser<'a> {
         let start = self.pos;
         while !self.at_end() {
             let ch = self.ch();
+            // Only ASCII bytes can start special sequences
+            if ch >= 0x80 {
+                self.advance_char();
+                continue;
+            }
             match ch {
                 // Stop at special sequences
                 b'<' if self.remaining().starts_with("<<")
@@ -1056,10 +1093,11 @@ impl<'a> Parser<'a> {
                 _ => self.pos += 1,
             }
         }
-        let text = self.src[start..self.pos].to_string();
+        let end = self.snap_to_char_boundary(self.pos);
+        let text = self.src[start..end].to_string();
         Node {
             kind: NodeKind::Text(text),
-            span: Span::new(start, self.pos),
+            span: Span::new(start, end),
         }
     }
 }
