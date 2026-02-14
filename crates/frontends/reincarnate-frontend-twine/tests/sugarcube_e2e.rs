@@ -1,4 +1,5 @@
-//! End-to-end tests for SugarCube passage parsing against real game data.
+//! End-to-end tests for SugarCube passage parsing and translation against real
+//! game data.
 //!
 //! These tests require the test projects to be present at their canonical
 //! locations. They are marked `#[ignore]` so they don't run in CI without
@@ -36,6 +37,50 @@ fn parse_all_passages(html: &str) -> (usize, usize, usize) {
     }
 
     (total, error_passages, panic_count)
+}
+
+/// Parse + translate all passages and return (total, translate_panics).
+fn translate_all_passages(html: &str) -> (usize, usize, usize) {
+    let story = extract::extract_story(html).expect("failed to extract story");
+    assert_eq!(story.format, "SugarCube");
+
+    let total = story.passages.len();
+    let mut translate_panics = 0;
+    let mut total_functions = 0;
+
+    for passage in &story.passages {
+        let ast = sugarcube::parse_passage(&passage.source);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            sugarcube::translate::translate_passage(&passage.name, &ast)
+        }));
+        match result {
+            Ok((func, widgets)) => {
+                total_functions += 1 + widgets.len();
+                // Also translate widgets to catch panics there
+                for (name, body) in &widgets {
+                    let wr = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        sugarcube::translate::translate_widget(name, body)
+                    }));
+                    if wr.is_err() {
+                        translate_panics += 1;
+                        eprintln!("PANIC translating widget {name:?} from passage {:?}", passage.name);
+                    }
+                }
+                // Verify the function has at least one block
+                assert!(
+                    !func.blocks.is_empty(),
+                    "passage {:?} produced empty function",
+                    passage.name
+                );
+            }
+            Err(_) => {
+                translate_panics += 1;
+                eprintln!("PANIC translating passage: {:?}", passage.name);
+            }
+        }
+    }
+
+    (total, translate_panics, total_functions)
 }
 
 #[test]
@@ -89,5 +134,47 @@ fn parse_repurposing_center() {
     assert!(
         rate >= 99.0,
         "parse success rate {rate:.1}% is below 99% threshold"
+    );
+}
+
+#[test]
+#[ignore]
+fn translate_degrees_of_lewdity() {
+    let path = format!(
+        "{}/reincarnate/twine/dol/Degrees of Lewdity 0.4.0.9.html",
+        std::env::var("HOME").unwrap()
+    );
+    let html = std::fs::read_to_string(&path).expect("failed to read DoL HTML");
+    let (total, translate_panics, total_functions) = translate_all_passages(&html);
+
+    eprintln!("=== Degrees of Lewdity (translation) ===");
+    eprintln!("Total passages:   {total}");
+    eprintln!("Total functions:  {total_functions}");
+    eprintln!("Translate panics: {translate_panics}");
+
+    assert_eq!(
+        translate_panics, 0,
+        "translator panicked on {translate_panics} passages"
+    );
+}
+
+#[test]
+#[ignore]
+fn translate_repurposing_center() {
+    let path = format!(
+        "{}/reincarnate/twine/trc/The Repurposing Center.html",
+        std::env::var("HOME").unwrap()
+    );
+    let html = std::fs::read_to_string(&path).expect("failed to read TRC HTML");
+    let (total, translate_panics, total_functions) = translate_all_passages(&html);
+
+    eprintln!("=== The Repurposing Center (translation) ===");
+    eprintln!("Total passages:   {total}");
+    eprintln!("Total functions:  {total_functions}");
+    eprintln!("Translate panics: {translate_panics}");
+
+    assert_eq!(
+        translate_panics, 0,
+        "translator panicked on {translate_panics} passages"
     );
 }
