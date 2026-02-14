@@ -375,6 +375,62 @@ impl<'a> Parser<'a> {
                 let list = expr::parse_assignment_list(&mut lexer);
                 MacroArgs::AssignList(list)
             }
+            "back" | "return" | "goto" | "include" => {
+                // Navigation macros: detect [[...]] link syntax before
+                // falling through to expression parsing. Without this,
+                // [[text|passage]] is misinterpreted as nested array
+                // literals with bitwise-OR by parse_expr.
+                if self.remaining().starts_with("[[") {
+                    let args_src = self.capture_args_src();
+                    let trimmed = args_src.trim();
+                    if let Some(inner) = trimmed.strip_prefix("[[") {
+                        if let Some(inner) = inner.strip_suffix("]]") {
+                            // Extract passage target:
+                            //   text|passage, text->passage, passage<-text, or passage
+                            let passage_str = if let Some(pipe) = inner.rfind('|') {
+                                inner[pipe + 1..].trim()
+                            } else if let Some(arrow) = inner.find("->") {
+                                inner[arrow + 2..].trim()
+                            } else if let Some(arrow) = inner.find("<-") {
+                                inner[..arrow].trim()
+                            } else {
+                                inner.trim()
+                            };
+                            let base = self.pos - args_src.len();
+                            let passage_expr = if passage_str.starts_with('$')
+                                || passage_str.starts_with('_')
+                            {
+                                // Variable reference — use expression parser
+                                let mut lexer = ExprLexer::new(passage_str, base);
+                                expr::parse_expr(&mut lexer)
+                            } else {
+                                // Literal passage name
+                                Expr {
+                                    kind: ExprKind::Str(passage_str.to_string()),
+                                    span: Span::new(base, self.pos),
+                                }
+                            };
+                            return MacroArgs::Expr(passage_expr);
+                        }
+                    }
+                    MacroArgs::Raw(args_src.to_string())
+                } else {
+                    let args_src = self.capture_args_src();
+                    let trimmed = args_src.trim();
+                    if trimmed.is_empty() {
+                        MacroArgs::None
+                    } else {
+                        let mut lexer =
+                            ExprLexer::new(args_src, self.pos - args_src.len());
+                        let e = expr::parse_expr(&mut lexer);
+                        if matches!(e.kind, ExprKind::Error(_)) {
+                            MacroArgs::Raw(args_src.to_string())
+                        } else {
+                            MacroArgs::Expr(e)
+                        }
+                    }
+                }
+            }
             _ => {
                 // Generic: parse as expression if possible, or raw
                 let args_src = self.capture_args_src();
@@ -1614,5 +1670,118 @@ mod tests {
         // Should parse without errors
         let macro_count = ast.body.iter().filter(|n| matches!(n.kind, NodeKind::Macro(_))).count();
         assert!(macro_count >= 3, "expected at least 3 macros, got {}", macro_count);
+    }
+
+    // ── Navigation macro [[...]] link syntax ─────────────────────────
+
+    fn extract_macro_args(src: &str) -> MacroArgs {
+        let node = first_node(src);
+        match node.kind {
+            NodeKind::Macro(m) => m.args,
+            other => panic!("expected macro, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn back_link_pipe_variable() {
+        // <<back [[game|$return]]>> → Expr(StoryVar("return"))
+        let args = extract_macro_args("<<back [[game|$return]]>>");
+        match args {
+            MacroArgs::Expr(e) => {
+                assert!(
+                    matches!(&e.kind, ExprKind::StoryVar(n) if n == "return"),
+                    "expected StoryVar(\"return\"), got {:?}",
+                    e.kind
+                );
+            }
+            other => panic!("expected Expr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn goto_link_bare_passage() {
+        // <<goto [[Room]]>> → Expr(Str("Room"))
+        let args = extract_macro_args("<<goto [[Room]]>>");
+        match args {
+            MacroArgs::Expr(e) => {
+                assert!(
+                    matches!(&e.kind, ExprKind::Str(s) if s == "Room"),
+                    "expected Str(\"Room\"), got {:?}",
+                    e.kind
+                );
+            }
+            other => panic!("expected Expr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn include_link_arrow_right() {
+        // <<include [[text->Target]]>> → Expr(Str("Target"))
+        let args = extract_macro_args("<<include [[text->Target]]>>");
+        match args {
+            MacroArgs::Expr(e) => {
+                assert!(
+                    matches!(&e.kind, ExprKind::Str(s) if s == "Target"),
+                    "expected Str(\"Target\"), got {:?}",
+                    e.kind
+                );
+            }
+            other => panic!("expected Expr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn return_link_arrow_left() {
+        // <<return [[Target<-text]]>> → Expr(Str("Target"))
+        let args = extract_macro_args("<<return [[Target<-text]]>>");
+        match args {
+            MacroArgs::Expr(e) => {
+                assert!(
+                    matches!(&e.kind, ExprKind::Str(s) if s == "Target"),
+                    "expected Str(\"Target\"), got {:?}",
+                    e.kind
+                );
+            }
+            other => panic!("expected Expr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn back_link_temp_variable() {
+        // <<back [[game|_dest]]>> → Expr(TempVar("dest"))
+        let args = extract_macro_args("<<back [[game|_dest]]>>");
+        match args {
+            MacroArgs::Expr(e) => {
+                assert!(
+                    matches!(&e.kind, ExprKind::TempVar(n) if n == "dest"),
+                    "expected TempVar(\"dest\"), got {:?}",
+                    e.kind
+                );
+            }
+            other => panic!("expected Expr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn back_quoted_string_still_works() {
+        // <<back "Lobby">> → Expr(Str("Lobby"))
+        let args = extract_macro_args(r#"<<back "Lobby">>"#);
+        match args {
+            MacroArgs::Expr(e) => {
+                assert!(
+                    matches!(&e.kind, ExprKind::Str(s) if s == "Lobby"),
+                    "expected Str(\"Lobby\"), got {:?}",
+                    e.kind
+                );
+            }
+            other => panic!("expected Expr, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn goto_no_args() {
+        // <<goto>> → None (should not panic)
+        let args = extract_macro_args("<<goto>>");
+        assert!(matches!(args, MacroArgs::None));
     }
 }
