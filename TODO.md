@@ -906,3 +906,15 @@ causing compile errors if any emitted code calls them.
 **color.ts** — missing color functions from gml.js reference:
 - [ ] `color_get_hue` — extract hue component (0–255) from a GML color
 - [ ] `make_color_hsv` — create color from hue, saturation, value
+
+## Twine Frontend
+
+### Known Issues
+
+- [ ] **Double-bracket array wrapping in navigation calls** — Calls like
+  `SugarCube_Navigation.back([[SugarCube_Engine.resolve("game") | ...]])` emit
+  with spurious `[[...]]` double-bracketing around arguments. The frontend
+  translator appears to produce an ArrayInit wrapping the argument list for
+  some macro argument forms (raw args parsed as link syntax?). The backend and
+  runtime are correct — this is a frontend argument lowering issue. Observed
+  in TRC output for `<<back>>` / `<<return>>` macros with expression targets.

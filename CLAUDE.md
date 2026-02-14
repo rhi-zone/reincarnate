@@ -35,7 +35,7 @@ Reincarnate works on **bytecode and script**, not native code:
 - Future work → TODO.md
 - Key insights → this file
 
-**Triggers:** User corrects you, 2+ failed attempts, "aha" moment, framework quirk discovered → document before proceeding.
+**Triggers:** User corrects you, 2+ failed attempts, "aha" moment, framework quirk discovered → document **before** proceeding. Never describe a bug in conversation and move on — write it to TODO.md first, then continue working.
 
 **Do the work properly.** When asked to analyze X, actually read X - don't synthesize from conversation.
 
