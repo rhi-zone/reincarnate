@@ -1289,16 +1289,31 @@ fn translate_push_variable(
                 );
                 stack.push(val);
             }
+        } else if ctx.has_self {
+            // ref_type==0 with instance >= 0: the instance field is the VARI
+            // table's scope owner, NOT the target object.  The actual target
+            // is always the current instance (self).  Cross-object access uses
+            // ref_type 0x80 (stacktop) or 0xA0 (singleton) instead.
+            let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+            let self_param = fb.param(0);
+            if is_scalar {
+                let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
+                stack.push(field_val);
+            } else {
+                let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
+                let indexed = fb.get_index(field_val, dim1, Type::Dynamic);
+                stack.push(indexed);
+            }
         } else {
-            // Array field access on a specific object.
-            // dim1 == -1 means scalar (non-indexed) access.
+            // Script context (no self): the instance field identifies the
+            // target object for cross-object variable access.
+            let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
             let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
                 fb.const_string(name)
             } else {
                 fb.const_int(instance as i64)
             };
             let name_val = fb.const_string(&var_name);
-            let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
             let args: Vec<ValueId> = if is_scalar {
                 vec![obj_id, name_val]
             } else {
@@ -1528,16 +1543,29 @@ fn translate_pop(
                         Type::Void,
                     );
                 }
-            } else {
-                // Array field store on a specific object.
-                // dim1 == -1 means scalar (non-indexed) access.
-                let obj_id = if let Some(name) = ctx.obj_names.get(*instance as usize) {
-                    fb.const_string(name)
-                } else {
-                    fb.const_int(*instance as i64)
-                };
-                let name_val = fb.const_string(&var_name);
+            } else if ctx.has_self {
+                // ref_type==0 with instance >= 0: the instance field is the
+                // VARI table's scope owner, NOT the target object.  The actual
+                // target is always self.  (See translate_push_variable.)
                 let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+                let self_param = fb.param(0);
+                if is_scalar {
+                    fb.set_field(self_param, &var_name, value);
+                } else {
+                    let field_val =
+                        fb.get_field(self_param, &var_name, Type::Dynamic);
+                    fb.set_index(field_val, dim1, value);
+                }
+            } else {
+                // Script context (no self): cross-object variable access.
+                let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+                let obj_id =
+                    if let Some(name) = ctx.obj_names.get(*instance as usize) {
+                        fb.const_string(name)
+                    } else {
+                        fb.const_int(*instance as i64)
+                    };
+                let name_val = fb.const_string(&var_name);
                 let args: Vec<ValueId> = if is_scalar {
                     vec![obj_id, name_val, value]
                 } else {
