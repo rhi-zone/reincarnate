@@ -1710,6 +1710,11 @@ impl<'a> Structurizer<'a> {
         header: BlockId,
         loop_body: &HashSet<BlockId>,
     ) -> Shape {
+        // The header was already inserted into `emitted` by the initial
+        // `structurize_region` call that detected it as a loop header.
+        // Remove it so `structurize_region` can process the header's
+        // instructions as the first part of the loop body.
+        self.emitted.remove(&header);
         let body = self.structurize_region(header, None, Some(loop_body));
         Shape::Loop {
             header,
