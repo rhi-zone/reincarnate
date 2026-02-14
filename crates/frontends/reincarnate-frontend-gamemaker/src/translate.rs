@@ -56,7 +56,11 @@ pub fn translate_code_entry(
     let block_starts = find_block_starts(&instructions);
 
     // Pass 2: Create IR blocks.
-    let sig = build_signature(ctx);
+    // Old-style scripts may use argumentN without declaring parameters —
+    // scan for implicit argument references to determine true arg count.
+    let implicit_args = scan_implicit_args(&instructions, ctx);
+    let effective_arg_count = ctx.arg_count.max(implicit_args);
+    let sig = build_signature_with_args(ctx, effective_arg_count);
     let mut fb = FunctionBuilder::new(func_name, sig, Visibility::Public);
 
     // Name parameters.
@@ -69,10 +73,10 @@ pub fn translate_code_entry(
         fb.name_value(fb.param(param_idx), "other".to_string());
         param_idx += 1;
     }
-    for i in 0..ctx.arg_count {
-        if let Some(name) = arg_name(ctx, i) {
-            fb.name_value(fb.param(param_idx), name);
-        }
+    for i in 0..effective_arg_count {
+        let name = arg_name(ctx, i)
+            .unwrap_or_else(|| format!("argument{i}"));
+        fb.name_value(fb.param(param_idx), name);
         param_idx += 1;
     }
 
@@ -468,6 +472,10 @@ fn find_block_starts(instructions: &[Instruction]) -> BTreeSet<usize> {
 
 /// Build function signature from context.
 fn build_signature(ctx: &TranslateCtx) -> FunctionSig {
+    build_signature_with_args(ctx, ctx.arg_count)
+}
+
+fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig {
     let mut params = Vec::new();
     if ctx.has_self {
         let self_ty = ctx
@@ -479,7 +487,7 @@ fn build_signature(ctx: &TranslateCtx) -> FunctionSig {
     if ctx.has_other {
         params.push(Type::Dynamic);
     }
-    for _ in 0..ctx.arg_count {
+    for _ in 0..arg_count {
         params.push(Type::Dynamic);
     }
     FunctionSig {
@@ -487,6 +495,30 @@ fn build_signature(ctx: &TranslateCtx) -> FunctionSig {
         return_ty: Type::Dynamic,
         ..Default::default()
     }
+}
+
+/// Parse `argumentN` variable names and return the index N, if any.
+fn parse_argument_index(name: &str) -> Option<usize> {
+    name.strip_prefix("argument").and_then(|s| s.parse::<usize>().ok())
+}
+
+/// Scan instructions for implicit `argument0`..`argumentN` references
+/// (variables with Builtin/Own instance type whose name matches `argumentN`).
+/// Returns the number of implicit arguments (max index + 1), or 0 if none found.
+fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> u16 {
+    let mut max_idx: Option<usize> = None;
+    for inst in instructions {
+        if let Operand::Variable { instance, .. } = &inst.operand {
+            let it = InstanceType::from_i16(*instance);
+            if matches!(it, Some(InstanceType::Own) | Some(InstanceType::Builtin)) {
+                let name = resolve_variable_name(inst, ctx);
+                if let Some(idx) = parse_argument_index(&name) {
+                    max_idx = Some(max_idx.map_or(idx, |m: usize| m.max(idx)));
+                }
+            }
+        }
+    }
+    max_idx.map_or(0, |m| (m + 1) as u16)
 }
 
 /// Get a name for argument index `i`.
@@ -1124,8 +1156,13 @@ fn translate_push_variable(
             }
         }
         Some(InstanceType::Own) | Some(InstanceType::Builtin) => {
-            // Self/builtin variable: get_field on self param.
-            if ctx.has_self {
+            if let Some(arg_idx) = parse_argument_index(&var_name) {
+                // Implicit argument variable → function parameter.
+                let param_offset = if ctx.has_self { 1 } else { 0 }
+                    + if ctx.has_other { 1 } else { 0 };
+                let param = fb.param(param_offset + arg_idx);
+                stack.push(param);
+            } else if ctx.has_self {
                 let self_param = fb.param(0);
                 let val = fb.get_field(self_param, &var_name, Type::Dynamic);
                 stack.push(val);
@@ -1254,7 +1291,17 @@ fn translate_pop(
                 }
             }
             Some(InstanceType::Own) | Some(InstanceType::Builtin) => {
-                if ctx.has_self {
+                if let Some(arg_idx) = parse_argument_index(&var_name) {
+                    // Implicit argument variable → store via local slot.
+                    let param_offset = if ctx.has_self { 1 } else { 0 }
+                        + if ctx.has_other { 1 } else { 0 };
+                    let param = fb.param(param_offset + arg_idx);
+                    let slot = fb.alloc(Type::Dynamic);
+                    fb.name_value(slot, var_name.clone());
+                    fb.store(slot, param);
+                    fb.store(slot, value);
+                    locals.insert(var_name, slot);
+                } else if ctx.has_self {
                     let self_param = fb.param(0);
                     fb.set_field(self_param, &var_name, value);
                 } else {
