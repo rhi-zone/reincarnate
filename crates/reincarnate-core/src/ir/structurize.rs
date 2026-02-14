@@ -950,8 +950,34 @@ impl<'a> Structurizer<'a> {
                     .copied()
                     .filter(|&m| m != block);
 
+                // Reorder cases so that when multiple cases share the same
+                // target block, the secondary (fall-through) cases come before
+                // the primary case that will get the body.  The `emitted` set
+                // means only the first `structurize_region` call for a given
+                // block produces a body — subsequent calls return empty.  By
+                // putting empty cases first, the printer can emit fall-through
+                // labels (`case X:` with no body/break).
+                let mut ordered_indices: Vec<usize> = (0..cases.len()).collect();
+                {
+                    // For each target, record the first index that maps to it
+                    // (the "primary" — the one that will get the body).
+                    let mut first_for_target: HashMap<BlockId, usize> = HashMap::new();
+                    for (i, (_constant, target, _args)) in cases.iter().enumerate() {
+                        first_for_target.entry(*target).or_insert(i);
+                    }
+                    // Sort: secondary cases (not the first for their target)
+                    // come before primary ones within each target group.
+                    // Preserve original order otherwise.
+                    ordered_indices.sort_by_key(|&i| {
+                        let target = cases[i].1;
+                        let is_primary = first_for_target[&target] == i;
+                        (target.index(), is_primary as u32, i)
+                    });
+                }
+
                 let mut case_shapes = Vec::with_capacity(cases.len());
-                for (constant, target, args) in cases {
+                for &idx in &ordered_indices {
+                    let (constant, target, args) = &cases[idx];
                     let entry_assigns = self.branch_assigns(*target, args);
                     let body = self.structurize_region(*target, merge, loop_body);
                     let trailing_assigns = merge.map_or(vec![], |m| self.trailing_merge_assigns(&body, m));

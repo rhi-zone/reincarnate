@@ -340,8 +340,12 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     "{indent}  case {}:",
                     emit_constant(constant)
                 );
-                print_stmts(case_stmts, out, &case_indent);
-                let _ = writeln!(out, "{indent}    break;");
+                if case_stmts.is_empty() {
+                    // Fall-through: no body, no break.
+                } else {
+                    print_stmts(case_stmts, out, &case_indent);
+                    let _ = writeln!(out, "{indent}    break;");
+                }
             }
             if !default_body.is_empty() {
                 let _ = writeln!(out, "{indent}  default:");
