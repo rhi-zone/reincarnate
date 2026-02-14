@@ -3894,4 +3894,275 @@ mod tests {
             other => panic!("Expected Assign, got: {other:?}"),
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Regression tests for bug fixes
+    // -----------------------------------------------------------------------
+
+    // Regression: d73d9c7 — fold_single_use_consts must use read-only ref count
+    // when finding fold targets. A bare `x = 5` is a write to x, not a read,
+    // so the fold must skip it and find the real read site.
+    #[test]
+    fn fold_const_skips_bare_write() {
+        // const x = a; x = 5; y = x;
+        // The write `x = 5` references x as a target (write), not read.
+        // fold should inline `a` into `y = a`, not target the write.
+        let mut body = vec![
+            const_decl("x", var("a")),
+            assign(var("x"), int(5)),
+            assign(var("y"), var("x")),
+        ];
+
+        fold_single_use_consts(&mut body);
+
+        // x has 1 read (in `y = x`) + 1 write (in `x = 5`).
+        // The fold should substitute the read: y = a.
+        // The write `x = 5` and the dead decl may remain or be cleaned up,
+        // but critically, `a` must not be silently dropped.
+        let has_a = body.iter().any(|s| match s {
+            Stmt::Assign { value, .. } => *value == var("a"),
+            _ => false,
+        });
+        assert!(has_a, "Expected `a` to be preserved in output: {body:?}");
+    }
+
+    // Regression: 2626123 — dead decl removal must also remove orphaned assigns
+    // to the same variable (bare `x = ...` with no reads).
+    #[test]
+    fn dead_decl_removes_orphaned_assigns() {
+        // let x; x = 0; (no reads of x)
+        // Both the uninit decl and the assign should be removed.
+        let mut body = vec![uninit_decl("x"), assign(var("x"), int(0))];
+
+        fold_single_use_consts(&mut body);
+
+        assert!(
+            body.is_empty(),
+            "Expected empty body after dead decl + assign removal, got: {body:?}"
+        );
+    }
+
+    // Regression: 88a9b23 — forward_substitute must not remove assigns to
+    // variables declared in an outer scope.
+    #[test]
+    fn forward_sub_preserves_outer_scope_assign() {
+        // x = expr; y = x;  (x has no VarDecl in this scope — it's from outer)
+        // forward_substitute should inline x into y but NOT remove the assign
+        // because x is visible to outer scopes.
+        let call = Expr::Call {
+            func: "f".to_string(),
+            args: vec![],
+        };
+        let mut body = vec![assign(var("x"), call.clone()), assign(var("y"), var("x"))];
+
+        forward_substitute(&mut body);
+
+        // x = f() must be preserved (outer scope needs it).
+        assert!(
+            body.iter()
+                .any(|s| matches!(s, Stmt::Assign { target, .. } if *target == var("x"))),
+            "Expected outer-scope assign to x to be preserved: {body:?}"
+        );
+    }
+
+    // Regression: f76cbae — forward_substitute must not replace the target of
+    // an assignment (write position), only reads.
+    #[test]
+    fn forward_sub_no_replace_assign_target() {
+        // const v = f(); v = 5;
+        // The `v` in `v = 5` is a write target. forward_substitute must not
+        // replace it with `f()` (which would produce `f() = 5` — nonsensical).
+        let call = Expr::Call {
+            func: "f".to_string(),
+            args: vec![],
+        };
+        let mut body = vec![
+            const_decl("v", call),
+            assign(var("v"), int(5)),
+        ];
+
+        forward_substitute(&mut body);
+
+        // The assign target must still be var("v"), not the call expression.
+        let has_var_target = body.iter().any(|s| match s {
+            Stmt::Assign { target, value } => *target == var("v") && *value == int(5),
+            _ => false,
+        });
+        assert!(
+            has_var_target,
+            "Expected `v = 5` with Var target to be preserved: {body:?}"
+        );
+    }
+
+    // Regression: 2a0a15a — eliminate_duplicate_assigns removes consecutive
+    // identical assignments (structurizer artifacts from duplicate edges).
+    #[test]
+    fn eliminate_duplicate_assigns_basic() {
+        let mut body = vec![
+            assign(var("x"), var("a")),
+            assign(var("x"), var("a")),
+        ];
+
+        eliminate_duplicate_assigns(&mut body);
+
+        assert_eq!(body.len(), 1, "Expected single assign after dedup: {body:?}");
+        assert!(matches!(&body[0], Stmt::Assign { target, value }
+            if *target == var("x") && *value == var("a")));
+    }
+
+    // Regression: 6aa3e9f — eliminate_forwarding_stubs removes uninit decl +
+    // forwarding assign patterns from empty else-branches.
+    #[test]
+    fn eliminate_forwarding_stub() {
+        // let v1: i64; v2 = v1;  (v1 is uninit and has no other refs)
+        // Both the decl and the forwarding assign should be removed.
+        let mut body = vec![uninit_decl("v1"), assign(var("v2"), var("v1"))];
+
+        eliminate_forwarding_stubs(&mut body);
+
+        assert!(
+            body.is_empty(),
+            "Expected empty body after forwarding stub elimination: {body:?}"
+        );
+    }
+
+    // Regression: b9a1d9e + 6d96d2f — dead VarDecl with pure init and 0 reads
+    // is removed entirely.
+    #[test]
+    fn dead_decl_pure_removed() {
+        // const v = 42; (no reads)
+        let mut body = vec![const_decl("v", int(42))];
+
+        fold_single_use_consts(&mut body);
+
+        assert!(body.is_empty(), "Expected pure dead decl to be removed: {body:?}");
+    }
+
+    // Regression: b9a1d9e — dead VarDecl with side-effectful init and 0 reads
+    // is converted to a bare expression statement (preserving the side effect).
+    #[test]
+    fn dead_decl_impure_kept_as_expr() {
+        // const v = f(); (no reads — side effect must be preserved)
+        let call = Expr::Call {
+            func: "f".to_string(),
+            args: vec![],
+        };
+        let mut body = vec![const_decl("v", call.clone())];
+
+        fold_single_use_consts(&mut body);
+
+        assert_eq!(body.len(), 1, "Expected one statement: {body:?}");
+        match &body[0] {
+            Stmt::Expr(expr) => {
+                assert!(
+                    matches!(expr, Expr::Call { func, .. } if func == "f"),
+                    "Expected bare Call expression, got: {expr:?}"
+                );
+            }
+            other => panic!("Expected Stmt::Expr, got: {other:?}"),
+        }
+    }
+
+    // Regression: 46e4a73 — after self-assign elimination empties the then-branch,
+    // the if-statement should flip: `if (c) {} else { B }` → `if (!c) { B }`.
+    #[test]
+    fn flip_empty_then_after_self_assign() {
+        // if (c) { x = x; } else { x = 1; }
+        // After eliminate_self_assigns: if (c) {} else { x = 1; }
+        // Then flip: if (!c) { x = 1; }
+        let mut body = vec![Stmt::If {
+            cond: var("c"),
+            then_body: vec![assign(var("x"), var("x"))],
+            else_body: vec![assign(var("x"), int(1))],
+        }];
+
+        eliminate_self_assigns(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                // Condition should be negated.
+                assert!(
+                    matches!(cond, Expr::Not(_)),
+                    "Expected negated condition, got: {cond:?}"
+                );
+                // The real work should be in then_body now.
+                assert_eq!(then_body.len(), 1);
+                assert!(matches!(&then_body[0], Stmt::Assign { target, value }
+                    if *target == var("x") && *value == int(1)));
+                // else_body should be empty.
+                assert!(else_body.is_empty());
+            }
+            other => panic!("Expected If, got: {other:?}"),
+        }
+    }
+
+    // Regression: 46e4a73 — when self-assign elimination empties both branches,
+    // the entire if-statement is removed.
+    #[test]
+    fn remove_fully_empty_if() {
+        // if (c) { x = x; } else { y = y; }
+        // After eliminate_self_assigns: both branches empty → remove If entirely.
+        let mut body = vec![Stmt::If {
+            cond: var("c"),
+            then_body: vec![assign(var("x"), var("x"))],
+            else_body: vec![assign(var("y"), var("y"))],
+        }];
+
+        eliminate_self_assigns(&mut body);
+
+        assert!(
+            body.is_empty(),
+            "Expected empty body after fully-empty if removal: {body:?}"
+        );
+    }
+
+    // Regression: 868decb — self-assigns must be preserved during ternary rewrite
+    // so the pass can see the identity branch. The ternary pass intentionally
+    // skips identity-branch patterns (`x = cond ? val : x`), leaving them as
+    // if/else for later cleanup by eliminate_self_assigns. The critical property:
+    // the combined pipeline (ternary first, then self-assign elimination) produces
+    // a clean `if (c) { x = 1; }` instead of losing the assignment.
+    #[test]
+    fn ternary_with_passthrough_branch() {
+        // if (c) { x = 1; } else { x = x; }
+        // Step 1: rewrite_ternary skips it (identity branch in else).
+        // Step 2: eliminate_self_assigns removes `x = x` → flips to `if (!c) {} else { x = 1; }`
+        //         then flips empty then → `if (c) { x = 1; }`.
+        // Wait — eliminate_self_assigns removes x=x from else, leaving
+        // `if (c) { x = 1; } else {}` which stays as-is (then is non-empty).
+        let mut body = vec![Stmt::If {
+            cond: var("c"),
+            then_body: vec![assign(var("x"), int(1))],
+            else_body: vec![assign(var("x"), var("x"))],
+        }];
+
+        // Ternary pass intentionally does NOT rewrite identity branches.
+        rewrite_ternary(&mut body);
+        assert!(matches!(&body[0], Stmt::If { .. }), "Should remain If");
+
+        // Self-assign elimination cleans up the identity branch.
+        eliminate_self_assigns(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                // then_body has the real assign, else_body is empty.
+                assert_eq!(*cond, var("c"));
+                assert_eq!(then_body.len(), 1);
+                assert!(matches!(&then_body[0], Stmt::Assign { target, value }
+                    if *target == var("x") && *value == int(1)));
+                assert!(else_body.is_empty());
+            }
+            other => panic!("Expected If, got: {other:?}"),
+        }
+    }
 }
