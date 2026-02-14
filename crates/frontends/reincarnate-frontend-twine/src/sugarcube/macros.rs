@@ -45,7 +45,7 @@ pub fn macro_kind(name: &str) -> Option<MacroKind> {
         // ── Display / DOM manipulation (block) ────────────────────
         "link" | "linkappend" | "linkprepend" | "linkreplace" => MacroKind::Block,
         "button" => MacroKind::Block,
-        "replace" | "append" | "prepend" | "remove" => MacroKind::Block,
+        "replace" | "append" | "prepend" => MacroKind::Block,
         "repeat" => MacroKind::Block,
         "timed" => MacroKind::Block,
         "type" => MacroKind::Block,
@@ -70,6 +70,7 @@ pub fn macro_kind(name: &str) -> Option<MacroKind> {
         | "removeplaylist" => MacroKind::SelfClosing,
         "addclass" | "removeclass" | "toggleclass" => MacroKind::SelfClosing,
         "copy" => MacroKind::SelfClosing,
+        "remove" => MacroKind::SelfClosing,
         "playlist" => MacroKind::SelfClosing,
         "radiobutton" | "checkbox" | "textbox" | "numberbox" | "textarea"
             => MacroKind::SelfClosing,
