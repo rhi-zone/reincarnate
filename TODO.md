@@ -730,10 +730,9 @@ The decompiled GML reference for Bounty is at `~/git/bounty/`. Scripts in
   to -1 (Own) when instance matches `self_object_index`.
 - [x] **Object persistent/visible flags** — Done. Emit `persistent` and
   `visible` from OBJT as class instance fields when they differ from defaults.
-- [ ] **Parent class self-references** — When an object inherits from
-  a parent, bytecode may use the parent's object index as instance type for
-  inherited field accesses. Currently these produce cross-object `getOn/setOn`
-  instead of self-access. Need to walk the parent chain in TranslateCtx.
+- [x] **Parent class self-references** — Done. `ancestor_indices` in
+  TranslateCtx normalizes parent object indices to -1 (Own), so inherited
+  field accesses emit as `this.field` instead of cross-object `getOn/setOn`.
 - [x] **Stale namespace imports** — Fixed. Post-process
   `strip_unused_namespace_imports()` removes `import * as NAME` lines
   where `NAME.` never appears in the output body. Runs after all rewrite
@@ -743,10 +742,10 @@ The decompiled GML reference for Bounty is at `~/git/bounty/`. Scripts in
   switch cases share the same target block, the structurizer now reorders
   secondary cases before the primary case. The printer emits empty cases
   as fall-through labels (no body, no break).
-- [ ] **ButtonBase alarm/advantages/inventory** — Stats.create() references
-  `ButtonBase.instances[0].alarm`, `.advantages`, `.inventory` with
-  instance type 0 (ButtonBase). In the original GML these may be genuine
-  cross-object references or may need parent-chain normalization.
+- [x] **ButtonBase alarm/advantages/inventory** — These are genuine
+  cross-object references (Stats accessing ButtonBase's fields), not
+  parent-chain bugs. The `ancestor_indices` normalization correctly
+  leaves them as `ButtonBase.instances[0].field` accesses.
 
 ### GML Boolean / Short-Circuit Detection
 
@@ -843,9 +842,11 @@ assigned from `variable_global_get()` or untyped argument passthrough.
   patterns and rewrites as `for (init; cond; update) { body }`. Handles both
   VarDecl and Assign inits, looks backwards past non-related declarations,
   and supports tail-increment and else-continue-increment patterns.
-- [ ] **Sprite constant resolution** — `this.sprite_index = 34` should be
-  `this.sprite_index = Sprites.spr_dice`. Requires mapping sprite indices to
-  enum names at emission time (the Sprites enum already exists in data output).
+- [x] **Sprite constant resolution** — Done. Both field defaults and dynamic
+  `this.sprite_index = N` assignments now resolve to `Sprites.Name`. The
+  GameMaker rewrite pass handles method body assignments; field defaults are
+  resolved at struct emission time. Future: `draw_sprite(N, ...)` function
+  arguments and other resource index fields (`object_index`, `room_index`).
 - [x] **Duplicate variable declarations** — Fixed: locals map was keyed by
   `local.index` (CodeLocals slot) but looked up by `var_ref.variable_id` (VARI
   index). Keyed by variable name instead.
