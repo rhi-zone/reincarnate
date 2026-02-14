@@ -486,9 +486,12 @@ fn find_block_starts(instructions: &[Instruction]) -> BTreeSet<usize> {
                 }
             }
             Opcode::Ret | Opcode::Exit => {
-                if let Some(next) = instructions.get(i + 1) {
-                    starts.insert(next.offset);
-                }
+                // Don't create a block start after Ret/Exit. If the code
+                // after is reachable (e.g., after a conditional early return),
+                // some branch already targets it and that branch creates the
+                // block start. Adding one here would cause spurious blocks
+                // from trailing bytecode of sibling functions in GMS2.3+
+                // shared bytecode blobs.
             }
             _ => {}
         }
