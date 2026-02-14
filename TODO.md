@@ -7,6 +7,52 @@
 - [x] **CLI scaffolding** — `reincarnate-cli` crate with clap. Parse a project manifest, load source files, print info. Wire up the pipeline trait plumbing.
 - [x] **Flash frontend** — `reincarnate-frontend-flash` crate. AVM2 bytecode extraction and decompilation using Ruffle's `swf` crate (MIT/Apache-2.0). First real target.
 
+## Critical — Transform Pass Test Coverage
+
+Every transform pass needs comprehensive unit tests and adversarial tests.
+Current tests are happy-path only — they verify the pass works on simple
+inputs but don't exercise edge cases, interactions between passes, or
+inputs that stress correctness invariants.
+
+### What's needed
+
+- [ ] **Unit tests for each pass** — Every transform pass needs tests covering:
+  - Identity (no-op on already-optimal input)
+  - Basic transformation (the happy path)
+  - Edge cases (empty functions, void returns, unreachable blocks)
+  - Boundary conditions (single-block functions, maximum nesting)
+  - Preservation of side effects (syscalls, stores must not be dropped)
+
+- [ ] **Adversarial / fuzz-style tests** — Craft IR inputs specifically
+  designed to break assumptions:
+  - Shared constants used in both return paths AND arithmetic
+  - Cyclic block params (loop back-edges feeding into themselves)
+  - Diamond-shaped CFGs with asymmetric block params
+  - Dead blocks with stale references
+  - Functions with 0 blocks, 1 instruction, or thousands of blocks
+
+- [ ] **Pass interaction tests** — Run passes in sequence and verify the
+  composed output is correct. Known broken interaction:
+  - **cfg-simplify + structurizer/linearizer**: cfg-simplify's trivial
+    param elimination changes block param structure, which breaks
+    ternary detection in the linearizer for `br_if → const → merge`
+    patterns. Discovered via `get_race` in the Bounty GML project:
+    without cfg-simplify the ternary `(0 === arg) ? 1 : 0` emits
+    correctly; with cfg-simplify the comparison becomes an orphaned
+    bare expression statement. This is a pre-existing bug.
+
+- [ ] **Round-trip invariant tests** — For each pass, verify:
+  - `apply(module).module` is well-formed (all ValueIds resolve, all
+    block params have matching branch args, all types consistent)
+  - `changed == false` implies module is byte-identical
+  - Running the same pass twice produces `changed == false` on the
+    second run (idempotency)
+
+- [ ] **GML-specific regression tests** — The GML frontend produces IR
+  patterns not seen in Flash (all-Dynamic types, implicit `argument[N]`
+  parameters, cross-object instance references). These need dedicated
+  test cases that exercise the full pipeline, not just individual passes.
+
 ## Future
 
 - [x] Type inference pass — forward dataflow (refine `Dynamic` via propagation)
