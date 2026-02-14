@@ -289,6 +289,13 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
             continue;
         }
 
+        // Don't fold if the variable is reassigned in the remaining body.
+        // Loop-carried variables (e.g., repeat counters) have 1 read + 1 write
+        // per iteration — the init value becomes stale after the back-edge write.
+        if var_is_reassigned(&body[i + 1..], &name) {
+            continue;
+        }
+
         // Find the statement containing the single use (read, not bare write).
         // Must use count_var_refs_in_stmt (which skips bare Var writes) rather
         // than stmt_references_var (which counts writes too) — otherwise we'd
@@ -582,6 +589,56 @@ fn count_var_refs_in_expr(expr: &Expr, name: &str) -> usize {
             .map(|(_, v)| count_var_refs_in_expr(v, name))
             .sum(),
         Expr::Yield(v) => v.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name)),
+    }
+}
+
+/// Check whether `name` is reassigned anywhere in `stmts` (including nested bodies).
+/// This catches `Assign { target: Var(name), .. }` and `CompoundAssign { target: Var(name), .. }`.
+fn var_is_reassigned(stmts: &[Stmt], name: &str) -> bool {
+    stmts.iter().any(|s| stmt_reassigns_var(s, name))
+}
+
+fn stmt_reassigns_var(stmt: &Stmt, name: &str) -> bool {
+    match stmt {
+        Stmt::Assign {
+            target: Expr::Var(v),
+            ..
+        } if v == name => true,
+        Stmt::CompoundAssign {
+            target: Expr::Var(v),
+            ..
+        } if v == name => true,
+        // Recurse into nested bodies.
+        Stmt::If {
+            then_body,
+            else_body,
+            ..
+        } => var_is_reassigned(then_body, name) || var_is_reassigned(else_body, name),
+        Stmt::While { body, .. } | Stmt::Loop { body } | Stmt::ForOf { body, .. } => {
+            var_is_reassigned(body, name)
+        }
+        Stmt::For {
+            init,
+            update,
+            body,
+            ..
+        } => {
+            var_is_reassigned(init, name)
+                || var_is_reassigned(update, name)
+                || var_is_reassigned(body, name)
+        }
+        Stmt::Switch {
+            cases,
+            default_body,
+            ..
+        } => {
+            cases.iter().any(|(_, b)| var_is_reassigned(b, name))
+                || var_is_reassigned(default_body, name)
+        }
+        Stmt::Dispatch { blocks, .. } => {
+            blocks.iter().any(|(_, b)| var_is_reassigned(b, name))
+        }
+        _ => false,
     }
 }
 
@@ -4214,11 +4271,14 @@ mod tests {
     // Regression: d73d9c7 — fold_single_use_consts must use read-only ref count
     // when finding fold targets. A bare `x = 5` is a write to x, not a read,
     // so the fold must skip it and find the real read site.
+    // Updated: the fold is now blocked entirely because x is reassigned,
+    // which means folding the init value past the reassignment would be
+    // semantically incorrect (the read sees the reassigned value, not the init).
     #[test]
     fn fold_const_skips_bare_write() {
         // const x = a; x = 5; y = x;
-        // The write `x = 5` references x as a target (write), not read.
-        // fold should inline `a` into `y = a`, not target the write.
+        // x is reassigned (`x = 5`) so folding `a` past the reassignment is wrong.
+        // The fold must be blocked — all three statements are preserved.
         let mut body = vec![
             const_decl("x", var("a")),
             assign(var("x"), int(5)),
@@ -4227,15 +4287,12 @@ mod tests {
 
         fold_single_use_consts(&mut body);
 
-        // x has 1 read (in `y = x`) + 1 write (in `x = 5`).
-        // The fold should substitute the read: y = a.
-        // The write `x = 5` and the dead decl may remain or be cleaned up,
-        // but critically, `a` must not be silently dropped.
-        let has_a = body.iter().any(|s| match s {
-            Stmt::Assign { value, .. } => *value == var("a"),
-            _ => false,
-        });
-        assert!(has_a, "Expected `a` to be preserved in output: {body:?}");
+        // x is reassigned, so the fold is blocked. The decl is preserved.
+        assert_eq!(body.len(), 3, "All three statements should be preserved: {body:?}");
+        assert!(
+            matches!(&body[0], Stmt::VarDecl { name, init: Some(_), .. } if name == "x"),
+            "VarDecl for x should be preserved: {body:?}"
+        );
     }
 
     // Regression: 2626123 — dead decl removal must also remove orphaned assigns
