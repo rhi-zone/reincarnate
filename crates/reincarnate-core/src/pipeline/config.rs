@@ -10,6 +10,7 @@ pub struct PassConfig {
     pub cfg_simplify: bool,
     pub coroutine_lowering: bool,
     pub redundant_cast_elimination: bool,
+    pub bool_literal_return: bool,
     pub mem2reg: bool,
     pub dead_code_elimination: bool,
     /// When enabled, the pipeline repeats all passes until none report changes.
@@ -25,6 +26,7 @@ impl Default for PassConfig {
             cfg_simplify: true,
             coroutine_lowering: true,
             redundant_cast_elimination: true,
+            bool_literal_return: true,
             mem2reg: true,
             dead_code_elimination: true,
             fixpoint: false,
@@ -42,6 +44,7 @@ impl PassConfig {
     /// - `"cfg-simplify"`
     /// - `"coroutine-lowering"`
     /// - `"redundant-cast-elimination"`
+    /// - `"bool-literal-return"`
     /// - `"mem2reg"`
     /// - `"dead-code-elimination"`
     /// - `"fixpoint"` — toggles pipeline fixpoint iteration
@@ -55,6 +58,7 @@ impl PassConfig {
                 "cfg-simplify" => config.cfg_simplify = false,
                 "coroutine-lowering" => config.coroutine_lowering = false,
                 "redundant-cast-elimination" => config.redundant_cast_elimination = false,
+                "bool-literal-return" => config.bool_literal_return = false,
                 "mem2reg" => config.mem2reg = false,
                 "dead-code-elimination" => config.dead_code_elimination = false,
                 "fixpoint" => config.fixpoint = false,
@@ -144,6 +148,7 @@ impl Preset {
                     constant_folding: false,
                     cfg_simplify: false,
                     redundant_cast_elimination: true,
+                    bool_literal_return: true,
                     dead_code_elimination: false,
                     fixpoint: false,
                 },
@@ -162,6 +167,7 @@ impl Preset {
                 "cfg-simplify" => pass.cfg_simplify = false,
                 "coroutine-lowering" => pass.coroutine_lowering = false,
                 "redundant-cast-elimination" => pass.redundant_cast_elimination = false,
+                "bool-literal-return" => pass.bool_literal_return = false,
                 "mem2reg" => pass.mem2reg = false,
                 "dead-code-elimination" => pass.dead_code_elimination = false,
                 "fixpoint" => pass.fixpoint = false,
@@ -208,6 +214,7 @@ mod tests {
             "cfg-simplify",
             "coroutine-lowering",
             "redundant-cast-elimination",
+            "bool-literal-return",
             "mem2reg",
             "dead-code-elimination",
             "fixpoint",
@@ -218,6 +225,7 @@ mod tests {
         assert!(!config.cfg_simplify);
         assert!(!config.coroutine_lowering);
         assert!(!config.redundant_cast_elimination);
+        assert!(!config.bool_literal_return);
         assert!(!config.mem2reg);
         assert!(!config.dead_code_elimination);
         assert!(!config.fixpoint);
