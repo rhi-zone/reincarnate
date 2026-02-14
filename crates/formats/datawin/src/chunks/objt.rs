@@ -1,6 +1,7 @@
 use crate::cursor::Cursor;
 use crate::error::Result;
 use crate::string_table::StringRef;
+use crate::version::BytecodeVersion;
 
 /// Number of event type categories in GameMaker.
 pub const EVENT_TYPE_COUNT: usize = 12;
@@ -147,26 +148,30 @@ impl Objt {
     ///
     /// `chunk_data` is the raw chunk content (after the 8-byte header).
     /// `data` is the full file data (for following absolute pointers).
-    pub fn parse(chunk_data: &[u8], data: &[u8]) -> Result<Self> {
+    pub fn parse(chunk_data: &[u8], data: &[u8], version: BytecodeVersion) -> Result<Self> {
         let mut c = Cursor::new(chunk_data);
         let pointers = c.read_pointer_list()?;
 
         let mut objects = Vec::with_capacity(pointers.len());
         for ptr in pointers {
-            let obj = Self::parse_object(data, ptr as usize)?;
+            let obj = Self::parse_object(data, ptr as usize, version)?;
             objects.push(obj);
         }
 
         Ok(Self { objects })
     }
 
-    fn parse_object(data: &[u8], offset: usize) -> Result<ObjectEntry> {
+    fn parse_object(data: &[u8], offset: usize, version: BytecodeVersion) -> Result<ObjectEntry> {
         let mut c = Cursor::new(data);
         c.seek(offset);
 
         let name = StringRef(c.read_u32()?);
         let sprite_index = c.read_i32()?;
         let visible = c.read_u32()? != 0;
+        // GMS2 (BC >= 17) adds a field between visible and solid.
+        if version.0 >= 17 {
+            let _managed = c.read_u32()?;
+        }
         let solid = c.read_u32()? != 0;
         let depth = c.read_i32()?;
         let persistent = c.read_u32()? != 0;

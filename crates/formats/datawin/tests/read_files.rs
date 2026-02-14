@@ -451,7 +451,8 @@ fn bounty_objt() {
     };
     let index = ChunkIndex::parse(&data).unwrap();
     let objt_data = index.chunk_data(&data, b"OBJT").unwrap();
-    let objt = Objt::parse(objt_data, &data).unwrap();
+    let gen8 = Gen8::parse(index.chunk_data(&data, b"GEN8").unwrap()).unwrap();
+    let objt = Objt::parse(objt_data, &data, gen8.bytecode_version).unwrap();
 
     assert_eq!(objt.objects.len(), 86);
 
@@ -512,7 +513,8 @@ fn bounty_objt_code_linkage() {
     };
     let index = ChunkIndex::parse(&data).unwrap();
     let objt_data = index.chunk_data(&data, b"OBJT").unwrap();
-    let objt = Objt::parse(objt_data, &data).unwrap();
+    let gen8 = Gen8::parse(index.chunk_data(&data, b"GEN8").unwrap()).unwrap();
+    let objt = Objt::parse(objt_data, &data, gen8.bytecode_version).unwrap();
     let (code, _) = parse_code_for(&data);
 
     // Verify code entry names match object+event naming convention
@@ -572,7 +574,8 @@ fn undertale_objt() {
     };
     let index = ChunkIndex::parse(&data).unwrap();
     let objt_data = index.chunk_data(&data, b"OBJT").unwrap();
-    let objt = Objt::parse(objt_data, &data).unwrap();
+    let gen8 = Gen8::parse(index.chunk_data(&data, b"GEN8").unwrap()).unwrap();
+    let objt = Objt::parse(objt_data, &data, gen8.bytecode_version).unwrap();
 
     assert!(
         objt.objects.len() > 100,

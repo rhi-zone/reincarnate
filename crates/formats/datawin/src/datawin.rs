@@ -156,7 +156,8 @@ impl DataWin {
     pub fn objt(&self) -> Result<&Objt> {
         self.get_or_parse(b"OBJT", || {
             let chunk_data = self.index.chunk_data(&self.data, b"OBJT")?;
-            Objt::parse(chunk_data, &self.data)
+            let version = self.gen8()?.bytecode_version;
+            Objt::parse(chunk_data, &self.data, version)
         })?;
         Ok(self.cached(b"OBJT"))
     }
