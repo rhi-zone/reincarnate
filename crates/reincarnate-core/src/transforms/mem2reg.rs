@@ -104,9 +104,31 @@ fn promote_single_store(func: &mut Function) -> bool {
         }
     }
 
+    // Escape analysis: any use of the alloc ptr that isn't Store{ptr} or Load(ptr).
+    let mut escaped: HashSet<ValueId> = HashSet::new();
+    for (_inst_id, inst) in func.insts.iter() {
+        match &inst.op {
+            Op::Store { ptr: _, value } => {
+                // Value position means escape (stored into another location).
+                if alloc_results.contains(value) {
+                    escaped.insert(*value);
+                }
+            }
+            Op::Load(_) => {}
+            op => {
+                for operand in value_operands(op) {
+                    if alloc_results.contains(&operand) {
+                        escaped.insert(operand);
+                    }
+                }
+            }
+        }
+    }
+
     let single_store: HashSet<ValueId> = store_count
         .iter()
         .filter(|(_, &c)| c == 1)
+        .filter(|(ptr, _)| !escaped.contains(ptr))
         .map(|(&ptr, _)| ptr)
         .collect();
 
@@ -879,10 +901,7 @@ mod tests {
     // ---- Adversarial tests ----
 
     /// Alloc passed to call (escapes) — should not be promoted.
-    // BUG: Mem2Reg doesn't perform escape analysis — allocs passed to calls
-    // are still promoted. This test documents the missing behavior.
     #[test]
-    #[ignore]
     fn alloc_escapes_via_call() {
         let sig = FunctionSig {
             params: vec![],
