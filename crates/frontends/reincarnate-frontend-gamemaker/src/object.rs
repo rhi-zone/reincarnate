@@ -112,6 +112,7 @@ pub fn translate_objects(
                         arg_count: code_entry.args_count & 0x7FFF,
                         obj_names,
                         class_name: Some(obj_name),
+                        self_object_index: Some(obj_idx),
                         script_names,
                     };
 

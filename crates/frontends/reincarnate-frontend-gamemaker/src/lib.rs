@@ -203,6 +203,7 @@ fn translate_scripts(
             arg_count: code_entry.args_count & 0x7FFF,
             obj_names,
             class_name: None,
+            self_object_index: None,
             script_names,
         };
 
@@ -269,6 +270,7 @@ fn translate_global_inits(
             arg_count: code_entry.args_count & 0x7FFF,
             obj_names,
             class_name: None,
+            self_object_index: None,
             script_names,
         };
 
@@ -335,6 +337,7 @@ fn translate_room_creation(
             arg_count: code_entry.args_count & 0x7FFF,
             obj_names,
             class_name: None,
+            self_object_index: None,
             script_names,
         };
 

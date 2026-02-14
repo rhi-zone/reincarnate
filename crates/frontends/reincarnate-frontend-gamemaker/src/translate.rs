@@ -39,6 +39,11 @@ pub struct TranslateCtx<'a> {
     pub obj_names: &'a [String],
     /// Class name for event handlers (used to type the self parameter).
     pub class_name: Option<&'a str>,
+    /// Object index of the owning object (for recognizing self-references).
+    /// The GameMaker compiler often uses the object's own index as the instance
+    /// type instead of -1 (Own). When `instance >= 0` and matches this index,
+    /// the access should be treated as `self.field`, not a cross-object reference.
+    pub self_object_index: Option<usize>,
     /// Set of clean script names (for injecting self at call sites).
     pub script_names: &'a HashSet<String>,
 }
@@ -1157,6 +1162,17 @@ fn translate_push_variable(
 ) -> Result<(), String> {
     let var_name = resolve_variable_name(inst, ctx);
 
+    // The GameMaker compiler sometimes uses the owning object's index as the
+    // instance type for self-references instead of -1 (Own). Normalize here.
+    let instance = if instance >= 0
+        && ctx.self_object_index == Some(instance as usize)
+        && ctx.has_self
+    {
+        -1 // Treat as Own (self)
+    } else {
+        instance
+    };
+
     match InstanceType::from_i16(instance) {
         Some(InstanceType::Local) => {
             // Local variable: load from alloc slot.
@@ -1295,7 +1311,17 @@ fn translate_pop(
         let value = pop(stack, inst)?;
         let var_name = resolve_variable_name(inst, ctx);
 
-        match InstanceType::from_i16(*instance) {
+        // Normalize self-referencing instance types (see translate_push_variable).
+        let instance = if *instance >= 0
+            && ctx.self_object_index == Some(*instance as usize)
+            && ctx.has_self
+        {
+            -1
+        } else {
+            *instance
+        };
+
+        match InstanceType::from_i16(instance) {
             Some(InstanceType::Local) => {
                 if let Some(&slot) = locals.get(&var_name) {
                     fb.store(slot, value);
@@ -1375,11 +1401,11 @@ fn translate_pop(
                 );
             }
             _ => {
-                if *instance >= 0 {
-                    let obj_id = if let Some(name) = ctx.obj_names.get(*instance as usize) {
+                if instance >= 0 {
+                    let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
                         fb.const_string(name)
                     } else {
-                        fb.const_int(*instance as i64)
+                        fb.const_int(instance as i64)
                     };
                     let name_val = fb.const_string(&var_name);
                     fb.system_call(
