@@ -707,16 +707,15 @@ program analysis or conservative assumptions.
   a parent, bytecode may use the parent's object index as instance type for
   inherited field accesses. Currently these produce cross-object `getOn/setOn`
   instead of self-access. Need to walk the parent chain in TranslateCtx.
-- [ ] **Stale namespace imports** — Files like Stats.ts emit
-  `import * as GameMaker_Instance from ...` even though all SystemCalls
-  in the file are rewritten to direct function calls. The import collector
-  adds namespace imports for all SystemCall system names before checking
-  whether the rewrite pass consumed them. Need to collect imports from
-  the post-rewrite AST only, or prune unused namespace imports.
-- [ ] **Empty switch cases in roomstart** — Switch/case bodies contain
-  string assignments in the bytecode but they're being lost during
-  decompilation (all cases emit as empty `break`). Investigate whether
-  the string constant assignments are being DCE'd or dropped.
+- [x] **Stale namespace imports** — Fixed. Post-process
+  `strip_unused_namespace_imports()` removes `import * as NAME` lines
+  where `NAME.` never appears in the output body. Runs after all rewrite
+  passes, so engine-specific rewrites that eliminate namespace usages are
+  handled correctly.
+- [x] **Empty switch cases (shared target blocks)** — Fixed. When multiple
+  switch cases share the same target block, the structurizer now reorders
+  secondary cases before the primary case. The printer emits empty cases
+  as fall-through labels (no body, no break).
 - [ ] **ButtonBase alarm/advantages/inventory** — Stats.create() references
   `ButtonBase.instances[0].alarm`, `.advantages`, `.inventory` with
   instance type 0 (ButtonBase). In the original GML these may be genuine
