@@ -46,6 +46,20 @@ pub fn translate_objects(
                 Some(Constant::Int(obj.depth as i64)),
             ));
         }
+        if obj.persistent {
+            fields.push((
+                "persistent".into(),
+                Type::Bool,
+                Some(Constant::Bool(true)),
+            ));
+        }
+        if !obj.visible {
+            fields.push((
+                "visible".into(),
+                Type::Bool,
+                Some(Constant::Bool(false)),
+            ));
+        }
 
         let ns = vec!["objects".into()];
 
