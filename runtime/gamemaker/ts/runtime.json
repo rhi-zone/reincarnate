@@ -352,6 +352,13 @@
         "global", "variable_global_exists", "variable_global_get", "variable_global_set"
       ],
       "path": "gamemaker/global"
+    },
+    {
+      "names": [
+        "getInstanceField", "setInstanceField", "setInstanceFieldIndex",
+        "getAllField", "setAllField", "withInstances"
+      ],
+      "path": "gamemaker/instance"
     }
   ]
 }

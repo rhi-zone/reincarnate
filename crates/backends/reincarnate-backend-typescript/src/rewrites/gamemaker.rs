@@ -11,13 +11,19 @@ use reincarnate_core::ir::{ExternalImport, Type, ValueId};
 use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 
-/// Returns the bare function name that a SystemCall rewrite will introduce,
+/// Returns the bare function names that a SystemCall rewrite will introduce,
 /// if any.  Used by import generation to emit the correct imports before
 /// the rewrite pass runs.
-pub fn rewrite_introduced_call(system: &str, method: &str) -> Option<&'static str> {
+pub fn rewrite_introduced_calls(system: &str, method: &str) -> &'static [&'static str] {
     match (system, method) {
-        ("GameMaker.Global", "set") | ("GameMaker.Global", "get") => Some("global"),
-        _ => None,
+        ("GameMaker.Global", "set") | ("GameMaker.Global", "get") => &["global"],
+        ("GameMaker.Instance", "getOn") => &["getInstanceField"],
+        ("GameMaker.Instance", "setOn") => &["setInstanceField", "setInstanceFieldIndex"],
+        ("GameMaker.Instance", "getAll") => &["getAllField"],
+        ("GameMaker.Instance", "setAll") => &["setAllField"],
+        ("GameMaker.Instance", "setField") => &["setInstanceField"],
+        ("GameMaker.Instance", "withInstances") => &["withInstances"],
+        _ => &[],
     }
 }
 
@@ -150,34 +156,73 @@ fn rewrite_stmt(stmt: &mut JsStmt) {
             {
                 if system == "GameMaker.Instance"
                     && method == "setOn"
-                    && args.len() == 3
                     && matches!(&args[0], JsExpr::Literal(Constant::String(_)))
                     && matches!(&args[1], JsExpr::Literal(Constant::String(_)))
                 {
-                    let mut args = std::mem::take(args);
-                    let val = args.pop().unwrap();
-                    let field = args.pop().unwrap();
-                    let obj_name_expr = args.pop().unwrap();
-                    let JsExpr::Literal(Constant::String(obj_name)) = obj_name_expr else {
-                        unreachable!()
-                    };
-                    let JsExpr::Literal(Constant::String(field_name)) = field else {
-                        unreachable!()
-                    };
-                    let target = JsExpr::Field {
-                        object: Box::new(JsExpr::Index {
-                            collection: Box::new(JsExpr::Field {
-                                object: Box::new(JsExpr::Var(obj_name)),
-                                field: "instances".into(),
-                            }),
-                            index: Box::new(JsExpr::Literal(Constant::Int(0))),
-                        }),
-                        field: field_name,
-                    };
-                    let mut val = val;
-                    rewrite_expr(&mut val);
-                    *stmt = JsStmt::Assign { target, value: val };
-                    return;
+                    match args.len() {
+                        // setOn(obj, field, value) → Obj.instances[0].field = value
+                        3 => {
+                            let mut args = std::mem::take(args);
+                            let val = args.pop().unwrap();
+                            let field = args.pop().unwrap();
+                            let obj_name_expr = args.pop().unwrap();
+                            let JsExpr::Literal(Constant::String(obj_name)) = obj_name_expr
+                            else {
+                                unreachable!()
+                            };
+                            let JsExpr::Literal(Constant::String(field_name)) = field else {
+                                unreachable!()
+                            };
+                            let target = JsExpr::Field {
+                                object: Box::new(JsExpr::Index {
+                                    collection: Box::new(JsExpr::Field {
+                                        object: Box::new(JsExpr::Var(obj_name)),
+                                        field: "instances".into(),
+                                    }),
+                                    index: Box::new(JsExpr::Literal(Constant::Int(0))),
+                                }),
+                                field: field_name,
+                            };
+                            let mut val = val;
+                            rewrite_expr(&mut val);
+                            *stmt = JsStmt::Assign { target, value: val };
+                            return;
+                        }
+                        // setOn(obj, field, index, value) → Obj.instances[0].field[index] = value
+                        4 => {
+                            let mut args = std::mem::take(args);
+                            let val = args.pop().unwrap();
+                            let mut index_expr = args.pop().unwrap();
+                            let field = args.pop().unwrap();
+                            let obj_name_expr = args.pop().unwrap();
+                            let JsExpr::Literal(Constant::String(obj_name)) = obj_name_expr
+                            else {
+                                unreachable!()
+                            };
+                            let JsExpr::Literal(Constant::String(field_name)) = field else {
+                                unreachable!()
+                            };
+                            rewrite_expr(&mut index_expr);
+                            let target = JsExpr::Index {
+                                collection: Box::new(JsExpr::Field {
+                                    object: Box::new(JsExpr::Index {
+                                        collection: Box::new(JsExpr::Field {
+                                            object: Box::new(JsExpr::Var(obj_name)),
+                                            field: "instances".into(),
+                                        }),
+                                        index: Box::new(JsExpr::Literal(Constant::Int(0))),
+                                    }),
+                                    field: field_name,
+                                }),
+                                index: Box::new(index_expr),
+                            };
+                            let mut val = val;
+                            rewrite_expr(&mut val);
+                            *stmt = JsStmt::Assign { target, value: val };
+                            return;
+                        }
+                        _ => {}
+                    }
                 }
             }
             rewrite_expr(e);
@@ -415,6 +460,47 @@ fn try_rewrite_system_call(
                 })
             }
         }
+        // GameMaker.Instance.getOn(objName, field, index) → ObjName.instances[0].field[index]
+        // GameMaker.Instance.getOn(objId, field, index)   → getInstanceField(objId, field)[index]
+        ("GameMaker.Instance", "getOn") if args.len() == 3 => {
+            let index = args.pop().unwrap();
+            let field = args.pop().unwrap();
+            let obj_id = args.pop().unwrap();
+            let base = if let JsExpr::Literal(Constant::String(ref obj_name)) = obj_id {
+                if let JsExpr::Literal(Constant::String(ref field_name)) = field {
+                    JsExpr::Field {
+                        object: Box::new(JsExpr::Index {
+                            collection: Box::new(JsExpr::Field {
+                                object: Box::new(JsExpr::Var(obj_name.clone())),
+                                field: "instances".into(),
+                            }),
+                            index: Box::new(JsExpr::Literal(Constant::Int(0))),
+                        }),
+                        field: field_name.clone(),
+                    }
+                } else {
+                    JsExpr::Index {
+                        collection: Box::new(JsExpr::Index {
+                            collection: Box::new(JsExpr::Field {
+                                object: Box::new(JsExpr::Var(obj_name.clone())),
+                                field: "instances".into(),
+                            }),
+                            index: Box::new(JsExpr::Literal(Constant::Int(0))),
+                        }),
+                        index: Box::new(field),
+                    }
+                }
+            } else {
+                JsExpr::Call {
+                    callee: Box::new(JsExpr::Var("getInstanceField".into())),
+                    args: vec![obj_id, field],
+                }
+            };
+            Some(JsExpr::Index {
+                collection: Box::new(base),
+                index: Box::new(index),
+            })
+        }
         // GameMaker.Instance.setOn(objId, field, val) → setInstanceField(objId, field, val)
         // Named object+field case is handled at statement level (→ assignment).
         ("GameMaker.Instance", "setOn") if args.len() == 3 => {
@@ -424,6 +510,18 @@ fn try_rewrite_system_call(
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("setInstanceField".into())),
                 args: vec![obj_id, field, val],
+            })
+        }
+        // GameMaker.Instance.setOn(objId, field, index, val) → setInstanceFieldIndex(objId, field, index, val)
+        // Named object+field case is handled at statement level (→ indexed assignment).
+        ("GameMaker.Instance", "setOn") if args.len() == 4 => {
+            let val = args.pop().unwrap();
+            let index = args.pop().unwrap();
+            let field = args.pop().unwrap();
+            let obj_id = args.pop().unwrap();
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Var("setInstanceFieldIndex".into())),
+                args: vec![obj_id, field, index, val],
             })
         }
         // GameMaker.Instance.getOther(field) → other[field]

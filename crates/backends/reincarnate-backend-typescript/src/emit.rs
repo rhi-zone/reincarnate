@@ -1159,8 +1159,8 @@ fn collect_call_names_from_funcs<'a>(
                     used.insert(name.clone());
                 }
                 Op::SystemCall { system, method, .. } if engine == EngineKind::GameMaker => {
-                    if let Some(name) = crate::rewrites::gamemaker::rewrite_introduced_call(system, method) {
-                        used.insert(name.to_string());
+                    for name in crate::rewrites::gamemaker::rewrite_introduced_calls(system, method) {
+                        used.insert((*name).to_string());
                     }
                 }
                 // Coerce casts emit bare function calls: int(x), uint(x).

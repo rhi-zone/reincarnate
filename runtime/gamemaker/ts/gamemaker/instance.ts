@@ -25,6 +25,14 @@ export function setInstanceField(objId: number, field: string, value: any): void
   if (inst) (inst as any)[field] = value;
 }
 
+/** Set an indexed element of a field on the first instance of a given object type. */
+export function setInstanceFieldIndex(objId: number, field: string, index: number, value: any): void {
+  const clazz = classes[objId];
+  if (!clazz) return;
+  const inst = roomVariables.find((o) => o instanceof clazz);
+  if (inst) (inst as any)[field][index] = value;
+}
+
 /** Get a field value from ALL instances. */
 export function getAllField(field: string): any {
   for (const inst of roomVariables) {
