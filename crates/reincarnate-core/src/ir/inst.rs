@@ -44,6 +44,11 @@ pub enum CmpKind {
     Le,
     Gt,
     Ge,
+    /// JavaScript loose equality (`==`). Used by SugarCube where expressions
+    /// are raw JS and the author chose `==` over `===`.
+    LooseEq,
+    /// JavaScript loose inequality (`!=`).
+    LooseNe,
 }
 
 impl CmpKind {
@@ -56,6 +61,8 @@ impl CmpKind {
             CmpKind::Ge => CmpKind::Lt,
             CmpKind::Gt => CmpKind::Le,
             CmpKind::Le => CmpKind::Gt,
+            CmpKind::LooseEq => CmpKind::LooseNe,
+            CmpKind::LooseNe => CmpKind::LooseEq,
         }
     }
 }

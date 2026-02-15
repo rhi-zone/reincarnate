@@ -369,8 +369,8 @@ impl TranslateCtx {
                 self.fb
                     .system_call("SugarCube.Engine", "pow", &[lhs, rhs], Type::Dynamic)
             }
-            BinaryOp::Eq => self.fb.cmp(CmpKind::Eq, lhs, rhs),
-            BinaryOp::Neq => self.fb.cmp(CmpKind::Ne, lhs, rhs),
+            BinaryOp::Eq => self.fb.cmp(CmpKind::LooseEq, lhs, rhs),
+            BinaryOp::Neq => self.fb.cmp(CmpKind::LooseNe, lhs, rhs),
             BinaryOp::StrictEq => self.fb.cmp(CmpKind::Eq, lhs, rhs),
             BinaryOp::StrictNeq => self.fb.cmp(CmpKind::Ne, lhs, rhs),
             BinaryOp::Lt => self.fb.cmp(CmpKind::Lt, lhs, rhs),

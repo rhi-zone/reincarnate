@@ -812,6 +812,8 @@ fn cmp_str(kind: CmpKind) -> &'static str {
         CmpKind::Le => "<=",
         CmpKind::Gt => ">",
         CmpKind::Ge => ">=",
+        CmpKind::LooseEq => "==",
+        CmpKind::LooseNe => "!=",
     }
 }
 

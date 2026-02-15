@@ -62,6 +62,50 @@ function ensureGlobals(): void {
     cleanupWikifierOutput: false,
   };
 
+  // --- PRNG (seedable pseudo-random number generator) ---
+  // SugarCube v2 exposes State.prng for seeded random. Uses a simple
+  // mulberry32-based PRNG that can be initialized, serialized, and restored.
+  let prngEnabled = false;
+  let prngSeed = "";
+  let prngState = 0;
+  const prngOriginalRandom = Math.random;
+
+  function mulberry32(seed: number): () => number {
+    let s = seed | 0;
+    return () => {
+      s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function hashSeed(seed: string): number {
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) {
+      h = Math.imul(31, h) + seed.charCodeAt(i) | 0;
+    }
+    return h;
+  }
+
+  const prng = {
+    init(seed?: string, _useEntropy?: boolean) {
+      prngSeed = seed ?? String(Date.now());
+      prngState = hashSeed(prngSeed);
+      prngEnabled = true;
+      const gen = mulberry32(prngState);
+      Math.random = gen;
+    },
+    isEnabled() { return prngEnabled; },
+    get pull() { return Math.random(); },
+    get seed() { return prngSeed; },
+    get state() { return prngState; },
+    set state(s: number) {
+      prngState = s;
+      Math.random = mulberry32(s);
+    },
+  };
+
   // --- State ---
   g.State = {
     variables: g.V,
@@ -79,6 +123,7 @@ function ensureGlobals(): void {
     // Expose underlying get/set for direct access
     getVar(name: string) { return State.get(name); },
     setVar(name: string, value: any) { State.set(name, value); },
+    prng,
   };
 
   // --- Save ---
