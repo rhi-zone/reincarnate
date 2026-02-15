@@ -12,7 +12,8 @@
 import * as State from "./state";
 import * as Navigation from "./navigation";
 import * as Macro from "./macro";
-import { installJQuery } from "./jquery-shim";
+import jQuery from "jquery";
+import { installExtensions } from "./jquery-extensions";
 
 // --- Global setup for eval'd scripts ---
 
@@ -30,7 +31,9 @@ function ensureGlobals(): void {
   const g = globalThis as any;
 
   // --- jQuery ---
-  installJQuery();
+  g.jQuery = jQuery;
+  g.$ = jQuery;
+  installExtensions();
 
   // --- setup: empty object that user scripts populate with game data ---
   if (!g.setup) g.setup = {};

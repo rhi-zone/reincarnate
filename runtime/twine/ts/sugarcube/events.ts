@@ -1,10 +1,11 @@
 /** SugarCube event bus.
  *
- * Handles SugarCube-specific jQuery events like :passageinit, :passageend,
+ * Handles SugarCube-specific events like :passageinit, :passageend,
  * :passagestart, :passagerender, :passagedisplay, :storyready.
  *
- * These are routed here from the jQuery shim when $(document).on(":foo", fn)
- * is called, and triggered from navigation.ts at the appropriate points.
+ * Triggered from navigation.ts at the appropriate points. Also bridges
+ * to jQuery's event system on $(document) so user scripts that register
+ * handlers via $(document).on(":passageinit", fn) receive them.
  */
 
 interface HandlerEntry {
@@ -34,21 +35,32 @@ export function off(event: string, fn: Function): void {
   if (idx >= 0) list.splice(idx, 1);
 }
 
-/** Trigger an event, calling all registered handlers. */
+/** Trigger an event, calling all registered handlers and bridging to jQuery. */
 export function trigger(event: string, ...args: any[]): void {
+  // Internal handlers
   const list = handlers.get(event);
-  if (!list) return;
-  // Copy so handlers can modify the list (one-shot removal)
-  const snapshot = [...list];
-  for (const entry of snapshot) {
-    try {
-      entry.fn(...args);
-    } catch (e) {
-      console.error(`[events] error in handler for "${event}":`, e);
+  if (list) {
+    const snapshot = [...list];
+    for (const entry of snapshot) {
+      try {
+        entry.fn(...args);
+      } catch (e) {
+        console.error(`[events] error in handler for "${event}":`, e);
+      }
+      if (entry.once) {
+        const idx = list.indexOf(entry);
+        if (idx >= 0) list.splice(idx, 1);
+      }
     }
-    if (entry.once) {
-      const idx = list.indexOf(entry);
-      if (idx >= 0) list.splice(idx, 1);
+  }
+
+  // Bridge to jQuery event system on $(document)
+  const $ = (globalThis as any).jQuery;
+  if ($) {
+    try {
+      $(document).trigger(event, args);
+    } catch (e) {
+      console.error(`[events] error in jQuery trigger for "${event}":`, e);
     }
   }
 }
