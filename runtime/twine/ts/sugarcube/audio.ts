@@ -19,8 +19,9 @@ import {
 } from "../platform";
 
 // --- Audio cache ---
+// Exported so SimpleAudio global in engine.ts can share the same stores.
 
-const audioCache: Map<string, AudioHandle> = new Map();
+export const audioCache: Map<string, AudioHandle> = new Map();
 
 /** <<cacheaudio "name" "source1" "source2" ...>> */
 export function cacheaudio(name: string, ...sources: string[]): void {
@@ -139,13 +140,13 @@ function applyMasterMute(): void {
 
 // --- Playlists ---
 
-interface Playlist {
+export interface Playlist {
   tracks: string[];
   currentIndex: number;
   loop: boolean;
 }
 
-const playlists: Map<string, Playlist> = new Map();
+export const playlists: Map<string, Playlist> = new Map();
 
 /** <<createplaylist "name" "track1" "track2" ...>> */
 export function createplaylist(name: string, ...tracks: string[]): void {
@@ -207,7 +208,7 @@ function playPlaylistTrack(pl: Playlist): void {
 
 // --- Audio groups ---
 
-const audioGroups: Map<string, string[]> = new Map();
+export const audioGroups: Map<string, string[]> = new Map();
 
 /** <<createaudiogroup "name" "track1" "track2" ...>> */
 export function createaudiogroup(name: string, ...tracks: string[]): void {

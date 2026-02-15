@@ -17,6 +17,8 @@ import * as Platform from "../platform";
 import jQuery from "jquery";
 import { installExtensions } from "./jquery-extensions";
 import { Wikifier } from "./wikifier";
+import { audioCache, audioGroups, playlists } from "./audio";
+import { pushBuffer, popBuffer } from "./output";
 
 // --- Global setup for eval'd scripts ---
 
@@ -191,12 +193,25 @@ function ensureGlobals(): void {
     constructor(title?: string) {
       this.title = title || "";
       this.text = "";
-      this.tags = [];
+      this.tags = Navigation.getTags(this.title);
       this.domId = "passage-" + this.title.replace(/\s+/g, "-").toLowerCase();
     }
-    description(): string { return this.text.slice(0, 100); }
+    description(): string { return this.title; }
     processText(): string { return this.text; }
-    render(): DocumentFragment { return document.createDocumentFragment(); }
+    /** Render this passage's content into a DocumentFragment.
+     *  In compiled mode, calls the passage function with a captured output buffer.
+     */
+    render(): DocumentFragment {
+      const fn = Navigation.getPassage(this.title);
+      if (!fn) return document.createDocumentFragment();
+      pushBuffer();
+      try {
+        fn();
+      } catch (e) {
+        console.error(`[Passage.render] error in "${this.title}":`, e);
+      }
+      return popBuffer();
+    }
     static get(name: string): PassageShim { return new PassageShim(name); }
     static has(name: string): boolean { return Navigation.has(name); }
   }
@@ -259,6 +274,157 @@ function ensureGlobals(): void {
     load: Settings.load,
     save: Settings.save,
     reset: Settings.reset,
+  };
+
+  // --- Has (browser feature detection) ---
+  g.Has = {
+    audio: typeof HTMLAudioElement !== "undefined",
+    fileAPI: typeof File !== "undefined" && typeof FileReader !== "undefined" && typeof FileList !== "undefined",
+    geolocation: "geolocation" in navigator,
+    mutationObserver: typeof MutationObserver !== "undefined",
+    performance: typeof performance !== "undefined" && typeof performance.now === "function",
+    storage: (() => {
+      try { const k = "~sc-test"; localStorage.setItem(k, k); localStorage.removeItem(k); return true; }
+      catch { return false; }
+    })(),
+  };
+
+  // --- LoadScreen ---
+  let loadScreenLockId = 0;
+  const loadScreenLocks = new Set<number>();
+  g.LoadScreen = {
+    lock(): number {
+      const id = ++loadScreenLockId;
+      loadScreenLocks.add(id);
+      return id;
+    },
+    unlock(id: number): void {
+      loadScreenLocks.delete(id);
+    },
+    get size() { return loadScreenLocks.size; },
+  };
+
+  // --- Fullscreen ---
+  g.Fullscreen = {
+    isEnabled(): boolean {
+      return document.fullscreenEnabled ?? false;
+    },
+    isFullscreen(): boolean {
+      return document.fullscreenElement != null;
+    },
+    get element(): Element | null {
+      return document.fullscreenElement;
+    },
+    request(el?: Element): Promise<void> {
+      return (el || document.documentElement).requestFullscreen();
+    },
+    exit(): Promise<void> {
+      return document.exitFullscreen ? document.exitFullscreen() : Promise.resolve();
+    },
+    toggle(el?: Element): Promise<void> {
+      return document.fullscreenElement
+        ? g.Fullscreen.exit()
+        : g.Fullscreen.request(el);
+    },
+    onChange(fn: EventListener): void {
+      document.addEventListener("fullscreenchange", fn);
+    },
+    offChange(fn: EventListener): void {
+      document.removeEventListener("fullscreenchange", fn);
+    },
+    onError(fn: EventListener): void {
+      document.addEventListener("fullscreenerror", fn);
+    },
+    offError(fn: EventListener): void {
+      document.removeEventListener("fullscreenerror", fn);
+    },
+  };
+
+  // --- SimpleAudio ---
+  let saMasterMuted = false;
+  let saMasterVolume = 1;
+  let saMuteOnHidden = false;
+
+  g.SimpleAudio = {
+    load(): void {
+      for (const handle of audioCache.values()) {
+        Platform.pauseAudio(handle);
+        Platform.seekAudio(handle, 0);
+      }
+    },
+    loadWithScreen(): void {
+      const lockId = g.LoadScreen.lock();
+      g.SimpleAudio.load();
+      g.LoadScreen.unlock(lockId);
+    },
+    mute(state?: boolean): boolean {
+      if (state !== undefined) {
+        saMasterMuted = state;
+        for (const handle of audioCache.values()) {
+          Platform.setMuted(handle, state);
+        }
+      }
+      return saMasterMuted;
+    },
+    muteOnHidden(state?: boolean): boolean {
+      if (state !== undefined) saMuteOnHidden = state;
+      return saMuteOnHidden;
+    },
+    volume(level?: number): number {
+      if (level !== undefined) {
+        saMasterVolume = Math.max(0, Math.min(1, level));
+        for (const handle of audioCache.values()) {
+          Platform.setVolume(handle, saMasterVolume);
+        }
+      }
+      return saMasterVolume;
+    },
+    stop(): void {
+      for (const handle of audioCache.values()) {
+        Platform.stopAudio(handle);
+      }
+    },
+    select(_selector: string) {
+      // AudioRunner stub — selector-based batch operations
+      return {
+        play() {}, pause() {}, stop() {},
+        mute(_s?: boolean) { return this; },
+        volume(_v?: number) { return this; },
+        loop(_s?: boolean) { return this; },
+        fade(_duration: number, _toVol: number) { return this; },
+        fadeIn(_duration?: number) { return this; },
+        fadeOut(_duration?: number) { return this; },
+      };
+    },
+    tracks: {
+      add(trackId: string, ...sources: string[]) {
+        audioCache.set(trackId, Platform.createAudio(sources));
+      },
+      get(trackId: string) { return audioCache.get(trackId) ?? null; },
+      has(trackId: string) { return audioCache.has(trackId); },
+      delete(trackId: string) {
+        const handle = audioCache.get(trackId);
+        if (handle) {
+          Platform.stopAudio(handle);
+          audioCache.delete(trackId);
+        }
+      },
+      get length() { return audioCache.size; },
+    },
+    groups: {
+      add(groupId: string, ...trackIds: string[]) { audioGroups.set(groupId, trackIds); },
+      get(groupId: string) { return audioGroups.get(groupId) ?? null; },
+      has(groupId: string) { return audioGroups.has(groupId); },
+      delete(groupId: string) { audioGroups.delete(groupId); },
+      get length() { return audioGroups.size; },
+    },
+    lists: {
+      add(listId: string, ...trackIds: string[]) { playlists.set(listId, { tracks: trackIds, currentIndex: 0, loop: false }); },
+      get(listId: string) { return playlists.get(listId) ?? null; },
+      has(listId: string) { return playlists.has(listId); },
+      delete(listId: string) { playlists.delete(listId); },
+      get length() { return playlists.size; },
+    },
   };
 
   // --- Commands ---

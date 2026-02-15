@@ -964,3 +964,23 @@ causing compile errors if any emitted code calls them.
 - [x] **Widget call is async** — Fixed. `Widget.call()` now uses a static
   import of `getPassage` from navigation.ts. No circular dependency exists
   between widget.ts and navigation.ts.
+- [x] **Missing globals: Has, LoadScreen, Fullscreen, SimpleAudio** — Added
+  to engine.ts. Has detects browser features. LoadScreen provides lock/unlock.
+  Fullscreen wraps the Fullscreen API. SimpleAudio delegates to shared audio
+  caches from audio.ts (tracks/groups/lists collections + master mute/volume).
+- [x] **Passage.render() returns empty fragment** — Fixed. Now calls the
+  passage function from navigation registry with a captured output buffer
+  (pushBuffer/popBuffer). Tags populated from navigation registry too.
+- [x] **MacroContext shadow methods are no-ops** — Fixed. addShadow() collects
+  variable names; createShadowWrapper(fn) captures current values and restores
+  them around the wrapped function. Needed for <<capture>> macro correctness.
+
+### Remaining Stubs
+
+- [ ] **Scripting.parse()** — Returns code unchanged (identity function).
+  Full TwineScript→JS translation not implemented.
+- [ ] **L10n.get()** — Returns key as-is. SugarCube's own fallback behavior
+  for missing translations, so low impact.
+- [ ] **SimpleAudio.select()** — AudioRunner returned is a no-op stub.
+  CSS-selector-based batch audio operations not implemented.
+- [ ] **Engine.forward()** — No-op. SugarCube v2 deprecated it.

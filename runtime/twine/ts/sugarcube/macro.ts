@@ -8,6 +8,8 @@
  * a widget lookup fails.
  */
 
+import * as State from "./state";
+
 export interface MacroDef {
   tags?: string[] | null;
   skipArgs?: boolean;
@@ -55,6 +57,9 @@ export function invokeMacro(def: MacroDef, name: string, args: any[], output?: D
   (argsArray as any).full = args.join(" ");
   (argsArray as any).raw = args.join(" ");
 
+  // Collect shadowed variable names for this invocation
+  const shadows: string[] = [];
+
   const context = {
     name,
     args: argsArray,
@@ -63,9 +68,38 @@ export function invokeMacro(def: MacroDef, name: string, args: any[], output?: D
     error(msg: string): string {
       return `Error in macro <<${name}>>: ${msg}`;
     },
-    addShadow(_varName: string): void {},
+    addShadow(...varNames: string[]): void {
+      for (const v of varNames) {
+        // SugarCube accepts space/comma-separated names and bare names
+        for (const part of v.split(/[,\s]+/)) {
+          const trimmed = part.trim();
+          if (trimmed) shadows.push(trimmed);
+        }
+      }
+    },
     createShadowWrapper(fn: Function): Function {
-      return fn;
+      if (shadows.length === 0) return fn;
+      // Capture current values of all shadowed variables
+      const captured = new Map<string, any>();
+      for (const varName of shadows) {
+        captured.set(varName, State.get(varName));
+      }
+      return function(this: any, ...fnArgs: any[]) {
+        // Save current values, restore captured values
+        const saved = new Map<string, any>();
+        for (const varName of shadows) {
+          saved.set(varName, State.get(varName));
+          State.set(varName, captured.get(varName));
+        }
+        try {
+          return fn.apply(this, fnArgs);
+        } finally {
+          // Restore original values
+          for (const varName of shadows) {
+            State.set(varName, saved.get(varName));
+          }
+        }
+      };
     },
     createDebugView(): void {},
     self: def,
