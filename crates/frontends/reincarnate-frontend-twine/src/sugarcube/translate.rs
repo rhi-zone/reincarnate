@@ -31,6 +31,12 @@ pub struct TranslateCtx {
     suppress_output: bool,
     /// Extracted widget definitions (name → body nodes) accumulated during translation.
     pub widgets: Vec<(String, Vec<Node>)>,
+    /// The passage/widget function name (used to generate unique setter names).
+    func_name: String,
+    /// Counter for generating unique setter callback names.
+    setter_count: usize,
+    /// Setter callback functions generated for link setters.
+    pub setter_callbacks: Vec<Function>,
 }
 
 impl TranslateCtx {
@@ -47,6 +53,9 @@ impl TranslateCtx {
             temp_vars: HashMap::new(),
             suppress_output: false,
             widgets: Vec::new(),
+            func_name: name.to_string(),
+            setter_count: 0,
+            setter_callbacks: Vec::new(),
         }
     }
 
@@ -593,12 +602,43 @@ impl TranslateCtx {
             LinkTarget::Expr(e) => self.lower_expr(e),
         };
 
-        // Lower setter expressions
-        let setter_vals: Vec<ValueId> =
-            link.setters.iter().map(|e| self.lower_expr(e)).collect();
-
         let mut args = vec![text_val, target_val];
-        args.extend(setter_vals);
+
+        // Build setter callback if setters are present
+        if !link.setters.is_empty() {
+            let setter_name = format!("{}_setter_{}", self.func_name, self.setter_count);
+            self.setter_count += 1;
+
+            // Save current fb, build setter function in a fresh builder
+            let sig = FunctionSig {
+                params: vec![],
+                return_ty: Type::Void,
+                defaults: vec![],
+                has_rest_param: false,
+            };
+            let mut setter_fb = FunctionBuilder::new(&setter_name, sig, Visibility::Public);
+
+            // Swap in the setter builder
+            let saved_fb = std::mem::replace(&mut self.fb, setter_fb);
+            let saved_temps = std::mem::take(&mut self.temp_vars);
+
+            // Lower setter expressions into the setter function
+            for setter_expr in &link.setters {
+                self.lower_expr(setter_expr);
+            }
+            self.fb.ret(None);
+
+            // Swap back the original builder
+            setter_fb = std::mem::replace(&mut self.fb, saved_fb);
+            self.temp_vars = saved_temps;
+
+            // Store the built setter function
+            self.setter_callbacks.push(setter_fb.build());
+
+            // Emit a GlobalRef to the setter function in the main function
+            let setter_ref = self.fb.global_ref(&setter_name, Type::Dynamic);
+            args.push(setter_ref);
+        }
 
         self.fb
             .system_call("SugarCube.Output", "link", &args, Type::Void);
@@ -1473,8 +1513,18 @@ impl TranslateCtx {
     }
 }
 
+/// Result of translating a passage AST.
+pub struct TranslateResult {
+    /// The main passage function.
+    pub func: Function,
+    /// Widget definitions extracted from the passage.
+    pub widgets: Vec<(String, Vec<Node>)>,
+    /// Setter callback functions generated for link setters.
+    pub setter_callbacks: Vec<Function>,
+}
+
 /// Translate a parsed passage AST into an IR Function.
-pub fn translate_passage(name: &str, ast: &PassageAst) -> (Function, Vec<(String, Vec<Node>)>) {
+pub fn translate_passage(name: &str, ast: &PassageAst) -> TranslateResult {
     let func_name = passage_func_name(name);
     let mut ctx = TranslateCtx::new(&func_name);
 
@@ -1484,7 +1534,12 @@ pub fn translate_passage(name: &str, ast: &PassageAst) -> (Function, Vec<(String
     ctx.fb.ret(None);
 
     let widgets = std::mem::take(&mut ctx.widgets);
-    (ctx.fb.build(), widgets)
+    let setter_callbacks = std::mem::take(&mut ctx.setter_callbacks);
+    TranslateResult {
+        func: ctx.fb.build(),
+        widgets,
+        setter_callbacks,
+    }
 }
 
 /// Translate a widget body into an IR Function.
@@ -1527,8 +1582,8 @@ mod tests {
     fn translate(source: &str) -> Function {
         let ast = parser::parse(source);
         assert!(ast.errors.is_empty(), "parse errors: {:?}", ast.errors);
-        let (func, _widgets) = translate_passage("test", &ast);
-        func
+        let result = translate_passage("test", &ast);
+        result.func
     }
 
     #[test]
@@ -1592,9 +1647,9 @@ mod tests {
         } else {
             panic!("expected Macro node, got: {:?}", ast.body[0].kind);
         }
-        let (_func, widgets) = translate_passage("test", &ast);
-        assert_eq!(widgets.len(), 1);
-        assert_eq!(widgets[0].0, "myWidget");
+        let result = translate_passage("test", &ast);
+        assert_eq!(result.widgets.len(), 1);
+        assert_eq!(result.widgets[0].0, "myWidget");
     }
 
     #[test]

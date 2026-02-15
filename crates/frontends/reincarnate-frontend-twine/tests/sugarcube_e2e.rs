@@ -54,10 +54,10 @@ fn translate_all_passages(html: &str) -> (usize, usize, usize) {
             sugarcube::translate::translate_passage(&passage.name, &ast)
         }));
         match result {
-            Ok((func, widgets)) => {
-                total_functions += 1 + widgets.len();
+            Ok(tr) => {
+                total_functions += 1 + tr.widgets.len();
                 // Also translate widgets to catch panics there
-                for (name, body) in &widgets {
+                for (name, body) in &tr.widgets {
                     let wr = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         sugarcube::translate::translate_widget(name, body)
                     }));
@@ -68,7 +68,7 @@ fn translate_all_passages(html: &str) -> (usize, usize, usize) {
                 }
                 // Verify the function has at least one block
                 assert!(
-                    !func.blocks.is_empty(),
+                    !tr.func.blocks.is_empty(),
                     "passage {:?} produced empty function",
                     passage.name
                 );

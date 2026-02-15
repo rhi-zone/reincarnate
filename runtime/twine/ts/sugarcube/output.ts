@@ -64,17 +64,17 @@ function lineBreak(): void {
 // --- Links ---
 
 /** Emit a simple link (no body content). */
-export function link(text: string, passage?: string, ...setters: any[]): void {
+export function link(text: string, passage?: string, setter?: () => void): void {
   const buf = currentBuffer();
   const a = document.createElement("a");
-  // Strip ][$ setter suffix from passage name if present (frontend parser limitation)
-  const cleanPassage = passage ? passage.replace(/\]\[.*$/, "") : undefined;
   a.textContent = text;
-  if (cleanPassage) {
+  if (passage || setter) {
     a.addEventListener("click", (e) => {
       e.preventDefault();
-      // Dynamic import to avoid circular dependency
-      import("./navigation").then((nav) => nav.goto(cleanPassage));
+      if (setter) setter();
+      if (passage) {
+        import("./navigation").then((nav) => nav.goto(passage));
+      }
     });
   }
   buf.appendChild(a);
@@ -92,8 +92,7 @@ const linkBlockStack: LinkBlockContext[] = [];
 
 /** Start a link block — push buffer for body content. */
 export function link_block_start(variant: string, text: string, passage?: string): void {
-  const cleanPassage = passage ? passage.replace(/\]\[.*$/, "") : undefined;
-  linkBlockStack.push({ variant, text, passage: cleanPassage });
+  linkBlockStack.push({ variant, text, passage });
   pushBuffer();
 }
 
