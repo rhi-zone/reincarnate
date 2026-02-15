@@ -1,6 +1,35 @@
-/** Platform interface — re-exports from the active implementation.
+/** Platform interface — re-exports from per-concern implementation modules.
  *
- * Swap platforms by changing this import to point at a different
- * implementation module (e.g., "./electron", "./mobile").
+ * Swap any concern by replacing its module with a different implementation.
+ * For example, swap persistence by pointing at "./cloud-persistence" instead
+ * of "./persistence", or add gamepad input alongside keyboard by swapping
+ * "./input" for a module that merges both.
  */
-export * from "./browser";
+
+export { loadLocal, saveLocal, removeLocal } from "./persistence";
+
+export {
+  type AudioHandle,
+  createAudio, playAudio, pauseAudio, stopAudio,
+  setVolume, setMuted, setLoop,
+  seekAudio, getAudioDuration, getAudioTime,
+  fadeAudio, isAudioReady,
+} from "./audio";
+
+export {
+  scheduleTimeout, cancelTimeout,
+  scheduleInterval, cancelInterval,
+} from "./timing";
+
+export { registerCommand, removeCommand, triggerCommand } from "./input";
+
+export { showDialog, closeDialog, isDialogOpen } from "./dialog";
+
+export { type SaveSlotInfo, showSaveUI, closeSaveUI } from "./save-ui";
+
+export { type SettingUIEntry, showSettingsUI } from "./settings-ui";
+
+export {
+  type SidebarConfig,
+  renderSidebar, stowSidebar, unstowSidebar, destroySidebar,
+} from "./layout";
