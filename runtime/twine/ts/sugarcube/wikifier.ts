@@ -51,13 +51,29 @@ export interface ParserDef {
 }
 
 // ---------------------------------------------------------------------------
+// Wikifier options
+// ---------------------------------------------------------------------------
+
+export interface WikifierOptions {
+  /** Parser profile: 'all' uses every parser, 'core' skips block-level parsers. */
+  profile?: string;
+  /** Post-process <br> sequences into <p> elements. Default: false. */
+  cleanup?: boolean;
+  /** Suppress <br> for newlines. */
+  nobr?: boolean;
+  /** Case-insensitive terminator matching (used internally by HTML parser). */
+  ignoreTerminatorCase?: boolean;
+}
+
+const DEFAULT_OPTIONS: WikifierOptions = { profile: "all" };
+
+// ---------------------------------------------------------------------------
 // Parser registry
 // ---------------------------------------------------------------------------
 
 export class ParserRegistry {
   private parsers: ParserDef[] = [];
-  private compiledRe: RegExp | null = null;
-  private parserNames: string[] = [];
+  private profileCache: Map<string, { re: RegExp; parsers: ParserDef[] }> = new Map();
   modified = false;
 
   add(def: ParserDef): void {
@@ -68,7 +84,7 @@ export class ParserRegistry {
     } else {
       this.parsers.push(def);
     }
-    this.compiledRe = null;
+    this.profileCache.clear();
     this.modified = true;
     Wikifier.invalidateCache(def.name);
   }
@@ -77,7 +93,7 @@ export class ParserRegistry {
     const idx = this.parsers.findIndex(p => p.name === name);
     if (idx >= 0) {
       this.parsers.splice(idx, 1);
-      this.compiledRe = null;
+      this.profileCache.clear();
       this.modified = true;
       Wikifier.invalidateCache(name);
     }
@@ -96,19 +112,32 @@ export class ParserRegistry {
     return this.parsers;
   }
 
-  /** Compile a single combined regex from all parser match patterns. */
-  getCompiledRe(): RegExp {
-    if (this.compiledRe === null) {
-      this.parserNames = this.parsers.map(p => p.name);
-      const combined = this.parsers.map(p => `(${p.match})`).join("|");
-      this.compiledRe = new RegExp(combined, "gm");
+  /** Get parsers filtered by profile, with compiled regex. */
+  getProfile(profile: string): { re: RegExp; parsers: ParserDef[] } {
+    const cached = this.profileCache.get(profile);
+    if (cached) return cached;
+
+    let filtered: ParserDef[];
+    if (profile === "all") {
+      filtered = this.parsers;
+    } else {
+      filtered = this.parsers.filter(
+        p => !p.profiles || p.profiles.includes(profile),
+      );
     }
-    return this.compiledRe;
+
+    const combined = filtered.map(p => `(${p.match})`).join("|");
+    const re = new RegExp(combined, "gm");
+    const entry = { re, parsers: filtered };
+    this.profileCache.set(profile, entry);
+    return entry;
   }
 
-  /** Get the parser that corresponds to a regex match group index. */
-  getParserForGroup(groupIndex: number): ParserDef | undefined {
-    return this.parsers[groupIndex];
+  /** Compile a single combined regex from all parser match patterns.
+   *  Shorthand for getProfile("all").re.
+   */
+  getCompiledRe(): RegExp {
+    return this.getProfile("all").re;
   }
 
   /** Number of registered parsers. */
@@ -147,16 +176,18 @@ export class Wikifier {
   }
 
   /** Parse and render SugarCube markup, returning a DocumentFragment. */
-  static wikifyEval(markup: string): DocumentFragment {
-    // Check cache
-    const cached = Wikifier.cache.get(markup);
+  static wikifyEval(markup: string, options?: WikifierOptions): DocumentFragment {
+    // Build cache key that incorporates options
+    const cacheKey = options ? markup + "\0" + JSON.stringify(options) : markup;
+
+    const cached = Wikifier.cache.get(cacheKey);
     if (cached) {
       return cached.fragment.cloneNode(true) as DocumentFragment;
     }
 
     const frag = document.createDocumentFragment();
-    const w = new Wikifier(frag, markup);
-    Wikifier.cache.set(markup, {
+    const w = new Wikifier(frag, markup, options);
+    Wikifier.cache.set(cacheKey, {
       fragment: frag.cloneNode(true) as DocumentFragment,
       parserDeps: w.parserDeps,
     });
@@ -407,6 +438,7 @@ export class Wikifier {
 
   output: DocumentFragment | Node;
   source: string;
+  options: WikifierOptions;
   matchStart = 0;
   matchLength = 0;
   matchText = "";
@@ -415,9 +447,10 @@ export class Wikifier {
 
   private _match: RegExpExecArray | null = null;
 
-  constructor(output: DocumentFragment | Node | null, source: string) {
+  constructor(output: DocumentFragment | Node | null, source: string, options?: WikifierOptions) {
     this.output = output || document.createDocumentFragment();
     this.source = source;
+    this.options = Object.assign({}, DEFAULT_OPTIONS, options);
     this.subWikify(this.output);
   }
 
@@ -428,23 +461,37 @@ export class Wikifier {
     }
   }
 
-  /** Parse and render from current position, optionally stopping at a terminator regex. */
-  subWikify(output: Node, termRegex?: RegExp | null, context?: any): void {
+  /** Parse and render from current position, optionally stopping at a terminator regex.
+   *  @param output — destination node
+   *  @param termRegex — stop when this regex matches (consumed but not rendered)
+   *  @param localOptions — options merged on top of this.options for this call
+   */
+  subWikify(output: Node, termRegex?: RegExp | null, localOptions?: WikifierOptions): void {
     const oldOutput = this.output;
+    const oldOptions = this.options;
     this.output = output;
 
-    const registry = Wikifier.Parser;
-    const re = registry.getCompiledRe();
+    if (localOptions) {
+      this.options = Object.assign({}, this.options, localOptions);
+    }
+
+    const profile = this.options.profile || "all";
+    const { re, parsers } = Wikifier.Parser.getProfile(profile);
     re.lastIndex = this.nextMatch;
 
-    const parsers = registry.getParsers();
+    // Handle ignoreTerminatorCase
+    let effectiveTermRe = termRegex ?? null;
+    if (effectiveTermRe && this.options.ignoreTerminatorCase) {
+      effectiveTermRe = new RegExp(effectiveTermRe.source, "gim");
+    }
+
     let terminatorMatch: RegExpExecArray | null = null;
 
     while (true) {
       // Check terminator first
-      if (termRegex) {
-        termRegex.lastIndex = this.nextMatch;
-        terminatorMatch = termRegex.exec(this.source);
+      if (effectiveTermRe) {
+        effectiveTermRe.lastIndex = this.nextMatch;
+        terminatorMatch = effectiveTermRe.exec(this.source);
       }
 
       // Find earliest parser match
@@ -508,6 +555,7 @@ export class Wikifier {
     }
 
     this.output = oldOutput;
+    this.options = oldOptions;
   }
 
   /** Get the current match object. */
@@ -570,12 +618,14 @@ Wikifier.Parser.add({
   },
 });
 
-/** Line break: literal \n. */
+/** Line break: literal \n. Suppressed when options.nobr is true. */
 Wikifier.Parser.add({
   name: "lineBreak",
   match: "\\n",
   handler(w: Wikifier) {
-    w.output.appendChild(document.createElement("br"));
+    if (!w.options.nobr) {
+      w.output.appendChild(document.createElement("br"));
+    }
   },
 });
 
@@ -598,9 +648,10 @@ Wikifier.Parser.add({
   },
 });
 
-/** Heading: ! at start of line. */
+/** Heading: ! at start of line. Block-level, excluded from 'core' profile. */
 Wikifier.Parser.add({
   name: "heading",
+  profiles: ["all"],
   match: "^!{1,6}",
   handler(w: Wikifier) {
     const level = Math.min(w.matchText.length, 6);
@@ -612,9 +663,12 @@ Wikifier.Parser.add({
   },
 });
 
-/** Horizontal rule: ---- (4+ hyphens) at start of line. */
+/** Horizontal rule: ---- (4+ hyphens) at start of line.
+ *  Block-level, excluded from 'core' profile.
+ */
 Wikifier.Parser.add({
   name: "horizontalRule",
+  profiles: ["all"],
   match: "^-{4,}$",
   handler(w: Wikifier) {
     w.output.appendChild(document.createElement("hr"));

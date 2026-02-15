@@ -8,7 +8,7 @@
  * Call installExtensions() after jQuery is on globalThis.
  */
 
-import { Wikifier } from "./wikifier";
+import { Wikifier, type WikifierOptions } from "./wikifier";
 
 export function installExtensions(): void {
   const $ = (globalThis as any).jQuery;
@@ -21,8 +21,11 @@ export function installExtensions(): void {
     });
   };
 
-  $.fn.wikiWithOptions = function (_opts: any, markup: string) {
-    return this.wiki(markup);
+  $.fn.wikiWithOptions = function (opts: WikifierOptions, markup: string) {
+    return this.each(function () {
+      const frag = Wikifier.wikifyEval(markup, opts);
+      (this as Element).appendChild(frag);
+    });
   };
 
   /** Add click + keypress(Enter/Space) handler with ARIA attributes. */
