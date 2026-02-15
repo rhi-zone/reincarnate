@@ -2,10 +2,14 @@
 //!
 //! These run after engine-specific rewrites and before printing.
 
+use std::collections::HashMap;
+
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::value::Constant;
+use reincarnate_core::ir::{CastKind, Type};
 
-use crate::js_ast::{JsExpr, JsStmt};
+use crate::js_ast::{JsExpr, JsFunction, JsStmt};
+use crate::types::ts_type;
 
 /// Recover `switch` statements from if-chains where every condition compares
 /// the same expression against a distinct constant.
@@ -404,4 +408,318 @@ fn all_constants_distinct(cases: &[(Constant, Vec<JsStmt>)]) -> bool {
         }
     }
     true
+}
+
+// ---------------------------------------------------------------------------
+// Redundant AsType cast elimination
+// ---------------------------------------------------------------------------
+
+/// Strip `x as T` casts where the variable `x` is already declared with type
+/// `T`. These arise because AVM2 has explicit coerce/astype opcodes that
+/// survive the IR `red_cast_elim` pass (which only checks IR-level types, not
+/// the emitter's declaration types).
+pub fn strip_redundant_casts(func: &mut JsFunction) {
+    let mut var_types: HashMap<String, Type> = HashMap::new();
+    // Collect param types.
+    for (name, ty) in &func.params {
+        if *ty != Type::Dynamic {
+            var_types.insert(name.clone(), ty.clone());
+        }
+    }
+    // Collect local variable types from declarations.
+    collect_var_types(&func.body, &mut var_types);
+    // Debug: count what we found
+    // Strip redundant casts.
+    strip_casts_in_body(&mut func.body, &var_types);
+}
+
+fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
+    for stmt in body {
+        match stmt {
+            JsStmt::VarDecl {
+                name,
+                ty: Some(ty),
+                ..
+            } if *ty != Type::Dynamic => {
+                var_types.insert(name.clone(), ty.clone());
+            }
+            // When ty is None but init is a Cast, the printer uses the cast
+            // type as the annotation. Collect that type too.
+            JsStmt::VarDecl {
+                name,
+                ty: None,
+                init:
+                    Some(JsExpr::Cast {
+                        ty: cast_ty,
+                        kind: CastKind::AsType,
+                        ..
+                    }),
+                ..
+            } if *cast_ty != Type::Dynamic
+                && !matches!(cast_ty, Type::Struct(_) | Type::Enum(_)) =>
+            {
+                var_types.insert(name.clone(), cast_ty.clone());
+            }
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                collect_var_types(then_body, var_types);
+                collect_var_types(else_body, var_types);
+            }
+            JsStmt::While { body, .. }
+            | JsStmt::Loop { body }
+            | JsStmt::ForOf { body, .. } => {
+                collect_var_types(body, var_types);
+            }
+            JsStmt::For {
+                init,
+                body,
+                update,
+                ..
+            } => {
+                collect_var_types(init, var_types);
+                collect_var_types(body, var_types);
+                collect_var_types(update, var_types);
+            }
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    collect_var_types(case_body, var_types);
+                }
+                collect_var_types(default_body, var_types);
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    collect_var_types(block_body, var_types);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Whether two types map to the same TypeScript type (e.g. Int(32),
+/// Float(64), and Union([Int(64), Int(32)]) all map to `number`).
+fn same_ts_type(a: &Type, b: &Type) -> bool {
+    if a == b {
+        return true;
+    }
+    ts_type(a) == ts_type(b)
+}
+
+fn strip_casts_in_body(body: &mut [JsStmt], var_types: &HashMap<String, Type>) {
+    for stmt in body.iter_mut() {
+        strip_casts_in_stmt(stmt, var_types);
+    }
+}
+
+fn strip_casts_in_stmt(stmt: &mut JsStmt, var_types: &HashMap<String, Type>) {
+    match stmt {
+        JsStmt::VarDecl {
+            init: Some(expr), ..
+        }
+        | JsStmt::Expr(expr)
+        | JsStmt::Throw(expr) => {
+            strip_casts_in_expr(expr, var_types);
+        }
+        JsStmt::Assign { target, value } => {
+            strip_casts_in_expr(target, var_types);
+            strip_casts_in_expr(value, var_types);
+        }
+        JsStmt::CompoundAssign { target, value, .. } => {
+            strip_casts_in_expr(target, var_types);
+            strip_casts_in_expr(value, var_types);
+        }
+        JsStmt::Return(Some(expr)) => {
+            strip_casts_in_expr(expr, var_types);
+        }
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            strip_casts_in_expr(cond, var_types);
+            strip_casts_in_body(then_body, var_types);
+            strip_casts_in_body(else_body, var_types);
+        }
+        JsStmt::While { cond, body } => {
+            strip_casts_in_expr(cond, var_types);
+            strip_casts_in_body(body, var_types);
+        }
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            strip_casts_in_body(init, var_types);
+            strip_casts_in_expr(cond, var_types);
+            strip_casts_in_body(update, var_types);
+            strip_casts_in_body(body, var_types);
+        }
+        JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
+            strip_casts_in_body(body, var_types);
+        }
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            strip_casts_in_expr(value, var_types);
+            for (_, case_body) in cases.iter_mut() {
+                strip_casts_in_body(case_body, var_types);
+            }
+            strip_casts_in_body(default_body, var_types);
+        }
+        JsStmt::Dispatch { blocks, .. } => {
+            for (_, block_body) in blocks.iter_mut() {
+                strip_casts_in_body(block_body, var_types);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn strip_casts_in_expr(expr: &mut JsExpr, var_types: &HashMap<String, Type>) {
+    // First, check if this expr is a strippable cast.
+    let should_strip = if let JsExpr::Cast {
+        expr: inner,
+        ty: cast_ty,
+        kind,
+    } = &*expr
+    {
+        if *kind == CastKind::AsType {
+            is_cast_redundant(inner, cast_ty, var_types)
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if should_strip {
+        // Unwrap the Cast to its inner expression.
+        let inner = match std::mem::replace(expr, JsExpr::This) {
+            JsExpr::Cast { expr: inner, .. } => *inner,
+            _ => unreachable!(),
+        };
+        *expr = inner;
+    }
+
+    // Recurse into sub-expressions.
+    match expr {
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs } => {
+            strip_casts_in_expr(lhs, var_types);
+            strip_casts_in_expr(rhs, var_types);
+        }
+        JsExpr::In { key, object } | JsExpr::Delete { object, key } => {
+            strip_casts_in_expr(key, var_types);
+            strip_casts_in_expr(object, var_types);
+        }
+        JsExpr::Unary { expr: inner, .. }
+        | JsExpr::Not(inner)
+        | JsExpr::PostIncrement(inner)
+        | JsExpr::TypeOf(inner)
+        | JsExpr::GeneratorResume(inner)
+        | JsExpr::Cast { expr: inner, .. }
+        | JsExpr::TypeCheck { expr: inner, .. } => {
+            strip_casts_in_expr(inner, var_types);
+        }
+        JsExpr::Field { object, .. } => {
+            strip_casts_in_expr(object, var_types);
+        }
+        JsExpr::Index {
+            collection, index, ..
+        } => {
+            strip_casts_in_expr(collection, var_types);
+            strip_casts_in_expr(index, var_types);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            strip_casts_in_expr(callee, var_types);
+            for arg in args.iter_mut() {
+                strip_casts_in_expr(arg, var_types);
+            }
+        }
+        JsExpr::SystemCall { args, .. } | JsExpr::GeneratorCreate { args, .. } => {
+            for arg in args.iter_mut() {
+                strip_casts_in_expr(arg, var_types);
+            }
+        }
+        JsExpr::SuperCall(args)
+        | JsExpr::SuperMethodCall { args, .. }
+        | JsExpr::ArrayInit(args)
+        | JsExpr::TupleInit(args) => {
+            for arg in args.iter_mut() {
+                strip_casts_in_expr(arg, var_types);
+            }
+        }
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            strip_casts_in_expr(cond, var_types);
+            strip_casts_in_expr(then_val, var_types);
+            strip_casts_in_expr(else_val, var_types);
+        }
+        JsExpr::ObjectInit(pairs) => {
+            for (_, val) in pairs.iter_mut() {
+                strip_casts_in_expr(val, var_types);
+            }
+        }
+        JsExpr::SuperSet { value, .. } => {
+            strip_casts_in_expr(value, var_types);
+        }
+        JsExpr::Yield(Some(inner)) => {
+            strip_casts_in_expr(inner, var_types);
+        }
+        JsExpr::ArrowFunction { body, .. } => {
+            strip_casts_in_body(body, var_types);
+        }
+        _ => {}
+    }
+}
+
+/// Check if a Cast is redundant because the inner expression's type already
+/// matches the cast target.
+fn is_cast_redundant(
+    inner: &JsExpr,
+    cast_ty: &Type,
+    var_types: &HashMap<String, Type>,
+) -> bool {
+    // Only strip TS assertion forms (not runtime calls like asType, Number).
+    if matches!(cast_ty, Type::Struct(_) | Type::Enum(_)) {
+        return false;
+    }
+    if let Some(expr_ty) = infer_expr_type(inner, var_types) {
+        same_ts_type(&expr_ty, cast_ty)
+    } else {
+        false
+    }
+}
+
+/// Infer the TypeScript type of an expression from its structure.
+fn infer_expr_type(expr: &JsExpr, var_types: &HashMap<String, Type>) -> Option<Type> {
+    match expr {
+        JsExpr::Var(name) => var_types.get(name).cloned(),
+        JsExpr::Literal(c) => match c {
+            Constant::Int(_) | Constant::UInt(_) | Constant::Float(_) => {
+                Some(Type::Float(64))
+            }
+            Constant::String(_) => Some(Type::String),
+            Constant::Bool(_) => Some(Type::Bool),
+            Constant::Null => None,
+        },
+        JsExpr::Binary { .. } | JsExpr::Unary { .. } => Some(Type::Float(64)),
+        JsExpr::Cmp { .. } | JsExpr::Not(_) | JsExpr::TypeCheck { .. } => Some(Type::Bool),
+        _ => None,
+    }
 }

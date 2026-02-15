@@ -2313,6 +2313,7 @@ fn emit_function(
     };
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
     crate::ast_passes::recover_switch_statements(&mut js_func.body);
+    crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_printer::print_function(&js_func, out);
     Ok(())
 }
@@ -2771,6 +2772,7 @@ fn emit_class_method(
         }
     }
     crate::ast_passes::recover_switch_statements(&mut js_func.body);
+    crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_printer::print_class_method(&js_func, &raw_name, skip_self, out);
     Ok(())
 }
