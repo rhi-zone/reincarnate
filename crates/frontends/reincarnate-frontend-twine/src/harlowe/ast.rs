@@ -82,6 +82,8 @@ pub enum NodeKind {
         tag: String,
         attrs: Vec<(String, String)>,
     },
+    /// Inline markup: `**bold**`, `*italic*`, `''bold''`, `//italic//`, etc.
+    Markup { tag: String, body: Vec<Node> },
     /// A line break (literal newline).
     LineBreak,
 }

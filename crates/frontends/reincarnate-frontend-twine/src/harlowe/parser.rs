@@ -116,6 +116,29 @@ impl<'a> Parser<'a> {
                     span: Span::new(start, self.pos),
                 })
             }
+            // Markup delimiters
+            b'*' if self.peek_at(1) == Some(b'*') => {
+                if self.peek_at(2) == Some(b'*') {
+                    self.parse_markup_compound("***", "strong", "em", in_hook)
+                } else {
+                    self.parse_markup("**", "strong", in_hook)
+                }
+            }
+            b'*' if !in_hook || self.peek_at(1).is_some_and(|c| c != b']') => {
+                self.parse_markup("*", "em", in_hook)
+            }
+            b'\'' if self.peek_at(1) == Some(b'\'') => {
+                self.parse_markup("''", "strong", in_hook)
+            }
+            b'/' if self.peek_at(1) == Some(b'/') => {
+                self.parse_markup("//", "em", in_hook)
+            }
+            b'~' if self.peek_at(1) == Some(b'~') => {
+                self.parse_markup("~~", "del", in_hook)
+            }
+            b'^' if self.peek_at(1) == Some(b'^') => {
+                self.parse_markup("^^", "sup", in_hook)
+            }
             _ => self.parse_text(in_hook),
         }
     }
@@ -512,6 +535,94 @@ impl<'a> Parser<'a> {
         Some(Node { kind, span })
     }
 
+    /// Parse inline markup like `**bold**`, `//italic//`, etc.
+    /// Returns the Markup node on success, or falls back to text on failure.
+    fn parse_markup(&mut self, delimiter: &str, tag: &str, in_hook: bool) -> Option<Node> {
+        let start = self.pos;
+        let delim_len = delimiter.len();
+        self.pos += delim_len; // skip opening delimiter
+
+        // Parse body until closing delimiter or end of line
+        let mut body = Vec::new();
+        while !self.at_end() {
+            // Check for closing delimiter
+            if self.remaining().starts_with(delimiter) {
+                self.pos += delim_len;
+                return Some(Node {
+                    kind: NodeKind::Markup {
+                        tag: tag.to_string(),
+                        body,
+                    },
+                    span: Span::new(start, self.pos),
+                });
+            }
+            // End of line = no closing delimiter found on this line
+            if self.peek() == Some(b'\n') {
+                break;
+            }
+            // Stop at hook boundary
+            if in_hook && self.peek() == Some(b']') {
+                break;
+            }
+            if let Some(node) = self.parse_node(in_hook) {
+                body.push(node);
+            }
+        }
+
+        // No closing delimiter found — treat opening as literal text
+        self.pos = start;
+        self.parse_text(in_hook)
+    }
+
+    /// Parse compound markup like `***bold+italic***` → nested Markup nodes.
+    fn parse_markup_compound(
+        &mut self,
+        delimiter: &str,
+        outer_tag: &str,
+        inner_tag: &str,
+        in_hook: bool,
+    ) -> Option<Node> {
+        let start = self.pos;
+        let delim_len = delimiter.len();
+        self.pos += delim_len; // skip opening delimiter
+
+        // Parse body until closing delimiter or end of line
+        let mut body = Vec::new();
+        while !self.at_end() {
+            if self.remaining().starts_with(delimiter) {
+                self.pos += delim_len;
+                // Wrap as outer[inner[body]]
+                let inner = Node {
+                    kind: NodeKind::Markup {
+                        tag: inner_tag.to_string(),
+                        body,
+                    },
+                    span: Span::new(start, self.pos),
+                };
+                return Some(Node {
+                    kind: NodeKind::Markup {
+                        tag: outer_tag.to_string(),
+                        body: vec![inner],
+                    },
+                    span: Span::new(start, self.pos),
+                });
+            }
+            if self.peek() == Some(b'\n') {
+                break;
+            }
+            if in_hook && self.peek() == Some(b']') {
+                break;
+            }
+            if let Some(node) = self.parse_node(in_hook) {
+                body.push(node);
+            }
+        }
+
+        // No closing delimiter — treat as literal text
+        self.pos = start;
+        self.parse_text(in_hook)
+    }
+
     /// Parse a run of plain text until a special character.
     fn parse_text(&mut self, in_hook: bool) -> Option<Node> {
         let start = self.pos;
@@ -531,10 +642,12 @@ impl<'a> Parser<'a> {
                 }
                 b']' if in_hook => break,
                 b'_' if self.peek_at(1).is_some_and(|c| c.is_ascii_alphanumeric()) => break,
-                b'*' => {
-                    // Bold markers `**` or italic `*` — pass through as text
-                    self.pos += 1;
-                }
+                // Markup delimiters
+                b'*' => break,
+                b'\'' if self.peek_at(1) == Some(b'\'') => break,
+                b'/' if self.peek_at(1) == Some(b'/') => break,
+                b'~' if self.peek_at(1) == Some(b'~') => break,
+                b'^' if self.peek_at(1) == Some(b'^') => break,
                 _ => self.pos += 1,
             }
         }

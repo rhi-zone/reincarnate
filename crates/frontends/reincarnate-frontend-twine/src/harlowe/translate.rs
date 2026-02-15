@@ -92,6 +92,11 @@ impl TranslateCtx {
             NodeKind::HtmlOpen { tag, attrs } => self.emit_open_element(tag, attrs),
             NodeKind::HtmlClose(_) => self.emit_close_element(),
             NodeKind::HtmlVoid { tag, attrs } => self.emit_void_element(tag, attrs),
+            NodeKind::Markup { tag, body } => {
+                self.emit_open_element(tag, &[]);
+                self.lower_nodes(body);
+                self.emit_close_element();
+            }
             NodeKind::LineBreak => {
                 let tag = self.fb.const_string("br");
                 self.fb
