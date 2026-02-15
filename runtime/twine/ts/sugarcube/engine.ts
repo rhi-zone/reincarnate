@@ -12,6 +12,7 @@
 import * as State from "./state";
 import * as Navigation from "./navigation";
 import * as Macro from "./macro";
+import * as Platform from "../platform";
 import jQuery from "jquery";
 import { installExtensions } from "./jquery-extensions";
 
@@ -246,13 +247,14 @@ function ensureGlobals(): void {
   };
 
   // --- UIBar ---
+  let uiBarStowed = false;
   g.UIBar = {
-    stow() {},
-    unstow() {},
-    destroy() {},
-    hide() {},
-    show() {},
-    isStowed() { return false; },
+    stow() { uiBarStowed = true; Platform.stowSidebar(); },
+    unstow() { uiBarStowed = false; Platform.unstowSidebar(); },
+    destroy() { Platform.destroySidebar(); },
+    hide() { Platform.stowSidebar(); },
+    show() { Platform.unstowSidebar(); },
+    isStowed() { return uiBarStowed; },
   };
 
   // --- L10n ---
@@ -261,15 +263,32 @@ function ensureGlobals(): void {
     get(key: string) { return key; },
   };
 
-  // --- Dialog (referenced by some scripts) ---
+  // --- Dialog ---
+  let dialogTitle = "";
+  let dialogBody: HTMLDivElement = document.createElement("div");
+
   g.Dialog = {
-    setup(title?: string, _classNames?: string) { return document.createElement("div"); },
-    isOpen() { return false; },
-    open() {},
-    close() {},
-    body() { return document.createElement("div"); },
-    append(..._content: any[]) {},
-    wiki(_content: string) {},
+    setup(title?: string, _classNames?: string) {
+      dialogTitle = title || "";
+      dialogBody = document.createElement("div");
+      return dialogBody;
+    },
+    isOpen() { return Platform.isDialogOpen(); },
+    open(_options?: any, _closeFn?: Function) {
+      Platform.showDialog(dialogTitle, dialogBody);
+    },
+    close() { Platform.closeDialog(); },
+    body() { return dialogBody; },
+    append(...content: any[]) {
+      for (const c of content) {
+        if (c instanceof Node) dialogBody.appendChild(c);
+        else dialogBody.appendChild(document.createTextNode(String(c)));
+      }
+    },
+    wiki(content: string) {
+      // No full wikification — render as plain text
+      dialogBody.appendChild(document.createTextNode(content));
+    },
   };
 
   // --- passage function (returns current passage name) ---
