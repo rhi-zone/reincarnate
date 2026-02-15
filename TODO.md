@@ -78,8 +78,6 @@ improve output fidelity:
 
 ### Correctness
 
-- [ ] **Negative constant resolution** — At least one `Math.max` clamp emits
-  a wrong positive constant instead of the correct negative value.
 - [ ] **Complex loop decompilation** — Some while-loop bodies have unreachable
   code after `continue`, wrong variable assignments.
 
