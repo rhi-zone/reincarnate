@@ -82,7 +82,10 @@ Layer 1: Platform Implementation         platform/browser.ts
 | Timing | setTimeout/setInterval wrappers | Hook for pause/resume, speed control |
 | Rendering | canvas context, draw calls | Swap 2D canvas for WebGL (Flash/GameMaker) |
 | Input | keyboard/mouse/touch/gamepad | On-screen joysticks, gamepad support, click-to-move (RPG Maker) |
-| Save UI | save slot presentation, autosave | Custom save menus, cloud sync dialogs |
+| Dialog | show/close modal, open state | Swap DOM modals for native `<dialog>`, toast notifications, mobile sheets |
+| Save UI | save slot presentation | Swap modal slot list for cloud sync dashboard, thumbnail grid, Steam overlay |
+| Settings UI | settings form presentation | Swap modal form for full-page panel, system preferences integration, accessibility UI |
+| Layout | sidebar render/stow/toggle | Swap fixed sidebar for hamburger menu, bottom nav, collapsible drawer |
 
 **Direct DOM ops stay in shim modules** — Twine is fundamentally DOM-based, so `createElement`, `querySelector`, etc. are called directly in the sugarcube/ modules, not abstracted through the platform layer. Only concerns that benefit from swappability go through platform.
 
