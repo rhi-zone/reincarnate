@@ -65,7 +65,7 @@ function ensureGlobals(): void {
       set(_t: any, prop: string, val: any) { State.set("_" + (prop as string), val); return true; },
     }),
     get active() { return { title: Navigation.current(), variables: g.V }; },
-    hasPlayed(_passage: string) { return false; },
+    hasPlayed(passage: string) { return State.hasPlayed(passage); },
     length: 0,
     size: 0,
     isEmpty() { return true; },
@@ -274,6 +274,27 @@ function ensureGlobals(): void {
 
   // --- passage function (returns current passage name) ---
   g.passage = () => Navigation.current();
+
+  // --- visited / visitedTags ---
+  g.visited = (...passageNames: string[]) => {
+    if (passageNames.length === 0) {
+      return State.visited(Navigation.current());
+    }
+    return Math.min(...passageNames.map(p => State.visited(p)));
+  };
+  g.visitedTags = (...tags: string[]) => {
+    let count = 0;
+    for (const title of State.passages()) {
+      const passageTags = Navigation.getTags(title);
+      if (tags.every(t => passageTags.includes(t))) count++;
+    }
+    return count;
+  };
+  g.turns = () => State.historyLength();
+  g.previous = () => {
+    const all = State.passages();
+    return all.length >= 2 ? all[all.length - 2] : "";
+  };
 }
 
 /** Resolve a bare name (used for function lookups in expression context). */

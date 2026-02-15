@@ -54,8 +54,12 @@ interface Moment {
 
 const history: Moment[] = [];
 
+/** Set of all passages that have been visited during this session. */
+const visitedSet: Set<string> = new Set();
+
 /** Deep-clone story variables and push onto history. */
 export function pushMoment(title: string): void {
+  visitedSet.add(title);
   history.push({
     title,
     variables: JSON.parse(JSON.stringify(storyVars)),
@@ -91,6 +95,27 @@ export function peekMoment(): string | undefined {
 /** Get the number of moments in history. */
 export function historyLength(): number {
   return history.length;
+}
+
+// --- Visited tracking ---
+
+/** Check if a passage has ever been visited. */
+export function hasPlayed(title: string): boolean {
+  return visitedSet.has(title);
+}
+
+/** Count how many times a passage appears in the history. */
+export function visited(title: string): number {
+  let count = 0;
+  for (const moment of history) {
+    if (moment.title === title) count++;
+  }
+  return count;
+}
+
+/** Get all passage titles from the history in order. */
+export function passages(): string[] {
+  return history.map(m => m.title);
 }
 
 // --- Persistence (save/load slots via platform) ---
