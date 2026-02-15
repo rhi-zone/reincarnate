@@ -98,6 +98,25 @@ impl TranslateCtx {
                 self.lower_nodes(body);
                 self.emit_close_element();
             }
+            NodeKind::ChangerApply { name, hook } => {
+                let changer = if let Some(stripped) = name.strip_prefix('$') {
+                    let n = self.fb.const_string(stripped);
+                    self.fb
+                        .system_call("Harlowe.State", "get", &[n], Type::Dynamic)
+                } else {
+                    let stripped = name.strip_prefix('_').unwrap_or(name);
+                    self.get_or_load_temp(stripped)
+                };
+                self.fb.system_call(
+                    "Harlowe.Output",
+                    "push_changer",
+                    &[changer],
+                    Type::Void,
+                );
+                self.lower_nodes(hook);
+                self.fb
+                    .system_call("Harlowe.Output", "pop_changer", &[], Type::Void);
+            }
             NodeKind::LineBreak => {
                 let tag = self.fb.const_string("br");
                 self.fb

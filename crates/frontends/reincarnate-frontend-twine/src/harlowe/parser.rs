@@ -443,6 +443,23 @@ impl<'a> Parser<'a> {
         }
 
         let name = self.source[name_start..self.pos].to_string();
+
+        // Check for $var[hook] pattern (but not $var[[link]])
+        if self.peek() == Some(b'[') && self.peek_at(1) != Some(b'[') {
+            self.pos += 1; // skip [
+            let hook = self.parse_body(true);
+            if self.peek() == Some(b']') {
+                self.pos += 1;
+            }
+            return Some(Node {
+                kind: NodeKind::ChangerApply {
+                    name: format!("${name}"),
+                    hook,
+                },
+                span: Span::new(start, self.pos),
+            });
+        }
+
         Some(Node {
             kind: NodeKind::VarInterp(format!("${name}")),
             span: Span::new(start, self.pos),
@@ -460,6 +477,23 @@ impl<'a> Parser<'a> {
             self.pos += 1;
         }
         let name = self.source[name_start..self.pos].to_string();
+
+        // Check for _var[hook] pattern (but not _var[[link]])
+        if self.peek() == Some(b'[') && self.peek_at(1) != Some(b'[') {
+            self.pos += 1; // skip [
+            let hook = self.parse_body(true);
+            if self.peek() == Some(b']') {
+                self.pos += 1;
+            }
+            return Some(Node {
+                kind: NodeKind::ChangerApply {
+                    name: format!("_{name}"),
+                    hook,
+                },
+                span: Span::new(start, self.pos),
+            });
+        }
+
         Some(Node {
             kind: NodeKind::VarInterp(format!("_{name}")),
             span: Span::new(start, self.pos),

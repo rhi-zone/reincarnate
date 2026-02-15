@@ -84,6 +84,8 @@ pub enum NodeKind {
     },
     /// Inline markup: `**bold**`, `*italic*`, `''bold''`, `//italic//`, etc.
     Markup { tag: String, body: Vec<Node> },
+    /// Apply a changer from a variable to a hook: `$var[hook]` or `_var[hook]`.
+    ChangerApply { name: String, hook: Vec<Node> },
     /// A line break (literal newline).
     LineBreak,
 }
