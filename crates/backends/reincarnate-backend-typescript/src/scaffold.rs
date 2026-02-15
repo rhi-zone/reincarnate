@@ -6,14 +6,14 @@ use std::path::Path;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{EntryPoint, FuncId, MethodKind, Module, Visibility};
-use reincarnate_core::project::RuntimeConfig;
+use reincarnate_core::project::{AssetCatalog, AssetKind, RuntimeConfig};
 
 use crate::emit::sanitize_ident;
 
 /// Write all scaffold files into `output_dir`.
-pub fn emit_scaffold(modules: &[Module], output_dir: &Path, runtime_config: Option<&RuntimeConfig>) -> Result<(), CoreError> {
+pub fn emit_scaffold(modules: &[Module], output_dir: &Path, runtime_config: Option<&RuntimeConfig>, assets: &AssetCatalog) -> Result<(), CoreError> {
     let html = if is_twine(modules) {
-        generate_twine_index_html(modules)
+        generate_twine_index_html(modules, assets)
     } else {
         generate_index_html(modules)
     };
@@ -65,11 +65,20 @@ fn generate_index_html(modules: &[Module]) -> String {
     )
 }
 
-fn generate_twine_index_html(modules: &[Module]) -> String {
+fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog) -> String {
     let title = modules
         .first()
         .map(|m| m.name.as_str())
         .unwrap_or("Reincarnate App");
+
+    // Collect stylesheet asset paths for <link> tags
+    let mut style_links = String::new();
+    for asset in &assets.assets {
+        if asset.kind == AssetKind::Stylesheet && !asset.data.is_empty() {
+            let path = asset.path.display();
+            let _ = writeln!(style_links, "  <link rel=\"stylesheet\" href=\"./{path}\">");
+        }
+    }
 
     format!(
         r#"<!DOCTYPE html>
@@ -120,7 +129,7 @@ fn generate_twine_index_html(modules: &[Module]) -> String {
       background: #333;
     }}
   </style>
-</head>
+{style_links}</head>
 <body>
   <div id="passages"></div>
   <script type="module" src="./dist/bundle.js"></script>
