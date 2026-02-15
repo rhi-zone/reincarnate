@@ -1,6 +1,12 @@
 export {
   initCanvas, getCanvas, getCtx, getTintCanvas, getTintCtx,
-  resizeCanvas, loadImage,
+  resizeCanvas,
+} from "./graphics";
+
+export { loadImage } from "./images";
+
+export {
   onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp,
-  scheduleFrame, cancelFrame,
-} from "./browser";
+} from "./input";
+
+export { scheduleFrame, cancelFrame } from "./timing";
