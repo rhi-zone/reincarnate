@@ -61,6 +61,33 @@ From ecosystem-wide session analysis:
 
 **Two-tier approach.** Accept that some targets need binary patching (Tier 1) while others can be fully lifted (Tier 2). Design APIs that work for both.
 
+## Runtime Architecture
+
+Each engine runtime uses a three-layer architecture:
+
+```
+Layer 3: API Shims (engine-specific)     e.g. sugarcube/output.ts, flash/display.ts
+  ↓ imports hookable primitives from
+Layer 2: Platform Interface              platform/index.ts (re-exports active impl)
+  ↓ re-exports from
+Layer 1: Platform Implementation         platform/browser.ts
+```
+
+**Platform interfaces abstract hookable concerns** — things a game deployer would want to swap or intercept without modifying game code:
+
+| Concern | Examples | Why abstracted |
+|---------|----------|----------------|
+| Persistence | save/load/remove | Swap localStorage for cloud saves, IndexedDB |
+| Audio | create/play/pause/stop/fade | Swap HTMLAudioElement for Web Audio API |
+| Timing | setTimeout/setInterval wrappers | Hook for pause/resume, speed control |
+| Rendering | canvas context, draw calls | Swap 2D canvas for WebGL (Flash/GameMaker) |
+| Input | keyboard/mouse/touch/gamepad | On-screen joysticks, gamepad support, click-to-move (RPG Maker) |
+| Save UI | save slot presentation, autosave | Custom save menus, cloud sync dialogs |
+
+**Direct DOM ops stay in shim modules** — Twine is fundamentally DOM-based, so `createElement`, `querySelector`, etc. are called directly in the sugarcube/ modules, not abstracted through the platform layer. Only concerns that benefit from swappability go through platform.
+
+Swap platforms by changing the re-export in `platform/index.ts` — zero runtime cost since it's just module aliasing.
+
 ## Workflow
 
 **Batch cargo commands** to minimize round-trips:
