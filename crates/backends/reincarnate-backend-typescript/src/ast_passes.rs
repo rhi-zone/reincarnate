@@ -24,14 +24,16 @@ use crate::types::ts_type;
 /// `is_stable_expr` returns true, but that check is conservative and syntactic
 /// — it cannot rule out all side effects (e.g. getters on fields).
 pub fn recover_switch_statements(body: &mut Vec<JsStmt>) {
-    // First, recurse into all nested bodies.
-    for stmt in body.iter_mut() {
-        recurse_into_stmt(stmt);
-    }
-
-    // Try the nested if-else-if pattern on individual statements.
+    // Try the nested if-else-if pattern FIRST (outside-in), before recursing
+    // into children. Otherwise inner if-else chains get converted to Switch
+    // nodes and the outer chain no longer matches the if-else-if pattern.
     for stmt in body.iter_mut() {
         try_recover_nested_if_else(stmt);
+    }
+
+    // Then recurse into all nested bodies.
+    for stmt in body.iter_mut() {
+        recurse_into_stmt(stmt);
     }
 
     // Try the sequential-if pattern on runs of consecutive statements.
