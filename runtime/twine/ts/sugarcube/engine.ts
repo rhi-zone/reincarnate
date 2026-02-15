@@ -639,14 +639,22 @@ export function arrow(params: string, body: string): (...args: any[]) => any {
   )(g.State, g.setup, g.V, g.Config);
 }
 
-/** Evaluate raw JavaScript code (<<script>> blocks). */
+/** Evaluate raw JavaScript code (<<script>> blocks).
+ *
+ * Errors are caught and logged — matches SugarCube's behavior where user
+ * script failures don't halt engine initialization.
+ */
 // Using a wrapper to avoid shadowing the global eval.
 export { evalCode as eval };
 function evalCode(code: string): void {
   ensureGlobals();
   const g = globalThis as any;
   const fn = new Function("State", "setup", "V", "Config", code);
-  fn(g.State, g.setup, g.V, g.Config);
+  try {
+    fn(g.State, g.setup, g.V, g.Config);
+  } catch (e) {
+    console.error("[evalCode] error in user script:", e);
+  }
 }
 
 /** Throw an error. */
