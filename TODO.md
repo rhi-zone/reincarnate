@@ -83,8 +83,9 @@ improve output fidelity:
 
 ### Optimizations — Safe (no semantic change)
 
-- [ ] **Redundant type casts** — Eliminate `as number` etc. when the expression
-  already has the target type. Pure type-level, no runtime effect.
+- [x] **Redundant type casts** — `strip_redundant_casts` AST pass eliminates
+  `as number` when VarDecl/param type already matches. 584 → 108 in Flash.
+  Remaining 108 are field accesses where field types aren't tracked.
 - [ ] **Constant `rand(n)` where n <= 1** — `rand(1)` always returns 0. Only 1
   known instance (PhoukaScene).
 - [ ] **Dead store elimination** — Remove assignments whose values are never
@@ -104,8 +105,10 @@ improve output fidelity:
 
 - [ ] **Inline closures** — Filter/map callbacks extracted as named function
   references instead of being inlined as arrow functions.
-- [ ] **Loop variable promotion** — Declare induction variables in the `for`
-  header (`for (let i = 0; ...)`) rather than as separate `let` declarations.
+- [x] **Loop variable promotion** — Fixed `match_compound_assign` and
+  `is_var_update` to look through `AsType` casts. Flash: ~65 additional
+  while→for promotions. Remaining while-loops use class fields, parameters,
+  pre-increment patterns, or complex multi-step increments.
 
 ## GameMaker Frontend
 
