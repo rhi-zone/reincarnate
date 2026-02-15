@@ -457,10 +457,10 @@ structural problems:
   events, fetch, localStorage, timers, image loading. `platform/index.ts`
   re-exports from browser. Swap target by changing the re-export source.
 
-- [ ] **Redesign system traits** — Replace `Renderer` (sprite-level) with
-  `Graphics` (2D drawing primitives). Remove `Ui` (engine-level, not
-  platform-level). Keep Audio, Input, Timing, Persistence. The Rust traits
-  in `core/system/` define the canonical platform interface.
+- [x] **Redesign system traits** — Renamed `Renderer` → `Graphics`,
+  `SaveLoad` → `Persistence`. Split `Ui` into `Dialog`, `SaveUi`,
+  `SettingsUi`. Added `Network`, `Images`, `Files`, `Layout` traits.
+  Rust traits in `core/system/` now align with TS platform concern modules.
 
 - [x] **Move runtime out of backend** — Runtime moved from
   `reincarnate-backend-typescript/runtime/` to `runtime/flash/ts/` at the
@@ -925,12 +925,13 @@ causing compile errors if any emitted code calls them.
   existing SugarCube parser from the frontend. Stories using Dialog.wiki()
   with markup will display unrendered source text.
 
-- [ ] **Per-concern platform pluggability** — The platform layer is monolithic
-  (`browser.ts` → `index.ts`). Swapping one concern (e.g., save UI) requires
-  replacing the entire platform. Should split into per-concern modules
-  (`platform/persistence.ts`, `platform/audio.ts`, `platform/ui.ts`,
-  `platform/timing.ts`, `platform/input.ts`) so deployers can mix browser
-  persistence with custom save UI, add gamepad input alongside keyboard, etc.
+- [x] **Per-concern platform pluggability** — Split monolithic `browser.ts`
+  into per-concern modules across all three runtimes. Twine: persistence,
+  audio, timing, input, dialog, save-ui, settings-ui, layout (+ shared
+  `_overlay.ts` helper). Flash: graphics, input, network, persistence,
+  timing, images, files. GameMaker: graphics, images, input, timing.
+  Rust system traits aligned: Renderer → Graphics, SaveLoad → Persistence,
+  Ui split into Dialog/SaveUi/SettingsUi, new Network/Images/Files/Layout.
 
 ### Runtime Known Issues
 
