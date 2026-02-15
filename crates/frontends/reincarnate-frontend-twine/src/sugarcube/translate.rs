@@ -132,6 +132,8 @@ impl TranslateCtx {
                         i += 1;
                     }
 
+                    // Extract the expression value — quoted or unquoted
+                    let expr_str;
                     if i < bytes.len() && (bytes[i] == b'"' || bytes[i] == b'\'') {
                         let quote = bytes[i];
                         i += 1; // skip opening quote
@@ -139,11 +141,34 @@ impl TranslateCtx {
                         while i < bytes.len() && bytes[i] != quote {
                             i += 1;
                         }
-                        let expr_str = &html[expr_start..i];
+                        expr_str = &html[expr_start..i];
                         if i < bytes.len() {
                             i += 1; // skip closing quote
                         }
+                    } else if i < bytes.len() && bytes[i] != b'>' && bytes[i] != b'/' {
+                        // Unquoted value: read until whitespace or tag end
+                        let expr_start = i;
+                        while i < bytes.len()
+                            && bytes[i] != b' '
+                            && bytes[i] != b'\t'
+                            && bytes[i] != b'>'
+                            && bytes[i] != b'/'
+                        {
+                            i += 1;
+                        }
+                        expr_str = &html[expr_start..i];
+                    } else {
+                        // No value — copy literally
+                        template.push_str(&html[attr_start..i]);
+                        continue;
+                    }
 
+                    if expr_str.is_empty() {
+                        template.push_str(&html[attr_start..i]);
+                        continue;
+                    }
+
+                    {
                         // Also consume trailing whitespace after the attribute so
                         // the template doesn't accumulate extra spaces
                         let after_attr = i;
