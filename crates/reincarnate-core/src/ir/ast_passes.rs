@@ -4,7 +4,7 @@
 //! are easier to match on the high-level AST than during lowering.
 
 use super::ast::{BinOp, Expr, Stmt};
-use super::inst::CmpKind;
+use super::inst::{CastKind, CmpKind};
 use super::value::Constant;
 
 // ---------------------------------------------------------------------------
@@ -1492,6 +1492,20 @@ pub fn rewrite_compound_assign(body: &mut [Stmt]) {
     }
 }
 
+/// Strip `AsType` casts to get the underlying expression.
+/// `AsType` is a pure type assertion with no runtime effect, so it's safe
+/// to look through for structural comparison.
+fn strip_as_type(expr: &Expr) -> &Expr {
+    match expr {
+        Expr::Cast {
+            expr: inner,
+            kind: CastKind::AsType,
+            ..
+        } => strip_as_type(inner),
+        _ => expr,
+    }
+}
+
 /// Check whether an assignment matches the compound assignment pattern.
 fn match_compound_assign(target: &Expr, value: &Expr) -> Option<Stmt> {
     let (op, lhs, rhs) = match value {
@@ -1499,7 +1513,8 @@ fn match_compound_assign(target: &Expr, value: &Expr) -> Option<Stmt> {
         _ => return None,
     };
 
-    if lhs != target {
+    // Look through AsType casts when comparing lhs to target.
+    if strip_as_type(lhs) != target {
         return None;
     }
 
@@ -3265,6 +3280,7 @@ fn expr_references(expr: &Expr, name: &str) -> bool {
 
 /// Check if a statement is an increment/update of the named variable.
 /// Returns true for `name += expr`, `name -= expr`, `name = name + expr`, etc.
+/// Looks through `AsType` casts on the binary LHS (e.g. `name = (name as int) + 1`).
 fn is_var_update(stmt: &Stmt, name: &str) -> bool {
     match stmt {
         Stmt::CompoundAssign { target, .. } => matches!(target, Expr::Var(n) if n == name),
@@ -3272,7 +3288,7 @@ fn is_var_update(stmt: &Stmt, name: &str) -> bool {
             matches!(target, Expr::Var(n) if n == name)
                 && matches!(
                     value,
-                    Expr::Binary { lhs, .. } if matches!(lhs.as_ref(), Expr::Var(n) if n == name)
+                    Expr::Binary { lhs, .. } if matches!(strip_as_type(lhs.as_ref()), Expr::Var(n) if n == name)
                 )
         }
         _ => false,
