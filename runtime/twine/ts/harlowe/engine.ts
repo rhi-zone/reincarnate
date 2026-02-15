@@ -21,6 +21,29 @@ export function create_changer(name: string, ...args: any[]): Changer {
   return { name, args };
 }
 
+// --- Changer composition ---
+
+/** Check if a value is a Changer object. */
+function isChanger(v: any): v is Changer {
+  return v != null && typeof v === "object" && "name" in v && "args" in v;
+}
+
+/** Compose two changers (or changer arrays) into a changer array. */
+function composeChangers(a: Changer | Changer[], b: Changer): Changer[] {
+  return Array.isArray(a) ? [...a, b] : [a, b];
+}
+
+/** Harlowe `+` operator — composes changers, concatenates arrays/maps/sets,
+ *  or falls back to JS `+` for other types. */
+export function plus(a: any, b: any): any {
+  if (isChanger(a) && isChanger(b)) return composeChangers(a, b);
+  if (Array.isArray(a) && isChanger(b)) return composeChangers(a as any, b);
+  if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
+  if (a instanceof Map && b instanceof Map) return new Map([...a, ...b]);
+  if (a instanceof Set && b instanceof Set) return new Set([...a, ...b]);
+  return a + b;
+}
+
 // --- Boolean/logic ---
 
 /** Harlowe `not` operator. */

@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use reincarnate_core::ir::{BlockId, CmpKind, Function, FunctionBuilder, FunctionSig, Type, ValueId, Visibility};
 
 use super::ast::*;
+use super::macros::{self, MacroKind};
 
 /// Result of translating a Harlowe passage.
 pub struct TranslateResult {
@@ -735,7 +736,11 @@ impl TranslateCtx {
         let rhs = self.lower_expr(right);
 
         match op {
-            BinaryOp::Add | BinaryOp::Plus => self.fb.add(lhs, rhs),
+            BinaryOp::Add => self.fb.add(lhs, rhs),
+            BinaryOp::Plus => {
+                self.fb
+                    .system_call("Harlowe.Engine", "plus", &[lhs, rhs], Type::Dynamic)
+            }
             BinaryOp::Sub => self.fb.sub(lhs, rhs),
             BinaryOp::Mul => self.fb.mul(lhs, rhs),
             BinaryOp::Div => self.fb.div(lhs, rhs),
@@ -900,6 +905,18 @@ impl TranslateCtx {
                 self.fb.system_call(
                     "Harlowe.Engine",
                     "color_op",
+                    &call_args,
+                    Type::Dynamic,
+                )
+            }
+            name if macros::macro_kind(name) == MacroKind::Changer => {
+                // Changer macros in expression context → create_changer
+                let n = self.fb.const_string(name);
+                let mut call_args = vec![n];
+                call_args.extend(lowered_args);
+                self.fb.system_call(
+                    "Harlowe.Engine",
+                    "create_changer",
                     &call_args,
                     Type::Dynamic,
                 )
