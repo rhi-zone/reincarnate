@@ -44,8 +44,13 @@ Still open (not transform-pass scope):
 
 ## Known Bugs (found by adversarial tests)
 
-- [ ] **Mem2Reg: no escape analysis** — Allocs passed to calls are still promoted. If the callee modifies the pointed-to value, the Load after the call returns stale data. Need to mark allocs as escaped when their ValueId appears as an argument to Call/SystemCall. (`mem2reg.rs::alloc_escapes_via_call`, `#[ignore]`)
-- [ ] **TypeInference: circular block params stay Dynamic** — Has an internal fixpoint loop, but `infer_common_type` short-circuits to Dynamic when ANY incoming arg is Dynamic. Back-edge args depend on the header param's type (chicken-and-egg), so circular block params never converge. Fix: skip Dynamic args during block-param join. ConstraintSolve handles this in practice. (`type_infer.rs::circular_block_params`, `#[ignore]`)
+- [x] **Mem2Reg: no escape analysis** — Fixed. `promote_single_store` and
+  `promote_multi_store` both use `value_operands()` to detect alloc pointers
+  passed as Call/SystemCall/MethodCall arguments and mark them as escaped.
+  Test `alloc_escapes_via_call` passes.
+- [x] **TypeInference: circular block params stay Dynamic** — Fixed. Forward
+  pass skips Dynamic args during block-param join (line 628: `.filter(|ty|
+  **ty != Type::Dynamic)`). Test `circular_block_params` passes.
 
 ## Future
 
@@ -103,14 +108,11 @@ value needs a concrete type. This isn't a polish pass; it's a prerequisite.
   `Op::Debug` opcodes (not HAS_PARAM_NAMES, which has stale indices in this
   SWF). Register offset corrected for instance methods (`this` skipped).
   Names propagate through Mem2Reg and appear in TypeScript output.
-- [ ] **Alloc type refinement** — The single biggest remaining `:any` source
-  (~390 of 445). The Flash frontend creates `alloc dyn` for all locals. Even
-  when every Store to an alloc writes the same concrete type (e.g. `Function`,
-  `f64`), the alloc's own value_type stays `Dynamic`. The emitter declares
-  locals using the alloc's type. Fix: if all stores to an `alloc dyn` agree on
-  type, refine the alloc value_type to that type. Could live in the forward
-  pass (`build_alloc_types` already computes the info but only uses it for Load
-  refinement) or as a dedicated micro-pass.
+- [x] **Alloc type refinement** — Fixed. `build_alloc_types` scans all Store
+  instructions and unions stored types. After the forward inference loop,
+  `infer_function` refines `Op::Alloc(Dynamic)` → `Op::Alloc(concrete)` when
+  all stores agree (type_infer.rs:644-662). Local `:any` reduced from ~390 to
+  ~53 (remaining are genuinely untyped values from calls/block params).
 - [ ] **Untyped frontend validation** — test the inference pipeline against a
   fully-untyped IR (simulating Lingo/HyperCard) to verify it can reconstruct
   useful types from usage patterns alone.
