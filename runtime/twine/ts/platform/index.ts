@@ -34,10 +34,15 @@ export {
   renderSidebar, stowSidebar, unstowSidebar, toggleSidebar, destroySidebar,
 } from "./layout";
 
-// Each concern module registers its own commands via initCommands.
+// Wire cross-concern dependencies via init callbacks.
 import { registerCommand } from "./input";
+import { showDialog, closeDialog } from "./dialog";
 import { initCommands as initDialogCommands } from "./dialog";
 import { initCommands as initLayoutCommands } from "./layout";
+import { init as initSaveUI } from "./save-ui";
+import { init as initSettingsUI } from "./settings-ui";
 
+initSaveUI(showDialog, closeDialog);
+initSettingsUI(showDialog, closeDialog);
 initDialogCommands(registerCommand);
 initLayoutCommands(registerCommand);

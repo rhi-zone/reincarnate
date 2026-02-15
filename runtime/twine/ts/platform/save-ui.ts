@@ -1,12 +1,21 @@
 /** Browser save UI — save/load slot presentation. */
 
-import { showDialog, closeDialog } from "./dialog";
-
 export interface SaveSlotInfo {
   index: number;
   title: string | null;
   date: string | null;
   isEmpty: boolean;
+}
+
+let showDialog: (title: string, content: DocumentFragment | HTMLElement) => void;
+let closeDialog: () => void;
+
+export function init(
+  show: typeof showDialog,
+  close: typeof closeDialog,
+): void {
+  showDialog = show;
+  closeDialog = close;
 }
 
 export function showSaveUI(

@@ -1,7 +1,5 @@
 /** Browser settings UI — settings/preferences form presentation. */
 
-import { showDialog, closeDialog } from "./dialog";
-
 export interface SettingUIEntry {
   name: string;
   type: "toggle" | "list" | "range";
@@ -14,6 +12,17 @@ export interface SettingUIEntry {
   min?: number;
   max?: number;
   step?: number;
+}
+
+let showDialog: (title: string, content: DocumentFragment | HTMLElement) => void;
+let closeDialog: () => void;
+
+export function init(
+  show: typeof showDialog,
+  close: typeof closeDialog,
+): void {
+  showDialog = show;
+  closeDialog = close;
 }
 
 export function showSettingsUI(
