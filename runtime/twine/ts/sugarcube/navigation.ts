@@ -9,15 +9,32 @@ const passages: Map<string, () => void> = new Map();
 /** Current passage name. */
 let currentPassage = "";
 
-/** Register all passage functions and navigate to the first one. */
-export function startStory(passageMap: Record<string, () => void>): void {
+/** Register all passage functions and start the story.
+ *
+ * Follows SugarCube's init order:
+ * 1. Register all passages/widgets
+ * 2. Run StoryInit passage (if it exists)
+ * 3. Navigate to the explicit start passage (or first registered)
+ */
+export function startStory(passageMap: Record<string, () => void>, startPassage?: string): void {
   for (const [name, fn] of Object.entries(passageMap)) {
     passages.set(name, fn);
   }
-  // Navigate to the first passage (insertion order = declaration order).
-  const firstName = Object.keys(passageMap)[0];
-  if (firstName) {
-    goto(firstName);
+
+  // Run StoryInit if it exists (initializes story variables)
+  const storyInit = passages.get("StoryInit");
+  if (storyInit) {
+    try {
+      storyInit();
+    } catch (e) {
+      console.error("[navigation] error in StoryInit:", e);
+    }
+  }
+
+  // Navigate to the explicit start passage, or fall back to first registered
+  const target = startPassage || Object.keys(passageMap)[0];
+  if (target) {
+    goto(target);
   }
 }
 

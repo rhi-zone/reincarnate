@@ -146,6 +146,43 @@ fn build_passage_map(modules: &[Module]) -> String {
     }
 }
 
+/// Build user script call statements (e.g. `__user_script_0();`).
+///
+/// Detects functions named `__user_script_*` in the module and emits
+/// direct calls so they run before the story starts.
+fn build_user_script_calls(modules: &[Module]) -> String {
+    let mut calls = Vec::new();
+    for module in modules {
+        for func in module.functions.values() {
+            if func.name.starts_with("__user_script_") && func.visibility == Visibility::Public {
+                calls.push(format!("{}();", sanitize_ident(&func.name)));
+            }
+        }
+    }
+    calls.join("\n")
+}
+
+/// Find the start passage display name from the entry point metadata.
+///
+/// Looks up the `EntryPoint::CallFunction` FuncId in the module's
+/// `passage_names` to find the display name (e.g. "Start").
+fn find_start_passage(modules: &[Module]) -> String {
+    for module in modules {
+        if let Some(EntryPoint::CallFunction(fid)) = &module.entry_point {
+            if let Some(func) = module.functions.get(*fid) {
+                // Reverse-lookup: find passage name whose func_name matches
+                for (display_name, func_name) in &module.passage_names {
+                    if *func_name == func.name {
+                        return format!("\"{}\"", display_name.replace('\\', "\\\\").replace('"', "\\\""));
+                    }
+                }
+            }
+        }
+    }
+    // Default to "Start" if no entry point found
+    "\"Start\"".to_string()
+}
+
 const TSCONFIG: &str = r#"{
   "compilerOptions": {
     "target": "ES2020",
@@ -227,14 +264,15 @@ fn generate_main(modules: &[Module], runtime_config: Option<&RuntimeConfig>) -> 
         let class_list = class_names.join(", ");
         let room_creation_code = build_room_creation_code_array(modules);
         let passage_map = build_passage_map(modules);
-        let _ = writeln!(
-            out,
-            "{}",
-            entry
-                .replace("{classes}", &class_list)
-                .replace("{roomCreationCode}", &room_creation_code)
-                .replace("{passages}", &passage_map)
-        );
+        let user_scripts = build_user_script_calls(modules);
+        let start_passage = find_start_passage(modules);
+        let expanded = entry
+            .replace("{classes}", &class_list)
+            .replace("{roomCreationCode}", &room_creation_code)
+            .replace("{passages}", &passage_map)
+            .replace("{userScripts}", &user_scripts)
+            .replace("{startPassage}", &start_passage);
+        let _ = writeln!(out, "{}", expanded);
     } else if let Some(code) = metadata_entry_code(modules, runtime_config) {
         // Prefer metadata-based entry point over heuristic.
         out.push_str(&code);
