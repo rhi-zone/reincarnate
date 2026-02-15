@@ -798,5 +798,98 @@ Wikifier.Parser.add({
   },
 });
 
+// ---------------------------------------------------------------------------
+// Built-in parsers — Phase 3: variable interpolation + HTML
+// ---------------------------------------------------------------------------
+
+/** Variable interpolation: $var, _var, $obj.prop, $arr[0], etc.
+ *  Evaluates via State.get() and outputs the result as text.
+ */
+Wikifier.Parser.add({
+  name: "variable",
+  match: "(?:\\$|_)\\w+(?:(?:\\.\\w+)|(?:\\[[^\\]]+\\]))*",
+  handler(w: Wikifier) {
+    const expr = w.matchText;
+    try {
+      const value = Wikifier.evalExpression(expr);
+      w.output.appendChild(document.createTextNode(value == null ? "" : String(value)));
+    } catch {
+      // If evaluation fails, output the raw text
+      w.output.appendChild(document.createTextNode(expr));
+    }
+  },
+});
+
+/** HTML tag: <tag attr="val">, </tag>, <tag />.
+ *  Supports @attr="expr" for dynamic attribute evaluation.
+ *  Void elements are self-closing. Block elements use subWikify.
+ */
+Wikifier.Parser.add({
+  name: "html",
+  match: "<\\/?[A-Za-z][\\w-]*(?:\\s[^>]*)?\\/?>",
+  handler(w: Wikifier) {
+    const src = w.source;
+    const tagText = w.matchText;
+
+    // Check if it's a closing tag
+    if (tagText.startsWith("</")) {
+      // Closing tags are handled by subWikify terminators, not here.
+      // If we hit one outside subWikify, output it as text.
+      w.output.appendChild(document.createTextNode(tagText));
+      return;
+    }
+
+    // Parse tag name
+    const tagMatch = tagText.match(/^<([A-Za-z][\w-]*)/);
+    if (!tagMatch) {
+      w.output.appendChild(document.createTextNode(tagText));
+      return;
+    }
+
+    const tagName = tagMatch[1].toLowerCase();
+    const isSelfClosing = tagText.endsWith("/>") || isVoidElement(tagName);
+
+    const el = document.createElement(tagName);
+
+    // Parse attributes
+    const attrRegex = /\s+([@\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+    let attrMatch;
+    while ((attrMatch = attrRegex.exec(tagText)) !== null) {
+      let attrName = attrMatch[1];
+      const attrValue = attrMatch[2] ?? attrMatch[3] ?? attrMatch[4] ?? "";
+
+      if (attrName.startsWith("@")) {
+        // Dynamic attribute: evaluate expression
+        attrName = attrName.slice(1);
+        try {
+          const evalValue = Wikifier.evalExpression(attrValue);
+          el.setAttribute(attrName, evalValue == null ? "" : String(evalValue));
+        } catch {
+          el.setAttribute(attrName, attrValue);
+        }
+      } else {
+        el.setAttribute(attrName, attrValue);
+      }
+    }
+
+    if (!isSelfClosing) {
+      // Block element — parse content until closing tag
+      const closeRe = new RegExp(`<\\/${tagName}\\s*>`, "gim");
+      w.subWikify(el, closeRe);
+    }
+
+    w.output.appendChild(el);
+  },
+});
+
+const VOID_ELEMENTS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "param", "source", "track", "wbr",
+]);
+
+function isVoidElement(tagName: string): boolean {
+  return VOID_ELEMENTS.has(tagName);
+}
+
 // Reset modified flag after initial parser registration
 Wikifier.Parser.modified = false;
