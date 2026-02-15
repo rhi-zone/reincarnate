@@ -1,0 +1,757 @@
+//! Recursive descent parser for Harlowe passage content.
+//!
+//! Scans passage source for `(macro: args)`, `[hooks]`, `[[links]]`,
+//! variable interpolation (`$var`, `_var`), HTML tags, and plain text.
+//! Error recovery: accumulates errors without aborting.
+
+use super::ast::*;
+use super::expr;
+use super::lexer::ExprLexer;
+use super::macros;
+
+/// Parse a Harlowe passage into an AST.
+pub fn parse(source: &str) -> PassageAst {
+    let mut parser = Parser::new(source);
+    let body = parser.parse_body(false);
+    PassageAst {
+        body,
+        errors: parser.errors,
+    }
+}
+
+struct Parser<'a> {
+    source: &'a str,
+    bytes: &'a [u8],
+    pos: usize,
+    errors: Vec<ParseError>,
+}
+
+impl<'a> Parser<'a> {
+    fn new(source: &'a str) -> Self {
+        Self {
+            source,
+            bytes: source.as_bytes(),
+            pos: 0,
+            errors: Vec::new(),
+        }
+    }
+
+    fn at_end(&self) -> bool {
+        self.pos >= self.bytes.len()
+    }
+
+    fn peek(&self) -> Option<u8> {
+        self.bytes.get(self.pos).copied()
+    }
+
+    fn peek_at(&self, offset: usize) -> Option<u8> {
+        self.bytes.get(self.pos + offset).copied()
+    }
+
+    fn remaining(&self) -> &str {
+        &self.source[self.pos..]
+    }
+
+    fn error(&mut self, span: Span, message: impl Into<String>) {
+        self.errors.push(ParseError {
+            span,
+            message: message.into(),
+        });
+    }
+
+    /// Parse body content until end of input or a closing `]`.
+    /// If `in_hook` is true, stop at `]`.
+    fn parse_body(&mut self, in_hook: bool) -> Vec<Node> {
+        let mut nodes = Vec::new();
+
+        while !self.at_end() {
+            if in_hook && self.peek() == Some(b']') {
+                break;
+            }
+
+            if let Some(node) = self.parse_node(in_hook) {
+                nodes.push(node);
+            }
+        }
+
+        nodes
+    }
+
+    /// Parse a single node from the current position.
+    fn parse_node(&mut self, in_hook: bool) -> Option<Node> {
+        match self.peek()? {
+            b'(' => self.parse_macro(),
+            b'[' => {
+                if self.peek_at(1) == Some(b'[') {
+                    self.parse_link()
+                } else {
+                    // Bare `[` not after a macro — treat as text
+                    let start = self.pos;
+                    self.pos += 1;
+                    Some(Node {
+                        kind: NodeKind::Text("[".to_string()),
+                        span: Span::new(start, self.pos),
+                    })
+                }
+            }
+            b'$' => self.parse_var_interp(),
+            b'_' if self.peek_at(1).is_some_and(|c| c.is_ascii_alphanumeric()) => {
+                self.parse_temp_var_interp()
+            }
+            b'<' => {
+                if self.remaining().starts_with("<!--") {
+                    self.parse_comment()
+                } else if self.peek_at(1).is_some_and(|c| c.is_ascii_alphabetic() || c == b'/') {
+                    self.parse_html()
+                } else {
+                    self.parse_text(in_hook)
+                }
+            }
+            b'\n' => {
+                let start = self.pos;
+                self.pos += 1;
+                Some(Node {
+                    kind: NodeKind::LineBreak,
+                    span: Span::new(start, self.pos),
+                })
+            }
+            _ => self.parse_text(in_hook),
+        }
+    }
+
+    /// Parse a macro: `(name: args)` with optional trailing `[hook]`.
+    fn parse_macro(&mut self) -> Option<Node> {
+        let start = self.pos;
+        self.pos += 1; // skip `(`
+
+        // Parse macro name
+        let name_start = self.pos;
+        while self.pos < self.bytes.len()
+            && (self.bytes[self.pos].is_ascii_alphanumeric()
+                || self.bytes[self.pos] == b'-'
+                || self.bytes[self.pos] == b'_')
+        {
+            self.pos += 1;
+        }
+        let name = self.source[name_start..self.pos].to_lowercase();
+
+        if name.is_empty() {
+            // Not a macro — could be a parenthesized expression in text, restore
+            self.pos = start;
+            return self.parse_text(false);
+        }
+
+        // Skip whitespace
+        self.skip_whitespace();
+
+        // Expect `:` after name (for macros with args) or `)` (no args)
+        let args = if self.peek() == Some(b':') {
+            self.pos += 1; // skip `:`
+            self.skip_whitespace();
+
+            // Parse args up to the matching `)`
+            let args_text = self.extract_balanced_args();
+            self.parse_macro_args(&name, &args_text, start)
+        } else if self.peek() == Some(b')') {
+            // No-arg macro like `(else:)` — but this case means no colon either
+            // Actually Harlowe requires the colon: `(else:)`. Let's check.
+            // Some macros can appear without colon in broken input. Be lenient.
+            Vec::new()
+        } else {
+            // Not a real macro
+            self.pos = start;
+            return self.parse_text(false);
+        };
+
+        // Expect closing `)`
+        if self.peek() == Some(b')') {
+            self.pos += 1;
+        } else {
+            self.error(
+                Span::new(start, self.pos),
+                format!("unclosed macro '({name}:'"),
+            );
+        }
+
+        let macro_end = self.pos;
+
+        // Check for attached hook `[...]`
+        let hook = self.try_parse_hook();
+        let has_hook = hook.is_some();
+
+        // For if-chains: collect else-if / else clauses
+        let clauses = if name == "if" || name == "unless" {
+            self.parse_if_clauses()
+        } else {
+            Vec::new()
+        };
+
+        let end = if has_hook || !clauses.is_empty() {
+            self.pos
+        } else {
+            macro_end
+        };
+
+        Some(Node {
+            kind: NodeKind::Macro(MacroNode {
+                name,
+                args,
+                hook,
+                clauses,
+            }),
+            span: Span::new(start, end),
+        })
+    }
+
+    /// Extract balanced text for macro args up to the matching `)`.
+    /// Handles nested `(` `)` and string literals.
+    fn extract_balanced_args(&mut self) -> String {
+        let start = self.pos;
+        let mut depth = 1; // We're inside the outer `(`
+
+        while !self.at_end() && depth > 0 {
+            match self.bytes[self.pos] {
+                b'(' => {
+                    depth += 1;
+                    self.pos += 1;
+                }
+                b')' => {
+                    depth -= 1;
+                    if depth > 0 {
+                        self.pos += 1;
+                    }
+                    // Don't advance past the final `)` — caller handles it
+                }
+                b'"' | b'\'' => {
+                    let quote = self.bytes[self.pos];
+                    self.pos += 1;
+                    while !self.at_end() && self.bytes[self.pos] != quote {
+                        if self.bytes[self.pos] == b'\\' {
+                            self.pos += 1; // skip escape
+                        }
+                        self.pos += 1;
+                    }
+                    if !self.at_end() {
+                        self.pos += 1; // skip closing quote
+                    }
+                }
+                _ => self.pos += 1,
+            }
+        }
+
+        self.source[start..self.pos].to_string()
+    }
+
+    /// Parse macro arguments from extracted text.
+    fn parse_macro_args(&mut self, _name: &str, args_text: &str, base_offset: usize) -> Vec<Expr> {
+        if args_text.trim().is_empty() {
+            return Vec::new();
+        }
+        let mut lexer = ExprLexer::new(args_text, base_offset);
+        expr::parse_args(&mut lexer)
+    }
+
+    /// Try to parse a hook `[...]` immediately after a macro.
+    fn try_parse_hook(&mut self) -> Option<Vec<Node>> {
+        if self.peek() != Some(b'[') {
+            return None;
+        }
+        // Don't confuse `[[link]]` with hook
+        if self.peek_at(1) == Some(b'[') {
+            return None;
+        }
+        self.pos += 1; // skip `[`
+        let body = self.parse_body(true);
+        if self.peek() == Some(b']') {
+            self.pos += 1; // skip `]`
+        }
+        Some(body)
+    }
+
+    /// Parse else-if / else clauses that follow an if-block.
+    fn parse_if_clauses(&mut self) -> Vec<IfClause> {
+        let mut clauses = Vec::new();
+
+        loop {
+            self.skip_whitespace();
+
+            // Check for `(else-if:` or `(else:` or `(elseif:`
+            if self.peek() != Some(b'(') {
+                break;
+            }
+
+            let saved = self.pos;
+
+            // Peek ahead to see if this is an else-if or else macro
+            self.pos += 1;
+            let name_start = self.pos;
+            while self.pos < self.bytes.len()
+                && (self.bytes[self.pos].is_ascii_alphanumeric()
+                    || self.bytes[self.pos] == b'-'
+                    || self.bytes[self.pos] == b'_')
+            {
+                self.pos += 1;
+            }
+            let name = self.source[name_start..self.pos].to_lowercase();
+
+            if !macros::is_if_clause(&name) {
+                self.pos = saved;
+                break;
+            }
+
+            self.skip_whitespace();
+
+            // Parse args (for else-if) or skip colon (for else)
+            let cond = if self.peek() == Some(b':') {
+                self.pos += 1;
+                self.skip_whitespace();
+                if name == "else" {
+                    None
+                } else {
+                    let args_text = self.extract_balanced_args();
+                    if args_text.trim().is_empty() {
+                        None
+                    } else {
+                        let mut lexer = ExprLexer::new(&args_text, saved);
+                        Some(expr::parse_expr(&mut lexer))
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Close paren
+            if self.peek() == Some(b')') {
+                self.pos += 1;
+            }
+
+            // Parse hook
+            let body = self.try_parse_hook().unwrap_or_default();
+
+            clauses.push(IfClause {
+                kind: name,
+                cond,
+                body,
+            });
+
+            // After `(else:)[...]`, stop looking for more clauses
+            if clauses.last().is_some_and(|c| c.kind == "else") {
+                break;
+            }
+        }
+
+        clauses
+    }
+
+    /// Parse a `[[text->passage]]` or `[[passage]]` link.
+    fn parse_link(&mut self) -> Option<Node> {
+        let start = self.pos;
+        self.pos += 2; // skip `[[`
+
+        // Find the closing `]]`
+        let content_start = self.pos;
+        let mut depth = 0;
+        while !self.at_end() {
+            if self.pos + 1 < self.bytes.len()
+                && self.bytes[self.pos] == b']'
+                && self.bytes[self.pos + 1] == b']'
+                && depth == 0
+            {
+                break;
+            }
+            if self.bytes[self.pos] == b'[' {
+                depth += 1;
+            }
+            if self.bytes[self.pos] == b']' && depth > 0 {
+                depth -= 1;
+            }
+            self.pos += 1;
+        }
+
+        let content = &self.source[content_start..self.pos];
+
+        // Skip closing `]]`
+        if self.pos + 1 < self.bytes.len()
+            && self.bytes[self.pos] == b']'
+            && self.bytes[self.pos + 1] == b']'
+        {
+            self.pos += 2;
+        }
+
+        // Parse link content: `text->passage` or `passage<-text` or just `passage`
+        let (text, passage) = if let Some(arrow_pos) = content.find("->") {
+            let text = content[..arrow_pos].trim().to_string();
+            let passage = content[arrow_pos + 2..].trim().to_string();
+            (text, passage)
+        } else if let Some(arrow_pos) = content.find("<-") {
+            let passage = content[..arrow_pos].trim().to_string();
+            let text = content[arrow_pos + 2..].trim().to_string();
+            (text, passage)
+        } else {
+            // [[passage]] — text and target are the same
+            let name = content.trim().to_string();
+            (name.clone(), name)
+        };
+
+        Some(Node {
+            kind: NodeKind::Link(LinkNode { text, passage }),
+            span: Span::new(start, self.pos),
+        })
+    }
+
+    /// Parse a story variable interpolation: `$name`.
+    fn parse_var_interp(&mut self) -> Option<Node> {
+        let start = self.pos;
+        self.pos += 1; // skip `$`
+        let name_start = self.pos;
+        while self.pos < self.bytes.len()
+            && (self.bytes[self.pos].is_ascii_alphanumeric() || self.bytes[self.pos] == b'_')
+        {
+            self.pos += 1;
+        }
+
+        if self.pos == name_start {
+            // Just a `$` character, not a variable
+            return Some(Node {
+                kind: NodeKind::Text("$".to_string()),
+                span: Span::new(start, self.pos),
+            });
+        }
+
+        let name = self.source[name_start..self.pos].to_string();
+        Some(Node {
+            kind: NodeKind::VarInterp(format!("${name}")),
+            span: Span::new(start, self.pos),
+        })
+    }
+
+    /// Parse a temp variable interpolation: `_name`.
+    fn parse_temp_var_interp(&mut self) -> Option<Node> {
+        let start = self.pos;
+        self.pos += 1; // skip `_`
+        let name_start = self.pos;
+        while self.pos < self.bytes.len()
+            && (self.bytes[self.pos].is_ascii_alphanumeric() || self.bytes[self.pos] == b'_')
+        {
+            self.pos += 1;
+        }
+        let name = self.source[name_start..self.pos].to_string();
+        Some(Node {
+            kind: NodeKind::VarInterp(format!("_{name}")),
+            span: Span::new(start, self.pos),
+        })
+    }
+
+    /// Parse an HTML comment `<!-- ... -->`.
+    fn parse_comment(&mut self) -> Option<Node> {
+        let start = self.pos;
+        self.pos += 4; // skip `<!--`
+        let content_start = self.pos;
+        while !self.at_end() && !self.remaining().starts_with("-->") {
+            self.pos += 1;
+        }
+        let _content = &self.source[content_start..self.pos];
+        if self.remaining().starts_with("-->") {
+            self.pos += 3;
+        }
+        // Comments are silently discarded
+        Some(Node {
+            kind: NodeKind::Text(String::new()),
+            span: Span::new(start, self.pos),
+        })
+    }
+
+    /// Parse an HTML tag (pass through as raw HTML).
+    fn parse_html(&mut self) -> Option<Node> {
+        let start = self.pos;
+
+        // Check for self-closing tags like `<img ...>` or `<br>`
+        // and block elements like `<table>...</table>`
+        self.pos += 1; // skip `<`
+        let is_closing = self.peek() == Some(b'/');
+        if is_closing {
+            self.pos += 1;
+        }
+
+        // Read tag name
+        let tag_start = self.pos;
+        while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_alphanumeric() {
+            self.pos += 1;
+        }
+        let _tag_name = &self.source[tag_start..self.pos];
+
+        // Skip to `>`
+        while !self.at_end() && self.bytes[self.pos] != b'>' {
+            // Handle quoted attributes
+            if self.bytes[self.pos] == b'"' || self.bytes[self.pos] == b'\'' {
+                let q = self.bytes[self.pos];
+                self.pos += 1;
+                while !self.at_end() && self.bytes[self.pos] != q {
+                    self.pos += 1;
+                }
+                if !self.at_end() {
+                    self.pos += 1;
+                }
+            } else {
+                self.pos += 1;
+            }
+        }
+        if !self.at_end() {
+            self.pos += 1; // skip `>`
+        }
+
+        let html = self.source[start..self.pos].to_string();
+        Some(Node {
+            kind: NodeKind::Html(html),
+            span: Span::new(start, self.pos),
+        })
+    }
+
+    /// Parse a run of plain text until a special character.
+    fn parse_text(&mut self, in_hook: bool) -> Option<Node> {
+        let start = self.pos;
+
+        while !self.at_end() {
+            let ch = self.bytes[self.pos];
+            match ch {
+                b'(' | b'$' | b'<' | b'\n' => break,
+                b'[' => {
+                    if self.peek_at(1) == Some(b'[') {
+                        break; // `[[` link
+                    }
+                    if in_hook {
+                        break; // nested hook boundary
+                    }
+                    self.pos += 1;
+                }
+                b']' if in_hook => break,
+                b'_' if self.peek_at(1).is_some_and(|c| c.is_ascii_alphanumeric()) => break,
+                b'*' => {
+                    // Bold markers `**` or italic `*` — pass through as text
+                    self.pos += 1;
+                }
+                _ => self.pos += 1,
+            }
+        }
+
+        if self.pos == start {
+            // Couldn't consume anything — advance one byte to avoid infinite loop
+            self.pos += 1;
+            let text = self.source[start..self.pos].to_string();
+            return Some(Node {
+                kind: NodeKind::Text(text),
+                span: Span::new(start, self.pos),
+            });
+        }
+
+        let text = self.source[start..self.pos].to_string();
+        Some(Node {
+            kind: NodeKind::Text(text),
+            span: Span::new(start, self.pos),
+        })
+    }
+
+    fn skip_whitespace(&mut self) {
+        while self.pos < self.bytes.len()
+            && (self.bytes[self.pos] == b' ' || self.bytes[self.pos] == b'\t')
+        {
+            self.pos += 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_plain_text() {
+        let ast = parse("Hello world");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        assert!(matches!(&ast.body[0].kind, NodeKind::Text(s) if s == "Hello world"));
+    }
+
+    #[test]
+    fn test_simple_macro() {
+        let ast = parse("(set: $x to 1)");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "set");
+            assert_eq!(m.args.len(), 1);
+            assert!(matches!(&m.args[0].kind, ExprKind::Assign { .. }));
+        } else {
+            panic!("expected macro");
+        }
+    }
+
+    #[test]
+    fn test_macro_with_hook() {
+        let ast = parse("(color: green)[Hello]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "color");
+            assert!(m.hook.is_some());
+            let hook = m.hook.as_ref().unwrap();
+            assert_eq!(hook.len(), 1);
+            assert!(matches!(&hook[0].kind, NodeKind::Text(s) if s == "Hello"));
+        } else {
+            panic!("expected macro");
+        }
+    }
+
+    #[test]
+    fn test_link() {
+        let ast = parse("[[Start game->new game check]]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Link(l) = &ast.body[0].kind {
+            assert_eq!(l.text, "Start game");
+            assert_eq!(l.passage, "new game check");
+        } else {
+            panic!("expected link, got {:?}", ast.body[0].kind);
+        }
+    }
+
+    #[test]
+    fn test_link_simple() {
+        let ast = parse("[[Credits]]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Link(l) = &ast.body[0].kind {
+            assert_eq!(l.text, "Credits");
+            assert_eq!(l.passage, "Credits");
+        } else {
+            panic!("expected link");
+        }
+    }
+
+    #[test]
+    fn test_var_interp() {
+        let ast = parse("Score: $totalTF points");
+        assert!(ast.errors.is_empty());
+        // Should produce: Text("Score: "), VarInterp("$totalTF"), Text(" points")
+        assert!(ast.body.len() >= 3);
+        assert!(matches!(&ast.body[1].kind, NodeKind::VarInterp(s) if s == "$totalTF"));
+    }
+
+    #[test]
+    fn test_if_else_chain() {
+        let ast = parse("(if: $x is 1)[yes](else:)[no]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "if");
+            assert!(m.hook.is_some());
+            assert_eq!(m.clauses.len(), 1);
+            assert_eq!(m.clauses[0].kind, "else");
+            assert!(m.clauses[0].cond.is_none());
+        } else {
+            panic!("expected if macro");
+        }
+    }
+
+    #[test]
+    fn test_nested_macros() {
+        let ast = parse("(if: $x is 1)[(set: $y to 2)]");
+        assert_eq!(ast.errors.len(), 0);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "if");
+            let hook = m.hook.as_ref().unwrap();
+            assert_eq!(hook.len(), 1);
+            assert!(matches!(&hook[0].kind, NodeKind::Macro(inner) if inner.name == "set"));
+        } else {
+            panic!("expected macro");
+        }
+    }
+
+    #[test]
+    fn test_multiple_nodes() {
+        let ast = parse("Hello (set: $x to 1) world");
+        assert_eq!(ast.errors.len(), 0);
+        assert!(ast.body.len() >= 3);
+    }
+
+    #[test]
+    fn test_html() {
+        let ast = parse("<img src=\"test.png\" width=\"400px\">");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        assert!(matches!(&ast.body[0].kind, NodeKind::Html(_)));
+    }
+
+    #[test]
+    fn test_goto() {
+        let ast = parse("(goto: \"Event 3-check\")");
+        assert_eq!(ast.errors.len(), 0);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "goto");
+            assert_eq!(m.args.len(), 1);
+            assert!(matches!(&m.args[0].kind, ExprKind::Str(s) if s == "Event 3-check"));
+        } else {
+            panic!("expected macro");
+        }
+    }
+
+    #[test]
+    fn test_color_plus() {
+        let ast = parse("(color: magenta+white)[text]");
+        assert_eq!(ast.errors.len(), 0);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "color");
+            assert_eq!(m.args.len(), 1);
+            assert!(
+                matches!(&m.args[0].kind, ExprKind::ColorLiteral(s) if s == "magenta+white")
+            );
+        } else {
+            panic!("expected macro");
+        }
+    }
+
+    #[test]
+    fn test_complex_passage() {
+        let src = r#"(set: $recovery to "Floor 1 entryway")
+You're at the **entryway**
+
+(if: $hypnoStat < 70)[Normal text.](else:)[(color: magenta+white)[Hypno text.]]"#;
+        let ast = parse(src);
+        // Should parse without crashing — exact node count depends on line breaks etc.
+        assert!(ast.errors.is_empty(), "errors: {:?}", ast.errors);
+        assert!(!ast.body.is_empty());
+    }
+
+    #[test]
+    fn test_link_macro_in_hook() {
+        let ast = parse("(link: \"Continue\")[(goto: $recover)]");
+        assert_eq!(ast.errors.len(), 0);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "link");
+            assert!(m.hook.is_some());
+            let hook = m.hook.as_ref().unwrap();
+            assert_eq!(hook.len(), 1);
+            if let NodeKind::Macro(inner) = &hook[0].kind {
+                assert_eq!(inner.name, "goto");
+            } else {
+                panic!("expected inner macro");
+            }
+        } else {
+            panic!("expected macro");
+        }
+    }
+
+    #[test]
+    fn test_live_stop() {
+        let ast = parse("(live: 2s)[(stop:)]");
+        assert_eq!(ast.errors.len(), 0);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "live");
+            assert_eq!(m.args.len(), 1);
+            assert!(matches!(m.args[0].kind, ExprKind::TimeLiteral(t) if t == 2.0));
+            assert!(m.hook.is_some());
+        } else {
+            panic!("expected macro");
+        }
+    }
+}

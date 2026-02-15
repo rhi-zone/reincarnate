@@ -1,0 +1,228 @@
+//! AST node types for Harlowe passage content.
+//!
+//! The AST represents parsed Harlowe markup: `(macro:)` calls with `[hook]`
+//! content blocks, `[[links]]`, variable interpolation (`$var`), inline HTML,
+//! and plain text. Expression nodes use a separate `Expr`/`ExprKind` hierarchy
+//! for Harlowe's custom expression language.
+
+use std::fmt;
+
+/// Byte offset span in the passage source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl Span {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+
+    pub fn empty(pos: usize) -> Self {
+        Self {
+            start: pos,
+            end: pos,
+        }
+    }
+}
+
+/// A parse error accumulated during passage parsing.
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub span: Span,
+    pub message: String,
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "[{}..{}] {}",
+            self.span.start, self.span.end, self.message
+        )
+    }
+}
+
+/// Result of parsing a single passage.
+#[derive(Debug)]
+pub struct PassageAst {
+    pub body: Vec<Node>,
+    pub errors: Vec<ParseError>,
+}
+
+/// A single AST node in a passage body.
+#[derive(Debug, Clone)]
+pub struct Node {
+    pub kind: NodeKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum NodeKind {
+    /// Plain text content (including whitespace).
+    Text(String),
+    /// A Harlowe macro invocation: `(name: args)`.
+    Macro(MacroNode),
+    /// An optional `[hook]` content block attached to a macro or changer.
+    Hook(Vec<Node>),
+    /// A `[[link]]` or `[[text->passage]]` navigation link.
+    Link(LinkNode),
+    /// Inline variable reference: `$name` or `_name` (implicit print).
+    VarInterp(String),
+    /// Inline HTML element (preserved as raw text).
+    Html(String),
+    /// A line break (literal newline).
+    LineBreak,
+}
+
+/// A Harlowe macro invocation: `(name: args)[hook]`.
+#[derive(Debug, Clone)]
+pub struct MacroNode {
+    /// The macro name (e.g. `set`, `if`, `color`, `link`).
+    pub name: String,
+    /// Parsed arguments/expressions for the macro.
+    pub args: Vec<Expr>,
+    /// Optional hook content attached with `[...]` immediately after.
+    pub hook: Option<Vec<Node>>,
+    /// For `(if:)` chains: the else-if and else clauses that follow.
+    pub clauses: Vec<IfClause>,
+}
+
+/// An else-if or else clause in a Harlowe `(if:)` chain.
+#[derive(Debug, Clone)]
+pub struct IfClause {
+    /// `"else-if"` or `"else"`.
+    pub kind: String,
+    /// The condition expression (None for `(else:)`).
+    pub cond: Option<Expr>,
+    /// The hook body.
+    pub body: Vec<Node>,
+}
+
+/// A `[[link]]` navigation node.
+#[derive(Debug, Clone)]
+pub struct LinkNode {
+    /// Display text (may be same as target for `[[passage]]` form).
+    pub text: String,
+    /// Target passage name.
+    pub passage: String,
+}
+
+// ── Expressions (Harlowe) ──────────────────────────────────────────────
+
+/// A Harlowe expression with span.
+#[derive(Debug, Clone)]
+pub struct Expr {
+    pub kind: ExprKind,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprKind {
+    /// A numeric literal.
+    Number(f64),
+    /// A string literal (`"hello"` or `'world'`).
+    Str(String),
+    /// A boolean literal (`true` or `false`).
+    Bool(bool),
+    /// An identifier (e.g. `red`, `green`, `fade` — used as values/keywords).
+    Ident(String),
+    /// A story variable: `$name`.
+    StoryVar(String),
+    /// A temporary variable: `_name`.
+    TempVar(String),
+    /// `it` — refers to the most recently-set variable's value.
+    It,
+    /// Binary operation: `x + y`, `x is y`, `x contains y`, etc.
+    Binary {
+        op: BinaryOp,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    /// Unary operation: `not x`, `-x`.
+    Unary {
+        op: UnaryOp,
+        operand: Box<Expr>,
+    },
+    /// Function/macro call within an expression: `(random: 1, 10)`.
+    Call {
+        name: String,
+        args: Vec<Expr>,
+    },
+    /// Possessive access: `$arr's 1st`, `$obj's name`.
+    Possessive {
+        object: Box<Expr>,
+        property: Box<Expr>,
+    },
+    /// `of` access: `1st of $arr`, `name of $obj`.
+    Of {
+        property: Box<Expr>,
+        object: Box<Expr>,
+    },
+    /// Grouped expression: `(expr)` when not a macro call.
+    Paren(Box<Expr>),
+    /// Time literal: `2s`, `500ms`.
+    TimeLiteral(f64),
+    /// Color literal: `red`, `green`, `#FF0000`, `magenta+white`.
+    ColorLiteral(String),
+    /// Ordinal accessor: `1st`, `2nd`, `3rd`, `last`.
+    Ordinal(Ordinal),
+    /// Assignment target in `(set:)`: `$var to expr`.
+    Assign {
+        target: Box<Expr>,
+        value: Box<Expr>,
+    },
+    /// Error placeholder for malformed expressions.
+    Error(String),
+}
+
+/// Binary operators in Harlowe expressions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOp {
+    // Arithmetic
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
+    // Comparison
+    Is,
+    IsNot,
+    Lt,
+    Lte,
+    Gt,
+    Gte,
+
+    // Logical
+    And,
+    Or,
+
+    // Membership
+    Contains,
+    IsIn,
+
+    // String/changer composition
+    Plus, // `+` on changers composes them (reuses Add for arithmetic)
+}
+
+/// Unary operators in Harlowe expressions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    /// `not`
+    Not,
+    /// `-` (negation)
+    Neg,
+}
+
+/// Ordinal accessor (`1st`, `2nd`, `3rd`, `last`, etc.).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ordinal {
+    /// 1-based index: `1st` = Nth(1), `2nd` = Nth(2), etc.
+    Nth(u32),
+    /// `last`
+    Last,
+    /// `length`
+    Length,
+}
