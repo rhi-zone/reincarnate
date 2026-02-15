@@ -7,4 +7,6 @@ repository.workspace = true
 description = "Twine frontend for the Reincarnate legacy software lifting framework"
 
 [dependencies]
+html5ever = "0.38"
+markup5ever = "0.16"
 reincarnate-core = { path = "../../reincarnate-core" }

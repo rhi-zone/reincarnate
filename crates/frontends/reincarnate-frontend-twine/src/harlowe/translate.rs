@@ -89,8 +89,14 @@ impl TranslateCtx {
             NodeKind::Hook(nodes) => self.lower_nodes(nodes),
             NodeKind::Link(link) => self.lower_link(link),
             NodeKind::VarInterp(name) => self.lower_var_interp(name),
-            NodeKind::Html(html) => self.emit_html(html),
-            NodeKind::LineBreak => self.emit_text("\n"),
+            NodeKind::HtmlOpen { tag, attrs } => self.emit_open_element(tag, attrs),
+            NodeKind::HtmlClose(_) => self.emit_close_element(),
+            NodeKind::HtmlVoid { tag, attrs } => self.emit_void_element(tag, attrs),
+            NodeKind::LineBreak => {
+                let tag = self.fb.const_string("br");
+                self.fb
+                    .system_call("Harlowe.Output", "void_element", &[tag], Type::Void);
+            }
         }
     }
 
@@ -102,10 +108,31 @@ impl TranslateCtx {
             .system_call("Harlowe.Output", "text", &[s], Type::Void);
     }
 
-    fn emit_html(&mut self, html: &str) {
-        let s = self.fb.const_string(html);
+    fn emit_open_element(&mut self, tag: &str, attrs: &[(String, String)]) {
+        let tag_val = self.fb.const_string(tag);
+        let mut args = vec![tag_val];
+        for (k, v) in attrs {
+            args.push(self.fb.const_string(k));
+            args.push(self.fb.const_string(v));
+        }
         self.fb
-            .system_call("Harlowe.Output", "html", &[s], Type::Void);
+            .system_call("Harlowe.Output", "open_element", &args, Type::Void);
+    }
+
+    fn emit_close_element(&mut self) {
+        self.fb
+            .system_call("Harlowe.Output", "close_element", &[], Type::Void);
+    }
+
+    fn emit_void_element(&mut self, tag: &str, attrs: &[(String, String)]) {
+        let tag_val = self.fb.const_string(tag);
+        let mut args = vec![tag_val];
+        for (k, v) in attrs {
+            args.push(self.fb.const_string(k));
+            args.push(self.fb.const_string(v));
+        }
+        self.fb
+            .system_call("Harlowe.Output", "void_element", &args, Type::Void);
     }
 
     fn emit_print(&mut self, value: ValueId) {

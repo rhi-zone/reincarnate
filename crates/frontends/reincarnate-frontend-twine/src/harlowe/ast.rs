@@ -70,8 +70,18 @@ pub enum NodeKind {
     Link(LinkNode),
     /// Inline variable reference: `$name` or `_name` (implicit print).
     VarInterp(String),
-    /// Inline HTML element (preserved as raw text).
-    Html(String),
+    /// Opening HTML tag: `<tag attrs...>` — pushes element onto stack.
+    HtmlOpen {
+        tag: String,
+        attrs: Vec<(String, String)>,
+    },
+    /// Closing HTML tag: `</tag>` — pops element from stack.
+    HtmlClose(String),
+    /// Void/self-closing HTML element: `<br>`, `<img .../>`.
+    HtmlVoid {
+        tag: String,
+        attrs: Vec<(String, String)>,
+    },
     /// A line break (literal newline).
     LineBreak,
 }

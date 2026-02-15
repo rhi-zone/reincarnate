@@ -3,7 +3,8 @@
  * Passage code calls these functions to produce visible output. Content
  * is accumulated in a DocumentFragment buffer, then flushed to the
  * #passages container. A changer stack applies styling to content as
- * it is emitted.
+ * it is emitted. An element stack tracks open HTML elements for proper
+ * nesting of structured HTML nodes.
  */
 
 import { scheduleInterval, cancelInterval } from "../platform";
@@ -18,8 +19,12 @@ interface Changer {
 const changerStack: Changer[] = [];
 
 /** Push a changer onto the stack (affects all output until popped). */
-export function push_changer(changer: Changer): void {
-  changerStack.push(changer);
+export function push_changer(changer: Changer | Changer[]): void {
+  if (Array.isArray(changer)) {
+    for (const c of changer) changerStack.push(c);
+  } else {
+    changerStack.push(changer);
+  }
 }
 
 /** Pop the top changer from the stack. */
@@ -48,6 +53,19 @@ export function pushBuffer(): DocumentFragment {
 /** Pop and return the top buffer. */
 export function popBuffer(): DocumentFragment {
   return bufferStack.pop() || document.createDocumentFragment();
+}
+
+// --- Element stack (for structured HTML nesting) ---
+
+const elementStack: HTMLElement[] = [];
+
+/** Append a node to the current parent (top of element stack, or buffer). */
+function appendNode(node: Node): void {
+  if (elementStack.length > 0) {
+    elementStack[elementStack.length - 1].appendChild(node);
+  } else {
+    currentBuffer().appendChild(node);
+  }
 }
 
 // --- Changer application ---
@@ -152,35 +170,47 @@ function wrapWithChangers(node: Node): Node {
 /** Emit plain text. */
 export function text(s: string): void {
   const node = document.createTextNode(s);
-  currentBuffer().appendChild(wrapWithChangers(node));
+  appendNode(wrapWithChangers(node));
 }
 
 /** Print a value (convert to string and emit). */
 export function print(v: any): void {
   const node = document.createTextNode(String(v));
-  currentBuffer().appendChild(wrapWithChangers(node));
+  appendNode(wrapWithChangers(node));
 }
 
-/** Emit raw HTML. */
-export function html(s: string): void {
-  const buf = currentBuffer();
-  const temp = document.createElement("template");
-  temp.innerHTML = s;
-  if (changerStack.length > 0) {
-    const span = document.createElement("span");
-    span.appendChild(temp.content.cloneNode(true));
-    applyChangers(span);
-    buf.appendChild(span);
-  } else {
-    buf.appendChild(temp.content.cloneNode(true));
+// --- Structured HTML element functions ---
+
+/** Open an HTML element, apply changers, push onto element stack. */
+export function open_element(tag: string, ...attrs: string[]): void {
+  const el = document.createElement(tag);
+  for (let i = 0; i < attrs.length; i += 2) {
+    el.setAttribute(attrs[i], attrs[i + 1]);
   }
+  applyChangers(el);
+  appendNode(el);
+  elementStack.push(el);
+}
+
+/** Close the current open element (pop from element stack). */
+export function close_element(): void {
+  elementStack.pop();
+}
+
+/** Emit a void/self-closing HTML element (no push). */
+export function void_element(tag: string, ...attrs: string[]): void {
+  const el = document.createElement(tag);
+  for (let i = 0; i < attrs.length; i += 2) {
+    el.setAttribute(attrs[i], attrs[i + 1]);
+  }
+  applyChangers(el);
+  appendNode(el);
 }
 
 // --- Links ---
 
 /** Emit a link that navigates to a passage. */
 export function link(text: string, passage: string): void {
-  const buf = currentBuffer();
   const a = document.createElement("a");
   a.textContent = text;
   a.className = "tw-link";
@@ -188,12 +218,11 @@ export function link(text: string, passage: string): void {
     e.preventDefault();
     import("./navigation").then((nav) => nav.goto(passage));
   });
-  buf.appendChild(wrapWithChangers(a));
+  appendNode(wrapWithChangers(a));
 }
 
 /** Emit a link that runs a callback when clicked. */
 export function link_callback(text: string, callback: () => void): void {
-  const buf = currentBuffer();
   const a = document.createElement("a");
   a.textContent = text;
   a.className = "tw-link";
@@ -201,7 +230,7 @@ export function link_callback(text: string, callback: () => void): void {
     e.preventDefault();
     callback();
   });
-  buf.appendChild(wrapWithChangers(a));
+  appendNode(wrapWithChangers(a));
 }
 
 // --- Flush/Clear ---
@@ -232,6 +261,7 @@ export function clear(): void {
   activeTimers.length = 0;
   bufferStack.length = 0;
   changerStack.length = 0;
+  elementStack.length = 0;
 }
 
 /** Register a timer ID for cleanup on passage transition. */

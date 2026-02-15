@@ -1,5 +1,6 @@
 pub mod extract;
 pub mod harlowe;
+pub mod html_util;
 pub mod sugarcube;
 
 use std::fs;

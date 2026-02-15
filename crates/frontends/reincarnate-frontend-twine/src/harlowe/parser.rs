@@ -8,6 +8,7 @@ use super::ast::*;
 use super::expr;
 use super::lexer::ExprLexer;
 use super::macros;
+use crate::html_util;
 
 /// Parse a Harlowe passage into an AST.
 pub fn parse(source: &str) -> PassageAst {
@@ -461,28 +462,13 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// Parse an HTML tag (pass through as raw HTML).
+    /// Parse an HTML tag into a structured AST node.
     fn parse_html(&mut self) -> Option<Node> {
         let start = self.pos;
 
-        // Check for self-closing tags like `<img ...>` or `<br>`
-        // and block elements like `<table>...</table>`
+        // Scan from `<` to `>`, handling quoted attributes.
         self.pos += 1; // skip `<`
-        let is_closing = self.peek() == Some(b'/');
-        if is_closing {
-            self.pos += 1;
-        }
-
-        // Read tag name
-        let tag_start = self.pos;
-        while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_alphanumeric() {
-            self.pos += 1;
-        }
-        let _tag_name = &self.source[tag_start..self.pos];
-
-        // Skip to `>`
         while !self.at_end() && self.bytes[self.pos] != b'>' {
-            // Handle quoted attributes
             if self.bytes[self.pos] == b'"' || self.bytes[self.pos] == b'\'' {
                 let q = self.bytes[self.pos];
                 self.pos += 1;
@@ -500,11 +486,30 @@ impl<'a> Parser<'a> {
             self.pos += 1; // skip `>`
         }
 
-        let html = self.source[start..self.pos].to_string();
-        Some(Node {
-            kind: NodeKind::Html(html),
-            span: Span::new(start, self.pos),
-        })
+        let raw = &self.source[start..self.pos];
+        let span = Span::new(start, self.pos);
+
+        // Tokenize with html5ever for spec-compliant parsing
+        let kind = if let Some(info) = html_util::tokenize_html_tag(raw) {
+            if info.is_end {
+                NodeKind::HtmlClose(info.name)
+            } else if info.is_void {
+                NodeKind::HtmlVoid {
+                    tag: info.name,
+                    attrs: info.attrs,
+                }
+            } else {
+                NodeKind::HtmlOpen {
+                    tag: info.name,
+                    attrs: info.attrs,
+                }
+            }
+        } else {
+            // Fallback: emit as text if html5ever can't parse it
+            NodeKind::Text(raw.to_string())
+        };
+
+        Some(Node { kind, span })
     }
 
     /// Parse a run of plain text until a special character.
@@ -675,11 +680,27 @@ mod tests {
     }
 
     #[test]
-    fn test_html() {
+    fn test_html_void() {
         let ast = parse("<img src=\"test.png\" width=\"400px\">");
         assert_eq!(ast.errors.len(), 0);
         assert_eq!(ast.body.len(), 1);
-        assert!(matches!(&ast.body[0].kind, NodeKind::Html(_)));
+        if let NodeKind::HtmlVoid { tag, attrs } = &ast.body[0].kind {
+            assert_eq!(tag, "img");
+            assert_eq!(attrs.len(), 2);
+        } else {
+            panic!("expected HtmlVoid, got {:?}", ast.body[0].kind);
+        }
+    }
+
+    #[test]
+    fn test_html_open_close() {
+        let ast = parse("<table><tr><td>cell</td></tr></table>");
+        assert!(ast.errors.is_empty());
+        // Should produce: HtmlOpen(table), HtmlOpen(tr), HtmlOpen(td), Text, HtmlClose(td), HtmlClose(tr), HtmlClose(table)
+        assert!(ast.body.len() >= 7);
+        assert!(matches!(&ast.body[0].kind, NodeKind::HtmlOpen { tag, .. } if tag == "table"));
+        assert!(matches!(&ast.body[3].kind, NodeKind::Text(s) if s == "cell"));
+        assert!(matches!(&ast.body[4].kind, NodeKind::HtmlClose(tag) if tag == "td"));
     }
 
     #[test]
