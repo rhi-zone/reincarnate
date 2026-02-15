@@ -916,3 +916,18 @@ causing compile errors if any emitted code calls them.
   syntax and extract passage targets, handling all separator forms (`|`, `->`,
   `<-`). Variable references (`$var`, `_var`) parsed as expressions; bare
   passage names as string literals. (was 1211 TRC, 62 DoL → 0)
+
+### Runtime Known Issues
+
+- [ ] **Link setter timing** — `[[text|passage][$setter]]` setters execute at
+  render time (during passage function), not at click time. Should be deferred
+  callbacks bound to the link's click handler.
+- [ ] **Unparsed setter in passage name** — Some `][$code]` portions end up
+  embedded in the passage name string. Runtime strips `][` as a workaround
+  (`passage.replace(/\]\[.*$/, "")`), but the frontend parser should handle this.
+- [ ] **Raw SugarCube markup in text output** — `[img[path]]` patterns are
+  processed at runtime in `output.text()`. Ideally the frontend parser would
+  convert these to proper IR nodes during extraction.
+- [ ] **Widget call is async** — `Widget.call()` uses dynamic `import()` to
+  avoid circular dependency with navigation. This means widget output may
+  render out of order. Should use synchronous registry lookup.
