@@ -1,37 +1,185 @@
-/** SugarCube input macro stubs.
+/** SugarCube input macros.
  *
- * Input macros: <<textbox>>, <<textarea>>, <<numberbox>>, <<checkbox>>,
- * <<radiobutton>>, <<listbox>>, <<cycle>>, <<button>>.
+ * Form elements that bind to story variables via State.set/get.
+ * Each creates a DOM element and appends it to the current output buffer.
  */
 
-export function textbox(...args: any[]): void {
-  console.log("[input:textbox]", ...args);
+import * as State from "./state";
+
+/** Get the current output target (import dynamically to avoid circular). */
+function appendToOutput(el: HTMLElement): void {
+  // Append directly to #passages since we can't easily get the current
+  // buffer without circular imports. The output module flushes buffers
+  // to #passages anyway, so appending directly is correct for elements
+  // created during passage rendering.
+  const container = document.getElementById("passages");
+  if (container) {
+    container.appendChild(el);
+  }
 }
 
-export function textarea(...args: any[]): void {
-  console.log("[input:textarea]", ...args);
+/** <<textbox "$var" "default" ["PassageName"]>> */
+export function textbox(varName: string, defaultValue?: string, passageName?: string): void {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = defaultValue ?? (State.get(varName) as string) ?? "";
+
+  input.addEventListener("input", () => {
+    State.set(varName, input.value);
+  });
+
+  if (passageName) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        State.set(varName, input.value);
+        import("./navigation").then((nav) => nav.goto(passageName));
+      }
+    });
+  }
+
+  // Set initial value
+  State.set(varName, input.value);
+  appendToOutput(input);
 }
 
-export function numberbox(...args: any[]): void {
-  console.log("[input:numberbox]", ...args);
+/** <<textarea "$var" "default" ["PassageName"]>> */
+export function textarea(varName: string, defaultValue?: string, passageName?: string): void {
+  const el = document.createElement("textarea");
+  el.value = defaultValue ?? (State.get(varName) as string) ?? "";
+  el.rows = 4;
+
+  el.addEventListener("input", () => {
+    State.set(varName, el.value);
+  });
+
+  State.set(varName, el.value);
+  appendToOutput(el);
 }
 
-export function checkbox(...args: any[]): void {
-  console.log("[input:checkbox]", ...args);
+/** <<numberbox "$var" default ["PassageName"]>> */
+export function numberbox(varName: string, defaultValue?: number, passageName?: string): void {
+  const input = document.createElement("input");
+  input.type = "number";
+  input.value = String(defaultValue ?? (State.get(varName) as number) ?? "");
+
+  input.addEventListener("input", () => {
+    State.set(varName, Number(input.value));
+  });
+
+  if (passageName) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        State.set(varName, Number(input.value));
+        import("./navigation").then((nav) => nav.goto(passageName));
+      }
+    });
+  }
+
+  if (defaultValue !== undefined) {
+    State.set(varName, defaultValue);
+  }
+  appendToOutput(input);
 }
 
-export function radiobutton(...args: any[]): void {
-  console.log("[input:radiobutton]", ...args);
+/** <<checkbox "$var" checkedValue uncheckedValue>> */
+export function checkbox(varName: string, checkedValue: any, uncheckedValue: any): void {
+  const input = document.createElement("input");
+  input.type = "checkbox";
+
+  const current = State.get(varName);
+  input.checked = current === checkedValue;
+
+  input.addEventListener("change", () => {
+    State.set(varName, input.checked ? checkedValue : uncheckedValue);
+  });
+
+  State.set(varName, input.checked ? checkedValue : uncheckedValue);
+  appendToOutput(input);
 }
 
-export function listbox(...args: any[]): void {
-  console.log("[input:listbox]", ...args);
+/** <<radiobutton "$var" checkedValue>> */
+export function radiobutton(varName: string, checkedValue: any): void {
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = varName; // group by variable name
+
+  const current = State.get(varName);
+  input.checked = current === checkedValue;
+
+  input.addEventListener("change", () => {
+    if (input.checked) {
+      State.set(varName, checkedValue);
+    }
+  });
+
+  appendToOutput(input);
 }
 
-export function cycle(...args: any[]): void {
-  console.log("[input:cycle]", ...args);
+/** <<listbox "$var" items...>> */
+export function listbox(varName: string, ...items: any[]): void {
+  const select = document.createElement("select");
+
+  for (const item of items) {
+    const option = document.createElement("option");
+    option.value = String(item);
+    option.textContent = String(item);
+    select.appendChild(option);
+  }
+
+  const current = State.get(varName);
+  if (current !== undefined) {
+    select.value = String(current);
+  } else if (items.length > 0) {
+    State.set(varName, items[0]);
+  }
+
+  select.addEventListener("change", () => {
+    // Try to find the original typed value
+    const idx = select.selectedIndex;
+    State.set(varName, idx >= 0 && idx < items.length ? items[idx] : select.value);
+  });
+
+  appendToOutput(select);
 }
 
-export function button(...args: any[]): void {
-  console.log("[input:button]", ...args);
+/** <<cycle "$var" items...>> */
+export function cycle(varName: string, ...items: any[]): void {
+  if (items.length === 0) return;
+
+  let currentIndex = 0;
+  const current = State.get(varName);
+  if (current !== undefined) {
+    const idx = items.indexOf(current);
+    if (idx >= 0) currentIndex = idx;
+  }
+
+  const btn = document.createElement("button");
+  btn.textContent = String(items[currentIndex]);
+  State.set(varName, items[currentIndex]);
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    currentIndex = (currentIndex + 1) % items.length;
+    btn.textContent = String(items[currentIndex]);
+    State.set(varName, items[currentIndex]);
+  });
+
+  appendToOutput(btn);
+}
+
+/** <<button "text" ["PassageName"]>> */
+export function button(text: string, passageName?: string): void {
+  const btn = document.createElement("button");
+  btn.textContent = text;
+
+  if (passageName) {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      import("./navigation").then((nav) => nav.goto(passageName));
+    });
+  }
+
+  appendToOutput(btn);
 }
