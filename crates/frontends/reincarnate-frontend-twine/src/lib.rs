@@ -1,5 +1,5 @@
 pub mod extract;
-mod harlowe;
+pub mod harlowe;
 pub mod sugarcube;
 
 use std::fs;
@@ -33,16 +33,7 @@ impl Frontend for TwineFrontend {
 
         match story.format.as_str() {
             "SugarCube" => self.extract_sugarcube(&story),
-            "Harlowe" => {
-                // TODO: Harlowe passage parsing → IR
-                Err(CoreError::Parse {
-                    file: Default::default(),
-                    message: format!(
-                        "Harlowe parser not yet implemented (story has {} passages)",
-                        story.passages.len()
-                    ),
-                })
-            }
+            "Harlowe" => self.extract_harlowe(&story),
             other => Err(CoreError::Parse {
                 file: Default::default(),
                 message: format!(
@@ -133,6 +124,95 @@ impl TwineFrontend {
             }
             let func = translate::translate_user_script(i, script);
             mb.add_function(func);
+        }
+
+        // Collect user stylesheets as assets
+        for (i, style) in story.user_styles.iter().enumerate() {
+            if style.trim().is_empty() {
+                continue;
+            }
+            assets.add(Asset {
+                id: format!("user_style:{i}"),
+                kind: AssetKind::Stylesheet,
+                original_name: format!("user_style_{i}"),
+                path: PathBuf::from(format!("assets/styles/user_{i}.css")),
+                size: style.len() as u64,
+                data: style.as_bytes().to_vec(),
+            });
+        }
+
+        // Set entry point to the start passage
+        if let Some(fid) = start_func_id {
+            mb.set_entry_point(EntryPoint::CallFunction(fid));
+        }
+
+        let module = mb.build();
+
+        Ok(FrontendOutput {
+            modules: vec![module],
+            assets,
+        })
+    }
+
+    fn extract_harlowe(
+        &self,
+        story: &extract::Story,
+    ) -> Result<FrontendOutput, CoreError> {
+        let mut mb = ModuleBuilder::new(&story.name);
+        let mut start_func_id = None;
+        let mut assets = AssetCatalog::new();
+        let mut parse_errors = 0;
+
+        // Find start passage name
+        let start_passage_name = story
+            .passages
+            .iter()
+            .find(|p| p.pid == story.start_pid)
+            .map(|p| p.name.clone());
+
+        // Translate each passage → Function
+        for passage in &story.passages {
+            // Skip special tag passages
+            if passage
+                .tags
+                .iter()
+                .any(|t| matches!(t.as_str(), "Twine.private" | "annotation"))
+            {
+                continue;
+            }
+
+            let ast = harlowe::parse_passage(&passage.source);
+
+            // Log parse errors but continue
+            for err in &ast.errors {
+                eprintln!(
+                    "warning: parse error in passage '{}': {}",
+                    passage.name, err
+                );
+                parse_errors += 1;
+            }
+
+            let func_name = harlowe::translate::passage_func_name(&passage.name);
+            let result = harlowe::translate::translate_passage(&passage.name, &ast);
+            let func_id = mb.add_function(result.func);
+
+            // Register passage name → function name mapping
+            mb.add_passage_name(passage.name.clone(), func_name);
+            mb.add_passage_tags(passage.name.clone(), passage.tags.clone());
+
+            // Track start passage
+            if Some(&passage.name) == start_passage_name.as_ref() {
+                start_func_id = Some(func_id);
+            }
+
+            // Add callback functions (link hooks, live intervals, etc.)
+            for cb_func in result.callbacks {
+                mb.add_function(cb_func);
+            }
+        }
+
+        if parse_errors > 0 {
+            eprintln!("warning: {parse_errors} parse error(s) in Harlowe story");
         }
 
         // Collect user stylesheets as assets
