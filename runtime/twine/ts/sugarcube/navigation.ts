@@ -2,6 +2,7 @@
 
 import * as State from "./state";
 import * as Output from "./output";
+import * as Events from "./events";
 
 /** Registry of passage name → passage function. */
 const passages: Map<string, () => void> = new Map();
@@ -36,6 +37,8 @@ export function startStory(passageMap: Record<string, () => void>, startPassage?
   if (target) {
     goto(target);
   }
+
+  Events.trigger(":storyready");
 }
 
 /** Navigate to a passage by name. */
@@ -49,13 +52,23 @@ export function goto(target: string): void {
   State.clearTemps();
   currentPassage = target;
   Output.clear();
+
+  Events.trigger(":passageinit", { passage: target });
+  Events.trigger(":passagestart", { passage: target });
+
   try {
     fn();
   } catch (e) {
     console.error(`[navigation] error in passage "${target}":`, e);
     Output.text(`Error in passage "${target}": ${e}`);
   }
+
+  Events.trigger(":passagerender", { passage: target });
+
   Output.flush();
+
+  Events.trigger(":passageend", { passage: target });
+  Events.trigger(":passagedisplay", { passage: target });
 }
 
 /** Go back to the previous passage. */
@@ -73,13 +86,23 @@ export function back(): void {
   }
   State.clearTemps();
   Output.clear();
+
+  Events.trigger(":passageinit", { passage: title });
+  Events.trigger(":passagestart", { passage: title });
+
   try {
     fn();
   } catch (e) {
     console.error(`[navigation] error in passage "${title}" (back):`, e);
     Output.text(`Error in passage "${title}": ${e}`);
   }
+
+  Events.trigger(":passagerender", { passage: title });
+
   Output.flush();
+
+  Events.trigger(":passageend", { passage: title });
+  Events.trigger(":passagedisplay", { passage: title });
 }
 
 /** Return to the previous passage (alias for back). */

@@ -7,6 +7,7 @@
  */
 
 import * as State from "./state";
+import * as Macro from "./macro";
 import { pushBuffer, popBuffer } from "./output";
 import { getPassage } from "./navigation";
 
@@ -15,12 +16,21 @@ export function call(name: string, ...args: any[]): void {
   // Set _args temp variable for the widget to access
   State.set("_args", args);
 
+  // Try passage/widget registry first
   const widgetFn = getPassage(name);
   if (widgetFn) {
     widgetFn();
-  } else {
-    console.warn(`[widget] widget not found: "${name}"`);
+    return;
   }
+
+  // Fall back to Macro registry
+  const macroDef = Macro.get(name);
+  if (macroDef) {
+    Macro.invokeMacro(macroDef, name, args);
+    return;
+  }
+
+  console.warn(`[widget] widget not found: "${name}"`);
 }
 
 /** Start a widget content block (<<widget>> body content). */

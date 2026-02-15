@@ -11,6 +11,8 @@
 
 import * as State from "./state";
 import * as Navigation from "./navigation";
+import * as Macro from "./macro";
+import { installJQuery } from "./jquery-shim";
 
 // --- Global setup for eval'd scripts ---
 
@@ -27,10 +29,13 @@ function ensureGlobals(): void {
 
   const g = globalThis as any;
 
-  // setup: empty object that user scripts populate with game data
+  // --- jQuery ---
+  installJQuery();
+
+  // --- setup: empty object that user scripts populate with game data ---
   if (!g.setup) g.setup = {};
 
-  // V: proxy for story variables (State.get/set)
+  // --- V: proxy for story variables (State.get/set) ---
   if (!g.V) {
     g.V = new Proxy({} as Record<string, any>, {
       get(_t: any, prop: string) { return State.get(prop); },
@@ -38,27 +43,183 @@ function ensureGlobals(): void {
     });
   }
 
-  // SugarCube API surface stubs
-  if (!g.Config) g.Config = { passages: {}, saves: {}, history: {} };
-  if (!g.Save) g.Save = { slots: { length: 8 }, autosave: {} };
-  if (!g.Template) g.Template = { size: 0 };
-  if (!g.Wikifier) g.Wikifier = {};
-  if (!g.Story) {
-    g.Story = {
-      get: (name: string) => ({ title: name, text: "" }),
-      has: (name: string) => Navigation.has(name),
-    };
-  }
-  if (!g.passage) g.passage = () => Navigation.current();
+  // --- Config ---
+  g.Config = {
+    passages: { nobr: false, descriptions: true, start: "Start", transitionOut: null },
+    saves: { autoload: false, autosave: true, id: "reincarnate", isAllowed() { return true; }, slots: 8 },
+    history: { controls: true, maxStates: 100 },
+    navigation: { override: undefined },
+    debug: false,
+    addVisitedLinkClass: true,
+    cleanupWikifierOutput: false,
+  };
 
-  // Expose State on global for scripts that reference it directly
-  if (!g.State) {
-    g.State = {
-      variables: g.V,
-      temporary: {},
-      get active() { return { title: Navigation.current(), variables: g.V }; },
-    };
+  // --- State ---
+  g.State = {
+    variables: g.V,
+    temporary: new Proxy({} as Record<string, any>, {
+      get(_t: any, prop: string) { return State.get("_" + (prop as string)); },
+      set(_t: any, prop: string, val: any) { State.set("_" + (prop as string), val); return true; },
+    }),
+    get active() { return { title: Navigation.current(), variables: g.V }; },
+    hasPlayed(_passage: string) { return false; },
+    length: 0,
+    size: 0,
+    isEmpty() { return true; },
+    get turns() { return State.historyLength(); },
+    get passage() { return Navigation.current(); },
+    // Expose underlying get/set for direct access
+    getVar(name: string) { return State.get(name); },
+    setVar(name: string, value: any) { State.set(name, value); },
+  };
+
+  // --- Save ---
+  const noop = () => {};
+  g.Save = {
+    slots: {
+      length: 8,
+      count() { return 0; },
+      isEmpty() { return true; },
+      has(_i: number) { return false; },
+      get(_i: number) { return null; },
+      load(_i: number) {},
+      save(_i: number) {},
+      delete(_i: number) {},
+      ok() { return true; },
+    },
+    autosave: {
+      has() { return false; },
+      get() { return null; },
+      load() {},
+      save() {},
+      delete() {},
+      ok() { return true; },
+    },
+    export() { return ""; },
+    import(_data: string) {},
+    serialize() { return ""; },
+    deserialize(_data: string) {},
+    onLoad: { add(_fn: Function) {}, delete(_fn: Function) {}, clear: noop, size: 0 },
+    onSave: { add(_fn: Function) {}, delete(_fn: Function) {}, clear: noop, size: 0 },
+  };
+
+  // --- Macro ---
+  g.Macro = Macro;
+
+  // --- Template ---
+  const templates = new Map<string, Function>();
+  g.Template = {
+    add(nameOrNames: string | string[], fn: Function) {
+      const names = Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames];
+      for (const n of names) templates.set(n, fn);
+    },
+    has(name: string) { return templates.has(name); },
+    get(name: string) { return templates.get(name); },
+    delete(nameOrNames: string | string[]) {
+      const names = Array.isArray(nameOrNames) ? nameOrNames : [nameOrNames];
+      for (const n of names) templates.delete(n);
+    },
+    get size() { return templates.size; },
+  };
+
+  // --- Wikifier ---
+  g.Wikifier = {
+    wikifyEval(markup: string): Text {
+      return document.createTextNode(markup);
+    },
+    createExternalLink(url: string, text: string): HTMLAnchorElement {
+      const a = document.createElement("a");
+      a.href = url;
+      a.textContent = text;
+      a.target = "_blank";
+      return a;
+    },
+    isExternalLink(url: string): boolean {
+      return /^(?:https?|mailto|tel):/.test(url);
+    },
+  };
+
+  // --- Passage ---
+  class PassageShim {
+    title: string;
+    text: string;
+    tags: string[];
+    domId: string;
+    constructor(title?: string) {
+      this.title = title || "";
+      this.text = "";
+      this.tags = [];
+      this.domId = "passage-" + this.title.replace(/\s+/g, "-").toLowerCase();
+    }
+    description(): string { return this.text.slice(0, 100); }
+    processText(): string { return this.text; }
+    render(): DocumentFragment { return document.createDocumentFragment(); }
+    static get(name: string): PassageShim { return new PassageShim(name); }
+    static has(name: string): boolean { return Navigation.has(name); }
   }
+  g.Passage = PassageShim;
+
+  // --- Scripting ---
+  g.Scripting = {
+    evalJavaScript(expr: string): any {
+      return new Function("State", "setup", "V", "Config", `return (${expr})`)(g.State, g.setup, g.V, g.Config);
+    },
+    evalTwineScript(code: string, _output?: DocumentFragment): void {
+      new Function("State", "setup", "V", "Config", code)(g.State, g.setup, g.V, g.Config);
+    },
+    parse(code: string): string { return code; },
+  };
+
+  // --- Engine ---
+  g.Engine = {
+    play(passage: string) { Navigation.goto(passage); },
+    show() {},
+    restart() { location.reload(); },
+    goto(passage: string) { Navigation.goto(passage); },
+    backward() { Navigation.back(); },
+    forward() {},
+    isPlaying() { return true; },
+    state: "playing",
+    minDomActionDelay: 40,
+  };
+
+  // --- Story ---
+  g.Story = {
+    get(name: string) { return new PassageShim(name); },
+    has(name: string) { return Navigation.has(name); },
+    title: "Reincarnate Story",
+    domId: "story",
+  };
+
+  // --- UIBar ---
+  g.UIBar = {
+    stow() {},
+    unstow() {},
+    destroy() {},
+    hide() {},
+    show() {},
+    isStowed() { return false; },
+  };
+
+  // --- L10n ---
+  g.l10nStrings = {};
+  g.L10n = {
+    get(key: string) { return key; },
+  };
+
+  // --- Dialog (referenced by some scripts) ---
+  g.Dialog = {
+    setup(title?: string, _classNames?: string) { return document.createElement("div"); },
+    isOpen() { return false; },
+    open() {},
+    close() {},
+    body() { return document.createElement("div"); },
+    append(..._content: any[]) {},
+    wiki(_content: string) {},
+  };
+
+  // --- passage function (returns current passage name) ---
+  g.passage = () => Navigation.current();
 }
 
 /** Resolve a bare name (used for function lookups in expression context). */
