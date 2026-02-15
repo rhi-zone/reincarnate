@@ -136,9 +136,26 @@ in runtime.json for any newly referenced but unimplemented functions.
   Rust emitter emits passage source as string constants instead of compiled
   functions. `auto` mode scans scripts for `Wikifier.Parser` references.
 
-### Remaining Stubs
+### SugarCube Remaining Stubs
 
 - [ ] **Scripting.parse()** — Returns code unchanged (identity function).
 - [ ] **L10n.get()** — Returns key as-is. Low impact.
 - [ ] **SimpleAudio.select()** — AudioRunner returned is a no-op stub.
 - [ ] **Engine.forward()** — No-op (deprecated in SugarCube v2).
+
+### Harlowe Phase 2 (Advanced Features)
+
+- [ ] **`(for: each _item, ...$arr)[hook]`** — Loop lowering
+- [ ] **`(live: Ns)[hook]` + `(stop:)`** — Timed interval (basic IR done, runtime impl present)
+- [ ] **`(click: ?hook)[hook]`** — Event handler targeting named hooks
+- [ ] **Collection constructors** — `(a:)`, `(dm:)`, `(ds:)` (runtime done, parser handles basic cases)
+- [ ] **Collection operators** — `contains`, `is in`, `'s`, `of` with full Harlowe semantics
+- [ ] **Lambda expressions** — `_x where _x > 5` syntax in parser/translator
+- [ ] **Changer composition with `+`** — `(color: red) + (text-style: "bold")`
+- [ ] **`(save-game:)` / `(load-game:)`** — Save integration (basic runtime done)
+- [ ] **`(replace:)`, `(show:)`, `(hide:)`** — DOM manipulation hooks
+- [ ] **`(meter:)`, `(dialog:)`, `(dropdown:)`** — UI macros
+- [ ] **`(verbatim:)[...]`** — Raw text pass-through (no macro processing)
+- [ ] **`(enchant:)` / `(enchant-in:)`** — Apply changers to matching elements
+- [ ] **Named hooks** — `|name>[hook content]` and `?name` hook references
+- [ ] **Complex `'s` possessive chains** — `$obj's (str-nth: $idx)` nested macro in possessive
