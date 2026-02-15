@@ -20,7 +20,8 @@ pub fn emit_scaffold(modules: &[Module], output_dir: &Path, runtime_config: Opti
     fs::write(output_dir.join("index.html"), html)?;
     fs::write(output_dir.join("tsconfig.json"), TSCONFIG)?;
     fs::write(output_dir.join("main.ts"), generate_main(modules, runtime_config))?;
-    fs::write(output_dir.join("package.json"), PACKAGE_JSON)?;
+    let package_json = if is_twine(modules) { PACKAGE_JSON_TWINE } else { PACKAGE_JSON };
+    fs::write(output_dir.join("package.json"), package_json)?;
     Ok(())
 }
 
@@ -213,6 +214,23 @@ const PACKAGE_JSON: &str = r#"{
   "scripts": {
     "build": "esbuild main.ts --bundle --outfile=dist/bundle.js --format=esm",
     "serve": "esbuild main.ts --bundle --outfile=dist/bundle.js --format=esm --serve --servedir=."
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.0.0"
+  }
+}
+"#;
+
+const PACKAGE_JSON_TWINE: &str = r#"{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild main.ts --bundle --outfile=dist/bundle.js --format=esm",
+    "serve": "esbuild main.ts --bundle --outfile=dist/bundle.js --format=esm --serve --servedir=."
+  },
+  "dependencies": {
+    "jquery": "^3.7.0"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",
