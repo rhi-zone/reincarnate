@@ -67,8 +67,22 @@ pub enum NodeKind {
     Link(LinkNode),
     /// Inline variable reference: `$name`, `_temp`, or `$obj.prop`.
     VarInterp(Expr),
-    /// Inline HTML element (preserved as raw text for now).
-    Html(String),
+    /// Opening HTML tag: `<tag attrs...>` — pushes element onto stack.
+    HtmlOpen {
+        tag: String,
+        attrs: Vec<(String, String)>,
+        /// Dynamic `@attr="expr"` attributes (kept as raw expression strings).
+        dynamic_attrs: Vec<(String, String)>,
+    },
+    /// Closing HTML tag: `</tag>` — pops element from stack.
+    HtmlClose(String),
+    /// Void/self-closing HTML element: `<br>`, `<img .../>`.
+    HtmlVoid {
+        tag: String,
+        attrs: Vec<(String, String)>,
+        /// Dynamic `@attr="expr"` attributes.
+        dynamic_attrs: Vec<(String, String)>,
+    },
     /// An `[img[src]]` or `[img[src][link]]` inline image.
     Image {
         src: String,

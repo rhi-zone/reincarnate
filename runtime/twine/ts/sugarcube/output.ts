@@ -3,7 +3,8 @@
  * Passage code calls these functions to produce visible output. Content
  * is accumulated in a DocumentFragment buffer, then flushed to the
  * #passages container. A buffer stack supports nested content blocks
- * (link bodies, widget bodies, DOM macro targets).
+ * (link bodies, widget bodies, DOM macro targets). An element stack
+ * tracks open HTML elements for proper nesting of structured HTML nodes.
  */
 
 import { scheduleTimeout, cancelTimeout, scheduleInterval, cancelInterval } from "../platform";
@@ -40,42 +41,70 @@ export function popBuffer(): DocumentFragment {
   return bufferStack.pop() || document.createDocumentFragment();
 }
 
+// --- Element stack (for structured HTML nesting) ---
+
+const elementStack: HTMLElement[] = [];
+
+/** Append a node to the current parent (top of element stack, or buffer). */
+function appendNode(node: Node): void {
+  if (elementStack.length > 0) {
+    elementStack[elementStack.length - 1].appendChild(node);
+  } else {
+    currentBuffer().appendChild(node);
+  }
+}
+
 // --- Core output functions ---
 
 /** Emit plain text. */
 export function text(s: string): void {
-  currentBuffer().appendChild(document.createTextNode(s));
+  appendNode(document.createTextNode(s));
 }
 
 /** Print a value (<<print expr>>). */
 export function print(v: any): void {
-  const buf = currentBuffer();
-  buf.appendChild(document.createTextNode(String(v)));
+  appendNode(document.createTextNode(String(v)));
 }
 
-/** Emit raw HTML. */
-export function html(s: string): void {
-  const buf = currentBuffer();
-  const temp = document.createElement("template");
-  temp.innerHTML = s;
-  buf.appendChild(temp.content.cloneNode(true));
-}
+// --- Structured HTML element functions ---
 
-/** Emit HTML with dynamic attributes.
- *  @param template - static HTML with placeholder attrs removed
- *  @param attrs - alternating [name, value, name, value, ...] pairs
- */
-export function htmlDynamic(template: string, ...attrs: any[]): void {
-  const buf = currentBuffer();
-  const temp = document.createElement("template");
-  temp.innerHTML = template;
-  const el = temp.content.firstElementChild;
-  if (el) {
-    for (let i = 0; i < attrs.length; i += 2) {
-      el.setAttribute(attrs[i], String(attrs[i + 1]));
-    }
+/** Open an HTML element, push onto element stack. */
+export function open_element(tag: string, ...attrs: string[]): void {
+  const el = document.createElement(tag);
+  for (let i = 0; i < attrs.length; i += 2) {
+    el.setAttribute(attrs[i], attrs[i + 1]);
   }
-  buf.appendChild(temp.content.cloneNode(true));
+  appendNode(el);
+  elementStack.push(el);
+}
+
+/** Close the current open element (pop from element stack). */
+export function close_element(): void {
+  elementStack.pop();
+}
+
+/** Emit a void/self-closing HTML element (no push). */
+export function void_element(tag: string, ...attrs: string[]): void {
+  const el = document.createElement(tag);
+  for (let i = 0; i < attrs.length; i += 2) {
+    el.setAttribute(attrs[i], attrs[i + 1]);
+  }
+  appendNode(el);
+}
+
+/** Set a dynamic attribute on the most recently opened/emitted element. */
+export function set_attribute(name: string, value: any): void {
+  // Find the last element: top of elementStack, or last child of buffer
+  let el: Element | null = null;
+  if (elementStack.length > 0) {
+    el = elementStack[elementStack.length - 1];
+  } else {
+    const buf = currentBuffer();
+    el = buf.lastElementChild;
+  }
+  if (el) {
+    el.setAttribute(name, String(value));
+  }
 }
 
 /** Emit a line break. Suppressed when nobr tag is active. */
@@ -83,14 +112,13 @@ export function htmlDynamic(template: string, ...attrs: any[]): void {
 export { lineBreak as break };
 function lineBreak(): void {
   if (nobrActive) return;
-  currentBuffer().appendChild(document.createElement("br"));
+  appendNode(document.createElement("br"));
 }
 
 // --- Links ---
 
 /** Emit a simple link (no body content). */
 export function link(text: string, passage?: string, setter?: () => void): void {
-  const buf = currentBuffer();
   const a = document.createElement("a");
   a.textContent = text;
   if (passage || setter) {
@@ -102,23 +130,22 @@ export function link(text: string, passage?: string, setter?: () => void): void 
       }
     });
   }
-  buf.appendChild(a);
+  appendNode(a);
 }
 
 // --- Images ---
 
 /** Emit an inline image, optionally wrapped in a link. */
 export function image(src: string, link?: string): void {
-  const buf = currentBuffer();
   const img = document.createElement("img");
   img.src = src;
   if (link) {
     const a = document.createElement("a");
     a.href = link;
     a.appendChild(img);
-    buf.appendChild(a);
+    appendNode(a);
   } else {
-    buf.appendChild(img);
+    appendNode(img);
   }
 }
 
@@ -144,7 +171,6 @@ export function link_block_end(): void {
   const ctx = linkBlockStack.pop();
   if (!ctx) return;
 
-  const buf = currentBuffer();
   const wrapper = document.createElement("span");
   wrapper.className = "link-block";
 
@@ -175,7 +201,7 @@ export function link_block_end(): void {
   });
 
   wrapper.appendChild(a);
-  buf.appendChild(wrapper);
+  appendNode(wrapper);
 }
 
 // --- Timed/Repeat/Type blocks ---
@@ -201,13 +227,12 @@ export function timed_end(): void {
   const ctx = timedStack.pop();
   if (!ctx) return;
 
-  const buf = currentBuffer();
   const container = document.createElement("span");
   container.className = "timed-content";
   container.style.display = "none";
   // Clone body content into container now
   container.appendChild(body);
-  buf.appendChild(container);
+  appendNode(container);
 
   const id = scheduleTimeout(() => {
     container.style.display = "";
@@ -235,10 +260,9 @@ export function repeat_end(): void {
   const ctx = repeatStack.pop();
   if (!ctx) return;
 
-  const buf = currentBuffer();
   const container = document.createElement("span");
   container.className = "repeat-content";
-  buf.appendChild(container);
+  appendNode(container);
 
   const id = scheduleInterval(() => {
     container.appendChild(body.cloneNode(true));
@@ -265,10 +289,9 @@ export function type_end(): void {
   const ctx = typeStack.pop();
   if (!ctx) return;
 
-  const buf = currentBuffer();
   const container = document.createElement("span");
   container.className = "type-content";
-  buf.appendChild(container);
+  appendNode(container);
 
   // Collect all text content
   const fullText = body.textContent || "";
@@ -314,8 +337,9 @@ export function clear(): void {
     cancelInterval(id);
   }
   activeTimers.length = 0;
-  // Reset buffer stack
+  // Reset buffer and element stacks
   bufferStack.length = 0;
+  elementStack.length = 0;
 }
 
 // --- Helpers ---
@@ -328,4 +352,3 @@ function parseDelay(value: string | number): number {
   if (s.endsWith("s")) return parseFloat(s) * 1000;
   return parseFloat(s) || 0;
 }
-

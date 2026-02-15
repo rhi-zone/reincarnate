@@ -12,6 +12,7 @@ use super::ast::*;
 use super::expr;
 use super::lexer::ExprLexer;
 use super::macros::{self, MacroKind};
+use crate::html_util;
 
 /// Parse a SugarCube passage source string into an AST.
 pub fn parse(source: &str) -> PassageAst {
@@ -1204,11 +1205,35 @@ impl<'a> Parser<'a> {
             }
         }
         let end = self.snap_to_char_boundary(self.pos);
-        let html = self.src[start..end].to_string();
-        Node {
-            kind: NodeKind::Html(html),
-            span: Span::new(start, end),
-        }
+        let raw = &self.src[start..end];
+        let span = Span::new(start, end);
+
+        // Extract @attr="expr" dynamic attributes from raw string before html5ever
+        let (clean_html, dynamic_attrs) = extract_dynamic_attrs(raw);
+
+        // Tokenize with html5ever for spec-compliant parsing
+        let kind = if let Some(info) = html_util::tokenize_html_tag(&clean_html) {
+            if info.is_end {
+                NodeKind::HtmlClose(info.name)
+            } else if info.is_void {
+                NodeKind::HtmlVoid {
+                    tag: info.name,
+                    attrs: info.attrs,
+                    dynamic_attrs,
+                }
+            } else {
+                NodeKind::HtmlOpen {
+                    tag: info.name,
+                    attrs: info.attrs,
+                    dynamic_attrs,
+                }
+            }
+        } else {
+            // Fallback: emit as text
+            NodeKind::Text(raw.to_string())
+        };
+
+        Node { kind, span }
     }
 
     /// Parse plain text until we hit a special character sequence.
@@ -1260,6 +1285,98 @@ impl<'a> Parser<'a> {
             span: Span::new(start, end),
         }
     }
+}
+
+/// Extract `@attr="expr"` dynamic attributes from an HTML tag string.
+/// Returns the cleaned tag string (with @attrs removed) and the dynamic attrs.
+fn extract_dynamic_attrs(raw: &str) -> (String, Vec<(String, String)>) {
+    if !raw.contains('@') {
+        return (raw.to_string(), Vec::new());
+    }
+
+    let mut clean = String::new();
+    let mut dynamic_attrs = Vec::new();
+    let bytes = raw.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        // Look for @ preceded by whitespace (start of dynamic attr)
+        if bytes[i] == b'@'
+            && i > 0
+            && (bytes[i - 1] == b' ' || bytes[i - 1] == b'\t' || bytes[i - 1] == b'\n')
+        {
+            let attr_start = i;
+            i += 1; // skip @
+            let name_start = i;
+            while i < bytes.len()
+                && bytes[i] != b'='
+                && bytes[i] != b' '
+                && bytes[i] != b'>'
+                && bytes[i] != b'/'
+            {
+                i += 1;
+            }
+            let attr_name = &raw[name_start..i];
+
+            // Skip whitespace around =
+            while i < bytes.len() && bytes[i] == b' ' {
+                i += 1;
+            }
+
+            if i < bytes.len() && bytes[i] == b'=' {
+                i += 1; // skip =
+                while i < bytes.len() && bytes[i] == b' ' {
+                    i += 1;
+                }
+
+                // Extract expression value
+                let expr_str;
+                if i < bytes.len() && (bytes[i] == b'"' || bytes[i] == b'\'') {
+                    let quote = bytes[i];
+                    i += 1;
+                    let expr_start = i;
+                    while i < bytes.len() && bytes[i] != quote {
+                        i += 1;
+                    }
+                    expr_str = &raw[expr_start..i];
+                    if i < bytes.len() {
+                        i += 1; // skip closing quote
+                    }
+                } else {
+                    let expr_start = i;
+                    while i < bytes.len()
+                        && bytes[i] != b' '
+                        && bytes[i] != b'\t'
+                        && bytes[i] != b'>'
+                        && bytes[i] != b'/'
+                    {
+                        i += 1;
+                    }
+                    expr_str = &raw[expr_start..i];
+                }
+
+                if !expr_str.is_empty() {
+                    dynamic_attrs.push((attr_name.to_string(), expr_str.to_string()));
+                    // Trim trailing whitespace from clean
+                    let trimmed = clean.trim_end().len();
+                    clean.truncate(trimmed);
+                    if !clean.ends_with('<') && !clean.is_empty() {
+                        clean.push(' ');
+                    }
+                    continue;
+                }
+            }
+
+            // Not a valid @attr pattern — copy literally
+            clean.push_str(&raw[attr_start..i]);
+            continue;
+        }
+
+        clean.push(bytes[i] as char);
+        i += 1;
+    }
+
+    (clean, dynamic_attrs)
 }
 
 #[cfg(test)]
@@ -1669,13 +1786,16 @@ mod tests {
     fn inline_html() {
         let node = first_node("<span class=\"red\">text</span>");
         // First node should be the opening tag
-        assert!(matches!(&node.kind, NodeKind::Html(s) if s.starts_with("<span")));
+        assert!(matches!(
+            &node.kind,
+            NodeKind::HtmlOpen { tag, attrs, .. } if tag == "span" && attrs.iter().any(|(k, _)| k == "class")
+        ));
     }
 
     #[test]
     fn br_tag() {
         let node = first_node("<br>");
-        assert!(matches!(&node.kind, NodeKind::Html(s) if s == "<br>"));
+        assert!(matches!(&node.kind, NodeKind::HtmlVoid { tag, .. } if tag == "br"));
     }
 
     // ── Nested structures ───────────────────────────────────────────
