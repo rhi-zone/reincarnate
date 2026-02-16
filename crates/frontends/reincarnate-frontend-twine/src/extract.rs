@@ -24,6 +24,8 @@ pub struct Story {
     pub user_scripts: Vec<String>,
     /// Contents of `<style id="twine-user-stylesheet">` blocks.
     pub user_styles: Vec<String>,
+    /// The story format's built-in CSS (e.g. from `<style title="Twine CSS">`).
+    pub format_css: Option<String>,
 }
 
 /// A single passage extracted from a `<tw-passagedata>` element.
@@ -110,6 +112,9 @@ pub fn extract_story(html: &str) -> Result<Story, ExtractError> {
     let user_scripts = extract_tagged_blocks(html, "twine-user-script");
     let user_styles = extract_tagged_blocks(html, "twine-user-stylesheet");
 
+    // Extract format CSS (e.g. Harlowe's built-in stylesheet)
+    let format_css = extract_format_css(html);
+
     Ok(Story {
         name,
         format,
@@ -119,6 +124,7 @@ pub fn extract_story(html: &str) -> Result<Story, ExtractError> {
         passages,
         user_scripts,
         user_styles,
+        format_css,
     })
 }
 
@@ -197,6 +203,25 @@ impl std::fmt::Display for ExtractError {
 
 impl std::error::Error for ExtractError {}
 
+/// Extract the story format's built-in CSS from `<style title="Twine CSS">`.
+///
+/// Harlowe (and potentially other formats) embed a large built-in stylesheet
+/// in the compiled HTML under this title. Returns `None` if not found.
+fn extract_format_css(html: &str) -> Option<String> {
+    let marker = "title=\"Twine CSS\"";
+    let attr_pos = html.find(marker)?;
+    // Walk backward to find the opening `<style` tag
+    let style_start = html[..attr_pos].rfind("<style")?;
+    let tag_end = html[style_start..].find('>')? + style_start + 1;
+    let close = html[tag_end..].find("</style>")?;
+    let css = html[tag_end..tag_end + close].trim();
+    if css.is_empty() {
+        None
+    } else {
+        Some(css.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +267,34 @@ mod tests {
     fn no_story_data_errors() {
         let html = "<html><body>Nothing here</body></html>";
         assert!(extract_story(html).is_err());
+    }
+
+    #[test]
+    fn extract_format_css_from_style_tag() {
+        let html = r#"
+<html><head>
+<style title="Twine CSS">tw-story { color: white; }</style>
+</head><body>
+<tw-storydata name="Test" startnode="1" format="Harlowe" format-version="3.3.9" ifid="X" hidden>
+<tw-passagedata pid="1" name="Start" tags="">Hello</tw-passagedata>
+</tw-storydata>
+</body></html>
+"#;
+        let story = extract_story(html).unwrap();
+        assert_eq!(
+            story.format_css.as_deref(),
+            Some("tw-story { color: white; }")
+        );
+    }
+
+    #[test]
+    fn no_format_css_returns_none() {
+        let html = r#"
+<tw-storydata name="S" startnode="1" format="SugarCube" format-version="2.0" ifid="X" hidden>
+<tw-passagedata pid="1" name="Start" tags="">Hi</tw-passagedata>
+</tw-storydata>
+"#;
+        let story = extract_story(html).unwrap();
+        assert!(story.format_css.is_none());
     }
 }

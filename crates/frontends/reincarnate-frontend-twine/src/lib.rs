@@ -221,6 +221,18 @@ impl TwineFrontend {
             eprintln!("warning: {parse_errors} parse error(s) in Harlowe story");
         }
 
+        // Add format CSS (Harlowe built-in stylesheet) as an asset
+        if let Some(css) = &story.format_css {
+            assets.add(Asset {
+                id: "format_css:harlowe".to_string(),
+                kind: AssetKind::Stylesheet,
+                original_name: "format_harlowe".to_string(),
+                path: PathBuf::from("assets/styles/format_harlowe.css"),
+                size: css.len() as u64,
+                data: css.as_bytes().to_vec(),
+            });
+        }
+
         // Collect user stylesheets as assets
         for (i, style) in story.user_styles.iter().enumerate() {
             if style.trim().is_empty() {
