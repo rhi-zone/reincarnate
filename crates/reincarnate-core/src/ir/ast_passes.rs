@@ -239,9 +239,7 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
                 .map(|s| count_var_reads_in_stmt(s, name))
                 .sum();
             if refs == 0 {
-                let name = name.clone();
-                body.remove(i);
-                remove_dead_assigns(body, &name);
+                remove_dead_var_decl(body, i);
                 return true;
             }
         }
@@ -263,25 +261,7 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
 
         // Dead declaration: zero reads after the decl.
         if total_refs == 0 {
-            let init = match &body[i] {
-                Stmt::VarDecl {
-                    init: Some(init), ..
-                } => init,
-                _ => unreachable!(),
-            };
-            if expr_has_side_effects(init) {
-                // Preserve side effects: convert to expression statement.
-                let init = match body.remove(i) {
-                    Stmt::VarDecl {
-                        init: Some(expr), ..
-                    } => expr,
-                    _ => unreachable!(),
-                };
-                body.insert(i, Stmt::Expr(init));
-            } else {
-                body.remove(i);
-            }
-            remove_dead_assigns(body, &name);
+            remove_dead_var_decl(body, i);
             return true;
         }
 
@@ -424,6 +404,31 @@ fn expr_has_side_effects(expr: &Expr) -> bool {
 /// Called after removing a dead uninit decl with 0 read refs — all assignments to
 /// that variable are dead writes. Side-effecting RHS values are preserved as
 /// expression statements.
+/// Remove a dead VarDecl at `idx` and clean up all orphaned assignments to it.
+/// If the init expression has side effects, it's preserved as an expression statement.
+fn remove_dead_var_decl(body: &mut Vec<Stmt>, idx: usize) {
+    let name = match &body[idx] {
+        Stmt::VarDecl { name, .. } => name.clone(),
+        _ => panic!("remove_dead_var_decl called on non-VarDecl"),
+    };
+    let has_side_effects = matches!(
+        &body[idx],
+        Stmt::VarDecl { init: Some(e), .. } if expr_has_side_effects(e)
+    );
+    if has_side_effects {
+        let init = match body.remove(idx) {
+            Stmt::VarDecl {
+                init: Some(expr), ..
+            } => expr,
+            _ => unreachable!(),
+        };
+        body.insert(idx, Stmt::Expr(init));
+    } else {
+        body.remove(idx);
+    }
+    remove_dead_assigns(body, &name);
+}
+
 fn remove_dead_assigns(body: &mut Vec<Stmt>, name: &str) {
     let mut i = 0;
     while i < body.len() {
