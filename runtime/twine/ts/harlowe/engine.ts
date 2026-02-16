@@ -372,17 +372,19 @@ export function meta(name: string): any {
 
 // --- Color operations ---
 
-/** Color manipulation functions. */
+function rgb(r: any, g: any, b: any): string { return `rgb(${r}, ${g}, ${b})`; }
+function rgba(r: any, g: any, b: any, a: any): string { return `rgba(${r}, ${g}, ${b}, ${a})`; }
+function hsl(h: any, s: any, l: any): string { return `hsl(${h}, ${s}%, ${l}%)`; }
+function hsla(h: any, s: any, l: any, a: any): string { return `hsla(${h}, ${s}%, ${l}%, ${a})`; }
+
+export const Colors = { rgb, rgba, hsl, hsla } as const;
+
+/** Color manipulation functions (fallback for unknown ops). */
 export function color_op(name: string, ...args: any[]): string {
-  switch (name) {
-    case "rgb": return `rgb(${args[0]}, ${args[1]}, ${args[2]})`;
-    case "rgba": return `rgba(${args[0]}, ${args[1]}, ${args[2]}, ${args[3]})`;
-    case "hsl": return `hsl(${args[0]}, ${args[1]}%, ${args[2]}%)`;
-    case "hsla": return `hsla(${args[0]}, ${args[1]}%, ${args[2]}%, ${args[3]})`;
-    default:
-      console.warn(`[harlowe] unknown color op: ${name}`);
-      return String(args[0] ?? "");
-  }
+  const fn = (Colors as any)[name];
+  if (fn) return fn(...args);
+  console.warn(`[harlowe] unknown color op: ${name}`);
+  return String(args[0] ?? "");
 }
 
 // --- DOM macros ---

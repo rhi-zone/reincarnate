@@ -27,6 +27,10 @@
         "printVal", "displayPassage"
       ],
       "path": "harlowe/output"
+    },
+    {
+      "names": ["Colors"],
+      "path": "harlowe/engine"
     }
   ]
 }
