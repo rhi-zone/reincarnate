@@ -58,7 +58,7 @@ pub fn translate_passage(name: &str, ast: &PassageAst) -> TranslateResult {
         set_target: None,
     };
 
-    let content = ctx.lower_content_array(&ast.body);
+    let content = ctx.lower_content_to_buffer(&ast.body);
     ctx.fb.ret(Some(content));
 
     let callbacks = std::mem::take(&mut ctx.callbacks);
@@ -89,6 +89,103 @@ impl TranslateCtx {
         let vals: Vec<ValueId> = self.lower_nodes_to_structured(nodes);
         self.fb
             .system_call("Harlowe.Output", "content_array", &vals, Type::Dynamic)
+    }
+
+    // ── Push-based content emission ────────────────────────────────
+
+    /// Lower a sequence of nodes into a buffer built with push-based emission.
+    /// Used at the passage top level so that control flow (if/unless) doesn't
+    /// force values computed before the branch into temporary variables.
+    fn lower_content_to_buffer(&mut self, nodes: &[Node]) -> ValueId {
+        let buf = self.fb.system_call(
+            "Harlowe.Output",
+            "new_buffer",
+            &[],
+            Type::Dynamic,
+        );
+        self.push_nodes_into_buffer(buf, nodes);
+        buf
+    }
+
+    /// Push each node's value into `buf` in program order.
+    /// Like `lower_nodes_to_structured` but emits push/push_spread calls
+    /// instead of collecting into a Vec<ValueId>.
+    fn push_nodes_into_buffer(&mut self, buf: ValueId, nodes: &[Node]) {
+        let mut i = 0;
+        while i < nodes.len() {
+            match &nodes[i].kind {
+                NodeKind::HtmlOpen { tag, attrs } => {
+                    // Consume children until matching HtmlClose — same pairing logic.
+                    let tag = tag.clone();
+                    let attrs = attrs.clone();
+                    let (children_end, children) =
+                        self.collect_html_children(nodes, i + 1, &tag);
+                    let children_arr = self.fb.system_call(
+                        "Harlowe.Output",
+                        "content_array",
+                        &children,
+                        Type::Dynamic,
+                    );
+                    let tag_val = self.fb.const_string(&tag);
+                    let mut args = vec![tag_val, children_arr];
+                    for (k, v) in &attrs {
+                        args.push(self.fb.const_string(k));
+                        args.push(self.fb.const_string(v));
+                    }
+                    let el = self.fb.system_call(
+                        "Harlowe.Output",
+                        "el",
+                        &args,
+                        Type::Dynamic,
+                    );
+                    self.fb.system_call(
+                        "Harlowe.Output",
+                        "push",
+                        &[buf, el],
+                        Type::Void,
+                    );
+                    i = children_end;
+                }
+                NodeKind::HtmlClose(_) => {
+                    // Stray close tag — skip
+                    i += 1;
+                }
+                NodeKind::Macro(mac) if mac.name == "if" || mac.name == "unless" => {
+                    // if/unless returns a content_array — spread it into buffer
+                    if let Some(val) = self.lower_if(mac) {
+                        self.fb.system_call(
+                            "Harlowe.Output",
+                            "push_spread",
+                            &[buf, val],
+                            Type::Void,
+                        );
+                    }
+                    i += 1;
+                }
+                NodeKind::Hook(children) => {
+                    // Bare hook: spread inline content into buffer
+                    let arr = self.lower_content_array(children);
+                    self.fb.system_call(
+                        "Harlowe.Output",
+                        "push_spread",
+                        &[buf, arr],
+                        Type::Void,
+                    );
+                    i += 1;
+                }
+                _ => {
+                    if let Some(v) = self.lower_node(&nodes[i]) {
+                        self.fb.system_call(
+                            "Harlowe.Output",
+                            "push",
+                            &[buf, v],
+                            Type::Void,
+                        );
+                    }
+                    i += 1;
+                }
+            }
+        }
     }
 
     // ── Node lowering ──────────────────────────────────────────────
@@ -1368,14 +1465,21 @@ You're at the **entryway**
         let ast = parser::parse("Hello");
         let result = translate_passage("test_content", &ast);
         let func = &result.func;
-        // Should have content_array and text_node system calls
-        let has_content_array = func.blocks.values().any(|block| {
+        // Top-level passage now uses push-based buffer: new_buffer + push + text_node
+        let has_new_buffer = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
                 matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
-                    if system == "Harlowe.Output" && method == "content_array")
+                    if system == "Harlowe.Output" && method == "new_buffer")
             })
         });
-        assert!(has_content_array, "should have content_array call");
+        assert!(has_new_buffer, "should have new_buffer call");
+        let has_push = func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
+                    if system == "Harlowe.Output" && method == "push")
+            })
+        });
+        assert!(has_push, "should have push call");
         let has_text_node = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
                 matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
