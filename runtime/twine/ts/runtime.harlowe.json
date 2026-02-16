@@ -32,5 +32,9 @@
       "names": ["Colors", "Collections"],
       "path": "harlowe/engine"
     }
-  ]
+  ],
+  "pass_defaults": {
+    "fold-array-init-push": true,
+    "merge-adjacent-push": true
+  }
 }
