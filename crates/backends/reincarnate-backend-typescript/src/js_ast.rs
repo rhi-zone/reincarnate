@@ -97,6 +97,8 @@ pub enum JsExpr {
     Not(Box<JsExpr>),
     /// Post-increment: `expr++`.
     PostIncrement(Box<JsExpr>),
+    /// Spread: `...expr`.
+    Spread(Box<JsExpr>),
     /// Generator create (call to generator function).
     GeneratorCreate {
         func: String,

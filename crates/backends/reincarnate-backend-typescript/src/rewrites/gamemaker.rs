@@ -406,7 +406,7 @@ fn rewrite_expr_children(expr: &mut JsExpr, sprite_names: &[String]) {
             rewrite_expr(rhs, sprite_names);
         }
         JsExpr::Unary { expr: inner, .. } => rewrite_expr(inner, sprite_names),
-        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) => rewrite_expr(inner, sprite_names),
+        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => rewrite_expr(inner, sprite_names),
         JsExpr::Field { object, .. } => rewrite_expr(object, sprite_names),
         JsExpr::Index { collection, index } => {
             rewrite_expr(collection, sprite_names);

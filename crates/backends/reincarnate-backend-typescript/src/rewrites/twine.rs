@@ -130,7 +130,7 @@ fn rewrite_expr_children(expr: &mut JsExpr) {
             rewrite_expr(rhs);
         }
         JsExpr::Unary { expr: inner, .. } => rewrite_expr(inner),
-        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) => rewrite_expr(inner),
+        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => rewrite_expr(inner),
         JsExpr::Field { object, .. } => rewrite_expr(object),
         JsExpr::Index { collection, index } => {
             rewrite_expr(collection);

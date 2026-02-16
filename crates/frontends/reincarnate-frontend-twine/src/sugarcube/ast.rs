@@ -284,6 +284,8 @@ pub enum ExprKind {
     Ndef(Box<Expr>),
     /// Grouped expression: `(expr)`.
     Paren(Box<Expr>),
+    /// Spread: `...expr` (in arrays, objects, and call arguments).
+    Spread(Box<Expr>),
     /// Error placeholder for malformed expressions.
     Error(String),
 }

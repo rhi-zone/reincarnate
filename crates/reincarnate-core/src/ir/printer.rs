@@ -483,6 +483,10 @@ impl fmt::Display for Function {
                     Op::GlobalRef(name) => {
                         write!(f, "global_ref {name:?}")?;
                     }
+                    Op::Spread(val) => {
+                        write!(f, "spread ")?;
+                        fmt_value(*val, f)?;
+                    }
                     Op::Copy(val) => {
                         write!(f, "copy ")?;
                         fmt_value(*val, f)?;

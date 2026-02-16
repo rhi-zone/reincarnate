@@ -1625,6 +1625,7 @@ impl<'a> EmitCtx<'a> {
             Op::CoroutineResume(v) => Expr::CoroutineResume(Box::new(self.build_val(*v))),
 
             Op::GlobalRef(name) => Expr::GlobalRef(name.clone()),
+            Op::Spread(v) => Expr::Spread(Box::new(self.build_val(*v))),
             Op::Copy(src) => self.build_val(*src),
 
             Op::Br { .. }

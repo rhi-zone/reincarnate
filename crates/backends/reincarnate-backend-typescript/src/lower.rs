@@ -282,6 +282,8 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
         Expr::Not(inner) => JsExpr::Not(Box::new(lower_expr(inner, ctx))),
 
         Expr::PostIncrement(inner) => JsExpr::PostIncrement(Box::new(lower_expr(inner, ctx))),
+
+        Expr::Spread(inner) => JsExpr::Spread(Box::new(lower_expr(inner, ctx))),
     }
 }
 

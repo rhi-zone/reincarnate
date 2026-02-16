@@ -548,6 +548,11 @@ impl FunctionBuilder {
         self.emit(Op::GlobalRef(name.into()), ty)
     }
 
+    pub fn spread(&mut self, value: ValueId) -> ValueId {
+        let ty = self.value_type(value);
+        self.emit(Op::Spread(value), ty)
+    }
+
     pub fn copy(&mut self, value: ValueId) -> ValueId {
         let ty = self.value_type(value);
         self.emit(Op::Copy(value), ty)

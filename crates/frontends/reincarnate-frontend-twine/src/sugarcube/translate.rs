@@ -318,6 +318,10 @@ impl TranslateCtx {
                 self.fb
                     .system_call("SugarCube.Engine", "ndef", &[val], Type::Bool)
             }
+            ExprKind::Spread(inner) => {
+                let val = self.lower_expr(inner);
+                self.fb.spread(val)
+            }
             ExprKind::Paren(inner) => self.lower_expr(inner),
             ExprKind::Error(msg) => {
                 // Parse error placeholder — emit a diagnostic and return null

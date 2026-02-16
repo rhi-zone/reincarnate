@@ -412,8 +412,8 @@ fn infer_inst_type(
             }
         }
 
-        // Copy: propagate source type.
-        Op::Copy(v) => func.value_types[*v].clone(),
+        // Copy/Spread: propagate source type.
+        Op::Copy(v) | Op::Spread(v) => func.value_types[*v].clone(),
 
         // StructInit: always Struct(name).
         Op::StructInit { name, .. } => Type::Struct(name.clone()),

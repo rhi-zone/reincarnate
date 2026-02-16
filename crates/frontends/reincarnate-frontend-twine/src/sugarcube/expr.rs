@@ -623,6 +623,16 @@ fn parse_prefix(lexer: &mut ExprLexer<'_>) -> Expr {
             }
         }
 
+        // Spread operator
+        TokenKind::DotDotDot => {
+            let operand = parse_bp(lexer, BP_ASSIGN.0);
+            let span = Span::new(start, operand.span.end);
+            Expr {
+                kind: ExprKind::Spread(Box::new(operand)),
+                span,
+            }
+        }
+
         // EOF or unexpected token
         TokenKind::Eof => Expr {
             kind: ExprKind::Error("unexpected end of expression".into()),
@@ -649,6 +659,22 @@ fn parse_call_args(lexer: &mut ExprLexer<'_>) -> Vec<Expr> {
 }
 
 fn parse_object_entry(lexer: &mut ExprLexer<'_>) -> (Expr, Expr) {
+    // Spread in object literal: { ...expr }
+    if lexer.peek().kind == TokenKind::DotDotDot {
+        let tok = lexer.next_tok();
+        let inner = parse_bp(lexer, BP_ASSIGN.0);
+        let span = Span::new(tok.span.start, inner.span.end);
+        let spread_key = Expr {
+            kind: ExprKind::Str("...".into()),
+            span: Span::new(tok.span.start, tok.span.end),
+        };
+        let spread_val = Expr {
+            kind: ExprKind::Spread(Box::new(inner)),
+            span,
+        };
+        return (spread_key, spread_val);
+    }
+
     let key = match &lexer.peek().kind {
         TokenKind::Str(_) | TokenKind::Number(_) => parse_prefix(lexer),
         TokenKind::LBracket => {

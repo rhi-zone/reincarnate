@@ -2002,7 +2002,7 @@ fn rewrite_late_bound_expr(
             rewrite_late_bound_expr(rhs, late_bound, short_to_qualified);
         }
         JsExpr::Unary { expr: inner, .. } | JsExpr::Not(inner)
-        | JsExpr::PostIncrement(inner) | JsExpr::TypeOf(inner)
+        | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) | JsExpr::TypeOf(inner)
         | JsExpr::GeneratorResume(inner) => {
             rewrite_late_bound_expr(inner, late_bound, short_to_qualified);
         }

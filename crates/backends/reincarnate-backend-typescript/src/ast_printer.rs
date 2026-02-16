@@ -587,7 +587,10 @@ fn print_expr(expr: &JsExpr) -> String {
             let field_strs: Vec<_> = pairs
                 .iter()
                 .map(|(name, val)| {
-                    if is_valid_js_ident(name) {
+                    if name == "..." {
+                        // Spread entry: emit `...expr`
+                        format!("...{}", print_expr_operand(val))
+                    } else if is_valid_js_ident(name) {
                         format!("{name}: {}", print_expr(val))
                     } else {
                         format!("\"{}\": {}", escape_js_string(name), print_expr(val))
@@ -608,6 +611,10 @@ fn print_expr(expr: &JsExpr) -> String {
 
         JsExpr::PostIncrement(inner) => {
             format!("{}++", print_expr_operand(inner))
+        }
+
+        JsExpr::Spread(inner) => {
+            format!("...{}", print_expr_operand(inner))
         }
 
         JsExpr::GeneratorCreate { func: fname, args } => {

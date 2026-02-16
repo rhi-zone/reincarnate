@@ -508,8 +508,8 @@ fn generate_constraints(
                     constrain_branch_args(solver, func, default.0, &default.1);
                 }
 
-                // Copy: v = r
-                Op::Copy(v) => {
+                // Copy / Spread: v = r
+                Op::Copy(v) | Op::Spread(v) => {
                     if let Some(r) = result {
                         solver.constrain_equal_values(*v, r);
                     }

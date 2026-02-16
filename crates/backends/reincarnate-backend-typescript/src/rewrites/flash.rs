@@ -347,6 +347,7 @@ fn collect_expr_vars(expr: &JsExpr, out: &mut HashSet<String>) {
         | JsExpr::TypeCheck { expr: e, .. }
         | JsExpr::Not(e)
         | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
         | JsExpr::TypeOf(e)
         | JsExpr::GeneratorResume(e) => collect_expr_vars(e, out),
         JsExpr::Field { object, .. } => collect_expr_vars(object, out),
@@ -522,6 +523,7 @@ fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
         | JsExpr::TypeCheck { expr: e, .. }
         | JsExpr::Not(e)
         | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
         | JsExpr::TypeOf(e)
         | JsExpr::GeneratorResume(e) => rewrite_this_to_prototype(e, class_name),
         JsExpr::Index { collection, index } => {
@@ -945,6 +947,7 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
         JsExpr::PostIncrement(inner) => {
             JsExpr::PostIncrement(Box::new(rewrite_expr(*inner, ctx)))
         }
+        JsExpr::Spread(inner) => JsExpr::Spread(Box::new(rewrite_expr(*inner, ctx))),
 
         JsExpr::GeneratorCreate { func, args } => JsExpr::GeneratorCreate {
             func,
@@ -1305,6 +1308,7 @@ fn bind_method_refs_expr(expr: &mut JsExpr, bindable: &HashSet<String>, in_calle
         | JsExpr::TypeCheck { expr: e, .. }
         | JsExpr::Not(e)
         | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
         | JsExpr::TypeOf(e)
         | JsExpr::GeneratorResume(e) => {
             bind_method_refs_expr(e, bindable, false);
@@ -1397,6 +1401,7 @@ fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
         | JsExpr::TypeCheck { expr: e, .. }
         | JsExpr::Not(e)
         | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
         | JsExpr::TypeOf(e)
         | JsExpr::GeneratorResume(e) => expr_references_var(e, name),
         JsExpr::Field { object, .. } => expr_references_var(object, name),
@@ -1625,6 +1630,7 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
         | JsExpr::TypeCheck { expr: e, .. }
         | JsExpr::Not(e)
         | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
         | JsExpr::TypeOf(e)
         | JsExpr::GeneratorResume(e) => eliminate_dead_activations_in_expr(e),
         JsExpr::Field { object, .. } => eliminate_dead_activations_in_expr(object),

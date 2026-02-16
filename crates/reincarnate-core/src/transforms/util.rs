@@ -37,7 +37,7 @@ pub fn value_operands(op: &Op) -> Vec<ValueId> {
         | Op::BitXor(a, b)
         | Op::Shl(a, b)
         | Op::Shr(a, b) => vec![*a, *b],
-        Op::Neg(a) | Op::BitNot(a) | Op::Not(a) | Op::Copy(a) => vec![*a],
+        Op::Neg(a) | Op::BitNot(a) | Op::Not(a) | Op::Copy(a) | Op::Spread(a) => vec![*a],
         Op::Select {
             cond,
             on_true,
@@ -127,7 +127,7 @@ pub fn substitute_values_in_op(op: &mut Op, subst: &HashMap<ValueId, ValueId>) {
             sub(a);
             sub(b);
         }
-        Op::Neg(a) | Op::BitNot(a) | Op::Not(a) | Op::Copy(a) => sub(a),
+        Op::Neg(a) | Op::BitNot(a) | Op::Not(a) | Op::Copy(a) | Op::Spread(a) => sub(a),
         Op::Select {
             cond,
             on_true,

@@ -140,6 +140,7 @@ fn recurse_into_expr(expr: &mut JsExpr) {
         | JsExpr::TypeCheck { expr, .. }
         | JsExpr::Not(expr)
         | JsExpr::PostIncrement(expr)
+        | JsExpr::Spread(expr)
         | JsExpr::TypeOf(expr)
         | JsExpr::GeneratorResume(expr) => {
             recurse_into_expr(expr);
@@ -629,6 +630,7 @@ fn strip_casts_in_expr(expr: &mut JsExpr, var_types: &HashMap<String, Type>) {
         JsExpr::Unary { expr: inner, .. }
         | JsExpr::Not(inner)
         | JsExpr::PostIncrement(inner)
+        | JsExpr::Spread(inner)
         | JsExpr::TypeOf(inner)
         | JsExpr::GeneratorResume(inner)
         | JsExpr::Cast { expr: inner, .. }

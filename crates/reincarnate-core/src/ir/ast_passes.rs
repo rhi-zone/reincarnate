@@ -376,7 +376,8 @@ fn expr_has_side_effects(expr: &Expr) -> bool {
         Expr::Unary { expr: inner, .. }
         | Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
-        | Expr::Not(inner) => expr_has_side_effects(inner),
+        | Expr::Not(inner)
+        | Expr::Spread(inner) => expr_has_side_effects(inner),
         Expr::Field { object, .. } => expr_has_side_effects(object),
         Expr::Index { collection, index } => {
             expr_has_side_effects(collection) || expr_has_side_effects(index)
@@ -571,7 +572,8 @@ fn count_var_reads_in_expr(expr: &Expr, name: &str) -> usize {
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
-        | Expr::PostIncrement(inner) => count_var_reads_in_expr(inner, name),
+        | Expr::PostIncrement(inner)
+        | Expr::Spread(inner) => count_var_reads_in_expr(inner, name),
         Expr::Field { object, .. } => count_var_reads_in_expr(object, name),
         Expr::Index { collection, index } => {
             count_var_reads_in_expr(collection, name) + count_var_reads_in_expr(index, name)
@@ -802,7 +804,8 @@ fn substitute_var_in_expr(
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
-        | Expr::PostIncrement(inner) => substitute_var_in_expr(inner, name, replacement),
+        | Expr::PostIncrement(inner)
+        | Expr::Spread(inner) => substitute_var_in_expr(inner, name, replacement),
         Expr::Field { object, .. } => substitute_var_in_expr(object, name, replacement),
         Expr::Index { collection, index } => {
             substitute_var_in_expr(collection, name, replacement)
@@ -1772,7 +1775,8 @@ fn expr_references_var(expr: &Expr, name: &str) -> bool {
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
-        | Expr::PostIncrement(inner) => expr_references_var(inner, name),
+        | Expr::PostIncrement(inner)
+        | Expr::Spread(inner) => expr_references_var(inner, name),
         Expr::Field { object, .. } => expr_references_var(object, name),
         Expr::Index { collection, index } => {
             expr_references_var(collection, name) || expr_references_var(index, name)
@@ -3008,7 +3012,8 @@ fn simplify_ternary_in_expr(expr: &mut Expr) {
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
-        | Expr::PostIncrement(inner) => {
+        | Expr::PostIncrement(inner)
+        | Expr::Spread(inner) => {
             simplify_ternary_in_expr(inner);
         }
         Expr::Field { object, .. } => {
@@ -3268,7 +3273,8 @@ fn expr_references(expr: &Expr, name: &str) -> bool {
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
-        | Expr::PostIncrement(inner) => expr_references(inner, name),
+        | Expr::PostIncrement(inner)
+        | Expr::Spread(inner) => expr_references(inner, name),
         Expr::Field { object, .. } => expr_references(object, name),
         Expr::Index { collection, index } => {
             expr_references(collection, name) || expr_references(index, name)
