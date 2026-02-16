@@ -558,6 +558,12 @@ API shim (engine runtime) runs on any target by swapping the platform
 implementation. For Rust targets, the platform traits monomorphize. For
 TypeScript, the bundler resolves the platform module at build time.
 
+## Architecture Decision Records
+
+See [adr/](adr/) for design decisions:
+
+- [ADR 001: Harlowe Content Emission via `h` Parameter](adr/001-harlowe-h-parameter.md)
+
 ## Dependencies
 
 - **`swf` crate** (from Ruffle, MIT/Apache-2.0): SWF file parsing for the Flash frontend
