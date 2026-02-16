@@ -596,8 +596,11 @@ function ensureGlobals(): void {
 
 /** Resolve a bare name (used for function lookups in expression context). */
 export function resolve(name: string): any {
-  // Check passage/widget registry first, then globalThis
-  return (globalThis as any)[name];
+  // Check globalThis first (user-defined globals from eval'd scripts)
+  const g = (globalThis as any)[name];
+  if (g !== undefined) return g;
+  // Fall back to passage/widget registry
+  return Navigation.getPassage(name);
 }
 
 /** Deep clone a value (SugarCube's clone() function). */
