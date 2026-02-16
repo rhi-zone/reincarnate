@@ -38,6 +38,12 @@ pub struct RuntimeConfig {
     /// that reference runtime stdlib functions (e.g. `floor` → `gamemaker/math`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub function_modules: Vec<ImportGroup>,
+    /// Engine-specific pass defaults.
+    /// Keyed by kebab-case pass name (e.g. `"fold-array-init-push"`),
+    /// value is whether the pass should be enabled by default.
+    /// Backend reads these directly; CLI `--skip-pass` can override.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pass_defaults: BTreeMap<String, bool>,
 }
 
 /// A single system module mapping.
