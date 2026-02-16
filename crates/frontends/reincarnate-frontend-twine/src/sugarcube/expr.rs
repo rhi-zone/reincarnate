@@ -669,7 +669,7 @@ fn parse_object_entry(lexer: &mut ExprLexer<'_>) -> (Expr, Expr) {
             span: Span::new(tok.span.start, tok.span.end),
         };
         let spread_val = Expr {
-            kind: ExprKind::Spread(Box::new(inner)),
+            kind: inner.kind,
             span,
         };
         return (spread_key, spread_val);
