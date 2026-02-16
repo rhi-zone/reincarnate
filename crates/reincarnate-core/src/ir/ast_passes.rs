@@ -236,7 +236,7 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
         {
             let refs: usize = body[i + 1..]
                 .iter()
-                .map(|s| count_var_refs_in_stmt(s, name))
+                .map(|s| count_var_reads_in_stmt(s, name))
                 .sum();
             if refs == 0 {
                 let name = name.clone();
@@ -258,7 +258,7 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
         // Count ALL references in the remaining body.
         let total_refs: usize = body[i + 1..]
             .iter()
-            .map(|s| count_var_refs_in_stmt(s, &name))
+            .map(|s| count_var_reads_in_stmt(s, &name))
             .sum();
 
         // Dead declaration: zero reads after the decl.
@@ -297,12 +297,12 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
         }
 
         // Find the statement containing the single use (read, not bare write).
-        // Must use count_var_refs_in_stmt (which skips bare Var writes) rather
+        // Must use count_var_reads_in_stmt (which skips bare Var writes) rather
         // than stmt_references_var (which counts writes too) — otherwise we'd
         // target a write-only statement, the substitute would find nothing to
         // replace, and the init expression would be silently dropped.
         let use_idx = (i + 1..body.len())
-            .find(|&j| count_var_refs_in_stmt(&body[j], &name) > 0)
+            .find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0)
             .unwrap();
 
         let adjacent = use_idx == i + 1;
@@ -534,61 +534,76 @@ fn expr_is_prefix_of(prefix: &Expr, path: &Expr) -> bool {
 // ---------------------------------------------------------------------------
 // Variable reference counting and substitution
 // ---------------------------------------------------------------------------
+//
+// Three functions with subtly different semantics:
+//
+// - `count_var_reads_in_{expr,stmt}` — counts *reads* of `name`. Bare `Var`
+//   assignment targets are skipped (they're writes, not reads). Use for
+//   substitution safety: "how many reads would be replaced?"
+//
+// - `stmt_references_var` — returns true if `name` appears *anywhere*
+//   (reads or writes). Use for scope narrowing: "does this block touch
+//   the variable at all?"
+//
+// - `var_is_reassigned` — returns true if `name` is *written* (Assign or
+//   CompoundAssign target). Use for loop safety: "is the init value stale
+//   after a back-edge write?"
+//
 
-/// Count occurrences of `Var(name)` in an expression.
-fn count_var_refs_in_expr(expr: &Expr, name: &str) -> usize {
+/// Count occurrences of `Var(name)` reads in an expression.
+fn count_var_reads_in_expr(expr: &Expr, name: &str) -> usize {
     match expr {
         Expr::Var(n) => usize::from(n == name),
         Expr::Literal(_) | Expr::GlobalRef(_) => 0,
         Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
-            count_var_refs_in_expr(lhs, name) + count_var_refs_in_expr(rhs, name)
+            count_var_reads_in_expr(lhs, name) + count_var_reads_in_expr(rhs, name)
         }
         Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
-            count_var_refs_in_expr(lhs, name) + count_var_refs_in_expr(rhs, name)
+            count_var_reads_in_expr(lhs, name) + count_var_reads_in_expr(rhs, name)
         }
         Expr::Unary { expr: inner, .. }
         | Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
-        | Expr::PostIncrement(inner) => count_var_refs_in_expr(inner, name),
-        Expr::Field { object, .. } => count_var_refs_in_expr(object, name),
+        | Expr::PostIncrement(inner) => count_var_reads_in_expr(inner, name),
+        Expr::Field { object, .. } => count_var_reads_in_expr(object, name),
         Expr::Index { collection, index } => {
-            count_var_refs_in_expr(collection, name) + count_var_refs_in_expr(index, name)
+            count_var_reads_in_expr(collection, name) + count_var_reads_in_expr(index, name)
         }
         Expr::Call { args, .. } | Expr::CoroutineCreate { args, .. } => {
-            args.iter().map(|a| count_var_refs_in_expr(a, name)).sum()
+            args.iter().map(|a| count_var_reads_in_expr(a, name)).sum()
         }
         Expr::CallIndirect { callee, args } => {
-            count_var_refs_in_expr(callee, name)
-                + args.iter().map(|a| count_var_refs_in_expr(a, name)).sum::<usize>()
+            count_var_reads_in_expr(callee, name)
+                + args.iter().map(|a| count_var_reads_in_expr(a, name)).sum::<usize>()
         }
         Expr::SystemCall { args, .. } => {
-            args.iter().map(|a| count_var_refs_in_expr(a, name)).sum()
+            args.iter().map(|a| count_var_reads_in_expr(a, name)).sum()
         }
         Expr::MethodCall {
             receiver, args, ..
         } => {
-            count_var_refs_in_expr(receiver, name)
-                + args.iter().map(|a| count_var_refs_in_expr(a, name)).sum::<usize>()
+            count_var_reads_in_expr(receiver, name)
+                + args.iter().map(|a| count_var_reads_in_expr(a, name)).sum::<usize>()
         }
         Expr::Ternary {
             cond,
             then_val,
             else_val,
         } => {
-            count_var_refs_in_expr(cond, name)
-                + count_var_refs_in_expr(then_val, name)
-                + count_var_refs_in_expr(else_val, name)
+            count_var_reads_in_expr(cond, name)
+                + count_var_reads_in_expr(then_val, name)
+                + count_var_reads_in_expr(else_val, name)
         }
         Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
-            elems.iter().map(|e| count_var_refs_in_expr(e, name)).sum()
+            elems.iter().map(|e| count_var_reads_in_expr(e, name)).sum()
         }
         Expr::StructInit { fields, .. } => fields
             .iter()
-            .map(|(_, v)| count_var_refs_in_expr(v, name))
+            .map(|(_, v)| count_var_reads_in_expr(v, name))
             .sum(),
-        Expr::Yield(v) => v.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name)),
+        Expr::Yield(v) => v.as_ref().map_or(0, |e| count_var_reads_in_expr(e, name)),
     }
 }
 
@@ -642,11 +657,12 @@ fn stmt_reassigns_var(stmt: &Stmt, name: &str) -> bool {
     }
 }
 
-/// Count occurrences of `Var(name)` in a statement (recursing into nested bodies).
-fn count_var_refs_in_stmt(stmt: &Stmt, name: &str) -> usize {
+/// Count occurrences of `Var(name)` reads in a statement (recursing into nested bodies).
+/// Bare `Var` assignment targets are skipped — see the section comment above.
+fn count_var_reads_in_stmt(stmt: &Stmt, name: &str) -> usize {
     match stmt {
         Stmt::VarDecl { name: n, init, .. } => {
-            usize::from(n == name) + init.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name))
+            usize::from(n == name) + init.as_ref().map_or(0, |e| count_var_reads_in_expr(e, name))
         }
         Stmt::Assign { target, value } => {
             // A bare Var target is a write, not a read — don't count it.
@@ -654,35 +670,35 @@ fn count_var_refs_in_stmt(stmt: &Stmt, name: &str) -> usize {
             let target_refs = if matches!(target, Expr::Var(v) if v == name) {
                 0
             } else {
-                count_var_refs_in_expr(target, name)
+                count_var_reads_in_expr(target, name)
             };
-            target_refs + count_var_refs_in_expr(value, name)
+            target_refs + count_var_reads_in_expr(value, name)
         }
         Stmt::CompoundAssign { target, value, .. } => {
             // CompoundAssign reads AND writes the target, so always count it.
-            count_var_refs_in_expr(target, name) + count_var_refs_in_expr(value, name)
+            count_var_reads_in_expr(target, name) + count_var_reads_in_expr(value, name)
         }
-        Stmt::Expr(e) => count_var_refs_in_expr(e, name),
+        Stmt::Expr(e) => count_var_reads_in_expr(e, name),
         Stmt::If {
             cond,
             then_body,
             else_body,
         } => {
-            count_var_refs_in_expr(cond, name)
+            count_var_reads_in_expr(cond, name)
                 + then_body
                     .iter()
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
                 + else_body
                     .iter()
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
         }
         Stmt::While { cond, body } => {
-            count_var_refs_in_expr(cond, name)
+            count_var_reads_in_expr(cond, name)
                 + body
                     .iter()
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
         }
         Stmt::For {
@@ -692,21 +708,21 @@ fn count_var_refs_in_stmt(stmt: &Stmt, name: &str) -> usize {
             body,
         } => {
             init.iter()
-                .map(|s| count_var_refs_in_stmt(s, name))
+                .map(|s| count_var_reads_in_stmt(s, name))
                 .sum::<usize>()
-                + count_var_refs_in_expr(cond, name)
+                + count_var_reads_in_expr(cond, name)
                 + update
                     .iter()
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
                 + body
                     .iter()
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
         }
         Stmt::Loop { body } => body
             .iter()
-            .map(|s| count_var_refs_in_stmt(s, name))
+            .map(|s| count_var_reads_in_stmt(s, name))
             .sum(),
         Stmt::ForOf {
             binding,
@@ -715,32 +731,32 @@ fn count_var_refs_in_stmt(stmt: &Stmt, name: &str) -> usize {
             ..
         } => {
             usize::from(binding == name)
-                + count_var_refs_in_expr(iterable, name)
+                + count_var_reads_in_expr(iterable, name)
                 + body
                     .iter()
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
         }
-        Stmt::Return(e) => e.as_ref().map_or(0, |e| count_var_refs_in_expr(e, name)),
+        Stmt::Return(e) => e.as_ref().map_or(0, |e| count_var_reads_in_expr(e, name)),
         Stmt::Dispatch { blocks, .. } => blocks
             .iter()
             .flat_map(|(_, stmts)| stmts.iter())
-            .map(|s| count_var_refs_in_stmt(s, name))
+            .map(|s| count_var_reads_in_stmt(s, name))
             .sum(),
         Stmt::Switch {
             value,
             cases,
             default_body,
         } => {
-            count_var_refs_in_expr(value, name)
+            count_var_reads_in_expr(value, name)
                 + cases
                     .iter()
                     .flat_map(|(_, stmts)| stmts.iter())
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
                 + default_body
                     .iter()
-                    .map(|s| count_var_refs_in_stmt(s, name))
+                    .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
         }
         Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => 0,
@@ -1024,7 +1040,7 @@ fn try_forward_substitute_one(body: &mut Vec<Stmt>) -> bool {
         // Count ALL references in the remaining body at this scope level.
         let total_refs: usize = body[i + 1..]
             .iter()
-            .map(|s| count_var_refs_in_stmt(s, &name))
+            .map(|s| count_var_reads_in_stmt(s, &name))
             .sum();
 
         if total_refs != 1 {
@@ -1039,11 +1055,11 @@ fn try_forward_substitute_one(body: &mut Vec<Stmt>) -> bool {
         }
 
         // Adjacent check: the single use (read) must be at position i+1.
-        // Use count_var_refs_in_stmt (reads only) — not stmt_references_var
+        // Use count_var_reads_in_stmt (reads only) — not stmt_references_var
         // which also counts writes. If the adjacent stmt only *writes* the var
         // (e.g., nested assign target), we'd remove the assignment and the
         // substitute would find no read to replace, silently dropping the value.
-        if i + 1 >= body.len() || count_var_refs_in_stmt(&body[i + 1], &name) == 0 {
+        if i + 1 >= body.len() || count_var_reads_in_stmt(&body[i + 1], &name) == 0 {
             continue;
         }
 
@@ -2100,7 +2116,7 @@ fn try_eliminate_one_stub(body: &mut Vec<Stmt>) -> bool {
         // vN must have no other references in the body (only the forwarding assign).
         let other_refs: usize = body[i + 2..]
             .iter()
-            .map(|s| count_var_refs_in_stmt(s, &name))
+            .map(|s| count_var_reads_in_stmt(s, &name))
             .sum();
         if other_refs != 0 {
             continue;
@@ -2392,7 +2408,7 @@ fn try_absorb_phi_condition(body: &mut Vec<Stmt>) -> bool {
 
         // vN must not appear in the else_body at all (reads or writes).
         // Use stmt_references_var which checks both, unlike
-        // count_var_refs_in_stmt which only counts reads.
+        // count_var_reads_in_stmt which only counts reads.
         let else_has_refs = match &body[i] {
             Stmt::If { else_body, .. } => else_body
                 .iter()
@@ -2414,7 +2430,7 @@ fn try_absorb_phi_condition(body: &mut Vec<Stmt>) -> bool {
         };
 
         // use_cond must reference vN exactly once.
-        if count_var_refs_in_expr(use_cond, &var_name) != 1 {
+        if count_var_reads_in_expr(use_cond, &var_name) != 1 {
             continue;
         }
 
@@ -2604,7 +2620,7 @@ fn try_rewrite_one_post_increment(body: &mut Vec<Stmt>) -> bool {
         // Count remaining uses of vN in body[i+2..].
         let remaining_refs: usize = body[i + 2..]
             .iter()
-            .map(|s| count_var_refs_in_stmt(s, &var_name))
+            .map(|s| count_var_reads_in_stmt(s, &var_name))
             .sum();
 
         if remaining_refs == 1 {
@@ -4617,7 +4633,7 @@ mod tests {
     }
 
     // Regression: forward_substitute used stmt_references_var (which counts
-    // writes) for adjacency check, but count_var_refs_in_stmt (reads only)
+    // writes) for adjacency check, but count_var_reads_in_stmt (reads only)
     // for the total count. When the adjacent stmt only *wrote* the var in a
     // nested assign target, the substitute found no read to replace, silently
     // dropping the value expression.
@@ -4674,7 +4690,7 @@ mod tests {
     fn absorb_phi_skips_else_branch_write() {
         // Pattern: let vN; if (C) { vN = E; } else { vN = F; } if (vN) { D }
         // absorb_phi_condition must NOT absorb because vN has a write in the
-        // else branch. Before the fix, count_var_refs_in_stmt skipped bare
+        // else branch. Before the fix, count_var_reads_in_stmt skipped bare
         // Var writes, causing the pass to remove the VarDecl and leave a
         // stray assignment to an undeclared variable.
         let mut body = vec![
