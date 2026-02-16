@@ -3,6 +3,8 @@
 //! These run after Shape→AST lowering to detect and simplify patterns that
 //! are easier to match on the high-level AST than during lowering.
 
+use std::collections::{HashMap, HashSet};
+
 use super::ast::{BinOp, Expr, Stmt};
 use super::inst::{CastKind, CmpKind};
 use super::value::Constant;
@@ -175,9 +177,9 @@ fn match_minmax(target: &Expr, value: &Expr) -> Option<Stmt> {
 /// - Non-adjacent use: only fold when all intervening statements are free
 ///   of side effects (pure VarDecls, uninit decls).
 pub fn fold_single_use_consts(body: &mut Vec<Stmt>) {
-    // Fold at this level first.
+    // Fold at this level first — batch pass with precomputed counts.
     loop {
-        if !try_fold_one_const(body) {
+        if !try_fold_batch(body) {
             break;
         }
     }
@@ -225,22 +227,33 @@ pub fn fold_single_use_consts(body: &mut Vec<Stmt>) {
     }
 }
 
-/// Try to fold a single const. Returns `true` if a fold was performed.
-fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
-    for i in 0..body.len() {
+/// Batch version: precompute all variable read counts once, then process all
+/// VarDecl candidates in a single forward pass. O(n) per call instead of O(n²).
+fn try_fold_batch(body: &mut Vec<Stmt>) -> bool {
+    if body.is_empty() {
+        return false;
+    }
+
+    // Phase 1: count all variable reads in one pass.
+    let counts = precompute_var_read_counts(body);
+
+    // Phase 2: process candidates in forward order.
+    let mut changed = false;
+    let mut i = 0;
+    while i < body.len() {
         // Dead uninit decl: `let vN: T;` with no remaining references.
         if let Stmt::VarDecl {
             name,
             init: None, ..
         } = &body[i]
         {
-            let refs: usize = body[i + 1..]
-                .iter()
-                .map(|s| count_var_reads_in_stmt(s, name))
-                .sum();
-            if refs == 0 {
+            // The precomputed count includes the VarDecl name itself (1).
+            // refs_after_decl = total - 1.
+            let total = counts.get(name.as_str()).copied().unwrap_or(0);
+            if total <= 1 {
                 remove_dead_var_decl(body, i);
-                return true;
+                changed = true;
+                continue;
             }
         }
 
@@ -250,47 +263,47 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
                 init: Some(_),
                 ..
             } => name.clone(),
-            _ => continue,
+            _ => {
+                i += 1;
+                continue;
+            }
         };
 
-        // Count ALL references in the remaining body.
-        let total_refs: usize = body[i + 1..]
-            .iter()
-            .map(|s| count_var_reads_in_stmt(s, &name))
-            .sum();
+        let total = counts.get(name.as_str()).copied().unwrap_or(0);
+        let refs_after = total.saturating_sub(1);
 
         // Dead declaration: zero reads after the decl.
-        if total_refs == 0 {
+        if refs_after == 0 {
             remove_dead_var_decl(body, i);
-            return true;
-        }
-
-        if total_refs != 1 {
+            changed = true;
             continue;
         }
 
-        // Don't fold if the variable is reassigned in the remaining body.
-        // Loop-carried variables (e.g., repeat counters) have 1 read + 1 write
-        // per iteration — the init value becomes stale after the back-edge write.
+        if refs_after != 1 {
+            i += 1;
+            continue;
+        }
+
+        // Don't fold if the variable is reassigned.
         if var_is_reassigned(&body[i + 1..], &name) {
+            i += 1;
             continue;
         }
 
-        // Find the statement containing the single use (read, not bare write).
-        // Must use count_var_reads_in_stmt (which skips bare Var writes) rather
-        // than stmt_references_var (which counts writes too) — otherwise we'd
-        // target a write-only statement, the substitute would find nothing to
-        // replace, and the init expression would be silently dropped.
-        let use_idx = (i + 1..body.len())
+        // Find the statement containing the single use.
+        let use_idx = match (i + 1..body.len())
             .find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0)
-            .unwrap();
+        {
+            Some(idx) => idx,
+            None => {
+                i += 1;
+                continue;
+            }
+        };
 
         let adjacent = use_idx == i + 1;
 
         if !adjacent {
-            // Non-adjacent: only fold if all intervening statements are SE-free,
-            // OR if the init is a stable path expression (Var/Field chain) and
-            // no intervening statement reassigns a prefix of that path.
             let all_intervening_pure = body[i + 1..use_idx]
                 .iter()
                 .all(|s| !stmt_has_side_effects(s));
@@ -301,16 +314,10 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
                     } => init,
                     _ => unreachable!(),
                 };
-                // Stable path (Var/Field chain): sink past non-overlapping
-                // field assignments.
                 let can_sink_path = is_stable_path(init)
                     && body[i + 1..use_idx]
                         .iter()
                         .all(|s| !stmt_assigns_to_prefix_of(s, init));
-                // Operand-stack temporary: if all intervening statements only
-                // assign to local variables that the init doesn't reference,
-                // the const was an AVM2 operand-stack artifact. Sink it to
-                // reconstruct original source order.
                 let can_sink_past_locals = !can_sink_path
                     && body[i + 1..use_idx].iter().all(|s| match s {
                         Stmt::Assign {
@@ -322,6 +329,7 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
                         _ => false,
                     });
                 if !can_sink_path && !can_sink_past_locals {
+                    i += 1;
                     continue;
                 }
             }
@@ -338,10 +346,186 @@ fn try_fold_one_const(body: &mut Vec<Stmt>) -> bool {
         // use_idx shifted left by 1 after removal.
         let mut replacement = Some(init_expr);
         substitute_var_in_stmt(&mut body[use_idx - 1], &name, &mut replacement);
-        return true;
+        changed = true;
+        // Don't increment i — the next statement shifted down.
     }
-    false
+
+    changed
 }
+
+/// Precompute read counts for all variable names in a single O(n) pass.
+///
+/// Semantics match `count_var_reads_in_stmt`: VarDecl names are counted
+/// (as self-references), bare Assign targets are NOT counted (they're writes).
+fn precompute_var_read_counts(stmts: &[Stmt]) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    accumulate_reads_stmts(stmts, &mut counts);
+    counts
+}
+
+fn accumulate_reads_stmts(stmts: &[Stmt], counts: &mut HashMap<String, usize>) {
+    for stmt in stmts {
+        accumulate_reads_stmt(stmt, counts);
+    }
+}
+
+fn accumulate_reads_stmt(stmt: &Stmt, counts: &mut HashMap<String, usize>) {
+    match stmt {
+        Stmt::VarDecl { name, init, .. } => {
+            *counts.entry(name.clone()).or_default() += 1;
+            if let Some(e) = init {
+                accumulate_reads_expr(e, counts);
+            }
+        }
+        Stmt::Assign { target, value } => {
+            // Bare Var target is a write — don't count.
+            if !matches!(target, Expr::Var(_)) {
+                accumulate_reads_expr(target, counts);
+            }
+            accumulate_reads_expr(value, counts);
+        }
+        Stmt::CompoundAssign { target, value, .. } => {
+            accumulate_reads_expr(target, counts);
+            accumulate_reads_expr(value, counts);
+        }
+        Stmt::Expr(e) => accumulate_reads_expr(e, counts),
+        Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            accumulate_reads_expr(cond, counts);
+            accumulate_reads_stmts(then_body, counts);
+            accumulate_reads_stmts(else_body, counts);
+        }
+        Stmt::While { cond, body } => {
+            accumulate_reads_expr(cond, counts);
+            accumulate_reads_stmts(body, counts);
+        }
+        Stmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            accumulate_reads_stmts(init, counts);
+            accumulate_reads_expr(cond, counts);
+            accumulate_reads_stmts(update, counts);
+            accumulate_reads_stmts(body, counts);
+        }
+        Stmt::Loop { body } => accumulate_reads_stmts(body, counts),
+        Stmt::ForOf {
+            binding,
+            iterable,
+            body,
+            ..
+        } => {
+            *counts.entry(binding.clone()).or_default() += 1;
+            accumulate_reads_expr(iterable, counts);
+            accumulate_reads_stmts(body, counts);
+        }
+        Stmt::Return(e) => {
+            if let Some(e) = e {
+                accumulate_reads_expr(e, counts);
+            }
+        }
+        Stmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            accumulate_reads_expr(value, counts);
+            for (_, stmts) in cases {
+                accumulate_reads_stmts(stmts, counts);
+            }
+            accumulate_reads_stmts(default_body, counts);
+        }
+        Stmt::Dispatch { blocks, .. } => {
+            for (_, stmts) in blocks {
+                accumulate_reads_stmts(stmts, counts);
+            }
+        }
+        Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => {}
+    }
+}
+
+fn accumulate_reads_expr(expr: &Expr, counts: &mut HashMap<String, usize>) {
+    match expr {
+        Expr::Var(n) => {
+            *counts.entry(n.clone()).or_default() += 1;
+        }
+        Expr::Literal(_) | Expr::GlobalRef(_) => {}
+        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+            accumulate_reads_expr(lhs, counts);
+            accumulate_reads_expr(rhs, counts);
+        }
+        Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
+            accumulate_reads_expr(lhs, counts);
+            accumulate_reads_expr(rhs, counts);
+        }
+        Expr::Unary { expr: inner, .. }
+        | Expr::Cast { expr: inner, .. }
+        | Expr::TypeCheck { expr: inner, .. }
+        | Expr::Not(inner)
+        | Expr::CoroutineResume(inner)
+        | Expr::PostIncrement(inner)
+        | Expr::Spread(inner) => accumulate_reads_expr(inner, counts),
+        Expr::Field { object, .. } => accumulate_reads_expr(object, counts),
+        Expr::Index { collection, index } => {
+            accumulate_reads_expr(collection, counts);
+            accumulate_reads_expr(index, counts);
+        }
+        Expr::Call { args, .. } | Expr::CoroutineCreate { args, .. } => {
+            for a in args {
+                accumulate_reads_expr(a, counts);
+            }
+        }
+        Expr::CallIndirect { callee, args } => {
+            accumulate_reads_expr(callee, counts);
+            for a in args {
+                accumulate_reads_expr(a, counts);
+            }
+        }
+        Expr::SystemCall { args, .. } => {
+            for a in args {
+                accumulate_reads_expr(a, counts);
+            }
+        }
+        Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            accumulate_reads_expr(receiver, counts);
+            for a in args {
+                accumulate_reads_expr(a, counts);
+            }
+        }
+        Expr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            accumulate_reads_expr(cond, counts);
+            accumulate_reads_expr(then_val, counts);
+            accumulate_reads_expr(else_val, counts);
+        }
+        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
+            for e in elems {
+                accumulate_reads_expr(e, counts);
+            }
+        }
+        Expr::StructInit { fields, .. } => {
+            for (_, v) in fields {
+                accumulate_reads_expr(v, counts);
+            }
+        }
+        Expr::Yield(v) => {
+            if let Some(e) = v {
+                accumulate_reads_expr(e, counts);
+            }
+        }
+    }
+}
+
 
 /// Whether a statement could have observable side effects.
 fn stmt_has_side_effects(stmt: &Stmt) -> bool {
@@ -1826,9 +2010,9 @@ fn expr_references_var(expr: &Expr, name: &str) -> bool {
 ///
 /// Recurses into nested scopes after narrowing.
 pub fn narrow_var_scope(body: &mut Vec<Stmt>) {
-    // Narrow at this level first.
+    // Narrow at this level first — batch pass.
     loop {
-        if !try_narrow_one(body) {
+        if !try_narrow_batch(body) {
             break;
         }
     }
@@ -1876,10 +2060,20 @@ pub fn narrow_var_scope(body: &mut Vec<Stmt>) {
     }
 }
 
-/// Try to narrow a single uninit VarDecl into a child scope.
-/// Returns `true` if a narrowing was performed.
-fn try_narrow_one(body: &mut Vec<Stmt>) -> bool {
-    for i in 0..body.len() {
+/// Batch version of scope narrowing: precompute reference counts for all
+/// variables in one pass, then process candidates using O(1) lookups.
+fn try_narrow_batch(body: &mut Vec<Stmt>) -> bool {
+    if body.is_empty() {
+        return false;
+    }
+
+    // Phase 1: for each variable, count how many top-level statements reference it.
+    let ref_counts = precompute_stmt_ref_counts(body);
+
+    // Phase 2: process candidates in forward order.
+    let mut changed = false;
+    let mut i = 0;
+    while i < body.len() {
         let (name, ty) = match &body[i] {
             Stmt::VarDecl {
                 name,
@@ -1887,24 +2081,32 @@ fn try_narrow_one(body: &mut Vec<Stmt>) -> bool {
                 init: None,
                 mutable: true,
             } => (name.clone(), ty.clone()),
-            _ => continue,
+            _ => {
+                i += 1;
+                continue;
+            }
         };
 
-        // Find which statements after the decl reference this variable.
-        let ref_indices: Vec<usize> = (i + 1..body.len())
-            .filter(|&j| stmt_references_var(&body[j], &name))
-            .collect();
-
-        if ref_indices.len() != 1 {
+        // The VarDecl itself contributes 1 to the ref count.
+        // refs_after_decl = total - 1.
+        let total = ref_counts.get(name.as_str()).copied().unwrap_or(0);
+        if total != 2 {
+            // Need exactly 1 referencing statement after the VarDecl.
+            i += 1;
             continue;
         }
 
-        let j = ref_indices[0];
+        // Find the single referencing statement (scan is now only done for candidates).
+        let j = match (i + 1..body.len()).find(|&j| stmt_references_var(&body[j], &name)) {
+            Some(j) => j,
+            None => {
+                i += 1;
+                continue;
+            }
+        };
 
         // The single referencing statement must have child bodies we can push into.
-        // Find which single child body contains ALL references.
         if let Some(target_body) = find_unique_child_body(&mut body[j], &name) {
-            // Insert the uninit decl at the top of that child body.
             target_body.insert(
                 0,
                 Stmt::VarDecl {
@@ -1914,12 +2116,210 @@ fn try_narrow_one(body: &mut Vec<Stmt>) -> bool {
                     mutable: true,
                 },
             );
-            // Remove the original decl.
             body.remove(i);
-            return true;
+            changed = true;
+            continue;
+        }
+
+        i += 1;
+    }
+
+    changed
+}
+
+/// Precompute how many top-level statements reference each variable name.
+///
+/// For each statement, collects the set of variable names it references
+/// (reads, writes, and definitions), then increments the count for each.
+fn precompute_stmt_ref_counts(stmts: &[Stmt]) -> HashMap<String, usize> {
+    let mut counts = HashMap::new();
+    let mut names = HashSet::new();
+    for stmt in stmts {
+        names.clear();
+        collect_names_in_stmt(stmt, &mut names);
+        for name in &names {
+            *counts.entry(name.clone()).or_default() += 1;
         }
     }
-    false
+    counts
+}
+
+fn collect_names_in_stmt(stmt: &Stmt, names: &mut std::collections::HashSet<String>) {
+    match stmt {
+        Stmt::VarDecl { name, init, .. } => {
+            names.insert(name.clone());
+            if let Some(e) = init {
+                collect_names_in_expr(e, names);
+            }
+        }
+        Stmt::Assign { target, value } => {
+            collect_names_in_expr(target, names);
+            collect_names_in_expr(value, names);
+        }
+        Stmt::CompoundAssign { target, value, .. } => {
+            collect_names_in_expr(target, names);
+            collect_names_in_expr(value, names);
+        }
+        Stmt::Expr(e) => collect_names_in_expr(e, names),
+        Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            collect_names_in_expr(cond, names);
+            for s in then_body {
+                collect_names_in_stmt(s, names);
+            }
+            for s in else_body {
+                collect_names_in_stmt(s, names);
+            }
+        }
+        Stmt::While { cond, body } => {
+            collect_names_in_expr(cond, names);
+            for s in body {
+                collect_names_in_stmt(s, names);
+            }
+        }
+        Stmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            for s in init {
+                collect_names_in_stmt(s, names);
+            }
+            collect_names_in_expr(cond, names);
+            for s in update {
+                collect_names_in_stmt(s, names);
+            }
+            for s in body {
+                collect_names_in_stmt(s, names);
+            }
+        }
+        Stmt::Loop { body } => {
+            for s in body {
+                collect_names_in_stmt(s, names);
+            }
+        }
+        Stmt::ForOf {
+            binding,
+            iterable,
+            body,
+            ..
+        } => {
+            names.insert(binding.clone());
+            collect_names_in_expr(iterable, names);
+            for s in body {
+                collect_names_in_stmt(s, names);
+            }
+        }
+        Stmt::Return(e) => {
+            if let Some(e) = e {
+                collect_names_in_expr(e, names);
+            }
+        }
+        Stmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            collect_names_in_expr(value, names);
+            for (_, stmts) in cases {
+                for s in stmts {
+                    collect_names_in_stmt(s, names);
+                }
+            }
+            for s in default_body {
+                collect_names_in_stmt(s, names);
+            }
+        }
+        Stmt::Dispatch { blocks, .. } => {
+            for (_, stmts) in blocks {
+                for s in stmts {
+                    collect_names_in_stmt(s, names);
+                }
+            }
+        }
+        Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => {}
+    }
+}
+
+fn collect_names_in_expr(expr: &Expr, names: &mut std::collections::HashSet<String>) {
+    match expr {
+        Expr::Var(n) => {
+            names.insert(n.clone());
+        }
+        Expr::Literal(_) | Expr::GlobalRef(_) => {}
+        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+            collect_names_in_expr(lhs, names);
+            collect_names_in_expr(rhs, names);
+        }
+        Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
+            collect_names_in_expr(lhs, names);
+            collect_names_in_expr(rhs, names);
+        }
+        Expr::Unary { expr: inner, .. }
+        | Expr::Cast { expr: inner, .. }
+        | Expr::TypeCheck { expr: inner, .. }
+        | Expr::Not(inner)
+        | Expr::CoroutineResume(inner)
+        | Expr::PostIncrement(inner)
+        | Expr::Spread(inner) => collect_names_in_expr(inner, names),
+        Expr::Field { object, .. } => collect_names_in_expr(object, names),
+        Expr::Index { collection, index } => {
+            collect_names_in_expr(collection, names);
+            collect_names_in_expr(index, names);
+        }
+        Expr::Call { args, .. } | Expr::CoroutineCreate { args, .. } => {
+            for a in args {
+                collect_names_in_expr(a, names);
+            }
+        }
+        Expr::CallIndirect { callee, args } => {
+            collect_names_in_expr(callee, names);
+            for a in args {
+                collect_names_in_expr(a, names);
+            }
+        }
+        Expr::SystemCall { args, .. } => {
+            for a in args {
+                collect_names_in_expr(a, names);
+            }
+        }
+        Expr::MethodCall {
+            receiver, args, ..
+        } => {
+            collect_names_in_expr(receiver, names);
+            for a in args {
+                collect_names_in_expr(a, names);
+            }
+        }
+        Expr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            collect_names_in_expr(cond, names);
+            collect_names_in_expr(then_val, names);
+            collect_names_in_expr(else_val, names);
+        }
+        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
+            for e in elems {
+                collect_names_in_expr(e, names);
+            }
+        }
+        Expr::StructInit { fields, .. } => {
+            for (_, v) in fields {
+                collect_names_in_expr(v, names);
+            }
+        }
+        Expr::Yield(v) => {
+            if let Some(e) = v {
+                collect_names_in_expr(e, names);
+            }
+        }
+    }
 }
 
 /// If ALL references to `name` in `stmt` are inside exactly one child body,

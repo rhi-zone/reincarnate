@@ -212,6 +212,16 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   AST pass merges adjacent string-literal text() calls into a single call.
   arceus-garden: 2,974 → 1,874 text() calls (-37%), 16,329 → 15,429 lines.
 
+### Harlowe Performance
+
+- [x] **O(n²) AST pass regression (12x → 2.4x)** — The declarative content
+  tree refactor created more AST statements, exposing O(n²) behavior in
+  `fold_single_use_consts` and `narrow_var_scope`. Both used a
+  one-at-a-time loop pattern (scan body per candidate). Fixed with batch
+  passes that precompute variable reference counts in one O(n) pass.
+  arceus-garden: 1.1s → 0.22s (release). Remaining 2.4x vs baseline is
+  from higher statement count (content-as-values), not algorithmic.
+
 ### Harlowe Phase 2 (Advanced Features)
 
 - [ ] **`(for: each _item, ...$arr)[hook]`** — Loop lowering
