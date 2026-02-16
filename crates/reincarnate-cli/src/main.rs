@@ -61,8 +61,45 @@ enum Command {
     },
 }
 
-fn load_manifest(path: &PathBuf) -> Result<ProjectManifest> {
-    let file = File::open(path).with_context(|| format!("failed to open manifest: {}", path.display()))?;
+/// Find `reincarnate.json` by walking up from `start` through ancestor directories.
+/// Returns the first path that exists, or `None`.
+fn find_manifest_upward(start: &Path) -> Option<PathBuf> {
+    let mut dir = if start.is_dir() {
+        start.to_path_buf()
+    } else {
+        start.parent()?.to_path_buf()
+    };
+    loop {
+        let candidate = dir.join("reincarnate.json");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// Resolve the manifest path: if the given path exists, use it directly;
+/// otherwise search ancestor directories from cwd.
+fn resolve_manifest_path(path: &Path) -> Result<PathBuf> {
+    if path.exists() {
+        return Ok(path.to_path_buf());
+    }
+    // Only search ancestors when using the default filename.
+    if path.file_name().and_then(|f| f.to_str()) == Some("reincarnate.json") {
+        let cwd = std::env::current_dir().context("failed to get current directory")?;
+        if let Some(found) = find_manifest_upward(&cwd) {
+            eprintln!("[manifest] found {}", found.display());
+            return Ok(found);
+        }
+    }
+    bail!("manifest not found: {}", path.display())
+}
+
+fn load_manifest(path: &Path) -> Result<ProjectManifest> {
+    let path = resolve_manifest_path(path)?;
+    let file = File::open(&path).with_context(|| format!("failed to open manifest: {}", path.display()))?;
     let reader = BufReader::new(file);
     let mut manifest: ProjectManifest =
         serde_json::from_reader(reader).with_context(|| format!("failed to parse manifest: {}", path.display()))?;
@@ -194,7 +231,7 @@ fn find_backend(backend: &TargetBackend) -> Option<Box<dyn Backend>> {
     }
 }
 
-fn cmd_info(manifest_path: &PathBuf) -> Result<()> {
+fn cmd_info(manifest_path: &Path) -> Result<()> {
     let manifest = load_manifest(manifest_path)?;
     println!("Project: {}", manifest.name);
     println!("Version: {}", manifest.version);
@@ -207,7 +244,7 @@ fn cmd_info(manifest_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn cmd_print_ir(file: &PathBuf) -> Result<()> {
+fn cmd_print_ir(file: &Path) -> Result<()> {
     let f = File::open(file).with_context(|| format!("failed to open IR file: {}", file.display()))?;
     let reader = BufReader::new(f);
     let module: Module =
@@ -216,7 +253,7 @@ fn cmd_print_ir(file: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn cmd_extract(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
+fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
     let manifest = load_manifest(manifest_path)?;
     let frontend = find_frontend(&manifest.engine);
     let Some(frontend) = frontend else {
@@ -244,7 +281,7 @@ fn cmd_extract(manifest_path: &PathBuf, skip_passes: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Result<()> {
+fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Result<()> {
     let manifest = load_manifest(manifest_path)?;
     let frontend = find_frontend(&manifest.engine);
     let Some(frontend) = frontend else {
