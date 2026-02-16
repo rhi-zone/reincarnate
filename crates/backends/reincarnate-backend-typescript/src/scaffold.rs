@@ -72,6 +72,12 @@ fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog) -> Strin
         .map(|m| m.name.as_str())
         .unwrap_or("Reincarnate App");
 
+    // Detect Harlowe by presence of format CSS asset (SugarCube has none)
+    let is_harlowe = assets
+        .assets
+        .iter()
+        .any(|a| a.id.starts_with("format_css:"));
+
     // Collect stylesheet asset paths for <link> tags
     let mut style_links = String::new();
     for asset in &assets.assets {
@@ -81,8 +87,31 @@ fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog) -> Strin
         }
     }
 
-    format!(
-        r#"<!DOCTYPE html>
+    if is_harlowe {
+        // Harlowe: minimal reset, format CSS handles all styling via <tw-story>
+        format!(
+            r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title}</title>
+  <style>
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; }}
+  </style>
+{style_links}</head>
+<body>
+  <tw-story></tw-story>
+  <script type="module" src="./dist/bundle.js"></script>
+</body>
+</html>
+"#
+        )
+    } else {
+        // SugarCube: generic dark theme with #passages container
+        format!(
+            r#"<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -137,7 +166,8 @@ fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog) -> Strin
 </body>
 </html>
 "#
-    )
+        )
+    }
 }
 
 /// Build passage map entries: `"Name": func_name` for each passage.
