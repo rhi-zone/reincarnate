@@ -65,6 +65,16 @@ function ensureGlobals(): void {
     });
   }
 
+  // --- T: proxy for temporary variables (State.get/set with _ prefix) ---
+  if (!g.T) {
+    g.T = new Proxy({} as Record<string, any>, {
+      get(_t: any, prop: string) { return State.get("_" + (prop as string)); },
+      set(_t: any, prop: string, val: any) { State.set("_" + (prop as string), val); return true; },
+      deleteProperty(_t: any, prop: string) { State.set("_" + (prop as string), undefined); return true; },
+      has(_t: any, prop: string) { return State.get("_" + (prop as string)) !== undefined; },
+    });
+  }
+
   // --- Config ---
   g.Config = {
     passages: { nobr: false, descriptions: true, start: "Start", transitionOut: null },
@@ -123,10 +133,7 @@ function ensureGlobals(): void {
   // --- State ---
   g.State = {
     variables: g.V,
-    temporary: new Proxy({} as Record<string, any>, {
-      get(_t: any, prop: string) { return State.get("_" + (prop as string)); },
-      set(_t: any, prop: string, val: any) { State.set("_" + (prop as string), val); return true; },
-    }),
+    temporary: g.T,
     get active() { return { title: Navigation.current(), variables: g.V }; },
     hasPlayed(passage: string) { return State.hasPlayed(passage); },
     length: 0,
@@ -279,10 +286,10 @@ function ensureGlobals(): void {
   // --- Scripting ---
   g.Scripting = {
     evalJavaScript(expr: string): any {
-      return new Function("State", "setup", "V", "Config", `return (${expr})`)(g.State, g.setup, g.V, g.Config);
+      return new Function("State", "setup", "V", "T", "Config", `return (${expr})`)(g.State, g.setup, g.V, g.T, g.Config);
     },
     evalTwineScript(code: string, _output?: DocumentFragment): void {
-      new Function("State", "setup", "V", "Config", code)(g.State, g.setup, g.V, g.Config);
+      new Function("State", "setup", "V", "T", "Config", code)(g.State, g.setup, g.V, g.T, g.Config);
     },
     parse(code: string): string { return code; },
   };
@@ -704,9 +711,9 @@ export { evalCode as eval };
 function evalCode(code: string): void {
   ensureGlobals();
   const g = globalThis as any;
-  const fn = new Function("State", "setup", "V", "Config", code);
+  const fn = new Function("State", "setup", "V", "T", "Config", code);
   try {
-    fn(g.State, g.setup, g.V, g.Config);
+    fn(g.State, g.setup, g.V, g.T, g.Config);
   } catch (e) {
     console.error("[evalCode] error in user script:", e);
   }
