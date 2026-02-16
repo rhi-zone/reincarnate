@@ -97,8 +97,15 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
         for group in &class_groups {
             emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, &known_classes, lowering_config, engine, debug, &mut out)?;
         }
+        let closure_fids: Vec<FuncId> = free_funcs.iter()
+            .copied()
+            .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
+            .collect();
+        let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
         for &fid in &free_funcs {
-            emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &module.sprite_names, debug, &mut out)?;
+            if module.functions[fid].method_kind != MethodKind::Closure {
+                emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &module.sprite_names, &closure_bodies, debug, &mut out)?;
+            }
         }
     }
 
@@ -948,8 +955,15 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         }
 
         emit_imports(module, &mut out);
+        let closure_fids: Vec<FuncId> = free_funcs.iter()
+            .copied()
+            .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
+            .collect();
+        let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
         for &fid in &free_funcs {
-            emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &module.sprite_names, debug, &mut out)?;
+            if module.functions[fid].method_kind != MethodKind::Closure {
+                emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, debug, &mut out)?;
+            }
         }
         strip_unused_namespace_imports(&mut out);
         let path = module_dir.join("_init.ts");
@@ -2257,8 +2271,16 @@ fn emit_functions(
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
-    for id in module.functions.keys().collect::<Vec<_>>() {
-        emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, &module.sprite_names, debug, out)?;
+    let all_ids: Vec<_> = module.functions.keys().collect();
+    let closure_fids: Vec<FuncId> = all_ids.iter()
+        .copied()
+        .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
+        .collect();
+    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+    for id in all_ids {
+        if module.functions[id].method_kind != MethodKind::Closure {
+            emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, debug, out)?;
+        }
     }
     Ok(())
 }
@@ -2272,6 +2294,7 @@ fn emit_function(
     lowering_config: &LoweringConfig,
     engine: EngineKind,
     sprite_names: &[String],
+    closure_bodies: &HashMap<String, JsFunction>,
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -2309,7 +2332,7 @@ fn emit_function(
             };
             crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx)
         }
-        EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func),
+        EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies),
     };
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
     crate::ast_passes::recover_switch_statements(&mut js_func.body);
@@ -2750,7 +2773,7 @@ fn emit_class_method(
             crate::rewrites::flash::eliminate_dead_activations(&mut jf.body);
             jf
         }
-        EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func),
+        EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies),
     };
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
     rewrite_late_bound_types(&mut js_func.body, late_bound, short_to_qualified);

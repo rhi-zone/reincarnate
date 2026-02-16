@@ -5,6 +5,8 @@
 //! SugarCube SystemCalls pass through to runtime modules via the printer's
 //! `SystemCall` fallback + auto-import machinery.
 
+use std::collections::HashMap;
+
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::CmpKind;
 
@@ -20,48 +22,51 @@ pub fn rewrite_introduced_calls(_system: &str, _method: &str) -> &'static [&'sta
 }
 
 /// Rewrite a function's body, resolving SugarCube.Engine SystemCalls that map
-/// to native JS constructs.
-pub fn rewrite_twine_function(mut func: JsFunction) -> JsFunction {
-    rewrite_stmts(&mut func.body);
+/// to native JS constructs and inlining closure bodies as arrow functions.
+pub fn rewrite_twine_function(
+    mut func: JsFunction,
+    closure_bodies: &HashMap<String, JsFunction>,
+) -> JsFunction {
+    rewrite_stmts(&mut func.body, closure_bodies);
     func
 }
 
-fn rewrite_stmts(stmts: &mut [JsStmt]) {
+fn rewrite_stmts(stmts: &mut [JsStmt], closures: &HashMap<String, JsFunction>) {
     for stmt in stmts.iter_mut() {
-        rewrite_stmt(stmt);
+        rewrite_stmt(stmt, closures);
     }
 }
 
-fn rewrite_stmt(stmt: &mut JsStmt) {
+fn rewrite_stmt(stmt: &mut JsStmt, closures: &HashMap<String, JsFunction>) {
     match stmt {
         JsStmt::VarDecl { init, .. } => {
             if let Some(expr) = init {
-                rewrite_expr(expr);
+                rewrite_expr(expr, closures);
             }
         }
         JsStmt::Assign { target, value } => {
-            rewrite_expr(target);
-            rewrite_expr(value);
+            rewrite_expr(target, closures);
+            rewrite_expr(value, closures);
         }
         JsStmt::CompoundAssign { target, value, .. } => {
-            rewrite_expr(target);
-            rewrite_expr(value);
+            rewrite_expr(target, closures);
+            rewrite_expr(value, closures);
         }
-        JsStmt::Expr(e) => rewrite_expr(e),
-        JsStmt::Return(Some(e)) => rewrite_expr(e),
+        JsStmt::Expr(e) => rewrite_expr(e, closures),
+        JsStmt::Return(Some(e)) => rewrite_expr(e, closures),
         JsStmt::Return(None) => {}
         JsStmt::If {
             cond,
             then_body,
             else_body,
         } => {
-            rewrite_expr(cond);
-            rewrite_stmts(then_body);
-            rewrite_stmts(else_body);
+            rewrite_expr(cond, closures);
+            rewrite_stmts(then_body, closures);
+            rewrite_stmts(else_body, closures);
         }
         JsStmt::While { cond, body } => {
-            rewrite_expr(cond);
-            rewrite_stmts(body);
+            rewrite_expr(cond, closures);
+            rewrite_stmts(body, closures);
         }
         JsStmt::For {
             init,
@@ -69,20 +74,20 @@ fn rewrite_stmt(stmt: &mut JsStmt) {
             update,
             body,
         } => {
-            rewrite_stmts(init);
-            rewrite_expr(cond);
-            rewrite_stmts(update);
-            rewrite_stmts(body);
+            rewrite_stmts(init, closures);
+            rewrite_expr(cond, closures);
+            rewrite_stmts(update, closures);
+            rewrite_stmts(body, closures);
         }
-        JsStmt::Loop { body } => rewrite_stmts(body),
+        JsStmt::Loop { body } => rewrite_stmts(body, closures),
         JsStmt::ForOf { iterable, body, .. } => {
-            rewrite_expr(iterable);
-            rewrite_stmts(body);
+            rewrite_expr(iterable, closures);
+            rewrite_stmts(body, closures);
         }
-        JsStmt::Throw(e) => rewrite_expr(e),
+        JsStmt::Throw(e) => rewrite_expr(e, closures),
         JsStmt::Dispatch { blocks, .. } => {
             for (_, stmts) in blocks {
-                rewrite_stmts(stmts);
+                rewrite_stmts(stmts, closures);
             }
         }
         JsStmt::Switch {
@@ -90,19 +95,19 @@ fn rewrite_stmt(stmt: &mut JsStmt) {
             cases,
             default_body,
         } => {
-            rewrite_expr(value);
+            rewrite_expr(value, closures);
             for (_, stmts) in cases {
-                rewrite_stmts(stmts);
+                rewrite_stmts(stmts, closures);
             }
-            rewrite_stmts(default_body);
+            rewrite_stmts(default_body, closures);
         }
         JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
     }
 }
 
-fn rewrite_expr(expr: &mut JsExpr) {
+fn rewrite_expr(expr: &mut JsExpr, closures: &HashMap<String, JsFunction>) {
     // Recurse into children first.
-    rewrite_expr_children(expr);
+    rewrite_expr_children(expr, closures);
 
     // Then attempt to resolve SystemCall patterns.
     let replacement = match expr {
@@ -110,7 +115,7 @@ fn rewrite_expr(expr: &mut JsExpr) {
             system,
             method,
             args,
-        } => try_rewrite_system_call(system, method, args),
+        } => try_rewrite_system_call(system, method, args, closures),
         _ => None,
     };
 
@@ -119,27 +124,27 @@ fn rewrite_expr(expr: &mut JsExpr) {
     }
 }
 
-fn rewrite_expr_children(expr: &mut JsExpr) {
+fn rewrite_expr_children(expr: &mut JsExpr, closures: &HashMap<String, JsFunction>) {
     match expr {
         JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
-            rewrite_expr(lhs);
-            rewrite_expr(rhs);
+            rewrite_expr(lhs, closures);
+            rewrite_expr(rhs, closures);
         }
         JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
-            rewrite_expr(lhs);
-            rewrite_expr(rhs);
+            rewrite_expr(lhs, closures);
+            rewrite_expr(rhs, closures);
         }
-        JsExpr::Unary { expr: inner, .. } => rewrite_expr(inner),
-        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => rewrite_expr(inner),
-        JsExpr::Field { object, .. } => rewrite_expr(object),
+        JsExpr::Unary { expr: inner, .. } => rewrite_expr(inner, closures),
+        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => rewrite_expr(inner, closures),
+        JsExpr::Field { object, .. } => rewrite_expr(object, closures),
         JsExpr::Index { collection, index } => {
-            rewrite_expr(collection);
-            rewrite_expr(index);
+            rewrite_expr(collection, closures);
+            rewrite_expr(index, closures);
         }
         JsExpr::Call { callee, args } => {
-            rewrite_expr(callee);
+            rewrite_expr(callee, closures);
             for arg in args {
-                rewrite_expr(arg);
+                rewrite_expr(arg, closures);
             }
         }
         JsExpr::Ternary {
@@ -147,61 +152,61 @@ fn rewrite_expr_children(expr: &mut JsExpr) {
             then_val,
             else_val,
         } => {
-            rewrite_expr(cond);
-            rewrite_expr(then_val);
-            rewrite_expr(else_val);
+            rewrite_expr(cond, closures);
+            rewrite_expr(then_val, closures);
+            rewrite_expr(else_val, closures);
         }
         JsExpr::ArrayInit(items) | JsExpr::TupleInit(items) => {
             for item in items {
-                rewrite_expr(item);
+                rewrite_expr(item, closures);
             }
         }
         JsExpr::ObjectInit(fields) => {
             for (_, val) in fields {
-                rewrite_expr(val);
+                rewrite_expr(val, closures);
             }
         }
         JsExpr::New { callee, args } => {
-            rewrite_expr(callee);
+            rewrite_expr(callee, closures);
             for arg in args {
-                rewrite_expr(arg);
+                rewrite_expr(arg, closures);
             }
         }
-        JsExpr::TypeOf(inner) => rewrite_expr(inner),
+        JsExpr::TypeOf(inner) => rewrite_expr(inner, closures),
         JsExpr::In { key, object } => {
-            rewrite_expr(key);
-            rewrite_expr(object);
+            rewrite_expr(key, closures);
+            rewrite_expr(object, closures);
         }
         JsExpr::Delete { object, key } => {
-            rewrite_expr(object);
-            rewrite_expr(key);
+            rewrite_expr(object, closures);
+            rewrite_expr(key, closures);
         }
         JsExpr::Cast { expr: inner, .. } | JsExpr::TypeCheck { expr: inner, .. } => {
-            rewrite_expr(inner);
+            rewrite_expr(inner, closures);
         }
-        JsExpr::ArrowFunction { body, .. } => rewrite_stmts(body),
+        JsExpr::ArrowFunction { body, .. } => rewrite_stmts(body, closures),
         JsExpr::SuperCall(args) | JsExpr::SuperMethodCall { args, .. } => {
             for arg in args {
-                rewrite_expr(arg);
+                rewrite_expr(arg, closures);
             }
         }
         JsExpr::SuperGet(_) => {}
-        JsExpr::SuperSet { value, .. } => rewrite_expr(value),
+        JsExpr::SuperSet { value, .. } => rewrite_expr(value, closures),
         JsExpr::GeneratorCreate { args, .. } => {
             for arg in args {
-                rewrite_expr(arg);
+                rewrite_expr(arg, closures);
             }
         }
-        JsExpr::GeneratorResume(inner) => rewrite_expr(inner),
+        JsExpr::GeneratorResume(inner) => rewrite_expr(inner, closures),
         JsExpr::Yield(inner) => {
             if let Some(e) = inner {
-                rewrite_expr(e);
+                rewrite_expr(e, closures);
             }
         }
         JsExpr::Activation => {}
         JsExpr::SystemCall { args, .. } => {
             for arg in args {
-                rewrite_expr(arg);
+                rewrite_expr(arg, closures);
             }
         }
         JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This => {}
@@ -218,12 +223,29 @@ fn try_rewrite_system_call(
     system: &str,
     method: &str,
     args: &mut Vec<JsExpr>,
+    closures: &HashMap<String, JsFunction>,
 ) -> Option<JsExpr> {
     if system != "SugarCube.Engine" {
         return None;
     }
 
     match method {
+        // closure(name) → inline arrow function from pre-compiled closure body
+        "closure" if args.len() == 1 => {
+            if let JsExpr::Literal(Constant::String(ref name)) = args[0] {
+                if let Some(closure_func) = closures.get(name.as_str()).cloned() {
+                    let rewritten = rewrite_twine_function(closure_func, closures);
+                    return Some(JsExpr::ArrowFunction {
+                        params: rewritten.params,
+                        return_ty: rewritten.return_ty,
+                        body: rewritten.body,
+                        has_rest_param: rewritten.has_rest_param,
+                        cast_as: None,
+                    });
+                }
+            }
+            None
+        }
         // new(callee, ...args) → new callee(...args)
         "new" if !args.is_empty() => {
             let mut a = std::mem::take(args);
@@ -350,6 +372,10 @@ mod tests {
         }
     }
 
+    fn no_closures() -> HashMap<String, JsFunction> {
+        HashMap::new()
+    }
+
     fn extract_expr(func: &JsFunction) -> &JsExpr {
         match &func.body[0] {
             JsStmt::Expr(e) => e,
@@ -367,7 +393,7 @@ mod tests {
                 JsExpr::Literal(Constant::Int(2025)),
             ],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert!(matches!(extract_expr(&func), JsExpr::New { .. }));
     }
 
@@ -378,7 +404,7 @@ mod tests {
             method: "typeof".into(),
             args: vec![JsExpr::Var("x".into())],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert!(matches!(extract_expr(&func), JsExpr::TypeOf(_)));
     }
 
@@ -389,7 +415,7 @@ mod tests {
             method: "def".into(),
             args: vec![JsExpr::Var("x".into())],
         };
-        let func = rewrite_twine_function(func_with_expr(def));
+        let func = rewrite_twine_function(func_with_expr(def), &no_closures());
         assert!(matches!(
             extract_expr(&func),
             JsExpr::Cmp {
@@ -403,7 +429,7 @@ mod tests {
             method: "ndef".into(),
             args: vec![JsExpr::Var("x".into())],
         };
-        let func = rewrite_twine_function(func_with_expr(ndef));
+        let func = rewrite_twine_function(func_with_expr(ndef), &no_closures());
         assert!(matches!(
             extract_expr(&func),
             JsExpr::Cmp {
@@ -420,7 +446,7 @@ mod tests {
             method: "pow".into(),
             args: vec![JsExpr::Var("a".into()), JsExpr::Var("b".into())],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert!(matches!(extract_expr(&func), JsExpr::Call { .. }));
     }
 
@@ -434,7 +460,7 @@ mod tests {
                 JsExpr::Var("obj".into()),
             ],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert!(matches!(extract_expr(&func), JsExpr::In { .. }));
     }
 
@@ -445,7 +471,7 @@ mod tests {
             method: "get".into(),
             args: vec![JsExpr::Literal(Constant::String("name".into()))],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         // Should remain as SystemCall — not rewritten
         assert!(matches!(extract_expr(&func), JsExpr::SystemCall { .. }));
     }
@@ -457,7 +483,7 @@ mod tests {
             method: "eval".into(),
             args: vec![JsExpr::Literal(Constant::String("code".into()))],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         // eval should pass through to runtime
         assert!(matches!(extract_expr(&func), JsExpr::SystemCall { .. }));
     }
@@ -469,7 +495,7 @@ mod tests {
             method: "to_string".into(),
             args: vec![JsExpr::Var("x".into())],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         match extract_expr(&func) {
             JsExpr::Call { callee, args } => {
                 assert!(matches!(callee.as_ref(), JsExpr::Var(n) if n == "String"));
@@ -489,7 +515,7 @@ mod tests {
                 field: "prop".into(),
             }],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert!(matches!(extract_expr(&func), JsExpr::Delete { .. }));
     }
 
@@ -500,7 +526,7 @@ mod tests {
             method: "is_nullish".into(),
             args: vec![JsExpr::Var("x".into())],
         };
-        let func = rewrite_twine_function(func_with_expr(expr));
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert!(matches!(
             extract_expr(&func),
             JsExpr::Cmp {
@@ -508,5 +534,40 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn rewrite_closure_inline() {
+        // A closure SystemCall should be replaced with an inline ArrowFunction
+        // when the closure body is available in the closure_bodies map.
+        let mut closures = HashMap::new();
+        closures.insert(
+            "test_arrow_0".to_string(),
+            JsFunction {
+                name: "test_arrow_0".into(),
+                params: vec![("x".into(), Type::Dynamic)],
+                return_ty: Type::Dynamic,
+                body: vec![JsStmt::Return(Some(JsExpr::Var("x".into())))],
+                is_generator: false,
+                visibility: Visibility::Private,
+                method_kind: MethodKind::Closure,
+                has_rest_param: false,
+            },
+        );
+
+        let expr = JsExpr::SystemCall {
+            system: "SugarCube.Engine".into(),
+            method: "closure".into(),
+            args: vec![JsExpr::Literal(Constant::String("test_arrow_0".into()))],
+        };
+        let func = rewrite_twine_function(func_with_expr(expr), &closures);
+        match extract_expr(&func) {
+            JsExpr::ArrowFunction { params, body, .. } => {
+                assert_eq!(params.len(), 1);
+                assert_eq!(params[0].0, "x");
+                assert_eq!(body.len(), 1);
+            }
+            other => panic!("expected ArrowFunction, got {other:?}"),
+        }
     }
 }

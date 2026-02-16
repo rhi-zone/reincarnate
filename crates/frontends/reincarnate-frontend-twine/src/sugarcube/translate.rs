@@ -16,7 +16,8 @@
 use std::collections::HashMap;
 
 use reincarnate_core::ir::{
-    BlockId, CmpKind, Function, FunctionBuilder, FunctionSig, Type, ValueId, Visibility,
+    BlockId, CmpKind, Function, FunctionBuilder, FunctionSig, MethodKind, Type, ValueId,
+    Visibility,
 };
 
 use super::ast::*;
@@ -270,7 +271,7 @@ impl TranslateCtx {
             }
             ExprKind::Template { parts } => self.lower_template(parts),
             ExprKind::Arrow { params, body } => {
-                // Build arrow as a real helper function (same pattern as setter callbacks).
+                // Build arrow as a closure function for inline emission.
                 let arrow_name = format!("{}_arrow_{}", self.func_name, self.arrow_count);
                 self.arrow_count += 1;
 
@@ -280,7 +281,7 @@ impl TranslateCtx {
                     defaults: vec![],
                     has_rest_param: false,
                 };
-                let mut arrow_fb = FunctionBuilder::new(&arrow_name, sig, Visibility::Public);
+                let mut arrow_fb = FunctionBuilder::new(&arrow_name, sig, Visibility::Private);
 
                 // Register parameter names so they can be resolved in the body.
                 let mut arrow_params = HashMap::new();
@@ -300,9 +301,15 @@ impl TranslateCtx {
                 let built = std::mem::replace(&mut self.fb, saved_fb);
                 self.temp_vars = saved_temps;
                 self.local_params = saved_params;
-                self.setter_callbacks.push(built.build());
+                let mut func = built.build();
+                func.method_kind = MethodKind::Closure;
+                self.setter_callbacks.push(func);
 
-                self.fb.global_ref(&arrow_name, Type::Dynamic)
+                // Emit a SystemCall marker that the backend replaces with an
+                // inline ArrowFunction during the Twine rewrite pass.
+                let name_val = self.fb.const_string(&arrow_name);
+                self.fb
+                    .system_call("SugarCube.Engine", "closure", &[name_val], Type::Dynamic)
             }
             ExprKind::Delete(inner) => {
                 let val = self.lower_expr(inner);
@@ -1786,13 +1793,13 @@ mod tests {
     #[test]
     fn arrow_params_not_resolved() {
         // Arrow function parameters should be referenced directly, not via resolve().
-        // e.g. `<<run [1,2].forEach(x => x + 1)>>` should NOT produce resolve("x").
-        let source = "<<run [1,2].forEach(x => x + 1)>>";
+        // e.g. `<<run [1,2].forEach((x) => x + 1)>>` should NOT produce resolve("x").
+        let source = "<<run [1,2].forEach((x) => x + 1)>>";
         let ast = parser::parse(source);
         assert!(ast.errors.is_empty(), "parse errors: {:?}", ast.errors);
         let result = translate_passage("test", &ast);
 
-        // The arrow body is emitted as a separate callback function.
+        // The arrow body is emitted as a closure callback function.
         // Check that none of the callbacks contain a resolve("x") SystemCall.
         for cb in &result.setter_callbacks {
             for block in cb.blocks.values() {
@@ -1809,6 +1816,34 @@ mod tests {
                 }
             }
         }
+
+        // Arrow callbacks should be marked as closures for inline emission.
+        let arrow_cbs: Vec<_> = result
+            .setter_callbacks
+            .iter()
+            .filter(|f| f.method_kind == MethodKind::Closure)
+            .collect();
+        assert!(
+            !arrow_cbs.is_empty(),
+            "expected arrow callback marked as Closure"
+        );
+
+        // The parent function should contain a closure SystemCall, not a GlobalRef.
+        let has_closure_syscall = result.func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                let inst = &result.func.insts[inst_id];
+                matches!(
+                    &inst.op,
+                    reincarnate_core::ir::inst::Op::SystemCall {
+                        system, method, ..
+                    } if system == "SugarCube.Engine" && method == "closure"
+                )
+            })
+        });
+        assert!(
+            has_closure_syscall,
+            "parent function should contain a closure SystemCall"
+        );
     }
 
     #[test]

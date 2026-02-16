@@ -8,7 +8,9 @@
   "scaffold": {
     "imports": [{ "names": ["startStory"], "path": "harlowe/navigation" }],
     "entry": "{userScripts}\nstartStory({passages}, {startPassage}, {passageTags});",
-    "dependencies": {}
+    "dependencies": {
+      "keybinds": "github:pterror/keybinds"
+    }
   },
   "class_preamble": null,
   "type_definitions": {},
