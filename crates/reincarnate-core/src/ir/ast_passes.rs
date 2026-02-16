@@ -604,69 +604,116 @@ pub fn inline_ordered_single_use(body: &mut Vec<Stmt>) {
 }
 
 fn try_inline_ordered(body: &mut Vec<Stmt>) {
-    if body.len() < 2 {
-        return;
+    // Fixpoint: each iteration may inline the bottom-most eligible decl,
+    // removing a barrier and unblocking the decl above it on the next pass.
+    loop {
+        if body.len() < 2 {
+            return;
+        }
+
+        let counts = precompute_var_read_counts(body);
+        let mut did_change = false;
+
+        let mut i = 0;
+        while i < body.len() {
+            let (name, init_has_effects) = match &body[i] {
+                Stmt::VarDecl {
+                    name,
+                    init: Some(e),
+                    ..
+                } => (name.clone(), expr_has_side_effects(e)),
+                _ => {
+                    i += 1;
+                    continue;
+                }
+            };
+
+            // Total reads includes the VarDecl name itself (1).
+            // We need exactly 1 additional read.
+            let total = counts.get(name.as_str()).copied().unwrap_or(0);
+            if total != 2 {
+                i += 1;
+                continue;
+            }
+
+            // Find the statement containing the single use.
+            let use_idx = match (i + 1..body.len())
+                .find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0)
+            {
+                Some(idx) => idx,
+                None => {
+                    i += 1;
+                    continue;
+                }
+            };
+
+            // The read must be in an unconditional position within that
+            // statement — not inside an if/loop body where it would make
+            // an unconditional call conditional.
+            if count_unconditional_reads(&body[use_idx], &name) != 1 {
+                i += 1;
+                continue;
+            }
+
+            if var_is_reassigned(&body[i + 1..], &name) {
+                i += 1;
+                continue;
+            }
+
+            // If the init contains calls, don't move it past any statement
+            // that also contains calls — that would rearrange call order.
+            if init_has_effects
+                && (i + 1..use_idx).any(|j| stmt_has_side_effects(&body[j]))
+            {
+                i += 1;
+                continue;
+            }
+
+            // Inline: remove VarDecl, substitute at use site.
+            let init_expr = match body.remove(i) {
+                Stmt::VarDecl {
+                    init: Some(expr), ..
+                } => expr,
+                _ => unreachable!(),
+            };
+
+            let mut replacement = Some(init_expr);
+            substitute_var_in_stmt(&mut body[use_idx - 1], &name, &mut replacement);
+            did_change = true;
+            // Don't increment i — next statement shifted down.
+        }
+
+        if !did_change {
+            break;
+        }
     }
+}
 
-    let counts = precompute_var_read_counts(body);
-
-    let mut i = 0;
-    while i < body.len() {
-        let name = match &body[i] {
-            Stmt::VarDecl {
-                name,
-                init: Some(_),
-                ..
-            } => name.clone(),
-            _ => {
-                i += 1;
-                continue;
-            }
-        };
-
-        // Total reads includes the VarDecl name itself (1).
-        // We need exactly 1 additional read.
-        let total = counts.get(name.as_str()).copied().unwrap_or(0);
-        if total != 2 {
-            i += 1;
-            continue;
+/// Returns `true` if a statement contains any calls or other side-effectful
+/// operations. Used as a barrier for order-preserving inlining.
+fn stmt_has_side_effects(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::VarDecl {
+            init: Some(e), ..
+        } => expr_has_side_effects(e),
+        Stmt::VarDecl { init: None, .. } => false,
+        Stmt::Assign { target, value } => {
+            expr_has_side_effects(target) || expr_has_side_effects(value)
         }
-
-        // Find the statement containing the single use.
-        let use_idx = match (i + 1..body.len())
-            .find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0)
-        {
-            Some(idx) => idx,
-            None => {
-                i += 1;
-                continue;
-            }
-        };
-
-        // The read must be in an unconditional position within that
-        // statement — not inside an if/loop body where it would make
-        // an unconditional call conditional.
-        if count_unconditional_reads(&body[use_idx], &name) != 1 {
-            i += 1;
-            continue;
+        Stmt::CompoundAssign { target, value, .. } => {
+            expr_has_side_effects(target) || expr_has_side_effects(value)
         }
-
-        if var_is_reassigned(&body[i + 1..], &name) {
-            i += 1;
-            continue;
-        }
-
-        // Inline: remove VarDecl, substitute at use site.
-        let init_expr = match body.remove(i) {
-            Stmt::VarDecl {
-                init: Some(expr), ..
-            } => expr,
-            _ => unreachable!(),
-        };
-
-        let mut replacement = Some(init_expr);
-        substitute_var_in_stmt(&mut body[use_idx - 1], &name, &mut replacement);
-        // Don't increment i — next statement shifted down.
+        Stmt::Expr(e) => expr_has_side_effects(e),
+        Stmt::Return(e) => e.as_ref().is_some_and(expr_has_side_effects),
+        // Control flow bodies may contain calls — conservative barrier.
+        Stmt::If { .. }
+        | Stmt::While { .. }
+        | Stmt::Loop { .. }
+        | Stmt::For { .. }
+        | Stmt::ForOf { .. }
+        | Stmt::Switch { .. }
+        | Stmt::Dispatch { .. } => true,
+        Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => false,
     }
 }
 
@@ -1020,17 +1067,6 @@ fn accumulate_reads_expr(expr: &Expr, counts: &mut HashMap<String, usize>) {
 
 
 /// Whether a statement could have observable side effects.
-fn stmt_has_side_effects(stmt: &Stmt) -> bool {
-    match stmt {
-        Stmt::VarDecl {
-            init: Some(init), ..
-        } => expr_has_side_effects(init),
-        Stmt::VarDecl { init: None, .. } => false,
-        // Assigns, calls, control flow — conservatively side-effecting.
-        _ => true,
-    }
-}
-
 /// Whether an expression could have observable side effects (calls).
 fn expr_has_side_effects(expr: &Expr) -> bool {
     match expr {
@@ -5898,7 +5934,8 @@ mod tests {
     }
 
     #[test]
-    fn inline_ordered_into_return() {
+    fn inline_ordered_blocked_by_if() {
+        // Side-effectful decls before an if must NOT be inlined past it.
         // const v0 = br(); const v6 = em(["x"]);
         // if (cond) { side_effect(); }
         // return [v0, v6];
@@ -5928,18 +5965,64 @@ mod tests {
 
         inline_ordered_single_use(&mut body);
 
-        let ret_stmt = body.last().unwrap();
-        match ret_stmt {
+        // v0 and v6 should NOT be inlined — the if block is a side-effect barrier.
+        assert_eq!(body.len(), 4, "VarDecls should remain: {body:?}");
+        assert!(
+            matches!(&body[0], Stmt::VarDecl { name, .. } if name == "v0"),
+            "v0 should not be inlined past if: {body:?}"
+        );
+        assert!(
+            matches!(&body[1], Stmt::VarDecl { name, .. } if name == "v6"),
+            "v6 should not be inlined past if: {body:?}"
+        );
+    }
+
+    #[test]
+    fn inline_ordered_cascading_no_barrier() {
+        // When no barrier intervenes, side-effectful decls cascade-inline
+        // via fixpoint: bottom-most first, then each above it.
+        // const v0 = br(); const v1 = em(["x"]); const v2 = br();
+        // return [v0, v1, v2];
+        let em_call = Expr::Call {
+            func: "em".into(),
+            args: vec![Expr::ArrayInit(vec![str_lit("x")])],
+        };
+        let mut body = vec![
+            Stmt::VarDecl {
+                name: "v0".into(),
+                ty: None,
+                init: Some(br_call()),
+                mutable: false,
+            },
+            Stmt::VarDecl {
+                name: "v1".into(),
+                ty: None,
+                init: Some(em_call.clone()),
+                mutable: false,
+            },
+            Stmt::VarDecl {
+                name: "v2".into(),
+                ty: None,
+                init: Some(br_call()),
+                mutable: false,
+            },
+            Stmt::Return(Some(Expr::ArrayInit(vec![
+                var("v0"),
+                var("v1"),
+                var("v2"),
+            ]))),
+        ];
+
+        inline_ordered_single_use(&mut body);
+
+        // All three should be inlined (no side-effect barrier between them).
+        assert_eq!(body.len(), 1, "All VarDecls should be removed: {body:?}");
+        match &body[0] {
             Stmt::Return(Some(Expr::ArrayInit(elems))) => {
-                assert_eq!(elems[0], br_call(), "v0 inlined: {body:?}");
-                assert_eq!(
-                    elems[1],
-                    Expr::Call {
-                        func: "em".into(),
-                        args: vec![Expr::ArrayInit(vec![str_lit("x")])],
-                    },
-                    "v6 inlined: {body:?}"
-                );
+                assert_eq!(elems.len(), 3);
+                assert_eq!(elems[0], br_call());
+                assert_eq!(elems[1], em_call);
+                assert_eq!(elems[2], br_call());
             }
             _ => panic!("Expected return with array: {body:?}"),
         }
