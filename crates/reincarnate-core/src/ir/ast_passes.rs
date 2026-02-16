@@ -111,7 +111,9 @@ fn lower_output_nodes_in_expr(expr: &mut Expr) {
             lower_output_nodes_in_expr(collection);
             lower_output_nodes_in_expr(index);
         }
-        Expr::Call { args, .. } | Expr::CoroutineCreate { args, .. } => {
+        Expr::Call { args, .. }
+        | Expr::CoroutineCreate { args, .. }
+        | Expr::SystemCall { args, .. } => {
             for a in args {
                 lower_output_nodes_in_expr(a);
             }
