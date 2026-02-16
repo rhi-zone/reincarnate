@@ -63,13 +63,20 @@ export function stop(): void {
   stopRequested = true;
 }
 
-/** `(live: interval)[callback]` — run callback at interval until (stop:). */
+/** `(live: interval)[callback]` — run callback at interval until (stop:).
+ *  Inserts a container at the current output position; each tick only
+ *  clears and re-renders that container, leaving surrounding content intact.
+ */
 export function live(interval: number, callback: () => void): void {
   const ms = typeof interval === "number" ? interval * 1000 : interval;
+  // Reserve a slot in the output for this live block
+  const container = Output.createContainer("tw-live");
   const id = scheduleInterval(() => {
-    Output.clear();
+    container.innerHTML = "";
+    Output.pushBuffer();
     callback();
-    Output.flush();
+    const buf = Output.popBuffer();
+    container.appendChild(buf);
     if (stopRequested) {
       cancelInterval(id);
       stopRequested = false;

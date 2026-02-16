@@ -68,6 +68,15 @@ function appendNode(node: Node): void {
   }
 }
 
+/** Create a container element at the current output position and return it.
+ *  Used by live() to scope re-renders to just the live block's area. */
+export function createContainer(className?: string): HTMLElement {
+  const el = document.createElement("span");
+  if (className) el.className = className;
+  appendNode(el);
+  return el;
+}
+
 // --- Color resolution ---
 
 /** Harlowe named color palette — hex values from Harlowe source (colour.js). */

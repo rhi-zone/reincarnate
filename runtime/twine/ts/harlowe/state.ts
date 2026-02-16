@@ -13,9 +13,10 @@ const storyVars: Record<string, any> = {};
 const tempVars: Record<string, any> = {};
 let itValue: any = undefined;
 
-/** Get a story variable by name (without the $ prefix). */
+/** Get a story variable by name (without the $ prefix).
+ *  Uninitialized variables default to 0, matching Harlowe 2.x behavior. */
 export function get(name: string): any {
-  return storyVars[name];
+  return name in storyVars ? storyVars[name] : 0;
 }
 
 /** Set a story variable by name (without the $ prefix). */
