@@ -1875,6 +1875,23 @@ impl<'a> EmitCtx<'a> {
         }
     }
 
+    /// Emit statements in a nested scope, protecting current pending reads
+    /// from being flushed by memory writes inside the body.
+    fn emit_stmts_protected(&mut self, stmts: &[LinearStmt]) -> Vec<Stmt> {
+        let newly_protected: Vec<ValueId> = self
+            .pending_lazy
+            .keys()
+            .filter(|v| !self.flush_protected.contains(v))
+            .copied()
+            .collect();
+        self.flush_protected.extend(newly_protected.iter().copied());
+        let result = self.emit_stmts(stmts);
+        for v in &newly_protected {
+            self.flush_protected.remove(v);
+        }
+        result
+    }
+
     fn emit_one(&mut self, stmt: &LinearStmt, stmts: &mut Vec<Stmt>) {
         match stmt {
             LinearStmt::Def { result, inst_id } => self.emit_def(*result, *inst_id, stmts),
@@ -1908,7 +1925,7 @@ impl<'a> EmitCtx<'a> {
                 body,
             } => self.emit_for(init, header, *cond, *cond_negated, update, body, stmts),
             LinearStmt::Loop { body } => {
-                let body_stmts = self.emit_stmts(body);
+                let body_stmts = self.emit_stmts_protected(body);
                 stmts.push(Stmt::Loop { body: body_stmts });
             }
             LinearStmt::LogicalOr {
@@ -1926,7 +1943,7 @@ impl<'a> EmitCtx<'a> {
             LinearStmt::Dispatch { blocks, entry } => {
                 let mut dispatch_blocks = Vec::new();
                 for (id, block_stmts) in blocks {
-                    let emitted = self.emit_stmts(block_stmts);
+                    let emitted = self.emit_stmts_protected(block_stmts);
                     dispatch_blocks.push((*id, emitted));
                 }
                 stmts.push(Stmt::Dispatch {
@@ -1942,10 +1959,10 @@ impl<'a> EmitCtx<'a> {
                 let val = self.build_val(*value);
                 let mut case_stmts = Vec::new();
                 for (constant, body) in cases {
-                    let emitted = self.emit_stmts(body);
+                    let emitted = self.emit_stmts_protected(body);
                     case_stmts.push((constant.clone(), emitted));
                 }
-                let default_stmts = self.emit_stmts(default_body);
+                let default_stmts = self.emit_stmts_protected(default_body);
                 stmts.push(Stmt::Switch {
                     value: val,
                     cases: case_stmts,
@@ -2130,27 +2147,11 @@ impl<'a> EmitCtx<'a> {
     ) {
         self.flush_side_effecting_inlines(stmts);
 
-        // Protect header-level pending reads from flush_pending_reads inside
-        // bodies. Without this, a memory write inside a body flushes ALL pending
-        // reads — including header-block values like the condition — materializing
-        // them as `const vN = expr` inside the body (use-before-def).
-        // Only add values not already protected (nesting safety: inner emit_if
-        // must not strip protections that outer emit_if added).
-        let newly_protected: Vec<ValueId> = self
-            .pending_lazy
-            .keys()
-            .filter(|v| !self.flush_protected.contains(v))
-            .copied()
-            .collect();
-        self.flush_protected.extend(newly_protected.iter().copied());
-
         // Emit bodies first so we know whether to negate the condition.
-        let then_stmts = self.emit_stmts(then_body);
-        let else_stmts = self.emit_stmts(else_body);
-
-        for v in &newly_protected {
-            self.flush_protected.remove(v);
-        }
+        // Use emit_stmts_protected so header-level pending reads aren't
+        // flushed by memory writes inside the bodies.
+        let then_stmts = self.emit_stmts_protected(then_body);
+        let else_stmts = self.emit_stmts_protected(else_body);
 
         let then_empty = then_stmts.is_empty();
         let else_empty = else_stmts.is_empty();
@@ -2202,7 +2203,7 @@ impl<'a> EmitCtx<'a> {
             } else {
                 self.build_val(cond)
             };
-            let mut body_stmts = self.emit_stmts(body);
+            let mut body_stmts = self.emit_stmts_protected(body);
             strip_trailing_continue(&mut body_stmts);
             stmts.push(Stmt::While {
                 cond: cond_expr,
@@ -2219,7 +2220,7 @@ impl<'a> EmitCtx<'a> {
                 then_body: vec![Stmt::Break],
                 else_body: Vec::new(),
             });
-            let mut body_stmts = self.emit_stmts(body);
+            let mut body_stmts = self.emit_stmts_protected(body);
             strip_trailing_continue(&mut body_stmts);
             header_stmts.append(&mut body_stmts);
             stmts.push(Stmt::Loop { body: header_stmts });
@@ -2249,7 +2250,7 @@ impl<'a> EmitCtx<'a> {
             } else {
                 self.build_val(cond)
             };
-            let mut body_stmts = self.emit_stmts(body);
+            let mut body_stmts = self.emit_stmts_protected(body);
             strip_trailing_continue(&mut body_stmts);
             self.emit_stmts_into(update, &mut body_stmts);
             stmts.push(Stmt::While {
@@ -2267,7 +2268,7 @@ impl<'a> EmitCtx<'a> {
                 then_body: vec![Stmt::Break],
                 else_body: Vec::new(),
             });
-            let mut body_stmts = self.emit_stmts(body);
+            let mut body_stmts = self.emit_stmts_protected(body);
             strip_trailing_continue(&mut body_stmts);
             header_stmts.append(&mut body_stmts);
             self.emit_stmts_into(update, &mut header_stmts);
@@ -2285,7 +2286,7 @@ impl<'a> EmitCtx<'a> {
     ) {
         // Save SE inlines from header to prevent leaking into rhs_body.
         let saved_se = std::mem::take(&mut self.side_effecting_inlines);
-        let body_stmts = self.emit_stmts(rhs_body);
+        let body_stmts = self.emit_stmts_protected(rhs_body);
         let rhs_se = std::mem::replace(&mut self.side_effecting_inlines, saved_se);
         self.side_effecting_inlines.extend(rhs_se);
 
@@ -2328,7 +2329,7 @@ impl<'a> EmitCtx<'a> {
         stmts: &mut Vec<Stmt>,
     ) {
         let saved_se = std::mem::take(&mut self.side_effecting_inlines);
-        let body_stmts = self.emit_stmts(rhs_body);
+        let body_stmts = self.emit_stmts_protected(rhs_body);
         let rhs_se = std::mem::replace(&mut self.side_effecting_inlines, saved_se);
         self.side_effecting_inlines.extend(rhs_se);
 
