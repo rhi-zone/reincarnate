@@ -4,17 +4,12 @@
  * the compiled passage code.
  */
 
+import type { Changer, ContentNode } from "./output";
 import * as Output from "./output";
 import * as State from "./state";
 import * as Navigation from "./navigation";
-import { scheduleInterval, cancelInterval } from "../platform";
 
 // --- Changers ---
-
-interface Changer {
-  name: string;
-  args: any[];
-}
 
 /** Create a changer value from a macro name and arguments. */
 export function create_changer(name: string, ...args: any[]): Changer {
@@ -53,36 +48,9 @@ export function not(val: any): boolean {
 
 // --- Control flow ---
 
-/** `(stop:)` — signals the current (live:) interval to stop.
- *  Sets a flag checked after the callback returns so content still
- *  renders and flushes before the interval is cancelled.
- */
-let stopRequested = false;
-
+/** `(stop:)` — signals the current (live:) interval to stop. */
 export function stop(): void {
-  stopRequested = true;
-}
-
-/** `(live: interval)[callback]` — run callback at interval until (stop:).
- *  Inserts a container at the current output position; each tick only
- *  clears and re-renders that container, leaving surrounding content intact.
- */
-export function live(interval: number, callback: () => void): void {
-  const ms = typeof interval === "number" ? interval * 1000 : interval;
-  // Reserve a slot in the output for this live block
-  const container = Output.createContainer("tw-live");
-  const id = scheduleInterval(() => {
-    container.innerHTML = "";
-    Output.pushBuffer();
-    callback();
-    const buf = Output.popBuffer();
-    container.appendChild(buf);
-    if (stopRequested) {
-      cancelInterval(id);
-      stopRequested = false;
-    }
-  }, ms);
-  Output.trackTimer(id);
+  Output.requestStop();
 }
 
 // --- Save/load ---
@@ -367,7 +335,7 @@ export function value_macro(name: string, ...args: any[]): any {
 
 // --- Save game queries ---
 
-/** `(saved-games:)` — returns a datamap of slot → boolean. */
+/** `(saved-games:)` — returns a datamap of slot -> boolean. */
 export function saved_games(): Map<string, boolean> {
   const m = new Map<string, boolean>();
   for (let i = 0; i < 8; i++) {
@@ -417,7 +385,7 @@ export function color_op(name: string, ...args: any[]): string {
 export function dom_macro(method: string, ...args: any[]): void {
   const selector = args.length > 0 ? String(args[0]) : "";
   const callback = args.length > 1 && typeof args[args.length - 1] === "function"
-    ? args[args.length - 1] as () => void
+    ? args[args.length - 1] as () => ContentNode[]
     : undefined;
 
   const container = document.getElementById("passages");
@@ -429,10 +397,8 @@ export function dom_macro(method: string, ...args: any[]): void {
       targets.forEach(el => {
         el.innerHTML = "";
         if (callback) {
-          Output.pushBuffer();
-          callback();
-          const buf = Output.popBuffer();
-          el.appendChild(buf);
+          const nodes = callback();
+          Output.render(el, nodes);
         }
       });
       break;
@@ -441,10 +407,8 @@ export function dom_macro(method: string, ...args: any[]): void {
       const targets = container.querySelectorAll(selector);
       targets.forEach(el => {
         if (callback) {
-          Output.pushBuffer();
-          callback();
-          const buf = Output.popBuffer();
-          el.appendChild(buf);
+          const nodes = callback();
+          Output.render(el, nodes);
         }
       });
       break;
@@ -453,10 +417,10 @@ export function dom_macro(method: string, ...args: any[]): void {
       const targets = container.querySelectorAll(selector);
       targets.forEach(el => {
         if (callback) {
-          Output.pushBuffer();
-          callback();
-          const buf = Output.popBuffer();
-          el.insertBefore(buf, el.firstChild);
+          const nodes = callback();
+          const frag = document.createDocumentFragment();
+          Output.render(frag as any, nodes);
+          el.insertBefore(frag, el.firstChild);
         }
       });
       break;
@@ -472,7 +436,6 @@ export function dom_macro(method: string, ...args: any[]): void {
       break;
     }
     case "rerun":
-      // Re-execute a hook — for now, just invoke the callback
       if (callback) callback();
       break;
     default:
@@ -486,7 +449,7 @@ export function dom_macro(method: string, ...args: any[]): void {
 export function click_macro(method: string, ...args: any[]): void {
   const selector = args.length > 0 ? String(args[0]) : "";
   const callback = args.length > 1 && typeof args[args.length - 1] === "function"
-    ? args[args.length - 1] as () => void
+    ? args[args.length - 1] as () => ContentNode[]
     : undefined;
 
   const container = document.getElementById("passages");
@@ -497,24 +460,19 @@ export function click_macro(method: string, ...args: any[]): void {
     (el as HTMLElement).style.cursor = "pointer";
     el.addEventListener("click", () => {
       if (!callback) return;
+      const nodes = callback();
       if (method === "click-replace") {
         el.innerHTML = "";
-        Output.pushBuffer();
-        callback();
-        const buf = Output.popBuffer();
-        el.appendChild(buf);
+        Output.render(el, nodes);
       } else if (method === "click-append") {
-        Output.pushBuffer();
-        callback();
-        const buf = Output.popBuffer();
-        el.appendChild(buf);
+        Output.render(el, nodes);
       } else if (method === "click-prepend") {
-        Output.pushBuffer();
-        callback();
-        const buf = Output.popBuffer();
-        el.insertBefore(buf, el.firstChild);
+        const frag = document.createDocumentFragment();
+        Output.render(frag as any, nodes);
+        el.insertBefore(frag, el.firstChild);
       } else {
-        callback();
+        // plain click — render inline
+        Output.render(el, nodes);
       }
     }, { once: true });
   });

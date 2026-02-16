@@ -2,11 +2,12 @@
 
 import * as State from "./state";
 import * as Output from "./output";
+import type { ContentNode } from "./output";
 
-/** Registry of passage name → passage function. */
-const passages: Map<string, () => void> = new Map();
+/** Registry of passage name -> passage function. */
+const passages: Map<string, () => ContentNode[]> = new Map();
 
-/** Registry of passage name → tags. */
+/** Registry of passage name -> tags. */
 const passageTags: Map<string, string[]> = new Map();
 
 /** Current passage name. */
@@ -19,7 +20,7 @@ let currentPassage = "";
  * 2. Navigate to the start passage
  */
 export function startStory(
-  passageMap: Record<string, () => void>,
+  passageMap: Record<string, () => ContentNode[]>,
   startPassage?: string,
   tagMap?: Record<string, string[]>,
 ): void {
@@ -32,6 +33,9 @@ export function startStory(
     }
   }
 
+  // Provide passage lookup to output.ts for (display:) rendering
+  Output.setPassageLookup((name: string) => passages.get(name));
+
   // Navigate to the explicit start passage, or fall back to first registered
   const target = startPassage || Object.keys(passageMap)[0];
   if (target) {
@@ -40,19 +44,21 @@ export function startStory(
 }
 
 /** Render a passage with full lifecycle. */
-function renderPassage(target: string, fn: () => void): void {
+function renderPassage(target: string, fn: () => ContentNode[]): void {
   State.clearTemps();
   currentPassage = target;
   Output.clear();
 
+  const container = document.getElementById("passages");
+  if (!container) return;
+
   try {
-    fn();
+    const nodes = fn();
+    Output.render(container, nodes);
   } catch (e) {
     console.error(`[harlowe] error in passage "${target}":`, e);
-    Output.text(`Error in passage "${target}": ${e}`);
+    container.appendChild(document.createTextNode(`Error in passage "${target}": ${e}`));
   }
-
-  Output.flush();
 }
 
 /** Navigate to a passage by name. */
@@ -66,18 +72,19 @@ export function goto(target: string): void {
   renderPassage(target, fn);
 }
 
-/** Include (embed) another passage inline without navigation. */
-export function display(passage: string): void {
+/** Include (embed) another passage inline without navigation.
+ *  Returns the passage's content nodes for inline rendering. */
+export function display(passage: string): ContentNode[] {
   const fn = passages.get(passage);
   if (!fn) {
     console.error(`[harlowe] passage not found for display: "${passage}"`);
-    return;
+    return [];
   }
   try {
-    fn();
+    return fn();
   } catch (e) {
     console.error(`[harlowe] error in displayed passage "${passage}":`, e);
-    Output.text(`Error in passage "${passage}": ${e}`);
+    return [`Error in passage "${passage}": ${e}`];
   }
 }
 
@@ -92,7 +99,7 @@ export function has(name: string): boolean {
 }
 
 /** Get a passage function by name. */
-export function getPassage(name: string): (() => void) | undefined {
+export function getPassage(name: string): (() => ContentNode[]) | undefined {
   return passages.get(name);
 }
 

@@ -3,10 +3,16 @@
 //! Translates parsed Harlowe passage AST nodes into reincarnate-core IR
 //! functions using SystemCall-based dispatch to the Harlowe runtime layer.
 //!
+//! Content nodes are IR values (Type::Dynamic returned from SystemCalls).
+//! The backend's SSA inlining produces nested expressions from flat IR
+//! values. Two synthetic SystemCalls are rewritten by the backend:
+//! - `Harlowe.Output.content_array(a, b, c)` → `[a, b, c]` (ArrayInit)
+//! - `Harlowe.Output.text_node(s)` → `s` (identity — strings ARE nodes)
+//!
 //! SystemCall namespaces:
 //! - `Harlowe.State`: get/set story and temp variables
-//! - `Harlowe.Output`: text, print, html, link, push/pop changers
-//! - `Harlowe.Navigation`: goto, display (include)
+//! - `Harlowe.Output`: content builders (color, strong, br, link, etc.)
+//! - `Harlowe.Navigation`: goto
 //! - `Harlowe.Engine`: changers, data ops, runtime helpers
 
 use std::collections::HashMap;
@@ -38,7 +44,7 @@ pub fn translate_passage(name: &str, ast: &PassageAst) -> TranslateResult {
     let func_name = passage_func_name(name);
     let sig = FunctionSig {
         params: vec![],
-        return_ty: Type::Void,
+        return_ty: Type::Dynamic,
         defaults: vec![],
         has_rest_param: false,
     };
@@ -52,8 +58,8 @@ pub fn translate_passage(name: &str, ast: &PassageAst) -> TranslateResult {
         set_target: None,
     };
 
-    ctx.lower_nodes(&ast.body);
-    ctx.fb.ret(None);
+    let content = ctx.lower_content_array(&ast.body);
+    ctx.fb.ret(Some(content));
 
     let callbacks = std::mem::take(&mut ctx.callbacks);
 
@@ -75,32 +81,180 @@ struct TranslateCtx {
 }
 
 impl TranslateCtx {
-    // ── Node lowering ──────────────────────────────────────────────────
+    // ── Content array helper ────────────────────────────────────────
 
-    fn lower_nodes(&mut self, nodes: &[Node]) {
-        for node in nodes {
-            self.lower_node(node);
-        }
+    /// Lower a sequence of nodes into a single content_array value.
+    /// Filters out None results (side-effect-only nodes like `set`).
+    fn lower_content_array(&mut self, nodes: &[Node]) -> ValueId {
+        let vals: Vec<ValueId> = self.lower_nodes_to_structured(nodes);
+        self.fb
+            .system_call("Harlowe.Output", "content_array", &vals, Type::Dynamic)
     }
 
-    fn lower_node(&mut self, node: &Node) {
+    // ── Node lowering ──────────────────────────────────────────────
+
+    /// Lower nodes, pairing HtmlOpen/HtmlClose into structured elements.
+    fn lower_nodes_to_structured(&mut self, nodes: &[Node]) -> Vec<ValueId> {
+        let mut vals = Vec::new();
+        let mut i = 0;
+        while i < nodes.len() {
+            match &nodes[i].kind {
+                NodeKind::HtmlOpen { tag, attrs } => {
+                    // Consume children until matching HtmlClose
+                    let tag = tag.clone();
+                    let attrs = attrs.clone();
+                    let (children_end, children) =
+                        self.collect_html_children(nodes, i + 1, &tag);
+                    let children_arr = self.fb.system_call(
+                        "Harlowe.Output",
+                        "content_array",
+                        &children,
+                        Type::Dynamic,
+                    );
+                    let tag_val = self.fb.const_string(&tag);
+                    let mut args = vec![tag_val, children_arr];
+                    for (k, v) in &attrs {
+                        args.push(self.fb.const_string(k));
+                        args.push(self.fb.const_string(v));
+                    }
+                    let el = self.fb.system_call(
+                        "Harlowe.Output",
+                        "el",
+                        &args,
+                        Type::Dynamic,
+                    );
+                    vals.push(el);
+                    i = children_end;
+                }
+                NodeKind::HtmlClose(_) => {
+                    // Stray close tag — skip
+                    i += 1;
+                }
+                _ => {
+                    if let Some(v) = self.lower_node(&nodes[i]) {
+                        vals.push(v);
+                    }
+                    i += 1;
+                }
+            }
+        }
+        vals
+    }
+
+    /// Collect children between HtmlOpen and matching HtmlClose.
+    /// Returns (next_index_after_close, children_vals).
+    fn collect_html_children(
+        &mut self,
+        nodes: &[Node],
+        start: usize,
+        close_tag: &str,
+    ) -> (usize, Vec<ValueId>) {
+        let mut vals = Vec::new();
+        let mut i = start;
+        while i < nodes.len() {
+            match &nodes[i].kind {
+                NodeKind::HtmlClose(tag) if tag == close_tag => {
+                    return (i + 1, vals);
+                }
+                NodeKind::HtmlOpen { tag, attrs } => {
+                    let tag = tag.clone();
+                    let attrs = attrs.clone();
+                    let (end, children) =
+                        self.collect_html_children(nodes, i + 1, &tag);
+                    let children_arr = self.fb.system_call(
+                        "Harlowe.Output",
+                        "content_array",
+                        &children,
+                        Type::Dynamic,
+                    );
+                    let tag_val = self.fb.const_string(&tag);
+                    let mut args = vec![tag_val, children_arr];
+                    for (k, v) in &attrs {
+                        args.push(self.fb.const_string(k));
+                        args.push(self.fb.const_string(v));
+                    }
+                    let el = self.fb.system_call(
+                        "Harlowe.Output",
+                        "el",
+                        &args,
+                        Type::Dynamic,
+                    );
+                    vals.push(el);
+                    i = end;
+                }
+                NodeKind::HtmlClose(_) => {
+                    // Mismatched close tag — stop here
+                    return (i + 1, vals);
+                }
+                _ => {
+                    if let Some(v) = self.lower_node(&nodes[i]) {
+                        vals.push(v);
+                    }
+                    i += 1;
+                }
+            }
+        }
+        // Ran out of nodes without finding close tag
+        (i, vals)
+    }
+
+    fn lower_node(&mut self, node: &Node) -> Option<ValueId> {
         match &node.kind {
             NodeKind::Text(text) => {
-                if !text.is_empty() {
-                    self.emit_text(text);
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(self.emit_text_node(text))
                 }
             }
             NodeKind::Macro(mac) => self.lower_macro(mac),
-            NodeKind::Hook(nodes) => self.lower_nodes(nodes),
-            NodeKind::Link(link) => self.lower_link(link),
-            NodeKind::VarInterp(name) => self.lower_var_interp(name),
-            NodeKind::HtmlOpen { tag, attrs } => self.emit_open_element(tag, attrs),
-            NodeKind::HtmlClose(_) => self.emit_close_element(),
-            NodeKind::HtmlVoid { tag, attrs } => self.emit_void_element(tag, attrs),
+            NodeKind::Hook(nodes) => Some(self.lower_content_array(nodes)),
+            NodeKind::Link(link) => Some(self.lower_link(link)),
+            NodeKind::VarInterp(name) => Some(self.lower_var_interp(name)),
+            NodeKind::HtmlOpen { tag, attrs } => {
+                // Standalone open tag without matching close — emit as element
+                let tag_val = self.fb.const_string(tag);
+                let empty = self.fb.system_call(
+                    "Harlowe.Output",
+                    "content_array",
+                    &[],
+                    Type::Dynamic,
+                );
+                let mut args = vec![tag_val, empty];
+                for (k, v) in attrs {
+                    args.push(self.fb.const_string(k));
+                    args.push(self.fb.const_string(v));
+                }
+                Some(
+                    self.fb
+                        .system_call("Harlowe.Output", "el", &args, Type::Dynamic),
+                )
+            }
+            NodeKind::HtmlClose(_) => None,
+            NodeKind::HtmlVoid { tag, attrs } => Some(self.emit_void_element(tag, attrs)),
             NodeKind::Markup { tag, body } => {
-                self.emit_open_element(tag, &[]);
-                self.lower_nodes(body);
-                self.emit_close_element();
+                let method = match tag.as_str() {
+                    "strong" | "em" | "del" | "sup" | "sub" => tag.as_str(),
+                    _ => "el",
+                };
+                if method == "el" {
+                    let children = self.lower_content_array(body);
+                    let tag_val = self.fb.const_string(tag);
+                    Some(self.fb.system_call(
+                        "Harlowe.Output",
+                        "el",
+                        &[tag_val, children],
+                        Type::Dynamic,
+                    ))
+                } else {
+                    let children = self.lower_content_array(body);
+                    Some(self.fb.system_call(
+                        "Harlowe.Output",
+                        method,
+                        &[children],
+                        Type::Dynamic,
+                    ))
+                }
             }
             NodeKind::ChangerApply { name, hook } => {
                 let changer = if let Some(stripped) = name.strip_prefix('$') {
@@ -111,68 +265,64 @@ impl TranslateCtx {
                     let stripped = name.strip_prefix('_').unwrap_or(name);
                     self.get_or_load_temp(stripped)
                 };
-                self.fb.system_call(
+                let children = self.lower_content_array(hook);
+                Some(self.fb.system_call(
                     "Harlowe.Output",
-                    "push_changer",
-                    &[changer],
-                    Type::Void,
-                );
-                self.lower_nodes(hook);
-                self.fb
-                    .system_call("Harlowe.Output", "pop_changer", &[], Type::Void);
+                    "styled",
+                    &[changer, children],
+                    Type::Dynamic,
+                ))
             }
             NodeKind::LineBreak => {
-                let tag = self.fb.const_string("br");
-                self.fb
-                    .system_call("Harlowe.Output", "void_element", &[tag], Type::Void);
+                Some(
+                    self.fb
+                        .system_call("Harlowe.Output", "br", &[], Type::Dynamic),
+                )
             }
         }
     }
 
-    // ── Output helpers ─────────────────────────────────────────────────
+    // ── Output helpers ─────────────────────────────────────────────
 
-    fn emit_text(&mut self, text: &str) {
+    /// Create a text_node value (backend rewrites to identity — string IS the node).
+    fn emit_text_node(&mut self, text: &str) -> ValueId {
         let s = self.fb.const_string(text);
         self.fb
-            .system_call("Harlowe.Output", "text", &[s], Type::Void);
+            .system_call("Harlowe.Output", "text_node", &[s], Type::Dynamic)
     }
 
-    fn emit_open_element(&mut self, tag: &str, attrs: &[(String, String)]) {
-        let tag_val = self.fb.const_string(tag);
-        let mut args = vec![tag_val];
-        for (k, v) in attrs {
-            args.push(self.fb.const_string(k));
-            args.push(self.fb.const_string(v));
+    fn emit_void_element(&mut self, tag: &str, attrs: &[(String, String)]) -> ValueId {
+        match tag {
+            "br" => self.fb.system_call("Harlowe.Output", "br", &[], Type::Dynamic),
+            "hr" => self.fb.system_call("Harlowe.Output", "hr", &[], Type::Dynamic),
+            "img" => {
+                // Extract src from attrs
+                let src = attrs
+                    .iter()
+                    .find(|(k, _)| k == "src")
+                    .map(|(_, v)| v.as_str())
+                    .unwrap_or("");
+                let src_val = self.fb.const_string(src);
+                self.fb
+                    .system_call("Harlowe.Output", "img", &[src_val], Type::Dynamic)
+            }
+            _ => {
+                let tag_val = self.fb.const_string(tag);
+                let mut args = vec![tag_val];
+                for (k, v) in attrs {
+                    args.push(self.fb.const_string(k));
+                    args.push(self.fb.const_string(v));
+                }
+                self.fb
+                    .system_call("Harlowe.Output", "voidEl", &args, Type::Dynamic)
+            }
         }
-        self.fb
-            .system_call("Harlowe.Output", "open_element", &args, Type::Void);
     }
 
-    fn emit_close_element(&mut self) {
-        self.fb
-            .system_call("Harlowe.Output", "close_element", &[], Type::Void);
-    }
+    // ── Variable interpolation ─────────────────────────────────────
 
-    fn emit_void_element(&mut self, tag: &str, attrs: &[(String, String)]) {
-        let tag_val = self.fb.const_string(tag);
-        let mut args = vec![tag_val];
-        for (k, v) in attrs {
-            args.push(self.fb.const_string(k));
-            args.push(self.fb.const_string(v));
-        }
-        self.fb
-            .system_call("Harlowe.Output", "void_element", &args, Type::Void);
-    }
-
-    fn emit_print(&mut self, value: ValueId) {
-        self.fb
-            .system_call("Harlowe.Output", "print", &[value], Type::Void);
-    }
-
-    // ── Variable interpolation ─────────────────────────────────────────
-
-    fn lower_var_interp(&mut self, name: &str) {
-        // `$var` or `_var` in body text → get + print
+    fn lower_var_interp(&mut self, name: &str) -> ValueId {
+        // `$var` or `_var` in body text → get + printVal
         let val = if let Some(stripped) = name.strip_prefix('$') {
             let n = self.fb.const_string(stripped);
             self.fb
@@ -184,90 +334,119 @@ impl TranslateCtx {
             self.fb
                 .system_call("Harlowe.State", "get", &[n], Type::Dynamic)
         };
-        self.emit_print(val);
+        self.fb
+            .system_call("Harlowe.Output", "printVal", &[val], Type::Dynamic)
     }
 
-    // ── Macro lowering ─────────────────────────────────────────────────
+    // ── Macro lowering ─────────────────────────────────────────────
 
-    fn lower_macro(&mut self, mac: &MacroNode) {
+    fn lower_macro(&mut self, mac: &MacroNode) -> Option<ValueId> {
         match mac.name.as_str() {
-            // State
-            "set" => self.lower_set(mac),
-            "put" => self.lower_put(mac),
+            // State (side effects — return None)
+            "set" => {
+                self.lower_set(mac);
+                None
+            }
+            "put" => {
+                self.lower_put(mac);
+                None
+            }
 
             // Control flow
             "if" | "unless" => self.lower_if(mac),
 
-            // Navigation
-            "goto" | "go-to" => self.lower_goto(mac),
-            "display" => self.lower_display(mac),
+            // Navigation (side effect — return None)
+            "goto" | "go-to" => {
+                self.lower_goto(mac);
+                None
+            }
+
+            // Display (returns content)
+            "display" => Some(self.lower_display(mac)),
 
             // Output
-            "print" => self.lower_print(mac),
+            "print" => Some(self.lower_print(mac)),
 
-            // Links
-            "link" => self.lower_link_macro(mac),
-            "link-goto" => self.lower_link_goto(mac),
+            // Links (return content)
+            "link" => Some(self.lower_link_macro(mac)),
+            "link-goto" => Some(self.lower_link_goto(mac)),
 
-            // Changers (attach to hook)
+            // Changers (return content when hook present, otherwise create changer value)
             "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
             | "align" | "transition" | "transition-time" | "transition-arrive"
             | "transition-depart" | "text-rotate-z" | "hover-style" | "css" | "background"
             | "opacity" | "text-size" | "collapse" | "nobr" | "hidden" => {
-                self.lower_changer(mac);
+                self.lower_changer(mac)
             }
 
             // Timed
-            "live" => self.lower_live(mac),
+            "live" => Some(self.lower_live(mac)),
             "stop" => {
-                // `(stop:)` — no-op in IR (the live interval handler checks for this)
                 self.fb
                     .system_call("Harlowe.Engine", "stop", &[], Type::Void);
+                None
             }
 
             // Value macros (used as expressions — already handled by expr lowering
             // when inside expression context). If they appear standalone, print result.
             "str" | "string" | "num" | "number" | "random" | "either" | "a" | "array"
             | "dm" | "datamap" | "ds" | "dataset" => {
-                self.lower_value_macro_standalone(mac);
+                Some(self.lower_value_macro_standalone(mac))
             }
 
-            // Save/load
-            "save-game" => self.lower_save_game(mac),
-            "load-game" => self.lower_load_game(mac),
+            // Save/load (side effects)
+            "save-game" => {
+                self.lower_save_game(mac);
+                None
+            }
+            "load-game" => {
+                self.lower_load_game(mac);
+                None
+            }
 
-            // Alert/prompt/confirm
-            "alert" => self.lower_simple_command(mac, "Harlowe.Engine", "alert"),
-            "prompt" => self.lower_simple_command(mac, "Harlowe.Engine", "prompt"),
-            "confirm" => self.lower_simple_command(mac, "Harlowe.Engine", "confirm"),
+            // Alert/prompt/confirm (side effects)
+            "alert" => {
+                self.lower_simple_command(mac, "Harlowe.Engine", "alert");
+                None
+            }
+            "prompt" => {
+                self.lower_simple_command(mac, "Harlowe.Engine", "prompt");
+                None
+            }
+            "confirm" => {
+                self.lower_simple_command(mac, "Harlowe.Engine", "confirm");
+                None
+            }
 
-            // DOM manipulation
+            // DOM manipulation (side effects)
             "replace" | "append" | "prepend" | "show" | "hide" | "rerun" => {
                 self.lower_dom_macro(mac);
+                None
             }
 
-            // Click
+            // Click (side effects)
             "click" | "click-replace" | "click-append" | "click-prepend" => {
                 self.lower_click_macro(mac);
+                None
             }
 
             // Unknown → generic widget call
-            _ => self.lower_unknown_macro(mac),
+            _ => {
+                self.lower_unknown_macro(mac);
+                None
+            }
         }
     }
 
-    // ── (set:) ─────────────────────────────────────────────────────────
+    // ── (set:) ─────────────────────────────────────────────────────
 
     fn lower_set(&mut self, mac: &MacroNode) {
-        // Each arg should be an Assign: `$var to expr`
         for arg in &mac.args {
             self.lower_assignment(arg);
         }
     }
 
     fn lower_put(&mut self, mac: &MacroNode) {
-        // `(put: expr into $var)` — same semantics, different syntax
-        // For now, handle like set
         for arg in &mac.args {
             self.lower_assignment(arg);
         }
@@ -276,15 +455,12 @@ impl TranslateCtx {
     fn lower_assignment(&mut self, expr: &Expr) {
         match &expr.kind {
             ExprKind::Assign { target, value } => {
-                // Harlowe: `it` inside (set:) refers to the target variable's
-                // current value. Set context so lower_expr(It) reads the target.
                 let prev_target = self.set_target.replace(*target.clone());
                 let val = self.lower_expr(value);
                 self.set_target = prev_target;
                 self.store_to_target(target, val);
             }
             _ => {
-                // Side-effectful expression (e.g. `$x + 1` without assign)
                 self.lower_expr(expr);
             }
         }
@@ -312,16 +488,17 @@ impl TranslateCtx {
                 );
             }
             _ => {
-                // Best effort: evaluate target for side effects
                 self.lower_expr(target);
             }
         }
     }
 
-    // ── (if:) / (unless:) / (else-if:) / (else:) ──────────────────────
+    // ── (if:) / (unless:) / (else-if:) / (else:) ──────────────────
 
-    fn lower_if(&mut self, mac: &MacroNode) {
+    fn lower_if(&mut self, mac: &MacroNode) -> Option<ValueId> {
         let merge_block = self.fb.create_block();
+        let merge_params = self.fb.add_block_params(merge_block, &[Type::Dynamic]);
+        let merge_param = merge_params[0];
 
         // Main condition
         let cond = if mac.args.is_empty() {
@@ -329,7 +506,6 @@ impl TranslateCtx {
         } else {
             let raw_cond = self.lower_expr(&mac.args[0]);
             if mac.name == "unless" {
-                // Negate for unless
                 self.fb.system_call(
                     "Harlowe.Engine",
                     "not",
@@ -349,29 +525,44 @@ impl TranslateCtx {
 
         // Then body (hook)
         self.fb.switch_to_block(then_block);
-        if let Some(ref hook) = mac.hook {
-            self.lower_nodes(hook);
-        }
-        self.fb.br(merge_block, &[]);
+        let then_val = if let Some(ref hook) = mac.hook {
+            self.lower_content_array(hook)
+        } else {
+            self.fb.system_call(
+                "Harlowe.Output",
+                "content_array",
+                &[],
+                Type::Dynamic,
+            )
+        };
+        self.fb.br(merge_block, &[then_val]);
 
         // Else chain
         self.fb.switch_to_block(else_block);
         self.lower_if_clauses(&mac.clauses, 0, merge_block);
 
         self.fb.switch_to_block(merge_block);
+        Some(merge_param)
     }
 
     fn lower_if_clauses(&mut self, clauses: &[IfClause], index: usize, merge_block: BlockId) {
         if index >= clauses.len() {
-            self.fb.br(merge_block, &[]);
+            // No else — produce empty array
+            let empty = self.fb.system_call(
+                "Harlowe.Output",
+                "content_array",
+                &[],
+                Type::Dynamic,
+            );
+            self.fb.br(merge_block, &[empty]);
             return;
         }
 
         let clause = &clauses[index];
 
         if clause.kind == "else" {
-            self.lower_nodes(&clause.body);
-            self.fb.br(merge_block, &[]);
+            let val = self.lower_content_array(&clause.body);
+            self.fb.br(merge_block, &[val]);
             return;
         }
 
@@ -389,14 +580,14 @@ impl TranslateCtx {
             .br_if(cond, then_block, &[], next_else, &[]);
 
         self.fb.switch_to_block(then_block);
-        self.lower_nodes(&clause.body);
-        self.fb.br(merge_block, &[]);
+        let val = self.lower_content_array(&clause.body);
+        self.fb.br(merge_block, &[val]);
 
         self.fb.switch_to_block(next_else);
         self.lower_if_clauses(clauses, index + 1, merge_block);
     }
 
-    // ── (goto:) ────────────────────────────────────────────────────────
+    // ── (goto:) ────────────────────────────────────────────────────
 
     fn lower_goto(&mut self, mac: &MacroNode) {
         if let Some(arg) = mac.args.first() {
@@ -406,51 +597,74 @@ impl TranslateCtx {
         }
     }
 
-    // ── (display:) ─────────────────────────────────────────────────────
+    // ── (display:) ─────────────────────────────────────────────────
 
-    fn lower_display(&mut self, mac: &MacroNode) {
+    fn lower_display(&mut self, mac: &MacroNode) -> ValueId {
         if let Some(arg) = mac.args.first() {
             let target = self.lower_expr(arg);
-            self.fb
-                .system_call("Harlowe.Navigation", "display", &[target], Type::Void);
+            self.fb.system_call(
+                "Harlowe.Output",
+                "displayPassage",
+                &[target],
+                Type::Dynamic,
+            )
+        } else {
+            self.fb.system_call(
+                "Harlowe.Output",
+                "content_array",
+                &[],
+                Type::Dynamic,
+            )
         }
     }
 
-    // ── (print:) ───────────────────────────────────────────────────────
+    // ── (print:) ───────────────────────────────────────────────────
 
-    fn lower_print(&mut self, mac: &MacroNode) {
+    fn lower_print(&mut self, mac: &MacroNode) -> ValueId {
         if let Some(arg) = mac.args.first() {
             let val = self.lower_expr(arg);
-            self.emit_print(val);
+            self.fb
+                .system_call("Harlowe.Output", "printVal", &[val], Type::Dynamic)
+        } else {
+            self.fb.system_call(
+                "Harlowe.Output",
+                "content_array",
+                &[],
+                Type::Dynamic,
+            )
         }
     }
 
-    // ── (link:) ────────────────────────────────────────────────────────
+    // ── (link:) ────────────────────────────────────────────────────
 
-    fn lower_link_macro(&mut self, mac: &MacroNode) {
-        // `(link: "text")[hook]` — creates a clickable link that runs the hook
+    fn lower_link_macro(&mut self, mac: &MacroNode) -> ValueId {
         if let Some(arg) = mac.args.first() {
             let text = self.lower_expr(arg);
 
             if let Some(ref hook) = mac.hook {
-                // Build a callback function for the hook body
                 let cb_name = self.make_callback_name("link");
                 let cb_ref = self.build_callback(&cb_name, hook);
                 self.fb.system_call(
                     "Harlowe.Output",
-                    "link_callback",
+                    "linkCb",
                     &[text, cb_ref],
-                    Type::Void,
-                );
+                    Type::Dynamic,
+                )
             } else {
-                // Link with no hook — just display as text
-                self.emit_print(text);
+                self.fb
+                    .system_call("Harlowe.Output", "printVal", &[text], Type::Dynamic)
             }
+        } else {
+            self.fb.system_call(
+                "Harlowe.Output",
+                "content_array",
+                &[],
+                Type::Dynamic,
+            )
         }
     }
 
-    fn lower_link_goto(&mut self, mac: &MacroNode) {
-        // `(link-goto: "text", "passage")`
+    fn lower_link_goto(&mut self, mac: &MacroNode) -> ValueId {
         if mac.args.len() >= 2 {
             let text = self.lower_expr(&mac.args[0]);
             let passage = self.lower_expr(&mac.args[1]);
@@ -458,62 +672,132 @@ impl TranslateCtx {
                 "Harlowe.Output",
                 "link",
                 &[text, passage],
-                Type::Void,
-            );
+                Type::Dynamic,
+            )
         } else if let Some(arg) = mac.args.first() {
-            // Single arg: text = passage
             let text = self.lower_expr(arg);
             self.fb.system_call(
                 "Harlowe.Output",
                 "link",
                 &[text, text],
-                Type::Void,
-            );
+                Type::Dynamic,
+            )
+        } else {
+            self.fb.system_call(
+                "Harlowe.Output",
+                "content_array",
+                &[],
+                Type::Dynamic,
+            )
         }
     }
 
-    // ── [[link]] ───────────────────────────────────────────────────────
+    // ── [[link]] ───────────────────────────────────────────────────
 
-    fn lower_link(&mut self, link: &LinkNode) {
+    fn lower_link(&mut self, link: &LinkNode) -> ValueId {
         let text = self.fb.const_string(&link.text);
         let passage = self.fb.const_string(&link.passage);
         self.fb
-            .system_call("Harlowe.Output", "link", &[text, passage], Type::Void);
+            .system_call("Harlowe.Output", "link", &[text, passage], Type::Dynamic)
     }
 
-    // ── Changers ───────────────────────────────────────────────────────
+    // ── Changers ───────────────────────────────────────────────────
 
-    fn lower_changer(&mut self, mac: &MacroNode) {
-        // Emit a changer value, push it, render the hook, pop it
-        let changer_name = self.fb.const_string(&mac.name);
-        let mut args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
-        args.insert(0, changer_name);
-
-        let changer = self.fb.system_call(
-            "Harlowe.Engine",
-            "create_changer",
-            &args,
-            Type::Dynamic,
-        );
-        self.fb.system_call(
-            "Harlowe.Output",
-            "push_changer",
-            &[changer],
-            Type::Void,
-        );
+    fn lower_changer(&mut self, mac: &MacroNode) -> Option<ValueId> {
+        // Map changer macro names to output builder function names
+        let builder_name = match mac.name.as_str() {
+            "color" | "colour" | "text-colour" | "text-color" => "color",
+            "background" => "background",
+            "text-style" => "textStyle",
+            "font" => "font",
+            "align" => "align",
+            "opacity" => "opacity",
+            "css" => "css",
+            "transition" | "transition-arrive" | "transition-depart" => "transition",
+            "transition-time" => "transitionTime",
+            "hidden" => "hidden",
+            "text-size" => "textSize",
+            "text-rotate-z" => "textRotateZ",
+            "collapse" => "collapse",
+            "nobr" => "nobr",
+            "hover-style" => "hoverStyle",
+            _ => {
+                // Unknown changer — fall back to generic styled
+                if let Some(ref hook) = mac.hook {
+                    let changer_name = self.fb.const_string(&mac.name);
+                    let args: Vec<ValueId> =
+                        mac.args.iter().map(|a| self.lower_expr(a)).collect();
+                    let mut changer_args = vec![changer_name];
+                    changer_args.extend(args);
+                    let changer = self.fb.system_call(
+                        "Harlowe.Engine",
+                        "create_changer",
+                        &changer_args,
+                        Type::Dynamic,
+                    );
+                    let children = self.lower_content_array(hook);
+                    return Some(self.fb.system_call(
+                        "Harlowe.Output",
+                        "styled",
+                        &[changer, children],
+                        Type::Dynamic,
+                    ));
+                }
+                // Changer in expression context (no hook)
+                let changer_name = self.fb.const_string(&mac.name);
+                let args: Vec<ValueId> =
+                    mac.args.iter().map(|a| self.lower_expr(a)).collect();
+                let mut call_args = vec![changer_name];
+                call_args.extend(args);
+                return Some(self.fb.system_call(
+                    "Harlowe.Engine",
+                    "create_changer",
+                    &call_args,
+                    Type::Dynamic,
+                ));
+            }
+        };
 
         if let Some(ref hook) = mac.hook {
-            self.lower_nodes(hook);
-        }
+            // Changer with hook → direct builder call: color("red", [children])
+            let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
+            let children = self.lower_content_array(hook);
 
-        self.fb
-            .system_call("Harlowe.Output", "pop_changer", &[], Type::Void);
+            // Changers that take no value arg (hidden, collapse, nobr)
+            let call_args = match builder_name {
+                "hidden" | "collapse" | "nobr" => vec![children],
+                _ => {
+                    let mut a = args;
+                    a.push(children);
+                    a
+                }
+            };
+
+            Some(self.fb.system_call(
+                "Harlowe.Output",
+                builder_name,
+                &call_args,
+                Type::Dynamic,
+            ))
+        } else {
+            // Changer in expression context (no hook) → create_changer value
+            let changer_name = self.fb.const_string(&mac.name);
+            let args: Vec<ValueId> =
+                mac.args.iter().map(|a| self.lower_expr(a)).collect();
+            let mut call_args = vec![changer_name];
+            call_args.extend(args);
+            Some(self.fb.system_call(
+                "Harlowe.Engine",
+                "create_changer",
+                &call_args,
+                Type::Dynamic,
+            ))
+        }
     }
 
-    // ── (live:) ────────────────────────────────────────────────────────
+    // ── (live:) ────────────────────────────────────────────────────
 
-    fn lower_live(&mut self, mac: &MacroNode) {
-        // `(live: 2s)[hook]` — timed interval
+    fn lower_live(&mut self, mac: &MacroNode) -> ValueId {
         let interval = if let Some(arg) = mac.args.first() {
             self.lower_expr(arg)
         } else {
@@ -524,17 +808,24 @@ impl TranslateCtx {
             let cb_name = self.make_callback_name("live");
             let cb_ref = self.build_callback(&cb_name, hook);
             self.fb.system_call(
-                "Harlowe.Engine",
+                "Harlowe.Output",
                 "live",
                 &[interval, cb_ref],
-                Type::Void,
-            );
+                Type::Dynamic,
+            )
+        } else {
+            self.fb.system_call(
+                "Harlowe.Output",
+                "content_array",
+                &[],
+                Type::Dynamic,
+            )
         }
     }
 
-    // ── Value macros (standalone) ──────────────────────────────────────
+    // ── Value macros (standalone) ──────────────────────────────────
 
-    fn lower_value_macro_standalone(&mut self, mac: &MacroNode) {
+    fn lower_value_macro_standalone(&mut self, mac: &MacroNode) -> ValueId {
         let name = self.fb.const_string(&mac.name);
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
         let mut call_args = vec![name];
@@ -545,21 +836,23 @@ impl TranslateCtx {
             &call_args,
             Type::Dynamic,
         );
-        // If there's a hook, push the value and render
         if let Some(ref hook) = mac.hook {
+            // Value macro with hook — use styled()
+            let children = self.lower_content_array(hook);
             self.fb.system_call(
                 "Harlowe.Output",
-                "push_changer",
-                &[result],
-                Type::Void,
-            );
-            self.lower_nodes(hook);
+                "styled",
+                &[result, children],
+                Type::Dynamic,
+            )
+        } else {
+            // Standalone value macro — return as printVal
             self.fb
-                .system_call("Harlowe.Output", "pop_changer", &[], Type::Void);
+                .system_call("Harlowe.Output", "printVal", &[result], Type::Dynamic)
         }
     }
 
-    // ── Save/load ──────────────────────────────────────────────────────
+    // ── Save/load ──────────────────────────────────────────────────
 
     fn lower_save_game(&mut self, mac: &MacroNode) {
         if let Some(arg) = mac.args.first() {
@@ -577,7 +870,7 @@ impl TranslateCtx {
         }
     }
 
-    // ── Simple commands ────────────────────────────────────────────────
+    // ── Simple commands ────────────────────────────────────────────
 
     fn lower_simple_command(&mut self, mac: &MacroNode, system: &str, method: &str) {
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
@@ -585,7 +878,7 @@ impl TranslateCtx {
             .system_call(system, method, &args, Type::Dynamic);
     }
 
-    // ── DOM macros ─────────────────────────────────────────────────────
+    // ── DOM macros ─────────────────────────────────────────────────
 
     fn lower_dom_macro(&mut self, mac: &MacroNode) {
         let method = self.fb.const_string(&mac.name);
@@ -603,7 +896,7 @@ impl TranslateCtx {
             .system_call("Harlowe.Engine", "dom_macro", &call_args, Type::Void);
     }
 
-    // ── Click macros ───────────────────────────────────────────────────
+    // ── Click macros ───────────────────────────────────────────────
 
     fn lower_click_macro(&mut self, mac: &MacroNode) {
         let method = self.fb.const_string(&mac.name);
@@ -621,7 +914,7 @@ impl TranslateCtx {
             .system_call("Harlowe.Engine", "click_macro", &call_args, Type::Void);
     }
 
-    // ── Unknown macros ─────────────────────────────────────────────────
+    // ── Unknown macros ─────────────────────────────────────────────
 
     fn lower_unknown_macro(&mut self, mac: &MacroNode) {
         let name = self.fb.const_string(&mac.name);
@@ -632,11 +925,14 @@ impl TranslateCtx {
             .system_call("Harlowe.Engine", "unknown_macro", &call_args, Type::Dynamic);
 
         if let Some(ref hook) = mac.hook {
-            self.lower_nodes(hook);
+            // Just lower the hook for side effects; unknown macros can't be content
+            for node in hook {
+                self.lower_node(node);
+            }
         }
     }
 
-    // ── Callback building ──────────────────────────────────────────────
+    // ── Callback building ──────────────────────────────────────────
 
     fn make_callback_name(&mut self, kind: &str) -> String {
         let name = format!("{}_{kind}_{}", self.func_name, self.callback_count);
@@ -647,7 +943,7 @@ impl TranslateCtx {
     fn build_callback(&mut self, name: &str, body: &[Node]) -> ValueId {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void,
+            return_ty: Type::Dynamic,
             defaults: vec![],
             has_rest_param: false,
         };
@@ -656,8 +952,8 @@ impl TranslateCtx {
         let saved_fb = std::mem::replace(&mut self.fb, cb_fb);
         let saved_temps = std::mem::take(&mut self.temp_vars);
 
-        self.lower_nodes(body);
-        self.fb.ret(None);
+        let content = self.lower_content_array(body);
+        self.fb.ret(Some(content));
 
         cb_fb = std::mem::replace(&mut self.fb, saved_fb);
         self.temp_vars = saved_temps;
@@ -667,7 +963,7 @@ impl TranslateCtx {
         self.fb.global_ref(name, Type::Dynamic)
     }
 
-    // ── Temp variable helpers ──────────────────────────────────────────
+    // ── Temp variable helpers ──────────────────────────────────────
 
     fn get_or_create_temp(&mut self, name: &str) -> ValueId {
         if let Some(&alloc) = self.temp_vars.get(name) {
@@ -684,7 +980,7 @@ impl TranslateCtx {
         self.fb.load(alloc, Type::Dynamic)
     }
 
-    // ── Expression lowering ────────────────────────────────────────────
+    // ── Expression lowering ────────────────────────────────────────
 
     fn lower_expr(&mut self, expr: &Expr) -> ValueId {
         match &expr.kind {
@@ -692,8 +988,6 @@ impl TranslateCtx {
             ExprKind::Str(s) => self.fb.const_string(s.as_str()),
             ExprKind::Bool(b) => self.fb.const_bool(*b),
             ExprKind::It => {
-                // Inside (set:), `it` refers to the target variable's current value.
-                // Outside (set:), `it` is the global it-value (set by comparisons).
                 if let Some(ref target) = self.set_target.clone() {
                     self.lower_expr(target)
                 } else {
@@ -708,7 +1002,6 @@ impl TranslateCtx {
             }
             ExprKind::TempVar(name) => self.get_or_load_temp(name),
             ExprKind::Ident(name) => {
-                // Identifiers in expression context — could be enum values, etc.
                 self.fb.const_string(name.as_str())
             }
             ExprKind::ColorLiteral(color) => self.fb.const_string(color.as_str()),
@@ -758,7 +1051,6 @@ impl TranslateCtx {
     }
 
     fn lower_binary(&mut self, op: &BinaryOp, left: &Expr, right: &Expr) -> ValueId {
-        // Short-circuit operators
         match op {
             BinaryOp::And => return self.lower_logical_and(left, right),
             BinaryOp::Or => return self.lower_logical_or(left, right),
@@ -770,8 +1062,6 @@ impl TranslateCtx {
 
         match op {
             BinaryOp::Add | BinaryOp::Plus => {
-                // Harlowe's `+` is polymorphic: arithmetic on numbers, composition
-                // on changers/arrays/datamaps. Route through runtime to handle all cases.
                 self.fb
                     .system_call("Harlowe.Engine", "plus", &[lhs, rhs], Type::Dynamic)
             }
@@ -793,7 +1083,6 @@ impl TranslateCtx {
                 self.fb
                     .system_call("Harlowe.Engine", "is_in", &[lhs, rhs], Type::Bool)
             }
-            // And/Or handled above
             BinaryOp::And | BinaryOp::Or => unreachable!(),
         }
     }
@@ -839,7 +1128,6 @@ impl TranslateCtx {
         let merge_params = self.fb.add_block_params(merge_block, &[Type::Dynamic]);
         let merge_param = merge_params[0];
 
-        // If truthy → short-circuit to merge with lhs; else → evaluate rhs
         self.fb
             .br_if(lhs, merge_block, &[lhs], rhs_block, &[]);
 
@@ -851,7 +1139,7 @@ impl TranslateCtx {
         merge_param
     }
 
-    // ── Inline macro calls in expressions ──────────────────────────────
+    // ── Inline macro calls in expressions ──────────────────────────
 
     fn lower_call(&mut self, name: &str, args: &[Expr]) -> ValueId {
         let lowered_args: Vec<ValueId> = args.iter().map(|a| self.lower_expr(a)).collect();
@@ -944,7 +1232,6 @@ impl TranslateCtx {
                 )
             }
             name if macros::macro_kind(name) == MacroKind::Changer => {
-                // Changer macros in expression context → create_changer
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
@@ -956,7 +1243,6 @@ impl TranslateCtx {
                 )
             }
             _ => {
-                // Unknown function — generic call
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
@@ -980,8 +1266,9 @@ mod tests {
     fn test_plain_text_emits_output() {
         let ast = parser::parse("Hello world");
         let result = translate_passage("test", &ast);
-        // Should produce a function with system calls
         assert_eq!(result.func.name, "passage_test");
+        // Return type should be Dynamic (returns content array)
+        assert_eq!(result.func.sig.return_ty, Type::Dynamic);
     }
 
     #[test]
@@ -1011,6 +1298,8 @@ mod tests {
         let ast = parser::parse("(link: \"Continue\")[(goto: \"Next\")]");
         let result = translate_passage("test_link_macro", &ast);
         assert_eq!(result.callbacks.len(), 1);
+        // Callback should return Dynamic
+        assert_eq!(result.callbacks[0].sig.return_ty, Type::Dynamic);
     }
 
     #[test]
@@ -1041,7 +1330,6 @@ You're at the **entryway**
 (if: $hypnoStat < 70)[Normal text.](else:)[(color: magenta+white)[Hypno text.]]"#;
         let ast = parser::parse(src);
         let result = translate_passage("complex", &ast);
-        // Should compile without panics
         assert!(!result.func.blocks.is_empty());
     }
 
@@ -1055,11 +1343,9 @@ You're at the **entryway**
     #[test]
     fn test_it_in_set_reads_target_variable() {
         use reincarnate_core::ir::inst::Op;
-        // `(set: $x to it + 1)` — `it` should resolve to get("x"), not get_it()
         let ast = parser::parse("(set: $x to it + 1)");
         let result = translate_passage("test_it_set", &ast);
         let func = &result.func;
-        // Verify no get_it() call exists in the IR
         let has_get_it = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
                 matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
@@ -1067,7 +1353,6 @@ You're at the **entryway**
             })
         });
         assert!(!has_get_it, "should not use get_it() inside (set:)");
-        // Verify there's a get("x") call (reading the target variable)
         let has_get_x = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
                 matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
@@ -1075,5 +1360,28 @@ You're at the **entryway**
             })
         });
         assert!(has_get_x, "should read target variable with get()");
+    }
+
+    #[test]
+    fn test_content_array_in_ir() {
+        use reincarnate_core::ir::inst::Op;
+        let ast = parser::parse("Hello");
+        let result = translate_passage("test_content", &ast);
+        let func = &result.func;
+        // Should have content_array and text_node system calls
+        let has_content_array = func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
+                    if system == "Harlowe.Output" && method == "content_array")
+            })
+        });
+        assert!(has_content_array, "should have content_array call");
+        let has_text_node = func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
+                    if system == "Harlowe.Output" && method == "text_node")
+            })
+        });
+        assert!(has_text_node, "should have text_node call");
     }
 }

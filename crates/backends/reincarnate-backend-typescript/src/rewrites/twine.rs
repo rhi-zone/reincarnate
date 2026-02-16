@@ -1,8 +1,9 @@
-//! Twine/SugarCube-specific JsExpr → JsExpr rewrite pass.
+//! Twine-specific JsExpr → JsExpr rewrite pass.
 //!
 //! Resolves `SugarCube.Engine.*` SystemCall nodes that map to native JavaScript
-//! constructs (`new`, `typeof`, `delete`, `in`, `**`, etc.). All other
-//! SugarCube SystemCalls pass through to runtime modules via the printer's
+//! constructs (`new`, `typeof`, `delete`, `in`, `**`, etc.) and `Harlowe.Output.*`
+//! content tree SystemCalls (`content_array` → ArrayInit, `text_node` → identity).
+//! All other SystemCalls pass through to runtime modules via the printer's
 //! `SystemCall` fallback + auto-import machinery.
 
 use std::collections::HashMap;
@@ -15,10 +16,54 @@ use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 /// Returns the bare function names that a SystemCall rewrite will introduce,
 /// if any. Used by import generation to emit the correct imports before
 /// the rewrite pass runs.
-pub fn rewrite_introduced_calls(_system: &str, _method: &str) -> &'static [&'static str] {
-    // Twine rewrites produce only built-in JS constructs (new, typeof, etc.)
-    // and calls to Math.pow / String — none of which need function-module imports.
-    &[]
+///
+/// For `Harlowe.Output.*` calls, the method names (except `content_array` and
+/// `text_node` which are rewritten to JS constructs) become bare function calls
+/// that need to be imported via `function_modules`.
+pub fn rewrite_introduced_calls(system: &str, method: &str) -> &'static [&'static str] {
+    if system == "Harlowe.Output" {
+        // content_array → ArrayInit, text_node → identity: no import needed.
+        // All other methods become bare function calls imported via function_modules.
+        match method {
+            "content_array" | "text_node" => &[],
+            "color" => &["color"],
+            "background" => &["background"],
+            "textStyle" => &["textStyle"],
+            "font" => &["font"],
+            "align" => &["align"],
+            "opacity" => &["opacity"],
+            "css" => &["css"],
+            "transition" => &["transition"],
+            "transitionTime" => &["transitionTime"],
+            "hidden" => &["hidden"],
+            "textSize" => &["textSize"],
+            "textRotateZ" => &["textRotateZ"],
+            "collapse" => &["collapse"],
+            "nobr" => &["nobr"],
+            "hoverStyle" => &["hoverStyle"],
+            "styled" => &["styled"],
+            "el" => &["el"],
+            "strong" => &["strong"],
+            "em" => &["em"],
+            "del" => &["del"],
+            "sup" => &["sup"],
+            "sub" => &["sub"],
+            "br" => &["br"],
+            "hr" => &["hr"],
+            "img" => &["img"],
+            "voidEl" => &["voidEl"],
+            "link" => &["link"],
+            "linkCb" => &["linkCb"],
+            "live" => &["live"],
+            "printVal" => &["printVal"],
+            "displayPassage" => &["displayPassage"],
+            _ => &[],
+        }
+    } else {
+        // SugarCube rewrites produce only built-in JS constructs (new, typeof, etc.)
+        // and calls to Math.pow / String — none of which need function-module imports.
+        &[]
+    }
 }
 
 /// Rewrite a function's body, resolving SugarCube.Engine SystemCalls that map
@@ -213,18 +258,35 @@ fn rewrite_expr_children(expr: &mut JsExpr, closures: &HashMap<String, JsFunctio
     }
 }
 
-/// Try to rewrite a SugarCube SystemCall into a native JS expression.
+/// Try to rewrite a Twine SystemCall into a native JS expression.
 ///
-/// Only rewrites `SugarCube.Engine.*` calls that map directly to JS constructs.
-/// Everything else (State, Output, Navigation, Audio, DOM, Input, Widget, and
-/// remaining Engine methods like iterate/eval/clone) returns `None` and passes
-/// through to the runtime modules via the printer's SystemCall fallback.
+/// Rewrites:
+/// - `SugarCube.Engine.*` calls → native JS constructs (new, typeof, etc.)
+/// - `Harlowe.Output.content_array(...)` → `[...]` (ArrayInit)
+/// - `Harlowe.Output.text_node(s)` → `s` (identity — strings ARE content nodes)
+/// - Other `Harlowe.Output.*` calls → bare function calls (method name as callee)
 fn try_rewrite_system_call(
     system: &str,
     method: &str,
     args: &mut Vec<JsExpr>,
     closures: &HashMap<String, JsFunction>,
 ) -> Option<JsExpr> {
+    // Harlowe.Output rewrites
+    if system == "Harlowe.Output" {
+        return match method {
+            "content_array" => Some(JsExpr::ArrayInit(std::mem::take(args))),
+            "text_node" if args.len() == 1 => Some(args.pop().unwrap()),
+            _ => {
+                // All other Harlowe.Output methods → bare function call
+                let callee = JsExpr::Var(method.to_string());
+                Some(JsExpr::Call {
+                    callee: Box::new(callee),
+                    args: std::mem::take(args),
+                })
+            }
+        };
+    }
+
     if system != "SugarCube.Engine" {
         return None;
     }
@@ -534,6 +596,95 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    // --- Harlowe.Output rewrite tests ---
+
+    #[test]
+    fn rewrite_harlowe_content_array() {
+        let expr = JsExpr::SystemCall {
+            system: "Harlowe.Output".into(),
+            method: "content_array".into(),
+            args: vec![
+                JsExpr::Literal(Constant::String("hello".into())),
+                JsExpr::Var("x".into()),
+            ],
+        };
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
+        match extract_expr(&func) {
+            JsExpr::ArrayInit(items) => {
+                assert_eq!(items.len(), 2);
+                assert!(matches!(&items[0], JsExpr::Literal(Constant::String(s)) if s == "hello"));
+                assert!(matches!(&items[1], JsExpr::Var(n) if n == "x"));
+            }
+            other => panic!("expected ArrayInit, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_harlowe_text_node() {
+        let expr = JsExpr::SystemCall {
+            system: "Harlowe.Output".into(),
+            method: "text_node".into(),
+            args: vec![JsExpr::Literal(Constant::String("hello".into()))],
+        };
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
+        match extract_expr(&func) {
+            JsExpr::Literal(Constant::String(s)) => assert_eq!(s, "hello"),
+            other => panic!("expected string literal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_harlowe_builder_call() {
+        // Harlowe.Output.color(val, children) → color(val, children)
+        let expr = JsExpr::SystemCall {
+            system: "Harlowe.Output".into(),
+            method: "color".into(),
+            args: vec![
+                JsExpr::Literal(Constant::String("red".into())),
+                JsExpr::ArrayInit(vec![JsExpr::Literal(Constant::String("text".into()))]),
+            ],
+        };
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
+        match extract_expr(&func) {
+            JsExpr::Call { callee, args } => {
+                assert!(matches!(callee.as_ref(), JsExpr::Var(n) if n == "color"));
+                assert_eq!(args.len(), 2);
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_harlowe_br() {
+        let expr = JsExpr::SystemCall {
+            system: "Harlowe.Output".into(),
+            method: "br".into(),
+            args: vec![],
+        };
+        let func = rewrite_twine_function(func_with_expr(expr), &no_closures());
+        match extract_expr(&func) {
+            JsExpr::Call { callee, args } => {
+                assert!(matches!(callee.as_ref(), JsExpr::Var(n) if n == "br"));
+                assert!(args.is_empty());
+            }
+            other => panic!("expected Call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn harlowe_introduced_calls() {
+        assert_eq!(rewrite_introduced_calls("Harlowe.Output", "color"), &["color"]);
+        assert_eq!(rewrite_introduced_calls("Harlowe.Output", "strong"), &["strong"]);
+        assert_eq!(rewrite_introduced_calls("Harlowe.Output", "br"), &["br"]);
+        assert_eq!(rewrite_introduced_calls("Harlowe.Output", "link"), &["link"]);
+        assert_eq!(rewrite_introduced_calls("Harlowe.Output", "printVal"), &["printVal"]);
+        // Rewritten to JS constructs — no import needed
+        assert!(rewrite_introduced_calls("Harlowe.Output", "content_array").is_empty());
+        assert!(rewrite_introduced_calls("Harlowe.Output", "text_node").is_empty());
+        // SugarCube — no imports
+        assert!(rewrite_introduced_calls("SugarCube.Engine", "new").is_empty());
     }
 
     #[test]
