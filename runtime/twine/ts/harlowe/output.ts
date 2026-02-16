@@ -68,6 +68,60 @@ function appendNode(node: Node): void {
   }
 }
 
+// --- Color resolution ---
+
+/** Harlowe named color palette — hex values from Harlowe source (colour.js). */
+const HARLOWE_COLORS: Record<string, [number, number, number]> = {
+  red: [0xe6, 0x19, 0x19],
+  orange: [0xe6, 0x80, 0x19],
+  yellow: [0xe5, 0xe6, 0x19],
+  lime: [0x80, 0xe6, 0x19],
+  green: [0x19, 0xe6, 0x19],
+  aqua: [0x19, 0xe5, 0xe6],
+  cyan: [0x19, 0xe5, 0xe6],
+  blue: [0x19, 0x7f, 0xe6],
+  navy: [0x19, 0x19, 0xe6],
+  purple: [0x7f, 0x19, 0xe6],
+  magenta: [0xe6, 0x19, 0xe5],
+  fuchsia: [0xe6, 0x19, 0xe5],
+  white: [0xff, 0xff, 0xff],
+  black: [0x00, 0x00, 0x00],
+  grey: [0x88, 0x88, 0x88],
+  gray: [0x88, 0x88, 0x88],
+};
+
+/** Blend two RGB triples using Harlowe's formula: (a + b) * 0.6, clamped to 255. */
+function blendColors(a: [number, number, number], b: [number, number, number]): [number, number, number] {
+  return [
+    Math.min(Math.round((a[0] + b[0]) * 0.6), 255),
+    Math.min(Math.round((a[1] + b[1]) * 0.6), 255),
+    Math.min(Math.round((a[2] + b[2]) * 0.6), 255),
+  ];
+}
+
+/** Resolve a Harlowe color value to a CSS color string.
+ *  Handles named colors, color+color composition (chained pairwise
+ *  left-to-right), and pass-through for hex/rgb()/hsl() values. */
+function resolveColor(value: string): string {
+  const s = value.trim().toLowerCase();
+  if (s === "transparent") return "transparent";
+  if (!s.includes("+")) {
+    const rgb = HARLOWE_COLORS[s];
+    if (rgb) return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+    return value;
+  }
+  const parts = s.split("+");
+  const first = HARLOWE_COLORS[parts[0].trim()];
+  if (!first) return value;
+  let acc: [number, number, number] = first;
+  for (let i = 1; i < parts.length; i++) {
+    const rgb = HARLOWE_COLORS[parts[i].trim()];
+    if (!rgb) return value;
+    acc = blendColors(acc, rgb);
+  }
+  return `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})`;
+}
+
 // --- Changer application ---
 
 /** Wrap an element with current changer stack styling. */
@@ -76,14 +130,14 @@ function applyChangers(el: HTMLElement): void {
     switch (changer.name) {
       case "color":
       case "colour":
-        el.style.color = String(changer.args[0]);
+        el.style.color = resolveColor(String(changer.args[0]));
         break;
       case "text-colour":
       case "text-color":
-        el.style.color = String(changer.args[0]);
+        el.style.color = resolveColor(String(changer.args[0]));
         break;
       case "background":
-        el.style.backgroundColor = String(changer.args[0]);
+        el.style.backgroundColor = resolveColor(String(changer.args[0]));
         break;
       case "text-style": {
         const style = String(changer.args[0]);
