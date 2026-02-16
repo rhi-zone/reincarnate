@@ -351,8 +351,16 @@ export class HarloweContext {
 
   // --- Interactive elements ---
 
-  /** Passage navigation link. */
+  /** Passage navigation link (or broken link if passage doesn't exist). */
   link(text: string, passage: string): Node {
+    if (!Navigation.has(passage)) {
+      const el = document.createElement("tw-broken-link") as HTMLElement;
+      el.textContent = text;
+      el.setAttribute("passage-name", passage);
+      this.current().appendChild(el);
+      this.prevBr = false;
+      return el;
+    }
     const el = document.createElement("tw-link") as HTMLElement;
     el.setAttribute("tabindex", "0");
     el.textContent = text;
@@ -464,7 +472,13 @@ export class HarloweContext {
   }
 
   align(v: string, ...children: Child[]): Node {
-    return this.styled({ name: "align", args: [v] }, ...children);
+    const el = document.createElement("tw-align") as HTMLElement;
+    const a = resolveAlign(v);
+    el.style.textAlign = a;
+    this.appendChildren(el, children);
+    this.current().appendChild(el);
+    this.prevBr = false;
+    return el;
   }
 
   opacity(v: number, ...children: Child[]): Node {
@@ -496,7 +510,11 @@ export class HarloweContext {
   }
 
   collapse(...children: Child[]): Node {
-    return this.styled({ name: "collapse", args: [true] }, ...children);
+    const el = document.createElement("tw-collapsed") as HTMLElement;
+    this.appendChildren(el, children);
+    this.current().appendChild(el);
+    this.prevBr = false;
+    return el;
   }
 
   nobr(...children: Child[]): Node {
