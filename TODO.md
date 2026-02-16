@@ -172,13 +172,9 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   - Potential fix directions: split user scripts into smaller eval chunks,
     or identify the specific code pattern that causes the eval to fail.
 
-- [ ] **Un-parenthesized single-param arrow parsing** — The expression
-  parser only handles `(x) => expr` (parenthesized). JavaScript also allows
-  `x => expr` (bare identifier). DOL source likely uses both forms. The
-  un-parenthesized form is silently mis-parsed: `x` becomes an Ident
-  reference and `=> expr` is dropped/garbled. Fix: in the expression parser's
-  Ident handler, peek for `TokenKind::Arrow` after parsing an identifier and
-  produce `ExprKind::Arrow { params: [name], body }`.
+- [x] **Un-parenthesized single-param arrow parsing** — Fixed in `06a0dce`.
+  The parser now handles `x => expr` in addition to `(x) => expr`. DOL:
+  596 → 817 inline arrows (+221 previously broken).
 
 ### SugarCube Remaining Stubs
 
