@@ -578,6 +578,9 @@ function ensureGlobals(): void {
     return result;
   };
 
+  // --- clone ---
+  g.clone = clone;
+
   // --- importStyles(url) ---
   g.importStyles = (url: string): Promise<void> => {
     return new Promise((resolve, reject) => {

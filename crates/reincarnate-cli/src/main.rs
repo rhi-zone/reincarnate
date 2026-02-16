@@ -1,12 +1,12 @@
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::BufReader;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
 use reincarnate_core::pipeline::{Backend, BackendInput, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
-use reincarnate_core::project::{EngineOrigin, ProjectManifest, TargetBackend};
+use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 use reincarnate_core::transforms::default_pipeline;
 
 #[derive(Parser)]
@@ -77,9 +77,62 @@ fn load_manifest(path: &PathBuf) -> Result<ProjectManifest> {
                 target.output_dir = base.join(&target.output_dir);
             }
         }
+        for asset in &mut manifest.assets {
+            if asset.src.is_relative() {
+                asset.src = base.join(&asset.src);
+            }
+        }
     }
 
     Ok(manifest)
+}
+
+/// Recursively copy a directory tree from `src` to `dst`.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<u64> {
+    let mut count = 0u64;
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src).with_context(|| format!("reading asset dir: {}", src.display()))? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let dest = dst.join(entry.file_name());
+        if ty.is_dir() {
+            count += copy_dir_recursive(&entry.path(), &dest)?;
+        } else {
+            fs::copy(entry.path(), &dest)?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// Copy manifest-declared assets into each target output directory.
+fn copy_manifest_assets(assets: &[AssetMapping], output_dir: &Path) -> Result<()> {
+    for mapping in assets {
+        if !mapping.src.exists() {
+            eprintln!(
+                "[warn] manifest asset not found, skipping: {}",
+                mapping.src.display()
+            );
+            continue;
+        }
+        let dest = output_dir.join(mapping.dest_name());
+        if mapping.src.is_dir() {
+            let count = copy_dir_recursive(&mapping.src, &dest)?;
+            eprintln!(
+                "[emit] copied {} files from {} -> {}",
+                count,
+                mapping.src.display(),
+                dest.display()
+            );
+        } else {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(&mapping.src, &dest)?;
+            eprintln!("[emit] copied {} -> {}", mapping.src.display(), dest.display());
+        }
+    }
+    Ok(())
 }
 
 fn find_frontend(engine: &EngineOrigin) -> Option<Box<dyn Frontend>> {
@@ -263,6 +316,12 @@ fn cmd_emit(manifest_path: &PathBuf, skip_passes: &[String], preset: &str, debug
         backend
             .emit(input)
             .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        // Copy manifest-declared asset directories into the output.
+        if !manifest.assets.is_empty() {
+            copy_manifest_assets(&manifest.assets, &target.output_dir)?;
+        }
+
         println!(
             "Emitted {} output to {}",
             backend.name(),
