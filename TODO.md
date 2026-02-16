@@ -222,6 +222,47 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   arceus-garden: 1.1s → 0.22s (release). Remaining 2.4x vs baseline is
   from higher statement count (content-as-values), not algorithmic.
 
+### Harlowe DOM Fidelity — Missing `tw-*` Custom Elements
+
+Format CSS is now extracted from `<style title="Twine CSS">` in the story HTML
+and emitted as `assets/styles/format_harlowe.css`. Scaffold uses `<tw-story>`
+root for Harlowe (SugarCube keeps `<div id="passages">`).
+
+**Structural (done):**
+- [x] `<tw-story>` — root container (scaffold)
+- [x] `<tw-passage>` — wraps current passage (navigation.ts, `tags` attribute)
+- [x] `<tw-sidebar>` — sidebar with undo/redo (navigation.ts)
+- [x] `<tw-icon>` — clickable sidebar icons (navigation.ts)
+
+**Content (done):**
+- [x] `<tw-link>` — clickable links (context.ts)
+- [x] `<tw-broken-link>` — links to nonexistent passages (context.ts)
+- [x] `<tw-hook>` — changer-styled content wrapper (context.ts `styled()`)
+- [x] `<tw-expression>` — macro output wrapper (context.ts `live()`)
+- [x] `<tw-collapsed>` — collapsed whitespace sections (context.ts `collapse()`)
+- [x] `<tw-align>` — aligned content (context.ts `align()`)
+- [x] `<tw-consecutive-br>` — consecutive line break normalization (context.ts `br()`)
+- [x] `<tw-include>` — embedded passage content via `(display:)` (context.ts)
+
+**Content (remaining — need macro support, not used in test corpus):**
+- [ ] `<tw-verbatim>` — raw/verbatim text (needs `(verbatim:)` macro)
+- [ ] `<tw-transition-container>` — transition animation wrapper
+- [ ] `<tw-enchantment>` — enchanted element wrapper (needs `(enchant:)` macro)
+- [ ] `<tw-columns>` / `<tw-column>` — column layout (needs `(columns:)` macro)
+- [ ] `<tw-meter>` — progress meter (needs `(meter:)` macro)
+- [ ] `<tw-colour>` — color display element
+
+**Dialog system (remaining — needs `(dialog:)` macro):**
+- [ ] `<tw-dialog>` — modal dialog container
+- [ ] `<tw-backdrop>` — dialog backdrop overlay
+- [ ] `<tw-dialog-links>` — dialog link container
+
+**CSS animation keyframes:** Now extracted from format CSS (no runtime injection).
+
+**Error/debug (skip):** `tw-error`, `tw-debugger`, `tw-eval-*`, etc.
+
+**Data (extraction input only):** `tw-storydata`, `tw-passagedata`, `tw-tag`
+
 ### Harlowe Phase 2 (Advanced Features)
 
 - [ ] **`(for: each _item, ...$arr)[hook]`** — Loop lowering
