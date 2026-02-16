@@ -49,6 +49,8 @@ From ecosystem-wide session analysis:
 - **Name for purpose:** Avoid names that describe one consumer
 - **Verify before stating:** Don't assert API behavior or codebase facts without checking
 - **Consider tests for bug fixes:** When fixing a bug that has a clear, self-contained reproduction — especially in compiler passes (transforms, structurizer, AST passes, emit) — write a regression test. Not every fix warrants a test (runtime stubs, config changes, one-off wiring), but if the bug can recur from future code changes, a test prevents that. Err on the side of writing the test if unsure.
+- **Treat special-casing as a smell:** When a fix adds a narrow guard (`if this_specific_case { continue }`) to a pass, stop and ask whether the pass's core logic is wrong. A special case that prevents one crash often means the pass's assumptions are too broad — fix the assumption, not the symptom. Use `git blame` on the file to check whether a cluster of special-case guards have accumulated around the same function; that pattern indicates a deeper design gap.
+- **Use git blame for audits:** When fixing a bug in a pass, `git blame` the surrounding function to see if other guards were patched in after the fact. A function with multiple post-hoc `continue` guards is likely fragile — the guards compensate for an incomplete model rather than fixing it. Audit the whole function, not just the line that broke.
 
 ## Design Principles
 
