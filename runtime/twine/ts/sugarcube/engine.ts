@@ -57,24 +57,6 @@ function ensureGlobals(): void {
   // --- setup: empty object that user scripts populate with game data ---
   if (!g.setup) g.setup = {};
 
-  // --- V: proxy for story variables (State.get/set) ---
-  if (!g.V) {
-    g.V = new Proxy({} as Record<string, any>, {
-      get(_t: any, prop: string) { return State.get(prop); },
-      set(_t: any, prop: string, val: any) { State.set(prop, val); return true; },
-    });
-  }
-
-  // --- T: proxy for temporary variables (State.get/set with _ prefix) ---
-  if (!g.T) {
-    g.T = new Proxy({} as Record<string, any>, {
-      get(_t: any, prop: string) { return State.get("_" + (prop as string)); },
-      set(_t: any, prop: string, val: any) { State.set("_" + (prop as string), val); return true; },
-      deleteProperty(_t: any, prop: string) { State.set("_" + (prop as string), undefined); return true; },
-      has(_t: any, prop: string) { return State.get("_" + (prop as string)) !== undefined; },
-    });
-  }
-
   // --- Config ---
   g.Config = {
     passages: { nobr: false, descriptions: true, start: "Start", transitionOut: null },
@@ -132,8 +114,8 @@ function ensureGlobals(): void {
 
   // --- State ---
   g.State = {
-    variables: g.V,
-    temporary: g.T,
+    get variables() { return g.V; },
+    get temporary() { return g.T; },
     get active() { return { title: Navigation.current(), variables: g.V }; },
     hasPlayed(passage: string) { return State.hasPlayed(passage); },
     length: 0,
