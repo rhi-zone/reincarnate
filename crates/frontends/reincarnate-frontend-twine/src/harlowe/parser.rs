@@ -139,6 +139,7 @@ impl<'a> Parser<'a> {
             b'^' if self.peek_at(1) == Some(b'^') => {
                 self.parse_markup("^^", "sup", in_hook)
             }
+            b'`' => self.parse_verbatim(),
             _ => self.parse_text(in_hook),
         }
     }
@@ -659,6 +660,24 @@ impl<'a> Parser<'a> {
         self.parse_text(in_hook)
     }
 
+    /// Parse a backtick-delimited verbatim span: `` `...` ``
+    /// Everything between backticks is literal text — `]`, `[`, `(` etc. are not structural.
+    fn parse_verbatim(&mut self) -> Option<Node> {
+        let start = self.pos;
+        self.pos += 1; // skip opening `
+        while !self.at_end() && self.bytes[self.pos] != b'`' {
+            self.pos += 1;
+        }
+        if !self.at_end() {
+            self.pos += 1; // skip closing `
+        }
+        let text = self.source[start..self.pos].to_string();
+        Some(Node {
+            kind: NodeKind::Text(text),
+            span: Span::new(start, self.pos),
+        })
+    }
+
     /// Parse a run of plain text until a special character.
     fn parse_text(&mut self, in_hook: bool) -> Option<Node> {
         let start = self.pos;
@@ -684,6 +703,7 @@ impl<'a> Parser<'a> {
                 b'/' if self.peek_at(1) == Some(b'/') => break,
                 b'~' if self.peek_at(1) == Some(b'~') => break,
                 b'^' if self.peek_at(1) == Some(b'^') => break,
+                b'`' => break,
                 _ => self.pos += 1,
             }
         }
@@ -953,5 +973,43 @@ You're at the **entryway**
         assert_eq!(ast.errors.len(), 0);
         assert_eq!(ast.body.len(), 1);
         assert!(matches!(&ast.body[0].kind, NodeKind::Link(l) if l.passage == "Credits"));
+    }
+
+    #[test]
+    fn test_verbatim_backtick_in_hook() {
+        // Backtick verbatim spans must not break hook parsing.
+        // `]` inside backticks is literal, not a hook closer.
+        let ast = parse("(if: true)[`[X]`](else:)[`[Y]`]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Macro(mac) = &ast.body[0].kind {
+            assert_eq!(mac.name, "if");
+            // Main hook should contain the verbatim text
+            let hook = mac.hook.as_ref().unwrap();
+            assert_eq!(hook.len(), 1);
+            assert!(matches!(&hook[0].kind, NodeKind::Text(t) if t == "`[X]`"));
+            // Should have one else clause
+            assert_eq!(mac.clauses.len(), 1);
+            assert_eq!(mac.clauses[0].kind, "else");
+            assert_eq!(mac.clauses[0].body.len(), 1);
+            assert!(matches!(&mac.clauses[0].body[0].kind, NodeKind::Text(t) if t == "`[Y]`"));
+        } else {
+            panic!("expected macro node");
+        }
+    }
+
+    #[test]
+    fn test_verbatim_backtick_with_else_if() {
+        let ast = parse("(if: $x is 1)[(color: red)[`[A]`]](else-if: $x is 2)[(color: blue)[`[B]`]](else:)[`[C]`]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Macro(mac) = &ast.body[0].kind {
+            assert_eq!(mac.name, "if");
+            assert_eq!(mac.clauses.len(), 2, "should have else-if + else clauses");
+            assert_eq!(mac.clauses[0].kind, "else-if");
+            assert_eq!(mac.clauses[1].kind, "else");
+        } else {
+            panic!("expected macro node");
+        }
     }
 }
