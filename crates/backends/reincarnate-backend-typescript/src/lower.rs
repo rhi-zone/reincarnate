@@ -255,7 +255,10 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
             let mut pairs: Vec<(String, JsExpr)> = Vec::with_capacity(fields.len());
             for (name, val) in fields {
                 let lowered = lower_expr(val, ctx);
-                if let Some(&idx) = seen.get(name) {
+                if name == "..." {
+                    // Spread entries are never deduplicated
+                    pairs.push((name.clone(), lowered));
+                } else if let Some(&idx) = seen.get(name) {
                     eprintln!("warning: duplicate key '{name}' in object literal (last value wins)");
                     pairs[idx].1 = lowered;
                 } else {
