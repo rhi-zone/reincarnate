@@ -536,6 +536,44 @@ export function click_macro(method: string, ...args: any[]): void {
   });
 }
 
+// --- Meter ---
+
+/** `(meter: $var, max, label, color)` — progress meter element. */
+export function meter_macro(value: any, max: any, label?: any, color?: any): void {
+  const container = document.querySelector("tw-passage") || document.querySelector("tw-story");
+  if (!container) return;
+
+  const numValue = Number(value);
+  const numMax = Number(max);
+  const pct = numMax > 0 ? Math.min(100, Math.max(0, (numValue / numMax) * 100)) : 0;
+
+  const meter = document.createElement("tw-meter") as HTMLElement;
+  meter.style.display = "block";
+  meter.style.position = "relative";
+  meter.style.height = "1.5em";
+  meter.style.border = "1px solid #fff";
+  meter.style.marginBottom = "0.5em";
+
+  const bar = document.createElement("div");
+  bar.style.height = "100%";
+  bar.style.width = `${pct}%`;
+  bar.style.backgroundColor = color ? String(color) : "green";
+  bar.style.transition = "width 0.3s";
+  meter.appendChild(bar);
+
+  if (label != null) {
+    const labelEl = document.createElement("span");
+    labelEl.textContent = String(label);
+    labelEl.style.position = "absolute";
+    labelEl.style.left = "50%";
+    labelEl.style.top = "50%";
+    labelEl.style.transform = "translate(-50%, -50%)";
+    meter.appendChild(labelEl);
+  }
+
+  container.appendChild(meter);
+}
+
 // --- Enchant ---
 
 /** Resolve a Harlowe hook selector to a CSS selector string. */

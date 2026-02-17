@@ -540,6 +540,9 @@ impl TranslateCtx {
 
             // Enchant
             "enchant" | "enchant-in" => self.lower_enchant_macro(mac),
+
+            // Meter
+            "meter" => self.lower_meter_macro(mac),
             "column" => {
                 self.fb
                     .system_call("Harlowe.H", "columnBreak", &[], Type::Void);
@@ -1080,6 +1083,18 @@ impl TranslateCtx {
                 Type::Void,
             );
         }
+    }
+
+    // ── Meter ──────────────────────────────────────────────────
+
+    fn lower_meter_macro(&mut self, mac: &MacroNode) {
+        let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
+        self.fb.system_call(
+            "Harlowe.Engine",
+            "meter_macro",
+            &args,
+            Type::Void,
+        );
     }
 
     // ── Enchant ────────────────────────────────────────────────
