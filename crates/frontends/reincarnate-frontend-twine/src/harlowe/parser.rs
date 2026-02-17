@@ -179,8 +179,12 @@ impl<'a> Parser<'a> {
             self.parse_macro_args(&name, &args_text, start)
         } else if self.peek() == Some(b')') {
             // No colon — Harlowe macros always require `:`. This is prose like `(obviously)`.
-            self.pos = start;
-            return self.parse_text(false);
+            self.pos += 1; // consume the `)`
+            let text = self.source[start..self.pos].to_string();
+            return Some(Node {
+                kind: NodeKind::Text(text),
+                span: Span::new(start, self.pos),
+            });
         } else {
             // Not a real macro
             self.pos = start;
