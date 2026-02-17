@@ -3,6 +3,7 @@
 import { HarloweContext, cancelTimers, departOldPassage } from "./context";
 import type { HarloweRuntime } from "./runtime";
 import type { DocumentFactory } from "../../../shared/ts/render-root";
+import { commitSave } from "../platform";
 
 /** Passage function type — receives h context, returns void. */
 export type PassageFn = (h: HarloweContext) => void;
@@ -91,6 +92,7 @@ export class HarloweNavigation {
     }
     this.rt.State.pushMoment(target);
     this.renderPassage(target, fn);
+    commitSave();
   }
 
   /** Include (embed) another passage inline using the provided context. */

@@ -59,7 +59,15 @@ export class HarloweRuntime {
     );
     this.Navigation.initCommands(Platform.registerCommand);
 
-    // Navigate to the explicit start passage, or fall back to first registered
+    // Try to resume from autosave, otherwise navigate to start passage
+    const resumed = Platform.tryResume();
+    if (resumed) {
+      const fn = this.Navigation.passages.get(resumed);
+      if (fn) {
+        this.Navigation.renderPassage(resumed, fn);
+        return;
+      }
+    }
     const target = startPassage || Object.keys(passageMap)[0];
     if (target) {
       this.Navigation.goto(target);

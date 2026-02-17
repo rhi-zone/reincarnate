@@ -6,6 +6,7 @@
 
 import type { RenderRoot } from "../../../shared/ts/render-root";
 import type { PassageFn } from "./navigation";
+import { tryResume } from "../platform";
 import { SCState } from "./state";
 import { SCEvents } from "./events";
 import { SCOutput } from "./output";
@@ -85,9 +86,19 @@ export class SugarCubeRuntime {
       }
     }
 
-    const target = startPassage || Object.keys(passageMap)[0];
-    if (target) {
-      this.Navigation.goto(target);
+    // Try to resume from autosave, otherwise navigate to start passage
+    const resumed = tryResume();
+    if (resumed) {
+      const fn = this.Navigation.passages.get(resumed);
+      if (fn) {
+        this.Navigation.renderPassage(resumed, fn);
+      } else {
+        const target = startPassage || Object.keys(passageMap)[0];
+        if (target) this.Navigation.goto(target);
+      }
+    } else {
+      const target = startPassage || Object.keys(passageMap)[0];
+      if (target) this.Navigation.goto(target);
     }
 
     this.Events.trigger(":storyready");

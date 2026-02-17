@@ -78,6 +78,27 @@ export function init(
   });
 }
 
+/** Continuous autosave — call after each passage transition. */
+export function commit(): void {
+  try {
+    backend.save(slotPrefix + "_autosave", state.serialize());
+  } catch {
+    // Silent fail — autosave is best-effort
+  }
+}
+
+/** Check for an existing autosave and resume. Returns passage title or undefined. */
+export function tryResume(): string | undefined {
+  const raw = backend.load(slotPrefix + "_autosave");
+  if (raw === null) return undefined;
+  return state.deserialize(raw);
+}
+
+/** Clear the autosave. */
+export function clearAutosave(): void {
+  backend.remove(slotPrefix + "_autosave");
+}
+
 /** Save current state to a named slot. */
 export function saveSlot(name: string): boolean {
   try {

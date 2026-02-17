@@ -11,6 +11,7 @@ export { loadLocal, saveLocal, removeLocal, localStorageBackend } from "./persis
 export {
   type SaveBackend, type SaveableState,
   init as initSave,
+  commit as commitSave, tryResume, clearAutosave,
   saveSlot, loadSlot, deleteSlot, hasSlot, slotCount, totalSlots,
 } from "./save";
 
