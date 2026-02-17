@@ -44,6 +44,12 @@ pub struct RuntimeConfig {
     /// Backend reads these directly; CLI `--skip-pass` can override.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub pass_defaults: BTreeMap<String, bool>,
+    /// The root runtime type for stateful system module access.
+    /// When set, stateful system modules are accessed via `_rt.Property`
+    /// instead of namespace imports. The emitter adds `_rt: Name` as the
+    /// first parameter of free functions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_type: Option<RuntimeType>,
 }
 
 /// A single system module mapping.
@@ -56,6 +62,19 @@ pub struct SystemModule {
     /// of a namespace import (`import * as SugarCube_Output`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stateful: Option<bool>,
+}
+
+/// The root runtime type used for stateful system module access.
+///
+/// e.g. `{ "name": "SugarCubeRuntime", "path": "sugarcube/runtime" }`
+/// causes the emitter to add `_rt: SugarCubeRuntime` as the first parameter
+/// of free functions and generate `import type { Name } from "path"`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeType {
+    /// Type name (e.g. `"SugarCubeRuntime"`).
+    pub name: String,
+    /// Module path relative to runtime root (e.g. `"sugarcube/runtime"`).
+    pub path: String,
 }
 
 /// Configuration for the generated entry point (`main.ts`).

@@ -70,7 +70,19 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
     }
 
     let engine = detect_engine(runtime_config);
-    emit_runtime_imports(module, &mut out, runtime_config, engine);
+    let mut stateful_system_aliases = BTreeMap::new();
+    emit_runtime_imports(module, &mut out, runtime_config, engine, &mut stateful_system_aliases);
+    // If any system modules are stateful, import the runtime type for `_rt` parameter.
+    if !stateful_system_aliases.is_empty() {
+        if let Some(rt_type) = runtime_config.and_then(|c| c.runtime_type.as_ref()) {
+            let _ = writeln!(
+                out,
+                "import type {{ {} }} from \"./runtime/{}\";",
+                rt_type.name, rt_type.path,
+            );
+            out.push('\n');
+        }
+    }
     if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
         let _ = writeln!(
             out,
@@ -88,7 +100,7 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
     // Single-file mode — globals are in the same scope, no ESM setter rewrite needed.
     let no_mutable_globals = HashSet::new();
     if module.classes.is_empty() {
-        emit_functions(module, &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, debug, &mut out)?;
+        emit_functions(module, &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &stateful_system_aliases, runtime_config, debug, &mut out)?;
     } else {
         // Single-file mode: no circular imports (all classes in one scope).
         let no_late_bound = HashSet::new();
@@ -96,6 +108,7 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
         let (class_groups, free_funcs) = group_by_class(module);
         let no_stateful = BTreeSet::new();
         let no_free_fns = HashSet::new();
+        let no_sys_aliases = BTreeMap::new();
         for group in &class_groups {
             emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, &known_classes, lowering_config, engine, &no_stateful, &no_free_fns, debug, &mut out)?;
         }
@@ -106,7 +119,7 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
         let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
-                emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &module.sprite_names, &closure_bodies, &no_stateful, &no_free_fns, debug, &mut out)?;
+                emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &module.sprite_names, &closure_bodies, &no_stateful, &no_free_fns, &no_sys_aliases, runtime_config, debug, &mut out)?;
             }
         }
     }
@@ -849,7 +862,8 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let mut out = String::new();
         let class_funcs = || group.methods.iter().map(|&fid| &module.functions[fid]);
         let systems = collect_system_names_from_funcs(class_funcs());
-        emit_runtime_imports_for(systems, &mut out, depth, runtime_config);
+        let mut _class_sys_aliases = BTreeMap::new();
+        emit_runtime_imports_for(systems, &mut out, depth, runtime_config, &mut _class_sys_aliases);
         let calls = collect_call_names_from_funcs(class_funcs(), engine);
         let func_prefix = "../".repeat(depth + 1);
         let func_prefix = func_prefix.trim_end_matches('/');
@@ -901,7 +915,8 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let mut out = String::new();
         let free_fn_iter = || free_funcs.iter().map(|&fid| &module.functions[fid]);
         let systems = collect_system_names_from_funcs(free_fn_iter());
-        emit_runtime_imports_for(systems, &mut out, 0, runtime_config);
+        let mut _free_sys_aliases = BTreeMap::new();
+        emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
         let calls = collect_call_names_from_funcs(free_fn_iter(), engine);
         let mut free_stateful_names = BTreeSet::new();
         emit_function_imports_with_prefix(&calls, &mut out, "..", runtime_config, &mut free_stateful_names);
@@ -971,9 +986,10 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
             .collect();
         let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+        let no_sys_aliases = BTreeMap::new();
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
-                emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, &free_stateful_names, &free_func_names, debug, &mut out)?;
+                emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, &free_stateful_names, &free_func_names, &no_sys_aliases, runtime_config, debug, &mut out)?;
             }
         }
         strip_unused_namespace_imports(&mut out);
@@ -1096,14 +1112,13 @@ fn collect_system_names_from_funcs<'a>(
 }
 
 /// Emit runtime imports for flat modules (files directly in `output_dir`).
-fn emit_runtime_imports(module: &Module, out: &mut String, runtime_config: Option<&RuntimeConfig>, engine: EngineKind) {
+fn emit_runtime_imports(module: &Module, out: &mut String, runtime_config: Option<&RuntimeConfig>, engine: EngineKind, stateful_system_aliases: &mut BTreeMap<String, String>) {
     let all_funcs = || module.functions.iter().map(|(_id, f)| f);
     let systems = collect_system_names_from_funcs(all_funcs());
-    emit_runtime_imports_with_prefix(systems, out, ".", runtime_config);
+    emit_runtime_imports_with_prefix(systems, out, ".", runtime_config, stateful_system_aliases);
     let calls = collect_call_names_from_funcs(all_funcs(), engine);
     let mut _flat_stateful = BTreeSet::new();
     emit_function_imports_with_prefix(&calls, out, ".", runtime_config, &mut _flat_stateful);
-    // Flat modules (Flash/Twine) don't use the stateful split yet.
 }
 
 /// Emit runtime imports for files inside a module directory.
@@ -1111,10 +1126,10 @@ fn emit_runtime_imports(module: &Module, out: &mut String, runtime_config: Optio
 /// `depth` is the number of namespace directories below the module dir. The
 /// module dir itself is one level inside `output_dir`, so the prefix traverses
 /// `depth + 1` parent directories.
-fn emit_runtime_imports_for(systems: BTreeSet<String>, out: &mut String, depth: usize, runtime_config: Option<&RuntimeConfig>) {
+fn emit_runtime_imports_for(systems: BTreeSet<String>, out: &mut String, depth: usize, runtime_config: Option<&RuntimeConfig>, stateful_system_aliases: &mut BTreeMap<String, String>) {
     let prefix = "../".repeat(depth + 1);
     let prefix = prefix.trim_end_matches('/');
-    emit_runtime_imports_with_prefix(systems, out, prefix, runtime_config);
+    emit_runtime_imports_with_prefix(systems, out, prefix, runtime_config, stateful_system_aliases);
 }
 
 fn emit_runtime_imports_with_prefix(
@@ -1122,6 +1137,7 @@ fn emit_runtime_imports_with_prefix(
     out: &mut String,
     prefix: &str,
     runtime_config: Option<&RuntimeConfig>,
+    stateful_system_aliases: &mut BTreeMap<String, String>,
 ) {
     if systems.is_empty() {
         return;
@@ -1134,10 +1150,19 @@ fn emit_runtime_imports_with_prefix(
         if known.contains(sys.as_str()) {
             generic.push(sys.as_str());
         } else if let Some(sm) = runtime_config.and_then(|c| c.system_modules.get(sys.as_str())) {
-            by_mod
-                .entry(sm.path.clone())
-                .or_default()
-                .push(sanitize_ident(sys));
+            if sm.stateful.unwrap_or(false) {
+                // Stateful system module — skip namespace import; will be
+                // aliased from `_rt` inside each function.
+                let ident = sanitize_ident(sys);
+                // Property name: strip engine prefix (e.g. "SugarCube.Output" → "Output").
+                let prop = sys.split('.').next_back().unwrap_or(sys).to_string();
+                stateful_system_aliases.insert(ident, prop);
+            } else {
+                by_mod
+                    .entry(sm.path.clone())
+                    .or_default()
+                    .push(sanitize_ident(sys));
+            }
         } else {
             // Fallback: derive module path from system name.
             let module = sys
@@ -2291,6 +2316,8 @@ fn emit_functions(
     mutable_global_names: &HashSet<String>,
     lowering_config: &LoweringConfig,
     engine: EngineKind,
+    stateful_system_aliases: &BTreeMap<String, String>,
+    runtime_config: Option<&RuntimeConfig>,
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -2304,7 +2331,7 @@ fn emit_functions(
         if module.functions[id].method_kind != MethodKind::Closure {
             let no_stateful = BTreeSet::new();
             let no_free_fns = HashSet::new();
-            emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, &no_stateful, &no_free_fns, debug, out)?;
+            emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, &no_stateful, &no_free_fns, stateful_system_aliases, runtime_config, debug, out)?;
         }
     }
     Ok(())
@@ -2322,6 +2349,8 @@ fn emit_function(
     closure_bodies: &HashMap<String, JsFunction>,
     stateful_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
+    stateful_system_aliases: &BTreeMap<String, String>,
+    runtime_config: Option<&RuntimeConfig>,
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -2377,10 +2406,26 @@ fn emit_function(
     }
     // Build preamble and prepend `_rt` parameter for stateful free functions.
     let preamble = if !stateful_names.is_empty() {
-        // Add `_rt: GameRuntime` as first parameter.
-        js_func.params.insert(0, ("_rt".into(), Type::Struct("GameRuntime".into())));
+        // GameMaker: destructure stateful function-module names from `_rt`.
+        let rt_type_name = runtime_config
+            .and_then(|c| c.runtime_type.as_ref())
+            .map(|t| t.name.as_str())
+            .unwrap_or("GameRuntime");
+        js_func.params.insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
         let names: Vec<&str> = stateful_names.iter().map(|s| s.as_str()).collect();
         Some(format!("const {{ {} }} = _rt;", names.join(", ")))
+    } else if !stateful_system_aliases.is_empty() {
+        // Twine: alias stateful system modules from `_rt` properties.
+        let rt_type_name = runtime_config
+            .and_then(|c| c.runtime_type.as_ref())
+            .map(|t| t.name.as_str())
+            .unwrap_or("SugarCubeRuntime");
+        js_func.params.insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
+        let lines: Vec<String> = stateful_system_aliases
+            .iter()
+            .map(|(ident, prop)| format!("const {ident} = _rt.{prop};"))
+            .collect();
+        Some(lines.join("\n  "))
     } else {
         None
     };
