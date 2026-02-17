@@ -1674,7 +1674,9 @@ impl<'a> EmitCtx<'a> {
             let expr = self.side_effecting_inlines.remove(&v).unwrap();
             self.se_flush_declared.insert(v);
             let name = self.value_name(v);
-            if self.shared_names.contains(&name) {
+            if self.shared_names.contains(&name)
+                || self.referenced_block_params.contains(&v)
+            {
                 stmts.push(Stmt::Assign {
                     target: Expr::Var(name),
                     value: expr,
@@ -3462,6 +3464,82 @@ mod tests {
         assert!(
             has_while_with_cond,
             "Expected while with hoisted condition: {}",
+            debug_body(&ast.body)
+        );
+    }
+
+    // Regression: LogicalOr inside a then-branch with else-branch also assigning
+    // to the same phi block param must not produce duplicate declarations.
+    // The LogicalOr's emit_or_inline stores the phi in side_effecting_inlines,
+    // but the else-branch's Assign adds phi to referenced_block_params.
+    // Without the fix, flush_side_effecting_inlines would emit `const phi = ...`
+    // while collect_block_param_decls would emit `let phi: boolean;`.
+    #[test]
+    fn logical_or_in_branch_no_duplicate_decl() {
+        // IR shape:
+        //   entry: v_outer = cmp(param0, param1)
+        //          br_if v_outer, block_or_head(), merge(v_outer)
+        //   block_or_head: v_a = cmp(param0, 5)
+        //                  br_if v_a, merge(v_a), block_or_rhs()
+        //   block_or_rhs:  v_b = cmp(param1, 5)
+        //                  br merge(v_b)
+        //   merge(phi):    br_if phi, then_block(), else_block()
+        //   then_block:    return
+        //   else_block:    return
+        let sig = FunctionSig {
+            params: vec![Type::Int(32), Type::Int(32)],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
+        let p0 = fb.param(0);
+        let p1 = fb.param(1);
+
+        let block_or_head = fb.create_block();
+        let block_or_rhs = fb.create_block();
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Bool]);
+        let phi = merge_vals[0];
+        let then_block = fb.create_block();
+        let else_block = fb.create_block();
+
+        // entry
+        let v_outer = fb.cmp(CmpKind::Lt, p0, p1);
+        fb.br_if(v_outer, block_or_head, &[], merge, &[v_outer]);
+
+        // block_or_head: first part of logical OR
+        fb.switch_to_block(block_or_head);
+        let five = fb.const_int(5);
+        let v_a = fb.cmp(CmpKind::Lt, p0, five);
+        fb.br_if(v_a, merge, &[v_a], block_or_rhs, &[]);
+
+        // block_or_rhs: second part of logical OR
+        fb.switch_to_block(block_or_rhs);
+        let five2 = fb.const_int(5);
+        let v_b = fb.cmp(CmpKind::Lt, p1, five2);
+        fb.br(merge, &[v_b]);
+
+        // merge: uses phi in a branch
+        fb.switch_to_block(merge);
+        fb.br_if(phi, then_block, &[], else_block, &[]);
+
+        fb.switch_to_block(then_block);
+        fb.ret(None);
+
+        fb.switch_to_block(else_block);
+        fb.ret(None);
+
+        let mut func = fb.build();
+        let shape = structurize(&mut func);
+        let config = LoweringConfig::default();
+        let ast = lower_function_linear(&func, &shape, &config, &DebugConfig::none());
+
+        // The phi variable name must appear in at most ONE VarDecl across
+        // the entire body.  Two VarDecls = duplicate declaration error.
+        let phi_name = format!("v{}", phi.index());
+        let decl_count = count_var_decls(&ast.body, &phi_name);
+        assert!(
+            decl_count <= 1,
+            "Expected at most 1 VarDecl for '{phi_name}', got {decl_count}: {}",
             debug_body(&ast.body)
         );
     }
