@@ -18,6 +18,7 @@ export {
   init as initSave,
   commit as commitSave, tryResume, clearAutosave,
   saveSlot, loadSlot, deleteSlot, hasSlot, slotCount, totalSlots,
+  tee, debounced, rolling,
 } from "./save";
 
 export {

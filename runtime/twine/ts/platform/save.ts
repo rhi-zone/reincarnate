@@ -139,3 +139,68 @@ export function slotCount(): number {
 export function totalSlots(): number {
   return SLOT_COUNT;
 }
+
+// --- Composable backend wrappers ---
+
+/** Fan-out writes to multiple backends. Reads from the first. */
+export function tee(...backends: SaveBackend[]): SaveBackend {
+  return {
+    load(key: string) { return backends[0]?.load(key) ?? null; },
+    save(key: string, value: string) { for (const b of backends) b.save(key, value); },
+    remove(key: string) { for (const b of backends) b.remove(key); },
+  };
+}
+
+/** Debounce writes by key. Reads always go through immediately. */
+export function debounced(inner: SaveBackend, ms: number): SaveBackend {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>();
+  return {
+    load(key: string) { return inner.load(key); },
+    save(key: string, value: string) {
+      const existing = timers.get(key);
+      if (existing !== undefined) clearTimeout(existing);
+      timers.set(key, setTimeout(() => {
+        timers.delete(key);
+        inner.save(key, value);
+      }, ms));
+    },
+    remove(key: string) {
+      const existing = timers.get(key);
+      if (existing !== undefined) { clearTimeout(existing); timers.delete(key); }
+      inner.remove(key);
+    },
+  };
+}
+
+/** Keep only the last N saves per key prefix, auto-pruning older ones. */
+export function rolling(inner: SaveBackend, n: number, prefix: string): SaveBackend {
+  const indexKey = prefix + "__rolling_index";
+  function getIndex(): string[] {
+    const raw = inner.load(indexKey);
+    return raw ? JSON.parse(raw) : [];
+  }
+  function setIndex(keys: string[]) {
+    inner.save(indexKey, JSON.stringify(keys));
+  }
+  return {
+    load(key: string) { return inner.load(key); },
+    save(key: string, value: string) {
+      inner.save(key, value);
+      const idx = getIndex();
+      const pos = idx.indexOf(key);
+      if (pos !== -1) idx.splice(pos, 1);
+      idx.push(key);
+      while (idx.length > n) {
+        const old = idx.shift()!;
+        inner.remove(old);
+      }
+      setIndex(idx);
+    },
+    remove(key: string) {
+      inner.remove(key);
+      const idx = getIndex();
+      const pos = idx.indexOf(key);
+      if (pos !== -1) { idx.splice(pos, 1); setIndex(idx); }
+    },
+  };
+}
