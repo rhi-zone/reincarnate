@@ -15,31 +15,42 @@ class HarloweNavigation {
 
 export const nav = new HarloweNavigation();
 
-/** Register all passage functions and start the story.
- *
- * Follows the same init pattern as Harlowe:
- * 1. Register all passages
- * 2. Navigate to the start passage
- */
-export function startStory(
-  passageMap: Record<string, PassageFn>,
-  startPassage?: string,
-  tagMap?: Record<string, string[]>,
-): void {
-  for (const [name, fn] of Object.entries(passageMap)) {
-    nav.passages.set(name, fn);
-  }
-  if (tagMap) {
-    for (const [name, tags] of Object.entries(tagMap)) {
-      nav.passageTags.set(name, tags);
+// ---------------------------------------------------------------------------
+// HarloweRuntime
+// ---------------------------------------------------------------------------
+
+export class HarloweRuntime {
+  /**
+   * Register all passage functions and start the story.
+   *
+   * Follows the same init pattern as Harlowe:
+   * 1. Register all passages
+   * 2. Navigate to the start passage
+   */
+  start(
+    passageMap: Record<string, PassageFn>,
+    startPassage?: string,
+    tagMap?: Record<string, string[]>,
+  ): void {
+    for (const [name, fn] of Object.entries(passageMap)) {
+      nav.passages.set(name, fn);
+    }
+    if (tagMap) {
+      for (const [name, tags] of Object.entries(tagMap)) {
+        nav.passageTags.set(name, tags);
+      }
+    }
+
+    // Navigate to the explicit start passage, or fall back to first registered
+    const target = startPassage || Object.keys(passageMap)[0];
+    if (target) {
+      goto(target);
     }
   }
+}
 
-  // Navigate to the explicit start passage, or fall back to first registered
-  const target = startPassage || Object.keys(passageMap)[0];
-  if (target) {
-    goto(target);
-  }
+export function createHarloweRuntime(): HarloweRuntime {
+  return new HarloweRuntime();
 }
 
 /** Render a passage with full lifecycle. */

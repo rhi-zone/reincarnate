@@ -12,40 +12,51 @@ class SCNavigation {
 
 export const nav = new SCNavigation();
 
-/** Register all passage functions and start the story.
- *
- * Follows SugarCube's init order:
- * 1. Register all passages/widgets
- * 2. Run StoryInit passage (if it exists)
- * 3. Navigate to the explicit start passage (or first registered)
- */
-export function startStory(passageMap: Record<string, () => void>, startPassage?: string, tagMap?: Record<string, string[]>): void {
-  for (const [name, fn] of Object.entries(passageMap)) {
-    nav.passages.set(name, fn);
-  }
-  if (tagMap) {
-    for (const [name, tags] of Object.entries(tagMap)) {
-      nav.passageTags.set(name, tags);
+// ---------------------------------------------------------------------------
+// SugarCubeRuntime
+// ---------------------------------------------------------------------------
+
+export class SugarCubeRuntime {
+  /**
+   * Register all passage functions and start the story.
+   *
+   * Follows SugarCube's init order:
+   * 1. Register all passages/widgets
+   * 2. Run StoryInit passage (if it exists)
+   * 3. Navigate to the explicit start passage (or first registered)
+   */
+  start(passageMap: Record<string, () => void>, startPassage?: string, tagMap?: Record<string, string[]>): void {
+    for (const [name, fn] of Object.entries(passageMap)) {
+      nav.passages.set(name, fn);
     }
-  }
-
-  // Run StoryInit if it exists (initializes story variables)
-  const storyInit = nav.passages.get("StoryInit");
-  if (storyInit) {
-    try {
-      storyInit();
-    } catch (e) {
-      console.error("[navigation] error in StoryInit:", e);
+    if (tagMap) {
+      for (const [name, tags] of Object.entries(tagMap)) {
+        nav.passageTags.set(name, tags);
+      }
     }
-  }
 
-  // Navigate to the explicit start passage, or fall back to first registered
-  const target = startPassage || Object.keys(passageMap)[0];
-  if (target) {
-    goto(target);
-  }
+    // Run StoryInit if it exists (initializes story variables)
+    const storyInit = nav.passages.get("StoryInit");
+    if (storyInit) {
+      try {
+        storyInit();
+      } catch (e) {
+        console.error("[navigation] error in StoryInit:", e);
+      }
+    }
 
-  Events.trigger(":storyready");
+    // Navigate to the explicit start passage, or fall back to first registered
+    const target = startPassage || Object.keys(passageMap)[0];
+    if (target) {
+      goto(target);
+    }
+
+    Events.trigger(":storyready");
+  }
+}
+
+export function createSugarCubeRuntime(): SugarCubeRuntime {
+  return new SugarCubeRuntime();
 }
 
 /** Run a special passage by name, if it exists. Errors are logged. */

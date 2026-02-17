@@ -10,8 +10,8 @@
     "SugarCube.Widget": { "path": "sugarcube/widget" }
   },
   "scaffold": {
-    "imports": [{ "names": ["startStory"], "path": "sugarcube/navigation" }],
-    "entry": "{userScripts}\nstartStory({passages}, {startPassage}, {passageTags});",
+    "imports": [{ "names": ["createSugarCubeRuntime"], "path": "sugarcube/navigation" }],
+    "entry": "{userScripts}\ncreateSugarCubeRuntime().start({passages}, {startPassage}, {passageTags});",
     "dependencies": {
       "jquery": "3.6.0",
       "keybinds": "github:pterror/keybinds"
