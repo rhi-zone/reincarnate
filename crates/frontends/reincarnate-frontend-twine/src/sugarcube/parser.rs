@@ -448,14 +448,13 @@ impl<'a> Parser<'a> {
                 }
             }
             _ => {
-                // Generic: store as expression if non-empty
+                // Unknown macro: store as Raw (unknown arg semantics)
                 let args_src = self.capture_args_src();
                 let trimmed = args_src.trim();
                 if trimmed.is_empty() {
                     MacroArgs::None
                 } else {
-                    let base = self.pos - args_src.len();
-                    MacroArgs::Expr(make_trimmed_expr(args_src, base))
+                    MacroArgs::Raw(trimmed.to_string())
                 }
             }
         }
@@ -871,10 +870,14 @@ impl<'a> Parser<'a> {
                     return MacroArgs::LinkArgs {
                         text: LinkText::Plain(text.to_string()),
                         passage: passage.map(|p| {
-                            let base = self.pos - args_src.len();
-                            let offset = base
-                                + (p.as_ptr() as usize - args_src.as_ptr() as usize);
-                            Box::new(Expr::new(offset, offset + p.len()))
+                            if p.starts_with('$') || p.starts_with('_') {
+                                let base = self.pos - args_src.len();
+                                let offset = base
+                                    + (p.as_ptr() as usize - args_src.as_ptr() as usize);
+                                LinkTarget::Expr(Box::new(Expr::new(offset, offset + p.len())))
+                            } else {
+                                LinkTarget::Name(p.to_string())
+                            }
                         }),
                     };
                 }
@@ -901,7 +904,7 @@ impl<'a> Parser<'a> {
 
         // Check for optional passage arg
         let passage = if values.len() > 1 {
-            Some(Box::new(values[1].clone()))
+            Some(LinkTarget::Expr(Box::new(values[1].clone())))
         } else {
             None
         };

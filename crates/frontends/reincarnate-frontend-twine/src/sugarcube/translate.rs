@@ -212,11 +212,52 @@ impl TranslateCtx {
         match result {
             Ok(oxc_expr) => self.lower_oxc_expr(&oxc_expr, &pp),
             Err(_) => {
-                // Parse error — treat as literal string value.
-                // This handles bare passage names, CSS selectors, durations,
-                // and other non-JS tokens that SugarCube uses as macro arguments.
-                self.fb.const_string(trimmed)
+                eprintln!(
+                    "warning: oxc parse error in {}: {:?} (source: {})",
+                    self.func_name, &pp.js, trimmed
+                );
+                let m = self.fb.const_string(format!("parse error: {trimmed}"));
+                self.fb
+                    .system_call("SugarCube.Engine", "error", &[m], Type::Dynamic)
             }
+        }
+    }
+
+    /// Lower a raw string as statements (try expression first, fall back to program).
+    /// Used by `<<run>>` which can contain JS statements like `for(...)`, `throw`, etc.
+    fn lower_raw_statement_str(&mut self, text: &str) {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+
+        // Preprocess SugarCube keywords → JS
+        let pp = preprocess::preprocess(trimmed);
+
+        // Try as expression first (most common case)
+        let allocator = Allocator::default();
+        let source_type = SourceType::mjs();
+        let result = OxcParser::new(&allocator, &pp.js, source_type).parse_expression();
+        if let Ok(oxc_expr) = result {
+            self.lower_oxc_expr(&oxc_expr, &pp);
+            return;
+        }
+
+        // Fall back to program parsing for statements
+        let allocator2 = Allocator::default();
+        let prog_result = OxcParser::new(&allocator2, &pp.js, source_type).parse();
+        if prog_result.errors.is_empty() {
+            for stmt in &prog_result.program.body {
+                self.lower_oxc_statement(stmt, &pp);
+            }
+        } else {
+            eprintln!(
+                "warning: oxc parse error in {}: {:?} (source: {})",
+                self.func_name, &pp.js, trimmed
+            );
+            let m = self.fb.const_string(format!("parse error: {trimmed}"));
+            self.fb
+                .system_call("SugarCube.Engine", "error", &[m], Type::Dynamic);
         }
     }
 
@@ -960,8 +1001,223 @@ impl TranslateCtx {
                     }
                 }
             }
+            js::Statement::IfStatement(if_stmt) => {
+                let cond = self.lower_oxc_expr(&if_stmt.test, pp);
+                let then_block = self.fb.create_block();
+                let else_block = self.fb.create_block();
+                let merge_block = self.fb.create_block();
+                self.fb.br_if(cond, then_block, &[], else_block, &[]);
+                self.fb.switch_to_block(then_block);
+                self.lower_oxc_statement(&if_stmt.consequent, pp);
+                self.fb.br(merge_block, &[]);
+                self.fb.switch_to_block(else_block);
+                if let Some(alt) = &if_stmt.alternate {
+                    self.lower_oxc_statement(alt, pp);
+                }
+                self.fb.br(merge_block, &[]);
+                self.fb.switch_to_block(merge_block);
+            }
+            js::Statement::ForStatement(for_stmt) => {
+                if let Some(init) = &for_stmt.init {
+                    match init {
+                        js::ForStatementInit::VariableDeclaration(decl) => {
+                            for d in &decl.declarations {
+                                if let Some(init_expr) = &d.init {
+                                    let val = self.lower_oxc_expr(init_expr, pp);
+                                    if let js::BindingPattern::BindingIdentifier(ident) = &d.id {
+                                        let name = ident.name.as_str();
+                                        let alloc = self.get_or_create_temp(name);
+                                        self.fb.store(alloc, val);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            self.lower_oxc_expr(init.to_expression(), pp);
+                        }
+                    }
+                }
+                let header = self.fb.create_block();
+                let body = self.fb.create_block();
+                let latch = self.fb.create_block();
+                let exit = self.fb.create_block();
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(header);
+                let cond = if let Some(test) = &for_stmt.test {
+                    self.lower_oxc_expr(test, pp)
+                } else {
+                    self.fb.const_bool(true)
+                };
+                self.fb.br_if(cond, body, &[], exit, &[]);
+                self.fb.switch_to_block(body);
+                self.lower_oxc_statement(&for_stmt.body, pp);
+                self.fb.br(latch, &[]);
+                self.fb.switch_to_block(latch);
+                if let Some(update) = &for_stmt.update {
+                    self.lower_oxc_expr(update, pp);
+                }
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(exit);
+            }
+            js::Statement::ForInStatement(for_in) => {
+                let right = self.lower_oxc_expr(&for_in.right, pp);
+                let iter = self.fb.system_call(
+                    "SugarCube.Engine",
+                    "iterate",
+                    &[right],
+                    Type::Dynamic,
+                );
+                let header = self.fb.create_block();
+                let body_block = self.fb.create_block();
+                let exit = self.fb.create_block();
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(header);
+                let has_next = self.fb.system_call(
+                    "SugarCube.Engine",
+                    "iterator_has_next",
+                    &[iter],
+                    Type::Bool,
+                );
+                self.fb.br_if(has_next, body_block, &[], exit, &[]);
+                self.fb.switch_to_block(body_block);
+                let next_key = self.fb.system_call(
+                    "SugarCube.Engine",
+                    "iterator_next_key",
+                    &[iter],
+                    Type::Dynamic,
+                );
+                self.store_for_binding(&for_in.left, next_key, pp);
+                self.lower_oxc_statement(&for_in.body, pp);
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(exit);
+            }
+            js::Statement::ForOfStatement(for_of) => {
+                let right = self.lower_oxc_expr(&for_of.right, pp);
+                let iter = self.fb.system_call(
+                    "SugarCube.Engine",
+                    "iterate",
+                    &[right],
+                    Type::Dynamic,
+                );
+                let header = self.fb.create_block();
+                let body_block = self.fb.create_block();
+                let exit = self.fb.create_block();
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(header);
+                let has_next = self.fb.system_call(
+                    "SugarCube.Engine",
+                    "iterator_has_next",
+                    &[iter],
+                    Type::Bool,
+                );
+                self.fb.br_if(has_next, body_block, &[], exit, &[]);
+                self.fb.switch_to_block(body_block);
+                let next_val = self.fb.system_call(
+                    "SugarCube.Engine",
+                    "iterator_next_value",
+                    &[iter],
+                    Type::Dynamic,
+                );
+                self.store_for_binding(&for_of.left, next_val, pp);
+                self.lower_oxc_statement(&for_of.body, pp);
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(exit);
+            }
+            js::Statement::ThrowStatement(throw) => {
+                let val = self.lower_oxc_expr(&throw.argument, pp);
+                self.fb.system_call(
+                    "SugarCube.Engine",
+                    "throw",
+                    &[val],
+                    Type::Void,
+                );
+            }
+            js::Statement::BlockStatement(block) => {
+                for s in &block.body {
+                    self.lower_oxc_statement(s, pp);
+                }
+            }
+            js::Statement::SwitchStatement(switch) => {
+                let disc = self.lower_oxc_expr(&switch.discriminant, pp);
+                let exit = self.fb.create_block();
+                let mut case_blocks: Vec<(Option<ValueId>, BlockId)> = Vec::new();
+                for case in &switch.cases {
+                    let block = self.fb.create_block();
+                    let val = case.test.as_ref().map(|e| self.lower_oxc_expr(e, pp));
+                    case_blocks.push((val, block));
+                }
+                // Build chain of comparisons
+                let default_block = case_blocks
+                    .iter()
+                    .find(|(v, _)| v.is_none())
+                    .map(|(_, b)| *b)
+                    .unwrap_or(exit);
+                for (i, (val, target)) in case_blocks.iter().enumerate() {
+                    if let Some(v) = val {
+                        let eq = self.fb.cmp(CmpKind::Eq, disc, *v);
+                        let next = self.fb.create_block();
+                        self.fb.br_if(eq, *target, &[], next, &[]);
+                        self.fb.switch_to_block(next);
+                    } else if i == case_blocks.len() - 1 {
+                        // default as last case
+                    }
+                }
+                self.fb.br(default_block, &[]);
+                // Lower case bodies
+                for (i, case) in switch.cases.iter().enumerate() {
+                    let (_, block) = case_blocks[i];
+                    self.fb.switch_to_block(block);
+                    for s in &case.consequent {
+                        self.lower_oxc_statement(s, pp);
+                    }
+                    self.fb.br(exit, &[]);
+                }
+                self.fb.switch_to_block(exit);
+            }
+            js::Statement::WhileStatement(while_stmt) => {
+                let header = self.fb.create_block();
+                let body_block = self.fb.create_block();
+                let exit = self.fb.create_block();
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(header);
+                let cond = self.lower_oxc_expr(&while_stmt.test, pp);
+                self.fb.br_if(cond, body_block, &[], exit, &[]);
+                self.fb.switch_to_block(body_block);
+                self.lower_oxc_statement(&while_stmt.body, pp);
+                self.fb.br(header, &[]);
+                self.fb.switch_to_block(exit);
+            }
+            js::Statement::DoWhileStatement(do_while) => {
+                let body_block = self.fb.create_block();
+                let exit = self.fb.create_block();
+                self.fb.br(body_block, &[]);
+                self.fb.switch_to_block(body_block);
+                self.lower_oxc_statement(&do_while.body, pp);
+                let cond = self.lower_oxc_expr(&do_while.test, pp);
+                self.fb.br_if(cond, body_block, &[], exit, &[]);
+                self.fb.switch_to_block(exit);
+            }
+            js::Statement::EmptyStatement(_) => {}
             _ => {
-                // Other statement types — ignore for now
+                // Unsupported statement — eval as string
+            }
+        }
+    }
+
+    /// Store a value into a for-in/for-of loop variable binding.
+    fn store_for_binding(
+        &mut self,
+        left: &js::ForStatementLeft<'_>,
+        value: ValueId,
+        _pp: &Preprocessed,
+    ) {
+        if let js::ForStatementLeft::VariableDeclaration(decl) = left {
+            if let Some(d) = decl.declarations.first() {
+                if let js::BindingPattern::BindingIdentifier(ident) = &d.id {
+                    let name = ident.name.as_str();
+                    let alloc = self.get_or_create_temp(name);
+                    self.fb.store(alloc, value);
+                }
             }
         }
     }
@@ -1327,7 +1583,9 @@ impl TranslateCtx {
 
     fn lower_run(&mut self, mac: &MacroNode) {
         if let MacroArgs::Expr(expr) = &mac.args {
-            self.lower_expr(expr);
+            let src = self.source.clone();
+            let text = &src[expr.start..expr.end];
+            self.lower_raw_statement_str(text);
         }
     }
 
@@ -1708,7 +1966,10 @@ impl TranslateCtx {
                     LinkText::Plain(s) => self.fb.const_string(s.as_str()),
                     LinkText::Expr(e) => self.lower_expr(e),
                 };
-                let p = passage.as_ref().map(|e| self.lower_expr(e));
+                let p = passage.as_ref().map(|t| match t {
+                    LinkTarget::Name(s) => self.fb.const_string(s.as_str()),
+                    LinkTarget::Expr(e) => self.lower_expr(e),
+                });
                 (t, p)
             }
             MacroArgs::Expr(expr) => {
@@ -1953,8 +2214,11 @@ impl TranslateCtx {
                     LinkText::Plain(s) => self.fb.const_string(s.as_str()),
                     LinkText::Expr(e) => self.lower_expr(e),
                 }];
-                if let Some(p) = passage {
-                    args.push(self.lower_expr(p));
+                if let Some(t) = passage {
+                    args.push(match t {
+                        LinkTarget::Name(s) => self.fb.const_string(s.as_str()),
+                        LinkTarget::Expr(e) => self.lower_expr(e),
+                    });
                 }
                 args
             }

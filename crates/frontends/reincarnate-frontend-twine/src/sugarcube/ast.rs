@@ -139,7 +139,7 @@ pub enum MacroArgs {
     /// Link target + optional setter: `<<link "text" "passage">>`.
     LinkArgs {
         text: LinkText,
-        passage: Option<Box<Expr>>,
+        passage: Option<LinkTarget>,
     },
     /// Widget definition: `<<widget "name">>`.
     WidgetDef { name: String },
