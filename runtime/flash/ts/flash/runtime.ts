@@ -27,10 +27,12 @@ import {
 import { Point, Rectangle, Matrix } from "./geom";
 import {
   initCanvas,
+  createCanvas,
   addCanvasEventListener,
   addDocumentEventListener,
   getCanvasBounds,
 } from "./platform";
+import type { RenderRoot } from "../../../shared/ts/render-root";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -42,6 +44,10 @@ const DEG_TO_RAD = Math.PI / 180;
 // FlashRuntime
 // ---------------------------------------------------------------------------
 
+export interface FlashRuntimeOptions {
+  root?: RenderRoot;
+}
+
 export class FlashRuntime {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -52,13 +58,21 @@ export class FlashRuntime {
   private _dt = 0;
   private _frames = 0;
 
-  constructor(canvasId: string) {
-    const { canvas, ctx } = initCanvas(canvasId);
-    this.canvas = canvas;
-    this.ctx = ctx;
+  constructor(canvasId: string, opts?: FlashRuntimeOptions) {
+    if (opts?.root) {
+      const canvas = createCanvas(opts.root.doc);
+      canvas.id = canvasId;
+      opts.root.container.appendChild(canvas);
+      this.canvas = canvas;
+      this.ctx = canvas.getContext("2d")!;
+    } else {
+      const { canvas, ctx } = initCanvas(canvasId);
+      this.canvas = canvas;
+      this.ctx = ctx;
+    }
     this.stage = new Stage();
-    this.stage.stageWidth = canvas.width;
-    this.stage.stageHeight = canvas.height;
+    this.stage.stageWidth = this.canvas.width;
+    this.stage.stageHeight = this.canvas.height;
     // Stage's own .stage points to itself (Flash behaviour).
     this.stage.stage = this.stage;
   }
@@ -213,8 +227,8 @@ export class FlashRuntime {
   }
 }
 
-export function createFlashRuntime(canvasId = "reincarnate-canvas"): FlashRuntime {
-  return new FlashRuntime(canvasId);
+export function createFlashRuntime(canvasId = "reincarnate-canvas", opts?: FlashRuntimeOptions): FlashRuntime {
+  return new FlashRuntime(canvasId, opts);
 }
 
 // ---------------------------------------------------------------------------

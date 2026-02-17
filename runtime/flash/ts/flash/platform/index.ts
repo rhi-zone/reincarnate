@@ -6,6 +6,7 @@
  */
 export {
   initCanvas,
+  createCanvas,
   createMeasureContext,
 } from "./graphics";
 
