@@ -536,6 +536,18 @@ export function click_macro(method: string, ...args: any[]): void {
   });
 }
 
+// --- State management ---
+
+/** `(forget-undos: n)` — forget the n most recent undos. -1 forgets all. */
+export function forget_undos(n: any): void {
+  State.forgetUndos(Number(n));
+}
+
+/** `(forget-visits:)` — clear visit history. */
+export function forget_visits(): void {
+  State.forgetVisits();
+}
+
 // --- Meter ---
 
 /** `(meter: $var, max, label, color)` — progress meter element. */

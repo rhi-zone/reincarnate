@@ -98,6 +98,27 @@ export function historyTitles(): string[] {
   return history.map(m => m.title);
 }
 
+/** Forget the n most recent undos. -1 forgets all. */
+export function forgetUndos(n: number): void {
+  if (n < 0) {
+    // Keep only the current moment
+    if (history.length > 1) {
+      const current = history[history.length - 1];
+      history.length = 0;
+      history.push(current);
+    }
+  } else {
+    // Remove n most recent moments (keeping at least the current one)
+    const keep = Math.max(1, history.length - n);
+    history.splice(0, history.length - keep);
+  }
+}
+
+/** Clear visit history. */
+export function forgetVisits(): void {
+  visitedSet.clear();
+}
+
 // --- Persistence ---
 
 const SLOT_PREFIX = "reincarnate-harlowe-save-";

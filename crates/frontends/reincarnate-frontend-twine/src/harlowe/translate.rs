@@ -532,6 +532,28 @@ impl TranslateCtx {
                 self.lower_click_macro(mac);
             }
 
+            // State management
+            "forget-undos" => {
+                let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
+                self.fb.system_call(
+                    "Harlowe.Engine",
+                    "forget_undos",
+                    &args,
+                    Type::Void,
+                );
+            }
+            "forget-visits" => {
+                self.fb.system_call(
+                    "Harlowe.Engine",
+                    "forget_visits",
+                    &[],
+                    Type::Void,
+                );
+            }
+            "ignore" => {
+                // No-op — deliberately discards its arguments
+            }
+
             // Columns layout
             "columns" => self.lower_columns_macro(mac),
 

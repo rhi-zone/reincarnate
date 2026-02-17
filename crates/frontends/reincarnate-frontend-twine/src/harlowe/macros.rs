@@ -53,8 +53,9 @@ pub fn macro_kind(name: &str) -> MacroKind {
         | "source" | "datanames" | "datavalues" | "dataentries" | "v6" | "v8" | "metadata"
         | "macro" | "partial" | "bind" | "bind-2bind" | "2bind" => MacroKind::Value,
 
-        // Layout / interactive commands
-        "columns" | "column" | "enchant" | "enchant-in" => MacroKind::Command,
+        // Layout / interactive / state commands
+        "columns" | "column" | "enchant" | "enchant-in" | "forget-undos"
+        | "forget-visits" | "ignore" => MacroKind::Command,
 
         // Live is command-like (attaches hook for timed behavior)
         "live" | "event" | "meter" | "dialog" | "dropdown" | "input" | "input-box"

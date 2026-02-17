@@ -178,10 +178,9 @@ impl<'a> Parser<'a> {
             let args_text = self.extract_balanced_args();
             self.parse_macro_args(&name, &args_text, start)
         } else if self.peek() == Some(b')') {
-            // No-arg macro like `(else:)` — but this case means no colon either
-            // Actually Harlowe requires the colon: `(else:)`. Let's check.
-            // Some macros can appear without colon in broken input. Be lenient.
-            Vec::new()
+            // No colon — Harlowe macros always require `:`. This is prose like `(obviously)`.
+            self.pos = start;
+            return self.parse_text(false);
         } else {
             // Not a real macro
             self.pos = start;

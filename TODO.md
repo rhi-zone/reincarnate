@@ -203,8 +203,8 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   on TranslateCtx substitutes `It` with a read of the target variable.
   arceus-garden: 244 `get_it()` calls → 0.
 
-- [ ] **Missing macros** — `(obviously:)` (1 occurrence), `(forget-undos:)`
-  (1 occurrence) emitted as `unknown_macro()` no-ops.
+- [x] **Missing macros** — `(obviously)` was prose misparsed as macro (parser
+  fix: require colon). `(forget-undos:)` implemented in engine.ts + state.ts.
 
 ### Harlowe Output Quality
 
