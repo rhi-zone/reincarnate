@@ -5,14 +5,11 @@
  */
 
 import * as State from "./state";
+import { output } from "./output";
 
-/** Get the current output target (import dynamically to avoid circular). */
+/** Get the current output target. */
 function appendToOutput(el: HTMLElement): void {
-  // Append directly to #passages since we can't easily get the current
-  // buffer without circular imports. The output module flushes buffers
-  // to #passages anyway, so appending directly is correct for elements
-  // created during passage rendering.
-  const container = document.getElementById("passages");
+  const container = output.container ?? document.getElementById("passages");
   if (container) {
     container.appendChild(el);
   }
@@ -20,7 +17,7 @@ function appendToOutput(el: HTMLElement): void {
 
 /** <<textbox "$var" "default" ["PassageName"]>> */
 export function textbox(varName: string, defaultValue?: string, passageName?: string): void {
-  const input = document.createElement("input");
+  const input = output.doc.createElement("input");
   input.type = "text";
   input.value = defaultValue ?? (State.get(varName) as string) ?? "";
 
@@ -45,7 +42,7 @@ export function textbox(varName: string, defaultValue?: string, passageName?: st
 
 /** <<textarea "$var" "default" ["PassageName"]>> */
 export function textarea(varName: string, defaultValue?: string, passageName?: string): void {
-  const el = document.createElement("textarea");
+  const el = output.doc.createElement("textarea");
   el.value = defaultValue ?? (State.get(varName) as string) ?? "";
   el.rows = 4;
 
@@ -59,7 +56,7 @@ export function textarea(varName: string, defaultValue?: string, passageName?: s
 
 /** <<numberbox "$var" default ["PassageName"]>> */
 export function numberbox(varName: string, defaultValue?: number, passageName?: string): void {
-  const input = document.createElement("input");
+  const input = output.doc.createElement("input");
   input.type = "number";
   input.value = String(defaultValue ?? (State.get(varName) as number) ?? "");
 
@@ -85,7 +82,7 @@ export function numberbox(varName: string, defaultValue?: number, passageName?: 
 
 /** <<checkbox "$var" checkedValue uncheckedValue>> */
 export function checkbox(varName: string, checkedValue: any, uncheckedValue: any): void {
-  const input = document.createElement("input");
+  const input = output.doc.createElement("input");
   input.type = "checkbox";
 
   const current = State.get(varName);
@@ -101,7 +98,7 @@ export function checkbox(varName: string, checkedValue: any, uncheckedValue: any
 
 /** <<radiobutton "$var" checkedValue>> */
 export function radiobutton(varName: string, checkedValue: any): void {
-  const input = document.createElement("input");
+  const input = output.doc.createElement("input");
   input.type = "radio";
   input.name = varName; // group by variable name
 
@@ -119,10 +116,10 @@ export function radiobutton(varName: string, checkedValue: any): void {
 
 /** <<listbox "$var" items...>> */
 export function listbox(varName: string, ...items: any[]): void {
-  const select = document.createElement("select");
+  const select = output.doc.createElement("select");
 
   for (const item of items) {
-    const option = document.createElement("option");
+    const option = output.doc.createElement("option");
     option.value = String(item);
     option.textContent = String(item);
     select.appendChild(option);
@@ -155,7 +152,7 @@ export function cycle(varName: string, ...items: any[]): void {
     if (idx >= 0) currentIndex = idx;
   }
 
-  const btn = document.createElement("button");
+  const btn = output.doc.createElement("button");
   btn.textContent = String(items[currentIndex]);
   State.set(varName, items[currentIndex]);
 
@@ -171,7 +168,7 @@ export function cycle(varName: string, ...items: any[]): void {
 
 /** <<button "text" ["PassageName"]>> */
 export function button(text: string, passageName?: string): void {
-  const btn = document.createElement("button");
+  const btn = output.doc.createElement("button");
   btn.textContent = text;
 
   if (passageName) {

@@ -18,7 +18,7 @@ import jQuery from "jquery";
 import { installExtensions } from "./jquery-extensions";
 import { Wikifier } from "./wikifier";
 import { audioCache, audioGroups, playlists } from "./audio";
-import { pushBuffer, popBuffer } from "./output";
+import { output, pushBuffer, popBuffer } from "./output";
 
 // --- Engine state ---
 
@@ -259,7 +259,7 @@ function ensureGlobals(): void {
      */
     render(): DocumentFragment {
       const fn = Navigation.getPassage(this.title);
-      if (!fn) return document.createDocumentFragment();
+      if (!fn) return output.doc.createDocumentFragment();
       pushBuffer();
       try {
         fn();
@@ -514,12 +514,12 @@ function ensureGlobals(): void {
 
   // --- Dialog ---
   let dialogTitle = "";
-  let dialogBody: HTMLDivElement = document.createElement("div");
+  let dialogBody: HTMLDivElement = output.doc.createElement("div") as HTMLDivElement;
 
   g.Dialog = {
     setup(title?: string, _classNames?: string) {
       dialogTitle = title || "";
-      dialogBody = document.createElement("div");
+      dialogBody = output.doc.createElement("div") as HTMLDivElement;
       return dialogBody;
     },
     isOpen() { return Platform.isDialogOpen(); },
@@ -531,7 +531,7 @@ function ensureGlobals(): void {
     append(...content: any[]) {
       for (const c of content) {
         if (c instanceof Node) dialogBody.appendChild(c);
-        else dialogBody.appendChild(document.createTextNode(String(c)));
+        else dialogBody.appendChild(output.doc.createTextNode(String(c)));
       }
     },
     wiki(content: string) {

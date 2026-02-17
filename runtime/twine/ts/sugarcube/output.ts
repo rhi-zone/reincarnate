@@ -8,6 +8,7 @@
  */
 
 import { scheduleTimeout, cancelTimeout, scheduleInterval, cancelInterval } from "../platform";
+import type { DocumentFactory } from "../../../shared/ts/render-root";
 
 // --- Interfaces ---
 
@@ -42,6 +43,10 @@ class OutputState {
   activeTimers: number[] = [];
   repeatStack: RepeatContext[] = [];
   typeStack: TypeContext[] = [];
+  /** Document factory — defaults to global document. */
+  doc: DocumentFactory = document;
+  /** Passages container element — defaults to document.getElementById("passages"). */
+  container: Element | null = null;
 }
 
 export const output = new OutputState();
@@ -57,21 +62,21 @@ export function setNobr(active: boolean): void {
 
 function currentBuffer(): DocumentFragment {
   if (output.bufferStack.length === 0) {
-    output.bufferStack.push(document.createDocumentFragment());
+    output.bufferStack.push(output.doc.createDocumentFragment());
   }
   return output.bufferStack[output.bufferStack.length - 1];
 }
 
 /** Push a new output buffer for nested content. */
 export function pushBuffer(): DocumentFragment {
-  const frag = document.createDocumentFragment();
+  const frag = output.doc.createDocumentFragment();
   output.bufferStack.push(frag);
   return frag;
 }
 
 /** Pop and return the top buffer. */
 export function popBuffer(): DocumentFragment {
-  return output.bufferStack.pop() || document.createDocumentFragment();
+  return output.bufferStack.pop() || output.doc.createDocumentFragment();
 }
 
 // --- Element stack (for structured HTML nesting) ---
@@ -89,19 +94,19 @@ function appendNode(node: Node): void {
 
 /** Emit plain text. */
 export function text(s: string): void {
-  appendNode(document.createTextNode(s));
+  appendNode(output.doc.createTextNode(s));
 }
 
 /** Print a value (<<print expr>>). */
 export function print(v: any): void {
-  appendNode(document.createTextNode(String(v)));
+  appendNode(output.doc.createTextNode(String(v)));
 }
 
 // --- Structured HTML element functions ---
 
 /** Open an HTML element, push onto element stack. */
 export function open_element(tag: string, ...attrs: string[]): void {
-  const el = document.createElement(tag);
+  const el = output.doc.createElement(tag);
   for (let i = 0; i < attrs.length; i += 2) {
     el.setAttribute(attrs[i], attrs[i + 1]);
   }
@@ -116,7 +121,7 @@ export function close_element(): void {
 
 /** Emit a void/self-closing HTML element (no push). */
 export function void_element(tag: string, ...attrs: string[]): void {
-  const el = document.createElement(tag);
+  const el = output.doc.createElement(tag);
   for (let i = 0; i < attrs.length; i += 2) {
     el.setAttribute(attrs[i], attrs[i + 1]);
   }
@@ -143,14 +148,14 @@ export function set_attribute(name: string, value: any): void {
 export { lineBreak as break };
 function lineBreak(): void {
   if (output.nobrActive) return;
-  appendNode(document.createElement("br"));
+  appendNode(output.doc.createElement("br"));
 }
 
 // --- Links ---
 
 /** Emit a simple link (no body content). */
 export function link(text: string, passage?: string, setter?: () => void): void {
-  const a = document.createElement("a");
+  const a = output.doc.createElement("a");
   a.textContent = text;
   if (passage || setter) {
     a.addEventListener("click", (e) => {
@@ -168,10 +173,10 @@ export function link(text: string, passage?: string, setter?: () => void): void 
 
 /** Emit an inline image, optionally wrapped in a link. */
 export function image(src: string, link?: string): void {
-  const img = document.createElement("img");
+  const img = output.doc.createElement("img");
   img.src = src;
   if (link) {
-    const a = document.createElement("a");
+    const a = output.doc.createElement("a");
     a.href = link;
     a.appendChild(img);
     appendNode(a);
@@ -194,10 +199,10 @@ export function link_block_end(): void {
   const ctx = output.linkBlockStack.pop();
   if (!ctx) return;
 
-  const wrapper = document.createElement("span");
+  const wrapper = output.doc.createElement("span");
   wrapper.className = "link-block";
 
-  const a = document.createElement("a");
+  const a = output.doc.createElement("a");
   a.textContent = ctx.text;
   a.addEventListener("click", (e) => {
     e.preventDefault();
@@ -242,7 +247,7 @@ export function timed_end(): void {
   const ctx = output.timedStack.pop();
   if (!ctx) return;
 
-  const container = document.createElement("span");
+  const container = output.doc.createElement("span");
   container.className = "timed-content";
   container.style.display = "none";
   // Clone body content into container now
@@ -268,7 +273,7 @@ export function repeat_end(): void {
   const ctx = output.repeatStack.pop();
   if (!ctx) return;
 
-  const container = document.createElement("span");
+  const container = output.doc.createElement("span");
   container.className = "repeat-content";
   appendNode(container);
 
@@ -291,7 +296,7 @@ export function type_end(): void {
   const ctx = output.typeStack.pop();
   if (!ctx) return;
 
-  const container = document.createElement("span");
+  const container = output.doc.createElement("span");
   container.className = "type-content";
   appendNode(container);
 
@@ -317,7 +322,7 @@ export function type_end(): void {
 
 /** Flush the output buffer to #passages. */
 export function flush(): void {
-  const container = document.getElementById("passages");
+  const container = output.container ?? document.getElementById("passages");
   if (!container) return;
   while (output.bufferStack.length > 0) {
     const buf = output.bufferStack.shift()!;
@@ -327,7 +332,7 @@ export function flush(): void {
 
 /** Clear the #passages container and cancel any active timers. */
 export function clear(): void {
-  const container = document.getElementById("passages");
+  const container = output.container ?? document.getElementById("passages");
   if (container) {
     while (container.firstChild) {
       container.removeChild(container.firstChild);

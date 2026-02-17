@@ -9,6 +9,7 @@
  */
 
 import * as State from "./state";
+import { output as outputState } from "./output";
 
 export interface MacroDef {
   tags?: string[] | null;
@@ -63,7 +64,7 @@ export function invokeMacro(def: MacroDef, name: string, args: any[], output?: D
   const context = {
     name,
     args: argsArray,
-    output: output || document.createDocumentFragment(),
+    output: output || outputState.doc.createDocumentFragment(),
     payload: [] as { name: string; contents: string }[],
     error(msg: string): string {
       return `Error in macro <<${name}>>: ${msg}`;

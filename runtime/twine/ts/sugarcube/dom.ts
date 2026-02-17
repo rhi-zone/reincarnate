@@ -5,7 +5,7 @@
  * buffer stack to accumulate content, then applies it to matched elements.
  */
 
-import { pushBuffer, popBuffer } from "./output";
+import { output, pushBuffer, popBuffer } from "./output";
 
 // --- DOM macro context stack ---
 
@@ -16,6 +16,16 @@ interface DomMacroContext {
 }
 
 const domStack: DomMacroContext[] = [];
+
+/** Get the root element for DOM queries (output container or document). */
+function queryRoot(): ParentNode {
+  return output.container ?? document;
+}
+
+/** Get the passages container for content insertion. */
+function passagesContainer(): Element | null {
+  return output.container ?? document.getElementById("passages");
+}
 
 // --- Replace ---
 
@@ -29,7 +39,7 @@ export function replace_end(): void {
   const ctx = domStack.pop();
   if (!ctx) return;
 
-  const targets = document.querySelectorAll(ctx.selector);
+  const targets = queryRoot().querySelectorAll(ctx.selector);
   for (const target of targets) {
     while (target.firstChild) target.removeChild(target.firstChild);
     target.appendChild(body.cloneNode(true));
@@ -48,7 +58,7 @@ export function append_end(): void {
   const ctx = domStack.pop();
   if (!ctx) return;
 
-  const targets = document.querySelectorAll(ctx.selector);
+  const targets = queryRoot().querySelectorAll(ctx.selector);
   for (const target of targets) {
     target.appendChild(body.cloneNode(true));
   }
@@ -66,7 +76,7 @@ export function prepend_end(): void {
   const ctx = domStack.pop();
   if (!ctx) return;
 
-  const targets = document.querySelectorAll(ctx.selector);
+  const targets = queryRoot().querySelectorAll(ctx.selector);
   for (const target of targets) {
     target.insertBefore(body.cloneNode(true), target.firstChild);
   }
@@ -84,11 +94,11 @@ export function copy_end(): void {
   const ctx = domStack.pop();
   if (!ctx) return;
 
-  const source = document.querySelector(ctx.selector);
+  const source = queryRoot().querySelector(ctx.selector);
   if (!source) return;
 
   // Clone matched element's content into the #passages container
-  const container = document.getElementById("passages");
+  const container = passagesContainer();
   if (container) {
     for (const child of Array.from(source.childNodes)) {
       container.appendChild(child.cloneNode(true));
@@ -108,7 +118,7 @@ export function remove_end(): void {
   const ctx = domStack.pop();
   if (!ctx) return;
 
-  const targets = document.querySelectorAll(ctx.selector);
+  const targets = queryRoot().querySelectorAll(ctx.selector);
   for (const target of targets) {
     target.remove();
   }
@@ -126,7 +136,7 @@ export function toggleclass_end(): void {
   const ctx = domStack.pop();
   if (!ctx || !ctx.classes) return;
 
-  const targets = document.querySelectorAll(ctx.selector);
+  const targets = queryRoot().querySelectorAll(ctx.selector);
   for (const target of targets) {
     for (const cls of ctx.classes) {
       target.classList.toggle(cls);
@@ -144,7 +154,7 @@ export function addclass_end(): void {
   const ctx = domStack.pop();
   if (!ctx || !ctx.classes) return;
 
-  const targets = document.querySelectorAll(ctx.selector);
+  const targets = queryRoot().querySelectorAll(ctx.selector);
   for (const target of targets) {
     for (const cls of ctx.classes) {
       target.classList.add(cls);
@@ -162,7 +172,7 @@ export function removeclass_end(): void {
   const ctx = domStack.pop();
   if (!ctx || !ctx.classes) return;
 
-  const targets = document.querySelectorAll(ctx.selector);
+  const targets = queryRoot().querySelectorAll(ctx.selector);
   for (const target of targets) {
     for (const cls of ctx.classes) {
       target.classList.remove(cls);

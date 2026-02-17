@@ -3,6 +3,7 @@
 import * as State from "./state";
 import * as Output from "./output";
 import * as Events from "./events";
+import type { RenderRoot } from "../../../shared/ts/render-root";
 
 class SCNavigation {
   passages: Map<string, () => void> = new Map();
@@ -25,7 +26,12 @@ export class SugarCubeRuntime {
    * 2. Run StoryInit passage (if it exists)
    * 3. Navigate to the explicit start passage (or first registered)
    */
-  start(passageMap: Record<string, () => void>, startPassage?: string, tagMap?: Record<string, string[]>): void {
+  start(passageMap: Record<string, () => void>, startPassage?: string, tagMap?: Record<string, string[]>, opts?: { root?: RenderRoot }): void {
+    if (opts?.root) {
+      Output.output.doc = opts.root.doc;
+      Output.output.container = opts.root.container as Element;
+    }
+
     for (const [name, fn] of Object.entries(passageMap)) {
       nav.passages.set(name, fn);
     }
