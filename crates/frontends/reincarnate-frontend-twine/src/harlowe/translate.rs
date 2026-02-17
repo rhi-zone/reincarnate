@@ -496,7 +496,7 @@ impl TranslateCtx {
             "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
             | "align" | "transition" | "transition-time" | "transition-arrive"
             | "transition-depart" | "text-rotate-z" | "hover-style" | "css" | "background"
-            | "opacity" | "text-size" | "collapse" | "nobr" | "hidden" => {
+            | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim" | "hidden" => {
                 self.emit_changer(mac);
             }
 
@@ -578,7 +578,7 @@ impl TranslateCtx {
             "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
             | "align" | "transition" | "transition-time" | "transition-arrive"
             | "transition-depart" | "text-rotate-z" | "hover-style" | "css" | "background"
-            | "opacity" | "text-size" | "collapse" | "nobr" | "hidden" => {
+            | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim" | "hidden" => {
                 self.lower_changer_as_value(mac)
             }
 
@@ -847,6 +847,7 @@ impl TranslateCtx {
             "text-rotate-z" => "textRotateZ",
             "collapse" => "collapse",
             "nobr" => "nobr",
+            "verbatim" => "verbatim",
             "hover-style" => "hoverStyle",
             _ => {
                 // Unknown changer — fall back to generic styled
@@ -893,7 +894,7 @@ impl TranslateCtx {
             let children: Vec<ValueId> = self.lower_children_as_values(hook);
 
             let call_args = match builder_name {
-                "hidden" | "collapse" | "nobr" => children,
+                "hidden" | "collapse" | "nobr" | "verbatim" => children,
                 _ => {
                     let mut a = args;
                     a.extend(children);

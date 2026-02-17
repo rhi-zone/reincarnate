@@ -521,6 +521,14 @@ export class HarloweContext {
     return this.styled({ name: "nobr", args: [true] }, ...children);
   }
 
+  verbatim(...children: Child[]): Node {
+    const el = document.createElement("tw-verbatim") as HTMLElement;
+    this.appendChildren(el, children);
+    this.current().appendChild(el);
+    this.prevBr = false;
+    return el;
+  }
+
   hoverStyle(v: any, ...children: Child[]): Node {
     return this.styled({ name: "hover-style", args: [v] }, ...children);
   }
