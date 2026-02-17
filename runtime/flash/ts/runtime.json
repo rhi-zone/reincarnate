@@ -11,10 +11,9 @@
   },
   "scaffold": {
     "imports": [
-      { "names": ["stage", "flashTick", "constructRoot"], "path": "flash/runtime" }
+      { "names": ["createFlashRuntime"], "path": "flash/runtime" }
     ],
-    "construct_class_fn": "constructRoot",
-    "tick": "flashTick();"
+    "entry": "createFlashRuntime().start({rootClass});"
   },
   "class_preamble": {
     "names": ["QN_KEY", "registerClass", "registerClassTraits", "registerInterface", "isType", "asType", "int", "uint", "Class", "getDefinitionByName", "as3Bind"],
@@ -892,7 +891,7 @@
       "Timer", "Dictionary", "Proxy"
     ],
     "flash/runtime": [
-      "stage", "flashTick", "constructRoot"
+      "createFlashRuntime"
     ]
   }
 }

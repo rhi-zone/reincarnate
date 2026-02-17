@@ -225,6 +225,19 @@ fn build_user_script_calls(modules: &[Module]) -> String {
     calls.join("\n")
 }
 
+/// Find the root class name from `EntryPoint::ConstructClass` metadata.
+///
+/// Returns the sanitized short class name (e.g. "CoC") or an empty string
+/// if no module has a ConstructClass entry point.
+fn find_root_class(modules: &[Module]) -> String {
+    for module in modules {
+        if let Some(EntryPoint::ConstructClass(fqn)) = &module.entry_point {
+            return resolve_class_short_name(modules, fqn);
+        }
+    }
+    String::new()
+}
+
 /// Find the start passage display name from the entry point metadata.
 ///
 /// Looks up the `EntryPoint::CallFunction` FuncId in the module's
@@ -393,13 +406,15 @@ fn generate_main(modules: &[Module], runtime_config: Option<&RuntimeConfig>) -> 
         let passage_tags = build_passage_tags(modules);
         let user_scripts = build_user_script_calls(modules);
         let start_passage = find_start_passage(modules);
+        let root_class = find_root_class(modules);
         let expanded = entry
             .replace("{classes}", &class_list)
             .replace("{roomCreationCode}", &room_creation_code)
             .replace("{passages}", &passage_map)
             .replace("{passageTags}", &passage_tags)
             .replace("{userScripts}", &user_scripts)
-            .replace("{startPassage}", &start_passage);
+            .replace("{startPassage}", &start_passage)
+            .replace("{rootClass}", &root_class);
         let _ = writeln!(out, "{}", expanded);
     } else if let Some(code) = metadata_entry_code(modules, runtime_config) {
         // Prefer metadata-based entry point over heuristic.

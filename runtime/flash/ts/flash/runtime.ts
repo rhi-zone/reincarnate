@@ -1,6 +1,6 @@
 /**
- * Flash runtime — singleton Stage, Canvas2D rendering, ENTER_FRAME dispatch,
- * and DOM → Flash event bridging.
+ * Flash runtime — FlashRuntime instance owns Canvas2D, Stage,
+ * ENTER_FRAME dispatch, and DOM → Flash event bridging.
  */
 
 import {
@@ -33,66 +33,188 @@ import {
 } from "./platform";
 
 // ---------------------------------------------------------------------------
-// Canvas + rendering context
-// ---------------------------------------------------------------------------
-
-const { canvas, ctx } = initCanvas("reincarnate-canvas");
-
-// ---------------------------------------------------------------------------
-// Singleton Stage
-// ---------------------------------------------------------------------------
-
-export const stage = new Stage();
-stage.stageWidth = canvas.width;
-stage.stageHeight = canvas.height;
-// Stage's own .stage points to itself (Flash behaviour).
-stage.stage = stage;
-
-// ---------------------------------------------------------------------------
-// Document-class root construction
-// ---------------------------------------------------------------------------
-
-/**
- * Construct the document class (root timeline MovieClip) and add it to the
- * stage.  In Flash, the document class has `this.stage` available during its
- * constructor — this function emulates that by setting a pending stage
- * reference that DisplayObject's constructor picks up.
- */
-export function constructRoot<T extends MovieClip>(cls: new () => T): T {
-  _setConstructingRoot(stage);
-  const root = new cls();
-  _setConstructingRoot(null);
-  stage.addChild(root);
-  root._executeFrameScript();
-  return root;
-}
-
-// ---------------------------------------------------------------------------
-// flashTick — called once per frame from the game loop
+// Constants
 // ---------------------------------------------------------------------------
 
 const DEG_TO_RAD = Math.PI / 180;
 
-export function flashTick(): void {
-  // Sync stage dimensions to canvas.
-  stage.stageWidth = canvas.width;
-  stage.stageHeight = canvas.height;
+// ---------------------------------------------------------------------------
+// FlashRuntime
+// ---------------------------------------------------------------------------
 
-  // Dispatch ENTER_FRAME first (matches Flash frame lifecycle).
-  dispatchEnterFrame(stage);
+export class FlashRuntime {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  stage: Stage;
 
-  // Advance playing MovieClips and execute frame scripts.
-  advanceMovieClips(stage);
+  // Timing state (per-instance).
+  private _lastTime = 0;
+  private _dt = 0;
+  private _frames = 0;
 
-  // If Stage.invalidate() was called, dispatch RENDER before rendering.
-  if (stage._invalidated) {
-    stage._invalidated = false;
-    stage.dispatchEvent(new Event(Event.RENDER, false, false));
+  constructor(canvasId: string) {
+    const { canvas, ctx } = initCanvas(canvasId);
+    this.canvas = canvas;
+    this.ctx = ctx;
+    this.stage = new Stage();
+    this.stage.stageWidth = canvas.width;
+    this.stage.stageHeight = canvas.height;
+    // Stage's own .stage points to itself (Flash behaviour).
+    this.stage.stage = this.stage;
   }
 
-  // Clear canvas then render.
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  renderDisplayList(stage, ctx);
+  /**
+   * Construct the document class (root timeline MovieClip) and add it to the
+   * stage.  In Flash, the document class has `this.stage` available during its
+   * constructor — this function emulates that by setting a pending stage
+   * reference that DisplayObject's constructor picks up.
+   */
+  constructRoot<T extends MovieClip>(cls: new () => T): T {
+    _setConstructingRoot(this.stage);
+    const root = new cls();
+    _setConstructingRoot(null);
+    this.stage.addChild(root);
+    root._executeFrameScript();
+    return root;
+  }
+
+  /**
+   * Start the runtime: construct the root, bind DOM events, and run the
+   * requestAnimationFrame game loop.
+   */
+  start(rootClass: new () => MovieClip): void {
+    this.constructRoot(rootClass);
+    this._lastTime = performance.now() / 1000;
+    this._bindEvents();
+
+    const loop = () => {
+      const now = performance.now() / 1000;
+      this._dt = now - this._lastTime;
+      this._lastTime = now;
+      this._frames++;
+      this._tick();
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+
+  private _tick(): void {
+    // Sync stage dimensions to canvas.
+    this.stage.stageWidth = this.canvas.width;
+    this.stage.stageHeight = this.canvas.height;
+
+    // Dispatch ENTER_FRAME first (matches Flash frame lifecycle).
+    dispatchEnterFrame(this.stage);
+
+    // Advance playing MovieClips and execute frame scripts.
+    advanceMovieClips(this.stage);
+
+    // If Stage.invalidate() was called, dispatch RENDER before rendering.
+    if (this.stage._invalidated) {
+      this.stage._invalidated = false;
+      this.stage.dispatchEvent(new Event(Event.RENDER, false, false));
+    }
+
+    // Clear canvas then render.
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    renderDisplayList(this.stage, this.ctx);
+  }
+
+  private _bindEvents(): void {
+    const canvas = this.canvas;
+    const stage = this.stage;
+
+    // -----------------------------------------------------------------------
+    // DOM → Flash mouse event routing
+    // -----------------------------------------------------------------------
+
+    const dispatchMouse = (type: string, e: MouseEvent): void => {
+      const [sx, sy] = canvasCoords(canvas, e);
+
+      // Update drag target position on mouse move.
+      if (type === FlashMouseEvent.MOUSE_MOVE) {
+        updateDrag(sx, sy);
+      }
+
+      // Find the deepest interactive object under the mouse.
+      const target = hitTest(stage, sx, sy) ?? stage;
+      // Compute local coordinates for the target.
+      const local = target.globalToLocal(new Point(sx, sy));
+      const evt = new FlashMouseEvent(
+        type,
+        true,
+        false,
+        local.x,
+        local.y,
+        null,
+        e.ctrlKey,
+        e.altKey,
+        e.shiftKey,
+        e.buttons > 0,
+        0,
+      );
+      evt.stageX = sx;
+      evt.stageY = sy;
+      target.dispatchEvent(evt);
+    };
+
+    addCanvasEventListener(canvas, "click", (e: MouseEvent) => dispatchMouse(FlashMouseEvent.CLICK, e));
+    addCanvasEventListener(canvas, "mousedown", (e: MouseEvent) => dispatchMouse(FlashMouseEvent.MOUSE_DOWN, e));
+    addCanvasEventListener(canvas, "mouseup", (e: MouseEvent) => dispatchMouse(FlashMouseEvent.MOUSE_UP, e));
+    addCanvasEventListener(canvas, "mousemove", (e: MouseEvent) => dispatchMouse(FlashMouseEvent.MOUSE_MOVE, e));
+    addCanvasEventListener(canvas, "dblclick", (e: MouseEvent) => dispatchMouse(FlashMouseEvent.DOUBLE_CLICK, e));
+    addCanvasEventListener(canvas, "mouseover", (e: MouseEvent) => dispatchMouse(FlashMouseEvent.MOUSE_OVER, e));
+    addCanvasEventListener(canvas, "mouseout", (e: MouseEvent) => dispatchMouse(FlashMouseEvent.MOUSE_OUT, e));
+
+    addCanvasEventListener(canvas, "wheel", (e: WheelEvent) => {
+      const [sx, sy] = canvasCoords(canvas, e);
+      const target = hitTest(stage, sx, sy) ?? stage;
+      const local = target.globalToLocal(new Point(sx, sy));
+      const evt = new FlashMouseEvent(
+        FlashMouseEvent.MOUSE_WHEEL,
+        true,
+        false,
+        local.x,
+        local.y,
+        null,
+        e.ctrlKey,
+        e.altKey,
+        e.shiftKey,
+        false,
+        e.deltaY > 0 ? -1 : e.deltaY < 0 ? 1 : 0,
+      );
+      evt.stageX = sx;
+      evt.stageY = sy;
+      target.dispatchEvent(evt);
+    });
+
+    // -----------------------------------------------------------------------
+    // DOM → Flash keyboard event routing
+    // -----------------------------------------------------------------------
+
+    const dispatchKey = (type: string, e: KeyboardEvent): void => {
+      const target = stage.focus ?? stage;
+      const evt = new FlashKeyboardEvent(
+        type,
+        true,
+        false,
+        e.key.length === 1 ? e.key.charCodeAt(0) : 0,
+        e.keyCode,
+        0,
+        e.ctrlKey,
+        e.altKey,
+        e.shiftKey,
+      );
+      target.dispatchEvent(evt);
+    };
+
+    addDocumentEventListener("keydown", (e: KeyboardEvent) => dispatchKey(FlashKeyboardEvent.KEY_DOWN, e));
+    addDocumentEventListener("keyup", (e: KeyboardEvent) => dispatchKey(FlashKeyboardEvent.KEY_UP, e));
+  }
+}
+
+export function createFlashRuntime(canvasId = "reincarnate-canvas"): FlashRuntime {
+  return new FlashRuntime(canvasId);
 }
 
 // ---------------------------------------------------------------------------
@@ -443,10 +565,10 @@ function hitTest(
 }
 
 // ---------------------------------------------------------------------------
-// DOM → Flash mouse event routing
+// Coordinate helpers
 // ---------------------------------------------------------------------------
 
-function canvasCoords(e: MouseEvent): [number, number] {
+function canvasCoords(canvas: HTMLCanvasElement, e: MouseEvent): [number, number] {
   const rect = getCanvasBounds(canvas);
   return [e.clientX - rect.left, e.clientY - rect.top];
 }
@@ -473,86 +595,3 @@ function updateDrag(sx: number, sy: number): void {
   _dragTarget.x = nx;
   _dragTarget.y = ny;
 }
-
-function dispatchFlashMouse(type: string, e: MouseEvent): void {
-  const [sx, sy] = canvasCoords(e);
-
-  // Update drag target position on mouse move.
-  if (type === FlashMouseEvent.MOUSE_MOVE) {
-    updateDrag(sx, sy);
-  }
-
-  // Find the deepest interactive object under the mouse.
-  const target = hitTest(stage, sx, sy) ?? stage;
-  // Compute local coordinates for the target.
-  const local = target.globalToLocal(new Point(sx, sy));
-  const evt = new FlashMouseEvent(
-    type,
-    true,
-    false,
-    local.x,
-    local.y,
-    null,
-    e.ctrlKey,
-    e.altKey,
-    e.shiftKey,
-    e.buttons > 0,
-    0,
-  );
-  evt.stageX = sx;
-  evt.stageY = sy;
-  target.dispatchEvent(evt);
-}
-
-addCanvasEventListener(canvas, "click", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.CLICK, e));
-addCanvasEventListener(canvas, "mousedown", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_DOWN, e));
-addCanvasEventListener(canvas, "mouseup", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_UP, e));
-addCanvasEventListener(canvas, "mousemove", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_MOVE, e));
-addCanvasEventListener(canvas, "dblclick", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.DOUBLE_CLICK, e));
-addCanvasEventListener(canvas, "mouseover", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_OVER, e));
-addCanvasEventListener(canvas, "mouseout", (e: MouseEvent) => dispatchFlashMouse(FlashMouseEvent.MOUSE_OUT, e));
-
-addCanvasEventListener(canvas, "wheel", (e: WheelEvent) => {
-  const [sx, sy] = canvasCoords(e);
-  const target = hitTest(stage, sx, sy) ?? stage;
-  const local = target.globalToLocal(new Point(sx, sy));
-  const evt = new FlashMouseEvent(
-    FlashMouseEvent.MOUSE_WHEEL,
-    true,
-    false,
-    local.x,
-    local.y,
-    null,
-    e.ctrlKey,
-    e.altKey,
-    e.shiftKey,
-    false,
-    e.deltaY > 0 ? -1 : e.deltaY < 0 ? 1 : 0,
-  );
-  evt.stageX = sx;
-  evt.stageY = sy;
-  target.dispatchEvent(evt);
-});
-
-// ---------------------------------------------------------------------------
-// DOM → Flash keyboard event routing
-// ---------------------------------------------------------------------------
-
-function dispatchFlashKey(type: string, e: KeyboardEvent): void {
-  const target = stage.focus ?? stage;
-  const evt = new FlashKeyboardEvent(
-    type,
-    true,
-    false,
-    e.key.length === 1 ? e.key.charCodeAt(0) : 0,
-    e.keyCode,
-    0,
-    e.ctrlKey,
-    e.altKey,
-    e.shiftKey,
-  );
-  target.dispatchEvent(evt);
-}
-
-addDocumentEventListener("keydown", (e: KeyboardEvent) => dispatchFlashKey(FlashKeyboardEvent.KEY_DOWN, e));
-addDocumentEventListener("keyup", (e: KeyboardEvent) => dispatchFlashKey(FlashKeyboardEvent.KEY_UP, e));
