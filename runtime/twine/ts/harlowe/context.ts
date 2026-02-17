@@ -82,16 +82,16 @@ function resolveColor(value: string): string {
 function applyTransition(el: HTMLElement): void {
   const name = el.dataset.tw_transition || el.dataset.tw_transition_arrive;
   if (!name) return;
-  const duration = el.dataset.tw_transition_time || "0.8s";
+  const duration = el.dataset.tw_transition_time;
   wrapInTransitionContainer(el, name, duration);
 }
 
 /** Create a <tw-transition-container> wrapping the given element's children. */
-function wrapInTransitionContainer(parent: HTMLElement, name: string, duration: string): void {
+function wrapInTransitionContainer(parent: HTMLElement, name: string, duration?: string): void {
   const container = document.createElement("tw-transition-container") as HTMLElement;
   container.setAttribute("data-t8n", name);
   container.classList.add("transition-in");
-  if (duration !== "0.8s") {
+  if (duration) {
     container.style.animationDuration = duration;
   }
   // Move all children into the transition container
