@@ -537,6 +537,9 @@ impl TranslateCtx {
 
             // Dialog
             "dialog" => self.lower_dialog_macro(mac),
+
+            // Enchant
+            "enchant" | "enchant-in" => self.lower_enchant_macro(mac),
             "column" => {
                 self.fb
                     .system_call("Harlowe.H", "columnBreak", &[], Type::Void);
@@ -1077,6 +1080,19 @@ impl TranslateCtx {
                 Type::Void,
             );
         }
+    }
+
+    // ── Enchant ────────────────────────────────────────────────
+
+    fn lower_enchant_macro(&mut self, mac: &MacroNode) {
+        let method = if mac.name == "enchant-in" { "enchant_in" } else { "enchant" };
+        let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
+        self.fb.system_call(
+            "Harlowe.Engine",
+            method,
+            &args,
+            Type::Void,
+        );
     }
 
     // ── Dialog ─────────────────────────────────────────────────

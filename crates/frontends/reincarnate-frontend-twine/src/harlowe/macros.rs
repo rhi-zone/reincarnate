@@ -54,7 +54,7 @@ pub fn macro_kind(name: &str) -> MacroKind {
         | "macro" | "partial" | "bind" | "bind-2bind" | "2bind" => MacroKind::Value,
 
         // Layout / interactive commands
-        "columns" | "column" => MacroKind::Command,
+        "columns" | "column" | "enchant" | "enchant-in" => MacroKind::Command,
 
         // Live is command-like (attaches hook for timed behavior)
         "live" | "event" | "meter" | "dialog" | "dropdown" | "input" | "input-box"

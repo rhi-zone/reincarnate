@@ -536,6 +536,75 @@ export function click_macro(method: string, ...args: any[]): void {
   });
 }
 
+// --- Enchant ---
+
+/** Resolve a Harlowe hook selector to a CSS selector string. */
+function resolveHookSelector(selector: any): string {
+  const s = String(selector);
+  if (s.startsWith("?")) {
+    return `tw-hook[name="${s.slice(1)}"]`;
+  }
+  return s;
+}
+
+/** Apply a changer to matching elements by wrapping them in tw-enchantment. */
+function enchantElements(scope: Element, selector: string, changer: Changer | Changer[]): void {
+  const targets = scope.querySelectorAll(selector);
+  targets.forEach(el => {
+    if (el.parentElement?.tagName.toLowerCase() === "tw-enchantment") return;
+    const wrapper = document.createElement("tw-enchantment") as HTMLElement;
+    if (Array.isArray(changer)) {
+      for (const c of changer) applyChangerToElement(wrapper, c);
+    } else {
+      applyChangerToElement(wrapper, changer);
+    }
+    el.parentNode?.insertBefore(wrapper, el);
+    wrapper.appendChild(el);
+  });
+}
+
+function applyChangerToElement(el: HTMLElement, changer: Changer): void {
+  switch (changer.name) {
+    case "color": case "colour": case "text-colour": case "text-color":
+      el.style.color = String(changer.args[0]);
+      break;
+    case "background":
+      el.style.backgroundColor = String(changer.args[0]);
+      break;
+    case "text-style": {
+      const style = String(changer.args[0]);
+      if (style === "bold") el.style.fontWeight = "bold";
+      else if (style === "italic") el.style.fontStyle = "italic";
+      else if (style === "underline") el.style.textDecoration = "underline";
+      break;
+    }
+    case "font":
+      el.style.fontFamily = String(changer.args[0]);
+      break;
+    case "css":
+      el.setAttribute("style", (el.getAttribute("style") || "") + ";" + String(changer.args[0]));
+      break;
+    default:
+      break;
+  }
+}
+
+/** `(enchant: selector, changer)` — wraps matching elements in tw-enchantment. */
+export function enchant(selector: any, changer: any): void {
+  const story = document.querySelector("tw-story");
+  if (!story) return;
+  const css = resolveHookSelector(selector);
+  enchantElements(story, css, changer as Changer | Changer[]);
+}
+
+/** `(enchant-in: selector, changer)` — like enchant but scoped to current passage. */
+export function enchant_in(selector: any, changer: any): void {
+  const passage = document.querySelector("tw-passage") || document.querySelector("tw-story");
+  if (!passage) return;
+  const css = resolveHookSelector(selector);
+  enchantElements(passage, css, changer as Changer | Changer[]);
+}
+
 // --- Dialog ---
 
 /** `(dialog: title, closeLabel)[hook]` — modal dialog. */
