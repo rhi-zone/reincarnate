@@ -87,7 +87,7 @@ function applyTransition(el: HTMLElement): void {
 }
 
 /** Create a <tw-transition-container> wrapping the given element's children. */
-export function wrapInTransitionContainer(parent: HTMLElement, name: string, duration: string): void {
+function wrapInTransitionContainer(parent: HTMLElement, name: string, duration: string): void {
   const container = document.createElement("tw-transition-container") as HTMLElement;
   const animName = `tw-${name}`;
   container.style.animation = `${animName} ${duration} ease-in-out`;

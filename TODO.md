@@ -257,7 +257,7 @@ root for Harlowe (SugarCube keeps `<div id="passages">`).
 - [x] `<tw-dialog-links>` — dialog close link container (engine.ts)
 
 **Content (done — transition wrapping):**
-- [x] `<tw-transition-container>` — passage arrive transition (navigation.ts) + changer transitions (context.ts)
+- [x] `<tw-transition-container>` — wraps hook children when `(transition:)` changer is applied (context.ts)
 
 **Testing:** None of the 21 current test games use these macros. To verify
 correctness, find a Harlowe game on IFDB/itch.io that exercises these macros
