@@ -212,14 +212,10 @@ impl TranslateCtx {
         match result {
             Ok(oxc_expr) => self.lower_oxc_expr(&oxc_expr, &pp),
             Err(_) => {
-                // Parse error — emit runtime error
-                eprintln!(
-                    "warning: oxc parse error in {}: {:?} (source: {})",
-                    self.func_name, &pp.js, trimmed
-                );
-                let m = self.fb.const_string(format!("parse error: {trimmed}"));
-                self.fb
-                    .system_call("SugarCube.Engine", "error", &[m], Type::Dynamic)
+                // Parse error — treat as literal string value.
+                // This handles bare passage names, CSS selectors, durations,
+                // and other non-JS tokens that SugarCube uses as macro arguments.
+                self.fb.const_string(trimmed)
             }
         }
     }

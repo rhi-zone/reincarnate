@@ -433,8 +433,22 @@ impl<'a> Parser<'a> {
                     }
                 }
             }
+            // Macros whose arguments are CSS selectors, durations, or other
+            // non-expression tokens — store as Raw.
+            "replace" | "append" | "prepend" | "timed" | "repeat" | "type"
+            | "addclass" | "removeclass" | "toggleclass"
+            | "copy" | "remove" | "done" | "listbox" | "cycle"
+            | "textbox" | "textarea" | "numberbox" | "checkbox" | "radiobutton" => {
+                let args_src = self.capture_args_src();
+                let trimmed = args_src.trim();
+                if trimmed.is_empty() {
+                    MacroArgs::None
+                } else {
+                    MacroArgs::Raw(trimmed.to_string())
+                }
+            }
             _ => {
-                // Generic: store as expression if non-empty, else Raw
+                // Generic: store as expression if non-empty
                 let args_src = self.capture_args_src();
                 let trimmed = args_src.trim();
                 if trimmed.is_empty() {
@@ -857,9 +871,6 @@ impl<'a> Parser<'a> {
                     return MacroArgs::LinkArgs {
                         text: LinkText::Plain(text.to_string()),
                         passage: passage.map(|p| {
-                            // Store passage as Raw string — it's a literal name
-                            // wrapped in an Expr-like structure, but we use the
-                            // existing passage name approach
                             let base = self.pos - args_src.len();
                             let offset = base
                                 + (p.as_ptr() as usize - args_src.as_ptr() as usize);
