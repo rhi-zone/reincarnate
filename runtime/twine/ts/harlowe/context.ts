@@ -533,6 +533,27 @@ export class HarloweContext {
     return this.styled({ name: "hover-style", args: [v] }, ...children);
   }
 
+  // --- Column layout ---
+
+  /** Signal a `(column:)` break — pops up to the tw-columns parent, starts a new tw-column. */
+  columnBreak(): void {
+    // Walk up the container stack to find the tw-columns element
+    for (let i = this.containerStack.length - 1; i >= 0; i--) {
+      const el = this.containerStack[i];
+      if (el instanceof HTMLElement && el.tagName.toLowerCase() === "tw-columns") {
+        // Pop back to tw-columns level
+        while (this.containerStack.length > i + 1) this.containerStack.pop();
+        // Create a new tw-column inside the tw-columns
+        const col = document.createElement("tw-column") as HTMLElement;
+        col.style.flex = "1";
+        el.appendChild(col);
+        this.push(col);
+        return;
+      }
+    }
+    // Not inside a tw-columns — no-op
+  }
+
   // --- State ---
 
   /** Get a story variable. */

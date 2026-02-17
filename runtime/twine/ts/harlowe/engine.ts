@@ -536,6 +536,45 @@ export function click_macro(method: string, ...args: any[]): void {
   });
 }
 
+// --- Columns ---
+
+/** `(columns: "1fr", "2fr", ...)[hook]` — flex row with column widths. */
+export function columns_macro(...args: any[]): void {
+  const callback = args.length > 0 && typeof args[args.length - 1] === "function"
+    ? args.pop() as (h: HarloweContext) => void
+    : undefined;
+  const widths = args.map(String);
+
+  const container = document.querySelector("tw-passage") || document.querySelector("tw-story");
+  if (!container || !callback) return;
+
+  const columns = document.createElement("tw-columns") as HTMLElement;
+  columns.style.display = "flex";
+  columns.style.flexDirection = "row";
+  columns.style.justifyContent = "space-between";
+  container.appendChild(columns);
+
+  // Create the first column
+  const firstCol = document.createElement("tw-column") as HTMLElement;
+  firstCol.style.flex = widths.length > 0 ? widths[0] : "1";
+  columns.appendChild(firstCol);
+
+  const h = new HarloweContext(columns);
+  // Push the first column as the current container
+  (h as any).containerStack = [columns, firstCol];
+  try {
+    callback(h);
+  } finally {
+    h.closeAll();
+  }
+
+  // Apply widths to columns after callback has run (column breaks create new columns)
+  const cols = columns.querySelectorAll(":scope > tw-column");
+  cols.forEach((col, i) => {
+    (col as HTMLElement).style.flex = i < widths.length ? widths[i] : "1";
+  });
+}
+
 // --- Unknown macro fallback ---
 
 /** Handle unknown macros gracefully. */

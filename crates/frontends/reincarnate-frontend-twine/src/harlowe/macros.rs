@@ -53,6 +53,9 @@ pub fn macro_kind(name: &str) -> MacroKind {
         | "source" | "datanames" | "datavalues" | "dataentries" | "v6" | "v8" | "metadata"
         | "macro" | "partial" | "bind" | "bind-2bind" | "2bind" => MacroKind::Value,
 
+        // Layout / interactive commands
+        "columns" | "column" => MacroKind::Command,
+
         // Live is command-like (attaches hook for timed behavior)
         "live" | "event" | "meter" | "dialog" | "dropdown" | "input" | "input-box"
         | "checkbox" | "radio-button" | "force-checkbox" | "force-dropdown"
@@ -86,6 +89,7 @@ pub fn expects_hook(name: &str) -> bool {
                 | "event"
                 | "for"
                 | "dialog"
+                | "columns"
                 | "cycling-link"
                 | "seq-link"
         )
