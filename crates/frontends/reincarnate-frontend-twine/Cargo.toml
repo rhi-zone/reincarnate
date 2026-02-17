@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Twine frontend for the Reincarnate legacy software lifting framework"
 
 [dependencies]
+html-escape = "0.2.13"
 html5ever = "0.38"
 markup5ever = "0.16"
 oxc_allocator = "0.114.0"
