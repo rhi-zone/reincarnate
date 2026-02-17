@@ -7,6 +7,24 @@
 import { type Changer, HarloweContext } from "./context";
 import * as State from "./state";
 import * as Navigation from "./navigation";
+import { nav } from "./navigation";
+
+// --- DOM helpers ---
+
+/** Get the document factory (from nav.doc or global document). */
+function doc() { return nav.doc; }
+
+/** Get the tw-story container (from nav.container or querySelector). */
+function story() { return nav.container ?? story(); }
+
+/** Get the current tw-passage or tw-story. */
+function passage() {
+  const s = story();
+  if (s && (s as Element).querySelector) {
+    return (s as Element).querySelector("tw-passage") ?? s;
+  }
+  return s;
+}
 
 // --- Changers ---
 
@@ -433,7 +451,7 @@ export function dom_macro(method: string, ...args: any[]): void {
     ? args[args.length - 1] as (h: HarloweContext) => void
     : undefined;
 
-  const container = document.querySelector("tw-story");
+  const container = story();
   if (!container) return;
 
   switch (method) {
@@ -442,7 +460,7 @@ export function dom_macro(method: string, ...args: any[]): void {
       targets.forEach(el => {
         el.innerHTML = "";
         if (callback) {
-          const h = new HarloweContext(el);
+          const h = new HarloweContext(el, doc());
           try { callback(h); } finally { h.closeAll(); }
         }
       });
@@ -452,7 +470,7 @@ export function dom_macro(method: string, ...args: any[]): void {
       const targets = container.querySelectorAll(selector);
       targets.forEach(el => {
         if (callback) {
-          const h = new HarloweContext(el);
+          const h = new HarloweContext(el, doc());
           try { callback(h); } finally { h.closeAll(); }
         }
       });
@@ -462,8 +480,8 @@ export function dom_macro(method: string, ...args: any[]): void {
       const targets = container.querySelectorAll(selector);
       targets.forEach(el => {
         if (callback) {
-          const frag = document.createDocumentFragment();
-          const h = new HarloweContext(frag);
+          const frag = doc().createDocumentFragment();
+          const h = new HarloweContext(frag, doc());
           try { callback(h); } finally { h.closeAll(); }
           el.insertBefore(frag, el.firstChild);
         }
@@ -482,7 +500,7 @@ export function dom_macro(method: string, ...args: any[]): void {
     }
     case "rerun":
       if (callback) {
-        const h = new HarloweContext(container);
+        const h = new HarloweContext(container as Element, doc());
         try { callback(h); } finally { h.closeAll(); }
       }
       break;
@@ -500,7 +518,7 @@ export function click_macro(method: string, ...args: any[]): void {
     ? args[args.length - 1] as (h: HarloweContext) => void
     : undefined;
 
-  const container = document.querySelector("tw-story");
+  const container = story();
   if (!container) return;
 
   const targets = container.querySelectorAll(selector);
@@ -510,19 +528,19 @@ export function click_macro(method: string, ...args: any[]): void {
       if (!callback) return;
       if (method === "click-replace") {
         el.innerHTML = "";
-        const h = new HarloweContext(el);
+        const h = new HarloweContext(el, doc());
         try { callback(h); } finally { h.closeAll(); }
       } else if (method === "click-append") {
-        const h = new HarloweContext(el);
+        const h = new HarloweContext(el, doc());
         try { callback(h); } finally { h.closeAll(); }
       } else if (method === "click-prepend") {
-        const frag = document.createDocumentFragment();
-        const h = new HarloweContext(frag);
+        const frag = doc().createDocumentFragment();
+        const h = new HarloweContext(frag, doc());
         try { callback(h); } finally { h.closeAll(); }
         el.insertBefore(frag, el.firstChild);
       } else {
         // plain click — render inline
-        const h = new HarloweContext(el);
+        const h = new HarloweContext(el, doc());
         try { callback(h); } finally { h.closeAll(); }
       }
     }, { once: true });
@@ -545,21 +563,21 @@ export function forget_visits(): void {
 
 /** `(meter: $var, max, label, color)` — progress meter element. */
 export function meter_macro(value: any, max: any, label?: any, color?: any): void {
-  const container = document.querySelector("tw-passage") || document.querySelector("tw-story");
+  const container = passage();
   if (!container) return;
 
   const numValue = Number(value);
   const numMax = Number(max);
   const pct = numMax > 0 ? Math.min(100, Math.max(0, (numValue / numMax) * 100)) : 0;
 
-  const meter = document.createElement("tw-meter") as HTMLElement;
+  const meter = doc().createElement("tw-meter") as HTMLElement;
   meter.style.display = "block";
   meter.style.position = "relative";
   meter.style.height = "1.5em";
   meter.style.border = "1px solid #fff";
   meter.style.marginBottom = "0.5em";
 
-  const bar = document.createElement("div");
+  const bar = doc().createElement("div");
   bar.style.height = "100%";
   bar.style.width = `${pct}%`;
   bar.style.backgroundColor = color ? String(color) : "green";
@@ -567,7 +585,7 @@ export function meter_macro(value: any, max: any, label?: any, color?: any): voi
   meter.appendChild(bar);
 
   if (label != null) {
-    const labelEl = document.createElement("span");
+    const labelEl = doc().createElement("span");
     labelEl.textContent = String(label);
     labelEl.style.position = "absolute";
     labelEl.style.left = "50%";
@@ -595,7 +613,7 @@ function enchantElements(scope: Element, selector: string, changer: Changer | Ch
   const targets = scope.querySelectorAll(selector);
   targets.forEach(el => {
     if (el.parentElement?.tagName.toLowerCase() === "tw-enchantment") return;
-    const wrapper = document.createElement("tw-enchantment") as HTMLElement;
+    const wrapper = doc().createElement("tw-enchantment") as HTMLElement;
     if (Array.isArray(changer)) {
       for (const c of changer) applyChangerToElement(wrapper, c);
     } else {
@@ -634,7 +652,7 @@ function applyChangerToElement(el: HTMLElement, changer: Changer): void {
 
 /** `(enchant: selector, changer)` — wraps matching elements in tw-enchantment. */
 export function enchant(selector: any, changer: any): void {
-  const story = document.querySelector("tw-story");
+  const story = story();
   if (!story) return;
   const css = resolveHookSelector(selector);
   enchantElements(story, css, changer as Changer | Changer[]);
@@ -642,7 +660,7 @@ export function enchant(selector: any, changer: any): void {
 
 /** `(enchant-in: selector, changer)` — like enchant but scoped to current passage. */
 export function enchant_in(selector: any, changer: any): void {
-  const passage = document.querySelector("tw-passage") || document.querySelector("tw-story");
+  const passage = passage();
   if (!passage) return;
   const css = resolveHookSelector(selector);
   enchantElements(passage, css, changer as Changer | Changer[]);
@@ -658,10 +676,10 @@ export function dialog_macro(...args: any[]): void {
   const title = args.length > 0 ? String(args[0]) : "";
   const closeLabel = args.length > 1 ? String(args[1]) : "Close";
 
-  const story = document.querySelector("tw-story");
+  const story = story();
   if (!story || !callback) return;
 
-  const backdrop = document.createElement("tw-backdrop") as HTMLElement;
+  const backdrop = doc().createElement("tw-backdrop") as HTMLElement;
   backdrop.style.position = "fixed";
   backdrop.style.inset = "0";
   backdrop.style.zIndex = "999996";
@@ -670,7 +688,7 @@ export function dialog_macro(...args: any[]): void {
   backdrop.style.alignItems = "center";
   backdrop.style.justifyContent = "center";
 
-  const dialog = document.createElement("tw-dialog") as HTMLElement;
+  const dialog = doc().createElement("tw-dialog") as HTMLElement;
   dialog.style.zIndex = "999997";
   dialog.style.border = "#fff solid 2px";
   dialog.style.padding = "2em";
@@ -682,23 +700,23 @@ export function dialog_macro(...args: any[]): void {
   backdrop.appendChild(dialog);
 
   if (title) {
-    const heading = document.createElement("h2");
+    const heading = doc().createElement("h2");
     heading.textContent = title;
     dialog.appendChild(heading);
   }
 
-  const h = new HarloweContext(dialog);
+  const h = new HarloweContext(dialog, doc());
   try {
     callback(h);
   } finally {
     h.closeAll();
   }
 
-  const links = document.createElement("tw-dialog-links") as HTMLElement;
+  const links = doc().createElement("tw-dialog-links") as HTMLElement;
   links.style.display = "block";
   links.style.marginTop = "1em";
   links.style.textAlign = "right";
-  const closeLink = document.createElement("tw-link") as HTMLElement;
+  const closeLink = doc().createElement("tw-link") as HTMLElement;
   closeLink.setAttribute("tabindex", "0");
   closeLink.textContent = closeLabel;
   closeLink.addEventListener("click", () => backdrop.remove());
@@ -720,21 +738,21 @@ export function columns_macro(...args: any[]): void {
     : undefined;
   const widths = args.map(String);
 
-  const container = document.querySelector("tw-passage") || document.querySelector("tw-story");
+  const container = passage();
   if (!container || !callback) return;
 
-  const columns = document.createElement("tw-columns") as HTMLElement;
+  const columns = doc().createElement("tw-columns") as HTMLElement;
   columns.style.display = "flex";
   columns.style.flexDirection = "row";
   columns.style.justifyContent = "space-between";
   container.appendChild(columns);
 
   // Create the first column
-  const firstCol = document.createElement("tw-column") as HTMLElement;
+  const firstCol = doc().createElement("tw-column") as HTMLElement;
   firstCol.style.flex = widths.length > 0 ? widths[0] : "1";
   columns.appendChild(firstCol);
 
-  const h = new HarloweContext(columns);
+  const h = new HarloweContext(columns, doc());
   // Push the first column as the current container
   (h as any).containerStack = [columns, firstCol];
   try {

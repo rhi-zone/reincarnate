@@ -2,6 +2,7 @@
 
 import * as State from "./state";
 import { HarloweContext, cancelTimers, departOldPassage } from "./context";
+import type { RenderRoot, DocumentFactory } from "../../../shared/ts/render-root";
 
 /** Passage function type — receives h context, returns void. */
 export type PassageFn = (h: HarloweContext) => void;
@@ -11,6 +12,10 @@ class HarloweNavigation {
   passageTags: Map<string, string[]> = new Map();
   currentPassage = "";
   lastDepart: { name: string; duration?: string } | undefined;
+  /** Document factory — defaults to global document. */
+  doc: DocumentFactory = document;
+  /** Container element for rendering passages (tw-story equivalent). */
+  container: Element | ShadowRoot | null = null;
 }
 
 export const nav = new HarloweNavigation();
@@ -31,7 +36,13 @@ export class HarloweRuntime {
     passageMap: Record<string, PassageFn>,
     startPassage?: string,
     tagMap?: Record<string, string[]>,
+    opts?: { root?: RenderRoot },
   ): void {
+    if (opts?.root) {
+      nav.doc = opts.root.doc;
+      nav.container = opts.root.container;
+    }
+
     for (const [name, fn] of Object.entries(passageMap)) {
       nav.passages.set(name, fn);
     }
@@ -59,23 +70,24 @@ function renderPassage(target: string, fn: PassageFn): void {
   nav.currentPassage = target;
   cancelTimers();
 
-  const story = document.querySelector("tw-story");
+  const doc = nav.doc;
+  const story = nav.container ?? document.querySelector("tw-story");
   if (!story) return;
 
   // Animate out old passage (or remove immediately if no depart transition).
-  departOldPassage(story, nav.lastDepart);
+  departOldPassage(story as Element, nav.lastDepart, doc);
   nav.lastDepart = undefined;
 
   // Create <tw-passage> with tags attribute
-  const passage = document.createElement("tw-passage");
+  const passage = doc.createElement("tw-passage");
   const tags = nav.passageTags.get(target);
   if (tags && tags.length > 0) {
     passage.setAttribute("tags", tags.join(" "));
   }
 
   // Create <tw-sidebar> with undo/redo icons
-  const sidebar = document.createElement("tw-sidebar");
-  const undoIcon = document.createElement("tw-icon");
+  const sidebar = doc.createElement("tw-sidebar");
+  const undoIcon = doc.createElement("tw-icon");
   undoIcon.setAttribute("tabindex", "0");
   undoIcon.setAttribute("title", "Undo");
   undoIcon.textContent = "\u21A9";
@@ -86,7 +98,7 @@ function renderPassage(target: string, fn: PassageFn): void {
       if (pfn) renderPassage(title, pfn);
     }
   });
-  const redoIcon = document.createElement("tw-icon");
+  const redoIcon = doc.createElement("tw-icon");
   redoIcon.setAttribute("tabindex", "0");
   redoIcon.setAttribute("title", "Redo");
   redoIcon.textContent = "\u21AA";
@@ -96,12 +108,12 @@ function renderPassage(target: string, fn: PassageFn): void {
 
   story.appendChild(passage);
 
-  const h = new HarloweContext(passage);
+  const h = new HarloweContext(passage, doc);
   try {
     fn(h);
   } catch (e) {
     console.error(`[harlowe] error in passage "${target}":`, e);
-    passage.appendChild(document.createTextNode(`Error in passage "${target}": ${e}`));
+    passage.appendChild(doc.createTextNode(`Error in passage "${target}": ${e}`));
   } finally {
     h.closeAll();
   }
