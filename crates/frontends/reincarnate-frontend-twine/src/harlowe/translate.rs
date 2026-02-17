@@ -504,7 +504,7 @@ impl TranslateCtx {
             "live" => { self.emit_live(mac); }
             "stop" => {
                 self.fb
-                    .system_call("Harlowe.Engine", "stop", &[], Type::Void);
+                    .system_call("Harlowe.H", "requestStop", &[], Type::Void);
             }
 
             // Value macros — print result
@@ -623,7 +623,7 @@ impl TranslateCtx {
             "live" => Some(self.lower_live_as_value(mac)),
 
             "stop" => {
-                self.fb.system_call("Harlowe.Engine", "stop", &[], Type::Void);
+                self.fb.system_call("Harlowe.H", "requestStop", &[], Type::Void);
                 None
             }
 

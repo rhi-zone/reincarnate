@@ -4,7 +4,7 @@
  * the compiled passage code.
  */
 
-import { type Changer, HarloweContext, requestStop } from "./context";
+import { type Changer, HarloweContext } from "./context";
 import * as State from "./state";
 import * as Navigation from "./navigation";
 
@@ -43,13 +43,6 @@ export function plus(a: any, b: any): any {
 /** Harlowe `not` operator. */
 export function not(val: any): boolean {
   return !val;
-}
-
-// --- Control flow ---
-
-/** `(stop:)` — signals the current (live:) interval to stop. */
-export function stop(): void {
-  requestStop();
 }
 
 // --- Save/load ---

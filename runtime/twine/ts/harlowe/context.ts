@@ -78,14 +78,6 @@ function resolveColor(value: string): string {
 // --- Transition animation support ---
 // Keyframe definitions are in the extracted format CSS (format_harlowe.css).
 
-/** Wrap an element's children in a <tw-transition-container> with the specified animation. */
-function applyTransition(el: HTMLElement): void {
-  const name = el.dataset.tw_transition || el.dataset.tw_transition_arrive;
-  if (!name) return;
-  const duration = el.dataset.tw_transition_time;
-  wrapInTransitionContainer(el, name, duration);
-}
-
 /** Create a <tw-transition-container> wrapping the given element's children. */
 function wrapInTransitionContainer(parent: HTMLElement, name: string, duration?: string): void {
   const container = document.createElement("tw-transition-container") as HTMLElement;
@@ -181,12 +173,6 @@ function applyChanger(el: HTMLElement, changer: Changer): void {
     case "css":
       el.setAttribute("style", (el.getAttribute("style") || "") + ";" + String(changer.args[0]));
       break;
-    case "transition":
-    case "transition-time":
-    case "transition-arrive":
-    case "transition-depart":
-      el.dataset[`tw_${changer.name.replace(/-/g, "_")}`] = String(changer.args[0]);
-      break;
     case "collapse":
       el.classList.add("tw-collapse");
       break;
@@ -196,33 +182,80 @@ function applyChanger(el: HTMLElement, changer: Changer): void {
     case "hidden":
       el.style.display = "none";
       break;
-    case "hover-style":
-      el.dataset.tw_hover = JSON.stringify(changer.args[0]);
+    case "hover-style": {
+      const hoverChanger = changer.args[0] as Changer;
+      const saved = new Map<string, string>();
+      el.addEventListener("mouseenter", () => {
+        // Save current values before applying hover styles
+        const probe = document.createElement("span");
+        applyChanger(probe, hoverChanger);
+        for (let i = 0; i < probe.style.length; i++) {
+          const prop = probe.style[i];
+          saved.set(prop, el.style.getPropertyValue(prop));
+          el.style.setProperty(prop, probe.style.getPropertyValue(prop));
+        }
+      });
+      el.addEventListener("mouseleave", () => {
+        for (const [prop, val] of saved) {
+          el.style.setProperty(prop, val);
+        }
+        saved.clear();
+      });
       break;
+    }
   }
 }
 
-function applyChangers(el: HTMLElement, changers: Changer | Changer[], populate?: () => void): void {
-  if (Array.isArray(changers)) {
-    for (const c of changers) applyChanger(el, c);
-  } else {
-    applyChanger(el, changers);
+interface TransitionInfo { arrive?: string; depart?: string; duration?: string }
+
+function applyChangers(el: HTMLElement, changers: Changer | Changer[], populate?: () => void): TransitionInfo {
+  const t: TransitionInfo = {};
+  const list = Array.isArray(changers) ? changers : [changers];
+  for (const c of list) {
+    if (c.name === "transition" || c.name === "transition-arrive") {
+      t.arrive = String(c.args[0]);
+    } else if (c.name === "transition-depart") {
+      t.depart = String(c.args[0]);
+    } else if (c.name === "transition-time") {
+      t.duration = String(c.args[0]);
+    } else {
+      applyChanger(el, c);
+    }
   }
   if (populate) populate();
-  applyTransition(el);
+  if (t.arrive) wrapInTransitionContainer(el, t.arrive, t.duration);
+  return t;
 }
 
 // --- Timer tracking ---
 
 const activeTimers: number[] = [];
 
-// --- Stop signal for (live:) ---
 
-let stopRequested = false;
+/** Cancel all active (live:) timers. */
+export function cancelTimers(): void {
+  for (const id of activeTimers) {
+    cancelInterval(id);
+  }
+  activeTimers.length = 0;
+}
 
-/** Request that the current (live:) interval stops. */
-export function requestStop(): void {
-  stopRequested = true;
+/** Animate out old passages with the given depart transition, or remove immediately. */
+export function departOldPassage(story: Element, depart?: { name: string; duration?: string }): void {
+  if (!depart) {
+    while (story.firstChild) story.removeChild(story.firstChild);
+    return;
+  }
+  const oldPassages = story.querySelectorAll(":scope > tw-passage");
+  for (const passage of oldPassages) {
+    const container = document.createElement("tw-transition-container") as HTMLElement;
+    container.setAttribute("data-t8n", depart.name);
+    container.classList.add("transition-out");
+    if (depart.duration) container.style.animationDuration = depart.duration;
+    story.insertBefore(container, passage);
+    container.appendChild(passage);
+    container.addEventListener("animationend", () => container.remove(), { once: true });
+  }
 }
 
 /** Clear the tw-story container and cancel active timers. */
@@ -233,10 +266,7 @@ export function clear(): void {
       container.removeChild(container.firstChild);
     }
   }
-  for (const id of activeTimers) {
-    cancelInterval(id);
-  }
-  activeTimers.length = 0;
+  cancelTimers();
 }
 
 // --- HarloweContext ---
@@ -244,6 +274,12 @@ export function clear(): void {
 export class HarloweContext {
   private containerStack: (Element | DocumentFragment)[];
   private prevBr = false;
+
+  /** Depart transition set by (transition-depart:) changers during this render. */
+  departTransition?: { name: string; duration?: string };
+
+  /** When true, signals the enclosing (live:) interval to stop. */
+  stopLive = false;
 
   constructor(container: Element | DocumentFragment) {
     this.containerStack = [container];
@@ -438,9 +474,8 @@ export class HarloweContext {
       } finally {
         subH.closeAll();
       }
-      if (stopRequested) {
+      if (subH.stopLive) {
         cancelInterval(id);
-        stopRequested = false;
       }
     }, ms);
     activeTimers.push(id);
@@ -485,7 +520,8 @@ export class HarloweContext {
   /** Apply a changer (or changer array) to a tw-hook wrapping children. */
   styled(changer: Changer | Changer[], ...children: Child[]): Node {
     const hook = document.createElement("tw-hook") as HTMLElement;
-    applyChangers(hook, changer, () => this.appendChildren(hook, children));
+    const t = applyChangers(hook, changer, () => this.appendChildren(hook, children));
+    if (t.depart) this.departTransition = { name: t.depart, duration: t.duration };
     this.current().appendChild(hook);
     this.prevBr = false;
     return hook;
@@ -606,6 +642,13 @@ export class HarloweContext {
   /** Get the `it` keyword value. */
   get_it(): any {
     return State.get_it();
+  }
+
+  // --- Control flow ---
+
+  /** Signal the enclosing (live:) interval to stop after this tick. */
+  requestStop(): void {
+    this.stopLive = true;
   }
 
   // --- Navigation ---

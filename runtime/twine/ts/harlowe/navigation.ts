@@ -1,7 +1,7 @@
 /** Harlowe navigation — passage registry, goto, display (include). */
 
 import * as State from "./state";
-import { HarloweContext, clear } from "./context";
+import { HarloweContext, cancelTimers, departOldPassage } from "./context";
 
 /** Passage function type — receives h context, returns void. */
 export type PassageFn = (h: HarloweContext) => void;
@@ -14,6 +14,9 @@ const passageTags: Map<string, string[]> = new Map();
 
 /** Current passage name. */
 let currentPassage = "";
+
+/** Depart transition from the last rendered passage (consumed on next navigation). */
+let lastDepart: { name: string; duration?: string } | undefined;
 
 /** Register all passage functions and start the story.
  *
@@ -46,10 +49,14 @@ export function startStory(
 function renderPassage(target: string, fn: PassageFn): void {
   State.clearTemps();
   currentPassage = target;
-  clear();
+  cancelTimers();
 
   const story = document.querySelector("tw-story");
   if (!story) return;
+
+  // Animate out old passage (or remove immediately if no depart transition).
+  departOldPassage(story, lastDepart);
+  lastDepart = undefined;
 
   // Create <tw-passage> with tags attribute
   const passage = document.createElement("tw-passage");
@@ -90,6 +97,8 @@ function renderPassage(target: string, fn: PassageFn): void {
   } finally {
     h.closeAll();
   }
+  // Capture depart transition for use when navigating away from this passage.
+  lastDepart = h.departTransition;
 }
 
 /** Navigate to a passage by name. */
