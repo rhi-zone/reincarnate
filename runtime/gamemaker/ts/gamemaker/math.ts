@@ -42,29 +42,33 @@ class XorGen {
   }
 }
 
-let prng = new XorGen(0);
+class MathState {
+  prng = new XorGen(0);
+}
+
+const mathState = new MathState();
 
 export function random_set_seed(seed: number): void {
-  prng = new XorGen(seed);
+  mathState.prng = new XorGen(seed);
 }
 
 export function randomize(): void {
-  prng = new XorGen(Date.now());
+  mathState.prng = new XorGen(Date.now());
 }
 
 export function random(max: number): number {
-  return (prng.next() + UINT32_OFFSET) * max / UINT32_MAX;
+  return (mathState.prng.next() + UINT32_OFFSET) * max / UINT32_MAX;
 }
 
 export function random_range(min: number, max: number): number {
-  return min + (prng.next() + UINT32_OFFSET) * (max - min) / UINT32_MAX;
+  return min + (mathState.prng.next() + UINT32_OFFSET) * (max - min) / UINT32_MAX;
 }
 
 export function irandom(max: number): number {
   const maxp1 = max + 1;
   let res: number;
   do {
-    res = Math.floor((prng.next() + UINT32_OFFSET) * maxp1 / UINT32_MAX);
+    res = Math.floor((mathState.prng.next() + UINT32_OFFSET) * maxp1 / UINT32_MAX);
   } while (res > max);
   return res;
 }
@@ -73,7 +77,7 @@ export function irandom_range(min: number, max: number): number {
   const deltap1 = max - min + 1;
   let res: number;
   do {
-    res = min + Math.floor((prng.next() + UINT32_OFFSET) * deltap1 / UINT32_MAX);
+    res = min + Math.floor((mathState.prng.next() + UINT32_OFFSET) * deltap1 / UINT32_MAX);
   } while (res > max);
   return res;
 }
