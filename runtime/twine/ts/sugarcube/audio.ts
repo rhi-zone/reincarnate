@@ -18,10 +18,28 @@ import {
   type AudioHandle,
 } from "../platform";
 
-// --- Audio cache ---
-// Exported so SimpleAudio global in engine.ts can share the same stores.
+// --- Audio state ---
 
-export const audioCache: Map<string, AudioHandle> = new Map();
+export interface Playlist {
+  tracks: string[];
+  currentIndex: number;
+  loop: boolean;
+}
+
+class AudioState {
+  audioCache: Map<string, AudioHandle> = new Map();
+  playlists: Map<string, Playlist> = new Map();
+  audioGroups: Map<string, string[]> = new Map();
+  masterVolume = 1;
+  masterMuted = false;
+}
+
+export const audioState = new AudioState();
+
+// Re-export for backwards compatibility (engine.ts imports these by name)
+export const audioCache = audioState.audioCache;
+export const playlists = audioState.playlists;
+export const audioGroups = audioState.audioGroups;
 
 /** <<cacheaudio "name" "source1" "source2" ...>> */
 export function cacheaudio(name: string, ...sources: string[]): void {
@@ -97,23 +115,20 @@ export function audio(name: string, action: string, ...args: any[]): void {
 
 // --- Master audio ---
 
-let masterVolume = 1;
-let masterMuted = false;
-
 /** <<masteraudio action ...args>> */
 export function masteraudio(action: string, ...args: any[]): void {
   switch (action) {
     case "volume": {
-      masterVolume = typeof args[0] === "number" ? args[0] : 1;
+      audioState.masterVolume = typeof args[0] === "number" ? args[0] : 1;
       applyMasterVolume();
       break;
     }
     case "mute":
-      masterMuted = true;
+      audioState.masterMuted = true;
       applyMasterMute();
       break;
     case "unmute":
-      masterMuted = false;
+      audioState.masterMuted = false;
       applyMasterMute();
       break;
     case "stop":
@@ -128,25 +143,17 @@ export function masteraudio(action: string, ...args: any[]): void {
 
 function applyMasterVolume(): void {
   for (const handle of audioCache.values()) {
-    setVolume(handle, masterVolume);
+    setVolume(handle, audioState.masterVolume);
   }
 }
 
 function applyMasterMute(): void {
   for (const handle of audioCache.values()) {
-    setMuted(handle, masterMuted);
+    setMuted(handle, audioState.masterMuted);
   }
 }
 
 // --- Playlists ---
-
-export interface Playlist {
-  tracks: string[];
-  currentIndex: number;
-  loop: boolean;
-}
-
-export const playlists: Map<string, Playlist> = new Map();
 
 /** <<createplaylist "name" "track1" "track2" ...>> */
 export function createplaylist(name: string, ...tracks: string[]): void {
@@ -207,8 +214,6 @@ function playPlaylistTrack(pl: Playlist): void {
 }
 
 // --- Audio groups ---
-
-export const audioGroups: Map<string, string[]> = new Map();
 
 /** <<createaudiogroup "name" "track1" "track2" ...>> */
 export function createaudiogroup(name: string, ...tracks: string[]): void {

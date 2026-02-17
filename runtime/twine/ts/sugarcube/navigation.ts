@@ -4,14 +4,13 @@ import * as State from "./state";
 import * as Output from "./output";
 import * as Events from "./events";
 
-/** Registry of passage name → passage function. */
-const passages: Map<string, () => void> = new Map();
+class SCNavigation {
+  passages: Map<string, () => void> = new Map();
+  passageTags: Map<string, string[]> = new Map();
+  currentPassage = "";
+}
 
-/** Registry of passage name → tags. */
-const passageTags: Map<string, string[]> = new Map();
-
-/** Current passage name. */
-let currentPassage = "";
+export const nav = new SCNavigation();
 
 /** Register all passage functions and start the story.
  *
@@ -22,16 +21,16 @@ let currentPassage = "";
  */
 export function startStory(passageMap: Record<string, () => void>, startPassage?: string, tagMap?: Record<string, string[]>): void {
   for (const [name, fn] of Object.entries(passageMap)) {
-    passages.set(name, fn);
+    nav.passages.set(name, fn);
   }
   if (tagMap) {
     for (const [name, tags] of Object.entries(tagMap)) {
-      passageTags.set(name, tags);
+      nav.passageTags.set(name, tags);
     }
   }
 
   // Run StoryInit if it exists (initializes story variables)
-  const storyInit = passages.get("StoryInit");
+  const storyInit = nav.passages.get("StoryInit");
   if (storyInit) {
     try {
       storyInit();
@@ -51,7 +50,7 @@ export function startStory(passageMap: Record<string, () => void>, startPassage?
 
 /** Run a special passage by name, if it exists. Errors are logged. */
 function runSpecial(name: string): void {
-  const fn = passages.get(name);
+  const fn = nav.passages.get(name);
   if (fn) {
     try {
       fn();
@@ -64,11 +63,11 @@ function runSpecial(name: string): void {
 /** Render a passage with full event lifecycle and special passage support. */
 function renderPassage(target: string, fn: () => void): void {
   State.clearTemps();
-  currentPassage = target;
+  nav.currentPassage = target;
   Output.clear();
 
   // Check for nobr tag
-  const tags = passageTags.get(target) || [];
+  const tags = nav.passageTags.get(target) || [];
   if (tags.includes("nobr")) {
     Output.setNobr(true);
   }
@@ -110,7 +109,7 @@ function renderPassage(target: string, fn: () => void): void {
 
 /** Navigate to a passage by name. */
 export function goto(target: string): void {
-  const fn = passages.get(target);
+  const fn = nav.passages.get(target);
   if (!fn) {
     console.error(`[navigation] passage not found: "${target}"`);
     return;
@@ -126,7 +125,7 @@ export function back(): void {
     console.warn("[navigation] no history to go back to");
     return;
   }
-  const fn = passages.get(title);
+  const fn = nav.passages.get(title);
   if (!fn) {
     console.error(`[navigation] passage not found on back: "${title}"`);
     return;
@@ -143,7 +142,7 @@ function returnNav(): void {
 
 /** Include (embed) another passage inline without navigation. */
 export function include(passage: string): void {
-  const fn = passages.get(passage);
+  const fn = nav.passages.get(passage);
   if (!fn) {
     console.error(`[navigation] passage not found for include: "${passage}"`);
     return;
@@ -158,27 +157,27 @@ export function include(passage: string): void {
 
 /** Get the current passage name. */
 export function current(): string {
-  return currentPassage;
+  return nav.currentPassage;
 }
 
 /** Check if a passage exists in the registry. */
 export function has(name: string): boolean {
-  return passages.has(name);
+  return nav.passages.has(name);
 }
 
 /** Get a passage function by name (for widget/engine lookup). */
 export function getPassage(name: string): (() => void) | undefined {
-  return passages.get(name);
+  return nav.passages.get(name);
 }
 
 /** Get the tags for a passage. */
 export function getTags(name: string): string[] {
-  return passageTags.get(name) || [];
+  return nav.passageTags.get(name) || [];
 }
 
 /** Get all passage names in the registry. */
 export function allPassages(): string[] {
-  return Array.from(passages.keys());
+  return Array.from(nav.passages.keys());
 }
 
 /** Register commands for navigation. */

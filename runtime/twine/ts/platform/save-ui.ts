@@ -7,15 +7,19 @@ export interface SaveSlotInfo {
   isEmpty: boolean;
 }
 
-let showDialog: (title: string, content: DocumentFragment | HTMLElement) => void;
-let closeDialog: () => void;
+class SaveUI {
+  showDialog!: (title: string, content: DocumentFragment | HTMLElement) => void;
+  closeDialog!: () => void;
+}
+
+const saveUI = new SaveUI();
 
 export function init(
-  show: typeof showDialog,
-  close: typeof closeDialog,
+  show: (title: string, content: DocumentFragment | HTMLElement) => void,
+  close: () => void,
 ): void {
-  showDialog = show;
-  closeDialog = close;
+  saveUI.showDialog = show;
+  saveUI.closeDialog = close;
 }
 
 export function showSaveUI(
@@ -44,7 +48,7 @@ export function showSaveUI(
     const saveBtn = document.createElement("button");
     saveBtn.textContent = "Save";
     saveBtn.style.cssText = "margin: 0 0.2em;";
-    saveBtn.addEventListener("click", () => { onSave(slot.index); closeDialog(); });
+    saveBtn.addEventListener("click", () => { onSave(slot.index); saveUI.closeDialog(); });
 
     actionCell.appendChild(saveBtn);
 
@@ -52,12 +56,12 @@ export function showSaveUI(
       const loadBtn = document.createElement("button");
       loadBtn.textContent = "Load";
       loadBtn.style.cssText = "margin: 0 0.2em;";
-      loadBtn.addEventListener("click", () => { onLoad(slot.index); closeDialog(); });
+      loadBtn.addEventListener("click", () => { onLoad(slot.index); saveUI.closeDialog(); });
 
       const delBtn = document.createElement("button");
       delBtn.textContent = "Delete";
       delBtn.style.cssText = "margin: 0 0.2em;";
-      delBtn.addEventListener("click", () => { onDelete(slot.index); closeDialog(); });
+      delBtn.addEventListener("click", () => { onDelete(slot.index); saveUI.closeDialog(); });
 
       actionCell.appendChild(loadBtn);
       actionCell.appendChild(delBtn);
@@ -69,9 +73,9 @@ export function showSaveUI(
   }
 
   frag.appendChild(table);
-  showDialog("Saves", frag);
+  saveUI.showDialog("Saves", frag);
 }
 
 export function closeSaveUI(): void {
-  closeDialog();
+  saveUI.closeDialog();
 }

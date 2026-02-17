@@ -6,17 +6,14 @@ import { HarloweContext, cancelTimers, departOldPassage } from "./context";
 /** Passage function type — receives h context, returns void. */
 export type PassageFn = (h: HarloweContext) => void;
 
-/** Registry of passage name -> passage function. */
-const passages: Map<string, PassageFn> = new Map();
+class HarloweNavigation {
+  passages: Map<string, PassageFn> = new Map();
+  passageTags: Map<string, string[]> = new Map();
+  currentPassage = "";
+  lastDepart: { name: string; duration?: string } | undefined;
+}
 
-/** Registry of passage name -> tags. */
-const passageTags: Map<string, string[]> = new Map();
-
-/** Current passage name. */
-let currentPassage = "";
-
-/** Depart transition from the last rendered passage (consumed on next navigation). */
-let lastDepart: { name: string; duration?: string } | undefined;
+export const nav = new HarloweNavigation();
 
 /** Register all passage functions and start the story.
  *
@@ -30,11 +27,11 @@ export function startStory(
   tagMap?: Record<string, string[]>,
 ): void {
   for (const [name, fn] of Object.entries(passageMap)) {
-    passages.set(name, fn);
+    nav.passages.set(name, fn);
   }
   if (tagMap) {
     for (const [name, tags] of Object.entries(tagMap)) {
-      passageTags.set(name, tags);
+      nav.passageTags.set(name, tags);
     }
   }
 
@@ -48,19 +45,19 @@ export function startStory(
 /** Render a passage with full lifecycle. */
 function renderPassage(target: string, fn: PassageFn): void {
   State.clearTemps();
-  currentPassage = target;
+  nav.currentPassage = target;
   cancelTimers();
 
   const story = document.querySelector("tw-story");
   if (!story) return;
 
   // Animate out old passage (or remove immediately if no depart transition).
-  departOldPassage(story, lastDepart);
-  lastDepart = undefined;
+  departOldPassage(story, nav.lastDepart);
+  nav.lastDepart = undefined;
 
   // Create <tw-passage> with tags attribute
   const passage = document.createElement("tw-passage");
-  const tags = passageTags.get(target);
+  const tags = nav.passageTags.get(target);
   if (tags && tags.length > 0) {
     passage.setAttribute("tags", tags.join(" "));
   }
@@ -74,7 +71,7 @@ function renderPassage(target: string, fn: PassageFn): void {
   undoIcon.addEventListener("click", () => {
     const title = State.popMoment();
     if (title) {
-      const pfn = passages.get(title);
+      const pfn = nav.passages.get(title);
       if (pfn) renderPassage(title, pfn);
     }
   });
@@ -98,12 +95,12 @@ function renderPassage(target: string, fn: PassageFn): void {
     h.closeAll();
   }
   // Capture depart transition for use when navigating away from this passage.
-  lastDepart = h.departTransition;
+  nav.lastDepart = h.departTransition;
 }
 
 /** Navigate to a passage by name. */
 export function goto(target: string): void {
-  const fn = passages.get(target);
+  const fn = nav.passages.get(target);
   if (!fn) {
     console.error(`[harlowe] passage not found: "${target}"`);
     return;
@@ -114,7 +111,7 @@ export function goto(target: string): void {
 
 /** Include (embed) another passage inline using the provided context. */
 export function display(passage: string, h: HarloweContext): void {
-  const fn = passages.get(passage);
+  const fn = nav.passages.get(passage);
   if (!fn) {
     console.error(`[harlowe] passage not found for display: "${passage}"`);
     h.text(`[passage not found: "${passage}"]`);
@@ -130,27 +127,27 @@ export function display(passage: string, h: HarloweContext): void {
 
 /** Get the current passage name. */
 export function current(): string {
-  return currentPassage;
+  return nav.currentPassage;
 }
 
 /** Check if a passage exists in the registry. */
 export function has(name: string): boolean {
-  return passages.has(name);
+  return nav.passages.has(name);
 }
 
 /** Get a passage function by name. */
 export function getPassage(name: string): PassageFn | undefined {
-  return passages.get(name);
+  return nav.passages.get(name);
 }
 
 /** Get the tags for a passage. */
 export function getTags(name: string): string[] {
-  return passageTags.get(name) || [];
+  return nav.passageTags.get(name) || [];
 }
 
 /** Get all passage names in the registry. */
 export function allPassages(): string[] {
-  return Array.from(passages.keys());
+  return Array.from(nav.passages.keys());
 }
 
 /** Register commands for navigation. */
@@ -160,7 +157,7 @@ export function initCommands(
   registerCommand("go-back", "", () => {
     const title = State.popMoment();
     if (title) {
-      const fn = passages.get(title);
+      const fn = nav.passages.get(title);
       if (fn) renderPassage(title, fn);
     }
   });

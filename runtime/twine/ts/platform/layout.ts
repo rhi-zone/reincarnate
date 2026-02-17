@@ -11,36 +11,40 @@ export interface SidebarConfig {
   onForward?: () => void;
 }
 
-let sidebarEl: HTMLDivElement | null = null;
+class LayoutManager {
+  sidebarEl: HTMLDivElement | null = null;
+}
+
+const layout = new LayoutManager();
 
 export function renderSidebar(config: SidebarConfig): void {
-  if (!sidebarEl) {
-    sidebarEl = document.createElement("div");
-    sidebarEl.id = "reincarnate-sidebar";
-    sidebarEl.style.cssText = `
+  if (!layout.sidebarEl) {
+    layout.sidebarEl = document.createElement("div");
+    layout.sidebarEl.id = "reincarnate-sidebar";
+    layout.sidebarEl.style.cssText = `
       position: fixed; top: 0; left: 0; width: 16em; height: 100vh;
       background: #1a1a1a; border-right: 1px solid #333;
       padding: 1em; overflow-y: auto; z-index: 1000;
       font-size: 0.9em; color: #ccc;
     `;
-    document.body.appendChild(sidebarEl);
+    document.body.appendChild(layout.sidebarEl);
     // Offset the main content
     document.body.style.marginLeft = "17em";
   }
 
-  sidebarEl.innerHTML = "";
-  sidebarEl.style.display = "";
+  layout.sidebarEl.innerHTML = "";
+  layout.sidebarEl.style.display = "";
 
   const title = document.createElement("h2");
   title.style.cssText = "margin: 0 0 0.5em; font-size: 1.2em; color: #eee;";
   title.textContent = config.storyTitle;
-  sidebarEl.appendChild(title);
+  layout.sidebarEl.appendChild(title);
 
   if (config.captionContent) {
     const caption = document.createElement("div");
     caption.style.cssText = "margin-bottom: 1em;";
     caption.appendChild(config.captionContent);
-    sidebarEl.appendChild(caption);
+    layout.sidebarEl.appendChild(caption);
   }
 
   const nav = document.createElement("nav");
@@ -62,25 +66,25 @@ export function renderSidebar(config: SidebarConfig): void {
     nav.appendChild(a);
   }
 
-  sidebarEl.appendChild(nav);
+  layout.sidebarEl.appendChild(nav);
 }
 
 export function stowSidebar(): void {
-  if (sidebarEl) {
-    sidebarEl.style.display = "none";
+  if (layout.sidebarEl) {
+    layout.sidebarEl.style.display = "none";
     document.body.style.marginLeft = "";
   }
 }
 
 export function unstowSidebar(): void {
-  if (sidebarEl) {
-    sidebarEl.style.display = "";
+  if (layout.sidebarEl) {
+    layout.sidebarEl.style.display = "";
     document.body.style.marginLeft = "17em";
   }
 }
 
 export function toggleSidebar(): void {
-  if (sidebarEl?.style.display === "none") unstowSidebar();
+  if (layout.sidebarEl?.style.display === "none") unstowSidebar();
   else stowSidebar();
 }
 
@@ -89,9 +93,9 @@ export function initCommands(register: (id: string, binding: string, handler: ()
 }
 
 export function destroySidebar(): void {
-  if (sidebarEl) {
-    sidebarEl.remove();
-    sidebarEl = null;
+  if (layout.sidebarEl) {
+    layout.sidebarEl.remove();
+    layout.sidebarEl = null;
     document.body.style.marginLeft = "";
   }
 }

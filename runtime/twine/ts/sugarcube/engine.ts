@@ -20,9 +20,17 @@ import { Wikifier } from "./wikifier";
 import { audioCache, audioGroups, playlists } from "./audio";
 import { pushBuffer, popBuffer } from "./output";
 
-// --- Global setup for eval'd scripts ---
+// --- Engine state ---
 
-let globalsInitialized = false;
+class EngineState {
+  globalsInitialized = false;
+  doneQueue: (() => void)[] = [];
+  doneBuffering = false;
+}
+
+const engineState = new EngineState();
+
+// --- Global setup for eval'd scripts ---
 
 /** Set up SugarCube globals on globalThis so eval'd scripts can reference them.
  *
@@ -30,8 +38,8 @@ let globalsInitialized = false;
  * bare globals. This function exposes them once, before any eval runs.
  */
 function ensureGlobals(): void {
-  if (globalsInitialized) return;
-  globalsInitialized = true;
+  if (engineState.globalsInitialized) return;
+  engineState.globalsInitialized = true;
 
   const g = globalThis as any;
 
@@ -714,22 +722,19 @@ export function error(message: string): never {
 
 // --- Deferred execution (<<done>>) ---
 
-const doneQueue: (() => void)[] = [];
-let doneBuffering = false;
-
 /** Start a <<done>> block (deferred execution until end of passage). */
 export function done_start(): void {
-  doneBuffering = true;
+  engineState.doneBuffering = true;
 }
 
 /** End a <<done>> block. */
 export function done_end(): void {
-  doneBuffering = false;
+  engineState.doneBuffering = false;
 }
 
 /** Execute all queued done blocks. Called after passage rendering. */
 export function flushDone(): void {
-  const queued = doneQueue.splice(0);
+  const queued = engineState.doneQueue.splice(0);
   for (const fn of queued) {
     fn();
   }

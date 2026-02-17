@@ -5,15 +5,19 @@
  * files and can ignore or replace this helper.
  */
 
-let dialogOverlay: HTMLDivElement | null = null;
+class DialogManager {
+  dialogOverlay: HTMLDivElement | null = null;
+}
+
+const dialog = new DialogManager();
 
 export function getOrCreateOverlay(onClose: () => void): HTMLDivElement {
-  if (dialogOverlay) {
+  if (dialog.dialogOverlay) {
     // Update the click-to-close handler for the current consumer
-    dialogOverlay.onclick = (e) => {
-      if (e.target === dialogOverlay) onClose();
+    dialog.dialogOverlay.onclick = (e) => {
+      if (e.target === dialog.dialogOverlay) onClose();
     };
-    return dialogOverlay;
+    return dialog.dialogOverlay;
   }
   const overlay = document.createElement("div");
   overlay.id = "reincarnate-dialog-overlay";
@@ -26,19 +30,19 @@ export function getOrCreateOverlay(onClose: () => void): HTMLDivElement {
     if (e.target === overlay) onClose();
   };
   document.body.appendChild(overlay);
-  dialogOverlay = overlay;
+  dialog.dialogOverlay = overlay;
   return overlay;
 }
 
 export function hideOverlay(): void {
-  if (dialogOverlay) {
-    dialogOverlay.style.display = "none";
-    dialogOverlay.innerHTML = "";
+  if (dialog.dialogOverlay) {
+    dialog.dialogOverlay.style.display = "none";
+    dialog.dialogOverlay.innerHTML = "";
   }
 }
 
 export function isOverlayVisible(): boolean {
-  return dialogOverlay !== null && dialogOverlay.style.display !== "none";
+  return dialog.dialogOverlay !== null && dialog.dialogOverlay.style.display !== "none";
 }
 
 export function buildDialogChrome(

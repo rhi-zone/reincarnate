@@ -9,46 +9,77 @@
 
 import { scheduleTimeout, cancelTimeout, scheduleInterval, cancelInterval } from "../platform";
 
-// --- nobr flag ---
+// --- Interfaces ---
 
-let nobrActive = false;
+interface LinkBlockContext {
+  variant: string;
+  text: string;
+  passage?: string;
+}
+
+interface TimedContext {
+  delay: number;
+  transition?: string;
+}
+
+interface RepeatContext {
+  interval: number;
+  transition?: string;
+}
+
+interface TypeContext {
+  speed: number;
+}
+
+// --- Output state ---
+
+class OutputState {
+  nobrActive = false;
+  bufferStack: DocumentFragment[] = [];
+  elementStack: HTMLElement[] = [];
+  linkBlockStack: LinkBlockContext[] = [];
+  timedStack: TimedContext[] = [];
+  activeTimers: number[] = [];
+  repeatStack: RepeatContext[] = [];
+  typeStack: TypeContext[] = [];
+}
+
+export const output = new OutputState();
+
+// --- nobr ---
 
 /** Set the nobr (no line break) flag. When active, break() is suppressed. */
 export function setNobr(active: boolean): void {
-  nobrActive = active;
+  output.nobrActive = active;
 }
 
 // --- Buffer stack ---
 
-const bufferStack: DocumentFragment[] = [];
-
 function currentBuffer(): DocumentFragment {
-  if (bufferStack.length === 0) {
-    bufferStack.push(document.createDocumentFragment());
+  if (output.bufferStack.length === 0) {
+    output.bufferStack.push(document.createDocumentFragment());
   }
-  return bufferStack[bufferStack.length - 1];
+  return output.bufferStack[output.bufferStack.length - 1];
 }
 
 /** Push a new output buffer for nested content. */
 export function pushBuffer(): DocumentFragment {
   const frag = document.createDocumentFragment();
-  bufferStack.push(frag);
+  output.bufferStack.push(frag);
   return frag;
 }
 
 /** Pop and return the top buffer. */
 export function popBuffer(): DocumentFragment {
-  return bufferStack.pop() || document.createDocumentFragment();
+  return output.bufferStack.pop() || document.createDocumentFragment();
 }
 
 // --- Element stack (for structured HTML nesting) ---
 
-const elementStack: HTMLElement[] = [];
-
 /** Append a node to the current parent (top of element stack, or buffer). */
 function appendNode(node: Node): void {
-  if (elementStack.length > 0) {
-    elementStack[elementStack.length - 1].appendChild(node);
+  if (output.elementStack.length > 0) {
+    output.elementStack[output.elementStack.length - 1].appendChild(node);
   } else {
     currentBuffer().appendChild(node);
   }
@@ -75,12 +106,12 @@ export function open_element(tag: string, ...attrs: string[]): void {
     el.setAttribute(attrs[i], attrs[i + 1]);
   }
   appendNode(el);
-  elementStack.push(el);
+  output.elementStack.push(el);
 }
 
 /** Close the current open element (pop from element stack). */
 export function close_element(): void {
-  elementStack.pop();
+  output.elementStack.pop();
 }
 
 /** Emit a void/self-closing HTML element (no push). */
@@ -96,8 +127,8 @@ export function void_element(tag: string, ...attrs: string[]): void {
 export function set_attribute(name: string, value: any): void {
   // Find the last element: top of elementStack, or last child of buffer
   let el: Element | null = null;
-  if (elementStack.length > 0) {
-    el = elementStack[elementStack.length - 1];
+  if (output.elementStack.length > 0) {
+    el = output.elementStack[output.elementStack.length - 1];
   } else {
     const buf = currentBuffer();
     el = buf.lastElementChild;
@@ -111,7 +142,7 @@ export function set_attribute(name: string, value: any): void {
 // Using a name that avoids JS reserved word conflicts in import context.
 export { lineBreak as break };
 function lineBreak(): void {
-  if (nobrActive) return;
+  if (output.nobrActive) return;
   appendNode(document.createElement("br"));
 }
 
@@ -151,24 +182,16 @@ export function image(src: string, link?: string): void {
 
 // --- Link blocks (<<link>> with body) ---
 
-interface LinkBlockContext {
-  variant: string;
-  text: string;
-  passage?: string;
-}
-
-const linkBlockStack: LinkBlockContext[] = [];
-
 /** Start a link block — push buffer for body content. */
 export function link_block_start(variant: string, text: string, passage?: string): void {
-  linkBlockStack.push({ variant, text, passage });
+  output.linkBlockStack.push({ variant, text, passage });
   pushBuffer();
 }
 
 /** End a link block — pop buffer, wrap in link element. */
 export function link_block_end(): void {
   const body = popBuffer();
-  const ctx = linkBlockStack.pop();
+  const ctx = output.linkBlockStack.pop();
   if (!ctx) return;
 
   const wrapper = document.createElement("span");
@@ -206,25 +229,17 @@ export function link_block_end(): void {
 
 // --- Timed/Repeat/Type blocks ---
 
-interface TimedContext {
-  delay: number;
-  transition?: string;
-}
-
-const timedStack: TimedContext[] = [];
-const activeTimers: number[] = [];
-
 /** Start a timed block. */
 export function timed_start(delay: string | number, transition?: string): void {
   const ms = parseDelay(delay);
-  timedStack.push({ delay: ms, transition });
+  output.timedStack.push({ delay: ms, transition });
   pushBuffer();
 }
 
 /** End a timed block — schedule content to appear after delay. */
 export function timed_end(): void {
   const body = popBuffer();
-  const ctx = timedStack.pop();
+  const ctx = output.timedStack.pop();
   if (!ctx) return;
 
   const container = document.createElement("span");
@@ -237,27 +252,20 @@ export function timed_end(): void {
   const id = scheduleTimeout(() => {
     container.style.display = "";
   }, ctx.delay);
-  activeTimers.push(id);
+  output.activeTimers.push(id);
 }
-
-interface RepeatContext {
-  interval: number;
-  transition?: string;
-}
-
-const repeatStack: RepeatContext[] = [];
 
 /** Start a repeat block. */
 export function repeat_start(interval: string | number, transition?: string): void {
   const ms = parseDelay(interval);
-  repeatStack.push({ interval: ms, transition });
+  output.repeatStack.push({ interval: ms, transition });
   pushBuffer();
 }
 
 /** End a repeat block — append content at interval. */
 export function repeat_end(): void {
   const body = popBuffer();
-  const ctx = repeatStack.pop();
+  const ctx = output.repeatStack.pop();
   if (!ctx) return;
 
   const container = document.createElement("span");
@@ -267,26 +275,20 @@ export function repeat_end(): void {
   const id = scheduleInterval(() => {
     container.appendChild(body.cloneNode(true));
   }, ctx.interval);
-  activeTimers.push(id);
+  output.activeTimers.push(id);
 }
-
-interface TypeContext {
-  speed: number;
-}
-
-const typeStack: TypeContext[] = [];
 
 /** Start a type (typewriter) block. */
 export function type_start(speed: string | number): void {
   const ms = parseDelay(speed);
-  typeStack.push({ speed: ms });
+  output.typeStack.push({ speed: ms });
   pushBuffer();
 }
 
 /** End a type block — reveal characters one at a time. */
 export function type_end(): void {
   const body = popBuffer();
-  const ctx = typeStack.pop();
+  const ctx = output.typeStack.pop();
   if (!ctx) return;
 
   const container = document.createElement("span");
@@ -308,7 +310,7 @@ export function type_end(): void {
       cancelInterval(id);
     }
   }, ctx.speed);
-  activeTimers.push(id);
+  output.activeTimers.push(id);
 }
 
 // --- Flush/Clear ---
@@ -317,8 +319,8 @@ export function type_end(): void {
 export function flush(): void {
   const container = document.getElementById("passages");
   if (!container) return;
-  while (bufferStack.length > 0) {
-    const buf = bufferStack.shift()!;
+  while (output.bufferStack.length > 0) {
+    const buf = output.bufferStack.shift()!;
     container.appendChild(buf);
   }
 }
@@ -332,14 +334,14 @@ export function clear(): void {
     }
   }
   // Cancel active timers from previous passage
-  for (const id of activeTimers) {
+  for (const id of output.activeTimers) {
     cancelTimeout(id);
     cancelInterval(id);
   }
-  activeTimers.length = 0;
+  output.activeTimers.length = 0;
   // Reset buffer and element stacks
-  bufferStack.length = 0;
-  elementStack.length = 0;
+  output.bufferStack.length = 0;
+  output.elementStack.length = 0;
 }
 
 // --- Helpers ---

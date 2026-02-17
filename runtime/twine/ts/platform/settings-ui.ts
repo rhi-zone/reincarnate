@@ -14,15 +14,19 @@ export interface SettingUIEntry {
   step?: number;
 }
 
-let showDialog: (title: string, content: DocumentFragment | HTMLElement) => void;
-let closeDialog: () => void;
+class SettingsUI {
+  showDialog!: (title: string, content: DocumentFragment | HTMLElement) => void;
+  closeDialog!: () => void;
+}
+
+const settingsUI = new SettingsUI();
 
 export function init(
-  show: typeof showDialog,
-  close: typeof closeDialog,
+  show: (title: string, content: DocumentFragment | HTMLElement) => void,
+  close: () => void,
 ): void {
-  showDialog = show;
-  closeDialog = close;
+  settingsUI.showDialog = show;
+  settingsUI.closeDialog = close;
 }
 
 export function showSettingsUI(
@@ -95,9 +99,9 @@ export function showSettingsUI(
   const resetBtn = document.createElement("button");
   resetBtn.textContent = "Reset to Defaults";
   resetBtn.style.cssText = "margin-top: 0.5em; align-self: flex-start;";
-  resetBtn.addEventListener("click", () => { onReset(); closeDialog(); });
+  resetBtn.addEventListener("click", () => { onReset(); settingsUI.closeDialog(); });
   form.appendChild(resetBtn);
 
   frag.appendChild(form);
-  showDialog("Settings", frag);
+  settingsUI.showDialog("Settings", frag);
 }

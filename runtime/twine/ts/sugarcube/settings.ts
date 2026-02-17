@@ -40,10 +40,13 @@ interface RangeDef {
 
 type SettingDef = ToggleDef | ListDef | RangeDef;
 
-const definitions: Map<string, SettingDef> = new Map();
-const values: Record<string, any> = {};
+class SettingsState {
+  definitions: Map<string, SettingDef> = new Map();
+  values: Record<string, any> = {};
+  register: ((id: string, binding: string, handler: () => void) => void) | null = null;
+}
 
-let register: ((id: string, binding: string, handler: () => void) => void) | null = null;
+export const settings = new SettingsState();
 
 // --- Registration ---
 
@@ -61,12 +64,12 @@ export function addToggle(name: string, def: {
     desc: def.desc,
     onChange: def.onChange,
   };
-  definitions.set(name, setting);
-  if (!(name in values)) {
-    values[name] = setting.default;
+  settings.definitions.set(name, setting);
+  if (!(name in settings.values)) {
+    settings.values[name] = setting.default;
   }
-  if (register) {
-    register(`toggle-${name}`, "", () => {
+  if (settings.register) {
+    settings.register(`toggle-${name}`, "", () => {
       set(name, !get(name));
       save();
     });
@@ -89,13 +92,13 @@ export function addList(name: string, def: {
     desc: def.desc,
     onChange: def.onChange,
   };
-  definitions.set(name, setting);
-  if (!(name in values)) {
-    values[name] = setting.default;
+  settings.definitions.set(name, setting);
+  if (!(name in settings.values)) {
+    settings.values[name] = setting.default;
   }
-  if (register) {
+  if (settings.register) {
     for (const opt of def.list) {
-      register(`set-${name}-${opt}`, "", () => {
+      settings.register(`set-${name}-${opt}`, "", () => {
         set(name, opt);
         save();
       });
@@ -123,9 +126,9 @@ export function addRange(name: string, def: {
     desc: def.desc,
     onChange: def.onChange,
   };
-  definitions.set(name, setting);
-  if (!(name in values)) {
-    values[name] = setting.default;
+  settings.definitions.set(name, setting);
+  if (!(name in settings.values)) {
+    settings.values[name] = setting.default;
   }
 }
 
@@ -133,13 +136,13 @@ export function addRange(name: string, def: {
 
 /** Get the current value of a setting. */
 export function get(name: string): any {
-  return values[name];
+  return settings.values[name];
 }
 
 /** Set a setting value and fire its onChange callback. */
 export function set(name: string, value: any): void {
-  values[name] = value;
-  const def = definitions.get(name);
+  settings.values[name] = value;
+  const def = settings.definitions.get(name);
   if (def?.onChange) {
     def.onChange(value);
   }
@@ -154,8 +157,8 @@ export function load(): void {
     try {
       const saved = JSON.parse(raw);
       for (const [key, val] of Object.entries(saved)) {
-        if (definitions.has(key)) {
-          values[key] = val;
+        if (settings.definitions.has(key)) {
+          settings.values[key] = val;
         }
       }
     } catch {
@@ -167,9 +170,9 @@ export function load(): void {
 /** Save current settings to localStorage. */
 export function save(): void {
   const toSave: Record<string, any> = {};
-  for (const [key] of definitions) {
-    if (key in values) {
-      toSave[key] = values[key];
+  for (const [key] of settings.definitions) {
+    if (key in settings.values) {
+      toSave[key] = settings.values[key];
     }
   }
   saveLocal(STORAGE_KEY, JSON.stringify(toSave));
@@ -177,9 +180,9 @@ export function save(): void {
 
 /** Reset all settings to their defaults. */
 export function reset(): void {
-  for (const [key, def] of definitions) {
-    const prev = values[key];
-    values[key] = def.default;
+  for (const [key, def] of settings.definitions) {
+    const prev = settings.values[key];
+    settings.values[key] = def.default;
     if (def.onChange && prev !== def.default) {
       def.onChange(def.default);
     }
@@ -189,15 +192,15 @@ export function reset(): void {
 
 /** Get all registered setting definitions (for UI rendering). */
 export function getDefinitions(): Map<string, SettingDef> {
-  return definitions;
+  return settings.definitions;
 }
 
 /** Register commands for settings management. */
 export function initCommands(registerCommand: (id: string, binding: string, handler: () => void) => void): void {
-  register = registerCommand;
+  settings.register = registerCommand;
   registerCommand("open-settings", "", () => {
     const entries: SettingUIEntry[] = [];
-    for (const [name, def] of definitions) {
+    for (const [name, def] of settings.definitions) {
       entries.push({
         name,
         type: def.type,
