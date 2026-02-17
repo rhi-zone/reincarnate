@@ -536,6 +536,69 @@ export function click_macro(method: string, ...args: any[]): void {
   });
 }
 
+// --- Dialog ---
+
+/** `(dialog: title, closeLabel)[hook]` — modal dialog. */
+export function dialog_macro(...args: any[]): void {
+  const callback = args.length > 0 && typeof args[args.length - 1] === "function"
+    ? args.pop() as (h: HarloweContext) => void
+    : undefined;
+  const title = args.length > 0 ? String(args[0]) : "";
+  const closeLabel = args.length > 1 ? String(args[1]) : "Close";
+
+  const story = document.querySelector("tw-story");
+  if (!story || !callback) return;
+
+  const backdrop = document.createElement("tw-backdrop") as HTMLElement;
+  backdrop.style.position = "fixed";
+  backdrop.style.inset = "0";
+  backdrop.style.zIndex = "999996";
+  backdrop.style.backgroundColor = "rgba(0, 0, 0, 0.8)";
+  backdrop.style.display = "flex";
+  backdrop.style.alignItems = "center";
+  backdrop.style.justifyContent = "center";
+
+  const dialog = document.createElement("tw-dialog") as HTMLElement;
+  dialog.style.zIndex = "999997";
+  dialog.style.border = "#fff solid 2px";
+  dialog.style.padding = "2em";
+  dialog.style.backgroundColor = "#000";
+  dialog.style.color = "#fff";
+  dialog.style.maxWidth = "80vw";
+  dialog.style.maxHeight = "80vh";
+  dialog.style.overflow = "auto";
+  backdrop.appendChild(dialog);
+
+  if (title) {
+    const heading = document.createElement("h2");
+    heading.textContent = title;
+    dialog.appendChild(heading);
+  }
+
+  const h = new HarloweContext(dialog);
+  try {
+    callback(h);
+  } finally {
+    h.closeAll();
+  }
+
+  const links = document.createElement("tw-dialog-links") as HTMLElement;
+  links.style.display = "block";
+  links.style.marginTop = "1em";
+  links.style.textAlign = "right";
+  const closeLink = document.createElement("tw-link") as HTMLElement;
+  closeLink.setAttribute("tabindex", "0");
+  closeLink.textContent = closeLabel;
+  closeLink.addEventListener("click", () => backdrop.remove());
+  closeLink.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") backdrop.remove();
+  });
+  links.appendChild(closeLink);
+  dialog.appendChild(links);
+
+  story.appendChild(backdrop);
+}
+
 // --- Columns ---
 
 /** `(columns: "1fr", "2fr", ...)[hook]` — flex row with column widths. */

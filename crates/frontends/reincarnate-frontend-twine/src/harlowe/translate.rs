@@ -534,6 +534,9 @@ impl TranslateCtx {
 
             // Columns layout
             "columns" => self.lower_columns_macro(mac),
+
+            // Dialog
+            "dialog" => self.lower_dialog_macro(mac),
             "column" => {
                 self.fb
                     .system_call("Harlowe.H", "columnBreak", &[], Type::Void);
@@ -1070,6 +1073,24 @@ impl TranslateCtx {
             self.fb.system_call(
                 "Harlowe.Engine",
                 "columns_macro",
+                &call_args,
+                Type::Void,
+            );
+        }
+    }
+
+    // ── Dialog ─────────────────────────────────────────────────
+
+    fn lower_dialog_macro(&mut self, mac: &MacroNode) {
+        let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
+        if let Some(ref hook) = mac.hook {
+            let cb_name = self.make_callback_name("dialog");
+            let cb_ref = self.build_callback(&cb_name, hook);
+            let mut call_args = args;
+            call_args.push(cb_ref);
+            self.fb.system_call(
+                "Harlowe.Engine",
+                "dialog_macro",
                 &call_args,
                 Type::Void,
             );
