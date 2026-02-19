@@ -631,8 +631,12 @@ impl TranslateCtx {
                     .system_call("Harlowe.H", "columnBreak", &[], Type::Void);
             }
 
-            // Unknown
-            _ => self.lower_unknown_macro(mac),
+            // Unknown — route via macro_kind() before falling to unknown
+            _ => match macros::macro_kind(&mac.name) {
+                MacroKind::Changer => { self.emit_changer(mac); }
+                MacroKind::Value => { self.emit_value_macro_standalone(mac); }
+                _ => self.lower_unknown_macro(mac),
+            },
         }
     }
 
@@ -697,10 +701,15 @@ impl TranslateCtx {
                 Some(self.lower_value_macro_as_value(mac))
             }
 
-            _ => {
-                self.emit_macro(mac);
-                None
-            }
+            // Unknown — route via macro_kind() before falling back
+            _ => match macros::macro_kind(&mac.name) {
+                MacroKind::Changer => self.lower_changer_as_value(mac),
+                MacroKind::Value => Some(self.lower_value_macro_as_value(mac)),
+                _ => {
+                    self.emit_macro(mac);
+                    None
+                }
+            },
         }
     }
 

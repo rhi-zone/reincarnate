@@ -49,8 +49,12 @@ pub fn macro_kind(name: &str) -> MacroKind {
         | "cond" | "nth" | "substring" | "subarray" | "bit" | "rgb" | "rgba" | "hsl"
         | "hsla" | "gradient" | "lch" | "lcha" | "complement" | "mix"
         | "weekday" | "monthday" | "monthname" | "yearday" | "current-date" | "current-time"
-        | "saved-games" | "passage" | "visits" | "turns" | "history" | "hook" | "hooks-named"
-        | "source" | "datanames" | "datavalues" | "dataentries" | "v6" | "v8" | "metadata"
+        | "saved-games" | "passage" | "passages" | "visited" | "visits" | "turns" | "history"
+        | "hook" | "hooks-named" | "source" | "datanames" | "datavalues" | "dataentries"
+        | "dm-names" | "data-names" | "dm-values" | "data-values"
+        | "dm-entries" | "data-entries" | "dm-altered" | "datamap-altered"
+        | "pass" | "permutations"
+        | "v6" | "v8" | "metadata"
         | "macro" | "partial" | "bind" | "bind-2bind" | "2bind" => MacroKind::Value,
 
         // Layout / interactive / state commands
