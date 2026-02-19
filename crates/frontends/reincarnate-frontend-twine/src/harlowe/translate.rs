@@ -950,6 +950,44 @@ impl TranslateCtx {
         );
     }
 
+    /// Build a predicate/transform callback for collection ops like (find:), (some-pass:), etc.
+    /// Signature: `(item: Dynamic) => Dynamic`
+    /// Binds `_var` to `item`, returns `filter_expr` (or the item itself if no filter).
+    fn build_lambda_callback(&mut self, var: &str, filter: Option<&Expr>) -> ValueId {
+        let cb_name = self.make_callback_name("lambda");
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Dynamic,
+            defaults: vec![],
+            has_rest_param: false,
+        };
+        let cb_fb = FunctionBuilder::new(&cb_name, sig, Visibility::Public);
+        let item_param = cb_fb.param(0);
+
+        let saved_fb = std::mem::replace(&mut self.fb, cb_fb);
+        let saved_temps = std::mem::take(&mut self.temp_vars);
+
+        // Bind the loop variable to the item parameter.
+        let alloc = self.fb.alloc(Type::Dynamic);
+        self.fb.name_value(alloc, format!("_{var}"));
+        self.fb.store(alloc, item_param);
+        self.temp_vars.insert(var.to_string(), alloc);
+
+        let result = if let Some(filter_expr) = filter {
+            self.lower_expr(filter_expr)
+        } else {
+            // No filter: identity (return item). Used for `each _x` without `where`.
+            item_param
+        };
+        self.fb.ret(Some(result));
+
+        let cb_fb = std::mem::replace(&mut self.fb, saved_fb);
+        self.temp_vars = saved_temps;
+
+        self.callbacks.push(cb_fb.build());
+        self.fb.global_ref(&cb_name, Type::Dynamic)
+    }
+
     fn build_for_callback(
         &mut self,
         name: &str,
@@ -1578,11 +1616,16 @@ impl TranslateCtx {
                 let sel = format!("tw-hook[name='{name}']");
                 self.fb.const_string(sel.as_str())
             }
-            // Spread and Lambda should only appear as (for:) arguments, not as
-            // standalone expressions. Lower the inner value for Spread, and
-            // emit a placeholder for Lambda if encountered unexpectedly.
+            // Spread: strip the wrapper and lower the inner expression.
+            // (for:) handles Spread explicitly before calling lower_expr.)
             ExprKind::Spread(inner) => self.lower_expr(inner),
-            ExprKind::Lambda { .. } | ExprKind::Error(_) => self.fb.const_bool(false),
+            // Lambda: build a predicate callback `(item) => filter_expr`.
+            // This covers lambdas used as arguments to (find:), (some-pass:), etc.
+            // (for:) handles its own Lambda before ever calling lower_expr on it.
+            ExprKind::Lambda { var, filter } => {
+                self.build_lambda_callback(var, filter.as_deref())
+            }
+            ExprKind::Error(_) => self.fb.const_bool(false),
         }
     }
 
@@ -1964,6 +2007,35 @@ You're at the **plaza**
             })
         });
         assert!(has_get_x, "should read target variable with get()");
+    }
+
+    #[test]
+    fn test_lambda_in_find_builds_callback() {
+        use reincarnate_core::ir::inst::Op;
+        // (find: each _x where _x > 5, ...$arr) should produce:
+        // - a lambda callback with one Dynamic param returning Dynamic
+        // - a collection_op("find", ...) syscall in the main func
+        let ast = parser::parse("(set: $found to (find: each _x where _x > 5, ...$arr))");
+        let result = translate_passage("test_lambda_find", &ast, "");
+        // Exactly one callback: the lambda predicate
+        assert_eq!(
+            result.callbacks.len(),
+            1,
+            "should produce exactly one lambda callback"
+        );
+        let cb = &result.callbacks[0];
+        assert_eq!(cb.sig.params.len(), 1, "lambda callback takes one param");
+        assert_eq!(cb.sig.params[0], Type::Dynamic);
+        assert_eq!(cb.sig.return_ty, Type::Dynamic);
+        // Main func should have a collection_op("find", ...) call
+        let func = &result.func;
+        let has_find = func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
+                    if system == "Harlowe.Engine" && method == "collection_op")
+            })
+        });
+        assert!(has_find, "should have Harlowe.Engine.collection_op call");
     }
 
     #[test]

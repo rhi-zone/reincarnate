@@ -359,19 +359,24 @@ and add it to `~/reincarnate/twine/`.
 
 ### Harlowe Phase 2 (Advanced Features)
 
-- [ ] **`(for: each _item, ...$arr)[hook]`** — Loop lowering
+- [x] **`(for: each _item, ...$arr)[hook]`** — Loop lowering (done)
 - [ ] **`(live: Ns)[hook]` + `(stop:)`** — Timed interval (basic IR done, runtime impl present)
 - [ ] **`(click: ?hook)[hook]`** — Event handler targeting named hooks
 - [ ] **Collection constructors** — `(a:)`, `(dm:)`, `(ds:)` (runtime done, parser handles basic cases)
 - [ ] **Collection operators** — `contains`, `is in`, `'s`, `of` with full Harlowe semantics
-- [ ] **Lambda expressions** — `_x where _x > 5` syntax in parser/translator
+- [x] **Lambda expressions in collection ops** — `each _x where _x > 5` as predicate callback for
+  `(find:)`, `(some-pass:)`, `(all-pass:)`, `(none-pass:)` etc. (done — `build_lambda_callback`)
+- [ ] **Lambda `via` expressions** — `each _x via expr` for `(altered:)`, `(sorted-by:)` (`via` not
+  tokenized; `(altered:)` currently passes identity callback)
+- [ ] **Dynamic macro calls** — `($varName: args)` expression-position calls not parsed; expression
+  lexer stops at `$name` and drops `:args`. Affects games that store macro callbacks in variables.
 - [x] **Changer composition with `+`** — `(color: red) + (text-style: "bold")` (fixed in `155af06`)
 - [ ] **`(save-game:)` / `(load-game:)`** — Save integration (basic runtime done)
-- [ ] **`(replace:)`, `(show:)`, `(hide:)`** — DOM manipulation hooks
+- [x] **`(replace:)`, `(show:)`, `(hide:)`** — DOM manipulation hooks (done)
 - [x] **`(meter:)`, `(dialog:)`** — UI macros (implemented, `(dropdown:)` still open)
 - [x] **`(verbatim:)[...]`** — Raw text pass-through via `<tw-verbatim>` element
 - [x] **`(enchant:)` / `(enchant-in:)`** — Apply changers to matching elements via `<tw-enchantment>`
-- [ ] **Named hooks** — `|name>[hook content]` and `?name` hook references
+- [x] **Named hooks** — `|name>[hook content]` and `?name` hook references (done)
 - [ ] **Complex `'s` possessive chains** — `$obj's (str-nth: $idx)` nested macro in possessive
 
 

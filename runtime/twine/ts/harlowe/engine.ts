@@ -843,8 +843,9 @@ function range(...args: any[]): number[] {
   return result;
 }
 function find(...args: any[]): any {
-  const arr = Array.isArray(args[0]) ? args[0] : [];
-  const pred = args[1];
+  // (find: pred_or_value, ...items) — pred is first, items follow (may be arrays).
+  const pred = args[0];
+  const arr = args.slice(1).flat();
   return typeof pred === "function" ? arr.find(pred) : arr.find(x => x === pred);
 }
 function joined(...args: any[]): string {
