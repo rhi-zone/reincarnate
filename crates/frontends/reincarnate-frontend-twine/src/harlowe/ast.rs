@@ -88,6 +88,9 @@ pub enum NodeKind {
     ChangerApply { name: String, hook: Vec<Node> },
     /// A line break (literal newline).
     LineBreak,
+    /// Named hook definition: `|name>[content]`.
+    /// Wraps `content` in `<tw-hook name="name">` for later DOM targeting via `?name`.
+    NamedHook { name: String, body: Vec<Node> },
 }
 
 /// A Harlowe macro invocation: `(name: args)[hook]`.
@@ -187,6 +190,9 @@ pub enum ExprKind {
         target: Box<Expr>,
         value: Box<Expr>,
     },
+    /// Named hook selector: `?name`.
+    /// Lowered to a CSS selector string `tw-hook[name='name']` for DOM targeting.
+    HookSelector(String),
     /// Lambda expression: `each _var` or `each _var where condition`.
     /// Used as the first argument to `(for:)`.
     Lambda {

@@ -164,6 +164,7 @@ impl<'a> Parser<'a> {
                 self.parse_markup("^^", "sup", in_hook)
             }
             b'`' => self.parse_verbatim(),
+            b'|' if self.looks_like_named_hook() => self.parse_named_hook(),
             _ => self.parse_text(in_hook),
         }
     }
@@ -732,6 +733,7 @@ impl<'a> Parser<'a> {
                 b'~' if self.peek_at(1) == Some(b'~') => break,
                 b'^' if self.peek_at(1) == Some(b'^') => break,
                 b'`' => break,
+                b'|' if self.looks_like_named_hook() => break,
                 _ => self.pos += 1,
             }
         }
@@ -759,6 +761,74 @@ impl<'a> Parser<'a> {
         {
             self.pos += 1;
         }
+    }
+
+    /// Returns `true` if the current position starts a named hook `|name>[...]`.
+    fn looks_like_named_hook(&self) -> bool {
+        // Must start with `|`
+        if self.pos >= self.bytes.len() || self.bytes[self.pos] != b'|' {
+            return false;
+        }
+        // Must be followed by one or more alphanumeric/underscore/hyphen chars
+        let mut i = self.pos + 1;
+        let name_start = i;
+        while i < self.bytes.len()
+            && (self.bytes[i].is_ascii_alphanumeric()
+                || self.bytes[i] == b'_'
+                || self.bytes[i] == b'-')
+        {
+            i += 1;
+        }
+        if i == name_start {
+            return false; // no name chars
+        }
+        // Must be followed by `>`
+        if i >= self.bytes.len() || self.bytes[i] != b'>' {
+            return false;
+        }
+        // The `>` must be followed (possibly with whitespace) by `[`
+        let mut j = i + 1;
+        while j < self.bytes.len() && (self.bytes[j] == b' ' || self.bytes[j] == b'\t') {
+            j += 1;
+        }
+        j < self.bytes.len() && self.bytes[j] == b'['
+    }
+
+    /// Parse a named hook `|name>[...]`.
+    /// Called when `looks_like_named_hook()` is true.
+    fn parse_named_hook(&mut self) -> Option<Node> {
+        let start = self.pos;
+        self.pos += 1; // skip `|`
+
+        // Collect the name
+        let name_start = self.pos;
+        while self.pos < self.bytes.len()
+            && (self.bytes[self.pos].is_ascii_alphanumeric()
+                || self.bytes[self.pos] == b'_'
+                || self.bytes[self.pos] == b'-')
+        {
+            self.pos += 1;
+        }
+        let name = self.source[name_start..self.pos].to_string();
+        self.pos += 1; // skip `>`
+
+        // Skip optional whitespace before `[`
+        while self.pos < self.bytes.len()
+            && (self.bytes[self.pos] == b' ' || self.bytes[self.pos] == b'\t')
+        {
+            self.pos += 1;
+        }
+        self.pos += 1; // skip `[`
+
+        let body = self.parse_body(true);
+        if !self.at_end() && self.bytes[self.pos] == b']' {
+            self.pos += 1; // consume `]`
+        }
+
+        Some(Node {
+            kind: NodeKind::NamedHook { name, body },
+            span: Span::new(start, self.pos),
+        })
     }
 }
 

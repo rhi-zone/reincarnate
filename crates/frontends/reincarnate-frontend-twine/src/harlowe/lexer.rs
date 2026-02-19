@@ -46,6 +46,8 @@ pub enum TokenKind {
     Where,
     /// `...` — spread operator (expands iterables in `(for:)` args)
     Ellipsis,
+    /// `?` — hook selector prefix in `?name` expressions
+    QuestionMark,
 
     // Punctuation
     Plus,
@@ -250,6 +252,13 @@ impl<'a> ExprLexer<'a> {
                 self.advance();
                 Token {
                     kind: TokenKind::Colon,
+                    span: self.span(start),
+                }
+            }
+            b'?' => {
+                self.advance();
+                Token {
+                    kind: TokenKind::QuestionMark,
                     span: self.span(start),
                 }
             }

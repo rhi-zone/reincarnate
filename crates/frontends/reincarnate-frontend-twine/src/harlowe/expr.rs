@@ -383,6 +383,30 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
                 span: tok.span,
             }
         }
+        TokenKind::QuestionMark => {
+            // Hook selector: `?name` — targets named hooks
+            let start = tok.span.start;
+            lexer.next_token(); // consume `?`
+            let name_tok = lexer.peek_token();
+            let name = if let TokenKind::Ident(ref s) = name_tok.kind {
+                let n = s.clone();
+                lexer.next_token(); // consume name
+                n
+            } else {
+                return Expr {
+                    kind: ExprKind::Error(format!(
+                        "expected hook name after `?`, got {:?}",
+                        name_tok.kind
+                    )),
+                    span: name_tok.span,
+                };
+            };
+            let span = Span::new(start, lexer.pos());
+            Expr {
+                kind: ExprKind::HookSelector(name),
+                span,
+            }
+        }
         TokenKind::Each => {
             // Lambda: `each _var` or `each _var where condition`
             let start = tok.span.start;

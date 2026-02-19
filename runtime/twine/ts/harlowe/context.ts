@@ -528,6 +528,16 @@ export class HarloweContext {
     return hook;
   }
 
+  /** Create a named hook `<tw-hook name="...">` for DOM targeting via `?name` selectors. */
+  namedHook(name: string, ...children: Child[]): Node {
+    const hook = this.doc.createElement("tw-hook") as HTMLElement;
+    hook.setAttribute("name", name);
+    this.appendChildren(hook, children);
+    this.current().appendChild(hook);
+    this.prevBr = false;
+    return hook;
+  }
+
   /** Shorthand changer+content methods. */
   color(v: string, ...children: Child[]): Node {
     return this.styled({ name: "color", args: [v] }, ...children);

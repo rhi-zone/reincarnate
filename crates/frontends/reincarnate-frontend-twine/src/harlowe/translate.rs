@@ -277,6 +277,13 @@ impl TranslateCtx {
                 self.fb
                     .system_call("Harlowe.H", "br", &[], Type::Dynamic);
             }
+            NodeKind::NamedHook { name, body } => {
+                let name_val = self.fb.const_string(name);
+                let children = self.lower_children_as_values(body);
+                let mut args = vec![name_val];
+                args.extend(children);
+                self.fb.system_call("Harlowe.H", "namedHook", &args, Type::Dynamic);
+            }
         }
     }
 
@@ -328,6 +335,13 @@ impl TranslateCtx {
                     self.fb
                         .system_call("Harlowe.H", "br", &[], Type::Dynamic),
                 )
+            }
+            NodeKind::NamedHook { name, body } => {
+                let name_val = self.fb.const_string(name);
+                let children = self.lower_children_as_values(body);
+                let mut args = vec![name_val];
+                args.extend(children);
+                Some(self.fb.system_call("Harlowe.H", "namedHook", &args, Type::Dynamic))
             }
         }
     }
@@ -1395,6 +1409,11 @@ impl TranslateCtx {
                 )
             }
             ExprKind::Paren(inner) => self.lower_expr(inner),
+            // Named hook selector `?name` → CSS selector string for querySelectorAll
+            ExprKind::HookSelector(name) => {
+                let sel = format!("tw-hook[name='{name}']");
+                self.fb.const_string(sel.as_str())
+            }
             // Spread and Lambda should only appear as (for:) arguments, not as
             // standalone expressions. Lower the inner value for Spread, and
             // emit a placeholder for Lambda if encountered unexpectedly.
