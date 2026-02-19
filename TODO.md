@@ -52,6 +52,7 @@ Measured after TypeInference + ConstraintSolve + Alloc refinement.
 - [ ] Rust codegen backend (emit `.rs` files from typed IR — **blocked on multi-typed locals**)
 - [ ] wgpu + winit renderer system implementation
 - [ ] Web Audio system implementation
+- [ ] Native binary decompilation (C/C++, DirectX games with no scripting layer) — requires disassembly + decompilation pipeline rather than bytecode decoding; far harder than any current target; no timeline
 
 ## Diagnostics
 

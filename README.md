@@ -6,17 +6,30 @@ Part of the [rhi.zone](https://rhi.zone) ecosystem.
 
 ## Overview
 
-Reincarnate extracts and transforms applications from obsolete runtimes into modern web-based equivalents. It works on bytecode and script-based software — not native binaries.
+Reincarnate extracts and transforms applications from obsolete runtimes into modern web-based equivalents. It targets bytecode and script-based runtimes — engines where user logic can be extracted and recompiled.
 
 ### Supported Targets
 
-| Category | Targets | Format |
-|----------|---------|--------|
-| Interactive Media | Flash, Director/Shockwave, Authorware | ABC bytecode, Lingo |
-| Enterprise | Visual Basic 6, Silverlight, Java Applets | P-Code, .NET IL, JVM bytecode |
-| No-Code Ancestors | HyperCard, ToolBook | Stack formats |
-| Game Engines | RPG Maker, Ren'Py, GameMaker | Script/bytecode |
-| Interactive Fiction | Twine (SugarCube, Harlowe) | HTML + script |
+| Category | Targets | Format | Status |
+|----------|---------|--------|--------|
+| Interactive Media | Flash (AVM2) | ABC bytecode | ✅ Active |
+| Interactive Media | Director/Shockwave | Lingo bytecode, RIFX | Planned |
+| Enterprise | Visual Basic 6 | P-Code | Planned |
+| Enterprise | Silverlight | .NET IL | Planned |
+| Enterprise | Java Applets | JVM bytecode | Planned |
+| No-Code Ancestors | HyperCard, ToolBook | Stack formats, HyperTalk | Planned |
+| Game Engines | GameMaker (GMS1/GMS2) | GML bytecode | ✅ Active |
+| Game Engines | RPG Maker VX Ace / MV / MZ | Ruby/RGSS, JSON events | Planned |
+| Game Engines | Ren'Py | Python/RPYC bytecode | Planned |
+| Game Engines | WolfRPG | Custom binary commands | Planned |
+| Game Engines | SRPG Studio | JS + NW.js | Planned |
+| Interactive Fiction | Twine SugarCube | HTML + macro DSL | ✅ Active |
+| Interactive Fiction | Twine Harlowe | HTML + hook/macro syntax | ✅ Active |
+| Interactive Fiction | Inform 7 | Z-machine / Glulx bytecode | Planned |
+| Interactive Fiction | Ink by Inkle | .ink / compiled JSON | Planned |
+| Interactive Fiction | RAGS | NRBF / SQL CE binary | Planned |
+| Interactive Fiction | QSP | XOR-scrambled text/binary | Planned |
+| Puzzle Games | PuzzleScript | Plain text DSL | Planned |
 
 ### Approach
 

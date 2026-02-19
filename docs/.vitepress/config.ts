@@ -34,10 +34,40 @@ export default withMermaid(
             text: 'Targets',
             items: [
               { text: 'Overview', link: '/targets/' },
-              { text: 'Flash', link: '/targets/flash' },
-              { text: 'Director', link: '/targets/director' },
-              { text: 'Visual Basic 6', link: '/targets/vb6' },
-              { text: 'Game Engines', link: '/targets/game-engines' },
+              {
+                text: 'Active',
+                items: [
+                  { text: 'Flash (AVM2)', link: '/targets/flash' },
+                  { text: 'GameMaker (GML)', link: '/targets/gamemaker' },
+                  {
+                    text: 'Twine',
+                    link: '/targets/twine',
+                    items: [
+                      { text: 'SugarCube', link: '/targets/sugarcube' },
+                      { text: 'Harlowe', link: '/targets/harlowe' },
+                    ]
+                  },
+                ]
+              },
+              {
+                text: 'Planned',
+                items: [
+                  { text: "Director / Shockwave", link: '/targets/director' },
+                  { text: "Ren'Py", link: '/targets/renpy' },
+                  { text: 'RPG Maker', link: '/targets/rpgmaker' },
+                  { text: 'Inform (Z-machine/Glulx)', link: '/targets/inform' },
+                  { text: 'Ink by Inkle', link: '/targets/ink' },
+                  { text: 'Visual Basic 6', link: '/targets/vb6' },
+                  { text: 'Java Applets', link: '/targets/java-applets' },
+                  { text: 'Silverlight', link: '/targets/silverlight' },
+                  { text: 'HyperCard / ToolBook', link: '/targets/hypercard' },
+                  { text: 'WolfRPG', link: '/targets/wolfrpg' },
+                  { text: 'SRPG Studio', link: '/targets/srpg-studio' },
+                  { text: 'RAGS', link: '/targets/rags' },
+                  { text: 'QSP', link: '/targets/qsp' },
+                  { text: 'PuzzleScript', link: '/targets/puzzlescript' },
+                ]
+              },
             ]
           },
           {
