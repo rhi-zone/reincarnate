@@ -328,7 +328,9 @@ impl<'a> Parser<'a> {
         let mut clauses = Vec::new();
 
         loop {
-            self.skip_whitespace();
+            // Skip whitespace, newlines, and `\` erasure markers — Harlowe
+            // allows (else:) on a new line or after a `\` whitespace-erasure.
+            self.skip_if_clause_gap();
 
             // Check for `(else-if:` or `(else:` or `(elseif:`
             if self.peek() != Some(b'(') {
@@ -763,6 +765,18 @@ impl<'a> Parser<'a> {
         }
     }
 
+    /// Skip spaces, tabs, newlines, and Harlowe `\` whitespace-erasure markers.
+    /// Used in `parse_if_clauses` so that `(else:)` / `(else-if:)` separated
+    /// from the preceding `(if:)` hook by only whitespace or `\` are still
+    /// recognised as clauses.
+    fn skip_if_clause_gap(&mut self) {
+        while self.pos < self.bytes.len()
+            && matches!(self.bytes[self.pos], b' ' | b'\t' | b'\n' | b'\r' | b'\\')
+        {
+            self.pos += 1;
+        }
+    }
+
     /// Returns `true` if the current position starts a named hook `|name>[...]`.
     fn looks_like_named_hook(&self) -> bool {
         // Must start with `|`
@@ -920,6 +934,52 @@ mod tests {
             assert_eq!(m.clauses.len(), 1);
             assert_eq!(m.clauses[0].kind, "else");
             assert!(m.clauses[0].cond.is_none());
+        } else {
+            panic!("expected if macro");
+        }
+    }
+
+    #[test]
+    fn test_if_else_newline() {
+        // (else:) on a new line must still be collected as a clause, not emitted standalone
+        let ast = parse("(if: $x is 1)[yes]\n(else:)[no]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1, "else should be a clause, not a sibling node");
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "if");
+            assert_eq!(m.clauses.len(), 1);
+            assert_eq!(m.clauses[0].kind, "else");
+        } else {
+            panic!("expected if macro");
+        }
+    }
+
+    #[test]
+    fn test_else_if_newline() {
+        // (else-if:) on a new line must still be collected as a clause
+        let ast = parse("(if: $x is 1)[yes]\n(else-if: $x is 2)[maybe]\n(else:)[no]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1);
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "if");
+            assert_eq!(m.clauses.len(), 2);
+            assert_eq!(m.clauses[0].kind, "else-if");
+            assert_eq!(m.clauses[1].kind, "else");
+        } else {
+            panic!("expected if macro");
+        }
+    }
+
+    #[test]
+    fn test_else_after_backslash() {
+        // `]\` (whitespace-erasure) between hook and (else:) must still be a clause
+        let ast = parse("(if: $x is 1)[yes]\\ \n(else:)[no]");
+        assert_eq!(ast.errors.len(), 0);
+        assert_eq!(ast.body.len(), 1, "else after backslash should be a clause");
+        if let NodeKind::Macro(m) = &ast.body[0].kind {
+            assert_eq!(m.name, "if");
+            assert_eq!(m.clauses.len(), 1);
+            assert_eq!(m.clauses[0].kind, "else");
         } else {
             panic!("expected if macro");
         }
