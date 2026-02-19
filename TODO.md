@@ -73,6 +73,34 @@ Measured after TypeInference + ConstraintSolve + Alloc refinement.
   - **Sentinel elimination** — recognize sentinel-then-overwrite → `Option<T>`
   - Emit union type annotation (`number | string`) instead of `any`
 
+## Third-Party Engine Libraries
+
+Many real-world games embed third-party macro/plugin libraries alongside the engine.
+These appear as `unknown_macro` warnings (Twine) or unresolved calls (other engines)
+but are *not* missing built-ins — they are authored libraries distributed alongside
+the game. Each needs to be identified, understood, and either implemented against the
+platform layer or stubbed with a clear diagnostic.
+
+**General strategy:** For each library, read its source embedded in the game, understand
+its API, and decide:
+1. **Implement** — map to the platform layer (e.g. audio library → platform audio)
+2. **Stub** — no-op with a runtime warning (purely visual effects, dev tools)
+3. **Warn at compile time** — emit a named diagnostic instead of per-call-site noise
+
+**Detection:** During extraction, scan for library registration patterns
+(e.g. `Chapel.Macros.add(` in Harlowe, `Macro.add(` in SugarCube) and record
+discovered library names + macro lists in `FrontendOutput` metadata. This enables
+precise warnings ("uses HAL audio — implement platform audio shim") rather than
+generic unknown-call spam.
+
+**Known libraries observed in the wild:**
+
+- [ ] **HAL (Harlowe Audio Library)** — `(masteraudio:)`, `(track:)`, `(newtrack:)`,
+  `(newplaylist:)`, `(newgroup:)`, `(playlist:)`, `(group:)`. Registered via
+  `Chapel.Macros.add()`. Maps naturally to the platform audio layer.
+  Observed in: Artifact v0.76 (Harlowe).
+
+
 ## Future
 
 - [ ] Rust codegen backend (emit `.rs` files from typed IR — **blocked on multi-typed locals**)
@@ -345,5 +373,6 @@ and add it to `~/reincarnate/twine/`.
 - [x] **`(enchant:)` / `(enchant-in:)`** — Apply changers to matching elements via `<tw-enchantment>`
 - [ ] **Named hooks** — `|name>[hook content]` and `?name` hook references
 - [ ] **Complex `'s` possessive chains** — `$obj's (str-nth: $idx)` nested macro in possessive
+
 
 
