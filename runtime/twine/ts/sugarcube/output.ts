@@ -158,7 +158,7 @@ export class SCOutput {
     if (passage || setter) {
       a.addEventListener("click", (e) => {
         e.preventDefault();
-        if (setter) setter();
+        if (setter) setter(this.rt);
         if (passage) {
           this.rt.Navigation.goto(passage);
         }

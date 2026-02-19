@@ -1835,7 +1835,10 @@ impl TranslateCtx {
                 self.fb
                     .system_call("Harlowe.Engine", "plus", &[lhs, rhs], Type::Dynamic)
             }
-            BinaryOp::Sub => self.fb.sub(lhs, rhs),
+            BinaryOp::Sub => {
+                self.fb
+                    .system_call("Harlowe.Engine", "minus", &[lhs, rhs], Type::Dynamic)
+            }
             BinaryOp::Mul => self.fb.mul(lhs, rhs),
             BinaryOp::Div => self.fb.div(lhs, rhs),
             BinaryOp::Mod => self.fb.rem(lhs, rhs),

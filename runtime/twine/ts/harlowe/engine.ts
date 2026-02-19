@@ -52,6 +52,17 @@ export class HarloweEngine {
     return a + b;
   }
 
+  /** Harlowe `-` operator — removes elements from arrays/sets, or falls back
+   *  to JS `-` for numbers. */
+  minus(a: any, b: any): any {
+    if (Array.isArray(a) && Array.isArray(b)) {
+      const remove = new Set(b);
+      return (a as any[]).filter((x) => !remove.has(x));
+    }
+    if (a instanceof Set && Array.isArray(b)) return new Set([...a].filter((x) => !b.includes(x)));
+    return a - b;
+  }
+
   // --- Boolean/logic ---
 
   /** Harlowe `not` operator. */
