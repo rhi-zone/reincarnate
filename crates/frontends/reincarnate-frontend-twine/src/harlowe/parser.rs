@@ -247,6 +247,7 @@ impl<'a> Parser<'a> {
                 args,
                 hook,
                 clauses,
+                span: Span::new(start, end),
             }),
             span: Span::new(start, end),
         })

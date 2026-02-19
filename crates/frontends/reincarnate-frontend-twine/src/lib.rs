@@ -219,7 +219,7 @@ impl TwineFrontend {
             }
 
             let func_name = harlowe::translate::passage_func_name(&passage.name);
-            let result = harlowe::translate::translate_passage(&passage.name, &ast);
+            let result = harlowe::translate::translate_passage(&passage.name, &ast, &passage.source);
             let func_id = mb.add_function(result.func);
 
             // Register passage name → function name mapping

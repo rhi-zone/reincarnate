@@ -104,6 +104,8 @@ pub struct MacroNode {
     pub hook: Option<Vec<Node>>,
     /// For `(if:)` chains: the else-if and else clauses that follow.
     pub clauses: Vec<IfClause>,
+    /// Byte offset span of the whole macro invocation (including hook/clauses).
+    pub span: Span,
 }
 
 /// An else-if or else clause in a Harlowe `(if:)` chain.

@@ -38,7 +38,7 @@ pub fn passage_func_name(name: &str) -> String {
 }
 
 /// Translate a parsed Harlowe passage AST into an IR Function.
-pub fn translate_passage(name: &str, ast: &PassageAst) -> TranslateResult {
+pub fn translate_passage(name: &str, ast: &PassageAst, source: &str) -> TranslateResult {
     let func_name = passage_func_name(name);
     let sig = FunctionSig {
         params: vec![Type::Dynamic],
@@ -56,6 +56,8 @@ pub fn translate_passage(name: &str, ast: &PassageAst) -> TranslateResult {
         callback_count: 0,
         callbacks: Vec::new(),
         set_target: None,
+        passage_name: name.to_string(),
+        source: source.to_string(),
     };
 
     ctx.emit_content(&ast.body);
@@ -78,6 +80,35 @@ struct TranslateCtx {
     /// Inside `(set: $x to ...)`, holds the target expression so that
     /// `it` resolves to $x's current value rather than the global `it`.
     set_target: Option<Expr>,
+    /// Passage name, for diagnostic messages.
+    passage_name: String,
+    /// Raw passage source text, for span-based diagnostic context.
+    source: String,
+}
+
+/// Extract a short snippet of source text around a span for diagnostic messages.
+/// Shows up to 60 chars of context, trimming leading/trailing whitespace.
+fn source_context(source: &str, start: usize, end: usize) -> String {
+    let src_bytes = source.as_bytes();
+    let len = src_bytes.len();
+    // Find line start/end
+    let line_start = src_bytes[..start.min(len)]
+        .iter()
+        .rposition(|&b| b == b'\n')
+        .map(|i| i + 1)
+        .unwrap_or(0);
+    let line_end = src_bytes[end.min(len)..]
+        .iter()
+        .position(|&b| b == b'\n')
+        .map(|i| end + i)
+        .unwrap_or(len);
+    let line = &source[line_start..line_end.min(len)];
+    let trimmed = line.trim();
+    if trimmed.len() > 80 {
+        format!("{}…", &trimmed[..80])
+    } else {
+        trimmed.to_string()
+    }
 }
 
 impl TranslateCtx {
@@ -1296,6 +1327,13 @@ impl TranslateCtx {
     // ── Unknown macros ─────────────────────────────────────────────
 
     fn lower_unknown_macro(&mut self, mac: &MacroNode) {
+        // Emit a diagnostic with surrounding source context.
+        let ctx_snippet = source_context(&self.source, mac.span.start, mac.span.end);
+        eprintln!(
+            "warning: unknown macro '({:}:)' in passage '{}'\n  {}",
+            mac.name, self.passage_name, ctx_snippet
+        );
+
         let name = self.fb.const_string(&mac.name);
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
         let mut call_args = vec![name];
@@ -1672,7 +1710,7 @@ mod tests {
     #[test]
     fn test_plain_text_emits_h_text() {
         let ast = parser::parse("Hello world");
-        let result = translate_passage("test", &ast);
+        let result = translate_passage("test", &ast, "");
         assert_eq!(result.func.name, "passage_test");
         // Passage takes h param (Dynamic), returns void
         assert_eq!(result.func.sig.params.len(), 1);
@@ -1684,7 +1722,7 @@ mod tests {
     fn test_h_text_syscall() {
         use reincarnate_core::ir::inst::Op;
         let ast = parser::parse("Hello");
-        let result = translate_passage("test_text", &ast);
+        let result = translate_passage("test_text", &ast, "");
         let func = &result.func;
         let has_h_text = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
@@ -1698,14 +1736,14 @@ mod tests {
     #[test]
     fn test_set_produces_state_set() {
         let ast = parser::parse("(set: $x to 1)");
-        let result = translate_passage("test_set", &ast);
+        let result = translate_passage("test_set", &ast, "");
         assert_eq!(result.func.name, "passage_test_set");
     }
 
     #[test]
     fn test_if_creates_blocks() {
         let ast = parser::parse("(if: $x is 1)[yes](else:)[no]");
-        let result = translate_passage("test_if", &ast);
+        let result = translate_passage("test_if", &ast, "");
         // Should have multiple blocks for the if/else
         assert!(result.func.blocks.len() >= 3);
     }
@@ -1714,7 +1752,7 @@ mod tests {
     fn test_link_produces_syscall() {
         use reincarnate_core::ir::inst::Op;
         let ast = parser::parse("[[Start->Begin]]");
-        let result = translate_passage("test_link", &ast);
+        let result = translate_passage("test_link", &ast, "");
         let func = &result.func;
         let has_h_link = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
@@ -1728,7 +1766,7 @@ mod tests {
     #[test]
     fn test_link_macro_creates_callback() {
         let ast = parser::parse("(link: \"Continue\")[(goto: \"Next\")]");
-        let result = translate_passage("test_link_macro", &ast);
+        let result = translate_passage("test_link_macro", &ast, "");
         assert_eq!(result.callbacks.len(), 1);
         // Callback takes h param (Dynamic), returns void
         assert_eq!(result.callbacks[0].sig.params.len(), 1);
@@ -1739,7 +1777,7 @@ mod tests {
     #[test]
     fn test_goto_produces_navigation() {
         let ast = parser::parse("(goto: \"Event 3-check\")");
-        let result = translate_passage("test_goto", &ast);
+        let result = translate_passage("test_goto", &ast, "");
         assert_eq!(result.func.name, "passage_test_goto");
     }
 
@@ -1747,7 +1785,7 @@ mod tests {
     fn test_color_changer() {
         use reincarnate_core::ir::inst::Op;
         let ast = parser::parse("(color: green)[Hello]");
-        let result = translate_passage("test_color", &ast);
+        let result = translate_passage("test_color", &ast, "");
         let func = &result.func;
         let has_h_color = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
@@ -1771,14 +1809,14 @@ You're at the **entryway**
 
 (if: $hypnoStat < 70)[Normal text.](else:)[(color: magenta+white)[Hypno text.]]"#;
         let ast = parser::parse(src);
-        let result = translate_passage("complex", &ast);
+        let result = translate_passage("complex", &ast, src);
         assert!(!result.func.blocks.is_empty());
     }
 
     #[test]
     fn test_live_creates_callback() {
         let ast = parser::parse("(live: 2s)[(stop:)]");
-        let result = translate_passage("test_live", &ast);
+        let result = translate_passage("test_live", &ast, "");
         assert_eq!(result.callbacks.len(), 1);
         // Callback takes h param (Dynamic)
         assert_eq!(result.callbacks[0].sig.params.len(), 1);
@@ -1789,7 +1827,7 @@ You're at the **entryway**
     fn test_it_in_set_reads_target_variable() {
         use reincarnate_core::ir::inst::Op;
         let ast = parser::parse("(set: $x to it + 1)");
-        let result = translate_passage("test_it_set", &ast);
+        let result = translate_passage("test_it_set", &ast, "");
         let func = &result.func;
         let has_get_it = func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
@@ -1811,7 +1849,7 @@ You're at the **entryway**
     fn test_no_content_array_in_ir() {
         use reincarnate_core::ir::inst::Op;
         let ast = parser::parse("Hello **world**");
-        let result = translate_passage("test_no_array", &ast);
+        let result = translate_passage("test_no_array", &ast, "");
         let func = &result.func;
         // Should NOT have content_array, new_buffer, push, text_node
         let has_old_output = func.blocks.values().any(|block| {
