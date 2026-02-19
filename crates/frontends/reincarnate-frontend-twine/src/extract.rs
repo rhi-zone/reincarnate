@@ -5,6 +5,8 @@
 //! elements. This module extracts the raw passage data from that container,
 //! producing a format-agnostic `Story` that the per-format parsers consume.
 
+use scraper::{Html, Selector};
+
 /// A Twine story extracted from its HTML container.
 #[derive(Debug)]
 pub struct Story {
@@ -47,71 +49,68 @@ pub struct Passage {
 /// elements. The passage `source` is left unparsed — that's the job of
 /// the format-specific parser (SugarCube, Harlowe, etc.).
 pub fn extract_story(html: &str) -> Result<Story, ExtractError> {
-    // Find <tw-storydata ...>
-    let sd_start = html
-        .find("<tw-storydata")
-        .ok_or(ExtractError::NoStoryData)?;
-    let sd_tag_end = html[sd_start..]
-        .find('>')
-        .ok_or(ExtractError::MalformedStoryData)?;
-    let sd_tag = &html[sd_start..sd_start + sd_tag_end];
+    let document = Html::parse_document(html);
 
-    let name = extract_attr(sd_tag, "name").unwrap_or_default();
-    let format = extract_attr(sd_tag, "format").unwrap_or_default();
-    let format_version = extract_attr(sd_tag, "format-version").unwrap_or_default();
-    let ifid = extract_attr(sd_tag, "ifid").unwrap_or_default();
-    let start_pid: u32 = extract_attr(sd_tag, "startnode")
-        .unwrap_or_default()
+    let sd_sel = Selector::parse("tw-storydata").unwrap();
+    let sd = document
+        .select(&sd_sel)
+        .next()
+        .ok_or(ExtractError::NoStoryData)?;
+
+    let name = sd.attr("name").unwrap_or_default().to_string();
+    let format = sd.attr("format").unwrap_or_default().to_string();
+    let format_version = sd.attr("format-version").unwrap_or_default().to_string();
+    let ifid = sd.attr("ifid").unwrap_or_default().to_string();
+    let start_pid: u32 = sd
+        .attr("startnode")
+        .unwrap_or("1")
         .parse()
         .unwrap_or(1);
 
-    // Extract all <tw-passagedata ...>...</tw-passagedata>
-    let mut passages = Vec::new();
-    let mut search_from = sd_start;
-    while let Some(pd_start) = html[search_from..].find("<tw-passagedata") {
-        let abs_start = search_from + pd_start;
-        let tag_end = html[abs_start..]
-            .find('>')
-            .ok_or(ExtractError::MalformedPassage)?;
-        let tag = &html[abs_start..abs_start + tag_end];
-
-        let pid: u32 = extract_attr(tag, "pid")
-            .unwrap_or_default()
-            .parse()
-            .unwrap_or(0);
-        let pname = extract_attr(tag, "name").unwrap_or_default();
-        let tags_str = extract_attr(tag, "tags").unwrap_or_default();
-        let tags: Vec<String> = if tags_str.is_empty() {
-            Vec::new()
-        } else {
-            tags_str.split_whitespace().map(String::from).collect()
-        };
-
-        // Source is between > and </tw-passagedata>
-        let content_start = abs_start + tag_end + 1;
-        let content_end = html[content_start..]
-            .find("</tw-passagedata>")
-            .map(|i| content_start + i)
-            .unwrap_or(content_start);
-        let source = decode_html_entities(&html[content_start..content_end]);
-
-        passages.push(Passage {
-            pid,
-            name: pname,
-            tags,
-            source,
-        });
-        search_from = content_end + "</tw-passagedata>".len();
-    }
+    let pd_sel = Selector::parse("tw-passagedata").unwrap();
+    let passages: Vec<Passage> = document
+        .select(&pd_sel)
+        .map(|pd| {
+            let pid = pd.attr("pid").unwrap_or("0").parse().unwrap_or(0);
+            let pname = pd.attr("name").unwrap_or_default().to_string();
+            let tags_str = pd.attr("tags").unwrap_or_default();
+            let tags = if tags_str.is_empty() {
+                Vec::new()
+            } else {
+                tags_str.split_whitespace().map(String::from).collect()
+            };
+            let source: String = pd.text().collect();
+            Passage {
+                pid,
+                name: pname,
+                tags,
+                source,
+            }
+        })
+        .collect();
 
     if passages.is_empty() {
         return Err(ExtractError::NoPassages);
     }
 
-    // Extract user scripts, user styles, and format CSS using the html5ever tokenizer.
-    // This handles <script>/<style> content robustly by switching to ScriptData/Rawtext
-    // mode, avoiding all the fragility of manual string-based closing-tag search.
-    let (user_scripts, user_styles, format_css) = extract_script_style_blocks(html);
+    let script_sel = Selector::parse(r#"script[id="twine-user-script"]"#).unwrap();
+    let user_scripts: Vec<String> = document
+        .select(&script_sel)
+        .map(|el| el.text().collect())
+        .collect();
+
+    let style_sel = Selector::parse(r#"style[id="twine-user-stylesheet"]"#).unwrap();
+    let user_styles: Vec<String> = document
+        .select(&style_sel)
+        .map(|el| el.text().collect())
+        .collect();
+
+    let css_sel = Selector::parse(r#"style[title="Twine CSS"]"#).unwrap();
+    let format_css = document.select(&css_sel).next().and_then(|el| {
+        let css = el.text().collect::<String>();
+        let trimmed = css.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    });
 
     Ok(Story {
         name,
@@ -126,155 +125,9 @@ pub fn extract_story(html: &str) -> Result<Story, ExtractError> {
     })
 }
 
-/// Extract the value of an attribute from a tag string.
-/// Handles both single and double quotes.
-fn extract_attr(tag: &str, attr_name: &str) -> Option<String> {
-    // Match `attr_name="value"` or `attr_name='value'`
-    for quote in ['"', '\''] {
-        let pattern = format!("{attr_name}={quote}");
-        if let Some(start) = tag.find(&pattern) {
-            let value_start = start + pattern.len();
-            if let Some(end) = tag[value_start..].find(quote) {
-                return Some(decode_html_entities(&tag[value_start..value_start + end]));
-            }
-        }
-    }
-    None
-}
-
-/// Decode HTML entities in passage source.
-fn decode_html_entities(s: &str) -> String {
-    html_escape::decode_html_entities(s).into_owned()
-}
-
-/// Extract `<script id="twine-user-script">`, `<style id="twine-user-stylesheet">`,
-/// and `<style title="Twine CSS">` content from a Twine HTML document using the
-/// html5ever tokenizer.
-///
-/// By returning `TokenSinkResult::RawData(ScriptData)` / `RawData(Rawtext)` when
-/// opening script/style tags are encountered, the tokenizer switches to the
-/// appropriate raw-content mode — exactly as a browser would. Content is then
-/// collected verbatim until the matching closing tag is seen, with no manual
-/// closing-tag search and no risk of cross-element contamination.
-///
-/// Returns `(user_scripts, user_styles, format_css)`.
-fn extract_script_style_blocks(html: &str) -> (Vec<String>, Vec<String>, Option<String>) {
-    use std::cell::RefCell;
-
-    use html5ever::tendril::StrTendril;
-    use html5ever::tokenizer::{
-        states, BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer,
-        TokenizerOpts,
-    };
-
-    #[derive(Clone, Copy)]
-    enum Collecting {
-        UserScript,
-        UserStyle,
-        FormatCss,
-    }
-
-    #[derive(Default)]
-    struct State {
-        user_scripts: Vec<String>,
-        user_styles: Vec<String>,
-        format_css: Option<String>,
-        collecting: Option<Collecting>,
-        current: String,
-    }
-
-    struct Sink(RefCell<State>);
-
-    impl TokenSink for Sink {
-        type Handle = ();
-
-        fn process_token(&self, token: Token, _line: u64) -> TokenSinkResult<()> {
-            match token {
-                Token::TagToken(tag) => match tag.kind {
-                    TagKind::StartTag => {
-                        let get_attr = |key: &str| -> Option<String> {
-                            tag.attrs
-                                .iter()
-                                .find(|a| a.name.local.as_ref() == key)
-                                .map(|a| a.value.to_string())
-                        };
-                        match tag.name.as_ref() {
-                            "script" => {
-                                if get_attr("id").as_deref()
-                                    == Some("twine-user-script")
-                                {
-                                    let mut s = self.0.borrow_mut();
-                                    s.collecting = Some(Collecting::UserScript);
-                                    s.current.clear();
-                                }
-                                TokenSinkResult::RawData(states::ScriptData)
-                            }
-                            "style" => {
-                                if get_attr("id").as_deref()
-                                    == Some("twine-user-stylesheet")
-                                {
-                                    let mut s = self.0.borrow_mut();
-                                    s.collecting = Some(Collecting::UserStyle);
-                                    s.current.clear();
-                                } else if get_attr("title").as_deref() == Some("Twine CSS")
-                                {
-                                    let mut s = self.0.borrow_mut();
-                                    s.collecting = Some(Collecting::FormatCss);
-                                    s.current.clear();
-                                }
-                                TokenSinkResult::RawData(states::Rawtext)
-                            }
-                            _ => TokenSinkResult::Continue,
-                        }
-                    }
-                    TagKind::EndTag => {
-                        if matches!(tag.name.as_ref(), "script" | "style") {
-                            let mut s = self.0.borrow_mut();
-                            if let Some(kind) = s.collecting.take() {
-                                let text = std::mem::take(&mut s.current);
-                                match kind {
-                                    Collecting::UserScript => s.user_scripts.push(text),
-                                    Collecting::UserStyle => s.user_styles.push(text),
-                                    Collecting::FormatCss => {
-                                        let trimmed = text.trim().to_string();
-                                        if !trimmed.is_empty() && s.format_css.is_none() {
-                                            s.format_css = Some(trimmed);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        TokenSinkResult::Continue
-                    }
-                },
-                Token::CharacterTokens(chars) => {
-                    let mut s = self.0.borrow_mut();
-                    if s.collecting.is_some() {
-                        s.current.push_str(&chars);
-                    }
-                    TokenSinkResult::Continue
-                }
-                _ => TokenSinkResult::Continue,
-            }
-        }
-    }
-
-    let sink = Sink(RefCell::new(State::default()));
-    let tokenizer = Tokenizer::new(sink, TokenizerOpts::default());
-    let input = BufferQueue::default();
-    input.push_back(StrTendril::from(html));
-    let _ = tokenizer.feed(&input);
-    tokenizer.end();
-
-    let state = tokenizer.sink.0.into_inner();
-    (state.user_scripts, state.user_styles, state.format_css)
-}
-
 #[derive(Debug)]
 pub enum ExtractError {
     NoStoryData,
-    MalformedStoryData,
-    MalformedPassage,
     NoPassages,
 }
 
@@ -282,8 +135,6 @@ impl std::fmt::Display for ExtractError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::NoStoryData => write!(f, "no <tw-storydata> element found in HTML"),
-            Self::MalformedStoryData => write!(f, "malformed <tw-storydata> element"),
-            Self::MalformedPassage => write!(f, "malformed <tw-passagedata> element"),
             Self::NoPassages => write!(f, "no passages found in story data"),
         }
     }
@@ -367,10 +218,6 @@ mod tests {
         assert!(story.format_css.is_none());
     }
 
-    /// Regression test: stylesheet block must not capture past </style> into a later </script>.
-    /// The old string-based implementation had to manually pick the minimum of the two closing
-    /// tag positions. The tokenizer-based implementation handles this correctly by returning
-    /// RawData(Rawtext) for <style> — the tokenizer ends collection at </style> naturally.
     #[test]
     fn stylesheet_block_stops_at_style_not_script() {
         let html = r#"
@@ -387,8 +234,6 @@ mod tests {
         assert_eq!(story.user_scripts[0], "window.setup = {};");
     }
 
-    /// The tokenizer correctly handles JS that contains </style> in a string literal,
-    /// something the old string-search approach could not handle reliably.
     #[test]
     fn script_content_with_style_closing_tag() {
         let html = r#"
@@ -402,7 +247,6 @@ mod tests {
         assert_eq!(story.user_scripts[0], r#"var s = "</style>"; var x = 1;"#);
     }
 
-    /// Harlowe embeds script/style blocks inside <tw-storydata>.
     #[test]
     fn script_style_inside_storydata() {
         let html = r#"
