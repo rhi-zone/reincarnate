@@ -60,16 +60,26 @@ fn referenced_dirs(config: &RuntimeConfig) -> BTreeSet<String> {
 
 /// Copy the engine-specific runtime into `output_dir/runtime/`.
 ///
-/// Only copies top-level directories that are referenced by the config
-/// (system_modules, scaffold imports, etc.), plus all top-level files.
-/// This prevents unused variant directories (e.g. sugarcube/ in a Harlowe
-/// project) from being copied.
+/// Cleans the destination `runtime/` directory first to remove stale files
+/// from previous generations. Only copies top-level directories that are
+/// referenced by the config (system_modules, scaffold imports, etc.), plus
+/// all top-level files. This prevents unused variant directories (e.g.
+/// sugarcube/ in a Harlowe project) from being copied.
+///
+/// Also copies `runtime_src/../../shared/ts/` to `output_dir/shared/ts/`
+/// if it exists — this provides the `../../../shared/ts/render-root` module
+/// that engine runtime files import.
 pub fn emit_runtime(
     output_dir: &Path,
     runtime_src: &Path,
     config: &RuntimeConfig,
 ) -> Result<(), CoreError> {
     let dest = output_dir.join("runtime");
+
+    // Clean destination to remove stale files from previous generations.
+    if dest.exists() {
+        fs::remove_dir_all(&dest)?;
+    }
     fs::create_dir_all(&dest)?;
 
     let needed = referenced_dirs(config);
@@ -89,5 +99,16 @@ pub fn emit_runtime(
             fs::copy(&src_path, &dst_path)?;
         }
     }
+
+    // Copy shared TypeScript utilities (e.g. render-root.ts).
+    // The engine runtime source has a shared/ sibling directory
+    // (e.g. runtime/twine/ts/shared/) that is imported as ../shared/render-root
+    // from files in runtime/<engine>/ subdirectories. After copying, this
+    // resolves to output_dir/runtime/shared/render-root.
+    let shared_src = runtime_src.join("shared");
+    if shared_src.is_dir() {
+        copy_dir_recursive(&shared_src, &dest.join("shared"))?;
+    }
+
     Ok(())
 }

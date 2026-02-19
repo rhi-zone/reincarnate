@@ -6,7 +6,7 @@
 
 import { type Changer, HarloweContext } from "./context";
 import type { HarloweRuntime } from "./runtime";
-import type { DocumentFactory } from "../../../shared/ts/render-root";
+import type { DocumentFactory } from "../shared/render-root";
 
 export class HarloweEngine {
   private rt: HarloweRuntime;
@@ -582,7 +582,7 @@ export class HarloweEngine {
     if (selector) {
       const el = container.querySelector(String(selector));
       if (el) el.scrollIntoView({ behavior: "smooth" });
-    } else {
+    } else if (container instanceof Element) {
       container.scrollTop = 0;
     }
   }
@@ -613,7 +613,7 @@ export class HarloweEngine {
       const h = new HarloweContext(output, this.rt, doc);
       try { cb(h); } finally { h.closeAll(); }
     };
-    link.addEventListener("click", (e) => {
+    link.addEventListener("click", (e: Event) => {
       e.preventDefault();
       rerun();
     });
@@ -628,7 +628,7 @@ export class HarloweEngine {
     const doc = this.doc();
     const link = doc.createElement("tw-link");
     link.textContent = document.fullscreenElement ? (exitText ?? String(enterText)) : String(enterText);
-    link.addEventListener("click", (e) => {
+    link.addEventListener("click", (e: Event) => {
       e.preventDefault();
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(() => {});
@@ -678,7 +678,7 @@ export class HarloweEngine {
     } else if (name === "dropdown") {
       const select = doc.createElement("select") as HTMLSelectElement;
       for (const opt of options) {
-        const option = doc.createElement("option");
+        const option = doc.createElement("option") as HTMLOptionElement;
         option.textContent = String(opt);
         option.value = String(opt);
         select.appendChild(option);

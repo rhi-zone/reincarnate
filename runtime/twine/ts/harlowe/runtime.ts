@@ -4,7 +4,7 @@
  * each with its own HarloweRuntime. No module-level mutable state.
  */
 
-import type { RenderRoot } from "../../../shared/ts/render-root";
+import type { RenderRoot } from "../shared/render-root";
 import type { PassageFn } from "./navigation";
 import { HarloweState } from "./state";
 import { HarloweNavigation } from "./navigation";

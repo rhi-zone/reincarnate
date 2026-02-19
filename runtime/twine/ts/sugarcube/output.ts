@@ -8,7 +8,7 @@
  */
 
 import { scheduleTimeout, cancelTimeout, scheduleInterval, cancelInterval } from "../platform";
-import type { DocumentFactory } from "../../../shared/ts/render-root";
+import type { DocumentFactory } from "../shared/render-root";
 import type { SugarCubeRuntime } from "./runtime";
 
 // --- Interfaces ---

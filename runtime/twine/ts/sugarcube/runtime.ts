@@ -4,7 +4,7 @@
  * each with its own SugarCubeRuntime. No module-level mutable state.
  */
 
-import type { RenderRoot } from "../../../shared/ts/render-root";
+import type { RenderRoot } from "../shared/render-root";
 import type { PassageFn } from "./navigation";
 import type { PersistenceOpts } from "../platform";
 import * as Platform from "../platform";

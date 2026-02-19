@@ -2,7 +2,7 @@
 
 import { HarloweContext, cancelTimers, departOldPassage } from "./context";
 import type { HarloweRuntime } from "./runtime";
-import type { DocumentFactory } from "../../../shared/ts/render-root";
+import type { DocumentFactory } from "../shared/render-root";
 import { commitSave } from "../platform";
 
 /** Passage function type — receives runtime and h context, returns void. */

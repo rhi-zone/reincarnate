@@ -15,7 +15,7 @@
 
 import type { HarloweRuntime } from "./runtime";
 import { scheduleInterval, cancelInterval } from "../platform";
-import type { DocumentFactory } from "../../../shared/ts/render-root";
+import type { DocumentFactory } from "../shared/render-root";
 
 // Re-export Changer type so engine.ts and other modules can import from here.
 export interface Changer {

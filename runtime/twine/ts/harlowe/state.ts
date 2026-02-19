@@ -5,7 +5,7 @@
  * Harlowe also tracks `it` — the result of the most recent expression.
  */
 
-import { type SaveableState, type HistoryStrategy, snapshotHistory } from "../platform";
+import { type SaveableState, type HistoryStrategy, snapshotHistory, saveSlot, loadSlot, hasSlot } from "../platform";
 
 export class HarloweState implements SaveableState {
   storyVars: Record<string, any> = {};
@@ -85,6 +85,23 @@ export class HarloweState implements SaveableState {
 
   forgetVisits(): void {
     this.history.forgetVisits();
+  }
+
+  // --- Save slots (delegate to platform save service) ---
+
+  /** Save current state to a named slot. Returns true on success. */
+  saveSlot(name: string): boolean {
+    return saveSlot(name);
+  }
+
+  /** Load state from a named slot. Returns passage title or undefined. */
+  loadSlot(name: string): string | undefined {
+    return loadSlot(name);
+  }
+
+  /** Check if a save slot exists. */
+  hasSlot(name: string): boolean {
+    return hasSlot(name);
   }
 
   // --- SaveableState implementation ---
