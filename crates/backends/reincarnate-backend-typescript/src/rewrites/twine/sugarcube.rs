@@ -18,19 +18,67 @@ pub(super) fn try_rewrite(
     closures: &HashMap<String, JsFunction>,
 ) -> Option<JsExpr> {
     match method {
-        // closure(name) → inline arrow function from pre-compiled closure body
-        "closure" if args.len() == 1 => {
+        // closure(name[, cap0, cap1, ...]) → arrow function or IIFE
+        //
+        // With no captures (args.len() == 1): inline the closure body as a
+        // plain ArrowFunction.
+        //
+        // With captures (args.len() > 1): emit an IIFE that binds the capture
+        // values at creation time and returns an inner arrow for the actual call:
+        //   ((cap0, cap1) => (reg_params...) => body)(cap_val0, cap_val1)
+        //
+        // The split between capture params and regular params is stored in
+        // `JsFunction::num_capture_params`: the last N params are captures.
+        "closure" if !args.is_empty() => {
             if let JsExpr::Literal(Constant::String(ref name)) = args[0] {
                 if let Some(closure_func) = closures.get(name.as_str()).cloned() {
-                    let rewritten =
-                        super::rewrite_twine_function(closure_func, closures);
-                    return Some(JsExpr::ArrowFunction {
-                        params: rewritten.params,
+                    let n_cap = closure_func.num_capture_params;
+                    let rewritten = super::rewrite_twine_function(closure_func, closures);
+                    let n_total = rewritten.params.len();
+                    let n_reg = n_total.saturating_sub(n_cap);
+
+                    if n_cap == 0 || args.len() == 1 {
+                        // No captures (or caller didn't pass any): plain arrow.
+                        return Some(JsExpr::ArrowFunction {
+                            params: rewritten.params,
+                            return_ty: rewritten.return_ty,
+                            body: rewritten.body,
+                            has_rest_param: rewritten.has_rest_param,
+                            cast_as: None,
+                            infer_param_types: false,
+                        });
+                    }
+
+                    // Split params: first n_reg are regular, last n_cap are captures.
+                    let mut all_params = rewritten.params;
+                    let cap_params = all_params.split_off(n_reg); // capture params
+                    let reg_params = all_params;                   // regular params
+
+                    // Inner arrow: takes regular params, body unchanged.
+                    let inner = JsExpr::ArrowFunction {
+                        params: reg_params,
                         return_ty: rewritten.return_ty,
                         body: rewritten.body,
                         has_rest_param: rewritten.has_rest_param,
                         cast_as: None,
                         infer_param_types: false,
+                    };
+
+                    // Outer arrow: takes capture params, returns inner arrow.
+                    let outer = JsExpr::ArrowFunction {
+                        params: cap_params,
+                        return_ty: reincarnate_core::ir::Type::Dynamic,
+                        body: vec![crate::js_ast::JsStmt::Return(Some(inner))],
+                        has_rest_param: false,
+                        cast_as: None,
+                        infer_param_types: false,
+                    };
+
+                    // IIFE: immediately invoke the outer arrow with capture values.
+                    let capture_args = args.drain(1..).collect();
+                    return Some(JsExpr::Call {
+                        callee: Box::new(outer),
+                        args: capture_args,
                     });
                 }
             }
@@ -157,6 +205,7 @@ mod tests {
             visibility: Visibility::Public,
             method_kind: MethodKind::Free,
             has_rest_param: false,
+            num_capture_params: 0,
         }
     }
 
@@ -336,6 +385,7 @@ mod tests {
                 visibility: Visibility::Private,
                 method_kind: MethodKind::Closure,
                 has_rest_param: false,
+                num_capture_params: 0,
             },
         );
 

@@ -21,8 +21,8 @@ use oxc_parser::Parser as OxcParser;
 use oxc_span::SourceType;
 
 use reincarnate_core::ir::{
-    BlockId, CmpKind, Function, FunctionBuilder, FunctionSig, MethodKind, Type, ValueId,
-    Visibility,
+    BlockId, CaptureMode, CmpKind, Function, FunctionBuilder, FunctionSig, MethodKind, Type,
+    ValueId, Visibility,
 };
 
 use super::ast::*;
@@ -951,6 +951,7 @@ impl TranslateCtx {
         let arrow_name = format!("{}_arrow_{}", self.func_name, self.arrow_count);
         self.arrow_count += 1;
 
+        // Regular parameters from the arrow signature.
         let params: Vec<String> = arrow
             .params
             .items
@@ -964,6 +965,24 @@ impl TranslateCtx {
             })
             .collect();
 
+        // --- 1. Collect outer temp vars to capture by value ---
+        //
+        // Load the current value of each outer temp var in the outer builder.
+        // These loads happen at closure-creation time, producing the snapshots.
+        // The values are then passed to `Op::MakeClosure` as capture args.
+        let outer_temps: Vec<(String, ValueId)> = self
+            .temp_vars
+            .iter()
+            .map(|(name, &alloc_id)| {
+                let val = self.fb.load(alloc_id, Type::Dynamic);
+                (name.clone(), val)
+            })
+            .collect();
+
+        // Capture values: all outer temp var loads (in a stable order).
+        let capture_vals: Vec<ValueId> = outer_temps.iter().map(|(_, v)| *v).collect();
+
+        // --- 2. Build the closure FunctionBuilder ---
         let sig = FunctionSig {
             params: vec![Type::Dynamic; params.len()],
             return_ty: Type::Dynamic,
@@ -972,7 +991,7 @@ impl TranslateCtx {
         };
         let mut arrow_fb = FunctionBuilder::new(&arrow_name, sig, Visibility::Private);
 
-        // Register parameter names
+        // Register regular parameter names.
         let mut arrow_params = HashMap::new();
         for (idx, name) in params.iter().enumerate() {
             let v = arrow_fb.param(idx);
@@ -980,11 +999,29 @@ impl TranslateCtx {
             arrow_params.insert(name.clone(), v);
         }
 
+        // Register capture params (appended after regular params in entry block).
+        let capture_spec: Vec<(String, Type, CaptureMode)> = outer_temps
+            .iter()
+            .map(|(name, _)| (format!("cap_{name}"), Type::Dynamic, CaptureMode::ByValue))
+            .collect();
+        let cap_ids = arrow_fb.add_capture_params(capture_spec);
+
+        // Pre-populate arrow_temp_vars: for each captured outer temp, create an
+        // alloc backed by the capture param.  Mem2Reg will later promote the
+        // single-store alloc chains to direct uses of the capture param values.
+        let mut arrow_temp_vars = HashMap::new();
+        for (i, (name, _)) in outer_temps.iter().enumerate() {
+            let cap_val = cap_ids[i];
+            let alloc = arrow_fb.alloc(Type::Dynamic);
+            arrow_fb.store(alloc, cap_val);
+            arrow_temp_vars.insert(name.clone(), alloc);
+        }
+
+        // --- 3. Lower arrow body in the closure context ---
         let saved_fb = std::mem::replace(&mut self.fb, arrow_fb);
-        let saved_temps = std::mem::take(&mut self.temp_vars);
+        let saved_temps = std::mem::replace(&mut self.temp_vars, arrow_temp_vars);
         let saved_params = std::mem::replace(&mut self.local_params, arrow_params);
 
-        // Lower arrow body
         if arrow.expression {
             // Expression body: `() => expr`
             if let Some(js::Statement::ExpressionStatement(es)) = arrow.body.statements.first() {
@@ -994,7 +1031,7 @@ impl TranslateCtx {
                 self.fb.ret(None);
             }
         } else {
-            // Block body: `() => { ... }` — lower each statement
+            // Block body: `() => { ... }` — lower each statement.
             for stmt in &arrow.body.statements {
                 self.lower_oxc_statement(stmt, pp);
             }
@@ -1004,13 +1041,13 @@ impl TranslateCtx {
         let built = std::mem::replace(&mut self.fb, saved_fb);
         self.temp_vars = saved_temps;
         self.local_params = saved_params;
+
         let mut func = built.build();
         func.method_kind = MethodKind::Closure;
         self.setter_callbacks.push(func);
 
-        let name_val = self.fb.const_string(&arrow_name);
-        self.fb
-            .system_call("SugarCube.Engine", "closure", &[name_val], Type::Dynamic)
+        // --- 4. Emit Op::MakeClosure in the outer builder ---
+        self.fb.make_closure(&arrow_name, &capture_vals, Type::Dynamic)
     }
 
     fn lower_oxc_statement(&mut self, stmt: &js::Statement<'_>, pp: &Preprocessed) {
@@ -2497,20 +2534,15 @@ mod tests {
             "expected arrow callback marked as Closure"
         );
 
-        let has_closure_syscall = result.func.blocks.values().any(|block| {
+        let has_make_closure = result.func.blocks.values().any(|block| {
             block.insts.iter().any(|&inst_id| {
                 let inst = &result.func.insts[inst_id];
-                matches!(
-                    &inst.op,
-                    reincarnate_core::ir::inst::Op::SystemCall {
-                        system, method, ..
-                    } if system == "SugarCube.Engine" && method == "closure"
-                )
+                matches!(&inst.op, reincarnate_core::ir::inst::Op::MakeClosure { .. })
             })
         });
         assert!(
-            has_closure_syscall,
-            "parent function should contain a closure SystemCall"
+            has_make_closure,
+            "parent function should contain an Op::MakeClosure instruction"
         );
     }
 

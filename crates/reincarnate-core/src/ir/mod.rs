@@ -16,7 +16,7 @@ pub use ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
 pub use block::{Block, BlockId, BlockParam};
 pub use builder::{FunctionBuilder, ModuleBuilder};
 pub use coroutine::CoroutineInfo;
-pub use func::{FuncId, Function, MethodKind, Visibility};
+pub use func::{CaptureMode, FuncId, Function, MethodKind, Visibility};
 pub use inst::{CastKind, CmpKind, Inst, InstId, Op, Span};
 pub use linear::lower_function_linear;
 pub use module::{

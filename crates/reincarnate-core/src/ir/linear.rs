@@ -1141,6 +1141,7 @@ pub fn lower_function_linear(
         visibility: func.visibility,
         method_kind: func.method_kind,
         has_rest_param: func.sig.has_rest_param,
+        num_capture_params: func.capture_params.len(),
     }
 }
 

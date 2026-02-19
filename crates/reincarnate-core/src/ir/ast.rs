@@ -239,4 +239,7 @@ pub struct AstFunction {
     pub method_kind: MethodKind,
     /// Whether the last parameter is a rest/variadic parameter (`...args`).
     pub has_rest_param: bool,
+    /// Number of capture parameters (appended at the end of `params`).
+    /// For non-closures this is always 0.
+    pub num_capture_params: usize,
 }

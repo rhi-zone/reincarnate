@@ -220,6 +220,7 @@ mod tests {
             visibility: Visibility::Public,
             method_kind: MethodKind::Free,
             has_rest_param: false,
+            num_capture_params: 0,
         }
     }
 
@@ -463,6 +464,7 @@ mod tests {
             visibility: Visibility::Public,
             method_kind: MethodKind::Closure,
             has_rest_param: false,
+            num_capture_params: 0,
         }
     }
 

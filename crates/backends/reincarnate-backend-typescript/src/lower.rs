@@ -36,6 +36,7 @@ pub fn lower_function(ast: &AstFunction, ctx: &LowerCtx) -> JsFunction {
         visibility: ast.visibility,
         method_kind: ast.method_kind,
         has_rest_param: ast.has_rest_param,
+        num_capture_params: ast.num_capture_params,
     }
 }
 
@@ -288,10 +289,21 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
 
         Expr::Spread(inner) => JsExpr::Spread(Box::new(lower_expr(inner, ctx))),
 
-        Expr::MakeClosure { .. } => {
-            // Phase 1 stub: full capture wiring is implemented when frontends
-            // start emitting Op::MakeClosure. This path is not reachable today.
-            todo!("MakeClosure lowering: wire capture params to JsExpr::ArrowFunction")
+        Expr::MakeClosure { func, captures } => {
+            // Lower to a SugarCube.Engine.closure syscall with the function name
+            // as the first arg and capture values as subsequent args.  The twine
+            // rewrite pass converts this to an IIFE when captures are present,
+            // or a plain ArrowFunction when there are none.
+            let mut args = Vec::with_capacity(captures.len() + 1);
+            args.push(JsExpr::Literal(reincarnate_core::ir::value::Constant::String(
+                func.clone(),
+            )));
+            args.extend(lower_exprs(captures, ctx));
+            JsExpr::SystemCall {
+                system: "SugarCube.Engine".to_string(),
+                method: "closure".to_string(),
+                args,
+            }
         }
     }
 }

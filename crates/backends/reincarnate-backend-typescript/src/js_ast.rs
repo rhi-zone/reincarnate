@@ -270,4 +270,8 @@ pub struct JsFunction {
     pub method_kind: MethodKind,
     /// Whether the last parameter is a rest/variadic parameter (`...args`).
     pub has_rest_param: bool,
+    /// Number of capture parameters appended at the end of `params`.
+    /// Non-zero only for `MethodKind::Closure` functions that were built
+    /// with `FunctionBuilder::add_capture_params`.
+    pub num_capture_params: usize,
 }
