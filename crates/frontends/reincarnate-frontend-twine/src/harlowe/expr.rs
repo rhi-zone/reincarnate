@@ -384,22 +384,36 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
             }
         }
         TokenKind::QuestionMark => {
-            // Hook selector: `?name` — targets named hooks
+            // Hook selector: `?name` or `?1` — targets named hooks
             let start = tok.span.start;
             lexer.next_token(); // consume `?`
             let name_tok = lexer.peek_token();
-            let name = if let TokenKind::Ident(ref s) = name_tok.kind {
-                let n = s.clone();
-                lexer.next_token(); // consume name
-                n
-            } else {
-                return Expr {
-                    kind: ExprKind::Error(format!(
-                        "expected hook name after `?`, got {:?}",
-                        name_tok.kind
-                    )),
-                    span: name_tok.span,
-                };
+            // Accept both identifier names (?cond) and numeric names (?1, ?2)
+            let name = match &name_tok.kind {
+                TokenKind::Ident(ref s) => {
+                    let n = s.clone();
+                    lexer.next_token();
+                    n
+                }
+                TokenKind::Number(n) => {
+                    // Format integer-like numbers without decimal point
+                    let n = *n;
+                    lexer.next_token();
+                    if n.fract() == 0.0 {
+                        format!("{}", n as i64)
+                    } else {
+                        format!("{n}")
+                    }
+                }
+                _ => {
+                    return Expr {
+                        kind: ExprKind::Error(format!(
+                            "expected hook name after `?`, got {:?}",
+                            name_tok.kind
+                        )),
+                        span: name_tok.span,
+                    };
+                }
             };
             let span = Span::new(start, lexer.pos());
             Expr {

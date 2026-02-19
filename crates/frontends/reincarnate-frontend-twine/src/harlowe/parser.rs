@@ -782,11 +782,11 @@ impl<'a> Parser<'a> {
         if i == name_start {
             return false; // no name chars
         }
-        // Must be followed by `>`
-        if i >= self.bytes.len() || self.bytes[i] != b'>' {
+        // Must be followed by `>` or `)` (alternative Harlowe hook-open terminators)
+        if i >= self.bytes.len() || (self.bytes[i] != b'>' && self.bytes[i] != b')') {
             return false;
         }
-        // The `>` must be followed (possibly with whitespace) by `[`
+        // The terminator must be followed (possibly with whitespace) by `[`
         let mut j = i + 1;
         while j < self.bytes.len() && (self.bytes[j] == b' ' || self.bytes[j] == b'\t') {
             j += 1;
@@ -810,7 +810,7 @@ impl<'a> Parser<'a> {
             self.pos += 1;
         }
         let name = self.source[name_start..self.pos].to_string();
-        self.pos += 1; // skip `>`
+        self.pos += 1; // skip `>` or `)`
 
         // Skip optional whitespace before `[`
         while self.pos < self.bytes.len()
