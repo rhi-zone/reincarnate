@@ -57,6 +57,38 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
 
     loop {
         let tok = lexer.peek_token();
+
+        // Handle possessive `'s` — property is an atom, not a full expression.
+        // The Apostrophe token is emitted only for `'s\s+` (per Harlowe's regex).
+        if matches!(tok.kind, TokenKind::Apostrophe) && min_prec <= Prec::Access {
+            lexer.next_token(); // consume `'s`
+            let property = parse_prefix(lexer);
+            let span = Span::new(left.span.start, property.span.end);
+            left = Expr {
+                kind: ExprKind::Possessive {
+                    object: Box::new(left),
+                    property: Box::new(property),
+                },
+                span,
+            };
+            continue;
+        }
+
+        // Handle `of` — reverse possessive: `1st of $arr`.
+        if matches!(tok.kind, TokenKind::Ident(ref s) if s == "of") && min_prec <= Prec::Access {
+            lexer.next_token(); // consume `of`
+            let object = parse_prec(lexer, Prec::Access);
+            let span = Span::new(left.span.start, object.span.end);
+            left = Expr {
+                kind: ExprKind::Of {
+                    property: Box::new(left),
+                    object: Box::new(object),
+                },
+                span,
+            };
+            continue;
+        }
+
         let (op, prec) = match &tok.kind {
             TokenKind::To if min_prec <= Prec::Assign => (None, Prec::Assign),
             TokenKind::Or if min_prec <= Prec::Or => (Some(BinaryOp::Or), Prec::Or),
@@ -80,30 +112,25 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
             TokenKind::Star if min_prec <= Prec::Mul => (Some(BinaryOp::Mul), Prec::Mul),
             TokenKind::Slash if min_prec <= Prec::Mul => (Some(BinaryOp::Div), Prec::Mul),
             TokenKind::Percent if min_prec <= Prec::Mul => (Some(BinaryOp::Mod), Prec::Mul),
-            // Possessive: check for `'s` after expression
-            TokenKind::Ident(s) if s == "s" && min_prec <= Prec::Access => {
-                // This is the `'s` possessive — but we need to verify the
-                // previous character was `'`. We handle this specially.
-                break;
-            }
             _ => break,
         };
 
         lexer.next_token(); // consume the operator
 
+        // Use next-higher precedence for left-associativity
+        let next_prec = match prec {
+            Prec::Assign => Prec::Or,
+            Prec::Or => Prec::And,
+            Prec::And => Prec::Equality,
+            Prec::Equality => Prec::Compare,
+            Prec::Compare => Prec::Add,
+            Prec::Add => Prec::Mul,
+            Prec::Mul => Prec::Unary,
+            _ => Prec::Access,
+        };
+
         match op {
             Some(bin_op) => {
-                // Use next-higher precedence for left-associativity
-                let next_prec = match prec {
-                    Prec::Assign => Prec::Or,
-                    Prec::Or => Prec::And,
-                    Prec::And => Prec::Equality,
-                    Prec::Equality => Prec::Compare,
-                    Prec::Compare => Prec::Add,
-                    Prec::Add => Prec::Mul,
-                    Prec::Mul => Prec::Unary,
-                    _ => Prec::Access,
-                };
                 let right = parse_prec(lexer, next_prec);
 
                 // Harlowe `is`/`is not` distribution: `$x is A or B` means
@@ -127,7 +154,7 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
                 };
             }
             None => {
-                // `to` — this is an assignment (used in `(set:)`)
+                // `to` — assignment used in `(set:)`
                 let right = parse_prec(lexer, Prec::Or);
                 let span = Span::new(left.span.start, right.span.end);
                 left = Expr {
@@ -141,51 +168,7 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
         }
     }
 
-    // Check for `'s` possessive access
-    left = try_parse_possessive(lexer, left);
-
     left
-}
-
-/// Try to parse `'s property` after an expression.
-fn try_parse_possessive(lexer: &mut ExprLexer, mut expr: Expr) -> Expr {
-    // In Harlowe, `$arr's 1st` or `$obj's name`.
-    // The lexer doesn't produce Apostrophe tokens for `'s` because `'` is also
-    // a string quote. We handle this by checking the raw input.
-    // For now, detect the pattern at the parser level by looking for `'` + `s` + space.
-    loop {
-        let saved_pos = lexer.pos();
-        let tok = lexer.peek_token();
-
-        // Check for possessive: the raw input at current position should be `'s`
-        // This is tricky because the lexer treats `'` as string start.
-        // We need a heuristic: if we see an error token that tried to lex `'s `,
-        // or if we peek at raw input.
-        if matches!(tok.kind, TokenKind::Error(_)) {
-            // Could be `'s` — check raw input
-            break;
-        }
-
-        // Check for `of` keyword for reverse possessive: `1st of $arr`
-        if matches!(tok.kind, TokenKind::Ident(ref s) if s == "of") {
-            lexer.next_token(); // consume `of`
-            let object = parse_prec(lexer, Prec::Access);
-            let span = Span::new(expr.span.start, object.span.end);
-            expr = Expr {
-                kind: ExprKind::Of {
-                    property: Box::new(expr),
-                    object: Box::new(object),
-                },
-                span,
-            };
-            continue;
-        }
-
-        _ = saved_pos;
-        break;
-    }
-
-    expr
 }
 
 /// Harlowe distributes comparisons across `or`/`and`:
@@ -751,5 +734,43 @@ mod tests {
     fn test_negative_number() {
         let expr = parse("-5");
         assert!(matches!(expr.kind, ExprKind::Unary { op: UnaryOp::Neg, .. }));
+    }
+
+    #[test]
+    fn test_possessive() {
+        // `$arr's 1st` — possessive access
+        let expr = parse("$arr's 1st");
+        if let ExprKind::Possessive { object, property } = &expr.kind {
+            assert!(matches!(object.kind, ExprKind::StoryVar(ref n) if n == "arr"));
+            assert!(matches!(property.kind, ExprKind::Ordinal(Ordinal::Nth(1))));
+        } else {
+            panic!("expected Possessive, got {:?}", expr.kind);
+        }
+    }
+
+    #[test]
+    fn test_single_quoted_string() {
+        // `'hello'` — single-quoted string is valid in Harlowe
+        let expr = parse("'hello'");
+        assert!(matches!(expr.kind, ExprKind::Str(ref s) if s == "hello"));
+    }
+
+    #[test]
+    fn test_possessive_not_triggered_by_string_s() {
+        // `'stop'` — `'s` not followed by whitespace, so it's a string
+        let expr = parse("'stop'");
+        assert!(matches!(expr.kind, ExprKind::Str(ref s) if s == "stop"));
+    }
+
+    #[test]
+    fn test_of_reverse_possessive() {
+        // `1st of $arr` — reverse possessive
+        let expr = parse("1st of $arr");
+        if let ExprKind::Of { property, object } = &expr.kind {
+            assert!(matches!(property.kind, ExprKind::Ordinal(Ordinal::Nth(1))));
+            assert!(matches!(object.kind, ExprKind::StoryVar(ref n) if n == "arr"));
+        } else {
+            panic!("expected Of, got {:?}", expr.kind);
+        }
     }
 }

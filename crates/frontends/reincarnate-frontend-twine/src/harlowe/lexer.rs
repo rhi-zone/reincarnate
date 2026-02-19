@@ -149,7 +149,23 @@ impl<'a> ExprLexer<'a> {
             b'_' if self.peek_at(1).is_some_and(|c| c.is_ascii_alphanumeric()) => {
                 self.lex_temp_var(start)
             }
-            b'"' | b'\'' => self.lex_string(start),
+            b'"' => self.lex_string(start),
+            b'\'' => {
+                // Harlowe possessive operator: `'s` followed by whitespace (`'s 1st`, `'s name`).
+                // This matches Harlowe's regex: /^(?:'s\s+)/i — requires at least one whitespace.
+                // Any other `'...` starts a single-quoted string literal (`'hello'`).
+                if self.peek_at(1) == Some(b's')
+                    && self.peek_at(2).is_some_and(|c| c.is_ascii_whitespace())
+                {
+                    self.pos += 2; // consume `'s`
+                    Token {
+                        kind: TokenKind::Apostrophe,
+                        span: self.span(start),
+                    }
+                } else {
+                    self.lex_string(start)
+                }
+            }
             b'0'..=b'9' => self.lex_number(start),
             b'+' => {
                 self.advance();
@@ -642,6 +658,34 @@ mod tests {
                 TokenKind::String("".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn test_possessive_apostrophe() {
+        // `'s ` followed by whitespace → Apostrophe token
+        let tokens = lex_all("$arr's 1st");
+        assert_eq!(
+            tokens,
+            vec![
+                TokenKind::StoryVar("arr".to_string()),
+                TokenKind::Apostrophe,
+                TokenKind::Ident("1st".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_single_quoted_string() {
+        // `'hello'` — single-quoted string, not possessive
+        let tokens = lex_all("'hello'");
+        assert_eq!(tokens, vec![TokenKind::String("hello".to_string())]);
+    }
+
+    #[test]
+    fn test_string_starting_with_s_not_possessive() {
+        // `'stop'` — `'s` not followed by whitespace → string
+        let tokens = lex_all("'stop'");
+        assert_eq!(tokens, vec![TokenKind::String("stop".to_string())]);
     }
 
     #[test]
