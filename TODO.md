@@ -204,13 +204,11 @@ statement parsing, trailing comma stripping in case values.
   not the full-expression path. Currently fall to `Raw` which is safe but means audio is not
   preserved in output.
 
-- [ ] **CRITICAL: Extract `Macro.add()` from JavaScript passages** — SugarCube custom
-  macros (including potential `<<switch>>` overrides in DoL) are defined via `Macro.add()`
-  in JavaScript passages (StoryScript, script-tagged passages). We currently ignore these.
-  Correct fix: scan JavaScript passages for `Macro.add(name, ...)` calls, build a custom
-  macro registry, and consult it during lowering. Macros with unknown arg schemas should
-  fall back to a runtime call rather than hardcoded structural lowering (e.g. if `<<switch>>`
-  is redefined, emit a call rather than an if-elseif chain).
+- [x] **CRITICAL: Extract `Macro.add()` from JavaScript passages** — Implemented in
+  `sugarcube/custom_macros.rs`. Scanner extracts block/self-closing kind (`tags:` property)
+  and `skipArgs: true` semantics. Registry built from user scripts before passage parsing.
+  Custom entries shadow built-ins (DoL redefines `button`, `link`). Dynamic registrations
+  (variable names) skipped silently. No `<<switch>>` override exists in DoL.
 
 - [ ] **CRITICAL: `assets/styles/user_0.css` for DoL contains JavaScript** — Our passage
   extraction appears to be treating this as a CSS asset but it includes JS, causing broken
