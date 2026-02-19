@@ -1075,12 +1075,12 @@ mod tests {
 
     #[test]
     fn test_goto() {
-        let ast = parse("(goto: \"Event 3-check\")");
+        let ast = parse("(goto: \"Some Passage\")");
         assert_eq!(ast.errors.len(), 0);
         if let NodeKind::Macro(m) = &ast.body[0].kind {
             assert_eq!(m.name, "goto");
             assert_eq!(m.args.len(), 1);
-            assert!(matches!(&m.args[0].kind, ExprKind::Str(s) if s == "Event 3-check"));
+            assert!(matches!(&m.args[0].kind, ExprKind::Str(s) if s == "Some Passage"));
         } else {
             panic!("expected macro");
         }
@@ -1103,10 +1103,10 @@ mod tests {
 
     #[test]
     fn test_complex_passage() {
-        let src = r#"(set: $recovery to "Floor 1 entryway")
-You're at the **entryway**
+        let src = r#"(set: $location to "the plaza")
+You're at the **plaza**
 
-(if: $hypnoStat < 70)[Normal text.](else:)[(color: magenta+white)[Hypno text.]]"#;
+(if: $fearStat < 70)[Normal text.](else:)[(color: magenta+white)[Spooked text.]]"#;
         let ast = parse(src);
         // Should parse without crashing — exact node count depends on line breaks etc.
         assert!(ast.errors.is_empty(), "errors: {:?}", ast.errors);

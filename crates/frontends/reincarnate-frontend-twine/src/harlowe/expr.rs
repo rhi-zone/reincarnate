@@ -699,11 +699,11 @@ mod tests {
 
     #[test]
     fn test_simple_assign() {
-        let expr = parse("$recovery to \"Floor 1 entryway\"");
+        let expr = parse("$location to \"the plaza\"");
         assert!(matches!(expr.kind, ExprKind::Assign { .. }));
         if let ExprKind::Assign { target, value } = &expr.kind {
-            assert!(matches!(target.kind, ExprKind::StoryVar(ref n) if n == "recovery"));
-            assert!(matches!(value.kind, ExprKind::Str(ref s) if s == "Floor 1 entryway"));
+            assert!(matches!(target.kind, ExprKind::StoryVar(ref n) if n == "location"));
+            assert!(matches!(value.kind, ExprKind::Str(ref s) if s == "the plaza"));
         }
     }
 

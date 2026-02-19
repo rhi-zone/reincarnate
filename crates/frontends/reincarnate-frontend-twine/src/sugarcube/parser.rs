@@ -1440,7 +1440,8 @@ fn split_case_values(src: &str, base: usize) -> Vec<CaseArg> {
         }
 
         if i > val_start {
-            // Strip trailing comma (DoL uses `<<case "a", "b">>` with commas)
+            // Strip trailing comma — SugarCube's parseArgs silently ignores them
+            // and some authors write `<<case "a", "b">>` with commas.
             let mut end = i;
             while end > val_start && bytes[end - 1] == b',' {
                 end -= 1;

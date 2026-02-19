@@ -580,13 +580,13 @@ mod tests {
 
     #[test]
     fn test_simple_set() {
-        let tokens = lex_all("$recovery to \"Floor 1 entryway\"");
+        let tokens = lex_all("$location to \"the plaza\"");
         assert_eq!(
             tokens,
             vec![
-                TokenKind::StoryVar("recovery".to_string()),
+                TokenKind::StoryVar("location".to_string()),
                 TokenKind::To,
-                TokenKind::String("Floor 1 entryway".to_string()),
+                TokenKind::String("the plaza".to_string()),
             ]
         );
     }

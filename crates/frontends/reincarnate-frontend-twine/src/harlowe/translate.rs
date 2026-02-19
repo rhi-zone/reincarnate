@@ -1776,7 +1776,7 @@ mod tests {
 
     #[test]
     fn test_goto_produces_navigation() {
-        let ast = parser::parse("(goto: \"Event 3-check\")");
+        let ast = parser::parse("(goto: \"Some Passage\")");
         let result = translate_passage("test_goto", &ast, "");
         assert_eq!(result.func.name, "passage_test_goto");
     }
@@ -1798,16 +1798,16 @@ mod tests {
 
     #[test]
     fn test_passage_func_name_sanitization() {
-        assert_eq!(passage_func_name("Floor 1 entryway"), "passage_Floor_1_entryway");
-        assert_eq!(passage_func_name("Event 3-check"), "passage_Event_3_check");
+        assert_eq!(passage_func_name("Room 1 entry"), "passage_Room_1_entry");
+        assert_eq!(passage_func_name("Scene 3-check"), "passage_Scene_3_check");
     }
 
     #[test]
     fn test_complex_passage() {
-        let src = r#"(set: $recovery to "Floor 1 entryway")
-You're at the **entryway**
+        let src = r#"(set: $location to "the plaza")
+You're at the **plaza**
 
-(if: $hypnoStat < 70)[Normal text.](else:)[(color: magenta+white)[Hypno text.]]"#;
+(if: $fearStat < 70)[Normal text.](else:)[(color: magenta+white)[Spooked text.]]"#;
         let ast = parser::parse(src);
         let result = translate_passage("complex", &ast, src);
         assert!(!result.func.blocks.is_empty());
