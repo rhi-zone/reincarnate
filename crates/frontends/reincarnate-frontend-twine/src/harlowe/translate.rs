@@ -550,14 +550,17 @@ impl TranslateCtx {
             "print" => self.emit_print(mac),
 
             // Links (side effect — emits link element)
-            "link" => { self.emit_link_macro(mac); }
+            "link" | "link-replace" => { self.emit_link_macro(mac); }
             "link-goto" => { self.emit_link_goto(mac); }
+            "link-rerun" => self.lower_link_rerun(mac),
 
             // Changers (side effect when hook present, otherwise create changer value)
             "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
-            | "align" | "transition" | "transition-time" | "transition-arrive"
-            | "transition-depart" | "text-rotate-z" | "hover-style" | "css" | "background"
-            | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim" | "hidden" => {
+            | "align" | "transition" | "t8n" | "transition-time" | "t8n-time"
+            | "transition-arrive" | "transition-depart" | "transition-delay" | "t8n-delay"
+            | "t8n-skip" | "text-rotate-z" | "text-rotate" | "hover-style" | "css"
+            | "background" | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim"
+            | "hidden" => {
                 self.emit_changer(mac);
             }
 
@@ -574,9 +577,9 @@ impl TranslateCtx {
                 self.emit_value_macro_standalone(mac);
             }
 
-            // Save/load (side effects)
-            "save-game" => self.lower_save_game(mac),
-            "load-game" => self.lower_load_game(mac),
+            // Save/load (side effects, with aliases)
+            "save-game" | "savegame" => self.lower_save_game(mac),
+            "load-game" | "loadgame" => self.lower_load_game(mac),
 
             // Alert/prompt/confirm (side effects)
             "alert" => { self.lower_simple_command(mac, "Harlowe.Engine", "alert"); }
@@ -589,7 +592,7 @@ impl TranslateCtx {
             }
 
             // Click (side effects)
-            "click" | "click-replace" | "click-append" | "click-prepend" => {
+            "click" | "click-replace" | "click-append" | "click-prepend" | "click-rerun" => {
                 self.lower_click_macro(mac);
             }
 
@@ -613,6 +616,37 @@ impl TranslateCtx {
             }
             "ignore" => {
                 // No-op — deliberately discards its arguments
+            }
+
+            // Restart / reload
+            "restart" | "reload" => {
+                self.fb
+                    .system_call("Harlowe.Navigation", "restart", &[], Type::Void);
+            }
+
+            // goto-url — open a URL in a new tab
+            "goto-url" => self.lower_simple_command(mac, "Harlowe.Engine", "goto_url"),
+
+            // scroll — scroll to an element or the top
+            "scroll" => self.lower_simple_command(mac, "Harlowe.Engine", "scroll_macro"),
+
+            // animate — apply a CSS animation to a named hook
+            "animate" => self.lower_simple_command(mac, "Harlowe.Engine", "animate_macro"),
+
+            // link-fullscreen — link that toggles fullscreen
+            "link-fullscreen" => {
+                self.lower_simple_command(mac, "Harlowe.Engine", "link_fullscreen")
+            }
+
+            // after — show hook after a delay
+            "after" => self.lower_after_macro(mac),
+
+            // Interactive input macros
+            "dropdown" | "checkbox" | "input-box" => self.lower_input_macro(mac),
+
+            // else-if / elseif appearing standalone (outside an if-chain) — treat as if
+            "else-if" | "elseif" => {
+                self.emit_if(mac);
             }
 
             // Columns layout
@@ -679,13 +713,15 @@ impl TranslateCtx {
                 }
             }
 
-            "link" => Some(self.lower_link_macro_as_value(mac)),
+            "link" | "link-replace" => Some(self.lower_link_macro_as_value(mac)),
             "link-goto" => Some(self.lower_link_goto_as_value(mac)),
 
             "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
-            | "align" | "transition" | "transition-time" | "transition-arrive"
-            | "transition-depart" | "text-rotate-z" | "hover-style" | "css" | "background"
-            | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim" | "hidden" => {
+            | "align" | "transition" | "t8n" | "transition-time" | "t8n-time"
+            | "transition-arrive" | "transition-depart" | "transition-delay" | "t8n-delay"
+            | "t8n-skip" | "text-rotate-z" | "text-rotate" | "hover-style" | "css"
+            | "background" | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim"
+            | "hidden" => {
                 self.lower_changer_as_value(mac)
             }
 
@@ -1060,12 +1096,14 @@ impl TranslateCtx {
             "align" => "align",
             "opacity" => "opacity",
             "css" => "css",
-            "transition" | "transition-arrive" => "transition",
+            "transition" | "t8n" | "transition-arrive" => "transition",
             "transition-depart" => "transitionDepart",
-            "transition-time" => "transitionTime",
+            "transition-time" | "t8n-time" => "transitionTime",
+            "transition-delay" | "t8n-delay" => "transitionDelay",
+            "transition-skip" | "t8n-skip" => "transitionSkip",
             "hidden" => "hidden",
             "text-size" => "textSize",
-            "text-rotate-z" => "textRotateZ",
+            "text-rotate-z" | "text-rotate" => "textRotateZ",
             "collapse" => "collapse",
             "nobr" => "nobr",
             "verbatim" => "verbatim",
@@ -1331,6 +1369,50 @@ impl TranslateCtx {
                 Type::Void,
             );
         }
+    }
+
+    // ── link-rerun ─────────────────────────────────────────────────
+
+    fn lower_link_rerun(&mut self, mac: &MacroNode) {
+        if let Some(arg) = mac.args.first() {
+            let text = self.lower_expr(arg);
+            if let Some(ref hook) = mac.hook {
+                let cb_name = self.make_callback_name("link_rerun");
+                let cb_ref = self.build_callback(&cb_name, hook);
+                self.fb
+                    .system_call("Harlowe.Engine", "link_rerun", &[text, cb_ref], Type::Void);
+            } else {
+                self.fb
+                    .system_call("Harlowe.H", "printVal", &[text], Type::Dynamic);
+            }
+        }
+    }
+
+    // ── after ──────────────────────────────────────────────────────
+
+    fn lower_after_macro(&mut self, mac: &MacroNode) {
+        let delay = if let Some(arg) = mac.args.first() {
+            self.lower_expr(arg)
+        } else {
+            self.fb.const_float(0.0)
+        };
+        if let Some(ref hook) = mac.hook {
+            let cb_name = self.make_callback_name("after");
+            let cb_ref = self.build_callback(&cb_name, hook);
+            self.fb
+                .system_call("Harlowe.Engine", "after_macro", &[delay, cb_ref], Type::Void);
+        }
+    }
+
+    // ── Input macros ───────────────────────────────────────────────
+
+    fn lower_input_macro(&mut self, mac: &MacroNode) {
+        let method = self.fb.const_string(&mac.name);
+        let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
+        let mut call_args = vec![method];
+        call_args.extend(args);
+        self.fb
+            .system_call("Harlowe.Engine", "input_macro", &call_args, Type::Void);
     }
 
     // ── Unknown macros ─────────────────────────────────────────────

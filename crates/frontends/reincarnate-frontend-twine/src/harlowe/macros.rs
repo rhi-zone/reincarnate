@@ -26,15 +26,18 @@ pub fn macro_kind(name: &str) -> MacroKind {
 
         // Commands
         "set" | "put" | "move" | "goto" | "go-to" | "display" | "print" | "save-game"
-        | "load-game" | "alert" | "prompt" | "confirm" | "stop" | "replace" | "append"
-        | "prepend" | "show" | "hide" | "rerun" | "redo" | "redirect" | "link-goto"
-        | "link-undo" | "link-reveal" | "link-repeat" | "click" | "click-replace"
-        | "click-append" | "click-prepend" | "cycling-link" | "seq-link" => MacroKind::Command,
+        | "savegame" | "load-game" | "loadgame" | "alert" | "prompt" | "confirm" | "stop"
+        | "replace" | "append" | "prepend" | "show" | "hide" | "rerun" | "redo" | "redirect"
+        | "link-goto" | "link-undo" | "link-reveal" | "link-repeat" | "link-rerun"
+        | "link-replace" | "link-fullscreen" | "click" | "click-replace" | "click-append"
+        | "click-prepend" | "click-rerun" | "cycling-link" | "seq-link" | "animate"
+        | "goto-url" | "restart" | "reload" | "scroll" | "after" => MacroKind::Command,
 
-        // Changers
+        // Changers — includes t8n* aliases and transition-delay/text-rotate aliases
         "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font" | "align"
-        | "transition" | "transition-time" | "transition-arrive" | "transition-depart"
-        | "transition-skip" | "text-rotate-z" | "text-rotate-x" | "text-rotate-y"
+        | "transition" | "t8n" | "transition-time" | "t8n-time" | "transition-arrive"
+        | "transition-depart" | "transition-delay" | "t8n-delay" | "transition-skip" | "t8n-skip"
+        | "text-rotate-z" | "text-rotate-x" | "text-rotate-y" | "text-rotate"
         | "hover-style" | "css" | "background" | "box" | "float-box" | "char-style"
         | "line-style" | "page-style" | "opacity" | "text-indent" | "text-size"
         | "collapse" | "nobr" | "verbatim" | "hidden" => MacroKind::Changer,
@@ -86,12 +89,16 @@ pub fn expects_hook(name: &str) -> bool {
                 | "link-goto"
                 | "link-reveal"
                 | "link-repeat"
+                | "link-rerun"
+                | "link-replace"
                 | "click"
                 | "click-replace"
                 | "click-append"
                 | "click-prepend"
+                | "click-rerun"
                 | "live"
                 | "event"
+                | "after"
                 | "for"
                 | "dialog"
                 | "columns"

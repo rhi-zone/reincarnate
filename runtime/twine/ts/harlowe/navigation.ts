@@ -149,4 +149,8 @@ export class HarloweNavigation {
     });
     registerCommand("restart", "", () => location.reload());
   }
+
+  restart(): void {
+    location.reload();
+  }
 }

@@ -381,12 +381,17 @@ export class HarloweEngine {
           const h = new HarloweContext(frag, this.rt, doc);
           try { callback(h); } finally { h.closeAll(); }
           el.insertBefore(frag, el.firstChild);
+        } else if (method === "click-rerun") {
+          el.innerHTML = "";
+          const h = new HarloweContext(el, this.rt, doc);
+          try { callback(h); } finally { h.closeAll(); }
         } else {
           // plain click — render inline
           const h = new HarloweContext(el, this.rt, doc);
           try { callback(h); } finally { h.closeAll(); }
         }
-      }, { once: true });
+        // click-rerun keeps the listener active for repeated clicks
+      }, method === "click-rerun" ? undefined : { once: true });
     });
   }
 
@@ -561,6 +566,139 @@ export class HarloweEngine {
     cols.forEach((col, i) => {
       (col as HTMLElement).style.flex = i < widths.length ? widths[i] : "1";
     });
+  }
+
+  // --- Navigation macros ---
+
+  /** `(goto-url:)` — open a URL in a new tab. */
+  goto_url(url: string): void {
+    window.open(String(url), "_blank");
+  }
+
+  /** `(scroll:)` — scroll to a named hook or the top of the page. */
+  scroll_macro(selector?: string): void {
+    const container = this.story();
+    if (!container) return;
+    if (selector) {
+      const el = container.querySelector(String(selector));
+      if (el) el.scrollIntoView({ behavior: "smooth" });
+    } else {
+      container.scrollTop = 0;
+    }
+  }
+
+  // --- Visual macros ---
+
+  /** `(animate:)` — apply a CSS animation to a named hook. */
+  animate_macro(selector: string, animation: string, duration?: number): void {
+    const container = this.story();
+    if (!container) return;
+    const targets = container.querySelectorAll(String(selector));
+    const anim = duration ? `${animation} ${duration}s` : String(animation);
+    targets.forEach(el => {
+      (el as HTMLElement).style.animation = anim;
+    });
+  }
+
+  // --- Interactive link macros ---
+
+  /** `(link-rerun: text)[hook]` — link that reruns the hook on each click. */
+  link_rerun(text: string, cb: (h: HarloweContext) => void): void {
+    const doc = this.doc();
+    const link = doc.createElement("tw-link");
+    link.textContent = String(text);
+    const output = doc.createElement("span");
+    const rerun = (): void => {
+      output.innerHTML = "";
+      const h = new HarloweContext(output, this.rt, doc);
+      try { cb(h); } finally { h.closeAll(); }
+    };
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      rerun();
+    });
+    const wrapper = doc.createElement("span");
+    wrapper.appendChild(link);
+    wrapper.appendChild(output);
+    this.passage()?.appendChild(wrapper);
+  }
+
+  /** `(link-fullscreen:)` — link that toggles browser fullscreen. */
+  link_fullscreen(enterText: string, exitText?: string): void {
+    const doc = this.doc();
+    const link = doc.createElement("tw-link");
+    link.textContent = document.fullscreenElement ? (exitText ?? String(enterText)) : String(enterText);
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+        if (exitText) link.textContent = exitText;
+      } else {
+        document.exitFullscreen().catch(() => {});
+        link.textContent = String(enterText);
+      }
+    });
+    this.passage()?.appendChild(link);
+  }
+
+  // --- Timed macro ---
+
+  /** `(after: Ns)[hook]` — render the hook after a delay. */
+  after_macro(delay: number, cb: (h: HarloweContext) => void): void {
+    const container = this.passage();
+    if (!container) return;
+    const doc = this.doc();
+    const ms = Number(delay) * 1000;
+    setTimeout(() => {
+      const h = new HarloweContext(container, this.rt, doc);
+      try { cb(h); } finally { h.closeAll(); }
+    }, ms);
+  }
+
+  // --- Input macros ---
+
+  /** `(checkbox:)`, `(dropdown:)`, `(input-box:)` — interactive form elements. */
+  input_macro(name: string, ...args: any[]): void {
+    const container = this.passage();
+    if (!container) return;
+    const doc = this.doc();
+    const bindRef = args.length > 0 ? args[0] : undefined;
+    const options = args.slice(1);
+    if (name === "checkbox") {
+      const falseVal = options[0] ?? "false";
+      const trueVal = options[1] ?? "true";
+      const input = doc.createElement("input") as HTMLInputElement;
+      input.type = "checkbox";
+      if (bindRef && typeof bindRef === "object" && typeof bindRef.set === "function") {
+        input.addEventListener("change", () => {
+          bindRef.set(input.checked ? trueVal : falseVal);
+        });
+      }
+      container.appendChild(input);
+    } else if (name === "dropdown") {
+      const select = doc.createElement("select") as HTMLSelectElement;
+      for (const opt of options) {
+        const option = doc.createElement("option");
+        option.textContent = String(opt);
+        option.value = String(opt);
+        select.appendChild(option);
+      }
+      if (bindRef && typeof bindRef === "object" && typeof bindRef.set === "function") {
+        select.addEventListener("change", () => bindRef.set(select.value));
+      }
+      container.appendChild(select);
+    } else if (name === "input-box") {
+      const lines = options[0] ?? "oneline";
+      const defaultVal = String(options[1] ?? "");
+      const input = (String(lines) === "oneline"
+        ? doc.createElement("input")
+        : doc.createElement("textarea")) as HTMLInputElement | HTMLTextAreaElement;
+      input.value = defaultVal;
+      if (bindRef && typeof bindRef === "object" && typeof bindRef.set === "function") {
+        input.addEventListener("input", () => bindRef.set(input.value));
+      }
+      container.appendChild(input);
+    }
   }
 
   // --- Unknown macro fallback ---

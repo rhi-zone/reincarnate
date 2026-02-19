@@ -213,7 +213,7 @@ function applyChanger(el: HTMLElement, changer: Changer, doc: DocumentFactory = 
   }
 }
 
-interface TransitionInfo { arrive?: string; depart?: string; duration?: string }
+interface TransitionInfo { arrive?: string; depart?: string; duration?: string; delay?: string; skip?: boolean }
 
 function applyChangers(el: HTMLElement, changers: Changer | Changer[], populate?: () => void, doc: DocumentFactory = document): TransitionInfo {
   const t: TransitionInfo = {};
@@ -225,12 +225,16 @@ function applyChangers(el: HTMLElement, changers: Changer | Changer[], populate?
       t.depart = String(c.args[0]);
     } else if (c.name === "transition-time") {
       t.duration = String(c.args[0]);
+    } else if (c.name === "transition-delay") {
+      t.delay = String(c.args[0]);
+    } else if (c.name === "transition-skip") {
+      t.skip = true;
     } else {
       applyChanger(el, c, doc);
     }
   }
   if (populate) populate();
-  if (t.arrive) wrapInTransitionContainer(el, t.arrive, t.duration, doc);
+  if (t.arrive && !t.skip) wrapInTransitionContainer(el, t.arrive, t.duration, doc);
   return t;
 }
 
@@ -574,6 +578,12 @@ export class HarloweContext {
   }
   transitionTime(v: number, ...children: Child[]): Node {
     return this.styled({ name: "transition-time", args: [v] }, ...children);
+  }
+  transitionDelay(v: number | string, ...children: Child[]): Node {
+    return this.styled({ name: "transition-delay", args: [v] }, ...children);
+  }
+  transitionSkip(...children: Child[]): Node {
+    return this.styled({ name: "transition-skip", args: [] }, ...children);
   }
   hidden(...children: Child[]): Node {
     return this.styled({ name: "hidden", args: [true] }, ...children);
