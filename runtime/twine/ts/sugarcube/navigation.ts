@@ -30,7 +30,7 @@ export class SCNavigation {
   }
 
   /** Render a passage with full event lifecycle and special passage support. */
-  private renderPassage(target: string, fn: PassageFn): void {
+  renderPassage(target: string, fn: PassageFn): void {
     this.rt.State.clearTemps();
     this.currentPassage = target;
     this.rt.Output.clear();

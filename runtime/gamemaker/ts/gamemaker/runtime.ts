@@ -131,9 +131,10 @@ class GMLRoom {
     for (const instance of rt.roomVariables) {
       if (instance.alarm.length !== 0) {
         for (let i = 0; i < 12; i++) {
-          if (instance.alarm[i]) {
-            instance.alarm[i]--;
-            if (instance.alarm[i] === 0) {
+          const alarmVal = instance.alarm[i];
+          if (alarmVal) {
+            instance.alarm[i] = alarmVal - 1;
+            if (alarmVal - 1 === 0) {
               delete instance.alarm[i];
               const method = (instance as any)["alarm" + i];
               if (method !== noop) method.call(instance);
@@ -366,7 +367,7 @@ export class GameRuntime {
   // ---- Public instance API (called from emitted code) ----
 
   instance_create(x: number, y: number, classIndex: number): GMLObject {
-    const clazz = this.classes[classIndex];
+    const clazz = this.classes[classIndex]!;
     return this._instanceCreate(x, y, clazz);
   }
 
@@ -397,7 +398,7 @@ export class GameRuntime {
       }
       oldRoom.destroy(restart);
     }
-    const newRoom = this._roomInstances[id];
+    const newRoom = this._roomInstances[id]!;
     this._currentRoom = newRoom;
     this.room = id;
     this.room_speed = this._roomDatas[id]?.speed ?? 60;
@@ -442,7 +443,7 @@ export class GameRuntime {
 
     // Populate Sprites enum from sprite data
     for (let i = 0; i < config.sprites.length; i++) {
-      this.Sprites[config.sprites[i].name] = i;
+      this.Sprites[config.sprites[i]!.name] = i;
     }
     // Also populate the module-level Sprites for backwards compatibility
     Object.assign(Sprites, this.Sprites);

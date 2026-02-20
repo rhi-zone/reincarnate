@@ -292,13 +292,13 @@ export class DisplayObject extends EventDispatcher {
       combined.transformPoint(new Point(0, this.height)),
       combined.transformPoint(new Point(this.width, this.height)),
     ];
-    let minX = corners[0].x, minY = corners[0].y;
-    let maxX = corners[0].x, maxY = corners[0].y;
+    let minX = corners[0]!.x, minY = corners[0]!.y;
+    let maxX = corners[0]!.x, maxY = corners[0]!.y;
     for (let i = 1; i < 4; i++) {
-      if (corners[i].x < minX) minX = corners[i].x;
-      if (corners[i].y < minY) minY = corners[i].y;
-      if (corners[i].x > maxX) maxX = corners[i].x;
-      if (corners[i].y > maxY) maxY = corners[i].y;
+      if (corners[i]!.x < minX) minX = corners[i]!.x;
+      if (corners[i]!.y < minY) minY = corners[i]!.y;
+      if (corners[i]!.x > maxX) maxX = corners[i]!.x;
+      if (corners[i]!.y > maxY) maxY = corners[i]!.y;
     }
     return new Rectangle(minX, minY, maxX - minX, maxY - minY);
   }
@@ -361,7 +361,7 @@ export class DisplayObject extends EventDispatcher {
       event.eventPhase = 3;
       for (let i = ancestors.length - 1; i >= 0; i--) {
         if (event._isPropagationStopped()) break;
-        ancestors[i]._fireListeners(event, false);
+        ancestors[i]!._fireListeners(event, false);
       }
 
       return !event.isDefaultPrevented();
@@ -499,7 +499,7 @@ export class DisplayObjectContainer extends InteractiveObject {
   }
 
   getChildAt(index: number): DisplayObject {
-    return this._children[index];
+    return this._children[index]!;
   }
 
   getChildByName(name: string): DisplayObject | null {
@@ -523,7 +523,7 @@ export class DisplayObjectContainer extends InteractiveObject {
   }
 
   removeChildAt(index: number): DisplayObject {
-    const child = this._children[index];
+    const child = this._children[index]!;
     if (child) {
       this._children.splice(index, 1);
       child.parent = null;
@@ -557,8 +557,8 @@ export class DisplayObjectContainer extends InteractiveObject {
   }
 
   swapChildrenAt(index1: number, index2: number): void {
-    const tmp = this._children[index1];
-    this._children[index1] = this._children[index2];
+    const tmp = this._children[index1]!;
+    this._children[index1] = this._children[index2]!;
     this._children[index2] = tmp;
   }
 }
@@ -625,7 +625,7 @@ export class BitmapData {
   setPixel(x: number, y: number, color: number): void {
     if (x >= 0 && x < this._width && y >= 0 && y < this._height) {
       const i = y * this._width + x;
-      this._pixels[i] = (this._pixels[i] & 0xff000000) | (color & 0x00ffffff);
+      this._pixels[i] = (this._pixels[i]! & 0xff000000) | (color & 0x00ffffff);
     }
   }
 
@@ -664,7 +664,7 @@ export class BitmapData {
       const srcOff = (sy0 + row) * sourceBitmapData._width + sx0;
       const dstOff = (dy + row) * this._width + dx;
       for (let col = 0; col < sw; col++) {
-        this._pixels[dstOff + col] = sourceBitmapData._pixels[srcOff + col];
+        this._pixels[dstOff + col] = sourceBitmapData._pixels[srcOff + col]!;
       }
     }
   }
@@ -905,11 +905,11 @@ export class MovieClip extends Sprite {
     if (this.scenes.length === 0) return;
     const idx = this.currentScene ? this.scenes.indexOf(this.currentScene) : -1;
     if (idx < this.scenes.length - 1) {
-      const next = this.scenes[idx + 1];
+      const next = this.scenes[idx + 1]!;
       this.currentScene = next;
       // Jump to first frame of next scene.
       if (next.labels.length > 0) {
-        this.currentFrame = next.labels[0].frame;
+        this.currentFrame = next.labels[0]!.frame;
       }
     }
   }
@@ -929,10 +929,10 @@ export class MovieClip extends Sprite {
     if (this.scenes.length === 0) return;
     const idx = this.currentScene ? this.scenes.indexOf(this.currentScene) : -1;
     if (idx > 0) {
-      const prev = this.scenes[idx - 1];
+      const prev = this.scenes[idx - 1]!;
       this.currentScene = prev;
       if (prev.labels.length > 0) {
-        this.currentFrame = prev.labels[0].frame;
+        this.currentFrame = prev.labels[0]!.frame;
       }
     }
   }
@@ -947,10 +947,10 @@ export class MovieClip extends Sprite {
     this.currentLabel = null;
     const labels = this.currentScene?.labels ?? this.currentLabels;
     for (let i = labels.length - 1; i >= 0; i--) {
-      if (labels[i].frame <= this.currentFrame) {
-        this.currentLabel = labels[i].name;
-        if (labels[i].frame === this.currentFrame) {
-          this.currentFrameLabel = labels[i].name;
+      if (labels[i]!.frame <= this.currentFrame) {
+        this.currentLabel = labels[i]!.name;
+        if (labels[i]!.frame === this.currentFrame) {
+          this.currentFrameLabel = labels[i]!.name;
         }
         break;
       }

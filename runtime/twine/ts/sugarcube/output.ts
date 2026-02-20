@@ -66,7 +66,7 @@ export class SCOutput {
     if (this.bufferStack.length === 0) {
       this.bufferStack.push(this.doc.createDocumentFragment());
     }
-    return this.bufferStack[this.bufferStack.length - 1];
+    return this.bufferStack[this.bufferStack.length - 1]!;
   }
 
   /** Push a new output buffer for nested content. */
@@ -85,7 +85,7 @@ export class SCOutput {
 
   private appendNode(node: Node): void {
     if (this.elementStack.length > 0) {
-      this.elementStack[this.elementStack.length - 1].appendChild(node);
+      this.elementStack[this.elementStack.length - 1]!.appendChild(node);
     } else {
       this.currentBuffer().appendChild(node);
     }
@@ -109,7 +109,7 @@ export class SCOutput {
   open_element(tag: string, ...attrs: string[]): void {
     const el = this.doc.createElement(tag);
     for (let i = 0; i < attrs.length; i += 2) {
-      el.setAttribute(attrs[i], attrs[i + 1]);
+      el.setAttribute(attrs[i]!, attrs[i + 1]!);
     }
     this.appendNode(el);
     this.elementStack.push(el);
@@ -124,7 +124,7 @@ export class SCOutput {
   void_element(tag: string, ...attrs: string[]): void {
     const el = this.doc.createElement(tag);
     for (let i = 0; i < attrs.length; i += 2) {
-      el.setAttribute(attrs[i], attrs[i + 1]);
+      el.setAttribute(attrs[i]!, attrs[i + 1]!);
     }
     this.appendNode(el);
   }
@@ -133,7 +133,7 @@ export class SCOutput {
   set_attribute(name: string, value: any): void {
     let el: Element | null = null;
     if (this.elementStack.length > 0) {
-      el = this.elementStack[this.elementStack.length - 1];
+      el = this.elementStack[this.elementStack.length - 1]!;
     } else {
       const buf = this.currentBuffer();
       el = buf.lastElementChild;
@@ -158,7 +158,7 @@ export class SCOutput {
     if (passage || setter) {
       a.addEventListener("click", (e) => {
         e.preventDefault();
-        if (setter) setter(this.rt);
+        if (setter) setter();
         if (passage) {
           this.rt.Navigation.goto(passage);
         }
@@ -171,10 +171,10 @@ export class SCOutput {
 
   /** Emit an inline image, optionally wrapped in a link. */
   image(src: string, link?: string): void {
-    const img = this.doc.createElement("img");
+    const img = this.doc.createElement("img") as HTMLImageElement;
     img.src = src;
     if (link) {
-      const a = this.doc.createElement("a");
+      const a = this.doc.createElement("a") as HTMLAnchorElement;
       a.href = link;
       a.appendChild(img);
       this.appendNode(a);
@@ -187,7 +187,7 @@ export class SCOutput {
 
   /** Start a link block — push buffer for body content. */
   link_block_start(variant: string, text: string, passage?: string): void {
-    this.linkBlockStack.push({ variant, text, passage });
+    this.linkBlockStack.push({ variant, text, ...(passage !== undefined ? { passage } : {}) });
     this.pushBuffer();
   }
 
@@ -231,7 +231,7 @@ export class SCOutput {
   /** Start a timed block. */
   timed_start(delay: string | number, transition?: string): void {
     const ms = parseDelay(delay);
-    this.timedStack.push({ delay: ms, transition });
+    this.timedStack.push({ delay: ms, ...(transition !== undefined ? { transition } : {}) });
     this.pushBuffer();
   }
 
@@ -256,7 +256,7 @@ export class SCOutput {
   /** Start a repeat block. */
   repeat_start(interval: string | number, transition?: string): void {
     const ms = parseDelay(interval);
-    this.repeatStack.push({ interval: ms, transition });
+    this.repeatStack.push({ interval: ms, ...(transition !== undefined ? { transition } : {}) });
     this.pushBuffer();
   }
 

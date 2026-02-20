@@ -311,7 +311,7 @@ function buildGradient(
   for (let i = 0; i < colors.length; i++) {
     const stop = (ratios[i] ?? 0) / 255;
     const alpha = alphas[i] ?? 1;
-    grad.addColorStop(stop, colorToCSS(colors[i], alpha));
+    grad.addColorStop(stop, colorToCSS(colors[i]!, alpha));
   }
   return grad;
 }
@@ -421,30 +421,31 @@ function renderGraphics(gfx: Graphics, c: CanvasRenderingContext2D): void {
         const [pathCmds, pathData, winding] = cmd.args as [number[], number[], string];
         let di = 0;
         c.beginPath();
+        const pd = pathData as number[];
         for (const pcmd of pathCmds) {
           switch (pcmd) {
             case 1: // moveTo
-              c.moveTo(pathData[di++], pathData[di++]);
+              c.moveTo(pd[di++]!, pd[di++]!);
               break;
             case 2: // lineTo
-              c.lineTo(pathData[di++], pathData[di++]);
+              c.lineTo(pd[di++]!, pd[di++]!);
               break;
             case 3: // curveTo
-              c.quadraticCurveTo(pathData[di++], pathData[di++], pathData[di++], pathData[di++]);
+              c.quadraticCurveTo(pd[di++]!, pd[di++]!, pd[di++]!, pd[di++]!);
               break;
             case 4: // wideMoveTo (extra 0,0 pair)
               di += 2;
-              c.moveTo(pathData[di++], pathData[di++]);
+              c.moveTo(pd[di++]!, pd[di++]!);
               break;
             case 5: // wideLineTo (extra 0,0 pair)
               di += 2;
-              c.lineTo(pathData[di++], pathData[di++]);
+              c.lineTo(pd[di++]!, pd[di++]!);
               break;
             case 6: // cubicCurveTo
               c.bezierCurveTo(
-                pathData[di++], pathData[di++],
-                pathData[di++], pathData[di++],
-                pathData[di++], pathData[di++],
+                pd[di++]!, pd[di++]!,
+                pd[di++]!, pd[di++]!,
+                pd[di++]!, pd[di++]!,
               );
               break;
           }
@@ -458,11 +459,11 @@ function renderGraphics(gfx: Graphics, c: CanvasRenderingContext2D): void {
         // Draw flat-color triangles (no UV texture mapping).
         if (indices) {
           for (let i = 0; i < indices.length; i += 3) {
-            const i0 = indices[i] * 2, i1 = indices[i + 1] * 2, i2 = indices[i + 2] * 2;
+            const i0 = indices[i]! * 2, i1 = indices[i + 1]! * 2, i2 = indices[i + 2]! * 2;
             c.beginPath();
-            c.moveTo(verts[i0], verts[i0 + 1]);
-            c.lineTo(verts[i1], verts[i1 + 1]);
-            c.lineTo(verts[i2], verts[i2 + 1]);
+            c.moveTo(verts[i0]!, verts[i0 + 1]!);
+            c.lineTo(verts[i1]!, verts[i1 + 1]!);
+            c.lineTo(verts[i2]!, verts[i2 + 1]!);
             c.closePath();
             if (fillActive) c.fill();
             if (strokeActive) c.stroke();
@@ -470,9 +471,9 @@ function renderGraphics(gfx: Graphics, c: CanvasRenderingContext2D): void {
         } else {
           for (let i = 0; i < verts.length; i += 6) {
             c.beginPath();
-            c.moveTo(verts[i], verts[i + 1]);
-            c.lineTo(verts[i + 2], verts[i + 3]);
-            c.lineTo(verts[i + 4], verts[i + 5]);
+            c.moveTo(verts[i]!, verts[i + 1]!);
+            c.lineTo(verts[i + 2]!, verts[i + 3]!);
+            c.lineTo(verts[i + 4]!, verts[i + 5]!);
             c.closePath();
             if (fillActive) c.fill();
             if (strokeActive) c.stroke();
@@ -556,13 +557,12 @@ function hitTest(
     const child = container.getChildAt(i);
     if (!child.visible) continue;
     if (child instanceof DisplayObjectContainer) {
-      const io = child as unknown as InteractiveObject;
-      if (io.mouseChildren !== false) {
+      if (child.mouseChildren !== false) {
         const hit = hitTest(child as DisplayObjectContainer, stageX, stageY);
         if (hit) return hit;
       }
       // If mouseChildren is false, the container itself is the target.
-      if (child instanceof InteractiveObject && io.mouseEnabled !== false) {
+      if (child instanceof InteractiveObject && child.mouseEnabled !== false) {
         if (child.hitTestPoint(stageX, stageY)) return child;
       }
     } else if (child instanceof InteractiveObject) {

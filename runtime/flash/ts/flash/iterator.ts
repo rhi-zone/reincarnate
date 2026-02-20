@@ -22,5 +22,5 @@ export function nextName(obj: any, index: number): string {
 
 export function nextValue(obj: any, index: number): any {
   const keys = Object.keys(obj);
-  return obj[keys[index - 1]];
+  return obj[keys[index - 1]!];
 }

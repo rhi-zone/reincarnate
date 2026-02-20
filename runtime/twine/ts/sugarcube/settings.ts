@@ -58,8 +58,8 @@ export class SCSettings {
       type: "toggle",
       label: def.label,
       default: def.default ?? false,
-      desc: def.desc,
-      onChange: def.onChange,
+      ...(def.desc !== undefined ? { desc: def.desc } : {}),
+      ...(def.onChange !== undefined ? { onChange: def.onChange } : {}),
     };
     this.definitions.set(name, setting);
     if (!(name in this.values)) {
@@ -84,10 +84,10 @@ export class SCSettings {
     const setting: ListDef = {
       type: "list",
       label: def.label,
-      default: def.default ?? def.list[0],
+      default: def.default ?? def.list[0]!,
       list: def.list,
-      desc: def.desc,
-      onChange: def.onChange,
+      ...(def.desc !== undefined ? { desc: def.desc } : {}),
+      ...(def.onChange !== undefined ? { onChange: def.onChange } : {}),
     };
     this.definitions.set(name, setting);
     if (!(name in this.values)) {
@@ -120,8 +120,8 @@ export class SCSettings {
       min: def.min,
       max: def.max,
       step: def.step,
-      desc: def.desc,
-      onChange: def.onChange,
+      ...(def.desc !== undefined ? { desc: def.desc } : {}),
+      ...(def.onChange !== undefined ? { onChange: def.onChange } : {}),
     };
     this.definitions.set(name, setting);
     if (!(name in this.values)) {
@@ -141,7 +141,7 @@ export class SCSettings {
     this.values[name] = value;
     const def = this.definitions.get(name);
     if (def?.onChange) {
-      def.onChange(value);
+      (def.onChange as (v: boolean | number | string) => void)(value);
     }
   }
 
@@ -155,7 +155,7 @@ export class SCSettings {
         const saved = JSON.parse(raw);
         for (const [key, val] of Object.entries(saved)) {
           if (this.definitions.has(key)) {
-            this.values[key] = val;
+            this.values[key] = val as boolean | number | string;
           }
         }
       } catch {
@@ -169,7 +169,7 @@ export class SCSettings {
     const toSave: Record<string, boolean | number | string> = {};
     for (const [key] of this.definitions) {
       if (key in this.values) {
-        toSave[key] = this.values[key];
+        toSave[key] = this.values[key]!;
       }
     }
     saveLocal(STORAGE_KEY, JSON.stringify(toSave));
@@ -181,7 +181,7 @@ export class SCSettings {
       const prev = this.values[key];
       this.values[key] = def.default;
       if (def.onChange && prev !== def.default) {
-        def.onChange(def.default);
+        (def.onChange as (v: boolean | number | string) => void)(def.default);
       }
     }
     removeLocal(STORAGE_KEY);
@@ -202,7 +202,7 @@ export class SCSettings {
           name,
           type: def.type,
           label: def.label,
-          desc: def.desc,
+          ...(def.desc !== undefined ? { desc: def.desc } : {}),
           value: this.get(name)!,
           ...(def.type === "list" ? { list: (def as ListDef).list } : {}),
           ...(def.type === "range" ? { min: (def as RangeDef).min, max: (def as RangeDef).max, step: (def as RangeDef).step } : {}),

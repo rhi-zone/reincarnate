@@ -5,6 +5,8 @@
  * cover the Vector methods that have no native Array equivalent.
  */
 
+export {};
+
 declare global {
   interface Array<T> {
     removeAt(index: number): T;

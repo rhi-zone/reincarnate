@@ -33,12 +33,12 @@ export function createStorageAPI(rt: GameRuntime) {
       if (!m) continue;
       const [, name, contents] = m;
       const section: Record<string, string> = {};
-      const keyList = contents.trim().split(/\s+(?=.+=.+)/g);
+      const keyList = contents!.trim().split(/\s+(?=.+=.+)/g);
       for (const kv of keyList) {
         const km = kv.match(/(.+?)=(.+)/);
-        if (km) section[km[1]] = km[2];
+        if (km) section[km[1]!] = km[2]!;
       }
-      sections[name] = section;
+      sections[name!] = section;
     }
     storage.iniContents = sections;
   }
@@ -60,7 +60,7 @@ export function createStorageAPI(rt: GameRuntime) {
     if (storage.iniContents[section] === undefined) {
       storage.iniContents[section] = {};
     }
-    storage.iniContents[section][key] = String(value);
+    storage.iniContents[section]![key] = String(value);
   }
 
   function ini_section_exists(section: string): boolean {
@@ -77,7 +77,7 @@ export function createStorageAPI(rt: GameRuntime) {
 
   function ini_key_delete(section: string, key: string): void {
     if (storage.iniContents[section]) {
-      delete storage.iniContents[section][key];
+      delete storage.iniContents[section]![key];
     }
   }
 
@@ -86,7 +86,7 @@ export function createStorageAPI(rt: GameRuntime) {
     for (const section in storage.iniContents) {
       result += `[${section}]\n`;
       for (const key in storage.iniContents[section]) {
-        result += `${key}=${storage.iniContents[section][key]}\n`;
+        result += `${key}=${storage.iniContents[section]![key]}\n`;
       }
       result += "\n";
     }

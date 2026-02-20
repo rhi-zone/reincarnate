@@ -14,22 +14,22 @@ export function installExtensions(): void {
   const $ = (globalThis as any).jQuery;
   if (!$ || !$.fn) return;
 
-  $.fn.wiki = function (markup: string) {
-    return this.each(function () {
+  $.fn.wiki = function (this: JQuery, markup: string) {
+    return this.each(function (this: HTMLElement) {
       const frag = Wikifier.wikifyEval(markup);
-      (this as Element).appendChild(frag);
+      this.appendChild(frag);
     });
   };
 
-  $.fn.wikiWithOptions = function (opts: WikifierOptions, markup: string) {
-    return this.each(function () {
+  $.fn.wikiWithOptions = function (this: JQuery, opts: WikifierOptions, markup: string) {
+    return this.each(function (this: HTMLElement) {
       const frag = Wikifier.wikifyEval(markup, opts);
-      (this as Element).appendChild(frag);
+      this.appendChild(frag);
     });
   };
 
   /** Add click + keypress(Enter/Space) handler with ARIA attributes. */
-  $.fn.ariaClick = function (optionsOrHandler: any, handler?: Function) {
+  $.fn.ariaClick = function (this: JQuery, optionsOrHandler: any, handler?: Function) {
     let opts: any = {};
     let fn: Function;
 
@@ -40,8 +40,8 @@ export function installExtensions(): void {
       fn = handler!;
     }
 
-    return this.each(function () {
-      const el = this as HTMLElement;
+    return this.each(function (this: HTMLElement) {
+      const el = this;
 
       // Set ARIA attributes
       if (!el.hasAttribute("tabindex")) {

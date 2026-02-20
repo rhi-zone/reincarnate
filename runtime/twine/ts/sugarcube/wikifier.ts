@@ -211,7 +211,7 @@ export class Wikifier {
 
   /** Create an external link element. */
   static createExternalLink(node: Node, url: string, text?: string): HTMLAnchorElement {
-    const a = Wikifier.rt.Output.doc.createElement("a");
+    const a = Wikifier.rt.Output.doc.createElement("a") as HTMLAnchorElement;
     a.href = url;
     a.target = "_blank";
     a.rel = "noopener noreferrer";
@@ -224,7 +224,7 @@ export class Wikifier {
 
   /** Create an internal passage link element. */
   static createInternalLink(node: Node, passage: string, text?: string, setter?: () => void): HTMLAnchorElement {
-    const a = Wikifier.rt.Output.doc.createElement("a");
+    const a = Wikifier.rt.Output.doc.createElement("a") as HTMLAnchorElement;
     a.classList.add("link-internal");
     if (text) {
       a.textContent = text;
@@ -834,7 +834,7 @@ Wikifier.Parser.add({
     w.nextMatch = parsed.pos;
 
     const src = Wikifier.helpers.evalText(parsed.source.trim());
-    const img = Wikifier.rt.Output.doc.createElement("img");
+    const img = Wikifier.rt.Output.doc.createElement("img") as HTMLImageElement;
     img.src = src;
 
     if (parsed.link) {
@@ -879,7 +879,7 @@ Wikifier.Parser.add({
       return;
     }
 
-    const macroName = nameMatch[1];
+    const macroName = nameMatch[1]!;
 
     // Find closing >> to get the full macro tag
     let pos = w.nextMatch;
@@ -887,14 +887,14 @@ Wikifier.Parser.add({
     let foundClose = false;
 
     for (; pos < src.length - 1; pos++) {
-      if (src[pos] === ">" && src[pos + 1] === ">") {
+      if (src[pos]! === ">" && src[pos + 1]! === ">") {
         if (depth === 0) {
           foundClose = true;
           break;
         }
         depth--;
         pos++; // skip second >
-      } else if (src[pos] === "<" && src[pos + 1] === "<") {
+      } else if (src[pos]! === "<" && src[pos + 1]! === "<") {
         depth++;
         pos++; // skip second <
       }
@@ -1192,7 +1192,7 @@ Wikifier.Parser.add({
       return;
     }
 
-    const tagName = tagMatch[1].toLowerCase();
+    const tagName = tagMatch[1]!.toLowerCase();
     const isSelfClosing = tagText.endsWith("/>") || isVoidElement(tagName);
 
     const el = Wikifier.rt.Output.doc.createElement(tagName);
@@ -1201,7 +1201,7 @@ Wikifier.Parser.add({
     const attrRegex = /\s+([@\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
     let attrMatch;
     while ((attrMatch = attrRegex.exec(tagText)) !== null) {
-      let attrName = attrMatch[1];
+      let attrName = attrMatch[1]!;
       const attrValue = attrMatch[2] ?? attrMatch[3] ?? attrMatch[4] ?? "";
 
       if (attrName.startsWith("@")) {

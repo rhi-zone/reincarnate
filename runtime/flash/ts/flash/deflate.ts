@@ -23,7 +23,7 @@ class BitReader {
   readBits(n: number): number {
     while (this.bitCount < n) {
       if (this.pos >= this.data.length) throw new Error("Unexpected end of deflate data");
-      this.bitBuf |= this.data[this.pos++] << this.bitCount;
+      this.bitBuf |= this.data[this.pos++]! << this.bitCount;
       this.bitCount += 8;
     }
     const val = this.bitBuf & ((1 << n) - 1);
@@ -41,7 +41,7 @@ class BitReader {
   readByte(): number {
     this.alignToByte();
     if (this.pos >= this.data.length) throw new Error("Unexpected end of deflate data");
-    return this.data[this.pos++];
+    return this.data[this.pos++]!;
   }
 
   readUint16LE(): number {
@@ -64,18 +64,22 @@ function buildHuffmanTable(codeLens: Uint8Array | number[], maxSymbol: number): 
   const MAX_BITS = 15;
   const counts = new Uint16Array(MAX_BITS + 1);
   for (let i = 0; i < maxSymbol; i++) {
-    if (codeLens[i]) counts[codeLens[i]]++;
+    const cl = codeLens[i]!;
+    if (cl) counts[cl] = counts[cl]! + 1;
   }
   // Compute offsets.
   const offsets = new Uint16Array(MAX_BITS + 1);
   for (let i = 1; i < MAX_BITS; i++) {
-    offsets[i + 1] = offsets[i] + counts[i];
+    offsets[i + 1] = offsets[i]! + counts[i]!;
   }
-  const total = offsets[MAX_BITS] + counts[MAX_BITS];
+  const total = offsets[MAX_BITS]! + counts[MAX_BITS]!;
   const symbols = new Uint16Array(total);
   for (let i = 0; i < maxSymbol; i++) {
-    if (codeLens[i]) {
-      symbols[offsets[codeLens[i]]++] = i;
+    const cl2 = codeLens[i]!;
+    if (cl2) {
+      const off = offsets[cl2]!;
+      symbols[off] = i;
+      offsets[cl2] = off + 1;
     }
   }
   return { counts, symbols };
@@ -87,9 +91,9 @@ function decodeSymbol(br: BitReader, table: HuffmanTable): number {
   let index = 0;
   for (let len = 1; len <= 15; len++) {
     code |= br.readBits(1);
-    const count = table.counts[len];
+    const count = table.counts[len]!;
     if (code < first + count) {
-      return table.symbols[index + (code - first)];
+      return table.symbols[index + (code - first)]!;
     }
     index += count;
     first = (first + count) << 1;
@@ -186,7 +190,7 @@ export function inflateRaw(input: Uint8Array): Uint8Array {
 
         const clLens = new Uint8Array(19);
         for (let i = 0; i < hclen; i++) {
-          clLens[CL_ORDER[i]] = br.readBits(3);
+          clLens[CL_ORDER[i]!] = br.readBits(3);
         }
         const clTable = buildHuffmanTable(clLens, 19);
 
@@ -198,7 +202,7 @@ export function inflateRaw(input: Uint8Array): Uint8Array {
             codeLens.push(sym);
           } else if (sym === 16) {
             const repeat = br.readBits(2) + 3;
-            const prev = codeLens[codeLens.length - 1] || 0;
+            const prev = codeLens[codeLens.length - 1] ?? 0;
             for (let i = 0; i < repeat; i++) codeLens.push(prev);
           } else if (sym === 17) {
             const repeat = br.readBits(3) + 3;
@@ -222,13 +226,13 @@ export function inflateRaw(input: Uint8Array): Uint8Array {
         } else {
           // Length-distance pair
           const lenIdx = sym - 257;
-          const length = LENGTH_BASE[lenIdx] + br.readBits(LENGTH_EXTRA[lenIdx]);
+          const length = LENGTH_BASE[lenIdx]! + br.readBits(LENGTH_EXTRA[lenIdx]!);
           const distSym = decodeSymbol(br, distTable);
-          const distance = DIST_BASE[distSym] + br.readBits(DIST_EXTRA[distSym]);
+          const distance = DIST_BASE[distSym]! + br.readBits(DIST_EXTRA[distSym]!);
           // Copy from sliding window.
           const srcStart = output.length - distance;
           for (let i = 0; i < length; i++) {
-            output.push(output[srcStart + i]);
+            output.push(output[srcStart + i]!);
           }
         }
       }
@@ -280,7 +284,7 @@ function adler32(data: Uint8Array): number {
   let a = 1;
   let b = 0;
   for (let i = 0; i < data.length; i++) {
-    a = (a + data[i]) % 65521;
+    a = (a + data[i]!) % 65521;
     b = (b + a) % 65521;
   }
   return ((b << 16) | a) >>> 0;
@@ -313,7 +317,7 @@ export function zlibDecompress(input: Uint8Array): Uint8Array {
   // Verify Adler-32 checksum.
   const ckPos = input.length - 4;
   const expected =
-    ((input[ckPos] << 24) | (input[ckPos + 1] << 16) | (input[ckPos + 2] << 8) | input[ckPos + 3]) >>> 0;
+    ((input[ckPos]! << 24) | (input[ckPos + 1]! << 16) | (input[ckPos + 2]! << 8) | input[ckPos + 3]!) >>> 0;
   const actual = adler32(result);
   if (actual !== expected) {
     throw new Error(`Adler-32 mismatch: expected 0x${expected.toString(16)}, got 0x${actual.toString(16)}`);

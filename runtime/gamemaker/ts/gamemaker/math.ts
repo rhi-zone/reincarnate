@@ -32,12 +32,12 @@ class XorGen {
   next(): number {
     const X = this.x;
     let i = this.i;
-    let t = X[i]; t ^= (t >>> 7);
+    let t = X[i]!; t ^= (t >>> 7);
     let v = t ^ (t << 24);
-    t = X[(i + 1) & 7]; v ^= t ^ (t >>> 10);
-    t = X[(i + 3) & 7]; v ^= t ^ (t >>> 3);
-    t = X[(i + 4) & 7]; v ^= t ^ (t << 7);
-    t = X[(i + 7) & 7]; t = t ^ (t << 13); v ^= t ^ (t << 9);
+    t = X[(i + 1) & 7]!; v ^= t ^ (t >>> 10);
+    t = X[(i + 3) & 7]!; v ^= t ^ (t >>> 3);
+    t = X[(i + 4) & 7]!; v ^= t ^ (t << 7);
+    t = X[(i + 7) & 7]!; t = t ^ (t << 13); v ^= t ^ (t << 9);
     X[i] = v;
     this.i = (i + 1) & 7;
     return v;
@@ -142,6 +142,6 @@ export function string(n: any): string { return String(n); }
 export function median(...nums: number[]): number {
   const sorted = nums.slice().sort((a, b) => a - b);
   const mid = sorted.length >> 1;
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 export function arctan2(y: number, x: number): number { return Math.atan2(y, x); }

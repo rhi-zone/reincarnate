@@ -22,7 +22,7 @@ export class SCInput {
 
   /** <<textbox "$var" "default" ["PassageName"]>> */
   textbox(varName: string, defaultValue?: string, passageName?: string): void {
-    const input = this.rt.Output.doc.createElement("input");
+    const input = this.rt.Output.doc.createElement("input") as HTMLInputElement;
     input.type = "text";
     input.value = defaultValue ?? (this.rt.State.get(varName) as string) ?? "";
 
@@ -46,7 +46,7 @@ export class SCInput {
 
   /** <<textarea "$var" "default" ["PassageName"]>> */
   textarea(varName: string, defaultValue?: string, passageName?: string): void {
-    const el = this.rt.Output.doc.createElement("textarea");
+    const el = this.rt.Output.doc.createElement("textarea") as HTMLTextAreaElement;
     el.value = defaultValue ?? (this.rt.State.get(varName) as string) ?? "";
     el.rows = 4;
 
@@ -60,7 +60,7 @@ export class SCInput {
 
   /** <<numberbox "$var" default ["PassageName"]>> */
   numberbox(varName: string, defaultValue?: number, passageName?: string): void {
-    const input = this.rt.Output.doc.createElement("input");
+    const input = this.rt.Output.doc.createElement("input") as HTMLInputElement;
     input.type = "number";
     input.value = String(defaultValue ?? (this.rt.State.get(varName) as number) ?? "");
 
@@ -86,7 +86,7 @@ export class SCInput {
 
   /** <<checkbox "$var" checkedValue uncheckedValue>> */
   checkbox(varName: string, checkedValue: string | number | boolean, uncheckedValue: string | number | boolean): void {
-    const input = this.rt.Output.doc.createElement("input");
+    const input = this.rt.Output.doc.createElement("input") as HTMLInputElement;
     input.type = "checkbox";
 
     const current = this.rt.State.get(varName);
@@ -102,7 +102,7 @@ export class SCInput {
 
   /** <<radiobutton "$var" checkedValue>> */
   radiobutton(varName: string, checkedValue: string | number | boolean): void {
-    const input = this.rt.Output.doc.createElement("input");
+    const input = this.rt.Output.doc.createElement("input") as HTMLInputElement;
     input.type = "radio";
     input.name = varName;
 
@@ -120,10 +120,10 @@ export class SCInput {
 
   /** <<listbox "$var" items...>> */
   listbox(varName: string, ...items: any[]): void {
-    const select = this.rt.Output.doc.createElement("select");
+    const select = this.rt.Output.doc.createElement("select") as HTMLSelectElement;
 
     for (const item of items) {
-      const option = this.rt.Output.doc.createElement("option");
+      const option = this.rt.Output.doc.createElement("option") as HTMLOptionElement;
       option.value = String(item);
       option.textContent = String(item);
       select.appendChild(option);
@@ -133,12 +133,12 @@ export class SCInput {
     if (current !== undefined) {
       select.value = String(current);
     } else if (items.length > 0) {
-      this.rt.State.set(varName, items[0]);
+      this.rt.State.set(varName, items[0]!);
     }
 
     select.addEventListener("change", () => {
       const idx = select.selectedIndex;
-      this.rt.State.set(varName, idx >= 0 && idx < items.length ? items[idx] : select.value);
+      this.rt.State.set(varName, idx >= 0 && idx < items.length ? items[idx]! : select.value);
     });
 
     this.appendToOutput(select);
@@ -156,14 +156,14 @@ export class SCInput {
     }
 
     const btn = this.rt.Output.doc.createElement("button");
-    btn.textContent = String(items[currentIndex]);
-    this.rt.State.set(varName, items[currentIndex]);
+    btn.textContent = String(items[currentIndex]!);
+    this.rt.State.set(varName, items[currentIndex]!);
 
     btn.addEventListener("click", (e) => {
       e.preventDefault();
       currentIndex = (currentIndex + 1) % items.length;
-      btn.textContent = String(items[currentIndex]);
-      this.rt.State.set(varName, items[currentIndex]);
+      btn.textContent = String(items[currentIndex]!);
+      this.rt.State.set(varName, items[currentIndex]!);
     });
 
     this.appendToOutput(btn);

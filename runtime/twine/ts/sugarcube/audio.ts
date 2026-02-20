@@ -183,7 +183,7 @@ export class SCAudio {
         return;
       }
     }
-    const trackName = pl.tracks[pl.currentIndex];
+    const trackName = pl.tracks[pl.currentIndex]!;
     const handle = this.audioCache.get(trackName);
     if (handle) {
       handle.addEventListener(

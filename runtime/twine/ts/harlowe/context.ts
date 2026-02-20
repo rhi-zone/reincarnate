@@ -64,11 +64,11 @@ function resolveColor(value: string): string {
     return value;
   }
   const parts = s.split("+");
-  const first = HARLOWE_COLORS[parts[0].trim()];
+  const first = HARLOWE_COLORS[parts[0]!.trim()];
   if (!first) return value;
   let acc: [number, number, number] = first;
   for (let i = 1; i < parts.length; i++) {
-    const rgb = HARLOWE_COLORS[parts[i].trim()];
+    const rgb = HARLOWE_COLORS[parts[i]!.trim()];
     if (!rgb) return value;
     acc = blendColors(acc, rgb);
   }
@@ -197,7 +197,7 @@ function applyChanger(el: HTMLElement, changer: Changer, doc: DocumentFactory = 
         const probe = doc.createElement("span");
         applyChanger(probe, hoverChanger, doc);
         for (let i = 0; i < probe.style.length; i++) {
-          const prop = probe.style[i];
+          const prop = probe.style[i]!;
           saved.set(prop, el.style.getPropertyValue(prop));
           el.style.setProperty(prop, probe.style.getPropertyValue(prop));
         }
@@ -215,7 +215,7 @@ function applyChanger(el: HTMLElement, changer: Changer, doc: DocumentFactory = 
       // (b4r: style) or (b4r: top, right, bottom, left)
       const styles = changer.args.map(String);
       if (styles.length === 1) {
-        el.style.borderStyle = styles[0];
+        el.style.borderStyle = styles[0]!;
       } else if (styles.length >= 2) {
         el.style.borderStyle = styles.join(" ");
       }
@@ -322,7 +322,7 @@ export class HarloweContext {
 
   /** Current container (top of stack). */
   private current(): Element | DocumentFragment {
-    return this.containerStack[this.containerStack.length - 1];
+    return this.containerStack[this.containerStack.length - 1]!;
   }
 
   /** Push a new container onto the stack. */
@@ -403,7 +403,7 @@ export class HarloweContext {
   voidEl(tag: string, ...attrs: string[]): Node {
     const el = this.doc.createElement(tag);
     for (let i = 0; i + 1 < attrs.length; i += 2) {
-      el.setAttribute(attrs[i], attrs[i + 1]);
+      el.setAttribute(attrs[i]!, attrs[i + 1]!);
     }
     this.current().appendChild(el);
     return el;
@@ -547,7 +547,7 @@ export class HarloweContext {
   styled(changer: Changer | Changer[], ...children: Child[]): Node {
     const hook = this.doc.createElement("tw-hook") as HTMLElement;
     const t = applyChangers(hook, changer, () => this.appendChildren(hook, children), this.doc);
-    if (t.depart) this.departTransition = { name: t.depart, duration: t.duration };
+    if (t.depart) this.departTransition = { name: t.depart, ...(t.duration !== undefined ? { duration: t.duration } : {}) };
     this.current().appendChild(hook);
     this.prevBr = false;
     return hook;

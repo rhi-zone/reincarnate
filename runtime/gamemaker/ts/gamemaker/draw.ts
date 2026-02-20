@@ -6,15 +6,15 @@ import { Colors, HAligns, VAligns, gmlColorToCss } from "./color";
 export class DrawState {
   alpha = 1;
   config = {
-    color: Colors.c_white,
+    color: Colors.c_white!,
     font: 0,
     valign: VAligns.fa_top,
     halign: HAligns.fa_left,
     ext: { sep: -1, w: -1 },
     transform: { xscale: 1, yscale: 1, angle: 0 },
   };
-  fontLookups: Map<number, Map<number, any>>[] = [];
-  colorFontCache: Map<number, any>[][] = [];
+  fontLookups: Map<number, any>[] = [];
+  colorFontCache: ImageBitmap[][] = [];
 }
 
 export function createDrawAPI(rt: GameRuntime) {
@@ -31,14 +31,14 @@ export function createDrawAPI(rt: GameRuntime) {
           map.set(c.char, c);
         }
       }
-      draw.fontLookups[fontIdx] = [map];
+      draw.fontLookups[fontIdx] = map;
     }
-    return draw.fontLookups[fontIdx][0];
+    return draw.fontLookups[fontIdx]!;
   }
 
   function wrapLines(lines: string[], lookup: Map<number, any>, maxWidth: number): void {
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+      const line = lines[i]!;
       let j = 0;
       let width = 0;
       for (; j < line.length; j++) {
@@ -61,7 +61,7 @@ export function createDrawAPI(rt: GameRuntime) {
     sheet: CanvasImageSource, tex: any,
   ): ImageBitmap | null {
     if (!draw.colorFontCache[fontIdx]) draw.colorFontCache[fontIdx] = [];
-    const cached = draw.colorFontCache[fontIdx][color as any];
+    const cached = draw.colorFontCache[fontIdx]![color as any] as ImageBitmap | undefined;
     if (cached) return cached;
 
     const tc = rt._gfx.tcanvas;
@@ -81,15 +81,15 @@ export function createDrawAPI(rt: GameRuntime) {
     const g = (color >> 8) & 0xff;
     const b = color >> 16;
     for (let i = 0; i < data.length; i += 4) {
-      data[i] = data[i] * r / 255;
-      data[i + 1] = data[i + 1] * g / 255;
-      data[i + 2] = data[i + 2] * b / 255;
+      data[i] = data[i]! * r / 255;
+      data[i + 1] = data[i + 1]! * g / 255;
+      data[i + 2] = data[i + 2]! * b / 255;
     }
     tcx.clearRect(0, 0, w, h);
     tcx.putImageData(imageData, 0, 0);
     if ("transferToImageBitmap" in tc) {
       const bm = (tc as OffscreenCanvas).transferToImageBitmap();
-      draw.colorFontCache[fontIdx][color as any] = bm;
+      (draw.colorFontCache[fontIdx] as any)[color] = bm;
       return bm;
     }
     return null;
@@ -222,7 +222,7 @@ export function createDrawAPI(rt: GameRuntime) {
     const texIdx = font.texture;
     const tex = rt.textures[texIdx];
     if (!tex) return;
-    let sheet: CanvasImageSource = rt.textureSheets[tex.sheetId];
+    let sheet: CanvasImageSource | undefined = rt.textureSheets[tex.sheetId];
     if (!sheet) return;
     let bx = tex.src.x;
     let by = tex.src.y;

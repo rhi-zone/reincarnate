@@ -530,7 +530,7 @@ export class Transform {
       node = node.parent;
     }
     for (let i = chain.length - 1; i >= 0; i--) {
-      const t = chain[i].transform;
+      const t = chain[i]!.transform;
       if (t && t.colorTransform) {
         result.concat(t.colorTransform);
       }
@@ -549,13 +549,13 @@ export class Transform {
       m.transformPoint(new Point(0, h)),
       m.transformPoint(new Point(w, h)),
     ];
-    let minX = corners[0].x, minY = corners[0].y;
-    let maxX = corners[0].x, maxY = corners[0].y;
+    let minX = corners[0]!.x, minY = corners[0]!.y;
+    let maxX = corners[0]!.x, maxY = corners[0]!.y;
     for (let i = 1; i < 4; i++) {
-      if (corners[i].x < minX) minX = corners[i].x;
-      if (corners[i].y < minY) minY = corners[i].y;
-      if (corners[i].x > maxX) maxX = corners[i].x;
-      if (corners[i].y > maxY) maxY = corners[i].y;
+      if (corners[i]!.x < minX) minX = corners[i]!.x;
+      if (corners[i]!.y < minY) minY = corners[i]!.y;
+      if (corners[i]!.x > maxX) maxX = corners[i]!.x;
+      if (corners[i]!.y > maxY) maxY = corners[i]!.y;
     }
     return new Rectangle(minX, minY, maxX - minX, maxY - minY);
   }
@@ -575,7 +575,7 @@ export function _getConcatenatedMatrix(obj: DisplayObject): Matrix {
   const result = new Matrix();
   // Walk root → leaf.
   for (let i = chain.length - 1; i >= 0; i--) {
-    const n = chain[i];
+    const n = chain[i]!;
     const local = new Matrix();
     const rot = (n.rotation ?? 0) * (Math.PI / 180);
     local.createBox(n.scaleX ?? 1, n.scaleY ?? 1, rot, n.x ?? 0, n.y ?? 0);

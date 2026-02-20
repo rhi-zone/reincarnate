@@ -78,12 +78,12 @@ export function createInputAPI(rt: GameRuntime) {
     });
 
     onMouseDown(canvas, (button) => {
-      const b = input.mouse.buttons[input.domButtonMap[button]];
+      const b = input.mouse.buttons[input.domButtonMap[button]!];
       if (b) { b.pressed = true; b.held = true; }
     });
 
     onMouseUp(canvas, (button) => {
-      const b = input.mouse.buttons[input.domButtonMap[button]];
+      const b = input.mouse.buttons[input.domButtonMap[button]!];
       if (b) { b.released = true; b.held = false; }
     });
 

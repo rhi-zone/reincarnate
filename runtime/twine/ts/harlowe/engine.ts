@@ -255,24 +255,24 @@ export class HarloweEngine {
   math(name: string, ...args: any[]): number {
     const nums = args.map(Number);
     switch (name) {
-      case "round": return Math.round(nums[0]);
-      case "floor": return Math.floor(nums[0]);
-      case "ceil": return Math.ceil(nums[0]);
-      case "abs": return Math.abs(nums[0]);
+      case "round": return Math.round(nums[0]!);
+      case "floor": return Math.floor(nums[0]!);
+      case "ceil": return Math.ceil(nums[0]!);
+      case "abs": return Math.abs(nums[0]!);
       case "min": return Math.min(...nums);
       case "max": return Math.max(...nums);
-      case "sqrt": return Math.sqrt(nums[0]);
-      case "sin": return Math.sin(nums[0]);
-      case "cos": return Math.cos(nums[0]);
-      case "tan": return Math.tan(nums[0]);
-      case "log": return Math.log(nums[0]);
-      case "log10": return Math.log10(nums[0]);
-      case "log2": return Math.log2(nums[0]);
-      case "pow": return Math.pow(nums[0], nums[1]);
-      case "sign": return Math.sign(nums[0]);
-      case "trunc": return Math.trunc(nums[0]);
-      case "exp": return Math.exp(nums[0]);
-      case "clamp": return Math.min(Math.max(nums[0], nums[1]), nums[2]);
+      case "sqrt": return Math.sqrt(nums[0]!);
+      case "sin": return Math.sin(nums[0]!);
+      case "cos": return Math.cos(nums[0]!);
+      case "tan": return Math.tan(nums[0]!);
+      case "log": return Math.log(nums[0]!);
+      case "log10": return Math.log10(nums[0]!);
+      case "log2": return Math.log2(nums[0]!);
+      case "pow": return Math.pow(nums[0]!, nums[1]!);
+      case "sign": return Math.sign(nums[0]!);
+      case "trunc": return Math.trunc(nums[0]!);
+      case "exp": return Math.exp(nums[0]!);
+      case "clamp": return Math.min(Math.max(nums[0]!, nums[1]!), nums[2]!);
       case "lerp": return this.lerp(args[0], args[1], args[2]);
       default:
         console.warn(`[harlowe] unknown math function: ${name}`);
@@ -732,7 +732,7 @@ export class HarloweEngine {
 
     // Create the first column
     const firstCol = doc.createElement("tw-column") as HTMLElement;
-    firstCol.style.flex = widths.length > 0 ? widths[0] : "1";
+    firstCol.style.flex = widths.length > 0 ? widths[0]! : "1";
     columns.appendChild(firstCol);
 
     const h = new HarloweContext(columns, this.rt, doc);
@@ -747,7 +747,7 @@ export class HarloweEngine {
     // Apply widths to columns after callback has run (column breaks create new columns)
     const cols = columns.querySelectorAll(":scope > tw-column");
     cols.forEach((col, i) => {
-      (col as HTMLElement).style.flex = i < widths.length ? widths[i] : "1";
+      (col as HTMLElement).style.flex = i < widths.length ? widths[i]! : "1";
     });
   }
 
@@ -970,7 +970,7 @@ export class HarloweEngine {
     const link = doc.createElement("a") as HTMLAnchorElement;
     link.className = "cycling-link";
     link.href = "javascript:void(0)";
-    link.textContent = opts[idx];
+    link.textContent = opts[idx]!;
 
     link.addEventListener("click", (e) => {
       e.preventDefault();
@@ -979,8 +979,8 @@ export class HarloweEngine {
       } else {
         idx = Math.min(idx + 1, opts.length - 1);
       }
-      link.textContent = opts[idx];
-      if (bindRef) bindRef.set(opts[idx]);
+      link.textContent = opts[idx]!;
+      if (bindRef) bindRef.set(opts[idx]!);
     });
 
     container.appendChild(link);
@@ -1299,7 +1299,7 @@ function words(s: any): string[] {
 function strNth(n: any, s: any): string {
   const str = String(s);
   const i = Math.floor(Number(n)) - 1; // Harlowe is 1-indexed
-  return i >= 0 && i < str.length ? str[i] : "";
+  return i >= 0 && i < str.length ? str[i]! : "";
 }
 function strRepeated(n: any, s: any): string {
   return String(s).repeat(Math.max(0, Math.floor(Number(n))));

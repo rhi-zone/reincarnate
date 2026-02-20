@@ -123,9 +123,9 @@ export class StyleSheet extends EventDispatcher {
     const re = /([^{]+)\{([^}]*)\}/g;
     let match: RegExpExecArray | null;
     while ((match = re.exec(CSSText)) !== null) {
-      const selector = match[1].trim();
+      const selector = match[1]!.trim();
       const props: Record<string, string> = {};
-      for (const decl of match[2].split(";")) {
+      for (const decl of match[2]!.split(";")) {
         const colon = decl.indexOf(":");
         if (colon === -1) continue;
         const key = decl.substring(0, colon).trim();
@@ -349,7 +349,7 @@ export class TextField extends InteractiveObject {
 
   getTextFormat(beginIndex = -1, endIndex = -1): TextFormat {
     if (beginIndex < 0 && endIndex < 0) {
-      if (this._formats.length > 0) return this._formats[0].format;
+      if (this._formats.length > 0) return this._formats[0]!.format;
       return this.defaultTextFormat;
     }
     const begin = beginIndex < 0 ? 0 : beginIndex;
@@ -417,7 +417,7 @@ export class TextField extends InteractiveObject {
     // Measure text before this char for x position.
     const beforeText = lineText.substring(0, charIndex - lineOffset);
     const xPos = ctx.measureText(beforeText).width;
-    const charWidth = ctx.measureText(this._text[charIndex]).width;
+    const charWidth = ctx.measureText(this._text[charIndex]!).width;
     const metrics = this.getLineMetrics(lineIdx);
     // y = line index * line height
     const yPos = lineIdx * metrics.height;
@@ -434,7 +434,7 @@ export class TextField extends InteractiveObject {
     // Linear scan to find the char under x.
     let accWidth = 0;
     for (let i = 0; i < lineText.length; i++) {
-      const charWidth = ctx.measureText(lineText[i]).width;
+      const charWidth = ctx.measureText(lineText[i]!).width;
       if (accWidth + charWidth > x) return lineOffset + i;
       accWidth += charWidth;
     }
@@ -453,8 +453,8 @@ export class TextField extends InteractiveObject {
     const lines = this._text.split("\n");
     let offset = 0;
     for (let i = 0; i < lines.length; i++) {
-      if (charIndex < offset + lines[i].length + 1) return i;
-      offset += lines[i].length + 1;
+      if (charIndex < offset + lines[i]!.length + 1) return i;
+      offset += lines[i]!.length + 1;
     }
     return lines.length - 1;
   }
@@ -482,7 +482,7 @@ export class TextField extends InteractiveObject {
     const lines = this._text.split("\n");
     let offset = 0;
     for (let i = 0; i < lineIndex && i < lines.length; i++) {
-      offset += lines[i].length + 1;
+      offset += lines[i]!.length + 1;
     }
     return offset;
   }

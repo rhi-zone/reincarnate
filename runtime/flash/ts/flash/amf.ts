@@ -74,7 +74,7 @@ class ReadContext {
     const ref = readU29(ba);
     if ((ref & 1) === 0) {
       // Reference: index = ref >> 1
-      return this.strings[ref >> 1];
+      return this.strings[ref >> 1] ?? "";
     }
     const len = ref >> 1;
     if (len === 0) return "";
@@ -166,7 +166,7 @@ class ReadContext {
       this.objects.push(obj);
       // Read sealed member values.
       for (let i = 0; i < sealedCount; i++) {
-        obj[sealedNames[i]] = this.readValue(ba);
+        obj[sealedNames[i]!] = this.readValue(ba);
       }
       // Read dynamic members if dynamic flag is set.
       const isDynamic = (traitsRef >> 2) & 1;
@@ -216,7 +216,7 @@ class WriteContext {
     const encoded = new TextEncoder().encode(str);
     writeU29(ba, (encoded.length << 1) | 1); // Inline: low bit 1
     for (let i = 0; i < encoded.length; i++) {
-      ba.writeByte(encoded[i]);
+      ba.writeByte(encoded[i]!);
     }
   }
 

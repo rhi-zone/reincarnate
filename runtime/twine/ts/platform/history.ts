@@ -78,7 +78,7 @@ export function snapshotHistory(): HistoryStrategy {
     forgetUndos(n: number): void {
       if (n < 0) {
         if (history.length > 1) {
-          const current = history[history.length - 1];
+          const current = history[history.length - 1]!;
           history.length = 0;
           history.push(current);
         }
@@ -173,7 +173,7 @@ export function diffHistory(): HistoryStrategy {
         }
       }
 
-      const prev = history[history.length - 1];
+      const prev = history[history.length - 1]!;
       return {
         title: prev.title,
         vars: JSON.parse(JSON.stringify(currentVars)),
@@ -207,7 +207,7 @@ export function diffHistory(): HistoryStrategy {
       if (n < 0) {
         if (history.length > 1) {
           // Collapse to a single snapshot of current state
-          const current = history[history.length - 1];
+          const current = history[history.length - 1]!;
           history.length = 0;
           history.push({ title: current.title, snapshot: JSON.parse(JSON.stringify(currentVars)) });
         }
@@ -215,7 +215,7 @@ export function diffHistory(): HistoryStrategy {
         const keep = Math.max(1, history.length - n);
         if (keep < history.length) {
           // Ensure the kept base is a full snapshot
-          const base = history[keep - 1];
+          const base = history[keep - 1]!;
           if (!base.snapshot) {
             base.snapshot = JSON.parse(JSON.stringify(currentVars));
             // Rebuild currentVars by replaying from this point
@@ -224,9 +224,9 @@ export function diffHistory(): HistoryStrategy {
           }
           history.splice(0, history.length - keep);
           // Ensure first entry has a snapshot
-          if (!history[0].snapshot) {
-            history[0].snapshot = JSON.parse(JSON.stringify(currentVars));
-            delete history[0].diff;
+          if (!history[0]!.snapshot) {
+            history[0]!.snapshot = JSON.parse(JSON.stringify(currentVars));
+            delete history[0]!.diff;
           }
         }
       }
