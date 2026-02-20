@@ -282,7 +282,7 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
 - [ ] **Engine.forward()** — No-op (deprecated in SugarCube v2).
 - [ ] **SCEngine.clone()** — Missing from runtime; 643 TS2339 errors in DoL. SugarCube's `clone()` does a deep copy of arbitrary story data.
 - [ ] **SCEngine.iterate() / iterator_has_next() / iterator_next_value() / iterator_next_key()** — Missing; ~969 TS2339 errors in DoL. SugarCube iterator API for `<<for>>` over arrays/objects.
-- [ ] **TS2447 `|` on booleans** (1610 errors in DoL) — DoL uses `|` on equality comparisons: `(v === "Kylar") | (v === "Bailey")`. Valid JS, correct runtime behavior. TS rejects it because our type inference annotates equality results as `boolean` and TS2447 forbids `|` on `boolean`. Do NOT change to `||` (different semantics: short-circuit, different return type). Fix: emit equality comparisons with return type `number` or `any` in SugarCube contexts, so TS doesn't see `boolean | boolean`.
+- [ ] **TS2447 `|` on booleans** (1610 errors in DoL) — DoL uses `|` on equality comparisons: `(v === "Kylar") | (v === "Bailey")`. Valid JS, correct runtime behavior. TS2447 is a false positive — there is no codegen fix that doesn't change semantics or lie about types. Options: suppress via tsconfig (`"useUnknownInCatchVariables"` won't help; may need `ts-ignore` annotations or a looser tsconfig), or accept as a known TS limitation in DoL output.
 
 ### SugarCube oxc Parse Errors
 
