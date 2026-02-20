@@ -314,12 +314,10 @@ statement parsing, trailing comma stripping in case values.
 
 ### Harlowe Correctness Bugs
 
-- [ ] **Temp variable block-scope leak** — Harlowe temp vars (`_var`) have passage-level scope:
-  `(set: _x to 1)` inside an `(if:)` hook leaves `_x` accessible for the rest of the passage.
-  But our emitter places `Op::Alloc` inside the if-block's basic block, producing a `let _x`
-  scoped to that block. References to `_x` outside the block fail with TS2304. Fix: hoist all
-  `Op::Alloc` to the function entry block (standard SSA approach). Observed in: artifact (`_twelve`),
-  equivalent-exchange (`_sex`, `_cockz`, etc.).
+- [x] **Temp variable block-scope leak** — Fixed in `62bcd79`. Harlowe temp vars (`_var`) have
+  passage-level scope, but `Op::Alloc` was placed inside nested blocks producing block-scoped `let`.
+  Fix: `Function::hoist_allocs()` moves all allocs to the entry block before structurize. Resolved
+  `_twelve` (artifact), `_sex`/`_victory` (equivalent-exchange).
 
 - [x] **Backtick verbatim spans not handled in parser** — Fixed in `cfb1796`.
   Parser now handles backtick-delimited verbatim spans; `]` inside backticks
