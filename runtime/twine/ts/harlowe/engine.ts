@@ -253,8 +253,6 @@ export class HarloweEngine {
       case "sign": return Math.sign(nums[0]);
       case "trunc": return Math.trunc(nums[0]);
       case "exp": return Math.exp(nums[0]);
-      case "log10": return Math.log10(nums[0]);
-      case "log2": return Math.log2(nums[0]);
       case "clamp": return Math.min(Math.max(nums[0], nums[1]), nums[2]);
       case "lerp": return this.lerp(args[0], args[1], args[2]);
       default:
@@ -317,8 +315,7 @@ export class HarloweEngine {
       case "min": case "max": case "sqrt": case "sin": case "cos":
       case "tan": case "log": case "log10": case "log2": case "pow":
       case "sign": case "clamp": case "lerp":
-        return this.math(name, ...args);
-      case "trunc": case "exp": case "log10": case "log2":
+      case "trunc": case "exp":
         return this.math(name, ...args);
       // String ops — delegate to str_op()
       case "upperfirst": case "lowerfirst":

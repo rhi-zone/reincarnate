@@ -406,7 +406,7 @@ and add it to `~/reincarnate/twine/`.
 - [x] **Changer composition with `+`** — `(color: red) + (text-style: "bold")` (fixed in `155af06`)
 - [x] **`(save-game:)` / `(load-game:)`** — Save integration (basic runtime done; already implemented)
 - [x] **`(replace:)`, `(show:)`, `(hide:)`** — DOM manipulation hooks (done)
-- [x] **`(meter:)`, `(dialog:)`** — UI macros (implemented, `(dropdown:)` still open)
+- [x] **`(meter:)`, `(dialog:)`, `(dropdown:)`, `(checkbox:)`, `(input-box:)`** — UI macros (implemented)
 - [x] **`(verbatim:)[...]`** — Raw text pass-through via `<tw-verbatim>` element
 - [x] **`(enchant:)` / `(enchant-in:)`** — Apply changers to matching elements via `<tw-enchantment>`
 - [x] **Named hooks** — `|name>[hook content]` and `?name` hook references (done)
