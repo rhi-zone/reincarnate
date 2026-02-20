@@ -251,6 +251,7 @@ export class HarloweEngine {
       case "log2": return Math.log2(nums[0]);
       case "pow": return Math.pow(nums[0], nums[1]);
       case "sign": return Math.sign(nums[0]);
+      case "trunc": return Math.trunc(nums[0]);
       case "clamp": return Math.min(Math.max(nums[0], nums[1]), nums[2]);
       case "lerp": return this.lerp(args[0], args[1], args[2]);
       default:
@@ -272,16 +273,104 @@ export class HarloweEngine {
     return undefined;
   }
 
-  /** `(upperfirst:)`, `(lowerfirst:)` — capitalize/lowercase first character. */
-  str_op(name: string, s: string): string {
-    const str = String(s);
-    if (!str) return str;
+  /** String operations dispatched by name. */
+  str_op(name: string, ...args: any[]): any {
     switch (name) {
-      case "upperfirst": return str.charAt(0).toUpperCase() + str.slice(1);
-      case "lowerfirst": return str.charAt(0).toLowerCase() + str.slice(1);
+      case "upperfirst": {
+        const s = String(args[0]);
+        return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+      }
+      case "lowerfirst": {
+        const s = String(args[0]);
+        return s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+      }
+      case "str-reversed": case "string-reversed":
+        return [...String(args[0])].reverse().join("");
+      case "trimmed":
+        // (trimmed: str) or (trimmed: datatype_pattern, str) — pattern trimming not yet implemented
+        return String(args.length === 1 ? args[0] : args[1]).trim();
+      case "words": {
+        const s = String(args[0]).trim();
+        return s.length === 0 ? [] : s.split(/\s+/);
+      }
+      case "str-nth": case "string-nth": {
+        const [n, str] = args;
+        const s = String(str);
+        const i = Math.floor(Number(n)) - 1; // Harlowe is 1-indexed
+        return i >= 0 && i < s.length ? s[i] : "";
+      }
+      case "str-repeated": case "string-repeated": {
+        const [n, str] = args;
+        return String(str).repeat(Math.max(0, Math.floor(Number(n))));
+      }
+      case "str-find": case "string-find": {
+        const [pattern, str] = args;
+        const s = String(str);
+        if (typeof pattern === "string") {
+          const positions: number[] = [];
+          let idx = 0;
+          while (idx < s.length) {
+            const found = s.indexOf(pattern, idx);
+            if (found === -1) break;
+            positions.push(found + 1); // Harlowe is 1-indexed
+            idx = found + 1;
+          }
+          return positions;
+        }
+        return [];
+      }
+      case "str-replaced": case "string-replaced": case "replaced": {
+        // (str-replaced: searchFor, replacement, str)
+        // (str-replaced: count, searchFor, replacement, str) — count limits replacements
+        let count: number | undefined;
+        let searchFor: any;
+        let replacement: any;
+        let str: any;
+        if (args.length === 4) {
+          [count, searchFor, replacement, str] = args;
+        } else {
+          [searchFor, replacement, str] = args;
+        }
+        const s = String(str);
+        if (typeof searchFor === "string" && typeof replacement === "string") {
+          if (count !== undefined) {
+            let result = s;
+            let replaced = 0;
+            let idx = 0;
+            while (replaced < count) {
+              const found = result.indexOf(searchFor, idx);
+              if (found === -1) break;
+              result = result.slice(0, found) + replacement + result.slice(found + searchFor.length);
+              idx = found + replacement.length;
+              replaced++;
+            }
+            return result;
+          }
+          return s.replaceAll(searchFor, replacement);
+        }
+        return s;
+      }
+      case "digit-format": {
+        // (digit-format: formatStr, number) — formatStr uses # for digit placeholders
+        const [fmt, num] = args;
+        const n = Number(num);
+        const format = String(fmt);
+        const dotIdx = format.indexOf(".");
+        const decimals = dotIdx === -1 ? 0 : format.length - dotIdx - 1;
+        return n.toLocaleString(undefined, {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+        });
+      }
+      case "plural": {
+        // (plural: count, singular) or (plural: count, singular, pluralForm)
+        const [n, singular, pluralForm] = args;
+        return Number(n) === 1 ? String(singular)
+          : pluralForm !== undefined ? String(pluralForm) : String(singular) + "s";
+      }
       default:
         console.warn(`[harlowe] unknown str_op: ${name}`);
-        return str;
+        return String(args[0] ?? "");
     }
   }
 
@@ -302,9 +391,15 @@ export class HarloweEngine {
       case "tan": case "log": case "log10": case "log2": case "pow":
       case "sign": case "clamp": case "lerp":
         return this.math(name, ...args);
+      case "trunc": return this.math(name, ...args);
       // String ops — delegate to str_op()
       case "upperfirst": case "lowerfirst":
-        return this.str_op(name, args[0]);
+      case "str-reversed": case "string-reversed": case "trimmed": case "words":
+      case "str-nth": case "string-nth": case "str-repeated": case "string-repeated":
+      case "str-find": case "string-find":
+      case "str-replaced": case "string-replaced": case "replaced":
+      case "digit-format": case "plural":
+        return this.str_op(name, ...args);
       // Collection ops — delegate to collection_op()
       case "sorted": case "sorted-by": case "reversed": case "rotated": case "rotated-to":
       case "shuffled": case "range": case "folded": case "interlaced":
