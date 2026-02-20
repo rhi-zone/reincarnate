@@ -323,7 +323,7 @@ export class HarloweEngine {
     switch (name) {
       case "visits": return this.rt.State.historyLength();
       case "turns": return this.rt.State.historyLength();
-      case "time": return 0; // TODO: track elapsed time
+      case "time": return Date.now() - this.rt.Navigation.passageStartTime;
       case "history": return this.rt.State.historyTitles();
       default:
         console.warn(`[harlowe] unknown meta query: ${name}`);

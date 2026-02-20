@@ -19,6 +19,8 @@ export class HarloweNavigation {
   container: Element | ShadowRoot | null = null;
   /** Active (live:) timer IDs — tracked for cleanup on passage transition. */
   activeTimers: number[] = [];
+  /** `Date.now()` at the moment the current passage began rendering — used by `(time:)`. */
+  passageStartTime: number = 0;
 
   private rt: HarloweRuntime;
 
@@ -30,6 +32,7 @@ export class HarloweNavigation {
   renderPassage(target: string, fn: PassageFn): void {
     this.rt.State.clearTemps();
     this.currentPassage = target;
+    this.passageStartTime = Date.now();
     cancelTimers(this.activeTimers);
 
     const doc = this.doc;
