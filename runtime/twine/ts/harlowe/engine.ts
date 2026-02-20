@@ -321,8 +321,8 @@ export class HarloweEngine {
   /** `(visits:)`, `(turns:)`, `(time:)`, `(history:)` */
   meta(name: string): any {
     switch (name) {
-      case "visits": return this.rt.State.historyLength();
-      case "turns": return this.rt.State.historyLength();
+      case "visits": return this.rt.State.current_visits();
+      case "turns": return this.rt.State.turns();
       case "time": return Date.now() - this.rt.Navigation.passageStartTime;
       case "history": return this.rt.State.historyTitles();
       default:

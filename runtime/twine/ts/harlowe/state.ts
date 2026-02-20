@@ -81,9 +81,9 @@ export class HarloweState implements SaveableState {
     return cur ? this.history.countVisits(cur) : 0;
   }
 
-  /** `time` keyword — milliseconds since the story started (stub; returns 0). */
+  /** `time` keyword — milliseconds since the current passage started rendering. */
   elapsed_time(): number {
-    return 0;
+    return Date.now() - this.rt.Navigation.passageStartTime;
   }
 
   /** `turns` keyword — number of passage transitions so far. */
