@@ -2236,6 +2236,26 @@ You're at the **plaza**
     }
 
     #[test]
+    fn test_changer_plus_uses_engine_plus_syscall() {
+        use reincarnate_core::ir::inst::Op;
+        // (color: red) + (text-style: "bold") must route through Harlowe.Engine.plus(),
+        // not JS `+`. Changer composition is type-dispatched at runtime.
+        let ast = parser::parse("(set: $ch to (color: red) + (text-style: \"bold\"))");
+        let result = translate_passage("test_changer_plus", &ast, "");
+        let func = &result.func;
+        let has_plus = func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
+                    if system == "Harlowe.Engine" && method == "plus")
+            })
+        });
+        assert!(
+            has_plus,
+            "changer + changer should emit Harlowe.Engine.plus(), not raw JS +"
+        );
+    }
+
+    #[test]
     fn test_it_in_set_reads_target_variable() {
         use reincarnate_core::ir::inst::Op;
         let ast = parser::parse("(set: $x to it + 1)");

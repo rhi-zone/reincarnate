@@ -2974,4 +2974,113 @@ mod tests {
             "post_loop should NOT be consumed inside loop body, got: {shape:?}"
         );
     }
+
+    #[test]
+    fn test_brif_self_loop_back_edge_assigns() {
+        // GML `repeat(N)` style: header branches back to *itself* via BrIf.
+        // Back-edge assigns (counter decrement) must be captured even though
+        // the back edge comes from a BrIf, not a plain Br.
+        //
+        //   entry:    count_init = 3; br header(count_init)
+        //   header(count): count' = count - 1
+        //                  cond = count' > 0
+        //                  br_if cond, header(count'), exit    ← self-loop
+        //   exit:     ret
+        //
+        // Before fix: back_edge_assigns only handled Br, so update_assigns was
+        // empty → counter never decremented → infinite loop in emitted code.
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("repeat_loop", sig, Visibility::Public);
+
+        let (header, header_vals) = fb.create_block_with_params(&[Type::Int(64)]);
+        let exit = fb.create_block();
+
+        let count_init = fb.const_int(3);
+        fb.br(header, &[count_init]);
+
+        fb.switch_to_block(header);
+        let count = header_vals[0];
+        let one = fb.const_int(1);
+        let count_next = fb.sub(count, one);
+        let zero = fb.const_int(0);
+        let cond = fb.cmp(CmpKind::Gt, count_next, zero);
+        fb.br_if(cond, header, &[count_next], exit, &[]);
+
+        fb.switch_to_block(exit);
+        fb.ret(None);
+
+        let mut func = fb.build();
+        let shape = structurize(&mut func);
+
+        // Must produce a ForLoop (counter-driven) with non-empty update_assigns,
+        // proving the BrIf back-edge args were captured.
+        fn find_for_loop_update(shape: &Shape) -> Option<Vec<BlockArgAssign>> {
+            match shape {
+                Shape::ForLoop { update_assigns, .. } => Some(update_assigns.clone()),
+                Shape::Seq(parts) => parts.iter().find_map(find_for_loop_update),
+                _ => None,
+            }
+        }
+        let update = find_for_loop_update(&shape);
+        assert!(
+            update.is_some(),
+            "expected ForLoop in shape, got: {shape:?}"
+        );
+        assert!(
+            !update.unwrap().is_empty(),
+            "ForLoop update_assigns must be non-empty (counter decrement captured)"
+        );
+    }
+
+    #[test]
+    fn test_empty_implicit_return_block_as_exit() {
+        // A function where one branch ends in an empty block with no successors
+        // and no explicit Op::Return (GML implicit fall-through return).
+        //
+        //   entry:     br_if cond, then_block, else_block
+        //   then_block: ret None   (explicit return)
+        //   else_block: (empty — no instructions, no successors)
+        //
+        // Before fix: else_block was not included in the exit set, so the
+        // post-dominator computation was wrong and the structurizer would pick
+        // the wrong merge point (or panic).
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("implicit_exit", sig, Visibility::Public);
+        let cond = fb.param(0);
+
+        let then_block = fb.create_block();
+        let else_block = fb.create_block();
+
+        fb.br_if(cond, then_block, &[], else_block, &[]);
+
+        fb.switch_to_block(then_block);
+        fb.ret(None);
+
+        fb.switch_to_block(else_block);
+        // Intentionally empty — no ret, no successors.
+
+        let mut func = fb.build();
+        let shape = structurize(&mut func);
+
+        // Must produce an IfElse — both branches are recognized as exits.
+        fn has_if_else(shape: &Shape) -> bool {
+            match shape {
+                Shape::IfElse { .. } => true,
+                Shape::Seq(parts) => parts.iter().any(has_if_else),
+                _ => false,
+            }
+        }
+        assert!(
+            has_if_else(&shape),
+            "expected IfElse for if/implicit-return pattern, got: {shape:?}"
+        );
+    }
 }
