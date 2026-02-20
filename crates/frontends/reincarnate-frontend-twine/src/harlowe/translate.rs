@@ -142,6 +142,20 @@ impl TranslateCtx {
                     // Stray close tag — skip
                     i += 1;
                 }
+                // A changer without a hook in statement position may start a composition
+                // chain: `(ch1)+(ch2)[hook]`. Detect and emit as a styled() side effect.
+                NodeKind::Macro(mac)
+                    if mac.hook.is_none()
+                        && macros::macro_kind(&mac.name) == MacroKind::Changer =>
+                {
+                    if let Some((_val, end)) = self.try_lower_changer_chain(nodes, i) {
+                        // The styled() IR instruction is preserved by DCE (has_side_effects).
+                        i = end;
+                    } else {
+                        self.emit_node(&nodes[i]);
+                        i += 1;
+                    }
+                }
                 _ => {
                     self.emit_node(&nodes[i]);
                     i += 1;
@@ -225,6 +239,20 @@ impl TranslateCtx {
                 NodeKind::HtmlClose(_) => {
                     // Mismatched close tag — stop here
                     return (i + 1, vals);
+                }
+                NodeKind::Macro(mac)
+                    if mac.hook.is_none()
+                        && macros::macro_kind(&mac.name) == MacroKind::Changer =>
+                {
+                    if let Some((val, end)) = self.try_lower_changer_chain(nodes, i) {
+                        vals.push(val);
+                        i = end;
+                    } else {
+                        if let Some(v) = self.lower_node_as_value(&nodes[i]) {
+                            vals.push(v);
+                        }
+                        i += 1;
+                    }
                 }
                 _ => {
                     if let Some(v) = self.lower_node_as_value(&nodes[i]) {
@@ -528,6 +556,22 @@ impl TranslateCtx {
                 }
                 NodeKind::HtmlClose(_) => {
                     i += 1;
+                }
+                // A changer macro without a hook in content position may be part of a
+                // changer-composition chain: `(ch1)+(ch2)[hook]`. Detect and merge.
+                NodeKind::Macro(mac)
+                    if mac.hook.is_none()
+                        && macros::macro_kind(&mac.name) == MacroKind::Changer =>
+                {
+                    if let Some((val, end)) = self.try_lower_changer_chain(nodes, i) {
+                        vals.push(val);
+                        i = end;
+                    } else {
+                        if let Some(v) = self.lower_node_as_value(&nodes[i]) {
+                            vals.push(v);
+                        }
+                        i += 1;
+                    }
                 }
                 _ => {
                     if let Some(v) = self.lower_node_as_value(&nodes[i]) {
@@ -1414,6 +1458,103 @@ impl TranslateCtx {
 
     fn emit_changer(&mut self, mac: &MacroNode) {
         self.lower_changer_as_value(mac);
+    }
+
+    /// In Harlowe passage content, `(ch1)+(ch2)[hook]` composes changers.
+    /// Detect that pattern starting at `start` and emit as a single `styled()` call.
+    /// Returns `(value, end_index)` on success, or `None` if the pattern doesn't match.
+    fn try_lower_changer_chain(
+        &mut self,
+        nodes: &[Node],
+        start: usize,
+    ) -> Option<(ValueId, usize)> {
+        // Scan to determine the span of the chain, borrowing `nodes` immutably.
+        let mut changer_indices: Vec<usize> = Vec::new();
+        let mut i = start;
+
+        loop {
+            match nodes.get(i).map(|n| &n.kind) {
+                Some(NodeKind::Macro(mac))
+                    if macros::macro_kind(&mac.name) == MacroKind::Changer =>
+                {
+                    let has_hook = mac.hook.is_some();
+                    changer_indices.push(i);
+                    i += 1;
+                    if has_hook {
+                        break; // terminal changer
+                    }
+                    // Consume `+` separator (may have surrounding whitespace)
+                    match nodes.get(i).map(|n| &n.kind) {
+                        Some(NodeKind::Text(t)) if t.trim() == "+" => {
+                            i += 1;
+                        }
+                        _ => break,
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        // Need at least 2 changers and the last must have a hook to be a real chain.
+        if changer_indices.len() < 2 {
+            return None;
+        }
+        let last_idx = *changer_indices.last().unwrap();
+        let has_hook = matches!(
+            &nodes[last_idx].kind,
+            NodeKind::Macro(m) if m.hook.is_some()
+        );
+        if !has_hook {
+            return None;
+        }
+
+        // Build changer objects for all nodes except the terminal (which supplies the hook).
+        let mut changer_vals: Vec<ValueId> = Vec::new();
+        for &idx in &changer_indices[..changer_indices.len() - 1] {
+            // Clone to avoid long borrow while calling `self` methods.
+            let mac = match &nodes[idx].kind {
+                NodeKind::Macro(m) => m.clone(),
+                _ => unreachable!(),
+            };
+            // Build just the changer object (hook-less version).
+            let mac_no_hook = MacroNode { hook: None, ..mac };
+            if let Some(v) = self.lower_changer_as_value(&mac_no_hook) {
+                changer_vals.push(v);
+            }
+        }
+
+        // Clone the terminal changer to build both its changer object and hook children.
+        let terminal_mac = match &nodes[last_idx].kind {
+            NodeKind::Macro(m) => m.clone(),
+            _ => unreachable!(),
+        };
+        let terminal_no_hook = MacroNode {
+            hook: None,
+            ..terminal_mac.clone()
+        };
+        if let Some(v) = self.lower_changer_as_value(&terminal_no_hook) {
+            changer_vals.push(v);
+        }
+
+        // Compose all changers left-to-right via `plus()`.
+        let composed = changer_vals
+            .into_iter()
+            .reduce(|a, b| {
+                self.fb
+                    .system_call("Harlowe.Engine", "plus", &[a, b], Type::Dynamic)
+            })
+            .expect("at least one changer");
+
+        // Apply composed changer to the hook children.
+        let hook = terminal_mac.hook.as_ref().unwrap();
+        let children = self.lower_children_as_values(hook);
+        let mut args = vec![composed];
+        args.extend(children);
+        let result = self
+            .fb
+            .system_call("Harlowe.H", "styled", &args, Type::Dynamic);
+
+        Some((result, i))
     }
 
     fn lower_changer_as_value(&mut self, mac: &MacroNode) -> Option<ValueId> {
@@ -2794,5 +2935,34 @@ You're at the **plaza**
             })
         });
         assert!(!has_old_output, "should not have any Harlowe.Output array calls");
+    }
+
+    #[test]
+    fn test_changer_chain_in_content_composed_via_plus() {
+        use reincarnate_core::ir::inst::Op;
+        // (align: "=><=")+(color: red)[content] in passage content:
+        // the two changers must be composed via Harlowe.Engine.plus() and the result
+        // applied to a styled() call. The "+" between them is changer composition, not text.
+        let ast = parser::parse("(align: \"=><=\")+(color: red)[hello]");
+        let result = translate_passage("test_chain", &ast, "");
+        let func = &result.func;
+        let has_plus = func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
+                    if system == "Harlowe.Engine" && method == "plus")
+            })
+        });
+        assert!(
+            has_plus,
+            "(ch1)+(ch2)[hook] in content should compose via Harlowe.Engine.plus()"
+        );
+        // The composed changer must be applied to the hook via styled().
+        let has_styled = func.blocks.values().any(|block| {
+            block.insts.iter().any(|&inst_id| {
+                matches!(&func.insts[inst_id].op, Op::SystemCall { system, method, .. }
+                    if system == "Harlowe.H" && method == "styled")
+            })
+        });
+        assert!(has_styled, "composed changer must be applied via h.styled()");
     }
 }

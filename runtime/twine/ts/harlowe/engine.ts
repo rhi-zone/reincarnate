@@ -1273,7 +1273,7 @@ function strReplaced(...args: any[]): string {
     }
     return result;
   }
-  return s.replaceAll(searchFor, replacement);
+  return s.split(searchFor).join(replacement);
 }
 function digitFormat(fmt: any, num: any): string {
   const n = Number(num);
