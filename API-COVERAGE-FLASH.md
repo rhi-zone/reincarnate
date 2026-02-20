@@ -85,7 +85,8 @@ Legend: [x] implemented, [~] partial/stub, [ ] not started
 
 ### BitmapData
 - [x] Properties: width, height, transparent, rect
-- [x] Methods: clone, dispose, getPixel, getPixel32, setPixel, setPixel32, fillRect, copyPixels, draw, lock, unlock
+- [x] Methods: clone, dispose, getPixel, getPixel32, setPixel, setPixel32, fillRect, copyPixels, lock, unlock
+- [~] draw — empty no-op; requires a 2D rasteriser to composite IBitmapDrawable onto the pixel buffer
 - [ ] Methods: applyFilter, colorTransform, compare, copyChannel, floodFill, generateFilterRect, getColorBoundsRect, getPixels, getVector, histogram, hitTest, merge, noise, paletteMap, perlinNoise, pixelDissolve, scroll, setPixels, setVector, threshold
 
 ### SimpleButton
@@ -204,7 +205,8 @@ Legend: [x] implemented, [~] partial/stub, [ ] not started
 
 ### Font
 - [x] Properties: fontName, fontStyle, fontType
-- [x] Methods: hasGlyphs, enumerateFonts, registerFont
+- [x] Methods: enumerateFonts, registerFont
+- [~] hasGlyphs — always returns true; glyph table lookup not implemented
 
 ### Constants
 - [x] TextFieldType (DYNAMIC, INPUT)
@@ -257,17 +259,21 @@ Legend: [x] implemented, [~] partial/stub, [ ] not started
 
 ### Sound
 - [x] Properties: bytesLoaded, bytesTotal, id3, isBuffering, isURLInaccessible, length, url
-- [x] Methods: close, play, load, extract
+- [~] play — returns a silent dead SoundChannel; audio.ts exists but is not wired to Sound
+- [~] load — empty body; no fetch, no bytesLoaded updates, no COMPLETE event
+- [~] extract — returns 0; PCM extraction not implemented
+- [~] close — no-op (derivative of load stub)
 
 ### SoundChannel
 - [x] Properties: leftPeak, rightPeak, position, soundTransform
-- [x] Methods: stop
+- [~] stop — dispatches SOUND_COMPLETE (wrong; that fires on natural completion, not stop); no audio to stop anyway
 
 ### SoundTransform
 - [x] Properties: volume, pan, leftToLeft, leftToRight, rightToLeft, rightToRight
 
 ### SoundMixer
-- [x] Methods: computeSpectrum, stopAll
+- [~] computeSpectrum — empty no-op; no FFT/analyser wired up
+- [~] stopAll — empty no-op (no audio state to stop)
 
 ### SoundLoaderContext
 - [x] Properties: bufferTime, checkPolicyFile
@@ -307,7 +313,9 @@ Legend: [x] implemented, [~] partial/stub, [ ] not started
 
 ### FileReference
 - [x] Properties: creationDate, modificationDate, name, size
-- [x] Methods: browse, cancel, download, save
+- [x] Methods: cancel, save
+- [~] browse — returns false without opening a file dialog; implement with <input type="file">
+- [~] download — empty no-op; should fetch URL and trigger browser download
 
 ### FileFilter
 - [x] Properties: description, extension, macType

@@ -167,6 +167,8 @@ Remaining 4 in DoL are edge cases in complex embedded JS expressions.
 | `SimpleAudio.select()` | AudioRunner is no-op |
 | `L10n.get()` | returns key as-is |
 | `Engine.forward()` | no-op (deprecated but called) |
+| `Engine.show()` | no-op; should re-render current passage — fix: call `Navigation.goto(current)` |
+| `State.isEmpty()` | always returns `true` — **correctness bug**: first-visit `<<if State.isEmpty()>>` blocks will always fire even after navigation |
 
 ## References
 
