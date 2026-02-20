@@ -267,6 +267,10 @@ pub enum BinaryOp {
     IsIn,
     IsNotIn,
 
+    // Type check
+    IsA,
+    IsNotA,
+
     // String/changer composition
     Plus, // `+` on changers composes them (reuses Add for arithmetic)
 }

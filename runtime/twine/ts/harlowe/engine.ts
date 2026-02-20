@@ -144,6 +144,21 @@ export class HarloweEngine {
     return contains(collection, value);
   }
 
+  /** `is a TYPE` / `is an TYPE` type-check operator. */
+  is_a(value: any, type: string): boolean {
+    switch (type) {
+      case "boolean": return typeof value === "boolean";
+      case "number": return typeof value === "number";
+      case "string": return typeof value === "string";
+      case "integer": return typeof value === "number" && Number.isInteger(value);
+      case "array": return Array.isArray(value);
+      case "datamap": return value instanceof Map;
+      case "dataset": return value instanceof Set;
+      case "changer": return typeof value === "object" && value !== null && "changer" in value;
+      default: return false;
+    }
+  }
+
   // --- Iteration ---
 
   /** `(for: each _item, ...iterable)[hook]` — iterate over items, calling `cb(h, item)` for each.

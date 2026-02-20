@@ -192,6 +192,12 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
             TokenKind::IsNotIn if min_prec <= Prec::Equality => {
                 (Some(BinaryOp::IsNotIn), Prec::Equality)
             }
+            TokenKind::IsA if min_prec <= Prec::Equality => {
+                (Some(BinaryOp::IsA), Prec::Equality)
+            }
+            TokenKind::IsNotA if min_prec <= Prec::Equality => {
+                (Some(BinaryOp::IsNotA), Prec::Equality)
+            }
             TokenKind::Lt if min_prec <= Prec::Compare => (Some(BinaryOp::Lt), Prec::Compare),
             TokenKind::Gt if min_prec <= Prec::Compare => (Some(BinaryOp::Gt), Prec::Compare),
             TokenKind::Lte if min_prec <= Prec::Compare => (Some(BinaryOp::Lte), Prec::Compare),

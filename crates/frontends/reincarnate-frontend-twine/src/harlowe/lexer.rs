@@ -33,6 +33,10 @@ pub enum TokenKind {
     IsNot,
     IsIn,
     IsNotIn,
+    /// `is a TYPE` / `is an TYPE` — type-check operator
+    IsA,
+    /// `is not a TYPE` / `is not an TYPE` — negated type-check operator
+    IsNotA,
     Contains,
     And,
     Or,
@@ -122,6 +126,29 @@ impl<'a> ExprLexer<'a> {
         while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
             self.pos += 1;
         }
+    }
+
+    /// At the current position (after whitespace has been skipped), attempt to
+    /// consume the article `a` or `an` (not followed by an alphanumeric), returning
+    /// the given `kind` on success.  Returns `None` without advancing `self.pos`
+    /// if neither article is present.
+    fn try_lex_is_a_article(&mut self, kind: TokenKind) -> Option<TokenKind> {
+        // "an" must be checked before "a" since "an" starts with "a".
+        if self.pos + 2 <= self.bytes.len() && &self.input[self.pos..self.pos + 2] == "an" {
+            let after = self.pos + 2;
+            if after >= self.bytes.len() || !self.bytes[after].is_ascii_alphanumeric() {
+                self.pos = after;
+                return Some(kind);
+            }
+        }
+        if self.pos < self.bytes.len() && &self.input[self.pos..self.pos + 1] == "a" {
+            let after = self.pos + 1;
+            if after >= self.bytes.len() || !self.bytes[after].is_ascii_alphanumeric() {
+                self.pos = after;
+                return Some(kind);
+            }
+        }
+        None
     }
 
     fn span(&self, start: usize) -> Span {
@@ -695,7 +722,7 @@ impl<'a> ExprLexer<'a> {
         let word = &self.input[start..self.pos];
         let kind = match word {
             "is" => {
-                // Check for "is not" or "is in" (with whitespace between)
+                // Check for "is not", "is in", "is a", "is an" (with whitespace)
                 let saved = self.pos;
                 self.skip_whitespace();
                 if self.pos + 3 <= self.bytes.len() && &self.input[self.pos..self.pos + 3] == "not" {
@@ -704,7 +731,7 @@ impl<'a> ExprLexer<'a> {
                         || !self.bytes[after_not].is_ascii_alphanumeric()
                     {
                         self.pos = after_not;
-                        // Check for "is not in" (3-word membership negation operator)
+                        // Check for "is not in", "is not a", "is not an"
                         let saved_after_not = self.pos;
                         self.skip_whitespace();
                         if self.pos + 2 <= self.bytes.len()
@@ -720,6 +747,8 @@ impl<'a> ExprLexer<'a> {
                                 self.pos = saved_after_not;
                                 TokenKind::IsNot
                             }
+                        } else if let Some(kind) = self.try_lex_is_a_article(TokenKind::IsNotA) {
+                            kind
                         } else {
                             self.pos = saved_after_not;
                             TokenKind::IsNot
@@ -741,6 +770,8 @@ impl<'a> ExprLexer<'a> {
                         self.pos = saved;
                         TokenKind::Is
                     }
+                } else if let Some(kind) = self.try_lex_is_a_article(TokenKind::IsA) {
+                    kind
                 } else {
                     self.pos = saved;
                     TokenKind::Is
