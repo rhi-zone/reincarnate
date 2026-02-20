@@ -314,6 +314,16 @@ export class HarloweEngine {
       case "altered": case "datanames": case "datavalues": case "dataentries":
       case "permutations": case "pass":
         return this.collection_op(name, ...args);
+      // Passage queries
+      case "passage": return this.current_passage(args[0]);
+      case "passages": {
+        // `(passages:)` — returns array of all passage info, optionally filtered by lambda.
+        const filter = args[0] && typeof args[0] === "function" ? args[0] : null;
+        const result = Array.from(this.rt.Navigation.passages.keys()).map(name => ({
+          name, source: "", tags: this.rt.Navigation.passageTags.get(name) ?? [],
+        }));
+        return filter ? result.filter((p: any) => filter(p)) : result;
+      }
       // Meta queries
       case "visited": return this.rt.State.hasVisited(args[0]);
       case "visits": return args.length ? this.rt.State.visits(args[0]) : this.rt.State.current_visits();
@@ -354,7 +364,8 @@ export class HarloweEngine {
   /** `(passage:)` — returns the current (or named) passage info. */
   current_passage(name?: string): any {
     const title = name ?? this.rt.Navigation.current();
-    return { name: title, source: "", tags: [] };
+    const tags = this.rt.Navigation.passageTags.get(title) ?? [];
+    return { name: title, source: "", tags };
   }
 
   // --- Meta queries ---
