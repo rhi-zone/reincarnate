@@ -247,6 +247,8 @@ export class HarloweEngine {
       case "cos": return Math.cos(nums[0]);
       case "tan": return Math.tan(nums[0]);
       case "log": return Math.log(nums[0]);
+      case "log10": return Math.log10(nums[0]);
+      case "log2": return Math.log2(nums[0]);
       case "pow": return Math.pow(nums[0], nums[1]);
       case "sign": return Math.sign(nums[0]);
       case "clamp": return Math.min(Math.max(nums[0], nums[1]), nums[2]);
@@ -283,9 +285,10 @@ export class HarloweEngine {
     }
   }
 
-  /** Generic value macro dispatcher. */
+  /** Generic value macro dispatcher — covers all Harlowe value macros. */
   value_macro(name: string, ...args: any[]): any {
     switch (name) {
+      // Primitive constructors
       case "str": case "string": return this.str(...args);
       case "num": case "number": return this.num(args[0]);
       case "random": return this.random(...args);
@@ -293,6 +296,32 @@ export class HarloweEngine {
       case "a": case "array": return this.array(...args);
       case "dm": case "datamap": return this.datamap(...args);
       case "ds": case "dataset": return this.dataset(...args);
+      // Math — delegate to math() dispatcher
+      case "round": case "floor": case "ceil": case "abs":
+      case "min": case "max": case "sqrt": case "sin": case "cos":
+      case "tan": case "log": case "log10": case "log2": case "pow":
+      case "sign": case "clamp": case "lerp":
+        return this.math(name, ...args);
+      // String ops — delegate to str_op()
+      case "upperfirst": case "lowerfirst":
+        return this.str_op(name, args[0]);
+      // Collection ops — delegate to collection_op()
+      case "sorted": case "sorted-by": case "reversed": case "rotated":
+      case "shuffled": case "range": case "folded": case "interlaced":
+      case "repeated": case "joined": case "subarray": case "substring":
+      case "lowercase": case "uppercase": case "count":
+      case "some-pass": case "all-pass": case "none-pass": case "find":
+      case "altered": case "datanames": case "datavalues": case "dataentries":
+      case "permutations": case "pass":
+        return this.collection_op(name, ...args);
+      // Meta queries
+      case "visited": return this.rt.State.hasVisited(args[0]);
+      case "visits": return args.length ? this.rt.State.visits(args[0]) : this.rt.State.current_visits();
+      case "turns": return this.rt.State.turns();
+      case "history": return this.rt.State.historyTitles();
+      // Misc
+      case "cond": return args[0] ? args[1] : args[2];
+      case "nth": { const idx = Math.floor(args[0] as number); return args[idx] ?? args[args.length - 1]; }
       default:
         console.warn(`[harlowe] unknown value macro: ${name}`);
         return undefined;
@@ -1038,12 +1067,29 @@ function folded(...args: any[]): any {
   return items.reduce((acc: any, item: any) => fn(item, acc), init);
 }
 
+function pass(...args: any[]): any { return args[0]; }
+
+function permutations(...items: any[]): any[][] {
+  const flat = items.flat();
+  if (flat.length === 0) return [[]];
+  const result: any[][] = [];
+  function perm(arr: any[], current: any[]): void {
+    if (arr.length === 0) { result.push(current); return; }
+    for (let i = 0; i < arr.length; i++) {
+      perm([...arr.slice(0, i), ...arr.slice(i + 1)], [...current, arr[i]]);
+    }
+  }
+  perm(flat, []);
+  return result;
+}
+
 export const Collections = {
   sorted, reversed, rotated, shuffled, count, range,
   find, joined, subarray, substring, lowercase, uppercase,
   datanames, datavalues, dataentries,
   somePass, allPass, nonePass, altered,
   sortedBy, interlaced, repeated, folded,
+  pass, permutations,
 } as const;
 
 // --- Color operations (pure) ---
