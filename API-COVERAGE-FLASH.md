@@ -189,7 +189,8 @@ Legend: [x] implemented, [~] partial/stub, [ ] not started
 
 ### TextField
 - [x] Properties: text, htmlText, textColor, textWidth, textHeight, type, autoSize, multiline, wordWrap, selectable, embedFonts, defaultTextFormat, length, maxChars, restrict, background, backgroundColor, border, borderColor, displayAsPassword, condenseWhite, alwaysShowSelection, antiAliasType, gridFitType, maxScrollH, maxScrollV, scrollH, scrollV, bottomScrollV, mouseWheelEnabled, numLines, caretIndex, selectionBeginIndex, selectionEndIndex, sharpness, thickness, styleSheet, useRichTextClipboard
-- [x] Methods: appendText, getTextFormat, setTextFormat, replaceSelectedText, replaceText, setSelection, getCharBoundaries, getCharIndexAtPoint, getLineIndexAtPoint, getLineIndexOfChar, getLineLength, getLineMetrics, getLineOffset, getLineText, getFirstCharInParagraph, getParagraphLength, getImageReference
+- [x] Methods: appendText, getTextFormat, setTextFormat, replaceSelectedText, replaceText, setSelection, getCharBoundaries, getCharIndexAtPoint, getLineIndexAtPoint, getLineIndexOfChar, getLineLength, getLineMetrics, getLineOffset, getLineText, getFirstCharInParagraph, getParagraphLength
+- [ ] getImageReference — requires parsing htmlText for `<img id="...">` tags and instantiating Bitmap objects for embedded assets; currently throws
 - [x] Static: isFontCompatible
 
 ### TextFormat
