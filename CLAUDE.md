@@ -88,6 +88,8 @@ From ecosystem-wide session analysis:
 
 **Preserve fidelity.** The goal is accurate reproduction, not "improvement". Make the old thing work, don't redesign it.
 
+**Game author errors are not our bugs.** When emitted TypeScript produces a type error that faithfully reflects a bug in the original game's source code (e.g. using `|` instead of `||`, multiplying by `false`), that is correct behavior — reincarnate accurately reproduced what the author wrote. Do not "fix" the emission to suppress the diagnostic. Changing `|` to `||` alters semantics; annotating with `ts-ignore` hides a real bug; widening types to `any` throws away information. The right response is: document it as a game author error and move on. The only exception is if the error is caused by an imprecision in our type inference (e.g. we inferred `boolean` where the game intended `number`) — in that case, fix the inference, not the symptom.
+
 **Overlay > Patch.** When possible, render a modern UI layer over the original rather than patching internal rendering.
 
 **Two-tier approach.** Accept that some targets need binary patching (Tier 1) while others can be fully lifted (Tier 2). Design APIs that work for both.

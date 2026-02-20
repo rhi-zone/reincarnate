@@ -282,7 +282,7 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
 - [ ] **Engine.forward()** — No-op (deprecated in SugarCube v2).
 - [ ] **SCEngine.clone()** — Missing from runtime; 643 TS2339 errors in DoL. SugarCube's `clone()` does a deep copy of arbitrary story data.
 - [ ] **SCEngine.iterate() / iterator_has_next() / iterator_next_value() / iterator_next_key()** — Missing; ~969 TS2339 errors in DoL. SugarCube iterator API for `<<for>>` over arrays/objects.
-- [ ] **TS2447 `|` on booleans** (1610 errors in DoL) — DoL uses `|` on equality comparisons: `(v === "Kylar") | (v === "Bailey")`. Valid JS, correct runtime behavior. TS2447 is a false positive — there is no codegen fix that doesn't change semantics or lie about types. Options: suppress via tsconfig (`"useUnknownInCatchVariables"` won't help; may need `ts-ignore` annotations or a looser tsconfig), or accept as a known TS limitation in DoL output.
+- **TS2447 `|` on booleans** (1610 errors in DoL) — DoL game authors use `|` where they meant `||`: `(v === "Kylar") | (v === "Bailey")`. This is a **game author error** in the original source. Reincarnate correctly emits the game's code. These errors are expected and no fix is appropriate — changing `|` to `||` would alter semantics, and any other suppression would hide a real bug in the game.
 
 ### SugarCube oxc Parse Errors
 
