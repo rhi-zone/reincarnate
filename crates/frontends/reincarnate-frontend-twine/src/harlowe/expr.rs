@@ -312,6 +312,16 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
                 span: tok.span,
             }
         }
+        TokenKind::HookLit(ref s) => {
+            // Hook literal `[content]` in expression position — coerced to string.
+            // Occurs when a hook is passed as a string argument, e.g. `(prompt: [label], "")`.
+            let s = s.clone();
+            lexer.next_token();
+            Expr {
+                kind: ExprKind::Str(s),
+                span: tok.span,
+            }
+        }
         TokenKind::True => {
             lexer.next_token();
             Expr {

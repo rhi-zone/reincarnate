@@ -327,13 +327,31 @@ impl<'a> Parser<'a> {
     }
 
     /// Extract balanced text for macro args up to the matching `)`.
-    /// Handles nested `(` `)` and string literals.
+    /// Handles nested `(` `)`, `[` `]` brackets, and string literals.
+    /// Inside `[...]` (hook/code content), apostrophes are NOT treated as string
+    /// delimiters — they are plain text (e.g. contractions like `doesn't`).
     fn extract_balanced_args(&mut self) -> String {
         let start = self.pos;
         let mut depth = 1; // We're inside the outer `(`
+        let mut bracket_depth = 0usize; // depth of `[...]` (hook content)
 
         while !self.at_end() && depth > 0 {
             match self.bytes[self.pos] {
+                b'[' => {
+                    bracket_depth += 1;
+                    self.pos += 1;
+                }
+                b']' if bracket_depth > 0 => {
+                    // Closing bracket of a nested `[...]` inside args — track depth.
+                    bracket_depth -= 1;
+                    self.pos += 1;
+                }
+                b']' => {
+                    // `]` at bracket_depth == 0 means we've hit the closing bracket of an
+                    // outer hook (e.g. a macro inside `(verbatim:)[...]` that is missing its `)`)
+                    // — stop here so we don't consume past the hook boundary.
+                    break;
+                }
                 b'(' => {
                     depth += 1;
                     self.pos += 1;
@@ -345,7 +363,7 @@ impl<'a> Parser<'a> {
                     }
                     // Don't advance past the final `)` — caller handles it
                 }
-                b'"' => {
+                b'"' if bracket_depth == 0 => {
                     self.pos += 1;
                     while !self.at_end() && self.bytes[self.pos] != b'"' {
                         if self.bytes[self.pos] == b'\\' {
@@ -357,7 +375,7 @@ impl<'a> Parser<'a> {
                         self.pos += 1; // skip closing `"`
                     }
                 }
-                b'\'' => {
+                b'\'' if bracket_depth == 0 => {
                     // Harlowe `'s` possessive — NOT a string delimiter.
                     // Only enter string-scan mode for `'non-s...'` or `'s` followed by
                     // an identifier character (e.g. `'stop'`). A bare `'s ` / `'s(` / `'s,`
@@ -1530,6 +1548,36 @@ You're at the **plaza**
         } else {
             panic!("expected if macro");
         }
+    }
+
+    #[test]
+    fn test_apostrophe_in_hook_literal_arg_does_not_unclos_macro() {
+        // Regression: apostrophes in hook literals used as macro args (e.g. `(prompt: [label])`)
+        // were incorrectly treated as string delimiters in `extract_balanced_args`, causing
+        // the outer `(set:` to appear unclosed.
+        // Source pattern: `(set: $x to (prompt: [It doesn't matter.], "", ""))`
+        let ast = parse(
+            r#"(link: "Go")[(set: $x to (prompt: [It doesn't matter.], "", ""))(goto: "next")]"#,
+        );
+        assert_eq!(ast.errors.len(), 0, "apostrophe in hook arg should not break macro parsing");
+    }
+
+    #[test]
+    fn test_unclosed_macro_inside_verbatim_hook_does_not_consume_past_bracket() {
+        // Regression: an unclosed macro inside `(verbatim:)[...]` was consuming past the `]`
+        // that closes the verbatim hook, making the span extend to end-of-passage.
+        // Now `extract_balanced_args` stops at `]` when bracket_depth==0.
+        let ast = parse("before (verbatim:)[(set: bad macro] after");
+        // The (set: is unclosed — we expect 1 parse error, but the 'after' text
+        // must still be visible as a sibling node (not swallowed).
+        assert_eq!(ast.errors.len(), 1);
+        // 'before ' and 'after' should both be parsed
+        let text_nodes: Vec<_> = ast
+            .body
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Text(_)))
+            .collect();
+        assert!(!text_nodes.is_empty(), "text before verbatim should be present");
     }
 
     #[test]

@@ -69,6 +69,10 @@ pub enum TokenKind {
     // Time literal
     TimeLiteral(f64), // value in seconds
 
+    /// `[hook content]` — hook literal used as a macro argument (e.g. `(prompt: [label], "default")`).
+    /// The inner text is the raw passage content; coerced to a string when used as a string arg.
+    HookLit(String),
+
     // Special
     Eof,
     Error(String),
@@ -479,6 +483,7 @@ impl<'a> ExprLexer<'a> {
                     }
                 }
             }
+            b'[' => self.lex_hook_lit(start),
             c if c.is_ascii_alphabetic() => self.lex_ident_or_keyword(start),
             _ => {
                 self.advance();
@@ -490,6 +495,35 @@ impl<'a> ExprLexer<'a> {
                     span: self.span(start),
                 }
             }
+        }
+    }
+
+    /// Lex a `[hook content]` literal in expression position.
+    /// Scans to the matching `]` (tracking nested `[...]` depth).
+    /// The inner text is returned as a `HookLit` token so the expression parser
+    /// can treat it as a string-coercible value (e.g. for `(prompt: [label], "")`).
+    fn lex_hook_lit(&mut self, start: usize) -> Token {
+        self.advance(); // skip opening `[`
+        let text_start = self.pos;
+        let mut depth = 1usize;
+        while self.pos < self.bytes.len() && depth > 0 {
+            match self.bytes[self.pos] {
+                b'[' => { depth += 1; self.pos += 1; }
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 { break; }
+                    self.pos += 1;
+                }
+                _ => { self.pos += 1; }
+            }
+        }
+        let text = self.input[text_start..self.pos].to_string();
+        if self.pos < self.bytes.len() {
+            self.pos += 1; // skip closing `]`
+        }
+        Token {
+            kind: TokenKind::HookLit(text),
+            span: self.span(start),
         }
     }
 
