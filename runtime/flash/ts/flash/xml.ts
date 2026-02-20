@@ -39,7 +39,7 @@ export function xmlList(items: any[]): any {
 }
 
 function isXmlList(v: any): boolean {
-  return Array.isArray(v) && v[XML_LIST_TAG] === true;
+  return Array.isArray(v) && (v as any)[XML_LIST_TAG] === true;
 }
 
 const xmlListHandler: ProxyHandler<any[]> = {
