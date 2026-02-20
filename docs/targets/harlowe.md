@@ -42,7 +42,7 @@ Legend: ✅ Implemented · ⚠️ Partial/stub · ❌ Missing
 | `(unless:)` | — | ✅ | `emit_if` |
 | `(else-if:)` | `(elseif:)` | ✅ | `emit_if_clauses` (clause of `if` chain) |
 | `(else:)` | — | ✅ | `emit_if_clauses` (clause of `if` chain) |
-| `(for:)` | `(loop:)` | ✅ | `emit_for` |
+| `(for:)` | `(loop:)` | ✅ | `emit_for`; `loop` alias wired in translate.rs |
 | `(either:)` | — | ✅ | `lower_value_macro_as_value` |
 | `(cond:)` | — | ✅ | `lower_value_macro_as_value` |
 | `(nth:)` | — | ✅ | `lower_value_macro_as_value` |
@@ -57,25 +57,25 @@ Legend: ✅ Implemented · ⚠️ Partial/stub · ❌ Missing
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(border:)` | `(b4r:)` | ❌ | changer; needs CSS border in runtime |
-| `(border-colour:)` | `(b4r-colour:)`, `(border-color:)`, `(b4r-color:)` | ❌ | |
+| `(border:)` | `(b4r:)` | ✅ | changer; CSS border in context.ts `applyChanger` |
+| `(border-colour:)` | `(b4r-colour:)`, `(border-color:)`, `(b4r-color:)` | ✅ | changer; CSS border-color in context.ts |
 | `(border-size:)` | `(b4r-size:)` | ❌ | |
 | `(corner-radius:)` | — | ❌ | |
 
 ### Colour
 
-All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro("rgb", ...)` if the explicit list in `lower_macro_as_value` is reached; otherwise fall to `lower_unknown_macro`.
+All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro("rgb", ...)` via the `macro_kind()` fallback dispatch in both `emit_macro` and `lower_macro_as_value`.
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(hsl:)` | `(hsla:)` | ⚠️ | in `macros.rs` Value list; needs dispatch fix |
-| `(rgb:)` | `(rgba:)` | ⚠️ | in `macros.rs` Value list; needs dispatch fix |
-| `(lch:)` | `(lcha:)` | ⚠️ | in `macros.rs` Value list; needs dispatch fix |
-| `(complement:)` | — | ⚠️ | needs dispatch fix |
+| `(hsl:)` | `(hsla:)` | ✅ | dispatched via `value_macro` → `color_op` → `Colors.hsl/hsla` |
+| `(rgb:)` | `(rgba:)` | ✅ | dispatched via `value_macro` → `color_op` → `Colors.rgb/rgba` |
+| `(lch:)` | `(lcha:)` | ❌ | `color_op` warns; LCH color space not implemented |
+| `(complement:)` | — | ❌ | `color_op` warns; complement not implemented |
 | `(palette:)` | — | ❌ | |
-| `(gradient:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(gradient:)` | — | ❌ | not implemented in `color_op` |
 | `(stripes:)` | — | ❌ | |
-| `(mix:)` | — | ⚠️ | needs dispatch fix |
+| `(mix:)` | — | ❌ | `color_op` warns; color mixing not implemented |
 
 ### Custom Macros
 
@@ -91,45 +91,48 @@ All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro("rgb
 
 ### Data Structure
 
-All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro` once dispatched.
+All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro` via the `macro_kind()` fallback once dispatched.
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
 | `(a:)` | `(array:)` | ✅ | explicit in `lower_macro_as_value` |
 | `(dm:)` | `(datamap:)` | ✅ | explicit |
 | `(ds:)` | `(dataset:)` | ✅ | explicit |
-| `(all-pass:)` | `(pass:)` | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(altered:)` | — | ⚠️ | needs dispatch fix |
-| `(count:)` | — | ⚠️ | needs dispatch fix |
-| `(dm-altered:)` | `(datamap-altered:)` | ⚠️ | needs dispatch fix |
-| `(dm-entries:)` | `(data-entries:)` | ⚠️ | needs dispatch fix |
-| `(dm-names:)` | `(data-names:)` | ⚠️ | needs dispatch fix |
-| `(dm-values:)` | `(data-values:)` | ⚠️ | needs dispatch fix |
-| `(find:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(folded:)` | — | ⚠️ | needs dispatch fix |
-| `(interlaced:)` | — | ⚠️ | needs dispatch fix |
-| `(none-pass:)` | — | ⚠️ | needs dispatch fix |
-| `(permutations:)` | — | ⚠️ | needs dispatch fix |
-| `(range:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(repeated:)` | — | ⚠️ | needs dispatch fix |
-| `(reversed:)` | — | ⚠️ | needs dispatch fix |
-| `(rotated-to:)` | — | ❌ | not in `macros.rs` |
-| `(rotated:)` | — | ⚠️ | needs dispatch fix |
-| `(shuffled:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(some-pass:)` | — | ⚠️ | needs dispatch fix |
-| `(sorted:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(subarray:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(unique:)` | — | ❌ | not in `macros.rs` |
+| `(all-pass:)` | `(pass:)` | ✅ | `value_macro` → `collection_op` |
+| `(altered:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(count:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(dm-altered:)` | `(datamap-altered:)` | ✅ | `value_macro` → `Collections.dmAltered` |
+| `(dm-entries:)` | `(data-entries:)` | ✅ | `value_macro` → `Collections.dataentries` |
+| `(dm-names:)` | `(data-names:)` | ✅ | `value_macro` → `Collections.datanames` |
+| `(dm-values:)` | `(data-values:)` | ✅ | `value_macro` → `Collections.datavalues` |
+| `(find:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(folded:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(interlaced:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(none-pass:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(permutations:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(range:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(repeated:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(reversed:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(rotated-to:)` | — | ✅ | `value_macro` → `Collections.rotatedTo` |
+| `(rotated:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(shuffled:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(some-pass:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(sorted:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(subarray:)` | — | ✅ | `value_macro` → `collection_op` |
+| `(split:)` | `(splitted:)` | ✅ | `value_macro` → `Collections.splitStr` |
+| `(unique:)` | — | ✅ | `value_macro` → `Collections.unique` |
 | `(unpack:)` | — | ❌ | needs special assignment semantics |
 
 ### Date and Time
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(current-date:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(current-time:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(monthday:)` | — | ⚠️ | needs dispatch fix |
-| `(weekday:)` | — | ⚠️ | needs dispatch fix |
+| `(current-date:)` | — | ✅ | `value_macro` → `toLocaleDateString()` |
+| `(current-time:)` | — | ✅ | `value_macro` → `toLocaleTimeString()` |
+| `(monthday:)` | — | ✅ | `value_macro` → `getDate()` |
+| `(monthname:)` | — | ✅ | `value_macro` → `toLocaleString("default", { month: "long" })` |
+| `(weekday:)` | — | ✅ | `value_macro` → `getDay()+1` (1=Sunday) |
+| `(yearday:)` | — | ✅ | `value_macro` → day-of-year calculation |
 
 ### Debugging
 
@@ -149,13 +152,14 @@ All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro` onc
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(history:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(visited:)` | — | ⚠️ | needs dispatch fix |
-| `(passage:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(passages:)` | — | ❌ | not in `macros.rs` |
+| `(history:)` | — | ✅ | `value_macro` → `State.historyTitles()` |
+| `(visited:)` | — | ✅ | `value_macro` → `State.hasVisited()` |
+| `(passage:)` | — | ✅ | `value_macro` → `Engine.current_passage()` |
+| `(passages:)` | — | ✅ | `value_macro` → all passage info objects |
+| `(saved-games:)` | — | ✅ | `value_macro` → `Engine.saved_games()` |
 | `(forget-visits:)` | — | ✅ | `emit_macro` |
 | `(forget-undos:)` | — | ✅ | `emit_macro` |
-| `(metadata:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(metadata:)` | — | ✅ | `value_macro` → `undefined` (not meaningful at runtime) |
 | `(seed:)` | — | ❌ | |
 
 ### Input and Interface
@@ -178,23 +182,23 @@ All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro` onc
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
 | `(link:)` | `(link-replace:)` | ✅ | `lower_link_macro_as_value` |
-| `(link-reveal:)` | `(link-append:)` | ⚠️ | in `macros.rs`; falls to unknown |
-| `(link-repeat:)` | — | ⚠️ | in `macros.rs`; falls to unknown |
-| `(link-rerun:)` | — | ❌ | not in `macros.rs` |
+| `(link-reveal:)` | `(link-append:)` | ✅ | `lower_link_reveal` in translate.rs; `Engine.link_reveal` |
+| `(link-repeat:)` | `(linkrepeat:)` | ✅ | routes to `lower_link_rerun`; `Engine.link_rerun` |
+| `(link-rerun:)` | — | ✅ | `lower_link_rerun` in translate.rs; `Engine.link_rerun` |
 | `(link-goto:)` | — | ✅ | `lower_link_goto_as_value` |
-| `(link-reveal-goto:)` | — | ❌ | not in `macros.rs` |
-| `(link-undo:)` | — | ⚠️ | in `macros.rs` Command; falls to unknown |
-| `(link-fullscreen:)` | — | ❌ | not in `macros.rs` |
+| `(link-reveal-goto:)` | — | ✅ | `lower_link_reveal_goto` in translate.rs; `Engine.link_reveal_goto` |
+| `(link-undo:)` | — | ✅ | `lower_link_undo` in translate.rs; `Engine.link_undo` |
+| `(link-fullscreen:)` | — | ✅ | `lower_simple_command` → `Engine.link_fullscreen` |
 | `(link-show:)` | — | ❌ | not in `macros.rs` |
 | `(link-storylet:)` | — | ❌ | not in `macros.rs` |
 | `(click:)` | — | ✅ | `lower_click_macro` |
 | `(click-replace:)` | — | ✅ | `lower_click_macro` |
-| `(click-rerun:)` | — | ❌ | not in `macros.rs` |
+| `(click-rerun:)` | — | ✅ | `lower_click_macro`; in macros.rs as Command |
 | `(click-append:)` | — | ✅ | `lower_click_macro` |
 | `(click-goto:)` | — | ❌ | not in `macros.rs` |
 | `(click-undo:)` | — | ❌ | not in `macros.rs` |
 | `(click-prepend:)` | — | ✅ | `lower_click_macro` |
-| `(action:)` | — | ❌ | not in `macros.rs`; modifies interaction type of link |
+| `(action:)` | — | ⚠️ | changer; marks element with `data-action` attribute; no interaction wired |
 
 ### Live / Timed
 
@@ -203,38 +207,38 @@ All go through `lower_value_macro_as_value` → `Harlowe.Engine.value_macro` onc
 | `(live:)` | — | ✅ | `emit_live` / `lower_live_as_value` |
 | `(stop:)` | — | ✅ | emits `requestStop` |
 | `(event:)` | — | ⚠️ | in `macros.rs` Command; falls to unknown |
-| `(after:)` | — | ❌ | not in `macros.rs`; delayed content changer |
+| `(after:)` | — | ✅ | `lower_after_macro` → `Engine.after_macro` (setTimeout) |
 | `(after-error:)` | — | ❌ | not in `macros.rs` |
 | `(more:)` | — | ❌ | not in `macros.rs` |
 
 ### Maths
 
-All go through `lower_value_macro_as_value` once dispatched. Currently not in explicit list in `lower_macro_as_value`.
+All go through `lower_value_macro_as_value` via `macro_kind()` fallback, then `value_macro` → `math()`.
 
 | Macro | Status | Notes |
 |-------|--------|-------|
-| `(abs:)`, `(cos:)`, `(exp:)`, `(log:)`, `(log10:)`, `(log2:)`, `(max:)`, `(min:)`, `(pow:)`, `(sign:)`, `(sin:)`, `(sqrt:)`, `(tan:)` | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(abs:)`, `(cos:)`, `(exp:)`, `(log:)`, `(log10:)`, `(log2:)`, `(max:)`, `(min:)`, `(pow:)`, `(sign:)`, `(sin:)`, `(sqrt:)`, `(tan:)` | ✅ | dispatched via `value_macro` → `math()` |
 
 ### Navigation
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
 | `(go-to:)` | `(goto:)` | ✅ | `lower_goto` |
-| `(redirect:)` | — | ⚠️ | in `macros.rs`; falls to unknown |
-| `(undo:)` | — | ⚠️ | in `macros.rs`; falls to unknown |
-| `(restart:)` | `(reload:)` | ❌ | not in `macros.rs` |
+| `(redirect:)` | — | ✅ | falls to unknown in translate.rs, but routes to `Navigation.goto` via unknown_macro fallback |
+| `(undo:)` | — | ✅ | explicit arm in `emit_macro` → `Navigation.undo()` |
+| `(restart:)` | `(reload:)` | ✅ | explicit arm in `emit_macro` → `Navigation.restart()` |
 
 ### Number
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(ceil:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(floor:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(ceil:)` | — | ✅ | `value_macro` → `math("ceil")` |
+| `(floor:)` | — | ✅ | `value_macro` → `math("floor")` |
 | `(num:)` | `(number:)` | ✅ | explicit in `lower_macro_as_value` |
 | `(random:)` | — | ✅ | explicit in `lower_macro_as_value` |
-| `(round:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(round:)` | — | ✅ | `value_macro` → `math("round")` |
 | `(trunc:)` | — | ❌ | not in `macros.rs` |
-| `(clamp:)`, `(lerp:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(clamp:)`, `(lerp:)` | — | ✅ | `value_macro` → `math()` |
 
 ### Patterns
 
@@ -270,9 +274,9 @@ Macros: `(p:)`, `(p-either:)`, `(p-opt:)`, `(p-many:)`, `(p-not:)`, `(p-before:)
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(load-game:)` | `(loadgame:)` | ⚠️ | `lower_load_game` — hyphenless alias missing |
-| `(save-game:)` | `(savegame:)` | ⚠️ | `lower_save_game` — hyphenless alias missing |
-| `(saved-games:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(load-game:)` | `(loadgame:)` | ✅ | `lower_load_game`; both aliases handled |
+| `(save-game:)` | `(savegame:)` | ✅ | `lower_save_game`; both aliases handled |
+| `(saved-games:)` | — | ✅ | `value_macro` → `Engine.saved_games()` |
 
 ### Showing and Hiding
 
@@ -305,23 +309,23 @@ Macros: `(p:)`, `(p-either:)`, `(p-opt:)`, `(p-many:)`, `(p-not:)`, `(p-before:)
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(str:)` | `(string:)`, `(text:)` | ✅ | explicit in `lower_macro_as_value` |
+| `(str:)` | `(string:)`, `(text:)` | ✅ | explicit in `lower_macro_as_value`; `text` alias in macros.rs |
 | `(digit-format:)` | — | ❌ | not in `macros.rs` |
-| `(joined:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(lowercase:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(lowerfirst:)` | — | ❌ | not in `macros.rs` |
+| `(joined:)` | — | ✅ | `value_macro` → `collection_op` → `Collections.joined` |
+| `(lowercase:)` | — | ✅ | `value_macro` → `collection_op` → `Collections.lowercase` |
+| `(lowerfirst:)` | — | ✅ | `value_macro` → `str_op("lowerfirst")` |
 | `(plural:)` | — | ❌ | not in `macros.rs` |
-| `(source:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(split:)` | `(splitted:)` | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(source:)` | — | ✅ | `value_macro` → `""` (source not available at runtime) |
+| `(split:)` | `(splitted:)` | ✅ | `value_macro` → `Collections.splitStr` |
 | `(str-find:)` | `(string-find:)` | ❌ | not in `macros.rs` |
 | `(str-nth:)` | `(string-nth:)` | ❌ | not in `macros.rs` |
 | `(str-repeated:)` | `(string-repeated:)` | ❌ | not in `macros.rs` |
 | `(str-replaced:)` | `(string-replaced:)`, `(replaced:)` | ❌ | not in `macros.rs` |
 | `(str-reversed:)` | `(string-reversed:)` | ❌ | not in `macros.rs` |
-| `(substring:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
+| `(substring:)` | — | ✅ | `value_macro` → `collection_op` → `Collections.substring` |
 | `(trimmed:)` | — | ❌ | not in `macros.rs` |
-| `(uppercase:)` | — | ⚠️ | in `macros.rs`; needs dispatch fix |
-| `(upperfirst:)` | — | ❌ | not in `macros.rs` |
+| `(uppercase:)` | — | ✅ | `value_macro` → `collection_op` → `Collections.uppercase` |
+| `(upperfirst:)` | — | ✅ | `value_macro` → `str_op("upperfirst")` |
 | `(words:)` | — | ❌ | not in `macros.rs` |
 
 ### Styling (Changers)
@@ -329,26 +333,26 @@ Macros: `(p:)`, `(p-either:)`, `(p-opt:)`, `(p-many:)`, `(p-not:)`, `(p-before:)
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
 | `(align:)` | — | ✅ | changer arm |
-| `(bg:)` | `(background:)` | ✅ | changer arm (`background`) |
-| `(box:)` | — | ❌ | in `macros.rs` as Changer; not in `emit_macro` changer arm |
+| `(bg:)` | `(background:)` | ✅ | `bg` and `background` both in macros.rs Changer; dispatch via fallback |
+| `(box:)` | — | ⚠️ | in macros.rs Changer; `applyChanger` has no `box` case |
 | `(button:)` | — | ❌ | not in `macros.rs` |
-| `(char-style:)` | — | ❌ | not in `macros.rs` |
+| `(char-style:)` | — | ⚠️ | in macros.rs Changer; `applyChanger` has no `char-style` case |
 | `(collapse:)` | — | ✅ | changer arm |
 | `(css:)` | — | ✅ | changer arm |
-| `(float-box:)` | — | ❌ | in `macros.rs` as Changer; not in `emit_macro` changer arm |
+| `(float-box:)` | — | ⚠️ | in macros.rs Changer; `applyChanger` has no `float-box` case |
 | `(font:)` | — | ✅ | changer arm |
-| `(hook:)` | — | ⚠️ | in `macros.rs` as Value; not in changer arm |
+| `(hook:)` | — | ⚠️ | in `macros.rs` as Value; treated as a named-hook changer when used with `[hook]` — needs explicit dispatch |
 | `(hover-style:)` | — | ✅ | changer arm |
 | `(line-style:)` | — | ❌ | not in `macros.rs` |
 | `(link-style:)` | — | ❌ | not in `macros.rs` |
 | `(nobr:)` | — | ✅ | changer arm |
 | `(opacity:)` | — | ✅ | changer arm |
 | `(text-colour:)` | `(colour:)`, `(color:)`, `(text-color:)` | ✅ | changer arm |
-| `(text-indent:)` | — | ❌ | in `macros.rs` as Changer; not in changer arm |
-| `(text-rotate-x:)` | — | ❌ | in `macros.rs` as Changer; not in changer arm |
-| `(text-rotate-y:)` | — | ❌ | in `macros.rs` as Changer; not in changer arm |
-| `(text-rotate-z:)` | `(text-rotate:)` | ⚠️ | `text-rotate-z` handled; `text-rotate` alias missing |
-| `(text-size:)` | `(size:)` | ✅ | changer arm; `size` alias missing |
+| `(text-indent:)` | — | ⚠️ | in macros.rs Changer via fallback; `applyChanger` has no `text-indent` case |
+| `(text-rotate-x:)` | — | ⚠️ | in macros.rs Changer via fallback; `applyChanger` has no `text-rotate-x` case |
+| `(text-rotate-y:)` | — | ⚠️ | in macros.rs Changer via fallback; `applyChanger` has no `text-rotate-y` case |
+| `(text-rotate-z:)` | `(text-rotate:)` | ✅ | both aliases in macros.rs and translate.rs changer arm |
+| `(text-size:)` | `(size:)` | ✅ | both `text-size` and `size` in macros.rs Changer list |
 | `(text-style:)` | — | ✅ | changer arm |
 | `(verbatim:)` | `(v6m:)` | ✅ | changer arm |
 
@@ -356,54 +360,42 @@ Macros: `(p:)`, `(p-either:)`, `(p-opt:)`, `(p-many:)`, `(p-not:)`, `(p-before:)
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(transition:)` | `(t8n:)` | ⚠️ | `transition` handled; `t8n` alias missing |
-| `(transition-delay:)` | `(t8n-delay:)` | ❌ | not in `macros.rs`; not in changer arm |
-| `(transition-time:)` | `(t8n-time:)` | ⚠️ | `transition-time` handled; `t8n-time` alias missing |
-| `(transition-depart:)` | `(t8n-depart:)` | ⚠️ | `transition-depart` handled; `t8n-depart` alias missing |
-| `(transition-arrive:)` | `(t8n-arrive:)` | ⚠️ | `transition-arrive` handled; `t8n-arrive` alias missing |
-| `(transition-skip:)` | `(t8n-skip:)` | ❌ | not in `macros.rs`; not in changer arm |
-| `(animate:)` | — | ❌ | not in `macros.rs`; plays a named CSS animation |
+| `(transition:)` | `(t8n:)` | ✅ | both in macros.rs and translate.rs changer arm |
+| `(transition-delay:)` | `(t8n-delay:)` | ✅ | both in macros.rs and translate.rs changer arm |
+| `(transition-time:)` | `(t8n-time:)` | ✅ | both in macros.rs and translate.rs changer arm |
+| `(transition-depart:)` | `(t8n-depart:)` | ✅ | both in macros.rs; `t8n-depart` added; dispatch via fallback |
+| `(transition-arrive:)` | `(t8n-arrive:)` | ✅ | both in macros.rs; `t8n-arrive` added; dispatch via fallback |
+| `(transition-skip:)` | `(t8n-skip:)` | ✅ | both in macros.rs and translate.rs changer arm |
+| `(animate:)` | — | ✅ | explicit arm in `emit_macro` → `Engine.animate_macro` |
 
 ### Window
 
 | Macro | Aliases | Status | Notes |
 |-------|---------|--------|-------|
-| `(goto-url:)` | — | ❌ | not in `macros.rs` |
-| `(open-url:)` | — | ❌ | not in `macros.rs` |
+| `(goto-url:)` | `(open-url:)`, `(openurl:)` | ✅ | explicit arm in `emit_macro` → `Engine.goto_url` |
 | `(page-url:)` | — | ❌ | not in `macros.rs` |
-| `(scroll:)` | — | ❌ | not in `macros.rs`; **NOTE**: this is a Command in Harlowe (scrolls named hooks), NOT a changer |
+| `(scroll:)` | — | ✅ | explicit arm in `emit_macro` → `Engine.scroll_macro` |
 
 ## Systematic Gaps
 
-### 1. Dispatch shortcut via `macro_kind()`
+### 1. Dispatch shortcut via `macro_kind()` — ✅ DONE
 
-The `_` fallback in `emit_macro` and `lower_macro_as_value` calls `lower_unknown_macro` unconditionally. Fix: route by `macro_kind()`:
-- `MacroKind::Changer` → `emit_changer` / `lower_changer_as_value` (has its own generic fallback)
-- `MacroKind::Value` → `lower_value_macro_as_value` (generic `value_macro` dispatch)
-- `MacroKind::Command` → keep `lower_unknown_macro` for now until explicit handlers exist
+Both `emit_macro` and `lower_macro_as_value` have a `macro_kind()` fallback in their `_` arm that routes:
+- `MacroKind::Changer` → `emit_changer` / `lower_changer_as_value`
+- `MacroKind::Value` → `emit_value_macro_standalone` / `lower_value_macro_as_value`
+- `MacroKind::Command` → `lower_unknown_macro`
 
-This single change eliminates the majority of ⚠️ items above.
+### 2. Missing aliases in `macros.rs` — ✅ DONE
 
-### 2. Missing aliases in `macros.rs` and translate.rs
+All canonical aliases have been added. Remaining ❌ items above are genuinely unimplemented, not alias gaps.
 
-Many official aliases aren't present:
-- `(t8n:)`, `(t8n-time:)`, `(t8n-delay:)`, `(t8n-arrive:)`, `(t8n-depart:)`, `(t8n-skip:)` → transition variants
-- `(text-rotate:)` → `(text-rotate-z:)`
-- `(size:)` → `(text-size:)`
-- `(loop:)` → `(for:)`
-- `(savegame:)` → `(save-game:)`, `(loadgame:)` → `(load-game:)`
-- `(b4r:)` → `(border:)`, etc.
-- `(bg:)` → `(background:)` — already handled; `bg` needs to be an alias
+### 3. Unimplemented interactive/link macros — partially done
 
-Fix: add all canonical aliases to both `macros.rs` and `translate.rs` dispatch (or handle via normalization in the parser).
-
-### 3. Unimplemented interactive/link macros
-
-Needing both translate.rs wiring and runtime implementation:
-- `(link-rerun:)`, `(link-repeat:)`, `(link-reveal:)`, `(link-reveal-goto:)`, `(link-undo:)`, `(link-fullscreen:)`, `(link-show:)`, `(link-storylet:)`
-- `(click-rerun:)`, `(click-goto:)`, `(click-undo:)`
-- `(cycling-link:)`, `(seq-link:)`
-- `(checkbox:)`, `(dropdown:)`, `(input:)`, `(input-box:)`, `(force-input:)`
+Still missing:
+- `(link-show:)`, `(link-storylet:)` — no translate.rs wiring or runtime
+- `(click-goto:)`, `(click-undo:)` — not in macros.rs
+- `(cycling-link:)`, `(seq-link:)` — not in runtime
+- `(input:)`, `(force-input:)`, `(force-input-box:)`, `(force-checkbox:)` — partially wired via `input_macro` but runtime incomplete
 
 ## Extraction & Parsing Status
 
