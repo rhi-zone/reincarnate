@@ -634,7 +634,7 @@ export class HarloweEngine {
     const storyEl = this.story();
     if (!storyEl) return;
     const css = resolveHookSelector(selector);
-    enchantElements(storyEl as Element, css, changer as Changer | Changer[], this.doc());
+    enchantElements(storyEl as Element, css, changer as Changer | Changer[] | ((item: Element, pos: number) => Changer | Changer[]), this.doc());
   }
 
   /** `(enchant-in: selector, changer)` — like enchant but scoped to current passage. */
@@ -642,7 +642,7 @@ export class HarloweEngine {
     const passageEl = this.passage();
     if (!passageEl) return;
     const css = resolveHookSelector(selector);
-    enchantElements(passageEl as Element, css, changer as Changer | Changer[], this.doc());
+    enchantElements(passageEl as Element, css, changer as Changer | Changer[] | ((item: Element, pos: number) => Changer | Changer[]), this.doc());
   }
 
   // --- Dialog ---
@@ -757,7 +757,7 @@ export class HarloweEngine {
   }
 
   /** `(scroll:)` — scroll to a named hook or the top of the page. */
-  scroll_macro(selector?: string, _hideSelector?: string): void {
+  scroll_macro(selector?: string, _durationOrHideTarget?: any): void {
     const container = this.story();
     if (!container) return;
     if (selector) {
@@ -1374,15 +1374,16 @@ function resolveHookSelector(selector: any): string {
 }
 
 /** Apply a changer to matching elements by wrapping them in tw-enchantment. */
-function enchantElements(scope: Element, selector: string, changer: Changer | Changer[], doc: DocumentFactory): void {
+function enchantElements(scope: Element, selector: string, changer: Changer | Changer[] | ((item: Element, pos: number) => Changer | Changer[]), doc: DocumentFactory): void {
   const targets = scope.querySelectorAll(selector);
-  targets.forEach(el => {
+  targets.forEach((el, i) => {
     if (el.parentElement?.tagName.toLowerCase() === "tw-enchantment") return;
     const wrapper = doc.createElement("tw-enchantment") as HTMLElement;
-    if (Array.isArray(changer)) {
-      for (const c of changer) applyChangerToElement(wrapper, c);
+    const resolved = typeof changer === "function" ? changer(el as Element, i + 1) : changer;
+    if (Array.isArray(resolved)) {
+      for (const c of resolved) applyChangerToElement(wrapper, c);
     } else {
-      applyChangerToElement(wrapper, changer);
+      applyChangerToElement(wrapper, resolved);
     }
     el.parentNode?.insertBefore(wrapper, el);
     wrapper.appendChild(el);

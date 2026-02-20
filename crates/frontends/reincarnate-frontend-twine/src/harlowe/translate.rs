@@ -1137,7 +1137,7 @@ impl TranslateCtx {
 
         // --- 2. Build the closure FunctionBuilder ---
         let sig = FunctionSig {
-            params: vec![param_ty.clone()],
+            params: vec![param_ty.clone(), Type::Int(32)],
             return_ty: return_ty.clone(),
             defaults: vec![],
             has_rest_param: false,
@@ -1145,6 +1145,7 @@ impl TranslateCtx {
         let mut cb_fb = FunctionBuilder::new(&cb_name, sig, Visibility::Public);
         cb_fb.set_method_kind(MethodKind::Closure);
         let item_param = cb_fb.param(0);
+        let pos_param = cb_fb.param(1);
 
         // Register capture params (appended after regular params in entry block).
         let cap_ids = cb_fb.add_capture_params(capture_spec);
@@ -1161,6 +1162,12 @@ impl TranslateCtx {
         self.fb.name_value(alloc, format!("_{var}"));
         self.fb.store(alloc, item_param);
         self.temp_vars.insert(var.to_string(), alloc);
+
+        // Bind `pos` to the 1-based position parameter so `pos` inside the body resolves.
+        let pos_alloc = self.fb.alloc(Type::Int(32));
+        self.fb.name_value(pos_alloc, "_pos".to_string());
+        self.fb.store(pos_alloc, pos_param);
+        self.temp_vars.insert("pos".to_string(), pos_alloc);
 
         let result = if let Some(filter_expr) = filter {
             self.lower_expr(filter_expr)
@@ -1498,10 +1505,6 @@ impl TranslateCtx {
             }
         }
 
-        // Need at least 2 changers to be a real composition chain.
-        if changer_indices.len() < 2 {
-            return None;
-        }
         let last_idx = *changer_indices.last().unwrap();
         let has_hook = matches!(
             &nodes[last_idx].kind,
@@ -1509,7 +1512,12 @@ impl TranslateCtx {
         );
         // If no terminal hook, try to use remaining nodes as the implicit hook.
         // This handles: `(ch1) + (ch2) + remaining_content` inside a named hook body.
+        // Also handles the single-changer case: `(ch)[remaining_content]` (pending changer).
         if !has_hook && i >= nodes.len() {
+            return None;
+        }
+        // Single changer with its own explicit hook is handled by normal changer lowering.
+        if changer_indices.len() < 2 && has_hook {
             return None;
         }
 
@@ -2288,6 +2296,15 @@ impl TranslateCtx {
                     "turns" => self
                         .fb
                         .system_call("Harlowe.State", "turns", &[], Type::Dynamic),
+                    // `pos` — 1-based position inside lambda callbacks (via, for, enchant).
+                    // When we're inside a lambda, it's bound in temp_vars as "pos".
+                    "pos" => {
+                        if let Some(&alloc) = self.temp_vars.get("pos") {
+                            self.fb.load(alloc, Type::Int(32))
+                        } else {
+                            self.fb.const_string("pos")
+                        }
+                    }
                     _ => self.fb.const_string(name.as_str()),
                 }
             }
@@ -2926,8 +2943,9 @@ You're at the **plaza**
             "should produce exactly one lambda callback"
         );
         let cb = &result.callbacks[0];
-        assert_eq!(cb.sig.params.len(), 1, "lambda callback takes one param");
+        assert_eq!(cb.sig.params.len(), 2, "lambda callback takes (item, pos) params");
         assert_eq!(cb.sig.params[0], Type::Dynamic);
+        assert_eq!(cb.sig.params[1], Type::Int(32), "second param is 1-based pos");
         assert_eq!(cb.sig.return_ty, Type::Bool);
         // Main func should have a collection_op("find", ...) call
         let func = &result.func;
