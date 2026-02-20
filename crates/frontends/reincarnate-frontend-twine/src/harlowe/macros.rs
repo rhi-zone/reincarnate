@@ -28,10 +28,12 @@ pub fn macro_kind(name: &str) -> MacroKind {
         "set" | "put" | "move" | "goto" | "go-to" | "display" | "print" | "save-game"
         | "savegame" | "load-game" | "loadgame" | "alert" | "prompt" | "confirm" | "stop"
         | "replace" | "append" | "prepend" | "show" | "hide" | "rerun" | "redo" | "redirect"
-        | "link-goto" | "link-undo" | "link-reveal" | "link-repeat" | "link-rerun"
-        | "link-replace" | "link-fullscreen" | "click" | "click-replace" | "click-append"
+        | "link-goto" | "link-undo" | "link-reveal" | "link-repeat" | "linkrepeat"
+        | "link-reveal-goto" | "link-rerun" | "link-replace" | "link-fullscreen"
+        | "click" | "click-replace" | "click-append"
         | "click-prepend" | "click-rerun" | "cycling-link" | "seq-link" | "animate"
-        | "goto-url" | "restart" | "reload" | "scroll" | "after" => MacroKind::Command,
+        | "goto-url" | "openurl" | "open-url" | "restart" | "reload" | "scroll"
+        | "after" => MacroKind::Command,
 
         // Changers — includes t8n* aliases and transition-delay/text-rotate aliases
         "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font" | "align"
@@ -49,6 +51,7 @@ pub fn macro_kind(name: &str) -> MacroKind {
         | "sign" | "clamp" | "lerp" | "sorted" | "reversed" | "rotated" | "shuffled"
         | "interlaced" | "folded" | "altered" | "count" | "range" | "repeated" | "joined"
         | "some-pass" | "all-pass" | "none-pass" | "find" | "lowercase" | "uppercase"
+        | "upperfirst" | "lowerfirst"
         | "cond" | "nth" | "substring" | "subarray" | "bit" | "rgb" | "rgba" | "hsl"
         | "hsla" | "gradient" | "lch" | "lcha" | "complement" | "mix"
         | "weekday" | "monthday" | "monthname" | "yearday" | "current-date" | "current-time"
@@ -92,7 +95,9 @@ pub fn expects_hook(name: &str) -> bool {
             "link"
                 | "link-goto"
                 | "link-reveal"
+                | "link-reveal-goto"
                 | "link-repeat"
+                | "linkrepeat"
                 | "link-rerun"
                 | "link-replace"
                 | "click"

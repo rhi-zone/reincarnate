@@ -552,7 +552,13 @@ impl TranslateCtx {
             // Links (side effect — emits link element)
             "link" | "link-replace" => { self.emit_link_macro(mac); }
             "link-goto" => { self.emit_link_goto(mac); }
-            "link-rerun" => self.lower_link_rerun(mac),
+            "link-rerun" | "link-repeat" | "linkrepeat" => self.lower_link_rerun(mac),
+            "link-reveal" => self.lower_link_reveal(mac),
+            "link-reveal-goto" => self.lower_link_reveal_goto(mac),
+            "link-undo" => self.lower_link_undo(mac),
+
+            // URL navigation
+            "goto-url" | "openurl" | "open-url" => self.lower_goto_url(mac),
 
             // Changers (side effect when hook present, otherwise create changer value)
             "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
@@ -573,7 +579,7 @@ impl TranslateCtx {
 
             // Value macros — print result
             "str" | "string" | "num" | "number" | "random" | "either" | "a" | "array"
-            | "dm" | "datamap" | "ds" | "dataset" => {
+            | "dm" | "datamap" | "ds" | "dataset" | "upperfirst" | "lowerfirst" => {
                 self.emit_value_macro_standalone(mac);
             }
 
@@ -631,9 +637,6 @@ impl TranslateCtx {
                     .system_call("Harlowe.Navigation", "restart", &[], Type::Void);
             }
 
-            // goto-url — open a URL in a new tab
-            "goto-url" => self.lower_simple_command(mac, "Harlowe.Engine", "goto_url"),
-
             // scroll — scroll to an element or the top
             "scroll" => self.lower_simple_command(mac, "Harlowe.Engine", "scroll_macro"),
 
@@ -654,6 +657,13 @@ impl TranslateCtx {
             // else-if / elseif appearing standalone (outside an if-chain) — treat as if
             "else-if" | "elseif" => {
                 self.emit_if(mac);
+            }
+
+            // else appearing standalone (outside an if-chain) — emit hook unconditionally
+            "else" => {
+                if let Some(ref hook) = mac.hook {
+                    self.emit_content(hook);
+                }
             }
 
             // Columns layout
@@ -722,6 +732,11 @@ impl TranslateCtx {
 
             "link" | "link-replace" => Some(self.lower_link_macro_as_value(mac)),
             "link-goto" => Some(self.lower_link_goto_as_value(mac)),
+            "link-reveal" => { self.lower_link_reveal(mac); None }
+            "link-reveal-goto" => { self.lower_link_reveal_goto(mac); None }
+            "link-undo" => { self.lower_link_undo(mac); None }
+            "link-rerun" | "link-repeat" | "linkrepeat" => { self.lower_link_rerun(mac); None }
+            "goto-url" | "openurl" | "open-url" => { self.lower_goto_url(mac); None }
 
             "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
             | "align" | "transition" | "t8n" | "transition-time" | "t8n-time"
@@ -740,7 +755,7 @@ impl TranslateCtx {
             }
 
             "str" | "string" | "num" | "number" | "random" | "either" | "a" | "array"
-            | "dm" | "datamap" | "ds" | "dataset" => {
+            | "dm" | "datamap" | "ds" | "dataset" | "upperfirst" | "lowerfirst" => {
                 Some(self.lower_value_macro_as_value(mac))
             }
 
@@ -1542,6 +1557,59 @@ impl TranslateCtx {
         }
     }
 
+    // ── link-reveal / link-reveal-goto / link-undo / goto-url ──────
+
+    /// `(link-reveal: text)[hook]` — link that replaces itself with hook content on click.
+    fn lower_link_reveal(&mut self, mac: &MacroNode) {
+        if let Some(arg) = mac.args.first() {
+            let text = self.lower_expr(arg);
+            if let Some(ref hook) = mac.hook {
+                let cb_name = self.make_callback_name("link_reveal");
+                let cb_ref = self.build_callback(&cb_name, hook);
+                self.fb
+                    .system_call("Harlowe.Engine", "link_reveal", &[text, cb_ref], Type::Void);
+            } else {
+                self.fb
+                    .system_call("Harlowe.H", "printVal", &[text], Type::Dynamic);
+            }
+        }
+    }
+
+    /// `(link-reveal-goto: text, passage)[hook]` — link that reveals hook content then navigates.
+    fn lower_link_reveal_goto(&mut self, mac: &MacroNode) {
+        let text = mac.args.first().map(|a| self.lower_expr(a)).unwrap_or_else(|| self.fb.const_string(""));
+        let passage = mac.args.get(1).map(|a| self.lower_expr(a)).unwrap_or_else(|| self.fb.const_string(""));
+        if let Some(ref hook) = mac.hook {
+            let cb_name = self.make_callback_name("link_reveal_goto");
+            let cb_ref = self.build_callback(&cb_name, hook);
+            self.fb.system_call(
+                "Harlowe.Engine",
+                "link_reveal_goto",
+                &[text, passage, cb_ref],
+                Type::Void,
+            );
+        } else {
+            self.fb
+                .system_call("Harlowe.Engine", "link_reveal_goto", &[text, passage], Type::Void);
+        }
+    }
+
+    /// `(link-undo: text)` — link that undoes the last turn.
+    fn lower_link_undo(&mut self, mac: &MacroNode) {
+        let text = mac.args.first().map(|a| self.lower_expr(a)).unwrap_or_else(|| self.fb.const_string("Undo"));
+        self.fb
+            .system_call("Harlowe.Engine", "link_undo", &[text], Type::Void);
+    }
+
+    /// `(goto-url: url)` — open a URL in a new browser tab.
+    fn lower_goto_url(&mut self, mac: &MacroNode) {
+        if let Some(arg) = mac.args.first() {
+            let url = self.lower_expr(arg);
+            self.fb
+                .system_call("Harlowe.Engine", "goto_url", &[url], Type::Void);
+        }
+    }
+
     // ── after ──────────────────────────────────────────────────────
 
     fn lower_after_macro(&mut self, mac: &MacroNode) {
@@ -1999,6 +2067,12 @@ impl TranslateCtx {
                     &call_args,
                     Type::Dynamic,
                 )
+            }
+            "upperfirst" | "lowerfirst" => {
+                let n = self.fb.const_string(name);
+                let mut call_args = vec![n];
+                call_args.extend(lowered_args);
+                self.fb.system_call("Harlowe.Engine", "str_op", &call_args, Type::Dynamic)
             }
             "sorted" | "reversed" | "rotated" | "shuffled" | "range" | "folded"
             | "interlaced" | "repeated" | "joined" | "subarray" | "substring" | "lowercase"

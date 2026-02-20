@@ -239,6 +239,19 @@ export class HarloweEngine {
     return undefined;
   }
 
+  /** `(upperfirst:)`, `(lowerfirst:)` — capitalize/lowercase first character. */
+  str_op(name: string, s: string): string {
+    const str = String(s);
+    if (!str) return str;
+    switch (name) {
+      case "upperfirst": return str.charAt(0).toUpperCase() + str.slice(1);
+      case "lowerfirst": return str.charAt(0).toLowerCase() + str.slice(1);
+      default:
+        console.warn(`[harlowe] unknown str_op: ${name}`);
+        return str;
+    }
+  }
+
   /** Generic value macro dispatcher. */
   value_macro(name: string, ...args: any[]): any {
     switch (name) {
@@ -635,6 +648,58 @@ export class HarloweEngine {
     wrapper.appendChild(link);
     wrapper.appendChild(output);
     this.passage()?.appendChild(wrapper);
+  }
+
+  /** `(link-reveal: text)[hook]` — link that vanishes and renders hook in its place on click. */
+  link_reveal(text: string, cb: (h: HarloweContext) => void): void {
+    const doc = this.doc();
+    const wrapper = doc.createElement("span");
+    const link = doc.createElement("tw-link");
+    link.textContent = String(text);
+    link.addEventListener("click", (e: Event) => {
+      e.preventDefault();
+      wrapper.removeChild(link);
+      const h = new HarloweContext(wrapper, this.rt, doc);
+      try { cb(h); } finally { h.closeAll(); }
+    });
+    wrapper.appendChild(link);
+    this.passage()?.appendChild(wrapper);
+  }
+
+  /** `(link-reveal-goto: text, passage)[hook]` — link that reveals hook content then navigates. */
+  link_reveal_goto(text: string, passage: string, cb?: (h: HarloweContext) => void): void {
+    const doc = this.doc();
+    const wrapper = doc.createElement("span");
+    const link = doc.createElement("tw-link");
+    link.textContent = String(text);
+    link.addEventListener("click", (e: Event) => {
+      e.preventDefault();
+      wrapper.removeChild(link);
+      if (cb) {
+        const h = new HarloweContext(wrapper, this.rt, doc);
+        try { cb(h); } finally { h.closeAll(); }
+      }
+      this.rt.nav.go(String(passage));
+    });
+    wrapper.appendChild(link);
+    this.passage()?.appendChild(wrapper);
+  }
+
+  /** `(link-undo: text)` — link that undoes the last turn. */
+  link_undo(text: string): void {
+    const doc = this.doc();
+    const link = doc.createElement("tw-link");
+    link.textContent = String(text);
+    link.addEventListener("click", (e: Event) => {
+      e.preventDefault();
+      this.rt.nav.undo();
+    });
+    this.passage()?.appendChild(link);
+  }
+
+  /** `(goto-url: url)` — open a URL in a new browser tab. */
+  goto_url(url: string): void {
+    window.open(String(url), "_blank");
   }
 
   /** `(link-fullscreen:)` — link that toggles browser fullscreen. */
