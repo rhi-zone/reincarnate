@@ -32,8 +32,11 @@ pub fn macro_kind(name: &str) -> MacroKind {
         | "link-reveal-goto" | "link-rerun" | "link-replace" | "link-fullscreen"
         | "click" | "click-replace" | "click-append"
         | "click-prepend" | "click-rerun" | "cycling-link" | "seq-link" | "animate"
-        | "goto-url" | "openurl" | "open-url" | "restart" | "reload" | "scroll"
+        | "goto-url" | "openurl" | "open-url" | "undo" | "restart" | "reload" | "scroll"
         | "after" => MacroKind::Command,
+
+        // Third-party Border for Harlowe (b4r) library changers
+        "b4r" | "b4r-colour" | "b4r-color" => MacroKind::Changer,
 
         // Changers — includes t8n* aliases and transition-delay/text-rotate aliases
         "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font" | "align"
@@ -42,7 +45,8 @@ pub fn macro_kind(name: &str) -> MacroKind {
         | "text-rotate-z" | "text-rotate-x" | "text-rotate-y" | "text-rotate"
         | "hover-style" | "css" | "background" | "box" | "float-box" | "char-style"
         | "line-style" | "page-style" | "opacity" | "text-indent" | "text-size"
-        | "collapse" | "nobr" | "verbatim" | "hidden" => MacroKind::Changer,
+        | "collapse" | "nobr" | "verbatim" | "hidden"
+        | "action" => MacroKind::Changer,
 
         // Value macros
         "str" | "string" | "num" | "number" | "a" | "array" | "dm" | "datamap" | "ds"

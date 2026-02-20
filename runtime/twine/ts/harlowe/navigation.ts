@@ -150,6 +150,14 @@ export class HarloweNavigation {
     registerCommand("restart", "", () => location.reload());
   }
 
+  undo(): void {
+    const title = this.rt.State.popMoment();
+    if (title) {
+      const pfn = this.passages.get(title);
+      if (pfn) this.renderPassage(title, pfn);
+    }
+  }
+
   restart(): void {
     location.reload();
   }

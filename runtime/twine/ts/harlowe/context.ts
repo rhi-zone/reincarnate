@@ -210,6 +210,27 @@ function applyChanger(el: HTMLElement, changer: Changer, doc: DocumentFactory = 
       });
       break;
     }
+    // Border for Harlowe (b4r) third-party library
+    case "b4r": {
+      // (b4r: style) or (b4r: top, right, bottom, left)
+      const styles = changer.args.map(String);
+      if (styles.length === 1) {
+        el.style.borderStyle = styles[0];
+      } else if (styles.length >= 2) {
+        el.style.borderStyle = styles.join(" ");
+      }
+      if (!el.style.borderWidth) el.style.borderWidth = "2px";
+      break;
+    }
+    case "b4r-colour":
+    case "b4r-color":
+      el.style.borderColor = resolveColor(String(changer.args[0]));
+      break;
+    // Harlowe 3.3+ (action:) — trigger link/content on a DOM event (mouseover, etc.)
+    // Mark the element; post-populate wiring would be needed for full support.
+    case "action":
+      el.setAttribute("data-action", String(changer.args[0]));
+      break;
   }
 }
 

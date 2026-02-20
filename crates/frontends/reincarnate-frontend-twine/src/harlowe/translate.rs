@@ -649,6 +649,12 @@ impl TranslateCtx {
             "newplaylist" => self.lower_hal_simple_command(mac, "define_playlist"),
             "newgroup" => self.lower_hal_simple_command(mac, "define_group"),
 
+            // Undo — navigate back one turn
+            "undo" => {
+                self.fb
+                    .system_call("Harlowe.Navigation", "undo", &[], Type::Void);
+            }
+
             // Restart / reload
             "restart" | "reload" => {
                 self.fb
