@@ -1127,11 +1127,12 @@ function range(...args: any[]): number[] {
   for (let i = start; i <= end; i++) result.push(i);
   return result;
 }
-function find(...args: any[]): any {
+function find<T>(fn: ((item: T) => boolean) | T, ...items: (T | T[])[]): T | undefined {
   // (find: pred_or_value, ...items) — pred is first, items follow (may be arrays).
-  const pred = args[0];
-  const arr = args.slice(1).flat();
-  return typeof pred === "function" ? arr.find(pred) : arr.find(x => x === pred);
+  const arr = (items as unknown[]).flat() as T[];
+  return typeof fn === "function"
+    ? arr.find(fn as (item: T) => boolean)
+    : arr.find(x => x === fn);
 }
 function joined(...args: any[]): string {
   const sep = args.length > 1 ? String(args[args.length - 1]) : "";
@@ -1155,32 +1156,27 @@ function datavalues(...args: any[]): any[] {
 function dataentries(...args: any[]): any[] {
   return args[0] instanceof Map ? Array.from(args[0].entries()).map(([k, v]) => ({ name: k, value: v })) : [];
 }
-function somePass(...args: any[]): boolean {
-  const pred = args[0]; const items = args.slice(1);
-  if (typeof pred !== "function") return false;
-  return items.some(pred);
+function somePass<T>(fn: (item: T) => boolean, ...items: T[]): boolean {
+  if (typeof fn !== "function") return false;
+  return items.some(fn);
 }
-function allPass(...args: any[]): boolean {
-  const pred = args[0]; const items = args.slice(1);
-  if (typeof pred !== "function") return false;
-  return items.every(pred);
+function allPass<T>(fn: (item: T) => boolean, ...items: T[]): boolean {
+  if (typeof fn !== "function") return false;
+  return items.every(fn);
 }
-function nonePass(...args: any[]): boolean {
-  const pred = args[0]; const items = args.slice(1);
-  if (typeof pred !== "function") return false;
-  return !items.some(pred);
+function nonePass<T>(fn: (item: T) => boolean, ...items: T[]): boolean {
+  if (typeof fn !== "function") return false;
+  return !items.some(fn);
 }
-function altered(...args: any[]): any[] {
-  const fn = args[0];
-  const items = args.slice(1).flat();
-  if (typeof fn !== "function") return items;
-  return items.map(fn);
+function altered<T, U>(fn: (item: T, index: number) => U, ...items: (T | T[])[]): U[] {
+  const flatItems = (items as (T | T[])[]).flat() as T[];
+  if (typeof fn !== "function") return flatItems as unknown as U[];
+  return flatItems.map(fn);
 }
-function sortedBy(...args: any[]): any[] {
-  const fn = args[0];
-  const items = [...args.slice(1)];
-  if (typeof fn !== "function") return items;
-  return items.sort((a, b) => {
+function sortedBy<T>(fn: (item: T) => unknown, ...items: T[]): T[] {
+  const arr = [...items];
+  if (typeof fn !== "function") return arr;
+  return arr.sort((a, b) => {
     const ka = fn(a), kb = fn(b);
     if (typeof ka === "string") return ka.localeCompare(String(kb));
     return Number(ka) - Number(kb);
@@ -1205,12 +1201,10 @@ function repeated(...args: any[]): any[] {
   for (let i = 0; i < n; i++) result.push(...values);
   return result;
 }
-function folded(...args: any[]): any {
-  const fn = args[0];
-  const init = args[1];
-  const items = args.slice(2).flat();
-  if (typeof fn !== "function") return init;
-  return items.reduce((acc: any, item: any) => fn(item, acc), init);
+function folded<T, A>(fn: (item: T, acc: A) => A, initial: A, ...items: (T | T[])[]): A {
+  const flatItems = (items as (T | T[])[]).flat() as T[];
+  if (typeof fn !== "function") return initial;
+  return flatItems.reduce((acc: A, item: T) => fn(item, acc), initial);
 }
 
 function pass(...args: any[]): any { return args[0]; }

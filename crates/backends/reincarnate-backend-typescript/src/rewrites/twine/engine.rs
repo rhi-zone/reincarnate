@@ -196,9 +196,20 @@ fn str_op_to_method(name: &str) -> String {
 }
 
 /// `str_op("trimmed", s)` → `StringOps.trimmed(s)`, etc.
+///
+/// Special case: `str_op("str-nth", N)` with only 1 arg (no string) is the Harlowe
+/// "string-nth value" used as a property accessor: `$arr's (str-nth: N)`.
+/// In that context the accessor is just the 1-based index N itself — `get_property`
+/// and `set_property` already handle numeric keys with 1-based indexing.
 fn try_rewrite_str_op(args: &mut Vec<JsExpr>) -> Option<JsExpr> {
     let name = extract_dispatch_name(args)?;
     let remaining = std::mem::take(args);
+
+    // Partial application: (str-nth: N) without the string — emit just N.
+    if matches!(name.as_str(), "str-nth" | "string-nth") && remaining.len() == 1 {
+        return Some(remaining.into_iter().next().unwrap());
+    }
+
     let method = str_op_to_method(&name);
     Some(JsExpr::Call {
         callee: Box::new(JsExpr::Field {
