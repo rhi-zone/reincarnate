@@ -33,7 +33,17 @@ pub struct TranslateCtx {
     /// The IR function builder.
     pub fb: FunctionBuilder,
     /// Map from temp variable name → alloc ValueId.
+    ///
+    /// Only contains vars that have been genuinely accessed (read or write) by
+    /// the body translation.  Arrow-function captures are built from this map
+    /// only, so spuriously pre-scanned vars do not leak into closure captures.
     temp_vars: HashMap<String, ValueId>,
+    /// Pre-initialised temp vars: allocs created by the pre-scan pass
+    /// (`init_temp_vars_from_state`) that have NOT yet been genuinely accessed.
+    ///
+    /// On first genuine access (read or write) the entry is promoted into
+    /// `temp_vars`.  Closures never see this map — they only capture `temp_vars`.
+    pre_inited_temps: HashMap<String, ValueId>,
     /// Map from parameter name → ValueId (for arrow function parameters).
     local_params: HashMap<String, ValueId>,
     /// Whether we're inside a `<<nobr>>` / `<<silently>>` block.
@@ -78,6 +88,7 @@ impl TranslateCtx {
         Self {
             fb,
             temp_vars: HashMap::new(),
+            pre_inited_temps: HashMap::new(),
             local_params: HashMap::new(),
             suppress_output: false,
             suppress_line_breaks: false,
@@ -192,11 +203,17 @@ impl TranslateCtx {
         if let Some(&alloc) = self.temp_vars.get(name) {
             return alloc;
         }
+        // Promote a pre-inited alloc to temp_vars on first genuine access.
+        if let Some(alloc) = self.pre_inited_temps.remove(name) {
+            self.temp_vars.insert(name.to_string(), alloc);
+            return alloc;
+        }
         let alloc = self.fb.alloc(Type::Dynamic);
         self.fb.name_value(alloc, format!("_{name}"));
         self.temp_vars.insert(name.to_string(), alloc);
         alloc
     }
+
 
     // ── Expression lowering (oxc-based) ───────────────────────────────
 
@@ -1021,6 +1038,11 @@ impl TranslateCtx {
         let saved_fb = std::mem::replace(&mut self.fb, arrow_fb);
         let saved_temps = std::mem::replace(&mut self.temp_vars, arrow_temp_vars);
         let saved_params = std::mem::replace(&mut self.local_params, arrow_params);
+        // Clear pre_inited_temps for the closure: outer pre-scanned allocs belong
+        // to the outer builder and must not leak into the inner builder's code.
+        // Any _temp var accessed inside the closure that wasn't captured will get
+        // a fresh alloc from arrow_fb via get_or_create_temp.
+        let saved_pre_inited = std::mem::take(&mut self.pre_inited_temps);
 
         if arrow.expression {
             // Expression body: `() => expr`
@@ -1041,6 +1063,7 @@ impl TranslateCtx {
         let built = std::mem::replace(&mut self.fb, saved_fb);
         self.temp_vars = saved_temps;
         self.local_params = saved_params;
+        self.pre_inited_temps = saved_pre_inited;
 
         let mut func = built.build();
         func.method_kind = MethodKind::Closure;
@@ -2360,6 +2383,68 @@ pub struct TranslateResult {
     pub setter_callbacks: Vec<Function>,
 }
 
+/// Scan source text for SugarCube temp-variable names (`_identifier`).
+///
+/// Returns the bare names (without leading `_`) of every `_ident` token found.
+/// This is intentionally over-eager — false positives (e.g. inside string
+/// literals) are harmless: we emit a dead State.get() that DCE removes.
+fn scan_temp_var_names(source: &str) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut names: Vec<String> = Vec::new();
+    let bytes = source.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'_' {
+            // Word boundary: previous char must NOT be alphanumeric or `_`
+            let prev_ok = i == 0 || !bytes[i - 1].is_ascii_alphanumeric() && bytes[i - 1] != b'_';
+            // Next char must be alphanumeric (not `_` alone)
+            let next_ok = i + 1 < bytes.len() && bytes[i + 1].is_ascii_alphanumeric();
+            if prev_ok && next_ok {
+                let start = i + 1; // skip leading `_`
+                let mut end = start;
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                {
+                    end += 1;
+                }
+                let s = source[start..end].to_string();
+                if seen.insert(s.clone()) {
+                    names.push(s);
+                }
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    names
+}
+
+/// Emit `State.get("_name") + alloc + store` for each temp var name that is
+/// not yet initialised, operating in the current block (must be entry block).
+///
+/// Allocs are placed in `pre_inited_temps`, NOT in `temp_vars`.  They are
+/// promoted to `temp_vars` on first genuine access via `get_or_create_temp`.
+/// This prevents closures from spuriously capturing vars that were pre-scanned
+/// but never actually accessed before the closure creation point.
+fn init_temp_vars_from_state(ctx: &mut TranslateCtx, names: &[String]) {
+    for name in names {
+        if ctx.temp_vars.contains_key(name.as_str())
+            || ctx.pre_inited_temps.contains_key(name.as_str())
+        {
+            continue; // already initialised (e.g. `_args`)
+        }
+        let sc_name = ctx.fb.const_string(format!("_{name}"));
+        let state_val = ctx
+            .fb
+            .system_call("SugarCube.State", "get", &[sc_name], Type::Dynamic);
+        let alloc = ctx.fb.alloc(Type::Dynamic);
+        ctx.fb.name_value(alloc, format!("_{name}"));
+        ctx.fb.store(alloc, state_val);
+        ctx.pre_inited_temps.insert(name.clone(), alloc);
+    }
+}
+
 /// Translate a parsed passage AST into an IR Function.
 pub fn translate_passage(
     name: &str,
@@ -2371,6 +2456,12 @@ pub fn translate_passage(
         .map(|r| r.keys().cloned().collect())
         .unwrap_or_default();
     let mut ctx = TranslateCtx::new_with_overrides(&func_name, &ast.source, overrides);
+
+    // Initialise temp vars from State before body translation so that reads
+    // inside conditional blocks get a reaching definition (not a null sentinel).
+    // We're still in block0 here so stores go into the entry block.
+    let temp_names = scan_temp_var_names(&ast.source);
+    init_temp_vars_from_state(&mut ctx, &temp_names);
 
     ctx.lower_nodes(&ast.body);
 
@@ -2399,13 +2490,18 @@ pub fn translate_widget(
         .unwrap_or_default();
     let mut ctx = TranslateCtx::new_with_overrides(&func_name, source, overrides);
 
-    // Initialize _args from State
+    // Initialize _args from State (explicit, always first)
     let args_name = ctx.fb.const_string("_args");
     let args_val = ctx
         .fb
         .system_call("SugarCube.State", "get", &[args_name], Type::Dynamic);
     let alloc = ctx.get_or_create_temp("args");
     ctx.fb.store(alloc, args_val);
+
+    // Initialise all other temp vars referenced in the body from State, while
+    // still in block0, so reads inside conditional blocks have a reaching def.
+    let temp_names = scan_temp_var_names(source);
+    init_temp_vars_from_state(&mut ctx, &temp_names);
 
     ctx.lower_nodes(body);
     ctx.fb.ret(None);
@@ -2591,5 +2687,45 @@ mod tests {
         assert_eq!(passage_func_name("Start"), "passage_Start");
         assert_eq!(passage_func_name("My Passage"), "passage_My_Passage");
         assert_eq!(passage_func_name("a-b.c"), "passage_a_b_c");
+    }
+
+    /// A temp var read before any write in a widget body must be initialized
+    /// from State.get() so it picks up values set by the caller.  The alloc
+    /// should have a store of a State.get("_x") syscall as its first instruction.
+    #[test]
+    fn temp_var_read_before_write_initializes_from_state() {
+        use reincarnate_core::ir::inst::Op;
+        use reincarnate_core::ir::value::Constant;
+
+        let source = "<<widget \"myWidget\">><<print _x>><</widget>>";
+        let ast = parser::parse(source, None);
+        assert!(ast.errors.is_empty(), "parse errors: {:?}", ast.errors);
+        let result = translate_passage("test", &ast, None);
+        assert_eq!(result.widgets.len(), 1);
+        let (_, body_nodes, body_src) = &result.widgets[0];
+        let (widget_func, _) = translate_widget("myWidget", body_nodes, body_src, None);
+
+        // Collect all ops in the widget function
+        let all_ops: Vec<&Op> = widget_func
+            .insts
+            .values()
+            .map(|inst| &inst.op)
+            .collect();
+
+        // There must be a Const("_x") string literal (the State.get argument)
+        let has_const_x = all_ops.iter().any(|op| {
+            matches!(op, Op::Const(Constant::String(s)) if s == "_x")
+        });
+
+        // There must be a State.get syscall
+        let has_state_get = all_ops.iter().any(|op| {
+            matches!(op, Op::SystemCall { system, method, .. }
+                if system == "SugarCube.State" && method == "get")
+        });
+
+        assert!(
+            has_const_x && has_state_get,
+            "widget reading _x before write must emit State.get(\"_x\") initialization"
+        );
     }
 }
