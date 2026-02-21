@@ -199,12 +199,34 @@ fn promote_single_store(func: &mut Function) -> bool {
         }
     }
 
-    // Build result→operands map for circularity checks.
+    // Build result→operands map for transitive circularity checks.
     let mut result_operands: HashMap<ValueId, Vec<ValueId>> = HashMap::new();
     for (_, inst) in func.insts.iter() {
         if let Some(r) = inst.result {
             result_operands.insert(r, value_operands(&inst.op));
         }
+    }
+
+    /// Returns true if `target` is reachable in the value dependency graph
+    /// (i.e., `root` was computed from `target` directly or transitively).
+    fn depends_on(
+        root: ValueId,
+        target: ValueId,
+        result_operands: &HashMap<ValueId, Vec<ValueId>>,
+    ) -> bool {
+        let mut visited: HashSet<ValueId> = HashSet::new();
+        let mut stack = vec![root];
+        while let Some(v) = stack.pop() {
+            if v == target {
+                return true;
+            }
+            if visited.insert(v) {
+                if let Some(ops) = result_operands.get(&v) {
+                    stack.extend_from_slice(ops);
+                }
+            }
+        }
+        false
     }
 
     let single_store: HashSet<ValueId> = single_store_candidates
@@ -232,18 +254,15 @@ fn promote_single_store(func: &mut Function) -> bool {
                     }
                 }
             }
-            // Reject if store_value's instruction directly uses a load result of
+            // Reject if store_value transitively depends on any load result of
             // this alloc. Substituting load → store_value would create a circular
-            // definition: store_value = f(store_value). This happens for patterns
-            // like `_x = _x.method()` where the alloc is read and then written
-            // in the same block.
+            // definition: store_value = f(…f(store_value)…). This covers both
+            // direct patterns (`_x = _x.method()`) and chained ones
+            // (`_x = _x[0].toUpperCase() + _x.substring(1)`).
             let sv = store_value[ptr];
-            if let Some(sv_ops) = result_operands.get(&sv) {
-                let loads = load_results_for.get(ptr);
-                if let Some(loads) = loads {
-                    if sv_ops.iter().any(|op| loads.contains(op)) {
-                        return false;
-                    }
+            if let Some(loads) = load_results_for.get(ptr) {
+                if loads.iter().any(|&load_r| depends_on(sv, load_r, &result_operands)) {
+                    return false;
                 }
             }
             true
@@ -844,13 +863,15 @@ mod tests {
         }
     }
 
-    /// Store value directly uses the load result of the same alloc
-    /// (`x = f(x)` pattern). Promoting would create a circular substitution
-    /// `x = f(x)`. The alloc must not be promoted by single-store; multi-store
-    /// should handle it by inserting a sentinel and a phi.
+    /// Store value depends (directly or transitively) on the load result of the
+    /// same alloc (`x = f(x)` pattern). Promoting would create a circular
+    /// substitution `x = f(x)`. The alloc must not be promoted by single-store;
+    /// multi-store should handle it correctly instead.
     #[test]
-    fn single_store_circular_dep_not_promoted_directly() {
-        // entry: alloc, load(ptr) → v_load, call f(v_load) → v_result, store(ptr, v_result), load(ptr) → v_ret, return
+    fn single_store_circular_dep_not_promoted() {
+        // entry: alloc, load(ptr) → v_load, add(v_load, 1) → v_result,
+        //        store(ptr, v_result), load(ptr) → v_ret, return
+        // v_result directly depends on v_load (same alloc).
         let sig = FunctionSig {
             params: vec![],
             return_ty: Type::Int(64), ..Default::default() };
@@ -866,14 +887,11 @@ mod tests {
         let func = apply_mem2reg(fb.build());
 
         // The alloc should NOT have been promoted via single-store (circular dep).
-        // The Load result v_ret should be resolved to v_result or a phi — no raw
-        // Load should survive since multi-store should handle it.
+        // Multi-store handles it: no raw Load should remain.
         let has_raw_load = func.blocks[func.entry]
             .insts
             .iter()
             .any(|&id| matches!(func.insts[id].op, Op::Load(_)));
-        // Multi-store handles this: it promotes v_load to sentinel (0) and v_ret to v_result.
-        // No raw Load should remain.
         assert!(
             !has_raw_load,
             "circular-dep alloc should be promoted via multi-store, no raw Load"
