@@ -317,12 +317,6 @@ statement parsing, trailing comma stripping in case values.
 
 ### Harlowe Correctness Bugs
 
-- [ ] **Macro name: multi-dash normalization not handled** — Harlowe macro names are
-  case-, dash-, AND underscore-insensitive. We normalize case (`.to_lowercase()`) and
-  underscores (replace `_` with `-`) but not consecutive dashes (`got--o` → `go-to`).
-  Full normalization: strip all non-alphanumeric chars, compare. Very unlikely in real
-  game code (authors use canonical form), but spec says it should work.
-
 - [ ] **`(sorted: via lambda)` — `$dm's (it)` inside via lambda** — e.g.
   `(sorted: via $players's (it), ...(dm-names: $players))` uses `(it)` as a
   property key inside a `via` lambda. Our translator lowers `(it)` as a variable

@@ -614,7 +614,7 @@ impl TranslateCtx {
             "for" | "loop" => { self.emit_for(mac); }
 
             // Navigation (side effect)
-            "goto" | "go-to" => self.lower_goto(mac),
+            "goto" => self.lower_goto(mac),
 
             // Display (side effect — emits inline)
             "display" => self.emit_display(mac),
@@ -623,22 +623,22 @@ impl TranslateCtx {
             "print" => self.emit_print(mac),
 
             // Links (side effect — emits link element)
-            "link" | "link-replace" => { self.emit_link_macro(mac); }
-            "link-goto" => { self.emit_link_goto(mac); }
-            "link-rerun" | "link-repeat" | "linkrepeat" => self.lower_link_rerun(mac),
-            "link-reveal" => self.lower_link_reveal(mac),
-            "link-reveal-goto" => self.lower_link_reveal_goto(mac),
-            "link-undo" => self.lower_link_undo(mac),
+            "link" | "linkreplace" => { self.emit_link_macro(mac); }
+            "linkgoto" => { self.emit_link_goto(mac); }
+            "linkrerun" | "linkrepeat" => self.lower_link_rerun(mac),
+            "linkreveal" => self.lower_link_reveal(mac),
+            "linkrevealgoto" => self.lower_link_reveal_goto(mac),
+            "linkundo" => self.lower_link_undo(mac),
 
             // URL navigation
-            "goto-url" | "openurl" | "open-url" => self.lower_goto_url(mac),
+            "gotourl" | "openurl" => self.lower_goto_url(mac),
 
             // Changers (side effect when hook present, otherwise create changer value)
-            "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
-            | "align" | "transition" | "t8n" | "transition-time" | "t8n-time"
-            | "transition-arrive" | "transition-depart" | "transition-delay" | "t8n-delay"
-            | "t8n-skip" | "text-rotate-z" | "text-rotate" | "hover-style" | "css"
-            | "background" | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim"
+            "color" | "colour" | "textcolour" | "textcolor" | "textstyle" | "font"
+            | "align" | "transition" | "t8n" | "transitiontime" | "t8ntime"
+            | "transitionarrive" | "transitiondepart" | "transitiondelay" | "t8ndelay"
+            | "t8nskip" | "textrotatez" | "textrotate" | "hoverstyle" | "css"
+            | "background" | "opacity" | "textsize" | "collapse" | "nobr" | "verbatim"
             | "hidden" => {
                 self.emit_changer(mac);
             }
@@ -657,8 +657,8 @@ impl TranslateCtx {
             }
 
             // Save/load (side effects, with aliases)
-            "save-game" | "savegame" => self.lower_save_game(mac),
-            "load-game" | "loadgame" => self.lower_load_game(mac),
+            "savegame" => self.lower_save_game(mac),
+            "loadgame" => self.lower_load_game(mac),
 
             // Alert/prompt/confirm (side effects)
             "alert" => { self.lower_simple_command(mac, "Harlowe.Engine", "alert"); }
@@ -671,12 +671,12 @@ impl TranslateCtx {
             }
 
             // Click (side effects)
-            "click" | "click-replace" | "click-append" | "click-prepend" | "click-rerun" => {
+            "click" | "clickreplace" | "clickappend" | "clickprepend" | "clickrerun" => {
                 self.lower_click_macro(mac);
             }
 
             // State management
-            "forget-undos" => {
+            "forgetundos" => {
                 let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
                 self.fb.system_call(
                     "Harlowe.Engine",
@@ -685,7 +685,7 @@ impl TranslateCtx {
                     Type::Void,
                 );
             }
-            "forget-visits" => {
+            "forgetvisits" => {
                 self.fb.system_call(
                     "Harlowe.Engine",
                     "forget_visits",
@@ -705,7 +705,7 @@ impl TranslateCtx {
             }
 
             // Sidebar icon macros (Harlowe 3.3+) — no-op: sidebar already works
-            "icon-undo" | "icon-redo" | "icon-restart" => {}
+            "iconundo" | "iconredo" | "iconrestart" => {}
 
             // HAL (Harlowe Audio Library) macros
             "track" | "playlist" | "group" => self.lower_hal_named_command(mac),
@@ -733,7 +733,7 @@ impl TranslateCtx {
             "animate" => self.lower_simple_command(mac, "Harlowe.Engine", "animate_macro"),
 
             // link-fullscreen — link that toggles fullscreen
-            "link-fullscreen" => {
+            "linkfullscreen" => {
                 self.lower_simple_command(mac, "Harlowe.Engine", "link_fullscreen")
             }
 
@@ -741,13 +741,13 @@ impl TranslateCtx {
             "after" => self.lower_after_macro(mac),
 
             // Interactive input macros
-            "dropdown" | "checkbox" | "input-box" => self.lower_input_macro(mac),
+            "dropdown" | "checkbox" | "inputbox" => self.lower_input_macro(mac),
 
             // Cycling/sequence links — interactive links that rotate through choices
-            "cycling-link" | "seq-link" => self.lower_cycling_link(mac),
+            "cyclinglink" | "seqlink" => self.lower_cycling_link(mac),
 
             // else-if / elseif appearing standalone (outside an if-chain) — treat as if
-            "else-if" | "elseif" => {
+            "elseif" => {
                 self.emit_if(mac);
             }
 
@@ -765,7 +765,7 @@ impl TranslateCtx {
             "dialog" => self.lower_dialog_macro(mac),
 
             // Enchant
-            "enchant" | "enchant-in" => self.lower_enchant_macro(mac),
+            "enchant" | "enchantin" => self.lower_enchant_macro(mac),
 
             // Meter
             "meter" => self.lower_meter_macro(mac),
@@ -780,7 +780,7 @@ impl TranslateCtx {
 
             // Custom macro return — `(output: value)` inside a `(macro:)` body.
             // Acts as `return value` from the macro function.
-            "output" | "output-data" => {
+            "output" | "outputdata" => {
                 if self.in_macro_body {
                     if let Some(arg) = mac.args.first() {
                         let val = self.lower_expr(arg);
@@ -836,7 +836,7 @@ impl TranslateCtx {
                 None
             }
 
-            "goto" | "go-to" => {
+            "goto" => {
                 self.lower_goto(mac);
                 None
             }
@@ -855,19 +855,19 @@ impl TranslateCtx {
                 }
             }
 
-            "link" | "link-replace" => Some(self.lower_link_macro_as_value(mac)),
-            "link-goto" => Some(self.lower_link_goto_as_value(mac)),
-            "link-reveal" => { self.lower_link_reveal(mac); None }
-            "link-reveal-goto" => { self.lower_link_reveal_goto(mac); None }
-            "link-undo" => { self.lower_link_undo(mac); None }
-            "link-rerun" | "link-repeat" | "linkrepeat" => { self.lower_link_rerun(mac); None }
-            "goto-url" | "openurl" | "open-url" => { self.lower_goto_url(mac); None }
+            "link" | "linkreplace" => Some(self.lower_link_macro_as_value(mac)),
+            "linkgoto" => Some(self.lower_link_goto_as_value(mac)),
+            "linkreveal" => { self.lower_link_reveal(mac); None }
+            "linkrevealgoto" => { self.lower_link_reveal_goto(mac); None }
+            "linkundo" => { self.lower_link_undo(mac); None }
+            "linkrerun" | "linkrepeat" => { self.lower_link_rerun(mac); None }
+            "gotourl" | "openurl" => { self.lower_goto_url(mac); None }
 
-            "color" | "colour" | "text-colour" | "text-color" | "text-style" | "font"
-            | "align" | "transition" | "t8n" | "transition-time" | "t8n-time"
-            | "transition-arrive" | "transition-depart" | "transition-delay" | "t8n-delay"
-            | "t8n-skip" | "text-rotate-z" | "text-rotate" | "hover-style" | "css"
-            | "background" | "opacity" | "text-size" | "collapse" | "nobr" | "verbatim"
+            "color" | "colour" | "textcolour" | "textcolor" | "textstyle" | "font"
+            | "align" | "transition" | "t8n" | "transitiontime" | "t8ntime"
+            | "transitionarrive" | "transitiondepart" | "transitiondelay" | "t8ndelay"
+            | "t8nskip" | "textrotatez" | "textrotate" | "hoverstyle" | "css"
+            | "background" | "opacity" | "textsize" | "collapse" | "nobr" | "verbatim"
             | "hidden" => {
                 self.lower_changer_as_value(mac)
             }
@@ -885,7 +885,7 @@ impl TranslateCtx {
             }
 
             // Storylet system
-            "open-storylets" | "storylets-of" => {
+            "openstorylets" | "storyletsof" => {
                 Some(self.lower_open_storylets(mac))
             }
 
@@ -895,7 +895,7 @@ impl TranslateCtx {
             }),
 
             // Custom macro return: `(output: value)` inside a macro body → return value.
-            "output" | "output-data" => {
+            "output" | "outputdata" => {
                 if self.in_macro_body {
                     if let Some(arg) = mac.args.first() {
                         let val = self.lower_expr(arg);
@@ -1588,25 +1588,25 @@ impl TranslateCtx {
 
     fn lower_changer_as_value(&mut self, mac: &MacroNode) -> Option<ValueId> {
         let builder_name = match mac.name.as_str() {
-            "color" | "colour" | "text-colour" | "text-color" => "color",
+            "color" | "colour" | "textcolour" | "textcolor" => "color",
             "background" => "background",
-            "text-style" => "textStyle",
+            "textstyle" => "textStyle",
             "font" => "font",
             "align" => "align",
             "opacity" => "opacity",
             "css" => "css",
-            "transition" | "t8n" | "transition-arrive" => "transition",
-            "transition-depart" => "transitionDepart",
-            "transition-time" | "t8n-time" => "transitionTime",
-            "transition-delay" | "t8n-delay" => "transitionDelay",
-            "transition-skip" | "t8n-skip" => "transitionSkip",
+            "transition" | "t8n" | "transitionarrive" => "transition",
+            "transitiondepart" => "transitionDepart",
+            "transitiontime" | "t8ntime" => "transitionTime",
+            "transitiondelay" | "t8ndelay" => "transitionDelay",
+            "transitionskip" | "t8nskip" => "transitionSkip",
             "hidden" => "hidden",
-            "text-size" => "textSize",
-            "text-rotate-z" | "text-rotate" => "textRotateZ",
+            "textsize" => "textSize",
+            "textrotatez" | "textrotate" => "textRotateZ",
             "collapse" => "collapse",
             "nobr" => "nobr",
             "verbatim" => "verbatim",
-            "hover-style" => "hoverStyle",
+            "hoverstyle" => "hoverStyle",
             _ => {
                 // Unknown changer — fall back to generic styled
                 if let Some(ref hook) = mac.hook {
@@ -1842,7 +1842,7 @@ impl TranslateCtx {
     // ── Enchant ────────────────────────────────────────────────
 
     fn lower_enchant_macro(&mut self, mac: &MacroNode) {
-        let method = if mac.name == "enchant-in" { "enchant_in" } else { "enchant" };
+        let method = if mac.name == "enchantin" { "enchant_in" } else { "enchant" };
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
         self.fb.system_call(
             "Harlowe.Engine",
@@ -2022,7 +2022,7 @@ impl TranslateCtx {
     /// creates a link that cycles (or sequences) through a list of options,
     /// optionally binding the current choice to a story variable.
     fn lower_cycling_link(&mut self, mac: &MacroNode) {
-        let is_cycling = mac.name == "cycling-link";
+        let is_cycling = mac.name == "cyclinglink";
         let cycling_val = self.fb.const_bool(is_cycling);
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
         let mut call_args = vec![cycling_val];
@@ -2569,15 +2569,25 @@ impl TranslateCtx {
     // ── Inline macro calls in expressions ──────────────────────────
 
     fn lower_call(&mut self, name: &str, args: &[Expr]) -> ValueId {
+        // Names from ExprKind::Call (expression parser) may be un-normalized
+        // (e.g. "sorted-by"). Normalize here so all match arms use the canonical form.
+        let norm_buf;
+        let name = if name.bytes().any(|b| b == b'-' || b.is_ascii_uppercase()) {
+            norm_buf = macros::normalize_macro_name(name);
+            norm_buf.as_str()
+        } else {
+            name
+        };
+
         // Predicate collection ops: lower items FIRST to infer element type, then
         // build the lambda callback with the inferred param type.
         // This is IR-level type inference — the lambda's FunctionSig gets the right
         // param type regardless of backend.
         match name {
-            "find" | "some-pass" | "all-pass" | "none-pass" | "count" => {
+            "find" | "somepass" | "allpass" | "nonepass" | "count" => {
                 return self.lower_predicate_collection_op(name, args, Type::Bool);
             }
-            "altered" | "sorted-by" => {
+            "altered" | "sortedby" => {
                 return self.lower_predicate_collection_op(name, args, Type::Dynamic);
             }
             _ => {}
@@ -2627,12 +2637,12 @@ impl TranslateCtx {
                     Type::Dynamic,
                 )
             }
-            "upperfirst" | "lowerfirst" | "str-reversed" | "string-reversed"
-            | "trimmed" | "words" | "str-nth" | "string-nth"
-            | "str-repeated" | "string-repeated"
-            | "str-find" | "string-find"
-            | "str-replaced" | "string-replaced" | "replaced"
-            | "digit-format" | "plural" => {
+            "upperfirst" | "lowerfirst" | "strreversed" | "stringreversed"
+            | "trimmed" | "words" | "strnth" | "stringnth"
+            | "strrepeated" | "stringrepeated"
+            | "strfind" | "stringfind"
+            | "strreplaced" | "stringreplaced" | "replaced"
+            | "digitformat" | "plural" => {
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
@@ -2640,8 +2650,20 @@ impl TranslateCtx {
             }
             "sorted" | "reversed" | "rotated" | "shuffled" | "range" | "folded"
             | "interlaced" | "repeated" | "joined" | "subarray" | "substring" | "lowercase"
-            | "uppercase" | "datanames" | "datavalues" | "dataentries" => {
-                let n = self.fb.const_string(name);
+            | "uppercase" | "datanames" | "datavalues" | "dataentries"
+            | "unique" | "rotatedto" | "permutations" | "pass"
+            | "split" | "splitted"
+            | "dmnames" | "dmvalues" | "dmentries" | "dmaltered" | "datamapaltered" => {
+                // Normalize aliases to the canonical names that Collections exports.
+                let canonical = match name {
+                    "dmnames" => "datanames",
+                    "dmvalues" => "datavalues",
+                    "dmentries" => "dataentries",
+                    "datamapaltered" => "dmaltered",
+                    "splitted" => "split",
+                    other => other,
+                };
+                let n = self.fb.const_string(canonical);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
                 self.fb.system_call(
@@ -2651,7 +2673,7 @@ impl TranslateCtx {
                     Type::Dynamic,
                 )
             }
-            "open-storylets" | "storylets-of" => {
+            "openstorylets" | "storyletsof" => {
                 self.fb.system_call(
                     "Harlowe.Engine",
                     "open_storylets",
@@ -2659,7 +2681,7 @@ impl TranslateCtx {
                     Type::Dynamic,
                 )
             }
-            "saved-games" => {
+            "savedgames" => {
                 self.fb.system_call(
                     "Harlowe.Engine",
                     "saved_games",

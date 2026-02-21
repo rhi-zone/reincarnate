@@ -209,10 +209,8 @@ impl<'a> Parser<'a> {
             self.pos += 1;
         }
         // Harlowe: macro names are case-, dash-, and underscore-insensitive.
-        // Normalize to lowercase dash-form: `Go_To` → `go-to`, `GOTO` → `goto`.
-        let name = self.source[name_start..self.pos]
-            .to_lowercase()
-            .replace('_', "-");
+        // Normalize by stripping all non-alphanumeric chars and lowercasing.
+        let name = macros::normalize_macro_name(&self.source[name_start..self.pos]);
 
         if name.is_empty() {
             // Check for dynamic macro call: `($storyVar: args)` or `(_tempVar: args)`.
@@ -574,9 +572,7 @@ impl<'a> Parser<'a> {
             {
                 self.pos += 1;
             }
-            let name = self.source[name_start..self.pos]
-                .to_lowercase()
-                .replace('_', "-");
+            let name = macros::normalize_macro_name(&self.source[name_start..self.pos]);
 
             if !macros::is_if_clause(&name) {
                 self.pos = saved;
@@ -1233,7 +1229,7 @@ mod tests {
         if let NodeKind::Macro(m) = &ast.body[0].kind {
             assert_eq!(m.name, "if");
             assert_eq!(m.clauses.len(), 2);
-            assert_eq!(m.clauses[0].kind, "else-if");
+            assert_eq!(m.clauses[0].kind, "elseif");
             assert_eq!(m.clauses[1].kind, "else");
         } else {
             panic!("expected if macro");
@@ -1327,7 +1323,7 @@ mod tests {
         for node in &ast.body {
             if let NodeKind::Macro(mac) = &node.kind {
                 assert!(
-                    mac.name != "elseif" && mac.name != "else-if" && mac.name != "else",
+                    mac.name != "elseif" && mac.name != "else",
                     "standalone clause macro '{}' found in top-level body", mac.name
                 );
             }
@@ -1594,7 +1590,7 @@ You're at the **plaza**
         if let NodeKind::Macro(mac) = &ast.body[0].kind {
             assert_eq!(mac.name, "if");
             assert_eq!(mac.clauses.len(), 2, "should have else-if + else clauses");
-            assert_eq!(mac.clauses[0].kind, "else-if");
+            assert_eq!(mac.clauses[0].kind, "elseif");
             assert_eq!(mac.clauses[1].kind, "else");
         } else {
             panic!("expected macro node");

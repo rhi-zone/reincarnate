@@ -135,12 +135,16 @@ fn try_rewrite_color_op(args: &mut Vec<JsExpr>) -> Option<JsExpr> {
     })
 }
 
-/// Map kebab-case Harlowe names to camelCase JS identifiers.
+/// Map normalized Harlowe names to camelCase JS identifiers for `Collections`.
 fn kebab_to_camel(name: &str) -> String {
     match name {
-        "some-pass" => "somePass".into(),
-        "all-pass" => "allPass".into(),
-        "none-pass" => "nonePass".into(),
+        "somepass" => "somePass".into(),
+        "allpass" => "allPass".into(),
+        "nonepass" => "nonePass".into(),
+        "sortedby" => "sortedBy".into(),
+        "rotatedto" => "rotatedTo".into(),
+        "splitstr" | "split" => "splitStr".into(),
+        "dmaltered" => "dmAltered".into(),
         _ => name.to_string(),
     }
 }
@@ -184,12 +188,12 @@ fn try_rewrite_collection_op(
 /// Map Harlowe str_op dispatch names to `StringOps` camelCase method names.
 fn str_op_to_method(name: &str) -> String {
     match name {
-        "str-reversed" | "string-reversed" => "strReversed".into(),
-        "str-nth" | "string-nth" => "strNth".into(),
-        "str-repeated" | "string-repeated" => "strRepeated".into(),
-        "str-find" | "string-find" => "strFind".into(),
-        "str-replaced" | "string-replaced" | "replaced" => "strReplaced".into(),
-        "digit-format" => "digitFormat".into(),
+        "strreversed" | "stringreversed" => "strReversed".into(),
+        "strnth" | "stringnth" => "strNth".into(),
+        "strrepeated" | "stringrepeated" => "strRepeated".into(),
+        "strfind" | "stringfind" => "strFind".into(),
+        "strreplaced" | "stringreplaced" | "replaced" => "strReplaced".into(),
+        "digitformat" => "digitFormat".into(),
         // upperfirst, lowerfirst, trimmed, words, plural are already valid JS identifiers
         _ => name.to_string(),
     }
@@ -197,8 +201,8 @@ fn str_op_to_method(name: &str) -> String {
 
 /// `str_op("trimmed", s)` → `StringOps.trimmed(s)`, etc.
 ///
-/// Special case: `str_op("str-nth", N)` with only 1 arg (no string) is the Harlowe
-/// "string-nth value" used as a property accessor: `$arr's (str-nth: N)`.
+/// Special case: `str_op("strnth", N)` with only 1 arg (no string) is the Harlowe
+/// "string-nth value" used as a property accessor: `$arr's (str-nth: N)` → `(strnth: N)`.
 /// In that context the accessor is just the 1-based index N itself — `get_property`
 /// and `set_property` already handle numeric keys with 1-based indexing.
 fn try_rewrite_str_op(args: &mut Vec<JsExpr>) -> Option<JsExpr> {
@@ -206,7 +210,7 @@ fn try_rewrite_str_op(args: &mut Vec<JsExpr>) -> Option<JsExpr> {
     let remaining = std::mem::take(args);
 
     // Partial application: (str-nth: N) without the string — emit just N.
-    if matches!(name.as_str(), "str-nth" | "string-nth") && remaining.len() == 1 {
+    if matches!(name.as_str(), "strnth" | "stringnth") && remaining.len() == 1 {
         return Some(remaining.into_iter().next().unwrap());
     }
 
@@ -225,7 +229,7 @@ fn try_rewrite_str_op(args: &mut Vec<JsExpr>) -> Option<JsExpr> {
 fn is_predicate_op(name: &str) -> bool {
     matches!(
         name,
-        "find" | "some-pass" | "all-pass" | "none-pass" | "count" | "altered" | "sorted"
+        "find" | "somepass" | "allpass" | "nonepass" | "count" | "altered" | "sorted"
     )
 }
 
@@ -468,10 +472,10 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_collection_op_kebab_case() {
+    fn rewrite_collection_op_normalized_name() {
         let expr = engine_call(
             "collection_op",
-            vec![str_lit("some-pass"), var("pred"), var("a")],
+            vec![str_lit("somepass"), var("pred"), var("a")],
         );
         let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
         match extract_expr(&func) {
@@ -545,21 +549,21 @@ mod tests {
 
     #[test]
     fn rewrite_str_op_str_reversed() {
-        let expr = engine_call("str_op", vec![str_lit("str-reversed"), var("s")]);
+        let expr = engine_call("str_op", vec![str_lit("strreversed"), var("s")]);
         let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert_stringops_call(&func, "strReversed", 1);
     }
 
     #[test]
     fn rewrite_str_op_string_reversed_alias() {
-        let expr = engine_call("str_op", vec![str_lit("string-reversed"), var("s")]);
+        let expr = engine_call("str_op", vec![str_lit("stringreversed"), var("s")]);
         let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert_stringops_call(&func, "strReversed", 1);
     }
 
     #[test]
     fn rewrite_str_op_digit_format() {
-        let expr = engine_call("str_op", vec![str_lit("digit-format"), var("fmt"), var("n")]);
+        let expr = engine_call("str_op", vec![str_lit("digitformat"), var("fmt"), var("n")]);
         let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
         assert_stringops_call(&func, "digitFormat", 2);
     }
