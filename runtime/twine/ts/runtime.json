@@ -27,5 +27,10 @@
   "class_preamble": null,
   "type_definitions": {},
   "function_signatures": {},
-  "function_modules": []
+  "function_modules": [
+    {
+      "names": ["clone", "iterate", "iterator_has_next", "iterator_next_value", "iterator_next_key", "ushr", "instanceof_"],
+      "path": "sugarcube/engine"
+    }
+  ]
 }

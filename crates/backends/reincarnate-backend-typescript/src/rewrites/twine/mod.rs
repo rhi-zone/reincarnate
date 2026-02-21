@@ -23,9 +23,9 @@ pub fn rewrite_introduced_calls(system: &str, method: &str) -> &'static [&'stati
         harlowe::rewrite_introduced_calls(method)
     } else if system == "Harlowe.Engine" {
         engine::rewrite_introduced_calls(method)
+    } else if system == "SugarCube.Engine" {
+        sugarcube::rewrite_introduced_calls(method)
     } else {
-        // SugarCube rewrites produce only built-in JS constructs (new, typeof, etc.)
-        // and calls to Math.pow / String — none of which need function-module imports.
         &[]
     }
 }

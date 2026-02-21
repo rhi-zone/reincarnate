@@ -15,6 +15,7 @@
 import * as Platform from "../platform";
 import jQuery from "jquery";
 import { installExtensions } from "./jquery-extensions";
+import { installSugarCubeExtensions } from "./extensions";
 import { Wikifier } from "./wikifier";
 import type { SugarCubeRuntime } from "./runtime";
 
@@ -42,6 +43,9 @@ export class SCEngine {
     const Settings = rt.Settings;
     const Macro = rt.Macro;
     const Audio = rt.Audio;
+
+    // --- Array / String prototype extensions ---
+    installSugarCubeExtensions();
 
     // --- jQuery ---
     g.jQuery = jQuery;
@@ -561,9 +565,14 @@ export class SCEngine {
     }
   }
 
-  /** Throw an error. */
+  /** Throw an error message wrapped in an Error object. */
   error(message: string): never {
     throw new Error(message);
+  }
+
+  /** Throw an arbitrary value (JS `throw expr` statement lowering). */
+  throw(value: unknown): never {
+    throw value;
   }
 
   /** Start a <<done>> block (deferred execution until end of passage). */

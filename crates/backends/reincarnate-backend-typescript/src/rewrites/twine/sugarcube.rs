@@ -2,7 +2,9 @@
 //!
 //! Converts `SugarCube.Engine.*` SystemCall nodes into native JavaScript
 //! constructs: `new`, `typeof`, `delete`, `in`, `Math.pow`, `String()`,
-//! null-checks (`def`/`ndef`/`is_nullish`), and closure inlining.
+//! null-checks (`def`/`ndef`/`is_nullish`), closure inlining, and direct
+//! calls to standalone pure functions exported from `sugarcube/engine.ts`
+//! (`clone`, `iterate`, `iterator_*`, `ushr`, `instanceof_`).
 
 use std::collections::HashMap;
 
@@ -10,6 +12,21 @@ use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::CmpKind;
 
 use crate::js_ast::{JsExpr, JsFunction};
+
+/// Returns the bare function names that a `SugarCube.Engine.*` rewrite
+/// will introduce, if any. Used by import generation to emit correct imports.
+pub(super) fn rewrite_introduced_calls(method: &str) -> &'static [&'static str] {
+    match method {
+        "clone" => &["clone"],
+        "iterate" => &["iterate"],
+        "iterator_has_next" => &["iterator_has_next"],
+        "iterator_next_value" => &["iterator_next_value"],
+        "iterator_next_key" => &["iterator_next_key"],
+        "ushr" => &["ushr"],
+        "instanceof" => &["instanceof_"],
+        _ => &[],
+    }
+}
 
 /// Try to rewrite a `SugarCube.Engine.*` SystemCall.
 pub(super) fn try_rewrite(
@@ -188,9 +205,46 @@ pub(super) fn try_rewrite(
             })
         }
 
-        // Everything else (clone, resolve, iterate, iterator_*, eval, arrow,
-        // error, done_*, break, continue, ushr, instanceof) passes through
-        // to the runtime via the SystemCall fallback in the printer.
+        // clone(v) → clone(v)  (standalone pure function from sugarcube/engine.ts)
+        "clone" => {
+            let a = std::mem::take(args);
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Var("clone".into())),
+                args: a,
+            })
+        }
+
+        // iterate / iterator_* → standalone pure functions from sugarcube/engine.ts
+        "iterate" | "iterator_has_next" | "iterator_next_value" | "iterator_next_key" => {
+            let name = method.to_string();
+            let a = std::mem::take(args);
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Var(name)),
+                args: a,
+            })
+        }
+
+        // ushr(a, b) → ushr(a, b)
+        "ushr" if args.len() == 2 => {
+            let a = std::mem::take(args);
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Var("ushr".into())),
+                args: a,
+            })
+        }
+
+        // instanceof(v, t) → instanceof_(v, t)
+        "instanceof" if args.len() == 2 => {
+            let a = std::mem::take(args);
+            Some(JsExpr::Call {
+                callee: Box::new(JsExpr::Var("instanceof_".into())),
+                args: a,
+            })
+        }
+
+        // Everything else (resolve, eval, arrow, error, done_*, break, continue,
+        // parseLink) passes through to the runtime via the SystemCall fallback in
+        // the printer.
         _ => None,
     }
 }
@@ -410,5 +464,92 @@ mod tests {
             }
             other => panic!("expected ArrowFunction, got {other:?}"),
         }
+    }
+
+    fn sc_engine_call(method: &str, args: Vec<JsExpr>) -> JsExpr {
+        JsExpr::SystemCall {
+            system: "SugarCube.Engine".into(),
+            method: method.into(),
+            args,
+        }
+    }
+
+    fn var(name: &str) -> JsExpr {
+        JsExpr::Var(name.into())
+    }
+
+    fn assert_direct_call(func: &JsFunction, expected_callee: &str, expected_arity: usize) {
+        match extract_expr(func) {
+            JsExpr::Call { callee, args } => {
+                assert!(
+                    matches!(callee.as_ref(), JsExpr::Var(n) if n == expected_callee),
+                    "expected callee {expected_callee}, got {callee:?}"
+                );
+                assert_eq!(args.len(), expected_arity);
+            }
+            other => panic!("expected Call to {expected_callee}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rewrite_clone() {
+        let expr = sc_engine_call("clone", vec![var("x")]);
+        let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
+        assert_direct_call(&func, "clone", 1);
+    }
+
+    #[test]
+    fn rewrite_iterate() {
+        let expr = sc_engine_call("iterate", vec![var("coll")]);
+        let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
+        assert_direct_call(&func, "iterate", 1);
+    }
+
+    #[test]
+    fn rewrite_iterator_has_next() {
+        let expr = sc_engine_call("iterator_has_next", vec![var("iter")]);
+        let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
+        assert_direct_call(&func, "iterator_has_next", 1);
+    }
+
+    #[test]
+    fn rewrite_iterator_next_value() {
+        let expr = sc_engine_call("iterator_next_value", vec![var("iter")]);
+        let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
+        assert_direct_call(&func, "iterator_next_value", 1);
+    }
+
+    #[test]
+    fn rewrite_iterator_next_key() {
+        let expr = sc_engine_call("iterator_next_key", vec![var("iter")]);
+        let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
+        assert_direct_call(&func, "iterator_next_key", 1);
+    }
+
+    #[test]
+    fn rewrite_ushr() {
+        let expr = sc_engine_call("ushr", vec![var("a"), var("b")]);
+        let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
+        assert_direct_call(&func, "ushr", 2);
+    }
+
+    #[test]
+    fn rewrite_instanceof() {
+        let expr = sc_engine_call("instanceof", vec![var("v"), var("T")]);
+        let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
+        assert_direct_call(&func, "instanceof_", 2);
+    }
+
+    #[test]
+    fn introduced_calls_sugarcube() {
+        assert_eq!(rewrite_introduced_calls("clone"), &["clone"]);
+        assert_eq!(rewrite_introduced_calls("iterate"), &["iterate"]);
+        assert_eq!(rewrite_introduced_calls("iterator_has_next"), &["iterator_has_next"]);
+        assert_eq!(rewrite_introduced_calls("iterator_next_value"), &["iterator_next_value"]);
+        assert_eq!(rewrite_introduced_calls("iterator_next_key"), &["iterator_next_key"]);
+        assert_eq!(rewrite_introduced_calls("ushr"), &["ushr"]);
+        assert_eq!(rewrite_introduced_calls("instanceof"), &["instanceof_"]);
+        assert!(rewrite_introduced_calls("eval").is_empty());
+        assert!(rewrite_introduced_calls("resolve").is_empty());
     }
 }
