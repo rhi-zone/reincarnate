@@ -383,6 +383,15 @@ statement parsing, trailing comma stripping in case values.
     bodies but not declared in scope at the reference site. Likely a closure capture
     ordering problem — the lambda captures the var before its alloc is visible.
     Also: `_slot`/`_tentacleColour`/`_ii`/`_outfit`/`_kylar`/`__part` etc. (21 errors).
+  - **Root cause for `_args = State.get("_args")` without `let` (TS2304)** —
+    When a single-store alloc has 2+ loads (e.g. `_args` loaded in both a display
+    expression and an if condition), after single-store promotion the stored value (v1)
+    gets use_count >= 2. `emit_or_inline(v1, count≥2)` takes the `Assign` path +
+    adds to `referenced_block_params`. But v1 is NOT a block param, so
+    `collect_block_param_decls` never emits `let _args;`. Fix: in `emit_or_inline`,
+    when count >= 2 AND value has a name AND is not yet in referenced_block_params,
+    emit `VarDecl { name, init: Some(expr) }` (not bare Assign). Track that the
+    first emission was a VarDecl so subsequent uses just reference the name.
   - **TS2454 "Variable `_x` used before being assigned"** — `_hooks`/`_them` (DoL):
     var IS declared (hoisted by `hoist_allocs()`) but has no initializer, and a code
     path reaches the use before the `(set:)` assignment. Fix: initialize hoisted allocs
