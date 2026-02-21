@@ -136,7 +136,7 @@ export function installSugarCubeExtensions(): void {
       const count = Math.min(n, this.length);
       for (let i = 0; i < count; i++) {
         const pick = Math.floor(Math.random() * indices.length);
-        result.push(this[indices.splice(pick, 1)[0]]);
+        result.push(this[indices.splice(pick, 1)[0]!]);
       }
       return result;
     };
@@ -194,13 +194,13 @@ export function installSugarCubeExtensions(): void {
 
   if (!sp.toUpperFirst) {
     sp.toUpperFirst = function (this: string): string {
-      return this.length > 0 ? this[0].toUpperCase() + this.slice(1) : this;
+      return this.length > 0 ? this.charAt(0).toUpperCase() + this.slice(1) : this;
     };
   }
 
   if (!sp.toLowerFirst) {
     sp.toLowerFirst = function (this: string): string {
-      return this.length > 0 ? this[0].toLowerCase() + this.slice(1) : this;
+      return this.length > 0 ? this.charAt(0).toLowerCase() + this.slice(1) : this;
     };
   }
 

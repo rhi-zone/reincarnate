@@ -2369,6 +2369,10 @@ impl<'a> EmitCtx<'a> {
         body: &[LinearStmt],
         stmts: &mut Vec<Stmt>,
     ) {
+        // Flush any outer SE inlines before the loop. If we don't, nested
+        // emit_if calls inside the loop body will flush them into the body's
+        // stmts — creating declarations that are out of scope after the loop.
+        self.flush_side_effecting_inlines(stmts);
         let mut header_stmts = Vec::new();
         self.emit_stmts_into(header, &mut header_stmts);
 
@@ -2413,6 +2417,8 @@ impl<'a> EmitCtx<'a> {
         body: &[LinearStmt],
         stmts: &mut Vec<Stmt>,
     ) {
+        // Flush any outer SE inlines before the loop (same reasoning as emit_while).
+        self.flush_side_effecting_inlines(stmts);
         // Emit init assigns.
         self.emit_stmts_into(init, stmts);
 
