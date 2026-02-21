@@ -216,7 +216,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                             // a narrow structural type (`{}` or `{ k: T; ... }`) with no
                             // index signature, causing TS7053 when the object is later
                             // accessed with a dynamic or `any`-typed key.
-                            JsExpr::ObjectInit(_) => Some("Record<string, any>"),
+                            JsExpr::ObjectInit(_) => Some("Record<string, unknown>"),
                             _ => None,
                         };
                         if let Some(ann) = annotation {
@@ -245,9 +245,9 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
             // Any object literal assigned to an untyped variable causes TypeScript to
             // infer a narrow structural type (`{}` or `{ k: T; ... }`), which has no
             // index signature. Subsequent dynamic-key access then fails with TS7053.
-            // Cast to Record<string, any> to match the VarDecl treatment.
+            // Cast to Record<string, unknown> to match the VarDecl treatment.
             let val = if matches!(value, JsExpr::ObjectInit(_)) {
-                format!("{} as Record<string, any>", print_expr(value))
+                format!("{} as Record<string, unknown>", print_expr(value))
             } else {
                 print_expr(value)
             };
@@ -547,7 +547,7 @@ fn print_expr(expr: &JsExpr) -> String {
             // signature, causing TS7053 when the key is `any`-typed. Cast to Record so
             // the lookup is well-typed.
             let coll_str = if matches!(collection.as_ref(), JsExpr::ObjectInit(_)) {
-                format!("({} as Record<string, any>)", print_expr(collection))
+                format!("({} as Record<string, unknown>)", print_expr(collection))
             } else {
                 print_expr_operand(collection)
             };
