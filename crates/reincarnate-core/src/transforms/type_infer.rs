@@ -175,8 +175,9 @@ impl ModuleContext {
     }
 }
 
-/// Replace `old` with `new` only if `old` is `Dynamic` and `new` is not.
-/// Returns `true` if the type changed.
+/// Replace `old` with `new` only when doing so refines our knowledge.
+/// Only `Dynamic → concrete` is allowed; a concrete type is never replaced
+/// by another concrete type (that would widen, not refine).
 fn refine(old: &Type, new: &Type) -> Option<Type> {
     if *old == Type::Dynamic && *new != Type::Dynamic {
         Some(new.clone())
@@ -211,6 +212,13 @@ fn flatten_into(ty: Type, nullable: &mut bool, out: &mut Vec<Type>) {
 /// `Dynamic` members are dropped. `Option` is unwrapped into a nullable flag
 /// and its inner type is flattened into the member list. This prevents nesting
 /// from iterative inference passes.
+///
+/// When `nullable` is true, the result is wrapped in `Type::Option` even when
+/// the base is `Dynamic`. Without this, `null | Dynamic` → `Dynamic`, and a
+/// later `union_type(Dynamic, Bool)` → `Bool` — the null information is
+/// permanently lost through the intermediate Dynamic. Preserving it as
+/// `Option(Dynamic)` (= TS `any | null` = `any`) allows a subsequent merge
+/// with a concrete type to produce the correct `Option(T)`.
 fn union_type(a: Type, b: Type) -> Type {
     let mut nullable = false;
     let mut types = Vec::new();
@@ -222,7 +230,7 @@ fn union_type(a: Type, b: Type) -> Type {
         1 => types.into_iter().next().unwrap(),
         _ => Type::Union(types),
     };
-    if nullable && base != Type::Dynamic {
+    if nullable {
         Type::Option(Box::new(base))
     } else {
         base
@@ -642,18 +650,22 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
     }
 
     // Refine alloc instruction types from store analysis.
+    // Update whenever the store-derived type differs from the current alloc type,
+    // not just when current is Dynamic. This handles the case where the translator
+    // gives an alloc a concrete type (e.g. String) but stores also include null,
+    // requiring the type to be widened to Option(String).
+    // Skip updates that would narrow to Dynamic (store analysis returning Dynamic
+    // means no info — don't override a known type with "unknown").
     let alloc_types = build_alloc_types(func);
     for block in func.blocks.values() {
         for &inst_id in &block.insts {
             let inst = &func.insts[inst_id];
             if let Op::Alloc(ref ty) = inst.op {
-                if *ty == Type::Dynamic {
-                    if let Some(result) = inst.result {
-                        if let Some(refined) = alloc_types.get(&result) {
-                            if *refined != Type::Dynamic {
-                                func.insts[inst_id].op = Op::Alloc(refined.clone());
-                                any_changed = true;
-                            }
+                if let Some(result) = inst.result {
+                    if let Some(refined) = alloc_types.get(&result) {
+                        if refined != ty && *refined != Type::Dynamic {
+                            func.insts[inst_id].op = Op::Alloc(refined.clone());
+                            any_changed = true;
                         }
                     }
                 }
@@ -1504,7 +1516,11 @@ mod tests {
         }
     }
 
-    /// Null sentinel + Dynamic → stays Dynamic (no info from null alone).
+    /// Null sentinel + Dynamic → Option(Dynamic), preserving nullability.
+    /// Even though `Option(Dynamic)` = `any | null` = `any` in TypeScript,
+    /// keeping the nullable flag in the IR is critical: if this alloc later
+    /// receives a concrete-typed store, union_type(Option(Dynamic), Bool)
+    /// produces Option(Bool) rather than losing the null and producing Bool.
     #[test]
     fn alloc_type_null_sentinel_with_dynamic_stays_dynamic() {
         let sig = FunctionSig {
@@ -1539,7 +1555,38 @@ mod tests {
         let func = &module.functions[FuncId::new(0)];
         let alloc_inst = func.insts.values().find(|i| matches!(&i.op, Op::Alloc(_))).unwrap();
         match &alloc_inst.op {
-            Op::Alloc(ty) => assert_eq!(*ty, Type::Dynamic),
+            Op::Alloc(ty) => assert_eq!(*ty, Type::Option(Box::new(Type::Dynamic))),
+            other => panic!("expected Alloc, got {:?}", other),
+        }
+    }
+
+    /// Alloc pre-typed as String + null store → widened to Option(String).
+    /// This covers the case where the translator sets an explicit concrete type
+    /// on an alloc, but runtime code assigns null (e.g. SugarCube `_temp` vars).
+    #[test]
+    fn alloc_type_widened_to_option_when_null_stored() {
+        let sig = FunctionSig { params: vec![], return_ty: Type::Dynamic, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let ptr = fb.alloc(Type::String); // pre-typed as String
+        let null_val = fb.const_null();
+        fb.store(ptr, null_val);
+        let str_val = fb.const_string("hello".to_string());
+        fb.store(ptr, str_val);
+        let loaded = fb.load(ptr, Type::Dynamic);
+        fb.ret(Some(loaded));
+        let func = fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        let alloc_inst = func.insts.values().find(|i| matches!(&i.op, Op::Alloc(_))).unwrap();
+        match &alloc_inst.op {
+            Op::Alloc(ty) => assert_eq!(*ty, Type::Option(Box::new(Type::String))),
             other => panic!("expected Alloc, got {:?}", other),
         }
     }

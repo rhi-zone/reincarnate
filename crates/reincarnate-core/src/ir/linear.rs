@@ -184,14 +184,14 @@ fn linearize_into(
             emit_block_insts(func, *block, out);
 
             let mut then_stmts = Vec::new();
-            emit_arg_assigns(then_assigns, &mut then_stmts);
+            emit_arg_assigns(then_assigns, func, &mut then_stmts);
             linearize_into(func, then_body, &mut then_stmts, false);
-            emit_arg_assigns(then_trailing_assigns, &mut then_stmts);
+            emit_arg_assigns(then_trailing_assigns, func, &mut then_stmts);
 
             let mut else_stmts = Vec::new();
-            emit_arg_assigns(else_assigns, &mut else_stmts);
+            emit_arg_assigns(else_assigns, func, &mut else_stmts);
             linearize_into(func, else_body, &mut else_stmts, false);
-            emit_arg_assigns(else_trailing_assigns, &mut else_stmts);
+            emit_arg_assigns(else_trailing_assigns, func, &mut else_stmts);
 
             out.push(LinearStmt::If {
                 cond: *cond,
@@ -232,7 +232,7 @@ fn linearize_into(
                 Vec::new()
             } else {
                 let mut stmts = Vec::new();
-                emit_arg_assigns(init_assigns, &mut stmts);
+                emit_arg_assigns(init_assigns, func, &mut stmts);
                 stmts
             };
 
@@ -248,7 +248,7 @@ fn linearize_into(
             strip_back_edge_assigns(&mut body_stmts, update_assigns);
 
             let mut update_stmts = Vec::new();
-            emit_arg_assigns(update_assigns, &mut update_stmts);
+            emit_arg_assigns(update_assigns, func, &mut update_stmts);
 
             out.push(LinearStmt::For {
                 init,
@@ -319,16 +319,16 @@ fn linearize_into(
             let mut case_stmts = Vec::with_capacity(cases.len());
             for case in cases {
                 let mut stmts = Vec::new();
-                emit_arg_assigns(&case.entry_assigns, &mut stmts);
+                emit_arg_assigns(&case.entry_assigns, func, &mut stmts);
                 linearize_into(func, &case.body, &mut stmts, false);
-                emit_arg_assigns(&case.trailing_assigns, &mut stmts);
+                emit_arg_assigns(&case.trailing_assigns, func, &mut stmts);
                 case_stmts.push((case.value.clone(), stmts));
             }
 
             let mut default_stmts = Vec::new();
-            emit_arg_assigns(default_assigns, &mut default_stmts);
+            emit_arg_assigns(default_assigns, func, &mut default_stmts);
             linearize_into(func, default_body, &mut default_stmts, false);
-            emit_arg_assigns(default_trailing_assigns, &mut default_stmts);
+            emit_arg_assigns(default_trailing_assigns, func, &mut default_stmts);
 
             out.push(LinearStmt::Switch {
                 value: *value,
@@ -409,7 +409,7 @@ fn emit_br_assigns(func: &Function, block_id: super::block::BlockId, out: &mut V
     if let Op::Br { target, ref args } = func.insts[last_inst].op {
         let target_block = &func.blocks[target];
         for (param, &src) in target_block.params.iter().zip(args.iter()) {
-            if param.value == src {
+            if param.value == src || func.null_sentinel_values.contains(&src) {
                 continue;
             }
             out.push(LinearStmt::Assign {
@@ -420,9 +420,16 @@ fn emit_br_assigns(func: &Function, block_id: super::block::BlockId, out: &mut V
     }
 }
 
-/// Emit BlockArgAssign entries as Assign statements.
-fn emit_arg_assigns(assigns: &[BlockArgAssign], out: &mut Vec<LinearStmt>) {
+/// Emit BlockArgAssign entries as Assign statements, skipping any assignment
+/// whose source is a Mem2Reg null sentinel. Sentinel assigns represent the
+/// conservative SSA "pre-first-store" value; skipping them lets TypeScript's
+/// definite-assignment analysis verify that the variable is initialized before
+/// its first real use, avoiding spurious TS2322 null-to-non-nullable errors.
+fn emit_arg_assigns(assigns: &[BlockArgAssign], func: &Function, out: &mut Vec<LinearStmt>) {
     for assign in assigns {
+        if func.null_sentinel_values.contains(&assign.src) {
+            continue;
+        }
         out.push(LinearStmt::Assign {
             dst: assign.dst,
             src: assign.src,

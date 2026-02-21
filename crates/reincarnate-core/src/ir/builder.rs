@@ -55,6 +55,7 @@ impl FunctionBuilder {
             coroutine: None,
             value_names: HashMap::new(),
             capture_params: Vec::new(),
+            null_sentinel_values: std::collections::HashSet::new(),
         };
 
         Self {

@@ -82,6 +82,16 @@ pub struct Function {
     /// `sig.params`. Use [`FunctionBuilder::capture_param`] to access them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub capture_params: Vec<CaptureParam>,
+    /// ValueIds of Mem2Reg null-sentinel constants — one per promoted alloc.
+    ///
+    /// Mem2Reg inserts a `Const(Null)` at the function entry as the initial
+    /// "reaching definition" for each promoted alloc (the conservative SSA
+    /// value for the pre-first-store case). These are not real null values from
+    /// user code; they represent an uninitialized slot. Block-arg assignments
+    /// from these sentinels should be skipped during code emission so that
+    /// TypeScript's definite-assignment analysis can verify correct initialization.
+    #[serde(skip)]
+    pub null_sentinel_values: HashSet<ValueId>,
 }
 
 impl Function {
