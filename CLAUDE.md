@@ -212,7 +212,16 @@ Test projects live under `~/reincarnate/<engine>/<game>/`:
 - Flash: `~/reincarnate/flash/cc/`
 - GML (GMS1): `~/reincarnate/gamemaker/bounty/`
 - GML (GMS2): `~/reincarnate/gamemaker/deadestate/`
-- Twine: `~/reincarnate/twine/` (subfolders `dol/`, `trc/`)
+- Twine: `~/reincarnate/twine/` (subfolders `dol/`, `trc/`, and 19+ Harlowe games)
+
+**Checking TypeScript output:** Always run `tsc` from the `out/` subdirectory, not from the game root. The `tsconfig.json` lives in `out/`, so running from the game root silently passes (no tsconfig found = no files checked).
+```bash
+# Correct: run from out/
+(cd ~/reincarnate/twine/mygame/out && bunx tsc --noEmit)
+
+# Wrong: running from game root silently finds nothing
+bunx tsc --noEmit  # from ~/reincarnate/twine/mygame/ — always exits 0
+```
 
 ## Crate Structure
 
