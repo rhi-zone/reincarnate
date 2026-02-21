@@ -276,6 +276,15 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
 
 ### SugarCube Translator Bugs
 
+- [ ] **CRITICAL: eliminate per-function runtime service aliases** — Every exported function
+  currently emits 7 `const SugarCube_X = _rt.X;` aliasing lines at the top (DOM, Engine,
+  Input, Navigation, Output, State, Widget). These aliases are unnecessary — all call sites
+  should use `_rt.State`, `_rt.Output`, etc. directly. The aliases add noise to every function,
+  make diffs harder to read, and cause TypeScript to allocate extra locals for every call frame.
+  Fix: emit `_rt.State.get(...)`, `_rt.Output.break()`, etc. at every call site; drop the
+  alias-emission block entirely. This is a backend emitter change (TypeScript backend, `emit.rs`
+  or the SugarCube-specific emitter).
+
 - [ ] **`_rt` parameter threading in trc (1935 errors)** — Passage functions are emitted as
   `(_rt: SugarCubeRuntime) => void` but some callback sites (e.g. link targets, widget calls)
   pass them without the `_rt` argument, producing TS2345 "not assignable to `() => void`".
