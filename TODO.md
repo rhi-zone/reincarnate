@@ -373,6 +373,9 @@ statement parsing, trailing comma stripping in case values.
     `_swarmamounts`/`_arrayClothes`/`_clothing` (DoL): temp vars referenced in passage
     bodies but not declared in scope at the reference site. Likely a closure capture
     ordering problem — the lambda captures the var before its alloc is visible.
+    Also: `_slot`/`_tentacleColour`/`_ii`/`_outfit` etc. (DoL, 1522 TS2304 remaining
+    after for-loop scope fix). The `__slot` vs `_slot` double-underscore naming
+    mismatch (line 47580) suggests a variable rename collision in closures.
   - **TS2454 "Variable `_x` used before being assigned"** — `_hooks`/`_them` (DoL):
     var IS declared (hoisted by `hoist_allocs()`) but has no initializer, and a code
     path reaches the use before the `(set:)` assignment. Fix: initialize hoisted allocs

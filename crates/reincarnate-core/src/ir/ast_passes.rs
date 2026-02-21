@@ -4197,7 +4197,48 @@ pub fn promote_while_to_for(body: &mut Vec<Stmt>) {
         let mut init_stmt = body.remove(init_j);
         // After removal, the while is now at i-1.
         let while_idx = i - 1;
-        if let Some(promoted) = try_promote_while(&var_name, &mut init_stmt, &mut body[while_idx])
+
+        // For mutable VarDecls with an init value: check whether the variable
+        // is referenced after the while loop. If so, absorbing the VarDecl into
+        // the for-loop header would block-scope it and break those references
+        // (TS2304). In that case, re-insert `let _i: T;` at the original position
+        // and use `_i = v` as the for-init to preserve function-level scope.
+        let has_post_loop_refs = matches!(
+            &init_stmt,
+            Stmt::VarDecl { mutable: true, init: Some(_), .. }
+        ) && body[(while_idx + 1)..]
+            .iter()
+            .any(|s| stmt_references(s, &var_name));
+
+        if has_post_loop_refs {
+            let Stmt::VarDecl { name, ty, init: Some(val), .. } = init_stmt else {
+                unreachable!()
+            };
+            let scope_decl = Stmt::VarDecl {
+                name: name.clone(),
+                ty: ty.clone(),
+                init: None,
+                mutable: true,
+            };
+            // Re-insert the declaration (without init) at the original position.
+            // This shifts the while from while_idx to while_idx+1.
+            body.insert(init_j, scope_decl);
+            let adj_while_idx = while_idx + 1;
+            let mut assign_init = Stmt::Assign {
+                target: Expr::Var(name),
+                value: val,
+            };
+            if let Some(promoted) =
+                try_promote_while(&var_name, &mut assign_init, &mut body[adj_while_idx])
+            {
+                body[adj_while_idx] = promoted;
+                i = adj_while_idx;
+                continue;
+            }
+            // Promotion failed: scope_decl stays at init_j; restore assign before while.
+            body.insert(adj_while_idx, assign_init);
+        } else if let Some(promoted) =
+            try_promote_while(&var_name, &mut init_stmt, &mut body[while_idx])
         {
             body[while_idx] = promoted;
             // Don't increment — recheck from the same position.
@@ -6083,6 +6124,92 @@ mod tests {
         assert!(
             matches!(&body[0], Stmt::VarDecl { name, .. } if name == "v0"),
             "v0 should not be inlined into conditional body: {body:?}"
+        );
+    }
+
+    // ---------------------------------------------------------------------------
+    // promote_while_to_for: mutable VarDecl scope regression
+    // ---------------------------------------------------------------------------
+
+    /// Regression: mutable VarDecl used in two while loops must NOT be pulled
+    /// into the first for-loop header (which would block-scope it and break the
+    /// second loop's references, causing TS2304).
+    ///
+    /// Input:
+    /// ```text
+    /// let _i: number = 0.0;           ← merged by merge_decl_init
+    /// while (_i < a.length) { ... }   ← first loop
+    /// let _i: number = 0.0;           ← would be a second decl (impossible), so:
+    /// _i = 0.0;
+    /// while (_i < b.length) { ... }   ← second loop
+    /// ```
+    /// Expected output: _i declared at function scope; both loops see it.
+    #[test]
+    fn promote_while_mutable_vardecl_stays_at_scope() {
+        // Simulates: let _i: number = 0.0; while (_i < n) { ...; _i += 1.0; }
+        //            _i = 0.0; while (_i < m) { ...; _i += 1.0; }
+        let cmp_i_n = Expr::Cmp {
+            kind: CmpKind::Lt,
+            lhs: Box::new(Expr::Var("_i".into())),
+            rhs: Box::new(Expr::Var("n".into())),
+        };
+        let cmp_i_m = Expr::Cmp {
+            kind: CmpKind::Lt,
+            lhs: Box::new(Expr::Var("_i".into())),
+            rhs: Box::new(Expr::Var("m".into())),
+        };
+
+        let float_0 = || Expr::Literal(Constant::Float(0.0));
+        let float_1 = || Expr::Literal(Constant::Float(1.0));
+        // Add a body stmt so try_promote_while pattern-1 fires (body.len() >= 2).
+        let body_work = || Stmt::Expr(Expr::Var("work".into()));
+        let i_add_1 = || Stmt::CompoundAssign {
+            target: Expr::Var("_i".into()),
+            op: BinOp::Add,
+            value: float_1(),
+        };
+
+        let mut body = vec![
+            // let _i: number = 0.0;  (mutable VarDecl with init — from merge_decl_init)
+            Stmt::VarDecl {
+                name: "_i".into(),
+                ty: Some(crate::ir::ty::Type::Float(64)),
+                init: Some(float_0()),
+                mutable: true,
+            },
+            // while (_i < n) { work; _i += 1.0; }
+            Stmt::While {
+                cond: cmp_i_n,
+                body: vec![body_work(), i_add_1()],
+            },
+            // _i = 0.0;
+            Stmt::Assign {
+                target: Expr::Var("_i".into()),
+                value: float_0(),
+            },
+            // while (_i < m) { work; _i += 1.0; }
+            Stmt::While {
+                cond: cmp_i_m,
+                body: vec![body_work(), i_add_1()],
+            },
+        ];
+
+        promote_while_to_for(&mut body);
+
+        // The VarDecl for _i must remain at function scope (not absorbed into
+        // the for-loop header), so references after the first loop stay valid.
+        assert!(
+            matches!(&body[0], Stmt::VarDecl { name, mutable: true, init: None, .. } if name == "_i"),
+            "VarDecl for _i must stay at function scope with no init: {body:?}"
+        );
+        // The first loop must be promoted to a for-loop with an Assign init
+        // (not a VarDecl init, which would block-scope _i).
+        assert!(
+            matches!(&body[1], Stmt::For { init, .. } if matches!(
+                init.first(),
+                Some(Stmt::Assign { target: Expr::Var(n), .. }) if n == "_i"
+            )),
+            "First for-loop init must be an Assign, not a VarDecl: {body:?}"
         );
     }
 
