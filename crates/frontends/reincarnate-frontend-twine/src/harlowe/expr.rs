@@ -232,11 +232,22 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
                 // `($x is A) or ($x is B)`. When or/and follows a comparison
                 // and the RHS is a bare value (not itself a comparison),
                 // distribute the comparison subject.
+                // For `and`/`or`, distribute the comparison subject to the right side
+                // when the right side is a comparison with implicit `it` as left operand.
                 let right = if matches!(bin_op, BinaryOp::Or | BinaryOp::And) {
                     maybe_distribute_comparison(&left, right)
                 } else {
                     right
                 };
+
+                // For `is`/`is not` followed by a comparison-type expression with implicit `it`,
+                // normalize to a direct comparison: `$x is > 5` → `$x > 5`.
+                let (bin_op, right) =
+                    if matches!(bin_op, BinaryOp::Is | BinaryOp::IsNot) {
+                        normalize_is_comparison_type(&left, bin_op, right)
+                    } else {
+                        (bin_op, right)
+                    };
 
                 let span = Span::new(left.span.start, right.span.end);
                 left = Expr {
@@ -268,35 +279,81 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
 
 /// Harlowe distributes comparisons across `or`/`and`:
 /// `$x is 0 or ""` → `($x is 0) or ($x is "")`.
-/// When `left` is `(subject IS/ISNOT value)` and `right` is a bare value
-/// (not itself a comparison), wrap `right` in the same comparison.
+///
+/// Also handles implicit-it substitution for comparison-type expressions:
+/// `$x > 4 and < 10` → `($x > 4) and ($x < 10)`.
+/// When `right` is a comparison-type `Binary(CmpOp, It, rhs)`, substitute `It`
+/// with the subject of `left`'s comparison.
 fn maybe_distribute_comparison(left: &Expr, right: Expr) -> Expr {
-    if let ExprKind::Binary {
-        op: cmp_op @ (BinaryOp::Is | BinaryOp::IsNot),
-        left: ref subject,
-        ..
-    } = left.kind
-    {
-        // Only distribute if the RHS isn't already a comparison
-        if !matches!(
-            right.kind,
-            ExprKind::Binary {
-                op: BinaryOp::Is
+    // Extract subject of left comparison (if any).
+    let subject = match &left.kind {
+        ExprKind::Binary { op, left: subj, .. }
+            if matches!(
+                op,
+                BinaryOp::Is
                     | BinaryOp::IsNot
                     | BinaryOp::Lt
                     | BinaryOp::Lte
                     | BinaryOp::Gt
                     | BinaryOp::Gte
-                    | BinaryOp::Contains
-                    | BinaryOp::IsIn
-                    | BinaryOp::IsNotIn,
-                ..
+            ) =>
+        {
+            Some((op, subj))
+        }
+        _ => None,
+    };
+
+    if let Some((left_op, subject)) = subject {
+        // Case 1: right is a comparison-type with implicit `it` as left operand.
+        // e.g. `$x > 4 and < 10` → `($x > 4) and ($x < 10)`.
+        // Also handles `$x is "A" or is not "B"` → `($x is "A") or ($x is not "B")`.
+        if let ExprKind::Binary {
+            op: right_op @ (BinaryOp::Lt
+            | BinaryOp::Lte
+            | BinaryOp::Gt
+            | BinaryOp::Gte
+            | BinaryOp::Is
+            | BinaryOp::IsNot),
+            left: ref right_left,
+            right: ref right_rhs,
+        } = right.kind
+        {
+            if matches!(right_left.kind, ExprKind::It) {
+                let span = Span::new(subject.span.start, right.span.end);
+                return Expr {
+                    kind: ExprKind::Binary {
+                        op: right_op,
+                        left: subject.clone(),
+                        right: right_rhs.clone(),
+                    },
+                    span,
+                };
             }
-        ) {
+        }
+
+        // Case 2: `Is`/`IsNot` distribution for bare values.
+        // `$x is A or B` → `($x is A) or ($x is B)`.
+        if matches!(left_op, BinaryOp::Is | BinaryOp::IsNot)
+            && !matches!(
+                right.kind,
+                ExprKind::Binary {
+                    op: BinaryOp::Is
+                        | BinaryOp::IsNot
+                        | BinaryOp::Lt
+                        | BinaryOp::Lte
+                        | BinaryOp::Gt
+                        | BinaryOp::Gte
+                        | BinaryOp::Contains
+                        | BinaryOp::IsIn
+                        | BinaryOp::IsNotIn,
+                    ..
+                }
+            )
+        {
             let span = Span::new(subject.span.start, right.span.end);
             return Expr {
                 kind: ExprKind::Binary {
-                    op: cmp_op,
+                    op: *left_op,
                     left: subject.clone(),
                     right: Box::new(right),
                 },
@@ -305,6 +362,44 @@ fn maybe_distribute_comparison(left: &Expr, right: Expr) -> Expr {
         }
     }
     right
+}
+
+/// Normalize `$x is > 5` → `$x > 5` (Harlowe comparison-type expressions).
+///
+/// When the right side of `is`/`is not` is a comparison-type `Binary(CmpOp, It, rhs)`,
+/// the caller will build `Binary(bin_op, subject, right)`. We redirect:
+/// - Return `(CmpOp, rhs)` so the caller builds `Binary(CmpOp, subject, rhs)` = `$x > 5`.
+/// - For `is not`: negate the comparison op (`is not > 5` → `<= 5`).
+fn normalize_is_comparison_type(subject: &Expr, is_op: BinaryOp, right: Expr) -> (BinaryOp, Expr) {
+    let _ = subject; // subject is threaded through by the caller; we only redirect op/rhs
+    if let ExprKind::Binary {
+        op: cmp_op @ (BinaryOp::Lt | BinaryOp::Lte | BinaryOp::Gt | BinaryOp::Gte),
+        left: ref right_left,
+        right: ref right_rhs,
+    } = right.kind
+    {
+        if matches!(right_left.kind, ExprKind::It) {
+            let op = if is_op == BinaryOp::IsNot {
+                negate_cmp(cmp_op)
+            } else {
+                cmp_op
+            };
+            // Caller builds Binary(op, subject, rhs) = `$x op rhs`.
+            return (op, *right_rhs.clone());
+        }
+    }
+    (is_op, right)
+}
+
+/// Negate a comparison operator: `>` → `<=`, `>=` → `<`, etc.
+fn negate_cmp(op: BinaryOp) -> BinaryOp {
+    match op {
+        BinaryOp::Lt => BinaryOp::Gte,
+        BinaryOp::Lte => BinaryOp::Gt,
+        BinaryOp::Gt => BinaryOp::Lte,
+        BinaryOp::Gte => BinaryOp::Lt,
+        other => other,
+    }
 }
 
 fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
@@ -652,6 +747,53 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
                 kind: ExprKind::Lambda {
                     var: "it".to_string(),
                     filter: Some(Box::new(filter)),
+                },
+                span,
+            }
+        }
+        // Implicit-it `is`/`is not` in prefix position: `or is not "X"` → `or (it is not "X")`.
+        // Harlowe allows `$x is "A" or is not "B"` meaning `($x is "A") or ($x is not "B")`.
+        // `is`/`is not` in prefix position inserts an implicit `it` as left operand.
+        // `maybe_distribute_comparison` then substitutes `it` with the subject of the left side.
+        TokenKind::Is | TokenKind::IsNot => {
+            let start = tok.span.start;
+            let op = if matches!(tok.kind, TokenKind::IsNot) {
+                BinaryOp::IsNot
+            } else {
+                BinaryOp::Is
+            };
+            lexer.next_token(); // consume `is` / `is not`
+            let rhs = parse_prec(lexer, Prec::Equality);
+            let span = Span::new(start, rhs.span.end);
+            Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(Expr { kind: ExprKind::It, span: tok.span }),
+                    right: Box::new(rhs),
+                },
+                span,
+            }
+        }
+        // Implicit-it partial comparisons: `<= expr`, `>= expr`, `< expr`, `> expr`.
+        // Harlowe allows `$x > 0 and <= $y` meaning `($x > 0) and (it <= $y)`.
+        // A comparison operator in prefix position inserts an implicit `it` as left operand.
+        TokenKind::Lte | TokenKind::Gte | TokenKind::Lt | TokenKind::Gt => {
+            let start = tok.span.start;
+            let op = match tok.kind {
+                TokenKind::Lte => BinaryOp::Lte,
+                TokenKind::Gte => BinaryOp::Gte,
+                TokenKind::Lt => BinaryOp::Lt,
+                TokenKind::Gt => BinaryOp::Gt,
+                _ => unreachable!(),
+            };
+            lexer.next_token(); // consume the operator
+            let rhs = parse_prec(lexer, Prec::Compare);
+            let span = Span::new(start, rhs.span.end);
+            Expr {
+                kind: ExprKind::Binary {
+                    op,
+                    left: Box::new(Expr { kind: ExprKind::It, span: tok.span }),
+                    right: Box::new(rhs),
                 },
                 span,
             }

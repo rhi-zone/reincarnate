@@ -65,7 +65,7 @@ export class SugarCubeRuntime {
     passageMap: Record<string, PassageFn>,
     startPassage?: string,
     tagMap?: Record<string, string[]>,
-    opts?: { root?: RenderRoot; persistence?: PersistenceOpts },
+    opts?: { root?: RenderRoot; persistence?: PersistenceOpts | undefined },
   ): void {
     if (opts?.root) {
       this.Output.doc = opts.root.doc;

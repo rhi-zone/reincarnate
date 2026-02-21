@@ -45,7 +45,7 @@ export class HarloweRuntime {
     passageMap: Record<string, PassageFn>,
     startPassage?: string,
     tagMap?: Record<string, string[]>,
-    opts?: { root?: RenderRoot; persistence?: PersistenceOpts; sourceMap?: Record<string, string> },
+    opts?: { root?: RenderRoot; persistence?: PersistenceOpts | undefined; sourceMap?: Record<string, string> | undefined },
   ): void {
     if (opts?.root) {
       this.Navigation.doc = opts.root.doc;
