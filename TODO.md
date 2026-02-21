@@ -303,10 +303,7 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   `Record<string, any>` instead of `Record<string, unknown>`. Game objects are inherently
   dynamic — `any` is the accurate annotation when no source-level type info exists.
 
-- [ ] **jQuery `@types` missing in DoL runtime** — 4 errors (`TS7016` + 3× `TS2304 JQuery`).
-  `runtime/sugarcube/jquery-extensions.ts` uses jQuery types but `@types/jquery` is not installed.
-  Fix: add `@types/jquery` to the runtime package deps, or add a minimal `declare module 'jquery'`
-  shim in the runtime's type declarations.
+- [x] **jQuery `@types` missing in DoL runtime** — Already in `dev_dependencies` in `runtime.json`; was a stale entry.
 
 ### SugarCube Remaining Stubs
 
@@ -314,8 +311,8 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
 - [ ] **L10n.get()** — Returns key as-is. Low impact.
 - [ ] **SimpleAudio.select()** — AudioRunner returned is a no-op stub.
 - [ ] **Engine.forward()** — No-op (deprecated in SugarCube v2).
-- [ ] **SCEngine.clone()** — Missing from runtime; 643 TS2339 errors in DoL. SugarCube's `clone()` does a deep copy of arbitrary story data.
-- [ ] **SCEngine.iterate() / iterator_has_next() / iterator_next_value() / iterator_next_key()** — Missing; ~969 TS2339 errors in DoL. SugarCube iterator API for `<<for>>` over arrays/objects.
+- [x] **SCEngine.clone()** — Fixed in `8e17415`. `clone(x)` now rewrites to standalone pure function import; was emitted as `SCEngine.clone(x)` method call. Eliminated 643 TS2339 errors.
+- [x] **SCEngine.iterate() / iterator_has_next() / iterator_next_value() / iterator_next_key()** — Fixed in `8e17415`. Same fix; standalone pure function imports. Eliminated ~969 TS2339 errors.
 - **TS2447 `|` on booleans** (1610 errors in DoL) — DoL game authors use `|` where they meant `||`: `(v === "Kylar") | (v === "Bailey")`. This is a **game author error** in the original source. Reincarnate correctly emits the game's code. These errors are expected and no fix is appropriate — changing `|` to `||` would alter semantics, and any other suppression would hide a real bug in the game.
 
 ### SugarCube oxc Parse Errors
