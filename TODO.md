@@ -238,7 +238,64 @@ has two distinct bugs in the frontend translator:
 Both bugs affect every `with` statement that (a) accesses self-relative fields or (b) is followed
 by more code. Fix requires changes to `crates/frontends/reincarnate-frontend-gamemaker/src/`.
 
+### GML Short-Circuit AND Condition Bug (critical)
+
+Discovered via Bounty reference comparison (2026-02-22).
+
+- [ ] **`if (a && b && c)` emits ternary `a ? b : c` instead of conjunction** — In the IR,
+  when a short-circuit AND chain like `type===1 && pressed===2 && locked===0` fails at an
+  inner condition, the "skip" block (block11) passes the OUTER condition value (`v30 = type===1
+  = true`) as a block argument to the merge block, instead of `const false`. This causes the
+  merge to receive `v2 = (pressed===2) ? (locked===0) : (type===1)` and the emitter generates
+  `if ((this.pressed === 2) ? (this.locked === 0) : v30)` — a ternary, not an AND.
+  The bug fires for any multi-condition AND where an inner condition fails (the outer condition
+  is true but the inner is false). Affected: StoreButton::step (7 occurrences), TravelButton::step,
+  TravelMain::step, and likely many more.
+  Root cause: in the GML IR translation, the "all-conditions-failed" branch to the merge block
+  should always pass `const false`, but instead passes whichever outer condition value is in scope.
+  Fix: in the GML frontend's short-circuit AND/OR translation, always emit `const false`/`const true`
+  for the short-circuit exit edge to the merge block.
+
+### GML 2D Array Compound-Assignment Bug (critical)
+
+Discovered via Bounty reference comparison (2026-02-22).
+
+- [ ] **2D array `+=` writes `inventory[sum] = const` instead of `inventory[idx] = sum`** —
+  For `self.inventory[i][1] += amount`, the IR generates:
+  ```
+  v32 = get_index(inventory, i*32000+1)   ← read current value
+  v33 = add(v32, amount)                  ← compute new value
+  set_index(inventory, v33, const 3)      ← WRONG: writes inventory[sum] = 3
+  ```
+  instead of:
+  ```
+  set_index(inventory, i*32000+1, v33)    ← CORRECT: writes inventory[idx] = sum
+  ```
+  The index and value operands are swapped, and a spurious `const 3` replaces the computed sum.
+  Affects `inventory_add` (increment path), `inventory_remove` (decrement path), and any other
+  GML function using 2D array compound assignment. Root cause unknown — likely a stack pop order
+  bug in the GML translator for the write-back phase of a 2D array compound assignment.
+
 ### Other GML Logic Bugs Found in Bounty Comparison
+
+- [ ] **Missing `do_gangbang_encounter` function** — This 488-line function is completely absent
+  from the emitted `_init.ts`. Unknown why — either it references unsupported features or was
+  simply not translated. The reference is at `~/git/bounty/scripts/main3.js`.
+
+- [ ] **`save_game` missing INI writes** — The following fields are not written to the save file:
+  `name`, all `a_*` appearance fields (`a_eye_color`, `a_skin_color`, `a_height`, `a_weight`,
+  `a_hair_color`, `a_hair_length`, `a_hair_straightness`, `a_hair_style`, `a_other`, `a_racial`),
+  `o_prostitution`, `o_self_defense`. Reference is `~/git/bounty/scripts/main.js:save_game`.
+
+- [ ] **`roll_d6` hardcoded Y-coordinate** — Reference: `y = 480 - 20 * size` (scales with
+  dice size). Emitted: hardcoded `460`. Dice render at wrong Y position when dice size ≠ 1.
+
+- [ ] **Stats::create broken advantages/inventory loop** — The loop initializer in create()
+  emits `i = i < 20` (assigns boolean comparison result to counter) instead of the loop
+  running properly. All 20 advantages slots and inventory entries may not initialize correctly.
+  Also missing: `negotiate_*` fields (6 bool fields), `o_prostitution`, `o_self_defense`,
+  and all 12 `a_*` appearance fields. Also missing `user0()`/`user1()` events and debug
+  `keypress70`/`keypress72`/`keypress76`/`keypress77` handlers.
 
 - [ ] **Location::create scroll condition inverted** — Reference: `if (i > 440)` sets
   `scroll = true` and skips destroying LocationScroll; `else` destroys LocationScroll.
