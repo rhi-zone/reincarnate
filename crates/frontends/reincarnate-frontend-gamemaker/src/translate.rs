@@ -1550,11 +1550,23 @@ fn translate_instruction(
                 let dup_extra = (n >> 8) & 0xFF;
                 let dup_size = (n & 0xFF) as usize;
                 if dup_extra != 0 {
-                    // GMS2.3+ extended Dup: DupExtra != 0 encodes either a struct swap
-                    // marker or a byte-level stack rearrangement for multi-byte Variable
-                    // types (needed by the GML VM's fixed-size popaf).  Our IR decompiler
-                    // uses one ValueId per logical value regardless of byte size, so the
-                    // items are already in the correct order for pushaf/popaf.  No-op.
+                    // GMS2.3+ extended Dup encoding (DupExtra != 0).  Used in two cases:
+                    //
+                    // 1. Struct swap marker (type=Variable, dup_size=0): pure no-op in the VM.
+                    //
+                    // 2. Byte-reorder swap (dup_size > 0): the GML VM uses this before popaf
+                    //    in compound array writes (e.g. `arr[i] -= 2`).  The pattern is:
+                    //      Dup(normal)  → copies arr+i to top; originals stay below
+                    //      pushaf       → pops copies, pushes arr[i]; originals still below
+                    //      <arithmetic> → pushes new_value on top
+                    //      Dup(swap)    → ← here; stack is [..., arr, i, new_value]
+                    //      popaf        → needs (value=top, index=next, array=below)
+                    //    After the arithmetic, our ValueId stack is already in the right
+                    //    order for popaf.  The GML VM needs the swap because Variable is
+                    //    16 bytes while the computed result may be 4 bytes, so the VM's
+                    //    fixed-size popaf would read the wrong bytes without reordering.
+                    //    Our stack holds one ValueId per logical value regardless of byte
+                    //    size, so the byte-alignment problem doesn't exist here.  No-op.
                 } else {
                     // Normal dup: duplicate (dup_size + 1) * type_unit units from stack top.
                     let type_unit = gml_slot_units(inst.type1) as usize;
