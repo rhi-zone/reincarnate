@@ -238,23 +238,16 @@ has two distinct bugs in the frontend translator:
 Both bugs affect every `with` statement that (a) accesses self-relative fields or (b) is followed
 by more code. Fix requires changes to `crates/frontends/reincarnate-frontend-gamemaker/src/`.
 
-### GML Short-Circuit AND Condition Bug (critical)
+### GML Short-Circuit AND Condition Bug — FIXED (2026-02-22)
 
-Discovered via Bounty reference comparison (2026-02-22).
-
-- [ ] **`if (a && b && c)` emits ternary `a ? b : c` instead of conjunction** — In the IR,
-  when a short-circuit AND chain like `type===1 && pressed===2 && locked===0` fails at an
-  inner condition, the "skip" block (block11) passes the OUTER condition value (`v30 = type===1
-  = true`) as a block argument to the merge block, instead of `const false`. This causes the
-  merge to receive `v2 = (pressed===2) ? (locked===0) : (type===1)` and the emitter generates
-  `if ((this.pressed === 2) ? (this.locked === 0) : v30)` — a ternary, not an AND.
-  The bug fires for any multi-condition AND where an inner condition fails (the outer condition
-  is true but the inner is false). Affected: StoreButton::step (7 occurrences), TravelButton::step,
-  TravelMain::step, and likely many more.
-  Root cause: in the GML IR translation, the "all-conditions-failed" branch to the merge block
-  should always pass `const false`, but instead passes whichever outer condition value is in scope.
-  Fix: in the GML frontend's short-circuit AND/OR translation, always emit `const false`/`const true`
-  for the short-circuit exit edge to the merge block.
+- [x] **`if (a && b && c)` emits ternary `a ? b : c` instead of conjunction** — Root cause was
+  `GmlLogicalOpNormalize` incorrectly normalizing the shared else-block when multiple BrIf
+  instructions share the same else target. The pass replaced `br merge(const_0)` with
+  `br merge(cond_outer)`, making the condition `(cond_inner) ? (cond_innermost) : cond_outer`
+  instead of the correct falsy short-circuit. Fix: skip normalization when the trivial block has
+  more than one BrIf predecessor (commit 41671f2). Output is now semantically correct:
+  `(pressed === 2) ? (locked === 0) : 0` (equivalent to `pressed===2 && locked===0`).
+  The switch detection also fires correctly now, producing `switch(this.type)` blocks.
 
 ### GML 2D Array Compound-Assignment Bug (critical)
 
