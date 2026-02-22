@@ -3000,4 +3000,118 @@ mod tests {
             "expected IfElse for if/implicit-return pattern, got: {shape:?}"
         );
     }
+
+    #[test]
+    fn test_switch_shared_target_fallthrough_order() {
+        // Regression: when two switch cases share the same target block, the
+        // secondary case (fallthrough label) must come BEFORE the primary case
+        // (which has the body) in the emitted output.
+        //
+        //   entry: switch(val) {
+        //     case "A" → shared_block,  ← primary (first mapping to shared_block)
+        //     case "B" → shared_block,  ← secondary (fallthrough label)
+        //     case "C" → other_block,
+        //     default → default_blk
+        //   }
+        //   shared_block: br merge
+        //   other_block:  br merge
+        //   default_blk:  br merge
+        //   merge: return
+        //
+        // Expected switch case order: B (empty, fallthrough), A (body), C (body).
+        // Bug: secondary case was processed first by structurize_region so it
+        // stole the body, and primary became an empty label that fell through
+        // into the next case group (C), producing wrong arrow directions in
+        // ButtonBase::draw.
+        use crate::ir::value::Constant;
+
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("switch_fallthrough", sig, Visibility::Public);
+        let val = fb.param(0);
+
+        let shared_block = fb.create_block();
+        let other_block = fb.create_block();
+        let default_blk = fb.create_block();
+        let merge = fb.create_block();
+
+        // "A" is primary (first for shared_block), "B" is secondary (same target).
+        fb.switch(
+            val,
+            vec![
+                (Constant::String("A".into()), shared_block, vec![]),
+                (Constant::String("B".into()), shared_block, vec![]),
+                (Constant::String("C".into()), other_block, vec![]),
+            ],
+            (default_blk, vec![]),
+        );
+
+        fb.switch_to_block(shared_block);
+        fb.br(merge, &[]);
+
+        fb.switch_to_block(other_block);
+        fb.br(merge, &[]);
+
+        fb.switch_to_block(default_blk);
+        fb.br(merge, &[]);
+
+        fb.switch_to_block(merge);
+        fb.ret(None);
+
+        let mut func = fb.build();
+        let shape = structurize(&mut func);
+
+        fn find_switch(shape: &Shape) -> Option<&Shape> {
+            match shape {
+                s @ Shape::Switch { .. } => Some(s),
+                Shape::Seq(parts) => parts.iter().find_map(find_switch),
+                _ => None,
+            }
+        }
+
+        let sw = find_switch(&shape).expect("Expected Switch in shape");
+        if let Shape::Switch { cases, .. } = sw {
+            // There should be 3 cases: B (fallthrough/empty), A (body), C (body).
+            assert_eq!(cases.len(), 3, "Expected 3 cases, got: {cases:?}");
+
+            // The first case should be "B" (secondary, empty body for fallthrough).
+            assert_eq!(
+                cases[0].value,
+                Constant::String("B".into()),
+                "Case 0 should be secondary 'B' (fallthrough label), got: {:?}",
+                cases[0].value
+            );
+            assert!(
+                matches!(*cases[0].body, Shape::Seq(ref v) if v.is_empty()),
+                "Case 'B' body should be empty (fallthrough), got: {:?}",
+                cases[0].body
+            );
+
+            // The second case should be "A" (primary, has a body).
+            assert_eq!(
+                cases[1].value,
+                Constant::String("A".into()),
+                "Case 1 should be primary 'A' (with body), got: {:?}",
+                cases[1].value
+            );
+            assert!(
+                !matches!(*cases[1].body, Shape::Seq(ref v) if v.is_empty()),
+                "Case 'A' body should be non-empty, got: {:?}",
+                cases[1].body
+            );
+
+            // The third case should be "C" (independent target).
+            assert_eq!(
+                cases[2].value,
+                Constant::String("C".into()),
+                "Case 2 should be 'C', got: {:?}",
+                cases[2].value
+            );
+        } else {
+            unreachable!();
+        }
+    }
 }
