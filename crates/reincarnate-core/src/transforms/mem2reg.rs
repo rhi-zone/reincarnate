@@ -24,26 +24,6 @@ use super::util::{
 ///    with multiple stores across different blocks
 pub struct Mem2Reg;
 
-/// Return a type-appropriate zero-value sentinel for an alloc of type `ty`.
-///
-/// For concrete scalar/string types we return a real zero constant so that
-/// the block params receiving the sentinel keep their concrete type and remain
-/// usable as array indices, comparands, etc. without introducing nullable
-/// types.  For non-concrete types (Dynamic, Option, Struct, …) we return
-/// `Const(Null)` which callers mark as a null sentinel to be skipped during
-/// code emission.
-fn zero_sentinel_for(ty: &Type) -> (Constant, Type) {
-    match ty {
-        Type::Bool => (Constant::Bool(false), Type::Bool),
-        Type::Int(_) | Type::UInt(_) => (Constant::Int(0), ty.clone()),
-        Type::Float(_) => (Constant::Float(0.0), ty.clone()),
-        Type::String => (Constant::String(String::new()), Type::String),
-        // Dynamic, Option, Array, Map, Struct, Enum, Function, Coroutine, …
-        // — fall back to Null and let the emitter skip the sentinel assign.
-        _ => (Constant::Null, ty.clone()),
-    }
-}
-
 /// Promote alloc/store/load chains and copy aliases in a function.
 fn promote_function(func: &mut Function) -> bool {
     let copy_changed = eliminate_copies(func);
@@ -483,25 +463,22 @@ fn promote_multi_store(func: &mut Function) -> bool {
 
         // Create initial value at entry for the "load before store" case.
         // This is the conservative SSA reaching-definition for code paths where
-        // no store dominates. We use a type-appropriate zero value for concrete
-        // types (0, "", false) so that block params keep their concrete type and
-        // downstream code (indexing, comparisons) stays type-correct. For
-        // non-concrete types (Dynamic, Option, Struct, …) we fall back to Null
-        // and mark the value as a sentinel so the linearizer can skip its assign.
+        // no store dominates — representing "uninitialized". We always use
+        // Const(Null) and mark it as a sentinel so the linearizer skips its
+        // block-arg assign entirely. The variable is declared as `let name!: T`
+        // (definite assignment assertion), leaving it truly uninitialized on
+        // those paths — which is correct: if the original code had no assignment
+        // on that path, the runtime value was also uninitialized/undefined.
         let initial_value = {
-            let (sentinel_const, sentinel_ty) = zero_sentinel_for(&info.ty);
-            let is_null = matches!(sentinel_const, Constant::Null);
-            let v = func.value_types.push(sentinel_ty);
+            let v = func.value_types.push(info.ty.clone());
             let init_inst_id = func.insts.push(crate::ir::Inst {
-                op: Op::Const(sentinel_const),
+                op: Op::Const(Constant::Null),
                 result: Some(v),
                 span: None,
             });
             func.blocks[func.entry].insts.insert(0, init_inst_id);
             inst_block.insert(init_inst_id, func.entry);
-            if is_null {
-                func.null_sentinel_values.insert(v);
-            }
+            func.null_sentinel_values.insert(v);
             v
         };
 
