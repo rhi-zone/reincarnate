@@ -1134,13 +1134,9 @@ fn stack_effect(inst: &Instruction) -> (usize, usize) {
         Opcode::Cmp => (2, 1),
         Opcode::Conv => (1, 1),
         Opcode::Dup => {
-            // Dup(N) duplicates `(N+1) * sizeof(type1)` bytes from the stack.
-            // In GMS2.3+, the high byte of N is DupExtra (swap/struct flags);
-            // only the low byte is the actual duplication size.
-            // When DupExtra != 0 AND type1=Variable AND size=0 → no-op (struct swap marker).
-            // When DupExtra != 0 AND size > 0 → swap mode (reorders, no net change).
-            // The actual item count depends on stack item type sizes (tracked by gml_sizes),
-            // so this approximation uses type1-based counting for depth prediction.
+            // Dup(N): high byte is DupExtra (GMS2.3+ extended flag), low byte is dup_size.
+            // DupExtra != 0 → GMS2.3+ extended encoding (no-op for our IR, no net stack change).
+            // DupExtra == 0 → normal dup; approximated as pushing dup_size+1 items.
             if let Operand::Dup(n) = inst.operand {
                 let dup_extra = (n >> 8) & 0xFF;
                 let dup_size = n & 0xFF;
@@ -1553,17 +1549,12 @@ fn translate_instruction(
             if let Operand::Dup(n) = inst.operand {
                 let dup_extra = (n >> 8) & 0xFF;
                 let dup_size = (n & 0xFF) as usize;
-                // GMS2.3+: when DupExtra != 0 AND type1=Variable AND size=0,
-                // the instruction is a struct swap marker — no-op for decompilation.
-                if dup_extra != 0 && inst.type1 == DataType::Variable && dup_size == 0 {
-                    // no-op
-                } else if dup_extra != 0 && dup_size > 0 {
-                    // Dup Swap mode: in the GML VM this reorders raw bytes on the stack
-                    // to align multi-byte Variable-type values for popaf's fixed-size
-                    // semantics.  Our IR decompiler uses one ValueId per logical value
-                    // regardless of byte size, so the items are already in the correct
-                    // order for the subsequent pushaf/popaf — no reorder needed.
-                    // Treating this as a no-op produces correct IR.
+                if dup_extra != 0 {
+                    // GMS2.3+ extended Dup: DupExtra != 0 encodes either a struct swap
+                    // marker or a byte-level stack rearrangement for multi-byte Variable
+                    // types (needed by the GML VM's fixed-size popaf).  Our IR decompiler
+                    // uses one ValueId per logical value regardless of byte size, so the
+                    // items are already in the correct order for pushaf/popaf.  No-op.
                 } else {
                     // Normal dup: duplicate (dup_size + 1) * type_unit units from stack top.
                     let type_unit = gml_slot_units(inst.type1) as usize;
