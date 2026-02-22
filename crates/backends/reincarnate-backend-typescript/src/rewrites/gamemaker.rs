@@ -157,14 +157,21 @@ fn try_extract_with_loop_body(loop_stmt: &mut JsStmt) -> Option<Vec<JsStmt>> {
     Some(std::mem::take(body))
 }
 
-/// Build a `withInstances(target, () => { body })` statement.
-fn make_with_instances(target: JsExpr, body: Vec<JsStmt>) -> JsStmt {
+/// Build a `withInstances(target, (_withSelf) => { body })` statement.
+///
+/// All `this` references in the body are replaced with `_withSelf` so that
+/// field accesses inside the callback target the iterated instance rather than
+/// the outer object.  Arrow functions in JavaScript capture `this` lexically,
+/// so without the replacement every `this.field` inside the callback would
+/// erroneously refer to the outer GML object.
+fn make_with_instances(target: JsExpr, mut body: Vec<JsStmt>) -> JsStmt {
+    replace_this_in_stmts(&mut body, "_withSelf");
     JsStmt::Expr(JsExpr::Call {
         callee: Box::new(JsExpr::Var("withInstances".into())),
         args: vec![
             target,
             JsExpr::ArrowFunction {
-                params: vec![],
+                params: vec![("_withSelf".into(), Type::Dynamic)],
                 return_ty: Type::Void,
                 body,
                 has_rest_param: false,
@@ -173,6 +180,167 @@ fn make_with_instances(target: JsExpr, body: Vec<JsStmt>) -> JsStmt {
             },
         ],
     })
+}
+
+/// Replace every `JsExpr::This` in `stmts` with `JsExpr::Var(replacement)`.
+///
+/// Used when collapsing a GML `with`-block: inside the callback, `this` should
+/// refer to the current iterated instance (the `_withSelf` parameter), not the
+/// outer object.
+fn replace_this_in_stmts(stmts: &mut [JsStmt], replacement: &str) {
+    for stmt in stmts.iter_mut() {
+        replace_this_in_stmt(stmt, replacement);
+    }
+}
+
+fn replace_this_in_stmt(stmt: &mut JsStmt, replacement: &str) {
+    match stmt {
+        JsStmt::VarDecl { init, .. } => {
+            if let Some(expr) = init {
+                replace_this_in_expr(expr, replacement);
+            }
+        }
+        JsStmt::Assign { target, value } => {
+            replace_this_in_expr(target, replacement);
+            replace_this_in_expr(value, replacement);
+        }
+        JsStmt::CompoundAssign { target, value, .. } => {
+            replace_this_in_expr(target, replacement);
+            replace_this_in_expr(value, replacement);
+        }
+        JsStmt::Expr(e) => replace_this_in_expr(e, replacement),
+        JsStmt::Return(Some(e)) => replace_this_in_expr(e, replacement),
+        JsStmt::Return(None) => {}
+        JsStmt::If { cond, then_body, else_body } => {
+            replace_this_in_expr(cond, replacement);
+            replace_this_in_stmts(then_body, replacement);
+            replace_this_in_stmts(else_body, replacement);
+        }
+        JsStmt::While { cond, body } => {
+            replace_this_in_expr(cond, replacement);
+            replace_this_in_stmts(body, replacement);
+        }
+        JsStmt::For { init, cond, update, body } => {
+            replace_this_in_stmts(init, replacement);
+            replace_this_in_expr(cond, replacement);
+            replace_this_in_stmts(update, replacement);
+            replace_this_in_stmts(body, replacement);
+        }
+        JsStmt::Loop { body } => replace_this_in_stmts(body, replacement),
+        JsStmt::ForOf { iterable, body, .. } => {
+            replace_this_in_expr(iterable, replacement);
+            replace_this_in_stmts(body, replacement);
+        }
+        JsStmt::Throw(e) => replace_this_in_expr(e, replacement),
+        JsStmt::Dispatch { blocks, .. } => {
+            for (_, stmts) in blocks {
+                replace_this_in_stmts(stmts, replacement);
+            }
+        }
+        JsStmt::Switch { value, cases, default_body } => {
+            replace_this_in_expr(value, replacement);
+            for (_, stmts) in cases {
+                replace_this_in_stmts(stmts, replacement);
+            }
+            replace_this_in_stmts(default_body, replacement);
+        }
+        JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
+    }
+}
+
+fn replace_this_in_expr(expr: &mut JsExpr, replacement: &str) {
+    if matches!(expr, JsExpr::This) {
+        *expr = JsExpr::Var(replacement.into());
+        return;
+    }
+    match expr {
+        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+            replace_this_in_expr(lhs, replacement);
+            replace_this_in_expr(rhs, replacement);
+        }
+        JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
+            replace_this_in_expr(lhs, replacement);
+            replace_this_in_expr(rhs, replacement);
+        }
+        JsExpr::Unary { expr: inner, .. } => replace_this_in_expr(inner, replacement),
+        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => {
+            replace_this_in_expr(inner, replacement);
+        }
+        JsExpr::Field { object, .. } => replace_this_in_expr(object, replacement),
+        JsExpr::Index { collection, index } => {
+            replace_this_in_expr(collection, replacement);
+            replace_this_in_expr(index, replacement);
+        }
+        JsExpr::Call { callee, args } => {
+            replace_this_in_expr(callee, replacement);
+            for arg in args {
+                replace_this_in_expr(arg, replacement);
+            }
+        }
+        JsExpr::Ternary { cond, then_val, else_val } => {
+            replace_this_in_expr(cond, replacement);
+            replace_this_in_expr(then_val, replacement);
+            replace_this_in_expr(else_val, replacement);
+        }
+        JsExpr::ArrayInit(items) | JsExpr::TupleInit(items) => {
+            for item in items {
+                replace_this_in_expr(item, replacement);
+            }
+        }
+        JsExpr::ObjectInit(fields) => {
+            for (_, val) in fields {
+                replace_this_in_expr(val, replacement);
+            }
+        }
+        JsExpr::New { callee, args } => {
+            replace_this_in_expr(callee, replacement);
+            for arg in args {
+                replace_this_in_expr(arg, replacement);
+            }
+        }
+        JsExpr::TypeOf(inner) => replace_this_in_expr(inner, replacement),
+        JsExpr::In { key, object } => {
+            replace_this_in_expr(key, replacement);
+            replace_this_in_expr(object, replacement);
+        }
+        JsExpr::Delete { object, key } => {
+            replace_this_in_expr(object, replacement);
+            replace_this_in_expr(key, replacement);
+        }
+        JsExpr::Cast { expr: inner, .. } | JsExpr::TypeCheck { expr: inner, .. } => {
+            replace_this_in_expr(inner, replacement);
+        }
+        // Arrow functions capture `this` lexically — recurse so nested `this`
+        // references inside callbacks defined within the with-body are also
+        // redirected to the iterated instance.
+        JsExpr::ArrowFunction { body, .. } => replace_this_in_stmts(body, replacement),
+        JsExpr::SuperCall(args) | JsExpr::SuperMethodCall { args, .. } => {
+            for arg in args {
+                replace_this_in_expr(arg, replacement);
+            }
+        }
+        JsExpr::SuperGet(_) => {}
+        JsExpr::SuperSet { value, .. } => replace_this_in_expr(value, replacement),
+        JsExpr::GeneratorCreate { args, .. } => {
+            for arg in args {
+                replace_this_in_expr(arg, replacement);
+            }
+        }
+        JsExpr::GeneratorResume(inner) => replace_this_in_expr(inner, replacement),
+        JsExpr::Yield(inner) => {
+            if let Some(e) = inner {
+                replace_this_in_expr(e, replacement);
+            }
+        }
+        JsExpr::Activation => {}
+        JsExpr::SystemCall { args, .. } => {
+            for arg in args {
+                replace_this_in_expr(arg, replacement);
+            }
+        }
+        // Leaf nodes.
+        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This => {}
+    }
 }
 
 fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String]) {
@@ -736,7 +904,7 @@ mod tests {
         })
     }
 
-    /// Assert that `stmts[idx]` is `withInstances(expected_target, () => { ... })`
+    /// Assert that `stmts[idx]` is `withInstances(expected_target, (_withSelf) => { ... })`
     /// and return a reference to the callback body.
     fn assert_with_instances(stmts: &[JsStmt], idx: usize, expected_target: i64) -> &Vec<JsStmt> {
         let JsStmt::Expr(JsExpr::Call { callee, args }) = &stmts[idx] else {
@@ -751,10 +919,23 @@ mod tests {
             panic!("expected Int literal target, got {:?}", args[0]);
         };
         assert_eq!(*target, expected_target);
-        let JsExpr::ArrowFunction { body, .. } = &args[1] else {
+        let JsExpr::ArrowFunction { params, body, .. } = &args[1] else {
             panic!("expected ArrowFunction, got {:?}", args[1]);
         };
+        assert_eq!(params.len(), 1, "callback must have _withSelf parameter");
+        assert_eq!(params[0].0, "_withSelf");
         body
+    }
+
+    fn this_stmt() -> JsStmt {
+        JsStmt::Expr(JsExpr::This)
+    }
+
+    fn this_field_stmt(field: &str) -> JsStmt {
+        JsStmt::Expr(JsExpr::Field {
+            object: Box::new(JsExpr::This),
+            field: field.into(),
+        })
     }
 
     #[test]
@@ -1085,6 +1266,47 @@ mod tests {
         assert_eq!(
             rewrite_introduced_calls("GameMaker.Instance", "withBegin"),
             &["withInstances"]
+        );
+    }
+
+    // --- `this` replacement tests ---
+
+    #[test]
+    fn with_body_this_replaced_with_self_param() {
+        // The body contains `this` (self-reference). After collapsing, all `this`
+        // references must be replaced with `_withSelf`, and the arrow function must
+        // declare `_withSelf` as a parameter.
+        let mut stmts = vec![with_begin(3), this_stmt(), with_end()];
+        collapse_with_blocks(&mut stmts);
+
+        assert_eq!(stmts.len(), 1);
+        let body = assert_with_instances(&stmts, 0, 3);
+        assert_eq!(body.len(), 1);
+        // The single body statement must be Expr(Var("_withSelf")), not Expr(This).
+        assert!(
+            matches!(&body[0], JsStmt::Expr(JsExpr::Var(name)) if name == "_withSelf"),
+            "expected _withSelf, got {:?}",
+            body[0]
+        );
+    }
+
+    #[test]
+    fn with_body_this_field_replaced_with_self_field() {
+        // `this.hp` → `_withSelf.hp`
+        let mut stmts = vec![with_begin(5), this_field_stmt("hp"), with_end()];
+        collapse_with_blocks(&mut stmts);
+
+        assert_eq!(stmts.len(), 1);
+        let body = assert_with_instances(&stmts, 0, 5);
+        assert_eq!(body.len(), 1);
+        assert!(
+            matches!(
+                &body[0],
+                JsStmt::Expr(JsExpr::Field { object, field })
+                if matches!(object.as_ref(), JsExpr::Var(n) if n == "_withSelf") && field == "hp"
+            ),
+            "expected _withSelf.hp, got {:?}",
+            body[0]
         );
     }
 

@@ -371,8 +371,7 @@ export class GameRuntime {
     return this._instanceCreate(x, y, clazz);
   }
 
-  instance_destroy(instance?: GMLObject): void {
-    if (instance === undefined) return;
+  instance_destroy(instance: GMLObject): void {
     this._instanceDestroy(instance);
   }
 

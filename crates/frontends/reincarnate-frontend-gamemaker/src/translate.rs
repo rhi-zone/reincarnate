@@ -1347,6 +1347,11 @@ fn translate_instruction(
                     };
                     args.insert(0, self_val);
                 }
+                // instance_destroy() with no explicit target destroys the calling instance.
+                // Inject self as the first arg so the runtime knows which instance to remove.
+                if func_name == "instance_destroy" && argc == 0 && ctx.has_self {
+                    args.push(fb.param(0));
+                }
                 let result = fb.call(&func_name, &args, Type::Dynamic);
                 gml_sizes.insert(result, 4); // Call returns Variable (16 bytes)
                 stack.push(result);
