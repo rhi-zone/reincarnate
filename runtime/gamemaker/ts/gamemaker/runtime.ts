@@ -500,10 +500,11 @@ export function createGameRuntime(opts?: { root?: RenderRoot }): GameRuntime {
   return rt;
 }
 
-// ---- Timing stub (for compatibility) ----
+// ---- Timing hook (called once per frame in the game loop) ----
 
 export const timing = {
   tick() {
-    // GameMaker uses its own setTimeout-based loop, not rAF
+    // GameMaker uses its own setTimeout-based loop, not rAF.
+    // Override this to hook per-frame logic (e.g. pause/resume, speed control).
   },
 };
