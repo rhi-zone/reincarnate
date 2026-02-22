@@ -703,6 +703,57 @@ fn scan_body_uses_other(body_insts: &[Instruction], _ctx: &TranslateCtx<'_>) -> 
     })
 }
 
+/// Find all `argument[N]` indices accessed in a with-body.
+///
+/// A with-body is compiled as a nested function; the outer function's arguments
+/// are not visible as params inside it.  The caller uses this list to capture
+/// each needed argument as an extra closure parameter (`_argument{N}`).
+fn scan_body_argument_indices(body_insts: &[Instruction], ctx: &TranslateCtx<'_>) -> Vec<usize> {
+    let mut seen: HashSet<usize> = HashSet::new();
+    let mut indices: Vec<usize> = Vec::new();
+    for (i, inst) in body_insts.iter().enumerate() {
+        if let Operand::Variable { var_ref, instance } = &inst.operand {
+            let instance_ty = InstanceType::from_i16(*instance);
+            let found: Option<usize> = if matches!(instance_ty, Some(InstanceType::Arg)) {
+                // InstanceType::Arg: variable_id is the argument index directly.
+                Some(var_ref.variable_id as usize)
+            } else if matches!(
+                instance_ty,
+                Some(InstanceType::Own) | Some(InstanceType::Builtin)
+            ) {
+                // Named form: argument0, argument1, ...
+                parse_argument_index(&resolve_variable_name(inst, ctx))
+            } else if var_ref.ref_type == 0 && *instance >= 0 {
+                // 2D-array form: `argument[N]`.  dim1 (the argument index) is
+                // the value on top of the stack just before this instruction,
+                // i.e. pushed by the immediately preceding Push/PushI.
+                let var_name = resolve_variable_name(inst, ctx);
+                if var_name == "argument" {
+                    i.checked_sub(1)
+                        .and_then(|j| body_insts.get(j))
+                        .and_then(|prev| match prev.operand {
+                            Operand::Int16(v) if v >= 0 => Some(v as usize),
+                            Operand::Int32(v) if v >= 0 => Some(v as usize),
+                            Operand::Int64(v) if v >= 0 => Some(v as usize),
+                            _ => None,
+                        })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(idx) = found {
+                if seen.insert(idx) {
+                    indices.push(idx);
+                }
+            }
+        }
+    }
+    indices.sort_unstable();
+    indices
+}
+
 /// Create IR blocks for a set of instructions, skipping with-body offsets.
 ///
 /// Returns `(block_map, block_params, block_entry_depths)`.
@@ -796,6 +847,15 @@ fn translate_with_body(
 
     // Allocate outer local variable slots (reusing the outer ctx's local names).
     let mut locals = allocate_locals(&mut fb, ctx);
+
+    // Allocate alloc slots for captured argument variables (_argument0, _argument1, …).
+    // These are not GML locals so they aren't in ctx.local_names / allocate_locals.
+    for name in captured_names {
+        if name.starts_with("_argument") && !locals.contains_key(name) {
+            let slot = fb.alloc(Type::Dynamic);
+            locals.insert(name.clone(), slot);
+        }
+    }
 
     // Pre-store captured values into their alloc slots so the body can read them.
     for (i, name) in captured_names.iter().enumerate() {
@@ -939,6 +999,18 @@ fn run_translation_loop(
                     // Outer self is always param 0 (both for regular event handlers and
                     // nested with-bodies where param 0 is the current iterated _self).
                     capture_vals.push(fb.param(0));
+                }
+                // Capture any argument[N] variables the with-body reads from the outer
+                // function.  The inner closure has no argument params of its own, so
+                // each outer argument[N] must be passed in as a named capture.
+                let outer_arg_offset = if ctx.has_self { 1 } else { 0 }
+                    + if ctx.has_other { 1 } else { 0 };
+                for n in scan_body_argument_indices(body_insts, ctx) {
+                    let outer_idx = outer_arg_offset + n;
+                    if outer_idx < fb.param_count() {
+                        captured_names.push(format!("_argument{n}"));
+                        capture_vals.push(fb.param(outer_idx));
+                    }
                 }
                 for name in &scanned_names {
                     captured_names.push(name.clone());
@@ -1901,12 +1973,18 @@ fn translate_push_variable(
             *compound_2d_pending = true;
         }
         if var_name == "argument" {
-            // argument[N] → function parameter access
+            // argument[N] → function parameter (or captured argument in a with-body).
             if let Some(Constant::Int(idx)) = fb.try_get_const(dim1) {
-                let param_offset = if ctx.has_self { 1 } else { 0 }
-                    + if ctx.has_other { 1 } else { 0 };
-                let param = fb.param(param_offset + *idx as usize);
-                stack.push(param);
+                let n = *idx as usize;
+                if let Some(&slot) = locals.get(&format!("_argument{n}")) {
+                    // Inside a with-body: argument was captured as a local slot.
+                    stack.push(fb.load(slot, Type::Dynamic));
+                } else {
+                    let param_offset = if ctx.has_self { 1 } else { 0 }
+                        + if ctx.has_other { 1 } else { 0 };
+                    let param = fb.param(param_offset + n);
+                    stack.push(param);
+                }
             } else {
                 // Dynamic index — fall back to getField
                 let name_val = fb.const_string(&var_name);
@@ -1989,11 +2067,15 @@ fn translate_push_variable(
         }
         Some(InstanceType::Own) | Some(InstanceType::Builtin) => {
             if let Some(arg_idx) = parse_argument_index(&var_name) {
-                // Implicit argument variable → function parameter.
-                let param_offset = if ctx.has_self { 1 } else { 0 }
-                    + if ctx.has_other { 1 } else { 0 };
-                let param = fb.param(param_offset + arg_idx);
-                stack.push(param);
+                // Implicit argument variable → function parameter (or captured slot).
+                if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
+                    stack.push(fb.load(slot, Type::Dynamic));
+                } else {
+                    let param_offset = if ctx.has_self { 1 } else { 0 }
+                        + if ctx.has_other { 1 } else { 0 };
+                    let param = fb.param(param_offset + arg_idx);
+                    stack.push(param);
+                }
             } else if ctx.has_self {
                 let self_param = fb.param(0);
                 let val = fb.get_field(self_param, &var_name, Type::Dynamic);
@@ -2079,24 +2161,28 @@ fn translate_push_variable(
             }
         }
         Some(InstanceType::Arg) => {
-            // Argument variable: map to function parameter.
-            let arg_idx = var_ref.variable_id;
-            let param_offset = if ctx.has_self { 1 } else { 0 }
-                + if ctx.has_other { 1 } else { 0 };
-            let idx = param_offset + arg_idx as usize;
-            if idx < fb.param_count() {
-                let param = fb.param(idx);
-                stack.push(param);
+            // Argument variable: map to function parameter (or captured slot).
+            let arg_idx = var_ref.variable_id as usize;
+            if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
+                stack.push(fb.load(slot, Type::Dynamic));
             } else {
-                // Out-of-range argument access — emit as dynamic lookup.
-                let name_val = fb.const_string(format!("argument{arg_idx}"));
-                let val = fb.system_call(
-                    "GameMaker.Argument",
-                    "get",
-                    &[name_val],
-                    Type::Dynamic,
-                );
-                stack.push(val);
+                let param_offset = if ctx.has_self { 1 } else { 0 }
+                    + if ctx.has_other { 1 } else { 0 };
+                let idx = param_offset + arg_idx;
+                if idx < fb.param_count() {
+                    let param = fb.param(idx);
+                    stack.push(param);
+                } else {
+                    // Out-of-range argument access — emit as dynamic lookup.
+                    let name_val = fb.const_string(format!("argument{arg_idx}"));
+                    let val = fb.system_call(
+                        "GameMaker.Argument",
+                        "get",
+                        &[name_val],
+                        Type::Dynamic,
+                    );
+                    stack.push(val);
+                }
             }
         }
         _ => {
@@ -2185,14 +2271,27 @@ fn translate_pop(
                 (dim1, value)
             };
             if var_name == "argument" {
-                // argument[N] = value → store to function parameter slot
+                // argument[N] = value → store to function parameter slot (or captured slot).
                 if let Some(Constant::Int(idx)) = fb.try_get_const(dim1) {
-                    let param_offset = if ctx.has_self { 1 } else { 0 }
-                        + if ctx.has_other { 1 } else { 0 };
-                    let param = fb.param(param_offset + *idx as usize);
-                    let slot = fb.alloc(Type::Dynamic);
-                    fb.store(slot, param);
-                    fb.store(slot, value);
+                    if *idx >= 0 {
+                        let n = *idx as usize;
+                        if let Some(&slot) = locals.get(&format!("_argument{n}")) {
+                            // Inside a with-body: update the captured argument slot.
+                            fb.store(slot, value);
+                        } else {
+                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                                + if ctx.has_other { 1 } else { 0 };
+                            let abs_idx = param_offset + n;
+                            if abs_idx < fb.param_count() {
+                                let param = fb.param(abs_idx);
+                                let slot = fb.alloc(Type::Dynamic);
+                                fb.store(slot, param);
+                                fb.store(slot, value);
+                            }
+                            // else: OOB (with-body uncaptured arg or invalid game code) — skip
+                        }
+                    }
+                    // Negative index: invalid argument write — skip.
                 } else {
                     // Dynamic index — fall back to setField
                     let name_val = fb.const_string(&var_name);
@@ -2272,12 +2371,21 @@ fn translate_pop(
                     // Implicit argument variable → store via local slot.
                     let param_offset = if ctx.has_self { 1 } else { 0 }
                         + if ctx.has_other { 1 } else { 0 };
-                    let param = fb.param(param_offset + arg_idx);
-                    let slot = fb.alloc(Type::Dynamic);
-                    fb.name_value(slot, var_name.clone());
-                    fb.store(slot, param);
-                    fb.store(slot, value);
-                    locals.insert(var_name, slot);
+                    if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
+                        // Inside a with-body: update the captured argument slot.
+                        fb.store(slot, value);
+                    } else {
+                        let abs_idx = param_offset + arg_idx;
+                        if abs_idx < fb.param_count() {
+                            let param = fb.param(abs_idx);
+                            let slot = fb.alloc(Type::Dynamic);
+                            fb.name_value(slot, var_name.clone());
+                            fb.store(slot, param);
+                            fb.store(slot, value);
+                            locals.insert(var_name, slot);
+                        }
+                        // else: OOB (with-body uncaptured arg or invalid game code) — skip.
+                    }
                 } else if ctx.has_self {
                     let self_param = fb.param(0);
                     fb.set_field(self_param, &var_name, value);
@@ -2329,12 +2437,25 @@ fn translate_pop(
                 if var_name == "argument" {
                     // argument[N] = value → store to function parameter slot
                     if let Some(Constant::Int(idx)) = fb.try_get_const(target) {
-                        let param_offset = if ctx.has_self { 1 } else { 0 }
-                            + if ctx.has_other { 1 } else { 0 };
-                        let param = fb.param(param_offset + *idx as usize);
-                        let slot = fb.alloc(Type::Dynamic);
-                        fb.store(slot, param);
-                        fb.store(slot, value);
+                        if *idx >= 0 {
+                            let n = *idx as usize;
+                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                                + if ctx.has_other { 1 } else { 0 };
+                            if let Some(&slot) = locals.get(&format!("_argument{n}")) {
+                                // Inside a with-body: update the captured argument slot.
+                                fb.store(slot, value);
+                            } else {
+                                let abs_idx = param_offset + n;
+                                if abs_idx < fb.param_count() {
+                                    let param = fb.param(abs_idx);
+                                    let slot = fb.alloc(Type::Dynamic);
+                                    fb.store(slot, param);
+                                    fb.store(slot, value);
+                                }
+                                // else: OOB — skip.
+                            }
+                        }
+                        // Negative index: invalid argument write — skip.
                     } else {
                         // Dynamic index — fall back to setField
                         let name_val = fb.const_string(&var_name);
