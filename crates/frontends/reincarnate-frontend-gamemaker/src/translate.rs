@@ -6,7 +6,7 @@ use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableR
 use reincarnate_core::entity::EntityRef;
 use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::block::BlockId;
-use reincarnate_core::ir::func::{Function, Visibility};
+use reincarnate_core::ir::func::{CaptureMode, Function, MethodKind, Visibility};
 use reincarnate_core::ir::inst::{CmpKind, Op};
 use reincarnate_core::ir::ty::{FunctionSig, Type};
 use reincarnate_core::ir::value::{Constant, ValueId};
@@ -53,14 +53,18 @@ pub struct TranslateCtx<'a> {
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
+///
+/// Returns `(main_func, extra_funcs)` where `extra_funcs` are closure
+/// functions extracted from `with`-block bodies (one per PushEnv/PopEnv pair).
 pub fn translate_code_entry(
     bytecode: &[u8],
     func_name: &str,
     ctx: &TranslateCtx,
-) -> Result<reincarnate_core::ir::func::Function, String> {
+) -> Result<(Function, Vec<Function>), String> {
     let all_instructions = decode::decode(bytecode).map_err(|e| format!("{func_name}: {e}"))?;
     if all_instructions.is_empty() {
-        return build_empty_function(func_name, ctx);
+        let func = build_empty_function(func_name, ctx)?;
+        return Ok((func, vec![]));
     }
 
     // Filter to only instructions reachable from the entry point.
@@ -70,10 +74,10 @@ pub fn translate_code_entry(
     // stack underflows.
     let instructions = filter_reachable(&all_instructions);
 
-    // Pass 1: Find basic block boundaries.
-    let block_starts = find_block_starts(&instructions);
+    // Pre-detect with-block ranges so we can exclude their blocks from the outer CFG.
+    let with_ranges = find_with_ranges(&instructions);
 
-    // Pass 2: Create IR blocks.
+    // Pass 1 & 2: Create IR blocks, excluding with-body offsets.
     // Old-style scripts may use argumentN without declaring parameters —
     // scan for implicit argument references to determine true arg count.
     let implicit_args = scan_implicit_args(&instructions, ctx);
@@ -104,88 +108,27 @@ pub fn translate_code_entry(
         param_idx += 1;
     }
 
-    // Pre-compute stack depths at each block entry.
-    let block_entry_depths = compute_block_stack_depths(&instructions, &block_starts);
-
-    // Block 0 = entry block (always offset 0). Create the rest.
-    let mut block_map: HashMap<usize, BlockId> = HashMap::new();
-    let mut block_params: HashMap<usize, Vec<ValueId>> = HashMap::new();
-    block_map.insert(0, fb.entry_block());
-    for &off in &block_starts {
-        if off != 0 {
-            let block = fb.create_block();
-            block_map.insert(off, block);
-            let depth = block_entry_depths.get(&off).copied().unwrap_or(0);
-            if depth > 0 {
-                let types: Vec<Type> = vec![Type::Dynamic; depth];
-                let params = fb.add_block_params(block, &types);
-                block_params.insert(off, params);
-            }
-        }
-    }
+    let (block_map, block_params, block_entry_depths) =
+        setup_blocks(&mut fb, &instructions, &with_ranges, 0);
 
     // Allocate locals.
     let mut locals = allocate_locals(&mut fb, ctx);
 
     // Pass 3: Translate instructions.
-    let mut stack: Vec<ValueId> = Vec::new();
-    // Track GML type sizes (in 4-byte units) for each value on the stack.
-    // Used by Dup to compute correct item count when items have different sizes
-    // (e.g., Variable = 4 units vs Int16 = 1 unit).
-    let mut gml_sizes: HashMap<ValueId, u8> = HashMap::new();
     fb.switch_to_block(fb.entry_block());
-    let mut terminated = false;
-    // Set to true when a 2D array VARI read leaves the original dim indices on
-    // the stack (compound assignment Dup pattern). The subsequent Pop must use
-    // reversed pop order: value on top, dim1 below, _dim2 at bottom.
-    // Set to true when a 2D array VARI read leaves the original dim indices on
-    // the stack (compound assignment Dup pattern). The subsequent Pop must use
-    // reversed pop order: value on top, dim1 below, _dim2 at bottom.
-    let mut compound_2d_pending = false;
-
-    for (inst_idx, inst) in instructions.iter().enumerate() {
-        // Check if this instruction starts a new block.
-        if inst_idx > 0 {
-            if let Some(&block) = block_map.get(&inst.offset) {
-                // Emit fall-through branch if previous block wasn't terminated.
-                if !terminated {
-                    let depth = block_entry_depths.get(&inst.offset).copied().unwrap_or(0);
-                    let args = get_branch_args(&stack, depth);
-                    fb.br(block, &args);
-                }
-                fb.switch_to_block(block);
-                stack.clear();
-                compound_2d_pending = false;
-                if let Some(params) = block_params.get(&inst.offset) {
-                    for &p in params {
-                        // Block params are Variable-sized (16 bytes = 4 units).
-                        gml_sizes.insert(p, 4);
-                    }
-                    stack.extend(params.iter().copied());
-                }
-                terminated = false;
-            }
-        }
-
-        if terminated {
-            continue;
-        }
-
-        translate_instruction(
-            inst,
-            &instructions,
-            inst_idx,
-            &mut fb,
-            &mut stack,
-            &block_map,
-            &mut locals,
-            ctx,
-            &mut terminated,
-            &block_entry_depths,
-            &mut gml_sizes,
-            &mut compound_2d_pending,
-        )?;
-    }
+    let mut extra_funcs = Vec::new();
+    let terminated = run_translation_loop(
+        &instructions,
+        func_name,
+        &mut fb,
+        &block_map,
+        &block_params,
+        &block_entry_depths,
+        &with_ranges,
+        &mut locals,
+        ctx,
+        &mut extra_funcs,
+    )?;
 
     // If the last block wasn't terminated, add a void return.
     if !terminated {
@@ -194,7 +137,7 @@ pub fn translate_code_entry(
 
     let mut func = fb.build();
     detect_switches(&mut func);
-    Ok(func)
+    Ok((func, extra_funcs))
 }
 
 // ---------------------------------------------------------------------------
@@ -684,14 +627,351 @@ fn allocate_locals(
 }
 
 /// Build an empty function with just a void return.
-fn build_empty_function(
-    name: &str,
-    ctx: &TranslateCtx,
-) -> Result<reincarnate_core::ir::func::Function, String> {
+fn build_empty_function(name: &str, ctx: &TranslateCtx) -> Result<Function, String> {
     let sig = build_signature(ctx);
     let mut fb = FunctionBuilder::new(name, sig, Visibility::Public);
     fb.ret(None);
     Ok(fb.build())
+}
+
+// ---------------------------------------------------------------------------
+// With-block (PushEnv/PopEnv) helpers
+// ---------------------------------------------------------------------------
+
+/// Map each PushEnv instruction index to its corresponding PopEnv index.
+///
+/// PushEnv's Branch operand gives the byte offset (relative to instruction
+/// start) that targets the PopEnv instruction. We resolve this to an
+/// instruction index in the slice.
+fn find_with_ranges(instructions: &[Instruction]) -> HashMap<usize, usize> {
+    let offset_to_idx: HashMap<usize, usize> = instructions
+        .iter()
+        .enumerate()
+        .map(|(i, inst)| (inst.offset, i))
+        .collect();
+    instructions
+        .iter()
+        .enumerate()
+        .filter_map(|(i, inst)| {
+            if inst.opcode != Opcode::PushEnv {
+                return None;
+            }
+            if let Operand::Branch(offset) = inst.operand {
+                let target = (inst.offset as i64 + offset as i64) as usize;
+                let &popenv_idx = offset_to_idx.get(&target)?;
+                Some((i, popenv_idx))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Find the names of outer local variables accessed in a slice of instructions.
+///
+/// Used to determine which locals a with-body closure needs to capture.
+fn scan_body_local_names(body_insts: &[Instruction], ctx: &TranslateCtx<'_>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut names = Vec::new();
+    for inst in body_insts {
+        if let Operand::Variable { instance, .. } = &inst.operand {
+            if matches!(InstanceType::from_i16(*instance), Some(InstanceType::Local)) {
+                let name = resolve_variable_name(inst, ctx);
+                if seen.insert(name.clone()) {
+                    names.push(name);
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Create IR blocks for a set of instructions, skipping with-body offsets.
+///
+/// Returns `(block_map, block_params, block_entry_depths)`.
+///
+/// - `entry_offset`: the bytecode offset that maps to the entry block (0 for
+///   outer functions, the first body instruction's offset for inner closures).
+/// - With-body offsets (inside any PushEnv/PopEnv range in `with_ranges`) are
+///   excluded from block creation — they will be handled by separate closure
+///   functions and must not appear as dead blocks in the outer function's CFG.
+#[allow(clippy::type_complexity)]
+fn setup_blocks(
+    fb: &mut FunctionBuilder,
+    instructions: &[Instruction],
+    with_ranges: &HashMap<usize, usize>,
+    entry_offset: usize,
+) -> (
+    HashMap<usize, BlockId>,
+    HashMap<usize, Vec<ValueId>>,
+    HashMap<usize, usize>,
+) {
+    let block_starts = find_block_starts(instructions);
+    let block_entry_depths = compute_block_stack_depths(instructions, &block_starts);
+
+    // Collect offsets that belong to with-body ranges (body + PopEnv).
+    // Blocks at these offsets are owned by extracted closures, not the outer function.
+    let body_offsets: HashSet<usize> = with_ranges
+        .iter()
+        .flat_map(|(&pi, &popi)| {
+            instructions[pi + 1..=popi].iter().map(|i| i.offset)
+        })
+        .collect();
+
+    let mut block_map: HashMap<usize, BlockId> = HashMap::new();
+    let mut block_params: HashMap<usize, Vec<ValueId>> = HashMap::new();
+    block_map.insert(entry_offset, fb.entry_block());
+    for &off in &block_starts {
+        if off != entry_offset && !body_offsets.contains(&off) {
+            let block = fb.create_block();
+            block_map.insert(off, block);
+            let depth = block_entry_depths.get(&off).copied().unwrap_or(0);
+            if depth > 0 {
+                let types: Vec<Type> = vec![Type::Dynamic; depth];
+                let params = fb.add_block_params(block, &types);
+                block_params.insert(off, params);
+            }
+        }
+    }
+    (block_map, block_params, block_entry_depths)
+}
+
+/// Extract a `with`-block body as a standalone closure [`Function`].
+///
+/// The closure has signature `(_self: Dynamic, cap0: Dynamic, ...) -> Void`
+/// where `_self` receives the iterated instance at call time and `cap0..` are
+/// captured outer locals (ByValue).
+#[allow(clippy::too_many_arguments)]
+fn translate_with_body(
+    body_insts: &[Instruction],
+    inner_name: &str,
+    ctx: &TranslateCtx<'_>,
+    captured_names: &[String],
+    extra_funcs: &mut Vec<Function>,
+) -> Result<Function, String> {
+    use reincarnate_core::ir::ty::FunctionSig;
+
+    let sig = FunctionSig {
+        params: vec![Type::Dynamic], // _self
+        return_ty: Type::Void,
+        ..Default::default()
+    };
+    let mut fb = FunctionBuilder::new(inner_name, sig, Visibility::Public);
+    fb.name_value(fb.param(0), "_self".to_string());
+
+    // Declare capture parameters (ByValue snapshots of outer locals).
+    let capture_ids = if captured_names.is_empty() {
+        vec![]
+    } else {
+        fb.add_capture_params(
+            captured_names
+                .iter()
+                .map(|n| (n.clone(), Type::Dynamic, CaptureMode::ByValue))
+                .collect(),
+        )
+    };
+
+    let inner_with_ranges = find_with_ranges(body_insts);
+    let entry_offset = body_insts.first().map_or(0, |inst| inst.offset);
+    let (block_map, block_params, block_entry_depths) =
+        setup_blocks(&mut fb, body_insts, &inner_with_ranges, entry_offset);
+
+    // Allocate outer local variable slots (reusing the outer ctx's local names).
+    let mut locals = allocate_locals(&mut fb, ctx);
+
+    // Pre-store captured values into their alloc slots so the body can read them.
+    for (i, name) in captured_names.iter().enumerate() {
+        if let Some(&slot) = locals.get(name) {
+            fb.store(slot, capture_ids[i]);
+        }
+    }
+
+    // Inner context: same VARI/FUNC tables but no declared args, class-typed self.
+    let inner_ctx = TranslateCtx {
+        has_self: true,
+        has_other: false,
+        arg_count: 0,
+        class_name: None,
+        function_names: ctx.function_names,
+        variables: ctx.variables,
+        func_ref_map: ctx.func_ref_map,
+        vari_ref_map: ctx.vari_ref_map,
+        bytecode_offset: ctx.bytecode_offset,
+        local_names: ctx.local_names,
+        string_table: ctx.string_table,
+        obj_names: ctx.obj_names,
+        self_object_index: ctx.self_object_index,
+        ancestor_indices: ctx.ancestor_indices.clone(),
+        script_names: ctx.script_names,
+    };
+
+    fb.switch_to_block(fb.entry_block());
+    let terminated = run_translation_loop(
+        body_insts,
+        inner_name,
+        &mut fb,
+        &block_map,
+        &block_params,
+        &block_entry_depths,
+        &inner_with_ranges,
+        &mut locals,
+        &inner_ctx,
+        extra_funcs,
+    )?;
+
+    if !terminated {
+        fb.ret(None);
+    }
+
+    let mut func = fb.build();
+    func.method_kind = MethodKind::Closure;
+    detect_switches(&mut func);
+    Ok(func)
+}
+
+/// Core translation loop shared by [`translate_code_entry`] and [`translate_with_body`].
+///
+/// Handles the `skip_until` mechanism that skips over with-body instruction ranges
+/// (they are extracted into separate closure functions instead of being translated
+/// inline).  Returns `true` if the last block was terminated.
+#[allow(clippy::too_many_arguments)]
+fn run_translation_loop(
+    instructions: &[Instruction],
+    func_name: &str,
+    fb: &mut FunctionBuilder,
+    block_map: &HashMap<usize, BlockId>,
+    block_params: &HashMap<usize, Vec<ValueId>>,
+    block_entry_depths: &HashMap<usize, usize>,
+    with_ranges: &HashMap<usize, usize>,
+    locals: &mut HashMap<String, ValueId>,
+    ctx: &TranslateCtx<'_>,
+    extra_funcs: &mut Vec<Function>,
+) -> Result<bool, String> {
+    let mut stack: Vec<ValueId> = Vec::new();
+    // Track GML type sizes (in 4-byte units) for each value on the stack.
+    // Used by Dup to compute correct item count when items have different sizes
+    // (e.g., Variable = 4 units vs Int16 = 1 unit).
+    let mut gml_sizes: HashMap<ValueId, u8> = HashMap::new();
+    let mut terminated = false;
+    // Set to true when a 2D array VARI read leaves the original dim indices on
+    // the stack (compound assignment Dup pattern). The subsequent Pop must use
+    // reversed pop order: value on top, dim1 below, _dim2 at bottom.
+    let mut compound_2d_pending = false;
+    // When Some(n), skip instructions with index < n (with-body instructions
+    // that have been extracted into a closure).
+    let mut skip_until: Option<usize> = None;
+
+    for (inst_idx, inst) in instructions.iter().enumerate() {
+        // Skip instructions that belong to a with-body extracted as a closure.
+        if let Some(skip) = skip_until {
+            if inst_idx < skip {
+                continue;
+            }
+            skip_until = None;
+        }
+
+        // Check if this instruction starts a new block.
+        if inst_idx > 0 {
+            if let Some(&block) = block_map.get(&inst.offset) {
+                // Emit fall-through branch if previous block wasn't terminated.
+                if !terminated {
+                    let depth = block_entry_depths.get(&inst.offset).copied().unwrap_or(0);
+                    let args = get_branch_args(&stack, depth);
+                    fb.br(block, &args);
+                }
+                fb.switch_to_block(block);
+                stack.clear();
+                compound_2d_pending = false;
+                if let Some(params) = block_params.get(&inst.offset) {
+                    for &p in params {
+                        // Block params are Variable-sized (16 bytes = 4 units).
+                        gml_sizes.insert(p, 4);
+                    }
+                    stack.extend(params.iter().copied());
+                }
+                terminated = false;
+            }
+        }
+
+        if terminated {
+            continue;
+        }
+
+        // Special handling for PushEnv: extract the with-body as a closure.
+        if inst.opcode == Opcode::PushEnv {
+            if let Some(&popenv_idx) = with_ranges.get(&inst_idx) {
+                let target_obj = pop(&mut stack, inst)?;
+                let body_insts = &instructions[inst_idx + 1..popenv_idx];
+
+                // Determine which outer locals the body needs to capture.
+                let captured_names = scan_body_local_names(body_insts, ctx);
+                let capture_vals: Vec<ValueId> = captured_names
+                    .iter()
+                    .map(|name| {
+                        let &slot = locals
+                            .get(name)
+                            .expect("captured local must have an alloc slot");
+                        fb.load(slot, Type::Dynamic)
+                    })
+                    .collect();
+
+                // Build the inner closure function (may recursively extract nested withs).
+                let inner_name = format!("{func_name}_with_{:04x}", inst.offset);
+                let inner_func =
+                    translate_with_body(body_insts, &inner_name, ctx, &captured_names, extra_funcs)?;
+                extra_funcs.push(inner_func);
+
+                // Emit: withInstances(target, closure)
+                let closure_val =
+                    fb.make_closure(&inner_name, &capture_vals, Type::Dynamic);
+                fb.system_call(
+                    "GameMaker.Instance",
+                    "withInstances",
+                    &[target_obj, closure_val],
+                    Type::Void,
+                );
+
+                // Branch unconditionally to the post-with block.
+                let post_with_idx = popenv_idx + 1;
+                if post_with_idx < instructions.len() {
+                    let post_with_off = instructions[post_with_idx].offset;
+                    let fall_block =
+                        block_map.get(&post_with_off).copied().ok_or_else(|| {
+                            format!(
+                                "{func_name}: no block at post-with offset {post_with_off:#x}"
+                            )
+                        })?;
+                    let depth =
+                        block_entry_depths.get(&post_with_off).copied().unwrap_or(0);
+                    let args = get_branch_args(&stack, depth);
+                    fb.br(fall_block, &args);
+                } else {
+                    fb.ret(None);
+                }
+                terminated = true;
+                // Skip the body instructions and the PopEnv; resume after PopEnv.
+                skip_until = Some(popenv_idx + 1);
+                continue;
+            }
+        }
+
+        translate_instruction(
+            inst,
+            instructions,
+            inst_idx,
+            fb,
+            &mut stack,
+            block_map,
+            locals,
+            ctx,
+            &mut terminated,
+            block_entry_depths,
+            &mut gml_sizes,
+            &mut compound_2d_pending,
+        )?;
+    }
+
+    Ok(terminated)
 }
 
 /// Resolve a branch target offset to (target_offset, BlockId).
@@ -2255,7 +2535,7 @@ mod tests {
         let script_names: HashSet<String> = HashSet::new();
         let ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
 
-        let func = translate_code_entry(&bytecode, "test_fn", &ctx)
+        let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
             .expect("translation failed");
         let ops = collect_ops(&func);
 
@@ -2293,7 +2573,7 @@ mod tests {
         let script_names: HashSet<String> = HashSet::new();
         let ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
 
-        let func = translate_code_entry(&bytecode, "test_fn", &ctx)
+        let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
             .expect("translation failed");
         let ops = collect_ops(&func);
 
@@ -2380,7 +2660,7 @@ mod tests {
         let script_names: HashSet<String> = HashSet::new();
         let ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
 
-        let func = translate_code_entry(&bytecode, "test_compound_2d", &ctx)
+        let (func, _) = translate_code_entry(&bytecode, "test_compound_2d", &ctx)
             .expect("translation failed");
 
         // Collect (op, result_value_id) pairs to trace operand relationships.
@@ -2477,26 +2757,27 @@ mod tests {
         let script_names: HashSet<String> = HashSet::new();
         let ctx = make_ctx(false, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
 
-        let func = translate_code_entry(&bytecode, "test_with_continuation", &ctx)
+        let (func, extra_funcs) = translate_code_entry(&bytecode, "test_with_continuation", &ctx)
             .expect("translation failed");
         let ops = collect_ops(&func);
 
-        // withBegin must appear (PushEnv).
-        let has_with_begin = ops.iter().any(|op| {
-            matches!(op, Op::SystemCall { system, method, .. }
-                if system == "GameMaker.Instance" && method == "withBegin")
-        });
-        assert!(has_with_begin, "withBegin syscall must appear; ops: {ops:?}");
+        // MakeClosure must appear (PushEnv → closure extraction).
+        let has_make_closure = ops.iter().any(|op| matches!(op, Op::MakeClosure { .. }));
+        assert!(has_make_closure, "MakeClosure must appear for with-block; ops: {ops:?}");
 
-        // withEnd must appear (PopEnv).
-        let has_with_end = ops.iter().any(|op| {
+        // withInstances syscall must appear.
+        let has_with_instances = ops.iter().any(|op| {
             matches!(op, Op::SystemCall { system, method, .. }
-                if system == "GameMaker.Instance" && method == "withEnd")
+                if system == "GameMaker.Instance" && method == "withInstances")
         });
-        assert!(has_with_end, "withEnd syscall must appear; ops: {ops:?}");
+        assert!(has_with_instances, "withInstances syscall must appear; ops: {ops:?}");
 
-        // Post-with sentinel (Const 99) must be reachable.
-        // Without the fix, the block at offset 20 is unreachable and DCE removes it.
+        // An extra closure function must have been extracted.
+        assert_eq!(extra_funcs.len(), 1, "expected 1 closure function; got {}", extra_funcs.len());
+        assert_eq!(extra_funcs[0].method_kind, reincarnate_core::ir::func::MethodKind::Closure,
+            "extra function must be MethodKind::Closure");
+
+        // Post-with sentinel (Const 99) must be reachable in the outer function.
         let has_post_with_sentinel = ops.iter().any(|op| {
             matches!(op, Op::Const(reincarnate_core::ir::value::Constant::Int(99)))
         });
@@ -2535,7 +2816,7 @@ mod tests {
         // No has_self; arg_count=0 (scan_implicit_args will detect argument[1]).
         let ctx = make_ctx(false, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
 
-        let func = translate_code_entry(&bytecode, "test_fn", &ctx)
+        let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
             .expect("translation failed");
         let ops = collect_ops(&func);
 

@@ -210,33 +210,32 @@ improve output fidelity:
 
 ## GameMaker Frontend
 
-### GML `with` Statement Bugs (critical)
+### GML `with` Statement Bugs — FIXED (2026-02-22)
 
 Discovered via Bounty reference comparison (2026-02-22). The GML `with(obj) { ... }` statement
-has two distinct bugs in the frontend translator:
+had two distinct bugs in the frontend translator, both now fixed:
 
-- [ ] **`with` loop body uses outer `self` for all field accesses** — Inside a `with` loop,
-  `self` should refer to the currently iterated instance, not the outer object. The IR uses
-  `v0` (the outer method's `self` param) for all `get_field`/`set_field` ops inside the loop,
-  so reads/writes that should target the iterated instance hit the wrong object instead.
-  Examples: `EquipReader::step` (should read from StoreButton, writes `this.type = this.type`),
-  `OptionsReader::step` (should update OptionsReader from OptionButton), `RaceReader::step`,
-  `MainLocMain::create`. Root cause: the GML translator doesn't set up a separate "current
-  with-instance" variable when entering a `with` body — it keeps using the original `v0`.
+- [x] **`with` callback uses outer `self` instead of iterated instance** — Fixed by adding
+  `_withSelf: any` parameter to the arrow function and replacing all `JsExpr::This` in the
+  body with `JsExpr::Var("_withSelf")` via `replace_this_in_stmts` in `rewrites/gamemaker.rs`.
+  Commit: 3ba5814. Note: field accesses on the iterated instance that went through `v0`
+  (IR-level) are correctly replaced because `v0` (named "self") emits as TypeScript `this`,
+  which is then caught by the replacement.
 
-- [ ] **Post-`with` code not captured** — Any code that follows a `with` statement in the same
-  GML function is dropped from the IR. The `with` loop is modeled as `withBegin → [self-loop:
-  body + withEnd → back to body]`, with no exit edge to reach the continuation. The continuation
-  block exists (e.g., block13 in LocationStore::create, block3/4 in GeneralEnd::step) but is
-  empty because no instructions were emitted into it. Examples: `LocationStore::create` missing
-  `instance_destroy()` (the object self-destructs after setup), `GeneralEnd::step` missing
-  `instance_create(0,0,obj_stats)` + `room_goto(rm_start)` after destroying Stats instances.
-  Root cause: the GML bytecode `popenv` instruction creates a `hasNext2`-style branch to either
-  re-enter the loop OR fall through to post-loop code, but our IR encodes only the re-enter
-  edge (`br block_body`) and drops the fall-through edge.
+- [x] **Post-`with` code not captured** — Fixed by changing `PopEnv`'s loop-back case from
+  `resolve_branch_target` (emits back-edge to body, leaving fall-through unreachable) to
+  `resolve_fallthrough` (falls through to continuation). The GML iteration is handled entirely
+  by `withInstances()` in the runtime — the IR doesn't need to model the loop. Both the
+  loop-back case (sentinel >= 0) and the break-out case (sentinel < 0) now fall through.
+  Commit: 7832b3a.
 
-Both bugs affect every `with` statement that (a) accesses self-relative fields or (b) is followed
-by more code. Fix requires changes to `crates/frontends/reincarnate-frontend-gamemaker/src/`.
+**Design debt**: The `withBegin`/`withEnd` bracket is an IR anti-pattern. The IR uses a pair of
+`SystemCall` nodes as implicit delimiters, relying on the backend's `collapse_with_blocks` AST
+pass to pattern-match and reconstruct `withInstances(target, callback)`. The correct design
+would emit the with-body as a nested IR closure and call `withInstances` directly from the IR —
+but the IR currently has no closure/lambda construct (see "IR-level closure representation" item
+above). The current approach produces correct output but is fragile: any IR transform pass that
+reorders or splits the bracket would silently break the pattern.
 
 ### GML Short-Circuit AND Condition Bug — FIXED (2026-02-22)
 

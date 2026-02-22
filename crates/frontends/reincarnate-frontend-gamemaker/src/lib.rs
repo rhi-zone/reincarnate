@@ -220,8 +220,11 @@ fn translate_scripts(
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
-            Ok(func) => {
+            Ok((func, extra_funcs)) => {
                 mb.add_function(func);
+                for extra in extra_funcs {
+                    mb.add_function(extra);
+                }
                 translated += 1;
             }
             Err(e) => {
@@ -288,8 +291,11 @@ fn translate_global_inits(
             script_names,
         };
 
-        if let Ok(func) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
+        if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
             mb.add_function(func);
+            for extra in extra_funcs {
+                mb.add_function(extra);
+            }
             count += 1;
         }
     }
@@ -357,8 +363,11 @@ fn translate_room_creation(
             script_names,
         };
 
-        if let Ok(func) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
+        if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
             mb.add_function(func);
+            for extra in extra_funcs {
+                mb.add_function(extra);
+            }
             creation_code_map.insert(room_idx, func_name);
             count += 1;
         }

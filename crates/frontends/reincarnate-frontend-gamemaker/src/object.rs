@@ -121,7 +121,7 @@ pub fn translate_objects(
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {
-                        Ok(mut func) => {
+                        Ok((mut func, extra_funcs)) => {
                             func.namespace = ns.clone();
                             func.class = Some(obj_name.clone());
                             // All event handlers are instance methods.
@@ -130,6 +130,16 @@ pub fn translate_objects(
                             func.method_kind = MethodKind::Instance;
                             let fid = mb.add_function(func);
                             method_ids.push(fid);
+                            // Closure functions extracted from with-bodies: same
+                            // namespace/class as the event handler so that
+                            // `compile_closures` finds them in the same class group.
+                            for mut extra in extra_funcs {
+                                extra.namespace = ns.clone();
+                                extra.class = Some(obj_name.clone());
+                                // method_kind = Closure already set by translate_with_body
+                                let fid = mb.add_function(extra);
+                                method_ids.push(fid);
+                            }
                             translated += 1;
                         }
                         Err(e) => {

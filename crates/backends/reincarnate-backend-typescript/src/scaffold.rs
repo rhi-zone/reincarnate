@@ -534,7 +534,7 @@ fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut 
             .flat_map(|c| c.methods.iter().copied())
             .collect();
         for (fid, func) in module.functions.iter() {
-            if !class_methods.contains(&fid) && func.visibility == Visibility::Public {
+            if !class_methods.contains(&fid) && func.visibility == Visibility::Public && func.method_kind != MethodKind::Closure {
                 imports.push(sanitize_ident(&func.name));
                 if heuristic_entry.is_none() && is_entry_candidate(&func.name) {
                     *heuristic_entry = Some(sanitize_ident(&func.name));

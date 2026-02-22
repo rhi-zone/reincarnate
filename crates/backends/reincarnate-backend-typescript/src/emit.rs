@@ -2376,7 +2376,7 @@ fn emit_function(
     };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
-        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names),
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, closure_bodies),
         EngineKind::Flash => {
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
@@ -2864,7 +2864,7 @@ fn emit_class_method(
     let ctx = crate::lower::LowerCtx { self_param_name };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
-        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names),
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, closure_bodies),
         EngineKind::Flash => {
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
