@@ -541,9 +541,14 @@ fn try_resolve_sprite_assign(target: &JsExpr, value: &mut JsExpr, sprite_names: 
     if let JsExpr::Literal(Constant::Int(idx)) = value {
         let idx = *idx as usize;
         if let Some(name) = sprite_names.get(idx) {
-            *value = JsExpr::Field {
-                object: Box::new(JsExpr::Var("Sprites".into())),
-                field: name.clone(),
+            let sprites = Box::new(JsExpr::Var("Sprites".into()));
+            *value = if crate::ast_printer::is_valid_js_ident(name) {
+                JsExpr::Field { object: sprites, field: name.clone() }
+            } else {
+                JsExpr::Index {
+                    collection: sprites,
+                    index: Box::new(JsExpr::Literal(Constant::String(name.clone()))),
+                }
             };
         }
     }

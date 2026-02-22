@@ -698,7 +698,14 @@ fn resolve_sprite_constant(name: &str, val: &Constant, sprite_names: &[String]) 
     }
     if let Constant::Int(idx) = val {
         let idx = *idx as usize;
-        sprite_names.get(idx).map(|n| format!("Sprites.{n}"))
+        sprite_names.get(idx).map(|n| {
+            if crate::ast_printer::is_valid_js_ident(n) {
+                format!("Sprites.{n}")
+            } else {
+                let quoted = serde_json::to_string(n).expect("string serialization cannot fail");
+                format!("Sprites[{quoted}]")
+            }
+        })
     } else {
         None
     }
@@ -1241,7 +1248,8 @@ fn strip_unused_namespace_imports(out: &mut String) {
             .find('\n')
             .map(|i| start + i + 1)
             .unwrap_or(out.len());
-        if !out[line_end..].contains("Sprites.") {
+        let tail = &out[line_end..];
+        if !tail.contains("Sprites.") && !tail.contains("Sprites[") {
             removals.push((start, line_end));
         }
     }
