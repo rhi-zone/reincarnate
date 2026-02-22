@@ -413,8 +413,12 @@ export class GameRuntime {
 
   // ---- Game loop ----
 
+  /** Called once per frame. Override to hook pause/resume, speed control, etc. */
+  onTick?: () => void;
+
   private _runFrame(): void {
     const start = performance.now();
+    this.onTick?.();
     if (this._currentRoom) this._currentRoom.draw();
     const end = performance.now();
     const elapsed = end - start;
@@ -500,11 +504,3 @@ export function createGameRuntime(opts?: { root?: RenderRoot }): GameRuntime {
   return rt;
 }
 
-// ---- Timing hook (called once per frame in the game loop) ----
-
-export const timing = {
-  tick() {
-    // GameMaker uses its own setTimeout-based loop, not rAF.
-    // Override this to hook per-frame logic (e.g. pause/resume, speed control).
-  },
-};

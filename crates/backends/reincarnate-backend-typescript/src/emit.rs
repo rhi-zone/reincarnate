@@ -3312,14 +3312,14 @@ mod tests {
                 params: vec![],
                 return_ty: Type::Void, ..Default::default() };
             let mut fb = FunctionBuilder::new("tick", sig, Visibility::Public);
-            fb.system_call("timing", "tick", &[], Type::Void);
+            fb.system_call("audio", "play", &[], Type::Void);
             fb.system_call("input", "update", &[], Type::Void);
             fb.system_call("renderer", "present", &[], Type::Void);
             fb.ret(None);
             mb.add_function(fb.build());
         });
 
-        assert!(out.contains("import { input, renderer, timing } from \"./runtime\";"));
+        assert!(out.contains("import { audio, input, renderer } from \"./runtime\";"));
     }
 
     #[test]

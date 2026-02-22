@@ -403,14 +403,6 @@ fn generate_package_json(runtime_config: Option<&RuntimeConfig>) -> String {
 fn generate_main(modules: &[Module], runtime_config: Option<&RuntimeConfig>, persistence: Option<&PersistenceConfig>) -> String {
     let mut out = String::new();
 
-    let has_custom_entry = runtime_config
-        .and_then(|c| c.scaffold.entry.as_deref())
-        .is_some();
-
-    // Only import timing for standard rAF loop entries.
-    if !has_custom_entry {
-        let _ = writeln!(out, "import {{ timing }} from \"./runtime\";");
-    }
     if let Some(cfg) = runtime_config {
         for group in &cfg.scaffold.imports {
             let _ = writeln!(
@@ -606,7 +598,6 @@ fn metadata_entry_code(modules: &[Module], runtime_config: Option<&RuntimeConfig
 
     // Frame loop.
     let _ = writeln!(code, "\nfunction loop() {{");
-    let _ = writeln!(code, "  timing.tick();");
     if let Some(tick) = runtime_config.and_then(|c| c.scaffold.tick.as_deref()) {
         let _ = writeln!(code, "  {tick}");
     }
@@ -654,7 +645,6 @@ fn func_call_name(module: &Module, fid: FuncId) -> Option<String> {
 /// Emit the standard game loop calling `func_name` each frame.
 fn emit_game_loop(out: &mut String, func_name: &str, runtime_config: Option<&RuntimeConfig>) {
     let _ = writeln!(out, "function loop() {{");
-    let _ = writeln!(out, "  timing.tick();");
     if let Some(tick) = runtime_config.and_then(|c| c.scaffold.tick.as_deref()) {
         let _ = writeln!(out, "  {tick}");
     }
