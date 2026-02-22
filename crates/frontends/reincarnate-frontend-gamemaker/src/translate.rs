@@ -1403,33 +1403,27 @@ fn translate_instruction(
             }
         }
         Opcode::PopEnv => {
-            if let Operand::Branch(offset) = inst.operand {
-                let sentinel = inst.offset as i64 + offset as i64;
-                if sentinel < 0 || offset == -0x100000 * 4 {
-                    // Break out of with-block (sentinel 0xF00000).
-                    fb.system_call(
-                        "GameMaker.Instance",
-                        "withEnd",
-                        &[],
-                        Type::Void,
-                    );
-                    let (fall_off, fall) = resolve_fallthrough(instructions, inst_idx, block_map)?;
-                    let args = get_branch_args(stack, block_entry_depths.get(&fall_off).copied().unwrap_or(0));
-                    fb.br(fall, &args);
-                    *terminated = true;
-                } else {
-                    // Loop back to with-body header.
-                    fb.system_call(
-                        "GameMaker.Instance",
-                        "withEnd",
-                        &[],
-                        Type::Void,
-                    );
-                    let (loop_off, loop_target) = resolve_branch_target(inst, offset, block_map)?;
-                    let args = get_branch_args(stack, block_entry_depths.get(&loop_off).copied().unwrap_or(0));
-                    fb.br(loop_target, &args);
-                    *terminated = true;
-                }
+            if let Operand::Branch(_) = inst.operand {
+                // Emit withEnd and fall through to the post-with code.
+                //
+                // The GML VM uses PopEnv as a loop-advance instruction: if more
+                // instances remain, it jumps back to the body; otherwise it falls
+                // through to the continuation. We model GML `with` as a flat
+                // withBegin + body + withEnd + continuation — the actual iteration
+                // is handled entirely by withInstances() in the runtime. So in
+                // both the normal loop-back case (sentinel >= 0) and the break-out
+                // case (sentinel < 0), we unconditionally fall through to the next
+                // instruction (the post-with continuation code).
+                fb.system_call(
+                    "GameMaker.Instance",
+                    "withEnd",
+                    &[],
+                    Type::Void,
+                );
+                let (fall_off, fall) = resolve_fallthrough(instructions, inst_idx, block_map)?;
+                let args = get_branch_args(stack, block_entry_depths.get(&fall_off).copied().unwrap_or(0));
+                fb.br(fall, &args);
+                *terminated = true;
             }
         }
 
@@ -2412,6 +2406,102 @@ mod tests {
         });
         assert!(!value_is_plain_const,
             "SetIndex value should be the Add result (sum), not a plain constant; value={value:?}");
+    }
+
+    // -----------------------------------------------------------------------
+    // PushEnv / PopEnv — with-block post-continuation must be reachable
+    // -----------------------------------------------------------------------
+
+    /// Post-with code (instructions after PopEnv) must appear in the IR.
+    ///
+    /// Before the fix, PopEnv's loop-back case emitted `br body_block` (an
+    /// unconditional loop-back), leaving the fall-through block unreachable.
+    /// After the fix, PopEnv always falls through to the next instruction so
+    /// that the post-with code is reachable.
+    ///
+    /// Bytecode layout:
+    ///   offset  0: PushI.i16 5              — target object
+    ///   offset  4: PushEnv Branch(12)       — skip to PopEnv at offset 16
+    ///   offset  8: PushI.i16 0              — body: push a value
+    ///   offset 12: Popz                     — body: pop it
+    ///   offset 16: PopEnv Branch(-8)        — loop-back sentinel (16-8=8 ≥ 0)
+    ///   offset 20: PushI.i16 99             — post-with sentinel
+    ///   offset 24: Popz                     — discard sentinel
+    ///   offset 28: Ret
+    #[test]
+    fn test_popenv_fall_through_reaches_post_with_code() {
+        fn popz_inst() -> Instruction {
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Popz,
+                type1: DataType::Int16,
+                type2: DataType::Double,
+                operand: Operand::None,
+            }
+        }
+        fn branch_inst(opcode: Opcode, byte_offset: i32) -> Instruction {
+            Instruction {
+                offset: 0,
+                opcode,
+                type1: DataType::Double,
+                type2: DataType::Double,
+                operand: Operand::Branch(byte_offset),
+            }
+        }
+
+        // PushEnv Branch(12): skip body, target = offset 4+12=16 (PopEnv).
+        // PopEnv Branch(-8): loop-back, sentinel = 16+(-8)=8 ≥ 0.
+        let instructions = vec![
+            pushi(5),                         // offset  0: push target
+            branch_inst(Opcode::PushEnv, 12), // offset  4: skip to offset 16
+            pushi(0),                         // offset  8: body push
+            popz_inst(),                      // offset 12: body pop
+            branch_inst(Opcode::PopEnv, -8),  // offset 16: loop-back to offset 8
+            pushi(99),                        // offset 20: post-with sentinel
+            popz_inst(),                      // offset 24: pop sentinel
+            Instruction {                     // offset 28: Exit (void return)
+                offset: 0,
+                opcode: Opcode::Exit,
+                type1: DataType::Double,
+                type2: DataType::Double,
+                operand: Operand::None,
+            },
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![];
+        let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(false, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+
+        let func = translate_code_entry(&bytecode, "test_with_continuation", &ctx)
+            .expect("translation failed");
+        let ops = collect_ops(&func);
+
+        // withBegin must appear (PushEnv).
+        let has_with_begin = ops.iter().any(|op| {
+            matches!(op, Op::SystemCall { system, method, .. }
+                if system == "GameMaker.Instance" && method == "withBegin")
+        });
+        assert!(has_with_begin, "withBegin syscall must appear; ops: {ops:?}");
+
+        // withEnd must appear (PopEnv).
+        let has_with_end = ops.iter().any(|op| {
+            matches!(op, Op::SystemCall { system, method, .. }
+                if system == "GameMaker.Instance" && method == "withEnd")
+        });
+        assert!(has_with_end, "withEnd syscall must appear; ops: {ops:?}");
+
+        // Post-with sentinel (Const 99) must be reachable.
+        // Without the fix, the block at offset 20 is unreachable and DCE removes it.
+        let has_post_with_sentinel = ops.iter().any(|op| {
+            matches!(op, Op::Const(reincarnate_core::ir::value::Constant::Int(99)))
+        });
+        assert!(has_post_with_sentinel,
+            "post-with code (Const(99) sentinel) must be reachable; ops: {ops:?}");
     }
 
     /// `argument[1]` push with 2D array encoding maps to `fb.param(1)`, not a
