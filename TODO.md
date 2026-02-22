@@ -350,7 +350,7 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
 | 10 Second Ninja X | `data.win` 134MB | ❌ `argument` in with-body |
 | 12 is Better Than 6 | `game.unx` 179MB | ❌ `argument` in with-body |
 | Cauldron | `data.win` 169MB | ❌ YYC |
-| CookServeDelicious2 | — | ⏳ still downloading |
+| CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
