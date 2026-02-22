@@ -17,7 +17,7 @@
     "entry": "createGameRuntime().start({ rooms, sprites, textures, fonts, classes: [{classes}], Classes, initialRoom: Rooms.Init, roomCreationCode: [{roomCreationCode}] });"
   },
   "class_preamble": {
-    "names": ["GMLObject", "Sprites", "Colors", "HAligns", "VAligns"],
+    "names": ["GMLObject", "Colors", "HAligns", "VAligns"],
     "path": "gamemaker/runtime"
   },
   "type_definitions": {

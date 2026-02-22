@@ -110,9 +110,6 @@ for (const ev of [
   (GMLObject.prototype as any)[ev] = noop;
 }
 
-// Sprites enum — populated per-instance by createGameRuntime
-export const Sprites: Record<string, number> = {};
-
 // ---- GMLRoom ----
 
 class GMLRoom {
@@ -444,9 +441,6 @@ export class GameRuntime {
     for (let i = 0; i < config.sprites.length; i++) {
       this.Sprites[config.sprites[i]!.name] = i;
     }
-    // Also populate the module-level Sprites for backwards compatibility
-    Object.assign(Sprites, this.Sprites);
-
     // Set up collision stubs (need class count)
     for (let i = 0; i < config.classes.length; i++) {
       (GMLObject.prototype as any)["collision" + i] = noop;
