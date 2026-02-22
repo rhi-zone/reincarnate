@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use crate::error::CoreError;
 use crate::ir::Module;
+use crate::pipeline::Transform;
 use crate::project::{AssetCatalog, EngineOrigin};
 
 /// Input to a frontend.
@@ -27,6 +28,12 @@ pub struct FrontendOutput {
     /// different runtime configurations for different sub-formats
     /// (e.g. SugarCube vs Harlowe).
     pub runtime_variant: Option<String>,
+    /// Engine-specific IR transform passes to run after the standard pipeline.
+    ///
+    /// These run after DCE (the last standard pass) but before structurization.
+    /// Use this to inject engine-specific IR normalizations that the shared
+    /// pipeline doesn't know about (e.g. GML logical-op pattern restoration).
+    pub extra_passes: Vec<Box<dyn Transform>>,
 }
 
 /// Frontend trait — parses engine-specific formats and emits IR.

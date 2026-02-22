@@ -1,5 +1,6 @@
 mod assets;
 mod data;
+mod logical_op;
 pub mod naming;
 mod object;
 mod translate;
@@ -148,6 +149,7 @@ impl Frontend for GameMakerFrontend {
             modules: vec![module],
             assets,
             runtime_variant: None,
+            extra_passes: vec![Box::new(logical_op::GmlLogicalOpNormalize)],
         })
     }
 }

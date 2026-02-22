@@ -301,7 +301,10 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let config = PassConfig::from_skip_list(&skip_refs);
-    let pipeline = default_pipeline(&config);
+    let mut pipeline = default_pipeline(&config);
+    for extra in output.extra_passes {
+        pipeline.add(extra);
+    }
     for module in output.modules {
         let module = pipeline.run(module).map_err(|e| anyhow::anyhow!("{e}"))?;
         println!("{module}");
@@ -345,7 +348,10 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, debug: &
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let (pass_config, lowering_config) = Preset::resolve(preset, &skip_refs)
         .ok_or_else(|| anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")"))?;
-    let pipeline = default_pipeline(&pass_config);
+    let mut pipeline = default_pipeline(&pass_config);
+    for extra in output.extra_passes {
+        pipeline.add(extra);
+    }
 
     let mut modules = Vec::new();
     for mut module in output.modules {
