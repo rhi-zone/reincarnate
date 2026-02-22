@@ -275,6 +275,70 @@ improve output fidelity:
   while→for promotions. Remaining while-loops use class fields, parameters,
   pre-increment patterns, or complex multi-step increments.
 
+## GameMaker — New Game Failures (discovered 2026-02-22)
+
+Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
+
+### 1. `argument` inside `with`-body panics — blocks 10SecNinjaX, 12BetterThan6, VA-11 HALL-A
+
+- [ ] **`argument[N]` accessed inside a `with`-body closes over wrong param index** —
+  `translate_push_variable` computes `param_offset = has_self(1) + has_other(1)` and reads
+  `fb.param(param_offset + arg_idx)`. Inside a `translate_with_body` closure the function only
+  has the explicit capture params (`_self`, maybe `_other`) — `argument[N]` from the *outer*
+  scope are not present. Fix: detect `argument` access in a with-body context and emit a capture
+  for each `argument[N]` used, similar to how `_other` is captured. The inner function receives
+  it as an additional capture parameter.
+
+### 2. TXTR external textures panic — blocks Downwell
+
+- [ ] **`txtr.rs:102` slice-end underflow when textures are stored externally** —
+  `get_texture_data(index)` computes `end = next_texture.data_offset`. In GMS2.3+ (and some
+  GMS2 builds), textures are stored as external `.png` files on disk; the `data_offset` fields
+  still exist in TXTR but point into an external file, not into the `data.win` blob. When
+  `data_offset` of texture N+1 is 0 (or smaller than texture N's offset), `data[start..end]`
+  panics. Fix: detect out-of-range `data_offset` and return `None` (texture data not embedded).
+  Downwell has new chunks `FEDS, ACRV, SEQN, TAGS` suggesting GMS2.3+.
+
+### 3. PE-embedded `data.win` not supported — blocks Momodora RUtM
+
+- [ ] **Reader requires FORM at offset 0, but Momodora embeds it in a PE exe** —
+  `MomodoraRUtM.exe` has the FORM blob appended after the PE image (found at offset 9417748 by
+  scanning for a valid FORM). The CLI and `DataWin::parse()` currently require the slice to
+  start at FORM. Fix: in the CLI's `load_data` path, detect PE magic (`MZ`) at offset 0 and
+  scan for the first valid FORM header (magic=`FORM`, stated size fits within file). Pass the
+  sub-slice from that offset. No streaming/seeking parser needed — we already mmap/read the whole
+  file; just find the offset and slice.
+
+### 4. Forager parse error at EOF / Risk of Rain CODE chunk empty
+
+- [ ] **Forager `game.unx` hits unexpected EOF while parsing** — the reader reaches absolute
+  file offset 81446624 (= EOF) and attempts a 4-byte read. All top-level chunks parse correctly;
+  the failure is inside a chunk's content parser. Likely the CODE chunk bytecode decoder reading
+  a function entry whose stated length extends to exactly EOF, then attempting to read past.
+  Needs `--dump-ir` + targeted investigation.
+
+- [ ] **Risk of Rain `game.unx` has empty CODE/VARI/FUNC chunks (YYC-compiled)** — chunk scan
+  shows `CODE 0 bytes, VARI 0 bytes, FUNC 0 bytes`. This is the GMS1 YYC signature: chunks
+  exist but are empty. Our reader fails with "unexpected end of data at offset 0x0" when trying
+  to read CODE entries from a zero-length chunk. Fix: detect zero-length CODE chunk and emit a
+  clear "YYC-compiled, no bytecode available" error instead of panicking. Also update our
+  chunk-scan heuristic to check `CODE size > 0`, not just presence of the `CODE` tag.
+
+### New game inventory
+
+| Game | Source | Status |
+|------|--------|--------|
+| 10 Second Ninja X | `data.win` 134MB | ❌ `argument` in with-body |
+| 12 is Better Than 6 | `game.unx` 179MB | ❌ `argument` in with-body |
+| Downwell | `data.win` 27MB | ❌ TXTR external textures |
+| Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
+| Momodora RUtM | `.exe` 36MB | ❌ PE-embedded FORM |
+| Risk of Rain | `game.unx` 34MB | ❌ YYC (empty CODE chunk) |
+| VA-11 HALL-A | `game.unx` 212MB | ❌ `argument` in with-body |
+| CookServeDelicious2 | — | ⏳ still downloading |
+
+---
+
 ## GameMaker Frontend
 
 ### GML `with` Statement Bugs — FIXED (2026-02-22)
