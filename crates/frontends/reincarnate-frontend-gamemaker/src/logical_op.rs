@@ -19,6 +19,8 @@
 //! avoid converting genuine ternaries like `cond ? 1 : 2` to `cond || 2`.
 
 use reincarnate_core::error::CoreError;
+use reincarnate_core::ir::block::Block;
+use reincarnate_core::ir::inst::Inst;
 use reincarnate_core::ir::{BlockId, Constant, Function, InstId, Module, Op, ValueId};
 use reincarnate_core::pipeline::{Transform, TransformResult};
 
@@ -53,8 +55,9 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
         })
         .collect();
 
-    for (_, cond, then_target, else_target) in &brifs {
-        let (cond, then_target, else_target) = (*cond, *then_target, *else_target);
+    for (brif_id, cond, then_target, else_target) in &brifs {
+        let (brif_id, cond, then_target, else_target) =
+            (*brif_id, *cond, *then_target, *else_target);
         // Try GML OR: then-block is trivially pure with a const-truthy result,
         // else-block has real computation.
         // Guard: skip if the trivial block is shared by multiple BrIf predecessors —
@@ -72,9 +75,22 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
         // then-block has real computation.
         if let Some(br_inst_id) = trivially_pure_const_branch(func, else_target, false) {
             let else_pred_count = brifs.iter().filter(|(_, _, _, e)| *e == else_target).count();
-            if else_pred_count == 1 && !is_trivially_pure_block(func, then_target) {
-                func.insts[br_inst_id].op = replace_br_arg(func, br_inst_id, cond);
-                changed = true;
+            if !is_trivially_pure_block(func, then_target) {
+                if else_pred_count == 1 {
+                    // Sole predecessor: rewrite the trivial block in place.
+                    func.insts[br_inst_id].op = replace_br_arg(func, br_inst_id, cond);
+                    changed = true;
+                } else {
+                    // Shared else-block (e.g. nested `if (a) { if (b) { ... } }` where
+                    // both BrIf instructions share the same skip target). We must NOT
+                    // rewrite the shared block in place — that would corrupt the other
+                    // predecessor's path. Instead, insert a fresh bypass block
+                    // `Br merge(cond)` and redirect only this BrIf's else_target.
+                    let merge_target = get_br_target(func, br_inst_id);
+                    let bypass = insert_bypass_block(func, merge_target, cond);
+                    update_brif_else_target(&mut func.insts[brif_id].op, bypass);
+                    changed = true;
+                }
             }
         }
     }
@@ -150,6 +166,30 @@ fn replace_br_arg(func: &Function, br_inst_id: InstId, new_arg: ValueId) -> Op {
     Op::Br { target: *target, args: vec![new_arg] }
 }
 
+/// Return the target of the `Br` instruction `br_inst_id`.
+fn get_br_target(func: &Function, br_inst_id: InstId) -> BlockId {
+    let Op::Br { target, .. } = &func.insts[br_inst_id].op else {
+        unreachable!("get_br_target called on non-Br");
+    };
+    *target
+}
+
+/// Insert a new bypass block `Br merge_target(bypass_arg)` into `func` and
+/// return its `BlockId`. Used to redirect a BrIf's else_target so that only
+/// this path receives `bypass_arg` while the shared else block is left intact.
+fn insert_bypass_block(func: &mut Function, merge_target: BlockId, bypass_arg: ValueId) -> BlockId {
+    let br_inst = func.insts.push(Inst { op: Op::Br { target: merge_target, args: vec![bypass_arg] }, result: None, span: None });
+    func.blocks.push(Block { params: vec![], insts: vec![br_inst] })
+}
+
+/// Rewrite `op` (a `BrIf`) to use `new_else` as its else_target.
+fn update_brif_else_target(op: &mut Op, new_else: BlockId) {
+    match op {
+        Op::BrIf { else_target, .. } => *else_target = new_else,
+        _ => unreachable!("update_brif_else_target called on non-BrIf"),
+    }
+}
+
 fn is_const_truthy(c: &Constant) -> bool {
     match c {
         Constant::Bool(true) | Constant::Int(1) => true,
@@ -182,10 +222,13 @@ mod tests {
     ///   push 0
     ///   // fall-through to merge
     ///
-    /// The normalization pass must NOT replace the shared else-block's
-    /// `br merge(const_0)` with `br merge(cond_a)`, because when
-    /// reached via the inner BrIf (cond_a = true, cond_b = false),
-    /// using cond_a=true would incorrectly make the merge condition true.
+    /// The normalization pass must NOT modify the shared else-block in place —
+    /// replacing `br merge(const_0)` with `br merge(cond_a)` would corrupt the
+    /// inner BrIf's path (cond_b=false would incorrectly propagate cond_a=true).
+    ///
+    /// Instead, for the inner BrIf (cond_b), the pass inserts a fresh bypass block
+    /// `Br merge(cond_b)` and redirects only that BrIf's else_target to it,
+    /// leaving the shared else-block (block3) intact.
     #[test]
     fn test_shared_else_block_not_normalized() {
         // IR:
@@ -239,15 +282,36 @@ mod tests {
 
         // Run the normalization pass.
         let result = GmlLogicalOpNormalize.apply(module).unwrap();
-        assert!(!result.changed, "Pass must not modify a shared else-block");
+        // The pass should have changed something: it creates a bypass block for block1's
+        // inner BrIf (cond_b) and redirects its else_target to the new bypass.
+        assert!(result.changed, "Pass should create a bypass block for the inner BrIf");
 
-        // Find block3's Br and confirm its arg is still v_zero (const 0), not cond_a.
         let func = result.module.functions.values().next().unwrap();
+
+        // block3's Br arg must still be v_zero — the shared block must NOT be modified.
         let b3 = &func.blocks[block3];
         let last_inst = func.insts[*b3.insts.last().unwrap()].op.clone();
         let Op::Br { args, .. } = last_inst else {
             panic!("Expected Br terminator in block3");
         };
-        assert_eq!(args[0], v_zero, "block3's Br arg must remain v_zero (const 0), not be replaced with cond_a");
+        assert_eq!(args[0], v_zero, "block3's Br arg must remain v_zero (const 0), not be replaced");
+
+        // block1's BrIf else_target should no longer be block3 — it points to the bypass block.
+        let b1 = &func.blocks[block1];
+        let b1_brif = func.insts[*b1.insts.last().unwrap()].op.clone();
+        let Op::BrIf { else_target, .. } = b1_brif else {
+            panic!("Expected BrIf terminator in block1");
+        };
+        assert_ne!(else_target, block3, "block1's BrIf else_target should be redirected to bypass, not block3");
+
+        // The new bypass block should Br to block4 with cond_b as the arg.
+        let bypass_blk = &func.blocks[else_target];
+        assert_eq!(bypass_blk.insts.len(), 1);
+        let bypass_br = func.insts[bypass_blk.insts[0]].op.clone();
+        let Op::Br { target: bypass_target, args: bypass_args } = bypass_br else {
+            panic!("Expected Br in bypass block");
+        };
+        assert_eq!(bypass_target, block4, "bypass block should Br to block4");
+        assert_eq!(bypass_args[0], cond_b, "bypass block should forward cond_b to merge");
     }
 }
