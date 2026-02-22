@@ -324,18 +324,48 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   clear "YYC-compiled, no bytecode available" error instead of panicking. Also update our
   chunk-scan heuristic to check `CODE size > 0`, not just presence of the `CODE` tag.
 
+### 5. Sprite name bracket notation missing for access side — blocks Nubby's, Mindwave, MaxManos2
+
+- [ ] **`Sprites.3DPegBase` emitted instead of `Sprites["3DPegBase"]`** — the sprite-key quoting
+  fix (`is_valid_js_ident` + `serde_json::to_string`) was applied to the *declaration* side in
+  `data/sprites.ts` object literal keys, but the *access* side in class files still uses dot
+  notation (`Sprites.Name`). When the sprite name is not a valid JS identifier (starts with a
+  digit, contains hyphens, etc.), bracket notation is required. Fix: in the emit path that writes
+  `Sprites.{name}` field accesses (likely `resolve_sprite_constant` or the AST printer), apply
+  `is_valid_js_ident` and emit `Sprites["{name}"]` when false.
+
+### 6. Local variable pop emits raw index as subscript — blocks Max Manos, Schism
+
+- [ ] **`-6[-6] = 0` emitted for a local variable write** — a `SetLocal`/`PopLocal` operation
+  fails to resolve the local variable name and falls back to emitting the raw signed integer
+  index as both the target and the subscript (`-6[-6]`). Fix: handle the unresolved local case
+  gracefully — either resolve the variable from the local name table or emit a clearly-named
+  synthetic local (`_local_neg6`). Root cause is likely a negative local variable offset in the
+  GML bytecode that isn't in our name map.
+
 ### New game inventory
 
 | Game | Source | Status |
 |------|--------|--------|
 | 10 Second Ninja X | `data.win` 134MB | ❌ `argument` in with-body |
 | 12 is Better Than 6 | `game.unx` 179MB | ❌ `argument` in with-body |
+| Cauldron | `data.win` 169MB | ❌ YYC |
+| CookServeDelicious2 | — | ⏳ still downloading |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
+| Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
+| Max Manos | `data.win` 47MB | ⚠️ 2 TS errors (local var pop raw index) |
+| Max Manos 2 | `data.win` 10MB | ⚠️ 4 TS errors (local var pop raw index) |
+| MINDWAVE Demo | `data.win` 324MB | ⚠️ 6 TS errors (sprite bracket notation) |
 | Momodora RUtM | `.exe` 36MB | ❌ PE-embedded FORM |
+| Nova Drift | `data.win` 415MB | ❌ YYC |
+| Nubby's Number Factory | `data.win` 66MB | ⚠️ 6 TS errors (sprite bracket notation) |
 | Risk of Rain | `game.unx` 34MB | ❌ YYC (empty CODE chunk) |
+| Rocket Rats | `data.win` 2MB | ❌ YYC |
+| Schism | `data.win` 77MB | ❌ `argument` in with-body |
+| Shelldiver | `data.win` 2MB | ❌ YYC |
+| Soulknight Survivor | `data.win` 35MB | ❌ YYC |
 | VA-11 HALL-A | `game.unx` 212MB | ❌ `argument` in with-body |
-| CookServeDelicious2 | — | ⏳ still downloading |
 
 ---
 
