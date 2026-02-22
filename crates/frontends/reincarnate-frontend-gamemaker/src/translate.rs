@@ -671,13 +671,19 @@ fn find_with_ranges(instructions: &[Instruction]) -> HashMap<usize, usize> {
 ///
 /// Used to determine which locals a with-body closure needs to capture.
 fn scan_body_local_names(body_insts: &[Instruction], ctx: &TranslateCtx<'_>) -> Vec<String> {
+    // Build a fast lookup set from the outer function's declared local names so we
+    // only capture names that actually have an alloc slot (see `allocate_locals`).
+    let known_locals: HashSet<&str> = ctx.local_names.iter().map(|(_, n)| n.as_str()).collect();
     let mut seen = HashSet::new();
     let mut names = Vec::new();
     for inst in body_insts {
         if let Operand::Variable { instance, .. } = &inst.operand {
             if matches!(InstanceType::from_i16(*instance), Some(InstanceType::Local)) {
                 let name = resolve_variable_name(inst, ctx);
-                if seen.insert(name.clone()) {
+                // Skip names that don't correspond to a declared local — resolve_variable_name
+                // returns "var_unknown_{offset}" when the VARI lookup fails, and these have no
+                // alloc slot in the outer locals map.
+                if known_locals.contains(name.as_str()) && seen.insert(name.clone()) {
                     names.push(name);
                 }
             }

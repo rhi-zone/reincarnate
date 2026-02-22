@@ -1034,6 +1034,8 @@ version = "0.1.0"
 dependencies = [
  "datawin",
  "reincarnate-core",
+ "serde_json",
+ "unicode-ident",
 ]
 
 [[package]]

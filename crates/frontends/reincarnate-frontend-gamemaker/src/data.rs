@@ -6,6 +6,21 @@ use reincarnate_core::project::{Asset, AssetCatalog, AssetKind};
 
 use crate::naming;
 
+/// Return true if `s` is a valid JavaScript identifier.
+///
+/// JS identifiers use Unicode ID_Start for the first character and
+/// ID_Continue for subsequent characters, plus `$` which JS allows as
+/// both a start and continue character (it is not in the Unicode
+/// ID_Start/ID_Continue sets).
+fn is_valid_js_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(c) if unicode_ident::is_xid_start(c) || c == '_' || c == '$' => {}
+        _ => return false,
+    }
+    chars.all(|c| unicode_ident::is_xid_continue(c) || c == '$')
+}
+
 /// Generate TypeScript data files from parsed chunks and add them to the catalog.
 pub fn generate_data_files(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]) {
     generate_textures(dw, catalog);
@@ -90,7 +105,15 @@ fn generate_sprites(dw: &DataWin, catalog: &mut AssetCatalog) {
     for (i, sprite) in sprt.sprites.iter().enumerate() {
         let raw = dw.resolve_string(sprite.name).unwrap_or_else(|_| format!("spr_{i}"));
         let key = naming::sprite_name_to_pascal(&raw);
-        let _ = writeln!(out, "  {key}: {i},");
+        // Emit as a plain identifier when valid, otherwise as a quoted string key.
+        // A valid JS identifier starts with [a-zA-Z_$] and continues with [a-zA-Z0-9_$].
+        // serde_json::to_string provides correct JSON string escaping for quoted keys.
+        let key_token = if is_valid_js_ident(&key) {
+            key
+        } else {
+            serde_json::to_string(&key).expect("string serialization cannot fail")
+        };
+        let _ = writeln!(out, "  {key_token}: {i},");
     }
     out.push_str("};\n");
 
