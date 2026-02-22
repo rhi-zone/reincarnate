@@ -10,8 +10,8 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 | Engine | Blocker / next step |
 |--------|---------------------|
-| GameMaker 8.x | New frontend for GM8 format (no FORM/IFF) — UndertaleModTool has partial support; test game: Hotline Miami (`.wad` container at `~/reincarnate/gamemaker/hotlinemiami/`) |
-| GameMaker 5/6 | New frontend for GM5/6 format (data embedded in `.exe`) — OpenGMK is reference; test game: Seiklus (`~/reincarnate/gamemaker/seiklus/seiklus.exe`) |
+| [GameMaker 8.x](docs/targets/gamemaker8.md) | New container parser for `.wad`/GM8 format + opcode adjustments; reuses GMS1 translator — test game: Hotline Miami (`~/reincarnate/gamemaker/hotlinemiami/`) |
+| [GameMaker 5/6](docs/targets/gamemaker5.md) | Unpack data from PE exe, then parse GM5/6 format; older/simpler opcode set — test game: Seiklus (`~/reincarnate/gamemaker/seiklus/`) |
 | GameMaker YYC | YYC-compiled games have no CODE chunk — logic is in native binary. Requires native decompiler pipeline (out of scope for now). Affects: Katana Zero, Picayune Dreams |
 | [Director/Shockwave](docs/targets/director.md) | Format parsing (RIFX/Lingo bytecode) — ProjectorRays and ScummVM are references |
 | [Ren'Py](docs/targets/renpy.md) | `.rpa` extractor → `.rpyc` decompile (unrpyc) → Ren'Py AST → IR |
