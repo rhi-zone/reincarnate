@@ -195,7 +195,14 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     );
                 }
                 (Some(ty), None) => {
-                    let _ = writeln!(out, "{indent}{kw} {name_str}: {};", ts_type(ty));
+                    // Use definite-assignment assertion (`!`) on `let` declarations without
+                    // an initializer. GML variables are declared at function scope and may
+                    // be assigned only in some branches; TypeScript's control-flow analysis
+                    // is too strict for these patterns and flags TS2454 ("used before
+                    // assigned"). The `!` tells TypeScript to trust that the variable will
+                    // be assigned before any read on every live path.
+                    let bang = if *mutable { "!" } else { "" };
+                    let _ = writeln!(out, "{indent}{kw} {name_str}{bang}: {};", ts_type(ty));
                 }
                 (None, Some(init)) => {
                     // Cast → determine if the cast form is a TS assertion (strippable

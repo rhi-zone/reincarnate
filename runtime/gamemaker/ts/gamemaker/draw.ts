@@ -119,7 +119,7 @@ export function createDrawAPI(rt: GameRuntime) {
     }
     const sprite = rt.sprites[spriteIndex];
     if (!sprite) return;
-    const texIdx = sprite.rt.textures[imageIndex] ?? sprite.rt.textures[0];
+    const texIdx = sprite.textures[imageIndex] ?? sprite.textures[0];
     if (texIdx === undefined) return;
     const tex = rt.textures[texIdx];
     if (!tex) return;
@@ -164,7 +164,7 @@ export function createDrawAPI(rt: GameRuntime) {
     if (alpha !== draw.alpha) ctx.globalAlpha = draw.alpha = alpha;
     const sprite = rt.sprites[spriteIndex];
     if (sprite) {
-      const texIdx = sprite.rt.textures[imageIndex] ?? sprite.rt.textures[0];
+      const texIdx = sprite.textures[imageIndex] ?? sprite.textures[0];
       if (texIdx !== undefined) {
         const tex = rt.textures[texIdx];
         if (tex) {

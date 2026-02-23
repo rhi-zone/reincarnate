@@ -466,55 +466,18 @@ export class GameRuntime {
 
   layer_get_id(_name: string): number { return -1; }
 
-  // ---- Instance creation extensions ----
-
-  instance_create_depth(x: number, y: number, depth: number, classIndex: number): GMLObject {
-    const clazz = this.classes[classIndex]!;
-    const inst = this._instanceCreate(x, y, clazz);
-    inst.depth = depth;
-    return inst;
-  }
-
-  instance_create_layer(x: number, y: number, _layer: any, classIndex: number): GMLObject {
-    const clazz = this.classes[classIndex]!;
-    return this._instanceCreate(x, y, clazz);
-  }
-
-  instance_nearest(x: number, y: number, classIndex: number): GMLObject | null {
-    const clazz = this.classes[classIndex];
-    if (!clazz) return null;
-    const instances = this._getInstances(clazz);
-    if (instances.length === 0) return null;
-    let nearest = instances[0]!;
-    let minDist = Math.hypot(nearest.x - x, nearest.y - y);
-    for (let i = 1; i < instances.length; i++) {
-      const inst = instances[i]!;
-      const d = Math.hypot(inst.x - x, inst.y - y);
-      if (d < minDist) { minDist = d; nearest = inst; }
-    }
-    return nearest;
-  }
-
-  object_is_ancestor(classIndex: number, parentIndex: number): boolean {
-    const clazz = this.classes[classIndex];
-    const parent = this.classes[parentIndex];
-    if (!clazz || !parent) return false;
-    let proto = Object.getPrototypeOf(clazz);
-    while (proto && proto !== __baseproto) {
-      if (proto === parent) return true;
-      proto = Object.getPrototypeOf(proto);
-    }
-    return false;
-  }
-
-  layer_get_id(_name: string): number { return -1; }
-
   // ---- Sprite API extensions ----
 
-  sprite_get_xoffset(spr: number): number { return this.sprites[spr]?.frames[0]?.originX ?? 0; }
-  sprite_get_yoffset(spr: number): number { return this.sprites[spr]?.frames[0]?.originY ?? 0; }
-  sprite_get_number(spr: number): number { return this.sprites[spr]?.frames.length ?? 1; }
-  sprite_get_speed(spr: number): number { return this.sprites[spr]?.animSpeed ?? 1; }
+  sprite_get_xoffset(spr: number): number { return this.sprites[spr]?.origin.x ?? 0; }
+  sprite_get_yoffset(spr: number): number { return this.sprites[spr]?.origin.y ?? 0; }
+  sprite_get_number(spr: number): number { return this.sprites[spr]?.textures.length ?? 1; }
+  sprite_get_speed(_spr: number): number { return 1; }
+  sprite_set_offset(spr: number, xoff: number, yoff: number): void {
+    const s = this.sprites[spr];
+    if (s) { s.origin.x = xoff; s.origin.y = yoff; }
+  }
+  sprite_get_texture(spr: number, sub: number): number { return this.sprites[spr]?.textures[sub] ?? -1; }
+  sprite_add_from_surface(_srf: number, _x: number, _y: number, _w: number, _h: number, _removeback: boolean, _smooth: boolean, _xorig: number, _yorig: number): number { return -1; }
   sprite_get_bbox_left(spr: number): number { return this.sprites[spr]?.bbox?.left ?? 0; }
   sprite_get_bbox_right(spr: number): number { return this.sprites[spr]?.bbox?.right ?? 0; }
   sprite_get_bbox_top(spr: number): number { return this.sprites[spr]?.bbox?.top ?? 0; }
@@ -604,6 +567,7 @@ export class GameRuntime {
   shader_set_uniform_f(_handle: number, ..._vals: number[]): void { throw new Error("shader_set_uniform_f: shaders require WebGL implementation"); }
   shader_set_uniform_i(_handle: number, ..._vals: number[]): void { throw new Error("shader_set_uniform_i: shaders require WebGL implementation"); }
   shader_get_sampler_index(_sh: number, _name: string): number { throw new Error("shader_get_sampler_index: shaders require WebGL implementation"); }
+  shader_set_uniform_f_array(_handle: number, _arr: number[]): void { throw new Error("shader_set_uniform_f_array: shaders require WebGL implementation"); }
 
   // ---- GPU state API (unimplemented — requires WebGL) ----
 
@@ -899,6 +863,7 @@ export class GameRuntime {
     throw new Error("draw_circle: implement in graphics layer");
   }
   draw_vertex(_x: number, _y: number): void {}
+  draw_primitive_begin(_kind: number): void {}
   draw_primitive_end(): void {}
   draw_rectangle_color(_x1: number, _y1: number, _x2: number, _y2: number, _c1: number, _c2: number, _c3: number, _c4: number, _outline: boolean): void {
     throw new Error("draw_rectangle_color: implement in graphics layer");
@@ -906,6 +871,15 @@ export class GameRuntime {
   draw_sprite_tiled_ext(_spr: number, _sub: number, _x: number, _y: number, _xscale: number, _yscale: number, _col: number, _alpha: number): void {
     throw new Error("draw_sprite_tiled_ext: implement in graphics layer");
   }
+  draw_ellipse_color(_x1: number, _y1: number, _x2: number, _y2: number, _col1: number, _col2: number, _outline: boolean): void {
+    throw new Error("draw_ellipse_color: implement in graphics layer");
+  }
+  draw_sprite_part(_spr: number, _sub: number, _left: number, _top: number, _w: number, _h: number, _x: number, _y: number): void {
+    throw new Error("draw_sprite_part: implement in graphics layer");
+  }
+  draw_get_color(): number { return this._draw.config.color; }
+  draw_get_halign(): number { return this._draw.config.halign; }
+  draw_get_valign(): number { return this._draw.config.valign; }
 
   // ---- Other-instance field setter (used by setOther rewrite) ----
   setOtherField(other: any, field: string, value: any): void {
@@ -920,6 +894,26 @@ export class GameRuntime {
   // ---- Particle extra ----
   part_system_automatic_draw(_syst: number, _on: boolean): void {}
   part_type_exists(_part: number): boolean { return false; }
+  part_type_shape(_type: number, _shape: number): void { throw new Error("part_type_shape: particle system not yet implemented"); }
+  part_type_death(_type: number, _kind: number, _step: number): void { throw new Error("part_type_death: particle system not yet implemented"); }
+  part_type_color_hsv(_type: number, _hmin: number, _hmax: number, _smin: number, _smax: number, _vmin: number, _vmax: number): void { throw new Error("part_type_color_hsv: particle system not yet implemented"); }
+  part_type_clear(_type: number): void { throw new Error("part_type_clear: particle system not yet implemented"); }
+  part_type_size_x(_type: number, _xmin: number, _xmax: number, _xinc: number, _xwiggle: number): void { throw new Error("part_type_size_x: particle system not yet implemented"); }
+  part_type_size_y(_type: number, _ymin: number, _ymax: number, _yinc: number, _ywiggle: number): void { throw new Error("part_type_size_y: particle system not yet implemented"); }
+
+  // ---- Instance activation/deactivation ----
+  instance_activate_object(_classIndex: number): void {}
+  instance_deactivate_object(_classIndex: number, _notme?: boolean): void {}
+  instance_deactivate_layer(_layer: any): void {}
+  instance_deactivate_region(_x1: number, _y1: number, _x2: number, _y2: number, _inside: boolean, _notme?: boolean): void {}
+
+  // ---- Variable instance helpers ----
+  variable_instance_get(inst: any, name: string): any { return inst?.[name]; }
+  variable_instance_exists(inst: any, name: string): boolean { return inst != null && name in Object(inst); }
+
+  // ---- Surface API (stubs — requires WebGL offscreen rendering) ----
+  surface_resize(_srf: number, _w: number, _h: number): void {}
+  surface_get_target(): number { return -1; }
 
   // ---- Misc ----
   show_error(str: string, _abort: boolean): void { console.error("GML show_error:", str); }
@@ -976,6 +970,20 @@ export class GameRuntime {
   steam_lobby_get_data(_lobby: number, _key: string): string { return ""; }
   steam_activate_overlay_store(_app: number): void {}
   steam_input_get_digital_action_handle(_name: string): number { return 0; }
+  steam_is_cloud_enabled_for_account(): boolean { return false; }
+  steam_inventory_result_get_items(_result: number, _arr: any[]): number { return 0; }
+  steam_lobby_get_member_id(_lobby: number, _index: number): number { return 0; }
+  steam_input_get_action_set_handle(_name: string): number { return 0; }
+  steam_get_stat_float(_name: string): number { return 0; }
+  steam_get_global_stat_int(_name: string): number { return 0; }
+  steam_get_user_account_id(): number { return 0; }
+  steam_image_get_rgba(_image: number, _buf: number, _size: number): boolean { return false; }
+  steam_input_enable_device_callbacks(): void {}
+  steam_lobby_get_chat_message_text(_lobby: number, _index: number): string { return ""; }
+  steam_lobby_get_owner_id(_lobby: number): number { return 0; }
+  steam_request_friend_rich_presence(_steamid: number): void {}
+  steam_ugc_get_item_update_info(_handle: number, _arr: any): boolean { return false; }
+  steam_ugc_submit_item_update(_handle: number, _note: string): void {}
 
   // ---- More collision ----
   collision_point(_x: number, _y: number, _classIndex: number, _prec: boolean, _notme: boolean): any { throw new Error("collision_point: requires collision system implementation"); }
@@ -1041,14 +1049,18 @@ export class GameRuntime {
 
   // ---- Audio extras ----
   audio_sound_length(_sound: number): number { return 0; }
+  audio_sound_get_pitch(_handle: number): number { throw new Error("audio_sound_get_pitch: implement in platform/audio.ts"); }
 
   // ---- Buffer extras ----
   buffer_base64_decode(_str: string): number { throw new Error("buffer_base64_decode: implement in platform layer"); }
+  buffer_load(_filename: string, _buf: number, _offset: number, _size: number): number { throw new Error("buffer_load: implement in platform layer"); }
   buffer_load_async(_path: string, _buf: number, _offset: number, _size: number): number { throw new Error("buffer_load_async: implement in platform layer"); }
   buffer_save_async(_buf: number, _path: string, _offset: number, _size: number): number { throw new Error("buffer_save_async: implement in platform layer"); }
   buffer_set_surface(_buf: number, _surf: number, _offset: number): void {
     throw new Error("buffer_set_surface: requires WebGL implementation");
   }
+  buffer_async_group_begin(_groupname: string): void {}
+  buffer_async_group_end(): number { return 0; }
 
   // ---- Display extras ----
   display_get_gui_width(): number { return window.innerWidth; }
@@ -1176,6 +1188,8 @@ export class GameRuntime {
   gamepad_button_check_pressed(_device: number, _button: number): boolean { return false; }
   gamepad_button_check_released(_device: number, _button: number): boolean { return false; }
   gamepad_button_check(_device: number, _button: number): boolean { return false; }
+  gamepad_is_connected(_device: number): boolean { return false; }
+  gamepad_set_vibration(_device: number, _left: number, _right: number): void {}
 
   // ---- Display ----
   display_get_width(): number { return window.innerWidth; }
@@ -1317,6 +1331,12 @@ export class GameRuntime {
   ds_priority_destroy(id: number): void { this._dsMaps.delete(id); }
   ds_map_write(_map: number): string { return "{}"; }
   ds_map_keys_to_array(map: number): any[] { return [...(this._dsMaps.get(map)?.keys() ?? [])]; }
+  ds_map_replace(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
+  ds_map_secure_save(_map: number, _filename: string): void {}
+  ds_map_values_to_array(map: number): any[] { return [...(this._dsMaps.get(map)?.values() ?? [])]; }
+  ds_list_read(_list: number, _str: string): void {}
+  ds_list_write(list: number): string { return JSON.stringify(this._dsLists.get(list) ?? []); }
+  ds_grid_write(_grid: number): string { return "{}"; }
 
   // ---- Instance extras ----
   method_get_self(func: any): any { return func?._self ?? null; }
@@ -1328,7 +1348,6 @@ export class GameRuntime {
   // ---- Path ----
   path_add(): number { return -1; }
   path_end(): void {}
-  path_exists(_path: number): boolean { return false; }
 
   // ---- Particle system extras ----
   part_system_exists(_syst: number): boolean { return false; }
@@ -1339,6 +1358,8 @@ export class GameRuntime {
   layer_exists(_layer: any): boolean { return false; }
   layer_vspeed(_layer: any): number { return 0; }
   layer_background_sprite(_bg: number): number { return -1; }
+  layer_background_index(_bg: number, _sprite: number): void {}
+  layer_background_get_index(_bg: number): number { return -1; }
 
   // ---- GPU extras ----
   gpu_set_texfilter(_enable: boolean): void {}
@@ -1410,7 +1431,6 @@ export class GameRuntime {
   steam_ugc_start_item_update(_appId: number, _fileId: number): number { return 0; }
   steam_ugc_set_item_description(_handle: number, _desc: string): void {}
   steam_net_packet_get_data(_buf: number): void {}
-  steam_net_packet_get_sender_id(): number { return 0; }
   steam_net_packet_receive(): boolean { return false; }
   steam_net_packet_send(_steamid: number, _buf: number, _size: number, _type: number): void {}
   steam_music_play(): void {}
