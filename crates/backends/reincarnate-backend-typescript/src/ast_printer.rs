@@ -811,6 +811,10 @@ fn needs_parens(expr: &JsExpr) -> bool {
             (CastKind::AsType, Type::Dynamic) => false,  // passthrough
             (CastKind::AsType, _) => true,  // `x as T`
         },
+        // Negative numeric literals need parens to allow member access:
+        //   (-4).length  not  -4.length  (TS1351: identifier after numeric literal)
+        JsExpr::Literal(Constant::Int(n)) if *n < 0 => true,
+        JsExpr::Literal(Constant::Float(f)) if *f < 0.0 => true,
         JsExpr::Binary { .. }
             | JsExpr::Cmp { .. }
             | JsExpr::Ternary { .. }

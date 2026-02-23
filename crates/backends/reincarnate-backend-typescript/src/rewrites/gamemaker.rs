@@ -6,10 +6,25 @@
 use std::collections::{BTreeMap, HashMap};
 
 use reincarnate_core::ir::value::Constant;
-use reincarnate_core::ir::{ExternalImport, Type, ValueId};
+use reincarnate_core::ir::{CmpKind, ExternalImport, Type, ValueId};
 
 use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
+
+/// Returns the stateful runtime names that a direct `Op::Call` rewrite will
+/// introduce, if any.  Used by import generation to ensure these names are
+/// destructured from `this._rt` before the rewrite pass runs.
+///
+/// For example, `@@Other@@()` rewrites to `other` (a destructured field), and
+/// `@@Global@@()` rewrites to `global`.  Without this hook the scanner would
+/// only see `"@@Other@@"` / `"@@Global@@"` which don't map to any module entry.
+pub fn rewrite_introduced_direct_calls(func_name: &str) -> &'static [&'static str] {
+    match func_name {
+        "@@Global@@" => &["global"],
+        "@@Other@@" => &["other"],
+        _ => &[],
+    }
+}
 
 /// Returns the bare function names that a SystemCall rewrite will introduce,
 /// if any.  Used by import generation to emit the correct imports before
@@ -626,6 +641,67 @@ fn rewrite_expr(
                         };
                         return;
                     }
+                }
+                // array_length(arr) → arr.length
+                "array_length" if args.len() == 1 => {
+                    let mut arr = args.remove(0);
+                    rewrite_expr(&mut arr, sprite_names, closure_bodies, event_name);
+                    *expr = JsExpr::Field {
+                        object: Box::new(arr),
+                        field: "length".into(),
+                    };
+                    return;
+                }
+                // array_push(arr, v0, v1, ...) → arr.push(v0, v1, ...)
+                "array_push" if !args.is_empty() => {
+                    for arg in args.iter_mut() {
+                        rewrite_expr(arg, sprite_names, closure_bodies, event_name);
+                    }
+                    let mut args = std::mem::take(args);
+                    let arr = args.remove(0);
+                    *expr = JsExpr::Call {
+                        callee: Box::new(JsExpr::Field {
+                            object: Box::new(arr),
+                            field: "push".into(),
+                        }),
+                        args,
+                    };
+                    return;
+                }
+                // show_debug_message(msg) → console.log(msg)
+                "show_debug_message" => {
+                    for arg in args.iter_mut() {
+                        rewrite_expr(arg, sprite_names, closure_bodies, event_name);
+                    }
+                    *expr = JsExpr::Call {
+                        callee: Box::new(JsExpr::Field {
+                            object: Box::new(JsExpr::Var("console".into())),
+                            field: "log".into(),
+                        }),
+                        args: std::mem::take(args),
+                    };
+                    return;
+                }
+                // is_struct(val) → (typeof (val) === "object" && (val) !== null)
+                "is_struct" if args.len() == 1 => {
+                    let mut val = args.remove(0);
+                    rewrite_expr(&mut val, sprite_names, closure_bodies, event_name);
+                    let val_box = Box::new(val);
+                    *expr = JsExpr::LogicalAnd {
+                        lhs: Box::new(JsExpr::Cmp {
+                            kind: CmpKind::Eq,
+                            lhs: Box::new(JsExpr::TypeOf(val_box.clone())),
+                            rhs: Box::new(JsExpr::Literal(
+                                Constant::String("object".into()),
+                            )),
+                        }),
+                        rhs: Box::new(JsExpr::Cmp {
+                            kind: CmpKind::Ne,
+                            lhs: val_box,
+                            rhs: Box::new(JsExpr::Literal(Constant::Null)),
+                        }),
+                    };
+                    return;
                 }
                 _ => {}
             }

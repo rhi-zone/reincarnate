@@ -1343,6 +1343,11 @@ fn collect_call_names_from_funcs<'a>(
             match &inst.op {
                 Op::Call { func: name, .. } => {
                     used.insert(name.clone());
+                    if engine == EngineKind::GameMaker {
+                        for introduced in crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name) {
+                            used.insert((*introduced).to_string());
+                        }
+                    }
                 }
                 Op::SystemCall { system, method, .. } if engine == EngineKind::GameMaker => {
                     for name in crate::rewrites::gamemaker::rewrite_introduced_calls(system, method) {

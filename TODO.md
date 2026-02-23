@@ -72,6 +72,15 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 ### Open
 
+- [ ] **GML instance ID type propagation** — When `instance_create_depth(x, y, d, OFoo)` is
+  called, the return type should be inferred as `OFoo` (or `InstanceRef<OFoo>`), not `any`.
+  This type must flow through assignments and field accesses — `let enemy = instance_create(..., OEnemy);
+  enemy.health -= 1` should type `health` as a field of `OEnemy`. Also: `withInstances(inst, cb)`
+  should type `_self` in `cb` as the same type as `inst`. This is critical for emitting maintainable
+  code — without it, every cross-instance field access is `any`-typed. Requires the type inference
+  pass to understand `instance_create_*` return types, and to propagate the object class through
+  the type system as `Struct(className)`.
+
 - [ ] **Flow-sensitive narrowing** — Narrow types after guards
   (`if (x instanceof Foo)` → `x: Foo` in then-branch). Requires per-block type
   environments rather than the current single `value_types` map.
@@ -405,6 +414,37 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
 | VA-11 HALL-A | `game.unx` 212MB | ⚠️ emits (TS errors TBD) |
 
 ---
+
+## GameMaker — Runtime Platform Layer (HIGH PRIORITY)
+
+The GameMaker runtime has several major API families that need platform-layer implementations:
+
+### Audio (`platform/audio.ts`)
+All `audio_*` functions are currently unimplemented and throw. Audio belongs in the platform
+layer per the three-layer architecture. Needs:
+- `platform/audio.ts` — Web Audio API implementation (AudioContext, AudioBufferSourceNode)
+- Wire audio asset loading from `GameConfig` (asset table → audio buffer)
+- `GameRuntime.audio_play_sound` → delegates to platform audio
+- `GameRuntime.audio_is_playing` / `audio_stop_sound` / `audio_stop_all` / etc.
+
+### Surfaces (`platform/surface.ts` or in draw layer)
+`surface_*` / `draw_surface*` require off-screen rendering via WebGL or OffscreenCanvas.
+Currently throw. Dead Estate uses surfaces extensively for post-processing effects.
+
+### Shaders / GPU State
+`shader_*` / `gpu_*` require WebGL shader compilation and state management. Currently throw.
+Dead Estate uses shaders for visual effects (fog, color grading, etc.).
+
+### Particle System
+`part_*` require a real particle simulation system. Currently throw.
+Dead Estate uses particles for effects (dust, sparks, etc.).
+
+### Import side: free-function and asset references
+`loadAnyaDataExt`, `AnyaSticker2A`, etc. appear as bare TS2304 names because the import
+generator only adds imports for `Op::Call` callee positions — not for function references
+used as values (via `@@pushref@@` / `GlobalRef`). Fix: scan all `GlobalRef` / `JsExpr::Var`
+nodes in the emitted function body and add any that resolve to `_init.ts` exports or
+asset-table names to the file's import set.
 
 ## GameMaker Frontend
 

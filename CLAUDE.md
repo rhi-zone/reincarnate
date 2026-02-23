@@ -94,6 +94,8 @@ From ecosystem-wide session analysis:
 
 **Game author errors are not our bugs.** When emitted TypeScript produces a type error that faithfully reflects a bug in the original game's source code (e.g. using `|` instead of `||`, multiplying by `false`), that is correct behavior — reincarnate accurately reproduced what the author wrote. Do not "fix" the emission to suppress the diagnostic. Changing `|` to `||` alters semantics; annotating with `ts-ignore` hides a real bug; widening types to `any` throws away information. The right response is: document it as a game author error and move on. The only exception is if the error is caused by an imprecision in our type inference (e.g. we inferred `boolean` where the game intended `number`) — in that case, fix the inference, not the symptom.
 
+**Source-level bugs must be translated faithfully, not corrected.** When the original source contains a semantic bug (e.g. `array_length(noone)`, dead code that references undefined, arithmetic on an instance ID), the emitted code must reproduce that behavior faithfully — not silently fix it or change semantics. A rewrite pass that transforms `array_length(x)` → `x.length` is correct even when `x` happens to be `-4` (noone), because the source code was buggy in the same way. Do not add special-case guards in rewrite passes to "fix" source bugs — the emitted code should be wrong in exactly the same way the source was wrong. The goal is fidelity, not correctness relative to some hypothetical "what the author intended."
+
 **Overlay > Patch.** When possible, render a modern UI layer over the original rather than patching internal rendering.
 
 **Two-tier approach.** Accept that some targets need binary patching (Tier 1) while others can be fully lifted (Tier 2). Design APIs that work for both.
@@ -177,6 +179,7 @@ Do not:
 - Add to the monolith - split by domain into sub-crates
 - Cut corners with fallbacks - implement properly for each case
 - Write stubs that return null/undefined — implement the function or don't add it. A `return null` stub is a landmine that crashes at runtime with a misleading error. If the full implementation is complex, implement the subset that covers the actual usage patterns. Note: even when `null` is a valid return per the spec (e.g. "returns null if not found"), a stub that always returns null is still wrong — it silently reports "not found" when the real answer is "not implemented". Throw instead.
+- **When you write a throw-stub for a not-yet-implemented feature, document it in TODO.md unconditionally and immediately.** Do not defer. Do not assume "we'll add it later." Every `throw new Error("... not yet implemented")` that you write must have a corresponding TODO.md entry at the time you write it — not at the end of the session, not if you remember. The throw-stub is a cop-out; the TODO.md entry is the accountability. No exceptions.
 - Mark as done prematurely - note what remains
 - Dismiss known issues as "fine for now" — if you discover a gap, mismatch, or missing implementation during your work, add it to TODO.md immediately. Do not assume future sessions will rediscover the same issue. Every known problem must be written down before moving on.
 - Use path dependencies in Cargo.toml - causes clippy to stash changes across repos
