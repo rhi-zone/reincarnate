@@ -1767,6 +1767,18 @@ fn translate_instruction(
                     .and_then(|&idx| ctx.function_names.get(&(idx as u32)))
                     .cloned()
                     .unwrap_or_else(|| format!("func_unknown_{function_id}"));
+
+                // GMS2.3+ internal built-in functions — resolve to IR values directly.
+                // @@This@@ returns the calling instance (self). Replacing it with the
+                // self parameter avoids emitting a `this` expression in free functions
+                // (which have no implicit `this` binding).
+                if func_name == "@@This@@" && argc == 0 {
+                    let val = if ctx.has_self { fb.param(0) } else { fb.const_null() };
+                    gml_sizes.insert(val, 4);
+                    stack.push(val);
+                    return Ok(());
+                }
+
                 let mut args = Vec::with_capacity(argc as usize + 1);
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);

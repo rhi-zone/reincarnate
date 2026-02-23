@@ -29,20 +29,40 @@ pub fn rewrite_introduced_calls(system: &str, method: &str) -> &'static [&'stati
 }
 
 /// Rewrite a function's body, resolving GameMaker SystemCalls.
+///
+/// `event_name` is the method name of the enclosing event handler (e.g.
+/// `"create"`, `"step"`, `"draw"`), used to rewrite `event_inherited()` to
+/// `super.eventName()`.  Pass `None` for free functions.
 pub fn rewrite_gamemaker_function(
     mut func: JsFunction,
     sprite_names: &[String],
     closure_bodies: &HashMap<String, JsFunction>,
+    event_name: Option<&str>,
 ) -> JsFunction {
-    rewrite_stmts(&mut func.body, sprite_names, closure_bodies);
+    rewrite_stmts(&mut func.body, sprite_names, closure_bodies, event_name);
     func
 }
 
-fn rewrite_stmts(stmts: &mut Vec<JsStmt>, sprite_names: &[String], closure_bodies: &HashMap<String, JsFunction>) {
+fn rewrite_stmts(
+    stmts: &mut Vec<JsStmt>,
+    sprite_names: &[String],
+    closure_bodies: &HashMap<String, JsFunction>,
+    event_name: Option<&str>,
+) {
     for stmt in stmts.iter_mut() {
-        rewrite_stmt(stmt, sprite_names, closure_bodies);
+        rewrite_stmt(stmt, sprite_names, closure_bodies, event_name);
     }
+    // Remove no-op expression statements produced by GML internal function rewrites:
+    //   @@Global@@() → global; (standalone call is a no-op)
+    //   @@Other@@()  → other;  (standalone call is a no-op)
+    stmts.retain(|s| !is_gml_noop_stmt(s));
     collapse_with_blocks(stmts);
+}
+
+/// Returns true for expression-statement no-ops introduced by rewriting GML
+/// internal built-in calls (`@@Global@@`, `@@Other@@`).
+fn is_gml_noop_stmt(stmt: &JsStmt) -> bool {
+    matches!(stmt, JsStmt::Expr(JsExpr::Var(v)) if v == "global" || v == "other")
 }
 
 /// Detect `withBegin(target) ... withEnd()` bracket patterns and collapse them
@@ -347,21 +367,26 @@ fn replace_this_in_expr(expr: &mut JsExpr, replacement: &str) {
     }
 }
 
-fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &HashMap<String, JsFunction>) {
+fn rewrite_stmt(
+    stmt: &mut JsStmt,
+    sprite_names: &[String],
+    closure_bodies: &HashMap<String, JsFunction>,
+    event_name: Option<&str>,
+) {
     match stmt {
         JsStmt::VarDecl { init, .. } => {
             if let Some(expr) = init {
-                rewrite_expr(expr, sprite_names, closure_bodies);
+                rewrite_expr(expr, sprite_names, closure_bodies, event_name);
             }
         }
         JsStmt::Assign { target, value } => {
-            rewrite_expr(target, sprite_names, closure_bodies);
-            rewrite_expr(value, sprite_names, closure_bodies);
+            rewrite_expr(target, sprite_names, closure_bodies, event_name);
+            rewrite_expr(value, sprite_names, closure_bodies, event_name);
             try_resolve_sprite_assign(target, value, sprite_names);
         }
         JsStmt::CompoundAssign { target, value, .. } => {
-            rewrite_expr(target, sprite_names, closure_bodies);
-            rewrite_expr(value, sprite_names, closure_bodies);
+            rewrite_expr(target, sprite_names, closure_bodies, event_name);
+            rewrite_expr(value, sprite_names, closure_bodies, event_name);
             try_resolve_sprite_assign(target, value, sprite_names);
         }
         JsStmt::Expr(e) => {
@@ -383,7 +408,7 @@ fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &Has
                     let JsExpr::Literal(Constant::String(field_name)) = name_expr else {
                         unreachable!()
                     };
-                    rewrite_expr(&mut val, sprite_names, closure_bodies);
+                    rewrite_expr(&mut val, sprite_names, closure_bodies, event_name);
                     *stmt = JsStmt::Assign {
                         target: JsExpr::Field {
                             object: Box::new(JsExpr::Var("global".into())),
@@ -431,7 +456,7 @@ fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &Has
                                 field: field_name,
                             };
                             let mut val = val;
-                            rewrite_expr(&mut val, sprite_names, closure_bodies);
+                            rewrite_expr(&mut val, sprite_names, closure_bodies, event_name);
                             *stmt = JsStmt::Assign { target, value: val };
                             return;
                         }
@@ -449,7 +474,7 @@ fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &Has
                             let JsExpr::Literal(Constant::String(field_name)) = field else {
                                 unreachable!()
                             };
-                            rewrite_expr(&mut index_expr, sprite_names, closure_bodies);
+                            rewrite_expr(&mut index_expr, sprite_names, closure_bodies, event_name);
                             let target = JsExpr::Index {
                                 collection: Box::new(JsExpr::Field {
                                     object: Box::new(JsExpr::Index {
@@ -464,7 +489,7 @@ fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &Has
                                 index: Box::new(index_expr),
                             };
                             let mut val = val;
-                            rewrite_expr(&mut val, sprite_names, closure_bodies);
+                            rewrite_expr(&mut val, sprite_names, closure_bodies, event_name);
                             *stmt = JsStmt::Assign { target, value: val };
                             return;
                         }
@@ -472,22 +497,22 @@ fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &Has
                     }
                 }
             }
-            rewrite_expr(e, sprite_names, closure_bodies);
+            rewrite_expr(e, sprite_names, closure_bodies, event_name);
         }
-        JsStmt::Return(Some(e)) => rewrite_expr(e, sprite_names, closure_bodies),
+        JsStmt::Return(Some(e)) => rewrite_expr(e, sprite_names, closure_bodies, event_name),
         JsStmt::Return(None) => {}
         JsStmt::If {
             cond,
             then_body,
             else_body,
         } => {
-            rewrite_expr(cond, sprite_names, closure_bodies);
-            rewrite_stmts(then_body, sprite_names, closure_bodies);
-            rewrite_stmts(else_body, sprite_names, closure_bodies);
+            rewrite_expr(cond, sprite_names, closure_bodies, event_name);
+            rewrite_stmts(then_body, sprite_names, closure_bodies, event_name);
+            rewrite_stmts(else_body, sprite_names, closure_bodies, event_name);
         }
         JsStmt::While { cond, body } => {
-            rewrite_expr(cond, sprite_names, closure_bodies);
-            rewrite_stmts(body, sprite_names, closure_bodies);
+            rewrite_expr(cond, sprite_names, closure_bodies, event_name);
+            rewrite_stmts(body, sprite_names, closure_bodies, event_name);
         }
         JsStmt::For {
             init,
@@ -495,22 +520,22 @@ fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &Has
             update,
             body,
         } => {
-            rewrite_stmts(init, sprite_names, closure_bodies);
-            rewrite_expr(cond, sprite_names, closure_bodies);
-            rewrite_stmts(update, sprite_names, closure_bodies);
-            rewrite_stmts(body, sprite_names, closure_bodies);
+            rewrite_stmts(init, sprite_names, closure_bodies, event_name);
+            rewrite_expr(cond, sprite_names, closure_bodies, event_name);
+            rewrite_stmts(update, sprite_names, closure_bodies, event_name);
+            rewrite_stmts(body, sprite_names, closure_bodies, event_name);
         }
         JsStmt::Loop { body } => {
-            rewrite_stmts(body, sprite_names, closure_bodies);
+            rewrite_stmts(body, sprite_names, closure_bodies, event_name);
         }
         JsStmt::ForOf { iterable, body, .. } => {
-            rewrite_expr(iterable, sprite_names, closure_bodies);
-            rewrite_stmts(body, sprite_names, closure_bodies);
+            rewrite_expr(iterable, sprite_names, closure_bodies, event_name);
+            rewrite_stmts(body, sprite_names, closure_bodies, event_name);
         }
-        JsStmt::Throw(e) => rewrite_expr(e, sprite_names, closure_bodies),
+        JsStmt::Throw(e) => rewrite_expr(e, sprite_names, closure_bodies, event_name),
         JsStmt::Dispatch { blocks, .. } => {
             for (_, stmts) in blocks {
-                rewrite_stmts(stmts, sprite_names, closure_bodies);
+                rewrite_stmts(stmts, sprite_names, closure_bodies, event_name);
             }
         }
         JsStmt::Switch {
@@ -518,11 +543,11 @@ fn rewrite_stmt(stmt: &mut JsStmt, sprite_names: &[String], closure_bodies: &Has
             cases,
             default_body,
         } => {
-            rewrite_expr(value, sprite_names, closure_bodies);
+            rewrite_expr(value, sprite_names, closure_bodies, event_name);
             for (_, stmts) in cases {
-                rewrite_stmts(stmts, sprite_names, closure_bodies);
+                rewrite_stmts(stmts, sprite_names, closure_bodies, event_name);
             }
-            rewrite_stmts(default_body, sprite_names, closure_bodies);
+            rewrite_stmts(default_body, sprite_names, closure_bodies, event_name);
         }
         JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
     }
@@ -554,9 +579,76 @@ fn try_resolve_sprite_assign(target: &JsExpr, value: &mut JsExpr, sprite_names: 
     }
 }
 
-fn rewrite_expr(expr: &mut JsExpr, sprite_names: &[String], closure_bodies: &HashMap<String, JsFunction>) {
-    // First, recurse into children.
-    rewrite_expr_children(expr, sprite_names, closure_bodies);
+fn rewrite_expr(
+    expr: &mut JsExpr,
+    sprite_names: &[String],
+    closure_bodies: &HashMap<String, JsFunction>,
+    event_name: Option<&str>,
+) {
+    // Early-exit: rewrite GML internal built-in calls before child recursion.
+    // These replace the whole expression so we handle arg recursion manually.
+    //
+    // Note: JsExpr::Var stores the original GML name with `@@` delimiters.
+    // `sanitize_ident` is only applied at print time (ast_printer.rs), so we
+    // match against the raw form here.
+    if let JsExpr::Call { callee, args } = expr {
+        if let JsExpr::Var(name) = callee.as_ref() {
+            match name.as_str() {
+                // @@NewGMLArray@@(v0, v1, ...) → [v0, v1, ...]
+                "@@NewGMLArray@@" => {
+                    for arg in args.iter_mut() {
+                        rewrite_expr(arg, sprite_names, closure_bodies, event_name);
+                    }
+                    *expr = JsExpr::ArrayInit(std::mem::take(args));
+                    return;
+                }
+                // @@NewGMLObject@@() → {}
+                "@@NewGMLObject@@" => {
+                    *expr = JsExpr::ObjectInit(vec![]);
+                    return;
+                }
+                // @@Global@@() → global
+                "@@Global@@" if args.is_empty() => {
+                    *expr = JsExpr::Var("global".into());
+                    return;
+                }
+                // @@Other@@() → other
+                "@@Other@@" if args.is_empty() => {
+                    *expr = JsExpr::Var("other".into());
+                    return;
+                }
+                // event_inherited() → super.eventName()
+                "event_inherited" => {
+                    if let Some(method) = event_name {
+                        *expr = JsExpr::SuperMethodCall {
+                            method: method.to_string(),
+                            args: vec![],
+                        };
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    // Rewrite bare variable references for GML built-ins used as values
+    // (not in function-call position, e.g. `this.altDestinationObject = @@Global@@`).
+    if let JsExpr::Var(name) = expr {
+        match name.as_str() {
+            "@@Global@@" => {
+                *expr = JsExpr::Var("global".into());
+                return;
+            }
+            "@@Other@@" => {
+                *expr = JsExpr::Var("other".into());
+                return;
+            }
+            _ => {}
+        }
+    }
+
+    // Normal path: recurse into children first, then attempt SystemCall resolution.
+    rewrite_expr_children(expr, sprite_names, closure_bodies, event_name);
 
     // Then, attempt to resolve SystemCall patterns.
     let replacement = match expr {
@@ -572,31 +664,36 @@ fn rewrite_expr(expr: &mut JsExpr, sprite_names: &[String], closure_bodies: &Has
         *expr = new_expr;
         // Re-recurse into the replacement's children so that SystemCalls
         // inside an inlined closure body (ArrowFunction) are also rewritten.
-        rewrite_expr_children(expr, sprite_names, closure_bodies);
+        rewrite_expr_children(expr, sprite_names, closure_bodies, event_name);
     }
 }
 
-fn rewrite_expr_children(expr: &mut JsExpr, sprite_names: &[String], closure_bodies: &HashMap<String, JsFunction>) {
+fn rewrite_expr_children(
+    expr: &mut JsExpr,
+    sprite_names: &[String],
+    closure_bodies: &HashMap<String, JsFunction>,
+    event_name: Option<&str>,
+) {
     match expr {
         JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
-            rewrite_expr(lhs, sprite_names, closure_bodies);
-            rewrite_expr(rhs, sprite_names, closure_bodies);
+            rewrite_expr(lhs, sprite_names, closure_bodies, event_name);
+            rewrite_expr(rhs, sprite_names, closure_bodies, event_name);
         }
         JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
-            rewrite_expr(lhs, sprite_names, closure_bodies);
-            rewrite_expr(rhs, sprite_names, closure_bodies);
+            rewrite_expr(lhs, sprite_names, closure_bodies, event_name);
+            rewrite_expr(rhs, sprite_names, closure_bodies, event_name);
         }
-        JsExpr::Unary { expr: inner, .. } => rewrite_expr(inner, sprite_names, closure_bodies),
-        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => rewrite_expr(inner, sprite_names, closure_bodies),
-        JsExpr::Field { object, .. } => rewrite_expr(object, sprite_names, closure_bodies),
+        JsExpr::Unary { expr: inner, .. } => rewrite_expr(inner, sprite_names, closure_bodies, event_name),
+        JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => rewrite_expr(inner, sprite_names, closure_bodies, event_name),
+        JsExpr::Field { object, .. } => rewrite_expr(object, sprite_names, closure_bodies, event_name),
         JsExpr::Index { collection, index } => {
-            rewrite_expr(collection, sprite_names, closure_bodies);
-            rewrite_expr(index, sprite_names, closure_bodies);
+            rewrite_expr(collection, sprite_names, closure_bodies, event_name);
+            rewrite_expr(index, sprite_names, closure_bodies, event_name);
         }
         JsExpr::Call { callee, args } => {
-            rewrite_expr(callee, sprite_names, closure_bodies);
+            rewrite_expr(callee, sprite_names, closure_bodies, event_name);
             for arg in args {
-                rewrite_expr(arg, sprite_names, closure_bodies);
+                rewrite_expr(arg, sprite_names, closure_bodies, event_name);
             }
         }
         JsExpr::Ternary {
@@ -604,61 +701,63 @@ fn rewrite_expr_children(expr: &mut JsExpr, sprite_names: &[String], closure_bod
             then_val,
             else_val,
         } => {
-            rewrite_expr(cond, sprite_names, closure_bodies);
-            rewrite_expr(then_val, sprite_names, closure_bodies);
-            rewrite_expr(else_val, sprite_names, closure_bodies);
+            rewrite_expr(cond, sprite_names, closure_bodies, event_name);
+            rewrite_expr(then_val, sprite_names, closure_bodies, event_name);
+            rewrite_expr(else_val, sprite_names, closure_bodies, event_name);
         }
         JsExpr::ArrayInit(items) | JsExpr::TupleInit(items) => {
             for item in items {
-                rewrite_expr(item, sprite_names, closure_bodies);
+                rewrite_expr(item, sprite_names, closure_bodies, event_name);
             }
         }
         JsExpr::ObjectInit(fields) => {
             for (_, val) in fields {
-                rewrite_expr(val, sprite_names, closure_bodies);
+                rewrite_expr(val, sprite_names, closure_bodies, event_name);
             }
         }
         JsExpr::New { callee, args } => {
-            rewrite_expr(callee, sprite_names, closure_bodies);
+            rewrite_expr(callee, sprite_names, closure_bodies, event_name);
             for arg in args {
-                rewrite_expr(arg, sprite_names, closure_bodies);
+                rewrite_expr(arg, sprite_names, closure_bodies, event_name);
             }
         }
-        JsExpr::TypeOf(inner) => rewrite_expr(inner, sprite_names, closure_bodies),
+        JsExpr::TypeOf(inner) => rewrite_expr(inner, sprite_names, closure_bodies, event_name),
         JsExpr::In { key, object } => {
-            rewrite_expr(key, sprite_names, closure_bodies);
-            rewrite_expr(object, sprite_names, closure_bodies);
+            rewrite_expr(key, sprite_names, closure_bodies, event_name);
+            rewrite_expr(object, sprite_names, closure_bodies, event_name);
         }
         JsExpr::Delete { object, key } => {
-            rewrite_expr(object, sprite_names, closure_bodies);
-            rewrite_expr(key, sprite_names, closure_bodies);
+            rewrite_expr(object, sprite_names, closure_bodies, event_name);
+            rewrite_expr(key, sprite_names, closure_bodies, event_name);
         }
         JsExpr::Cast { expr: inner, .. } | JsExpr::TypeCheck { expr: inner, .. } => {
-            rewrite_expr(inner, sprite_names, closure_bodies)
+            rewrite_expr(inner, sprite_names, closure_bodies, event_name)
         }
-        JsExpr::ArrowFunction { body, .. } => rewrite_stmts(body, sprite_names, closure_bodies),
+        // Arrow functions are closures: `event_inherited` inside a closure is
+        // not meaningful (closures don't have a "current event"), so pass None.
+        JsExpr::ArrowFunction { body, .. } => rewrite_stmts(body, sprite_names, closure_bodies, None),
         JsExpr::SuperCall(args) | JsExpr::SuperMethodCall { args, .. } => {
             for arg in args {
-                rewrite_expr(arg, sprite_names, closure_bodies);
+                rewrite_expr(arg, sprite_names, closure_bodies, event_name);
             }
         }
         JsExpr::SuperGet(_) => {}
-        JsExpr::SuperSet { value, .. } => rewrite_expr(value, sprite_names, closure_bodies),
+        JsExpr::SuperSet { value, .. } => rewrite_expr(value, sprite_names, closure_bodies, event_name),
         JsExpr::GeneratorCreate { args, .. } => {
             for arg in args {
-                rewrite_expr(arg, sprite_names, closure_bodies);
+                rewrite_expr(arg, sprite_names, closure_bodies, event_name);
             }
         }
-        JsExpr::GeneratorResume(inner) => rewrite_expr(inner, sprite_names, closure_bodies),
+        JsExpr::GeneratorResume(inner) => rewrite_expr(inner, sprite_names, closure_bodies, event_name),
         JsExpr::Yield(inner) => {
             if let Some(e) = inner {
-                rewrite_expr(e, sprite_names, closure_bodies);
+                rewrite_expr(e, sprite_names, closure_bodies, event_name);
             }
         }
         JsExpr::Activation => {}
         JsExpr::SystemCall { args, .. } => {
             for arg in args {
-                rewrite_expr(arg, sprite_names, closure_bodies);
+                rewrite_expr(arg, sprite_names, closure_bodies, event_name);
             }
         }
         // Leaf nodes — nothing to recurse into.
@@ -1191,7 +1290,7 @@ mod tests {
                 ],
             },
         ];
-        rewrite_stmts(&mut stmts, &[], &HashMap::new());
+        rewrite_stmts(&mut stmts, &[], &HashMap::new(), None);
 
         assert_eq!(stmts.len(), 1);
         let outer_body = assert_with_instances(&stmts, 0, 1);
