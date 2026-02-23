@@ -651,16 +651,24 @@ fn strip_script_prefix(name: &str) -> &str {
 /// Build the GMS2.3+ pushref asset name map.
 ///
 /// In GMS2.3+, the `Break -11` (pushref) instruction's `extra` field encodes both
-/// an asset type tag and an asset index as `(type_tag << 24) | asset_index`:
+/// an asset type tag and an asset index as `(type_tag << 24) | asset_index`.
+///
+/// The type tag matches the GML `asset_get_type()` / `asset_*` constant enumeration:
 ///
 ///   Type 0 → FUNC entries (handled separately via `function_names`)
-///   Type 1 → SPRT sprites
-///   Type 2 → SOND sounds
-///   Type 3 → BGND backgrounds
-///   Type 5 → SCPT scripts (functions, handled separately)
-///   Type 6 → FONT fonts
-///   Type 8 → SHDR shaders
-///   Type 9 → ROOM rooms
+///   Type 1 → SPRT sprites          (asset_sprite)
+///   Type 2 → SOND sounds           (asset_sound)
+///   Type 3 → ROOM rooms            (asset_room)
+///   Type 4 → PATH paths            (asset_path, deprecated in GMS2)
+///   Type 5 → SCPT scripts          (asset_script)
+///   Type 6 → FONT fonts            (asset_font)
+///   Type 7 → TMLN timelines        (asset_timeline)
+///   Type 8 → SHDR shaders          (asset_shader in GMS2.3+ encoding)
+///   Type 9 → BGND backgrounds/tilesets (asset_tiles; BGND chunk may be empty in GMS2)
+///
+/// Note: empirical evidence from Dead Estate (GMS2.3+) confirms:
+///   - type=3 used with room_goto → ROOM
+///   - type=8 used with shader_set → SHDR
 ///
 /// Returns a map of `(type_tag << 24) | asset_index → raw GML asset name`.
 fn build_asset_ref_names(dw: &DataWin, scpt: &datawin::chunks::scpt::Scpt) -> HashMap<u32, String> {
@@ -684,9 +692,9 @@ fn build_asset_ref_names(dw: &DataWin, scpt: &datawin::chunks::scpt::Scpt) -> Ha
         }
     }
 
-    // Type 3: backgrounds.
-    if let Ok(bgnd) = dw.bgnd() {
-        for (i, entry) in bgnd.backgrounds.iter().enumerate() {
+    // Type 3: rooms.
+    if let Ok(room) = dw.room() {
+        for (i, entry) in room.rooms.iter().enumerate() {
             if let Ok(name) = dw.resolve_string(entry.name) {
                 map.insert((3u32 << 24) | i as u32, name);
             }
@@ -710,7 +718,7 @@ fn build_asset_ref_names(dw: &DataWin, scpt: &datawin::chunks::scpt::Scpt) -> Ha
         }
     }
 
-    // Type 8: shaders.
+    // Type 8: shaders (confirmed from Dead Estate: shader_set uses type=8).
     if let Ok(shdr) = dw.shdr() {
         for (i, entry) in shdr.shaders.iter().enumerate() {
             if let Ok(name) = dw.resolve_string(entry.name) {
@@ -719,9 +727,9 @@ fn build_asset_ref_names(dw: &DataWin, scpt: &datawin::chunks::scpt::Scpt) -> Ha
         }
     }
 
-    // Type 9: rooms.
-    if let Ok(room) = dw.room() {
-        for (i, entry) in room.rooms.iter().enumerate() {
+    // Type 9: backgrounds/tilesets (BGND chunk; may be empty in GMS2 games).
+    if let Ok(bgnd) = dw.bgnd() {
+        for (i, entry) in bgnd.backgrounds.iter().enumerate() {
             if let Ok(name) = dw.resolve_string(entry.name) {
                 map.insert((9u32 << 24) | i as u32, name);
             }

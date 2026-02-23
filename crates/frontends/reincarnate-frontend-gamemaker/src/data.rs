@@ -330,15 +330,15 @@ fn generate_asset_ids(dw: &DataWin, catalog: &mut AssetCatalog) {
         .unwrap_or_default();
     emit_group("Sounds", sound_names);
 
-    // Backgrounds.
-    let bgnd_names: Vec<String> = dw.bgnd()
-        .map(|bgnd| {
-            bgnd.backgrounds.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+    // Rooms (type=3 in pushref encoding).
+    let room_names: Vec<String> = dw.room()
+        .map(|room| {
+            room.rooms.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
         })
         .unwrap_or_default();
-    emit_group("Backgrounds", bgnd_names);
+    emit_group("Rooms", room_names);
 
-    // Fonts.
+    // Fonts (type=6).
     let font_names: Vec<String> = dw.font()
         .map(|font| {
             font.fonts.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
@@ -346,7 +346,7 @@ fn generate_asset_ids(dw: &DataWin, catalog: &mut AssetCatalog) {
         .unwrap_or_default();
     emit_group("Fonts", font_names);
 
-    // Shaders.
+    // Shaders (type=8 in pushref encoding).
     let shdr_names: Vec<String> = dw.shdr()
         .map(|shdr| {
             shdr.shaders.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
@@ -354,13 +354,13 @@ fn generate_asset_ids(dw: &DataWin, catalog: &mut AssetCatalog) {
         .unwrap_or_default();
     emit_group("Shaders", shdr_names);
 
-    // Rooms.
-    let room_names: Vec<String> = dw.room()
-        .map(|room| {
-            room.rooms.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+    // Backgrounds/tilesets (type=9; BGND chunk; may be empty in GMS2 games).
+    let bgnd_names: Vec<String> = dw.bgnd()
+        .map(|bgnd| {
+            bgnd.backgrounds.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
         })
         .unwrap_or_default();
-    emit_group("Rooms", room_names);
+    emit_group("Backgrounds", bgnd_names);
 
     catalog.add(Asset {
         id: "data_asset_ids".into(),
