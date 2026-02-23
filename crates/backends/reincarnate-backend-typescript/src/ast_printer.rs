@@ -18,6 +18,23 @@ use crate::types::ts_type;
 // Function / method printing
 // ---------------------------------------------------------------------------
 
+/// Returns `true` if the last statement in a block is a terminal statement
+/// (return, throw, break, continue, or an if/else where both branches terminate).
+/// Used to decide whether to append a synthetic `return 0 as any;` to avoid
+/// TS2366 "Function lacks ending return statement".
+fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
+    match stmts.last() {
+        Some(JsStmt::Return(_)) | Some(JsStmt::Throw(_)) => true,
+        Some(JsStmt::Break) | Some(JsStmt::Continue) | Some(JsStmt::LabeledBreak { .. }) => true,
+        Some(JsStmt::If { then_body, else_body, .. }) => {
+            !else_body.is_empty()
+                && ends_with_terminal(then_body)
+                && ends_with_terminal(else_body)
+        }
+        _ => false,
+    }
+}
+
 /// Print a standalone function.
 pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String) {
     let vis = visibility_prefix(js.visibility);
@@ -36,6 +53,12 @@ pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String)
     }
 
     print_stmts(&js.body, out, "  ");
+
+    // GML functions that don't return on all paths implicitly return 0/undefined.
+    // Emit a synthetic return to suppress TS2366 "lacks ending return statement".
+    if !matches!(js.return_ty, Type::Void) && !ends_with_terminal(&js.body) {
+        let _ = writeln!(out, "  return 0 as any;");
+    }
 
     let _ = writeln!(out, "}}\n");
 }
@@ -108,6 +131,15 @@ pub fn print_class_method(
         let _ = writeln!(out, "{indent}{pre}");
     }
     print_stmts(&js.body, out, indent);
+
+    // GML functions that don't return on all paths implicitly return 0/undefined.
+    // Emit a synthetic return to suppress TS2366 "lacks ending return statement".
+    if !matches!(js.return_ty, Type::Void)
+        && !matches!(js.method_kind, MethodKind::Constructor | MethodKind::Setter | MethodKind::Getter)
+        && !ends_with_terminal(&js.body)
+    {
+        let _ = writeln!(out, "{indent}return 0 as any;");
+    }
 
     let _ = writeln!(out, "  }}");
 }
