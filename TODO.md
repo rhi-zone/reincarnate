@@ -402,15 +402,59 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   pushac target, or (b) the TS printer detecting integer-as-collection in SetIndex and routing
   to a GameMaker.setIndex runtime call. Only 6 errors in Schism, low priority.
 
-### 7. Dead Estate regression — 102k TS errors since with-body closures
+### 7. Dead Estate remaining TS errors — 5093 as of 2026-02-23
 
-- [ ] **Dead Estate was at 0 TS errors, now ~102k** — regression introduced by
-  `feat(gml): extract with-bodies as closures in the IR` (commit 7c4dc61). The errors are
-  `TS7053: Element implicitly has an 'any' type because expression of type '"fieldName"' can't
-  be used to index type 'Number'` — struct field accesses on values typed as `Number`. Root
-  cause is likely that some value that was previously `any` is now inferred as `number` due to
-  how captures interact with type inference, or a struct access target is being resolved to the
-  wrong local slot. Investigate by bisecting between `7c4dc61~1` and the current state.
+Progress: 12350 → 5093 (59% reduction). Error breakdown by category:
+
+| Code | Count | Root cause |
+|------|-------|------------|
+| TS2345 | 1594 | Argument type mismatch — type inference gaps; `any` passed where typed param expected |
+| TS2339 | 895 | Property doesn't exist — field access on insufficiently typed struct/object |
+| TS7053 | 520 | Element implicitly has `any` type — struct field access on number-typed instance variable (see Bug 7 below) |
+| TS2554 | 501 | Wrong argument count — calls to GML *runtime* functions with wrong argc (game author errors or wrong runtime signatures) |
+| TS2769 | 417 | No overload matches — method call type mismatch |
+| TS2322 | 309 | Type not assignable |
+| TS2454 | 204 | Variable used before being assigned — hoisted var with no initializer reaches use before assignment |
+| TS7027 | 199 | Unreachable code — code after `return` (game author style) |
+| TS2552 | 150 | Cannot find name — missing GML runtime function stubs |
+| TS2366 | 114 | Function lacks ending return — structurizer emits paths without explicit return |
+| TS2367 | 54 | Comparison always false — type mismatch in `===` (game author errors) |
+| TS2365 | 39 | Operator not applicable — bitwise/arithmetic on wrong type |
+| TS2362 | 33 | Left side of `**`/arithmetic must be number |
+| TS2304 | 17 | Cannot find name — undeclared `vNNN` identifiers (known linearizer bug: single-store alloc with 2+ loads takes Assign path, no `let` emitted) |
+| TS2393 | 14 | Duplicate function implementation — duplicate symbol in output |
+| TS18050 | 13 | Value of type `void` is not callable |
+| TS2363 | 6 | Right side of `**` must be number |
+| TS2416 | 4 | Property not assignable to same in base type |
+
+**Highest-leverage next targets:**
+
+- [ ] **TS7053 (520): struct field access on number-typed vars** — `v['fieldName']` where `v` is
+  typed as `number` rather than `any`. Root cause: instance variables that hold object references
+  (e.g. created by `instance_create_depth`) are typed as `number` (the raw instance ID) rather
+  than as the class type. Fix requires GML instance ID type propagation (see Type System section).
+  This was the original "102k error" regression from `7c4dc61` — it had briefly been worse but
+  type inference improvements have since reduced it.
+
+- [ ] **TS2554 (501): GML runtime function wrong argument counts** — These are calls to GameMaker
+  stdlib functions where the call site passes more args than the declared signature. Many are
+  game-author-correct GML calls where our runtime signature is wrong (too few params).
+  Audit `runtime/gamemaker/runtime.ts` signatures against GML docs and expand where needed.
+  Known cases: `showMessage(msg, a, b, ...)` called with extra args (GM's `show_message` takes 1);
+  `_instanceof(val, type)` called with 1 arg; `steam_*` functions called with extra args.
+
+- [ ] **TS2339 (895) + TS2345 (1594): type inference gaps** — Most are consequences of
+  missing instance type propagation (fields typed as `any` or wrong struct type).
+  The GML instance ID type propagation item (Type System section) is the root fix.
+
+- [ ] **TS2452 (204): used before assigned** — `VarDecl` without initializer + code path that
+  reaches use before store. Consider emitting `= undefined` for all hoisted `VarDecl`s that
+  have no `init` (the definite-assignment check is too strict for dynamic GML code).
+
+- [ ] **TS2552 (150): missing runtime stubs** — Check which names are undefined:
+  `draw_get_color`, `sprite_add_from_surface`, `buffer_load`, `instance_activate_object`,
+  `instance_deactivate_object`, `layer_*` (various), `timeline_*`, `audio_group_*`,
+  `vertex_format_*`, etc. Add stubs to `runtime/gamemaker/runtime.ts`.
 
 ### New game inventory
 
@@ -420,7 +464,7 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 102k TS errors (regression from with-body closures) |
+| Dead Estate | `data.win` 192MB | ⚠️ 5093 TS errors (2026-02-23) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
