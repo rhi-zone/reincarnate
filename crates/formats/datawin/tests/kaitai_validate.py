@@ -165,6 +165,152 @@ def check_scpt(scpt_kaitai, exp_scpt):
         print(f"  {SKIP}  {prefix}._name (StringRef — Kaitai limitation)")
 
 
+def check_glob(glob_kaitai, exp_glob):
+    """Validate GLOB chunk: flat count + script_ids array (all Kaitai-accessible)."""
+    check("glob.count", glob_kaitai.count, exp_glob["count"])
+    for i, expected_id in enumerate(exp_glob.get("script_ids", [])):
+        check(f"glob.script_ids[{i}]", glob_kaitai.script_ids[i], expected_id)
+
+
+def check_lang(lang_kaitai, exp_lang):
+    """Validate LANG chunk: flat entry_count + count + entries (StringRefs skipped)."""
+    check("lang.entry_count", lang_kaitai.entry_count, exp_lang["entry_count"])
+    check("lang.count", lang_kaitai.actual_count, exp_lang["count"])
+    for i, exp_entry in enumerate(exp_lang.get("entries", [])):
+        prefix = f"lang.entries[{i}]"
+        # name and region are raw u32 StringRef offsets — cannot resolve without STRG seek
+        if "_name" in exp_entry:
+            print(f"  {SKIP}  {prefix}._name (StringRef — Kaitai limitation)")
+        if "_region" in exp_entry:
+            print(f"  {SKIP}  {prefix}._region (StringRef — Kaitai limitation)")
+
+
+def check_seqn(seqn_kaitai, exp_seqn):
+    """Validate SEQN chunk: version field + count (entries are pointer-based)."""
+    check("seqn.version", seqn_kaitai.version, exp_seqn["version"])
+    check("seqn.count", seqn_kaitai.sequences.count, exp_seqn["count"])
+    for i, exp_entry in enumerate(exp_seqn.get("_entries", [])):
+        prefix = f"seqn.entries[{i}]"
+        if "_name" in exp_entry:
+            print(f"  {SKIP}  {prefix}._name (pointer-based entry — Kaitai limitation)")
+
+
+def check_shdr(shdr_kaitai, exp_shdr):
+    """Validate SHDR chunk entry count."""
+    check("shdr.count", shdr_kaitai.shaders.count, exp_shdr["count"])
+    for i, exp_entry in enumerate(exp_shdr.get("_entries", [])):
+        prefix = f"shdr.entries[{i}]"
+        if "_name" in exp_entry:
+            print(f"  {SKIP}  {prefix}._name (pointer-based entry — Kaitai limitation)")
+
+
+def check_bgnd(bgnd_kaitai, exp_bgnd):
+    """Validate BGND chunk entry count."""
+    check("bgnd.count", bgnd_kaitai.backgrounds.count, exp_bgnd["count"])
+    for i, exp_entry in enumerate(exp_bgnd.get("_entries", [])):
+        prefix = f"bgnd.entries[{i}]"
+        if "_name" in exp_entry:
+            print(f"  {SKIP}  {prefix}._name (pointer-based entry — Kaitai limitation)")
+
+
+def check_sond(sond_kaitai, exp_sond):
+    """Validate SOND chunk entry count (entries are pointer-based)."""
+    check("sond.count", sond_kaitai.sounds.count, exp_sond["count"])
+    for i, exp_entry in enumerate(exp_sond.get("entries", [])):
+        prefix = f"sond.entries[{i}]"
+        for field in ("_name", "flags", "_type_name", "_file_name", "effects", "volume", "pitch", "group_id", "audio_id"):
+            if field in exp_entry:
+                print(f"  {SKIP}  {prefix}.{field} (pointer-based entry — Kaitai limitation)")
+
+
+def check_audo(audo_kaitai, exp_audo):
+    """Validate AUDO chunk entry count (entries are pointer-based)."""
+    check("audo.count", audo_kaitai.entries.count, exp_audo["count"])
+    for i, exp_entry in enumerate(exp_audo.get("entries", [])):
+        prefix = f"audo.entries[{i}]"
+        if "length" in exp_entry:
+            print(f"  {SKIP}  {prefix}.length (pointer-based entry — Kaitai limitation)")
+
+
+def check_txtr(txtr_kaitai, exp_txtr):
+    """Validate TXTR chunk entry count (entries are pointer-based)."""
+    check("txtr.count", txtr_kaitai.textures.count, exp_txtr["count"])
+    for i, exp_entry in enumerate(exp_txtr.get("_entries", [])):
+        prefix = f"txtr.entries[{i}]"
+        if "data_offset" in exp_entry:
+            print(f"  {SKIP}  {prefix}.data_offset (pointer-based entry — Kaitai limitation)")
+
+
+def check_tpag(tpag_kaitai, exp_tpag):
+    """Validate TPAG chunk entry count (entries are pointer-based)."""
+    check("tpag.count", tpag_kaitai.items.count, exp_tpag["count"])
+    for i, exp_entry in enumerate(exp_tpag.get("entries", [])):
+        prefix = f"tpag.entries[{i}]"
+        for field in ("source_x", "source_y", "source_width", "source_height",
+                      "target_x", "target_y", "target_width", "target_height",
+                      "render_width", "render_height", "texture_page_id"):
+            if field in exp_entry:
+                print(f"  {SKIP}  {prefix}.{field} (pointer-based entry — Kaitai limitation)")
+
+
+def check_sprt(sprt_kaitai, exp_sprt):
+    """Validate SPRT chunk entry count (entries are pointer-based)."""
+    check("sprt.count", sprt_kaitai.sprites.count, exp_sprt["count"])
+    for i, exp_entry in enumerate(exp_sprt.get("entries", [])):
+        prefix = f"sprt.entries[{i}]"
+        for field in ("_name", "width", "height", "origin_x", "origin_y", "tpag_count"):
+            if field in exp_entry:
+                print(f"  {SKIP}  {prefix}.{field} (pointer-based entry — Kaitai limitation)")
+
+
+def check_optn(optn_kaitai, exp_optn):
+    """Validate OPTN chunk: flags and constant_count are directly accessible.
+
+    The OPTN body is flat (not pointer-based): flags(u32) + reserved(56B) +
+    constant_count(u32).  These three fields are fully Kaitai-accessible.
+    The constant entries themselves are flat too, but their StringRef name/value
+    fields require STRG resolution.
+    """
+    check("optn.flags", optn_kaitai.flags, exp_optn["flags"])
+    check("optn.constant_count", optn_kaitai.constant_count, exp_optn["constant_count"])
+    for i, exp_const in enumerate(exp_optn.get("constants", [])):
+        prefix = f"optn.constants[{i}]"
+        if "_name" in exp_const:
+            print(f"  {SKIP}  {prefix}._name (StringRef — Kaitai limitation)")
+        if "_value" in exp_const:
+            print(f"  {SKIP}  {prefix}._value (StringRef — Kaitai limitation)")
+
+
+def check_font(font_kaitai, exp_font):
+    """Validate FONT chunk entry count (entries are pointer-based)."""
+    check("font.count", font_kaitai.fonts.count, exp_font["count"])
+    for i, exp_entry in enumerate(exp_font.get("entries", [])):
+        prefix = f"font.entries[{i}]"
+        for field in ("_name", "_display_name", "size", "bold", "italic",
+                      "range_start", "charset", "antialias", "range_end",
+                      "tpag_index", "scale_x", "scale_y", "glyph_count"):
+            if field in exp_entry:
+                print(f"  {SKIP}  {prefix}.{field} (pointer-based entry — Kaitai limitation)")
+        for j, _ in enumerate(exp_entry.get("glyphs", [])):
+            print(f"  {SKIP}  {prefix}.glyphs[{j}] (pointer-based glyph — Kaitai limitation)")
+
+
+def check_objt(objt_kaitai, exp_objt):
+    """Validate OBJT chunk entry count (entries are pointer-based)."""
+    check("objt.count", objt_kaitai.objects.count, exp_objt["count"])
+    for i, exp_entry in enumerate(exp_objt.get("entries", [])):
+        prefix = f"objt.entries[{i}]"
+        print(f"  {SKIP}  {prefix} fields (pointer-based entry — Kaitai limitation)")
+
+
+def check_room(room_kaitai, exp_room):
+    """Validate ROOM chunk entry count (entries are pointer-based)."""
+    check("room.count", room_kaitai.rooms.count, exp_room["count"])
+    for i, exp_entry in enumerate(exp_room.get("entries", [])):
+        prefix = f"room.entries[{i}]"
+        print(f"  {SKIP}  {prefix} fields (pointer-based entry — Kaitai limitation)")
+
+
 # ── Per-fixture validation ────────────────────────────────────────────────────
 
 def validate_fixture(fixture_name, gmd_mod, KaitaiStream, BytesIO):
@@ -221,6 +367,48 @@ def validate_fixture(fixture_name, gmd_mod, KaitaiStream, BytesIO):
     if "scpt" in exp and "SCPT" in chunk_map:
         check_scpt(chunk_map["SCPT"].body, exp["scpt"])
 
+    if "glob" in exp and "GLOB" in chunk_map:
+        check_glob(chunk_map["GLOB"].body, exp["glob"])
+
+    if "lang" in exp and "LANG" in chunk_map:
+        check_lang(chunk_map["LANG"].body, exp["lang"])
+
+    if "seqn" in exp and "SEQN" in chunk_map:
+        check_seqn(chunk_map["SEQN"].body, exp["seqn"])
+
+    if "shdr" in exp and "SHDR" in chunk_map:
+        check_shdr(chunk_map["SHDR"].body, exp["shdr"])
+
+    if "bgnd" in exp and "BGND" in chunk_map:
+        check_bgnd(chunk_map["BGND"].body, exp["bgnd"])
+
+    if "sond" in exp and "SOND" in chunk_map:
+        check_sond(chunk_map["SOND"].body, exp["sond"])
+
+    if "audo" in exp and "AUDO" in chunk_map:
+        check_audo(chunk_map["AUDO"].body, exp["audo"])
+
+    if "txtr" in exp and "TXTR" in chunk_map:
+        check_txtr(chunk_map["TXTR"].body, exp["txtr"])
+
+    if "tpag" in exp and "TPAG" in chunk_map:
+        check_tpag(chunk_map["TPAG"].body, exp["tpag"])
+
+    if "sprt" in exp and "SPRT" in chunk_map:
+        check_sprt(chunk_map["SPRT"].body, exp["sprt"])
+
+    if "optn" in exp and "OPTN" in chunk_map:
+        check_optn(chunk_map["OPTN"].body, exp["optn"])
+
+    if "font" in exp and "FONT" in chunk_map:
+        check_font(chunk_map["FONT"].body, exp["font"])
+
+    if "objt" in exp and "OBJT" in chunk_map:
+        check_objt(chunk_map["OBJT"].body, exp["objt"])
+
+    if "room" in exp and "ROOM" in chunk_map:
+        check_room(chunk_map["ROOM"].body, exp["room"])
+
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -233,6 +421,13 @@ FIXTURES = [
     "v15_more_opcodes",
     "v15_scpt",
     "v15_shared_blob",
+    "v15_simple_chunks",
+    "v15_sond_audo",
+    "v15_sprt_tpag_txtr",
+    "v15_optn",
+    "v15_font",
+    "v15_objt",
+    "v15_room",
 ]
 
 
