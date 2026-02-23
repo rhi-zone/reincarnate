@@ -1,0 +1,4 @@
+# Kaitai Struct generated Python files (run: ksc -t python game_maker_data.ksy gml_bytecode.ksy)
+game_maker_data.py
+gml_bytecode.py
+__pycache__/
