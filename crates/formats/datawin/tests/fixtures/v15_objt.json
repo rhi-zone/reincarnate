@@ -6,13 +6,13 @@
     "shared_blob per-entry length: requires two-pass gap algorithm (sort offsets, compute gaps) — not expressible in Kaitai",
     "pointer_list entries: code/scpt/font/room/sprt/tpag/txtr/sond/audo/shdr/bgnd/objt entries require absolute seek — Kaitai stores only count+offset array, not parsed entry structs"
   ],
-  "fixture": "v15_break_signals",
-  "description": "GMS2.3+ Break signals: chknullish (0xFFF6), isstaticok (0xFFFA), pushref (0xFFF5, type1=Int32, extra=5)",
-  "file_size": 279,
+  "fixture": "v15_objt",
+  "description": "OBJT: BC=15 entry (no GMS2 _managed field), 0 physics vertices, 0 events — minimal 84-byte entry",
+  "file_size": 288,
   "chunks": [
     {"magic": "GEN8", "data_size": 132},
-    {"magic": "STRG", "data_size": 67},
-    {"magic": "CODE", "data_size": 48}
+    {"magic": "STRG", "data_size": 32},
+    {"magic": "OBJT", "data_size": 92}
   ],
   "gen8": {
     "bytecode_version": 15,
@@ -20,27 +20,32 @@
     "game_id": 1,
     "major": 1,
     "minor": 0,
-    "room_count": 0,
-    "_name": "break_signals_game"
+    "room_count": 0
   },
   "strg": {
-    "count": 3,
-    "_strings": ["", "break_signals_game", "gml_Script_signals"]
+    "count": 2,
+    "_strings": ["", "obj_player"]
   },
-  "code": {
+  "objt": {
     "count": 1,
     "entries": [
       {
-        "_name": "gml_Script_signals",
-        "locals_count": 0,
-        "args_count": 0,
-        "_bc_byte_count": 20,
-        "_instructions": [
-          {"opcode": "Break", "type1": "Double", "_signal": "0xFFF6", "_extra": null},
-          {"opcode": "Break", "type1": "Double", "_signal": "0xFFFA", "_extra": null},
-          {"opcode": "Break", "type1": "Int32",  "_signal": "0xFFF5", "_extra": 5},
-          {"opcode": "Ret"}
-        ]
+        "_name": "obj_player",
+        "sprite_index": 0,
+        "visible": true,
+        "solid": false,
+        "depth": 0,
+        "persistent": false,
+        "parent_index": -1,
+        "mask_index": -1,
+        "physics_enabled": false,
+        "physics_sensor": false,
+        "physics_shape": 1,
+        "physics_group": 0,
+        "physics_awake": true,
+        "physics_kinematic": false,
+        "vert_count": 0,
+        "event_type_count": 0
       }
     ]
   }

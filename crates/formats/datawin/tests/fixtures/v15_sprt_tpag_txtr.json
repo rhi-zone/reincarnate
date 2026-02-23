@@ -6,14 +6,15 @@
     "shared_blob per-entry length: requires two-pass gap algorithm (sort offsets, compute gaps) — not expressible in Kaitai",
     "pointer_list entries: code/scpt/font/room/sprt/tpag/txtr/sond/audo/shdr/bgnd/objt entries require absolute seek — Kaitai stores only count+offset array, not parsed entry structs"
   ],
-  "fixture": "v15_scpt",
-  "description": "SCPT chunk: pointer list of (name_ref, code_id) pairs",
-  "file_size": 297,
+  "fixture": "v15_sprt_tpag_txtr",
+  "description": "TXTR (2 GMS1 entries, spacing 8 ≤ 12) + TPAG (1 entry, 11 × u16) + SPRT (1 sprite, tpag_indices stores absolute file offsets)",
+  "file_size": 342,
   "chunks": [
     {"magic": "GEN8", "data_size": 132},
-    {"magic": "STRG", "data_size": 73},
-    {"magic": "CODE", "data_size": 36},
-    {"magic": "SCPT", "data_size": 16}
+    {"magic": "STRG", "data_size": 32},
+    {"magic": "TXTR", "data_size": 28},
+    {"magic": "TPAG", "data_size": 30},
+    {"magic": "SPRT", "data_size": 72}
   ],
   "gen8": {
     "bytecode_version": 15,
@@ -21,23 +22,42 @@
     "game_id": 1,
     "major": 1,
     "minor": 0,
-    "room_count": 0,
-    "_name": "scpt_game"
+    "room_count": 0
   },
   "strg": {
-    "count": 4,
-    "_strings": ["", "scpt_game", "gml_Script_foo", "Script_foo"]
+    "count": 2,
+    "_strings": ["", "spr_player"]
   },
-  "code": {
-    "count": 1,
-    "entries": [
-      {"_name": "gml_Script_foo", "locals_count": 0, "args_count": 0}
+  "txtr": {
+    "count": 2,
+    "_is_gms2": false,
+    "_entries": [
+      {"data_offset": 57005},
+      {"data_offset": 48879}
     ]
   },
-  "scpt": {
+  "tpag": {
     "count": 1,
     "entries": [
-      {"_name": "Script_foo", "code_id": 0}
+      {
+        "source_x": 0, "source_y": 0,
+        "source_width": 16, "source_height": 16,
+        "target_x": 0, "target_y": 0,
+        "target_width": 16, "target_height": 16,
+        "render_width": 16, "render_height": 16,
+        "texture_page_id": 0
+      }
+    ]
+  },
+  "sprt": {
+    "count": 1,
+    "entries": [
+      {
+        "_name": "spr_player",
+        "width": 16, "height": 16,
+        "origin_x": 8, "origin_y": 8,
+        "tpag_count": 1
+      }
     ]
   }
 }

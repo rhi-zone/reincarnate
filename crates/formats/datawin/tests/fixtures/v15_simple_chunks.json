@@ -6,13 +6,17 @@
     "shared_blob per-entry length: requires two-pass gap algorithm (sort offsets, compute gaps) — not expressible in Kaitai",
     "pointer_list entries: code/scpt/font/room/sprt/tpag/txtr/sond/audo/shdr/bgnd/objt entries require absolute seek — Kaitai stores only count+offset array, not parsed entry structs"
   ],
-  "fixture": "v15_break_signals",
-  "description": "GMS2.3+ Break signals: chknullish (0xFFF6), isstaticok (0xFFFA), pushref (0xFFF5, type1=Int32, extra=5)",
-  "file_size": 279,
+  "fixture": "v15_simple_chunks",
+  "description": "GLOB (flat script ID array), LANG (flat language entries), SHDR/BGND (name pointer lists), SEQN (versioned pointer list)",
+  "file_size": 358,
   "chunks": [
     {"magic": "GEN8", "data_size": 132},
-    {"magic": "STRG", "data_size": 67},
-    {"magic": "CODE", "data_size": 48}
+    {"magic": "STRG", "data_size": 98},
+    {"magic": "GLOB", "data_size": 8},
+    {"magic": "LANG", "data_size": 16},
+    {"magic": "SHDR", "data_size": 12},
+    {"magic": "BGND", "data_size": 12},
+    {"magic": "SEQN", "data_size": 16}
   ],
   "gen8": {
     "bytecode_version": 15,
@@ -20,28 +24,34 @@
     "game_id": 1,
     "major": 1,
     "minor": 0,
-    "room_count": 0,
-    "_name": "break_signals_game"
+    "room_count": 0
   },
   "strg": {
-    "count": 3,
-    "_strings": ["", "break_signals_game", "gml_Script_signals"]
+    "count": 6,
+    "_strings": ["", "bg_name", "shader_name", "sequence_name", "English", "en"]
   },
-  "code": {
+  "glob": {
+    "count": 1,
+    "script_ids": [0]
+  },
+  "lang": {
+    "entry_count": 1,
     "count": 1,
     "entries": [
-      {
-        "_name": "gml_Script_signals",
-        "locals_count": 0,
-        "args_count": 0,
-        "_bc_byte_count": 20,
-        "_instructions": [
-          {"opcode": "Break", "type1": "Double", "_signal": "0xFFF6", "_extra": null},
-          {"opcode": "Break", "type1": "Double", "_signal": "0xFFFA", "_extra": null},
-          {"opcode": "Break", "type1": "Int32",  "_signal": "0xFFF5", "_extra": 5},
-          {"opcode": "Ret"}
-        ]
-      }
+      {"_name": "English", "_region": "en"}
     ]
+  },
+  "shdr": {
+    "count": 1,
+    "_entries": [{"_name": "shader_name"}]
+  },
+  "bgnd": {
+    "count": 1,
+    "_entries": [{"_name": "bg_name"}]
+  },
+  "seqn": {
+    "version": 1,
+    "count": 1,
+    "_entries": [{"_name": "sequence_name"}]
   }
 }

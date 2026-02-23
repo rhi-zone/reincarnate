@@ -46,7 +46,8 @@ const KAITAI_LIMITATIONS: &str = r#"[
     "push_body: 'size: 0' placeholder — type1-conditional operand length is not declaratively expressible in Kaitai 0.11",
     "vari_body / func_body in game_maker_data.ksy: stored as raw size-eos blob — version-conditional layout requires cross-chunk GEN8.bytecode_version",
     "string_ref resolution: Kaitai can read the raw u32 offset but cannot follow the STRG pointer without _root._io seek",
-    "shared_blob per-entry length: requires two-pass gap algorithm (sort offsets, compute gaps) — not expressible in Kaitai"
+    "shared_blob per-entry length: requires two-pass gap algorithm (sort offsets, compute gaps) — not expressible in Kaitai",
+    "pointer_list entries: code/scpt/font/room/sprt/tpag/txtr/sond/audo/shdr/bgnd/objt entries require absolute seek — Kaitai stores only count+offset array, not parsed entry structs"
   ]"#;
 
 fn main() -> std::io::Result<()> {
@@ -60,6 +61,13 @@ fn main() -> std::io::Result<()> {
     write_fixture("v15_more_opcodes", build_v15_more_opcodes())?;
     write_fixture("v15_scpt", build_v15_scpt())?;
     write_fixture("v15_shared_blob", build_v15_shared_blob())?;
+    write_fixture("v15_simple_chunks", build_v15_simple_chunks())?;
+    write_fixture("v15_sond_audo", build_v15_sond_audo())?;
+    write_fixture("v15_sprt_tpag_txtr", build_v15_sprt_tpag_txtr())?;
+    write_fixture("v15_optn", build_v15_optn())?;
+    write_fixture("v15_font", build_v15_font())?;
+    write_fixture("v15_objt", build_v15_objt())?;
+    write_fixture("v15_room", build_v15_room())?;
 
     Ok(())
 }
@@ -1375,6 +1383,987 @@ pub fn build_v15_shared_blob() -> (Vec<u8>, String) {
         total_blob = parent_len + child_len,
         parent_len = parent_len,
         child_len = child_len,
+    );
+
+    (bin, json)
+}
+
+// ── Helpers: additional chunk builders ───────────────────────────────────────
+
+/// Build a pointer-list chunk where each entry is a single StringRef (u32).
+///
+/// Used by SHDR and BGND: `count(u32) + ptrs[n](u32) + entries[n](name_ref u32 each)`.
+fn build_name_ptr_list_chunk(name_refs: &[u32], chunk_data_abs: usize) -> Vec<u8> {
+    let n = name_refs.len();
+    let mut w = Writer::new();
+    w.write_u32(n as u32);
+    let ptr_base = w.position();
+    for _ in 0..n {
+        w.write_u32(0);
+    }
+    for (i, &nr) in name_refs.iter().enumerate() {
+        let abs = (chunk_data_abs + w.position()) as u32;
+        w.patch_u32(ptr_base + i * 4, abs);
+        w.write_u32(nr);
+    }
+    w.into_bytes()
+}
+
+/// Build a SEQN chunk (GMS2.3+).
+///
+/// Unlike other chunks, SEQN has a 4-byte `version` field before the pointer list:
+/// `version(u32) + count(u32) + ptrs[n](u32) + entries[n](name_ref u32 each)`.
+fn build_seqn_chunk(version: u32, name_refs: &[u32], chunk_data_abs: usize) -> Vec<u8> {
+    let n = name_refs.len();
+    let mut w = Writer::new();
+    w.write_u32(version);
+    w.write_u32(n as u32);
+    let ptr_base = w.position(); // = 8: after version + count
+    for _ in 0..n {
+        w.write_u32(0);
+    }
+    for (i, &nr) in name_refs.iter().enumerate() {
+        let abs = (chunk_data_abs + w.position()) as u32;
+        w.patch_u32(ptr_base + i * 4, abs);
+        w.write_u32(nr);
+    }
+    w.into_bytes()
+}
+
+// ── Fixture 9: v15_simple_chunks ─────────────────────────────────────────────
+
+/// Covers five additional chunk parsers: GLOB, LANG, SHDR, BGND, SEQN.
+///
+/// - GLOB: flat count + script_ids[] array (no pointer list).
+/// - LANG: flat entry_count + count2 + entries[](name, region StringRef pairs).
+/// - SHDR / BGND: pointer-list → per-entry name StringRef.
+/// - SEQN: version(u32) prefix before the pointer list + per-entry name StringRef.
+pub fn build_v15_simple_chunks() -> (Vec<u8>, String) {
+    const FORM_HDR: usize = 8;
+    const CHUNK_HDR: usize = 8;
+    const GEN8_SIZE: usize = 132;
+    const GLOB_SIZE: usize = 8;  // count(4) + 1 × script_id(4)
+    const LANG_SIZE: usize = 16; // entry_count(4) + count2(4) + 1 × (name+region)(8)
+    const SHDR_SIZE: usize = 12; // count(4) + ptr(4) + entry(4)
+    const BGND_SIZE: usize = 12;
+    const SEQN_SIZE: usize = 16; // version(4) + count(4) + ptr(4) + entry(4)
+
+    // strings[0]=""  [1]="bg_name"  [2]="shader_name"  [3]="sequence_name"
+    //          [4]="English"  [5]="en"
+    let strings: &[&str] = &["", "bg_name", "shader_name", "sequence_name", "English", "en"];
+
+    let gen8_data_abs = FORM_HDR + CHUNK_HDR;
+    let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
+    let strg_data = build_strg(strings, strg_data_abs);
+    let strg_size = strg_data.len();
+    let glob_data_abs = strg_data_abs + strg_size + CHUNK_HDR;
+    let lang_data_abs = glob_data_abs + GLOB_SIZE + CHUNK_HDR;
+    let shdr_data_abs = lang_data_abs + LANG_SIZE + CHUNK_HDR;
+    let bgnd_data_abs = shdr_data_abs + SHDR_SIZE + CHUNK_HDR;
+    let seqn_data_abs = bgnd_data_abs + BGND_SIZE + CHUNK_HDR;
+
+    let gen8_data = build_gen8(
+        15,
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+    );
+
+    // GLOB: flat count + script_id values (no pointer list).
+    let mut w = Writer::new();
+    w.write_u32(1); // count = 1
+    w.write_u32(0); // script_ids[0] = 0
+    let glob_data = w.into_bytes();
+    assert_eq!(glob_data.len(), GLOB_SIZE);
+
+    // LANG: flat entry_count + count2 + entries[](name_ref, region_ref).
+    let mut w = Writer::new();
+    w.write_u32(1); // entry_count
+    w.write_u32(1); // count2
+    w.write_u32(str_ref(4, strings, strg_data_abs)); // entry[0].name = "English"
+    w.write_u32(str_ref(5, strings, strg_data_abs)); // entry[0].region = "en"
+    let lang_data = w.into_bytes();
+    assert_eq!(lang_data.len(), LANG_SIZE);
+
+    // SHDR: pointer-list + single name_ref per entry.
+    let shdr_data = build_name_ptr_list_chunk(
+        &[str_ref(2, strings, strg_data_abs)], // "shader_name"
+        shdr_data_abs,
+    );
+    assert_eq!(shdr_data.len(), SHDR_SIZE);
+
+    // BGND: same layout as SHDR.
+    let bgnd_data = build_name_ptr_list_chunk(
+        &[str_ref(1, strings, strg_data_abs)], // "bg_name"
+        bgnd_data_abs,
+    );
+    assert_eq!(bgnd_data.len(), BGND_SIZE);
+
+    // SEQN: version(u32) before the pointer list.
+    let seqn_data = build_seqn_chunk(
+        1,
+        &[str_ref(3, strings, strg_data_abs)], // "sequence_name"
+        seqn_data_abs,
+    );
+    assert_eq!(seqn_data.len(), SEQN_SIZE);
+
+    let bin = assemble_form(&[
+        OutputChunk { magic: *b"GEN8", data: gen8_data },
+        OutputChunk { magic: *b"STRG", data: strg_data },
+        OutputChunk { magic: *b"GLOB", data: glob_data },
+        OutputChunk { magic: *b"LANG", data: lang_data },
+        OutputChunk { magic: *b"SHDR", data: shdr_data },
+        OutputChunk { magic: *b"BGND", data: bgnd_data },
+        OutputChunk { magic: *b"SEQN", data: seqn_data },
+    ]);
+
+    let json = format!(
+        r#"{{
+  "_kaitai_limitations": {limitations},
+  "fixture": "v15_simple_chunks",
+  "description": "GLOB (flat script ID array), LANG (flat language entries), SHDR/BGND (name pointer lists), SEQN (versioned pointer list)",
+  "file_size": {file_size},
+  "chunks": [
+    {{"magic": "GEN8", "data_size": {gen8_size}}},
+    {{"magic": "STRG", "data_size": {strg_size}}},
+    {{"magic": "GLOB", "data_size": {glob_size}}},
+    {{"magic": "LANG", "data_size": {lang_size}}},
+    {{"magic": "SHDR", "data_size": {shdr_size}}},
+    {{"magic": "BGND", "data_size": {bgnd_size}}},
+    {{"magic": "SEQN", "data_size": {seqn_size}}}
+  ],
+  "gen8": {{
+    "bytecode_version": 15,
+    "is_debug_disabled": false,
+    "game_id": 1,
+    "major": 1,
+    "minor": 0,
+    "room_count": 0
+  }},
+  "strg": {{
+    "count": 6,
+    "_strings": ["", "bg_name", "shader_name", "sequence_name", "English", "en"]
+  }},
+  "glob": {{
+    "count": 1,
+    "script_ids": [0]
+  }},
+  "lang": {{
+    "entry_count": 1,
+    "count": 1,
+    "entries": [
+      {{"_name": "English", "_region": "en"}}
+    ]
+  }},
+  "shdr": {{
+    "count": 1,
+    "_entries": [{{"_name": "shader_name"}}]
+  }},
+  "bgnd": {{
+    "count": 1,
+    "_entries": [{{"_name": "bg_name"}}]
+  }},
+  "seqn": {{
+    "version": 1,
+    "count": 1,
+    "_entries": [{{"_name": "sequence_name"}}]
+  }}
+}}"#,
+        limitations = KAITAI_LIMITATIONS,
+        file_size = bin.len(),
+        gen8_size = GEN8_SIZE,
+        strg_size = strg_size,
+        glob_size = GLOB_SIZE,
+        lang_size = LANG_SIZE,
+        shdr_size = SHDR_SIZE,
+        bgnd_size = BGND_SIZE,
+        seqn_size = SEQN_SIZE,
+    );
+
+    (bin, json)
+}
+
+// ── Fixture 10: v15_sond_audo ────────────────────────────────────────────────
+
+/// Covers SOND (9-field sound entry) and AUDO (length-prefixed audio blob).
+pub fn build_v15_sond_audo() -> (Vec<u8>, String) {
+    const FORM_HDR: usize = 8;
+    const CHUNK_HDR: usize = 8;
+    const GEN8_SIZE: usize = 132;
+    // SOND: count(4) + ptr(4) + entry(9 × 4 = 36) = 44
+    const SOND_SIZE: usize = 44;
+    // AUDO: count(4) + ptr(4) + length(4) + stub_data[4] = 16
+    const AUDO_SIZE: usize = 16;
+
+    // strings[0]=""  [1]="explosion"  [2]=".wav"  [3]="explosion.wav"
+    let strings: &[&str] = &["", "explosion", ".wav", "explosion.wav"];
+
+    let gen8_data_abs = FORM_HDR + CHUNK_HDR;
+    let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
+    let strg_data = build_strg(strings, strg_data_abs);
+    let strg_size = strg_data.len();
+    let sond_data_abs = strg_data_abs + strg_size + CHUNK_HDR;
+    let audo_data_abs = sond_data_abs + SOND_SIZE + CHUNK_HDR;
+
+    let gen8_data = build_gen8(
+        15,
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+    );
+
+    // SOND: count(4) + ptr[0](4) + entry(36 bytes = 9 fields × 4).
+    let sond_entry_abs = (sond_data_abs + 8) as u32;
+    let mut w = Writer::new();
+    w.write_u32(1);                                          // count
+    w.write_u32(sond_entry_abs);                             // ptr[0]
+    w.write_u32(str_ref(1, strings, strg_data_abs));         // name = "explosion"
+    w.write_u32(0);                                          // flags = 0
+    w.write_u32(str_ref(2, strings, strg_data_abs));         // type_name = ".wav"
+    w.write_u32(str_ref(3, strings, strg_data_abs));         // file_name = "explosion.wav"
+    w.write_u32(0);                                          // effects = 0
+    w.write_f32(1.0_f32);                                    // volume = 1.0
+    w.write_f32(1.0_f32);                                    // pitch = 1.0
+    w.write_i32(-1);                                         // group_id = -1
+    w.write_i32(0);                                          // audio_id = 0
+    let sond_data = w.into_bytes();
+    assert_eq!(sond_data.len(), SOND_SIZE);
+
+    // AUDO: count(4) + ptr[0](4) + length(4) + stub data[4].
+    let audo_entry_abs = (audo_data_abs + 8) as u32;
+    let mut w = Writer::new();
+    w.write_u32(1);              // count
+    w.write_u32(audo_entry_abs); // ptr[0]
+    w.write_u32(4);              // length = 4 bytes
+    w.write_bytes(&[0u8; 4]);    // stub audio data
+    let audo_data = w.into_bytes();
+    assert_eq!(audo_data.len(), AUDO_SIZE);
+
+    let bin = assemble_form(&[
+        OutputChunk { magic: *b"GEN8", data: gen8_data },
+        OutputChunk { magic: *b"STRG", data: strg_data },
+        OutputChunk { magic: *b"SOND", data: sond_data },
+        OutputChunk { magic: *b"AUDO", data: audo_data },
+    ]);
+
+    let json = format!(
+        r#"{{
+  "_kaitai_limitations": {limitations},
+  "fixture": "v15_sond_audo",
+  "description": "SOND (9-field entry: name, flags, type, file, effects, volume, pitch, group_id, audio_id) + AUDO (stub 4-byte audio blob)",
+  "file_size": {file_size},
+  "chunks": [
+    {{"magic": "GEN8", "data_size": {gen8_size}}},
+    {{"magic": "STRG", "data_size": {strg_size}}},
+    {{"magic": "SOND", "data_size": {sond_size}}},
+    {{"magic": "AUDO", "data_size": {audo_size}}}
+  ],
+  "gen8": {{
+    "bytecode_version": 15,
+    "is_debug_disabled": false,
+    "game_id": 1,
+    "major": 1,
+    "minor": 0,
+    "room_count": 0
+  }},
+  "strg": {{
+    "count": 4,
+    "_strings": ["", "explosion", ".wav", "explosion.wav"]
+  }},
+  "sond": {{
+    "count": 1,
+    "entries": [
+      {{
+        "_name": "explosion",
+        "flags": 0,
+        "_type_name": ".wav",
+        "_file_name": "explosion.wav",
+        "effects": 0,
+        "volume": 1.0,
+        "pitch": 1.0,
+        "group_id": -1,
+        "audio_id": 0
+      }}
+    ]
+  }},
+  "audo": {{
+    "count": 1,
+    "entries": [
+      {{"length": 4}}
+    ]
+  }}
+}}"#,
+        limitations = KAITAI_LIMITATIONS,
+        file_size = bin.len(),
+        gen8_size = GEN8_SIZE,
+        strg_size = strg_size,
+        sond_size = SOND_SIZE,
+        audo_size = AUDO_SIZE,
+    );
+
+    (bin, json)
+}
+
+// ── Fixture 11: v15_sprt_tpag_txtr ───────────────────────────────────────────
+
+/// Covers SPRT → TPAG → TXTR reference chain.
+///
+/// - TXTR: 2 GMS1-format entries (8 bytes each; pointer spacing ≤ 12 → `is_gms2 = false`).
+/// - TPAG: 1 entry (22 bytes: 11 × u16 fields).
+/// - SPRT: 1 sprite with `tpag_count = 1`; `tpag_indices[0]` = absolute file offset
+///   of the TPAG entry (pointer-based cross-chunk reference).
+///
+/// Chunk order TXTR → TPAG → SPRT avoids forward-offset prediction.
+pub fn build_v15_sprt_tpag_txtr() -> (Vec<u8>, String) {
+    const FORM_HDR: usize = 8;
+    const CHUNK_HDR: usize = 8;
+    const GEN8_SIZE: usize = 132;
+    // TXTR: count(4) + 2×ptr(8) + 2×entry_8b(16) = 28
+    const TXTR_SIZE: usize = 28;
+    // TPAG: count(4) + ptr(4) + entry_22b(22) = 30
+    const TPAG_SIZE: usize = 30;
+    // SPRT: count(4) + ptr(4) + entry(15 fields + 1 tpag_ptr = 16×4 = 64) = 72
+    const SPRT_SIZE: usize = 72;
+
+    // strings[0]=""  [1]="spr_player"
+    let strings: &[&str] = &["", "spr_player"];
+
+    let gen8_data_abs = FORM_HDR + CHUNK_HDR;
+    let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
+    let strg_data = build_strg(strings, strg_data_abs);
+    let strg_size = strg_data.len();
+    let txtr_data_abs = strg_data_abs + strg_size + CHUNK_HDR;
+    let tpag_data_abs = txtr_data_abs + TXTR_SIZE + CHUNK_HDR;
+    let sprt_data_abs = tpag_data_abs + TPAG_SIZE + CHUNK_HDR;
+
+    let gen8_data = build_gen8(
+        15,
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+    );
+
+    // TXTR: 2 GMS1 entries (8 bytes each: unknown=0, data_offset).
+    // Pointer spacing = 8 ≤ 12 → Txtr::parse sets is_gms2 = false.
+    let txtr_entry0_abs = (txtr_data_abs + 4 + 8) as u32; // after count(4)+ptr[0](4)+ptr[1](4)
+    let txtr_entry1_abs = txtr_entry0_abs + 8;
+    let mut w = Writer::new();
+    w.write_u32(2);
+    w.write_u32(txtr_entry0_abs);
+    w.write_u32(txtr_entry1_abs);
+    w.write_u32(0); w.write_u32(0xDEAD); // entry0: unknown=0, data_offset=0xDEAD
+    w.write_u32(0); w.write_u32(0xBEEF); // entry1: unknown=0, data_offset=0xBEEF
+    let txtr_data = w.into_bytes();
+    assert_eq!(txtr_data.len(), TXTR_SIZE);
+
+    // TPAG: 1 entry (22 bytes = 11 × u16).
+    let tpag_entry0_abs = (tpag_data_abs + 8) as u32; // after count(4)+ptr(4)
+    let mut w = Writer::new();
+    w.write_u32(1);
+    w.write_u32(tpag_entry0_abs);
+    // TexturePageItem (11 × u16):
+    w.write_u16(0);  // source_x
+    w.write_u16(0);  // source_y
+    w.write_u16(16); // source_width
+    w.write_u16(16); // source_height
+    w.write_u16(0);  // target_x
+    w.write_u16(0);  // target_y
+    w.write_u16(16); // target_width
+    w.write_u16(16); // target_height
+    w.write_u16(16); // render_width
+    w.write_u16(16); // render_height
+    w.write_u16(0);  // texture_page_id = 0 (refers to TXTR[0])
+    let tpag_data = w.into_bytes();
+    assert_eq!(tpag_data.len(), TPAG_SIZE);
+
+    // SPRT: 1 entry. tpag_indices[0] = absolute file offset of the TPAG entry.
+    let sprt_entry0_abs = (sprt_data_abs + 8) as u32; // after count(4)+ptr(4)
+    let mut w = Writer::new();
+    w.write_u32(1);
+    w.write_u32(sprt_entry0_abs);
+    w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "spr_player"
+    w.write_u32(16); // width
+    w.write_u32(16); // height
+    w.write_i32(0);  // bbox_left
+    w.write_i32(16); // bbox_right
+    w.write_i32(16); // bbox_bottom
+    w.write_i32(0);  // bbox_top
+    w.write_u32(0);  // transparent
+    w.write_u32(0);  // smooth
+    w.write_u32(0);  // preload
+    w.write_u32(0);  // bbox_mode
+    w.write_u32(0);  // sep_masks
+    w.write_i32(8);  // origin_x
+    w.write_i32(8);  // origin_y
+    w.write_i32(1);  // tpag_count = 1
+    w.write_u32(tpag_entry0_abs); // tpag_indices[0] = abs offset of TPAG entry
+    let sprt_data = w.into_bytes();
+    assert_eq!(sprt_data.len(), SPRT_SIZE);
+
+    let bin = assemble_form(&[
+        OutputChunk { magic: *b"GEN8", data: gen8_data },
+        OutputChunk { magic: *b"STRG", data: strg_data },
+        OutputChunk { magic: *b"TXTR", data: txtr_data },
+        OutputChunk { magic: *b"TPAG", data: tpag_data },
+        OutputChunk { magic: *b"SPRT", data: sprt_data },
+    ]);
+
+    let json = format!(
+        r#"{{
+  "_kaitai_limitations": {limitations},
+  "fixture": "v15_sprt_tpag_txtr",
+  "description": "TXTR (2 GMS1 entries, spacing 8 ≤ 12) + TPAG (1 entry, 11 × u16) + SPRT (1 sprite, tpag_indices stores absolute file offsets)",
+  "file_size": {file_size},
+  "chunks": [
+    {{"magic": "GEN8", "data_size": {gen8_size}}},
+    {{"magic": "STRG", "data_size": {strg_size}}},
+    {{"magic": "TXTR", "data_size": {txtr_size}}},
+    {{"magic": "TPAG", "data_size": {tpag_size}}},
+    {{"magic": "SPRT", "data_size": {sprt_size}}}
+  ],
+  "gen8": {{
+    "bytecode_version": 15,
+    "is_debug_disabled": false,
+    "game_id": 1,
+    "major": 1,
+    "minor": 0,
+    "room_count": 0
+  }},
+  "strg": {{
+    "count": 2,
+    "_strings": ["", "spr_player"]
+  }},
+  "txtr": {{
+    "count": 2,
+    "_is_gms2": false,
+    "_entries": [
+      {{"data_offset": 57005}},
+      {{"data_offset": 48879}}
+    ]
+  }},
+  "tpag": {{
+    "count": 1,
+    "entries": [
+      {{
+        "source_x": 0, "source_y": 0,
+        "source_width": 16, "source_height": 16,
+        "target_x": 0, "target_y": 0,
+        "target_width": 16, "target_height": 16,
+        "render_width": 16, "render_height": 16,
+        "texture_page_id": 0
+      }}
+    ]
+  }},
+  "sprt": {{
+    "count": 1,
+    "entries": [
+      {{
+        "_name": "spr_player",
+        "width": 16, "height": 16,
+        "origin_x": 8, "origin_y": 8,
+        "tpag_count": 1
+      }}
+    ]
+  }}
+}}"#,
+        limitations = KAITAI_LIMITATIONS,
+        file_size = bin.len(),
+        gen8_size = GEN8_SIZE,
+        strg_size = strg_size,
+        txtr_size = TXTR_SIZE,
+        tpag_size = TPAG_SIZE,
+        sprt_size = SPRT_SIZE,
+    );
+
+    (bin, json)
+}
+
+// ── Fixture 12: v15_optn ─────────────────────────────────────────────────────
+
+/// Covers OPTN (game options + named constant definitions).
+///
+/// OPTN is not a pointer-list chunk — it has a fixed-offset layout:
+///   flags(u32) + 56 reserved bytes + constant_count(u32) + constants[](name, value pairs).
+/// Kaitai can read all numeric fields directly (no absolute-seek required).
+pub fn build_v15_optn() -> (Vec<u8>, String) {
+    const FORM_HDR: usize = 8;
+    const CHUNK_HDR: usize = 8;
+    const GEN8_SIZE: usize = 132;
+    // OPTN: flags(4) + reserved(56) + constant_count(4) + 1 × constant(8) = 72
+    const OPTN_SIZE: usize = 72;
+
+    // strings[0]=""  [1]="my_const"  [2]="42"
+    let strings: &[&str] = &["", "my_const", "42"];
+
+    let gen8_data_abs = FORM_HDR + CHUNK_HDR;
+    let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
+    let strg_data = build_strg(strings, strg_data_abs);
+    let strg_size = strg_data.len();
+
+    let gen8_data = build_gen8(
+        15,
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+    );
+
+    // OPTN: flags(4) + reserved[56] + constant_count(4) + constants[1](8 bytes).
+    // CONSTANTS_OFFSET = 60: flags(4) + reserved(56) = 60 bytes before the count field.
+    let mut w = Writer::new();
+    w.write_u32(0);             // flags = 0
+    w.write_bytes(&[0u8; 56]);  // reserved (includes colors and other option fields)
+    w.write_u32(1);             // constant_count = 1
+    w.write_u32(str_ref(1, strings, strg_data_abs)); // constants[0].name = "my_const"
+    w.write_u32(str_ref(2, strings, strg_data_abs)); // constants[0].value = "42"
+    let optn_data = w.into_bytes();
+    assert_eq!(optn_data.len(), OPTN_SIZE);
+
+    let bin = assemble_form(&[
+        OutputChunk { magic: *b"GEN8", data: gen8_data },
+        OutputChunk { magic: *b"STRG", data: strg_data },
+        OutputChunk { magic: *b"OPTN", data: optn_data },
+    ]);
+
+    let json = format!(
+        r#"{{
+  "_kaitai_limitations": {limitations},
+  "fixture": "v15_optn",
+  "description": "OPTN: flags(u32) + 56 reserved bytes + constant_count(u32) + flat constant array. All numeric fields directly accessible in Kaitai.",
+  "file_size": {file_size},
+  "chunks": [
+    {{"magic": "GEN8", "data_size": {gen8_size}}},
+    {{"magic": "STRG", "data_size": {strg_size}}},
+    {{"magic": "OPTN", "data_size": {optn_size}}}
+  ],
+  "gen8": {{
+    "bytecode_version": 15,
+    "is_debug_disabled": false,
+    "game_id": 1,
+    "major": 1,
+    "minor": 0,
+    "room_count": 0
+  }},
+  "strg": {{
+    "count": 3,
+    "_strings": ["", "my_const", "42"]
+  }},
+  "optn": {{
+    "flags": 0,
+    "constant_count": 1,
+    "constants": [
+      {{"_name": "my_const", "_value": "42"}}
+    ]
+  }}
+}}"#,
+        limitations = KAITAI_LIMITATIONS,
+        file_size = bin.len(),
+        gen8_size = GEN8_SIZE,
+        strg_size = strg_size,
+        optn_size = OPTN_SIZE,
+    );
+
+    (bin, json)
+}
+
+// ── Fixture 13: v15_font ─────────────────────────────────────────────────────
+
+/// Covers FONT (pointer-list → 40-byte entry header + nested glyph pointer list).
+///
+/// Entry layout: name(4)+display_name(4)+size(4)+bold(4)+italic(4)+range_start(2)
+///   +charset(1)+antialias(1)+range_end(4)+tpag_index(4)+scale_x(4)+scale_y(4) = 40 bytes,
+/// followed by a glyph pointer list (count=1, 1 ptr) and 1 glyph entry (14 bytes).
+pub fn build_v15_font() -> (Vec<u8>, String) {
+    const FORM_HDR: usize = 8;
+    const CHUNK_HDR: usize = 8;
+    const GEN8_SIZE: usize = 132;
+    // FONT: count(4)+ptr(4)+header(40)+glyph_ptrlist(8)+glyph(14) = 70
+    const FONT_SIZE: usize = 70;
+
+    // strings[0]=""  [1]="fnt_main"  [2]="Arial"
+    let strings: &[&str] = &["", "fnt_main", "Arial"];
+
+    let gen8_data_abs = FORM_HDR + CHUNK_HDR;
+    let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
+    let strg_data = build_strg(strings, strg_data_abs);
+    let strg_size = strg_data.len();
+    let font_data_abs = strg_data_abs + strg_size + CHUNK_HDR;
+
+    let gen8_data = build_gen8(
+        15,
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+    );
+
+    // Absolute offsets within the FONT chunk:
+    //   [font_data_abs + 0]: count=1
+    //   [font_data_abs + 4]: ptr[0] → font_entry_abs
+    //   [font_data_abs + 8]: font header (40 bytes)
+    //   [font_data_abs + 48]: glyph pointer list: count=1, ptr[0] → glyph_entry_abs
+    //   [font_data_abs + 56]: glyph entry (14 bytes)
+    let font_entry_abs  = (font_data_abs + 8) as u32;
+    let glyph_list_abs  = font_entry_abs + 40; // after 40-byte header
+    let glyph_entry_abs = glyph_list_abs + 8;  // after glyph count(4)+ptr(4)
+
+    let mut w = Writer::new();
+    // FONT pointer list
+    w.write_u32(1);              // count = 1
+    w.write_u32(font_entry_abs); // ptr[0]
+    // FontEntry header (40 bytes)
+    w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "fnt_main"
+    w.write_u32(str_ref(2, strings, strg_data_abs)); // display_name = "Arial"
+    w.write_u32(12);       // size = 12 pt
+    w.write_u32(0);        // bold = false
+    w.write_u32(0);        // italic = false
+    w.write_u16(32);       // range_start = 32 (' ')
+    w.write_u8(0);         // charset = 0
+    w.write_u8(2);         // antialias = 2
+    w.write_u32(127);      // range_end = 127
+    w.write_u32(0);        // tpag_index = 0
+    w.write_f32(1.0_f32);  // scale_x
+    w.write_f32(1.0_f32);  // scale_y
+    // Glyph pointer list (inline after header)
+    w.write_u32(1);               // glyph count = 1
+    w.write_u32(glyph_entry_abs); // glyph ptr[0]
+    // Glyph entry (14 bytes: 7 × u16/i16)
+    w.write_u16(65); // character = 'A'
+    w.write_u16(10); // x = 10
+    w.write_u16(0);  // y = 0
+    w.write_u16(8);  // width = 8
+    w.write_u16(12); // height = 12
+    w.write_u16(9);  // shift = 9 (positive i16, safe as u16)
+    w.write_u16(0);  // offset = 0
+    let font_data = w.into_bytes();
+    assert_eq!(font_data.len(), FONT_SIZE);
+
+    let bin = assemble_form(&[
+        OutputChunk { magic: *b"GEN8", data: gen8_data },
+        OutputChunk { magic: *b"STRG", data: strg_data },
+        OutputChunk { magic: *b"FONT", data: font_data },
+    ]);
+
+    let json = format!(
+        r#"{{
+  "_kaitai_limitations": {limitations},
+  "fixture": "v15_font",
+  "description": "FONT: pointer-list → 40-byte header + nested glyph pointer list + 1 glyph (14 bytes: 7 × u16/i16)",
+  "file_size": {file_size},
+  "chunks": [
+    {{"magic": "GEN8", "data_size": {gen8_size}}},
+    {{"magic": "STRG", "data_size": {strg_size}}},
+    {{"magic": "FONT", "data_size": {font_size}}}
+  ],
+  "gen8": {{
+    "bytecode_version": 15,
+    "is_debug_disabled": false,
+    "game_id": 1,
+    "major": 1,
+    "minor": 0,
+    "room_count": 0
+  }},
+  "strg": {{
+    "count": 3,
+    "_strings": ["", "fnt_main", "Arial"]
+  }},
+  "font": {{
+    "count": 1,
+    "entries": [
+      {{
+        "_name": "fnt_main",
+        "_display_name": "Arial",
+        "size": 12,
+        "bold": false,
+        "italic": false,
+        "range_start": 32,
+        "charset": 0,
+        "antialias": 2,
+        "range_end": 127,
+        "tpag_index": 0,
+        "scale_x": 1.0,
+        "scale_y": 1.0,
+        "glyph_count": 1,
+        "glyphs": [
+          {{"character": 65, "x": 10, "y": 0, "width": 8, "height": 12, "shift": 9, "offset": 0}}
+        ]
+      }}
+    ]
+  }}
+}}"#,
+        limitations = KAITAI_LIMITATIONS,
+        file_size = bin.len(),
+        gen8_size = GEN8_SIZE,
+        strg_size = strg_size,
+        font_size = FONT_SIZE,
+    );
+
+    (bin, json)
+}
+
+// ── Fixture 14: v15_objt ─────────────────────────────────────────────────────
+
+/// Covers OBJT (pointer-list → 84-byte entry for BC=15, 0 events, 0 physics verts).
+///
+/// Entry layout (BC = 15, no GMS2 `_managed` field):
+///   name(4)+sprite_index(4)+visible(4)+solid(4)+depth(4)+persistent(4)
+///   +parent_index(4)+mask_index(4)                                       = 32 bytes
+///   + physics_enabled(4)+sensor(4)+shape(4)+density(4)+restitution(4)
+///   + group(4)+linear_damping(4)+angular_damping(4)+vert_count(4)
+///   + friction(4)+awake(4)+kinematic(4)                                  = 48 bytes
+///   + event_type_count(4)                                                 =  4 bytes
+///     Total = 84 bytes
+pub fn build_v15_objt() -> (Vec<u8>, String) {
+    const FORM_HDR: usize = 8;
+    const CHUNK_HDR: usize = 8;
+    const GEN8_SIZE: usize = 132;
+    // OBJT: count(4) + ptr(4) + entry(84) = 92
+    const OBJT_SIZE: usize = 92;
+
+    // strings[0]=""  [1]="obj_player"
+    let strings: &[&str] = &["", "obj_player"];
+
+    let gen8_data_abs = FORM_HDR + CHUNK_HDR;
+    let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
+    let strg_data = build_strg(strings, strg_data_abs);
+    let strg_size = strg_data.len();
+    let objt_data_abs = strg_data_abs + strg_size + CHUNK_HDR;
+
+    let gen8_data = build_gen8(
+        15, // BC = 15 → no _managed field in object entries
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+    );
+
+    let objt_entry_abs = (objt_data_abs + 8) as u32; // after count(4)+ptr(4)
+    let mut w = Writer::new();
+    w.write_u32(1);               // count
+    w.write_u32(objt_entry_abs);  // ptr[0]
+    // Basic fields (32 bytes)
+    w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "obj_player"
+    w.write_i32(0);  // sprite_index = 0
+    w.write_u32(1);  // visible = true
+    w.write_u32(0);  // solid = false  [no _managed: BC < 17]
+    w.write_i32(0);  // depth = 0
+    w.write_u32(0);  // persistent = false
+    w.write_i32(-1); // parent_index = -1 (none)
+    w.write_i32(-1); // mask_index = -1 (use own sprite)
+    // Physics fields (48 bytes)
+    w.write_u32(0);        // physics_enabled = false
+    w.write_u32(0);        // physics_sensor = false
+    w.write_u32(1);        // physics_shape = Box (1)
+    w.write_f32(0.5_f32);  // physics_density
+    w.write_f32(0.1_f32);  // physics_restitution
+    w.write_u32(0);        // physics_group
+    w.write_f32(0.1_f32);  // physics_linear_damping
+    w.write_f32(0.1_f32);  // physics_angular_damping
+    w.write_u32(0);        // vert_count = 0 (no physics vertices)
+    w.write_f32(0.2_f32);  // physics_friction
+    w.write_u32(1);        // physics_awake = true
+    w.write_u32(0);        // physics_kinematic = false
+    // No physics vertices (vert_count = 0)
+    w.write_u32(0); // event_type_count = 0 (no events)
+    let objt_data = w.into_bytes();
+    assert_eq!(objt_data.len(), OBJT_SIZE);
+
+    let bin = assemble_form(&[
+        OutputChunk { magic: *b"GEN8", data: gen8_data },
+        OutputChunk { magic: *b"STRG", data: strg_data },
+        OutputChunk { magic: *b"OBJT", data: objt_data },
+    ]);
+
+    let json = format!(
+        r#"{{
+  "_kaitai_limitations": {limitations},
+  "fixture": "v15_objt",
+  "description": "OBJT: BC=15 entry (no GMS2 _managed field), 0 physics vertices, 0 events — minimal 84-byte entry",
+  "file_size": {file_size},
+  "chunks": [
+    {{"magic": "GEN8", "data_size": {gen8_size}}},
+    {{"magic": "STRG", "data_size": {strg_size}}},
+    {{"magic": "OBJT", "data_size": {objt_size}}}
+  ],
+  "gen8": {{
+    "bytecode_version": 15,
+    "is_debug_disabled": false,
+    "game_id": 1,
+    "major": 1,
+    "minor": 0,
+    "room_count": 0
+  }},
+  "strg": {{
+    "count": 2,
+    "_strings": ["", "obj_player"]
+  }},
+  "objt": {{
+    "count": 1,
+    "entries": [
+      {{
+        "_name": "obj_player",
+        "sprite_index": 0,
+        "visible": true,
+        "solid": false,
+        "depth": 0,
+        "persistent": false,
+        "parent_index": -1,
+        "mask_index": -1,
+        "physics_enabled": false,
+        "physics_sensor": false,
+        "physics_shape": 1,
+        "physics_group": 0,
+        "physics_awake": true,
+        "physics_kinematic": false,
+        "vert_count": 0,
+        "event_type_count": 0
+      }}
+    ]
+  }}
+}}"#,
+        limitations = KAITAI_LIMITATIONS,
+        file_size = bin.len(),
+        gen8_size = GEN8_SIZE,
+        strg_size = strg_size,
+        objt_size = OBJT_SIZE,
+    );
+
+    (bin, json)
+}
+
+// ── Fixture 15: v15_room ─────────────────────────────────────────────────────
+
+/// Covers ROOM (pointer-list → 88-byte entry with 4 sub-list pointers + physics).
+///
+/// Entry layout: name(4)+caption(4)+width(4)+height(4)+speed(4)+persistent(4)
+///   +background_color(4)+draw_background_color(4)+creation_code_id(4)+flags(4) = 40 bytes
+///   + bg_ptr(4)+views_ptr(4)+objs_ptr(4)+tiles_ptr(4)                          = 16 bytes
+///   + physics_world(4)+top(4)+left(4)+right(4)+bottom(4)
+///   + gravity_x(4)+gravity_y(4)+pixels_to_meters(4)                            = 32 bytes
+///     Total = 88 bytes
+///
+/// objs_ptr points to an empty object pointer list (count=0) appended after the entry.
+/// bg_ptr/views_ptr/tiles_ptr are read but not followed by the Rust parser → set to 0.
+pub fn build_v15_room() -> (Vec<u8>, String) {
+    const FORM_HDR: usize = 8;
+    const CHUNK_HDR: usize = 8;
+    const GEN8_SIZE: usize = 132;
+    // ROOM: count(4)+ptr(4)+entry(88)+empty_objs(4) = 100
+    const ROOM_SIZE: usize = 100;
+
+    // strings[0]=""  [1]="rm_main"
+    let strings: &[&str] = &["", "rm_main"];
+
+    let gen8_data_abs = FORM_HDR + CHUNK_HDR;
+    let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
+    let strg_data = build_strg(strings, strg_data_abs);
+    let strg_size = strg_data.len();
+    let room_data_abs = strg_data_abs + strg_size + CHUNK_HDR;
+
+    let gen8_data = build_gen8(
+        15,
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+        str_ref(0, strings, strg_data_abs),
+    );
+
+    // Empty object list follows the 88-byte room entry.
+    let room_entry_abs = (room_data_abs + 8) as u32;    // after count(4)+ptr(4)
+    let empty_objs_abs = (room_data_abs + 96) as u32;   // after count(4)+ptr(4)+entry(88)
+
+    let mut w = Writer::new();
+    w.write_u32(1);              // count
+    w.write_u32(room_entry_abs); // ptr[0]
+    // RoomEntry (88 bytes)
+    w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "rm_main"
+    w.write_u32(str_ref(0, strings, strg_data_abs)); // caption = ""
+    w.write_u32(640);   // width
+    w.write_u32(480);   // height
+    w.write_u32(60);    // speed = 60 fps
+    w.write_u32(0);     // persistent = false
+    w.write_u32(0);     // background_color = black
+    w.write_u32(1);     // draw_background_color = true
+    w.write_i32(-1);    // creation_code_id = -1 (none)
+    w.write_u32(0);     // flags = 0
+    // Sub-list pointers (bg/views/tiles not parsed → 0; objs must be valid)
+    w.write_u32(0);             // bg_ptr (not followed by Rust parser)
+    w.write_u32(0);             // views_ptr (not followed)
+    w.write_u32(empty_objs_abs); // objs_ptr → count=0 list below
+    w.write_u32(0);             // tiles_ptr (not followed)
+    // Physics (8 × 4 bytes = 32)
+    w.write_u32(0);        // physics_world = false
+    w.write_u32(0);        // _physics_top
+    w.write_u32(0);        // _physics_left
+    w.write_u32(0);        // _physics_right
+    w.write_u32(0);        // _physics_bottom
+    w.write_f32(0.0_f32);  // gravity_x = 0.0
+    w.write_f32(10.0_f32); // gravity_y = 10.0
+    w.write_f32(0.1_f32);  // pixels_to_meters = 0.1
+    // Empty object pointer list (count=0, no object entries)
+    w.write_u32(0); // count = 0
+    let room_data = w.into_bytes();
+    assert_eq!(room_data.len(), ROOM_SIZE);
+
+    let bin = assemble_form(&[
+        OutputChunk { magic: *b"GEN8", data: gen8_data },
+        OutputChunk { magic: *b"STRG", data: strg_data },
+        OutputChunk { magic: *b"ROOM", data: room_data },
+    ]);
+
+    let json = format!(
+        r#"{{
+  "_kaitai_limitations": {limitations},
+  "fixture": "v15_room",
+  "description": "ROOM: 88-byte entry (10 header + 4 sub-list ptrs + 8 physics), objs_ptr → count=0 empty list, 0 instances",
+  "file_size": {file_size},
+  "chunks": [
+    {{"magic": "GEN8", "data_size": {gen8_size}}},
+    {{"magic": "STRG", "data_size": {strg_size}}},
+    {{"magic": "ROOM", "data_size": {room_size}}}
+  ],
+  "gen8": {{
+    "bytecode_version": 15,
+    "is_debug_disabled": false,
+    "game_id": 1,
+    "major": 1,
+    "minor": 0,
+    "room_count": 0
+  }},
+  "strg": {{
+    "count": 2,
+    "_strings": ["", "rm_main"]
+  }},
+  "room": {{
+    "count": 1,
+    "entries": [
+      {{
+        "_name": "rm_main",
+        "_caption": "",
+        "width": 640,
+        "height": 480,
+        "speed": 60,
+        "persistent": false,
+        "background_color": 0,
+        "draw_background_color": true,
+        "creation_code_id": -1,
+        "flags": 0,
+        "physics_world": false,
+        "physics_gravity_x": 0.0,
+        "physics_gravity_y": 10.0,
+        "object_count": 0
+      }}
+    ]
+  }}
+}}"#,
+        limitations = KAITAI_LIMITATIONS,
+        file_size = bin.len(),
+        gen8_size = GEN8_SIZE,
+        strg_size = strg_size,
+        room_size = ROOM_SIZE,
     );
 
     (bin, json)

@@ -6,13 +6,13 @@
     "shared_blob per-entry length: requires two-pass gap algorithm (sort offsets, compute gaps) — not expressible in Kaitai",
     "pointer_list entries: code/scpt/font/room/sprt/tpag/txtr/sond/audo/shdr/bgnd/objt entries require absolute seek — Kaitai stores only count+offset array, not parsed entry structs"
   ],
-  "fixture": "v15_break_signals",
-  "description": "GMS2.3+ Break signals: chknullish (0xFFF6), isstaticok (0xFFFA), pushref (0xFFF5, type1=Int32, extra=5)",
-  "file_size": 279,
+  "fixture": "v15_room",
+  "description": "ROOM: 88-byte entry (10 header + 4 sub-list ptrs + 8 physics), objs_ptr → count=0 empty list, 0 instances",
+  "file_size": 293,
   "chunks": [
     {"magic": "GEN8", "data_size": 132},
-    {"magic": "STRG", "data_size": 67},
-    {"magic": "CODE", "data_size": 48}
+    {"magic": "STRG", "data_size": 29},
+    {"magic": "ROOM", "data_size": 100}
   ],
   "gen8": {
     "bytecode_version": 15,
@@ -20,27 +20,30 @@
     "game_id": 1,
     "major": 1,
     "minor": 0,
-    "room_count": 0,
-    "_name": "break_signals_game"
+    "room_count": 0
   },
   "strg": {
-    "count": 3,
-    "_strings": ["", "break_signals_game", "gml_Script_signals"]
+    "count": 2,
+    "_strings": ["", "rm_main"]
   },
-  "code": {
+  "room": {
     "count": 1,
     "entries": [
       {
-        "_name": "gml_Script_signals",
-        "locals_count": 0,
-        "args_count": 0,
-        "_bc_byte_count": 20,
-        "_instructions": [
-          {"opcode": "Break", "type1": "Double", "_signal": "0xFFF6", "_extra": null},
-          {"opcode": "Break", "type1": "Double", "_signal": "0xFFFA", "_extra": null},
-          {"opcode": "Break", "type1": "Int32",  "_signal": "0xFFF5", "_extra": 5},
-          {"opcode": "Ret"}
-        ]
+        "_name": "rm_main",
+        "_caption": "",
+        "width": 640,
+        "height": 480,
+        "speed": 60,
+        "persistent": false,
+        "background_color": 0,
+        "draw_background_color": true,
+        "creation_code_id": -1,
+        "flags": 0,
+        "physics_world": false,
+        "physics_gravity_x": 0.0,
+        "physics_gravity_y": 10.0,
+        "object_count": 0
       }
     ]
   }
