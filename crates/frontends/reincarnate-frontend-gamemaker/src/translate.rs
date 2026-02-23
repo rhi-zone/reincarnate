@@ -532,21 +532,27 @@ fn build_signature(ctx: &TranslateCtx) -> FunctionSig {
 
 fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig {
     let mut params = Vec::new();
+    let mut defaults = Vec::new();
     if ctx.has_self {
         let self_ty = ctx
             .class_name
             .map(|name| Type::Struct(name.to_string()))
             .unwrap_or(Type::Dynamic);
         params.push(self_ty);
+        defaults.push(None);
     }
     if ctx.has_other {
         params.push(Type::Dynamic);
+        defaults.push(None);
     }
     for _ in 0..arg_count {
         params.push(Type::Dynamic);
+        // GML arguments are optional and default to 0 when not provided.
+        defaults.push(Some(reincarnate_core::ir::value::Constant::Float(0.0)));
     }
     FunctionSig {
         params,
+        defaults,
         return_ty: Type::Dynamic,
         ..Default::default()
     }

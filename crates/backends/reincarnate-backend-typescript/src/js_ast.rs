@@ -263,6 +263,9 @@ pub enum JsStmt {
 pub struct JsFunction {
     pub name: String,
     pub params: Vec<(String, Type)>,
+    /// Default values for parameters (parallel to `params`).
+    /// `None` means required; `Some(c)` means the parameter has a default value.
+    pub param_defaults: Vec<Option<Constant>>,
     pub return_ty: Type,
     pub body: Vec<JsStmt>,
     pub is_generator: bool,

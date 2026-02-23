@@ -30,6 +30,7 @@ pub fn lower_function(ast: &AstFunction, ctx: &LowerCtx) -> JsFunction {
     JsFunction {
         name: ast.name.clone(),
         params: ast.params.clone(),
+        param_defaults: ast.param_defaults.clone(),
         return_ty: ast.return_ty.clone(),
         body,
         is_generator: ast.is_generator,

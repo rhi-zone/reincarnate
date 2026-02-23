@@ -232,6 +232,9 @@ pub enum Stmt {
 pub struct AstFunction {
     pub name: String,
     pub params: Vec<(String, Type)>,
+    /// Default values for parameters (parallel to `params`).
+    /// `None` means the parameter is required; `Some(c)` means it has default `c`.
+    pub param_defaults: Vec<Option<super::value::Constant>>,
     pub return_ty: Type,
     pub body: Vec<Stmt>,
     pub is_generator: bool,

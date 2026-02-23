@@ -286,6 +286,7 @@ mod tests {
         JsFunction {
             name: "test".into(),
             params: vec![],
+            param_defaults: vec![],
             return_ty: Type::Void,
             body: vec![JsStmt::Expr(expr)],
             is_generator: false,
@@ -664,6 +665,7 @@ mod tests {
         JsFunction {
             name: name.into(),
             params: vec![("_x".into(), Type::Dynamic)],
+            param_defaults: vec![],
             return_ty: Type::Bool,
             body: vec![JsStmt::Return(Some(JsExpr::Literal(Constant::Bool(true))))],
             is_generator: false,

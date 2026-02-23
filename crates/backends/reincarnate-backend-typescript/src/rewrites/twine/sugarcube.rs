@@ -260,6 +260,7 @@ mod tests {
         JsFunction {
             name: "test".into(),
             params: vec![],
+            param_defaults: vec![],
             return_ty: Type::Void,
             body: vec![JsStmt::Expr(expr)],
             is_generator: false,
@@ -440,6 +441,7 @@ mod tests {
             JsFunction {
                 name: "test_arrow_0".into(),
                 params: vec![("x".into(), Type::Dynamic)],
+                param_defaults: vec![],
                 return_ty: Type::Dynamic,
                 body: vec![JsStmt::Return(Some(JsExpr::Var("x".into())))],
                 is_generator: false,

@@ -1139,9 +1139,15 @@ pub fn lower_function_linear(
     ast_passes::rewrite_post_increment(&mut full_body);
     ast_passes::promote_while_to_for(&mut full_body);
 
+    // Build param defaults: thread from FunctionSig, then pad with None for capture params.
+    let mut param_defaults = func.sig.defaults.clone();
+    let total_params = func.sig.params.len() + func.capture_params.len();
+    param_defaults.resize(total_params, None);
+
     AstFunction {
         name: func.name.clone(),
         params: ctx.build_params(),
+        param_defaults,
         return_ty: func.sig.return_ty.clone(),
         body: full_body,
         is_generator: func.coroutine.is_some(),

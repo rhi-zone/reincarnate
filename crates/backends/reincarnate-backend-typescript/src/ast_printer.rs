@@ -22,7 +22,7 @@ use crate::types::ts_type;
 pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String) {
     let vis = visibility_prefix(js.visibility);
     let star = if js.is_generator { "*" } else { "" };
-    let params = print_params(&js.params, js.has_rest_param, false);
+    let params = print_params(&js.params, &js.param_defaults, js.has_rest_param, false);
     let ret_ty = ts_type(&js.return_ty);
 
     let _ = writeln!(
@@ -49,12 +49,16 @@ pub fn print_class_method(
     is_override: bool,
     out: &mut String,
 ) {
-    let params = if skip_self && !js.params.is_empty() {
-        &js.params[1..]
+    let (params, param_defaults) = if skip_self && !js.params.is_empty() {
+        let defaults_offset = js.param_defaults.len().min(1);
+        (
+            &js.params[1..],
+            &js.param_defaults[defaults_offset..],
+        )
     } else {
-        &js.params
+        (&js.params[..], &js.param_defaults[..])
     };
-    let params_str = print_params(params, js.has_rest_param, false);
+    let params_str = print_params(params, param_defaults, js.has_rest_param, false);
     let ret_ty = ts_type(&js.return_ty);
     let star = if js.is_generator { "*" } else { "" };
 
@@ -108,7 +112,12 @@ pub fn print_class_method(
     let _ = writeln!(out, "  }}");
 }
 
-fn print_params(params: &[(String, Type)], has_rest_param: bool, infer_dynamic: bool) -> String {
+fn print_params(
+    params: &[(String, Type)],
+    defaults: &[Option<Constant>],
+    has_rest_param: bool,
+    infer_dynamic: bool,
+) -> String {
     params
         .iter()
         .enumerate()
@@ -118,12 +127,21 @@ fn print_params(params: &[(String, Type)], has_rest_param: bool, infer_dynamic: 
             } else {
                 ""
             };
+            let default_suffix = defaults
+                .get(i)
+                .and_then(|d| d.as_ref())
+                .map(|c| format!(" = {}", emit_constant(c)))
+                .unwrap_or_default();
             // When infer_dynamic is set and the type is Dynamic, omit `: any` so
             // TypeScript can contextually infer the type from the call site.
             if infer_dynamic && matches!(ty, Type::Dynamic) {
-                format!("{prefix}{}", sanitize_ident(name))
+                format!("{prefix}{}{default_suffix}", sanitize_ident(name))
             } else {
-                format!("{prefix}{}: {}", sanitize_ident(name), ts_type(ty))
+                format!(
+                    "{prefix}{}: {}{default_suffix}",
+                    sanitize_ident(name),
+                    ts_type(ty)
+                )
             }
         })
         .collect::<Vec<_>>()
@@ -760,7 +778,7 @@ fn print_expr(expr: &JsExpr) -> String {
             cast_as,
             infer_param_types,
         } => {
-            let params_str = print_params(params, *has_rest_param, *infer_param_types);
+            let params_str = print_params(params, &[], *has_rest_param, *infer_param_types);
             let ret_ty = ts_type(return_ty);
             let mut out = format!("({params_str}): {ret_ty} => {{\n");
             print_stmts(body, &mut out, "  ");
