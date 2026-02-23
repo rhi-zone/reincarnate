@@ -35,6 +35,38 @@ doc: |
   where the following u32 size field satisfies (size + 8 <= file_size). Strip
   the PE prefix before parsing.
 
+enums:
+
+  physics_shape_kind:
+    0: circle
+    1: box
+    2: custom_polygon
+
+  bbox_mode_kind:
+    0: automatic
+    1: full_image
+    2: manual
+
+  sep_masks_kind:
+    0: precise
+    1: rectangle
+    2: rotated_rectangle
+    3: diamond
+
+  event_type:
+    0: create
+    1: destroy
+    2: alarm
+    3: step
+    4: collision
+    5: keyboard
+    6: mouse
+    7: other
+    8: draw
+    9: key_press
+    10: key_release
+    11: trigger
+
 seq:
   - id: magic
     contents: [0x46, 0x4F, 0x52, 0x4D]  # "FORM"
@@ -204,10 +236,8 @@ types:
         type: s4
       - id: debugger_port
         type: u4
-        doc: |
-          Debugger port number. Present when bytecode_version >= 14.
-          NOTE: this field is absent for bytecode_version <= 13; consumers
-          must check bytecode_version before reading.
+        if: bytecode_version >= 14
+        doc: Debugger port number. Absent when bytecode_version <= 13.
       - id: room_count
         type: u4
         doc: Number of entries in room_order.
@@ -218,8 +248,9 @@ types:
         doc: Room indices (into ROOM chunk) defining the startup room order.
       - id: gms2_extra
         size-eos: true
+        if: ide_version_major >= 2
         doc: |
-          Additional GMS2-specific data present when ide_version_major >= 2.
+          Additional GMS2-specific data. Present only when ide_version_major >= 2.
           Contains random UID fields and extended option data. Format varies
           by IDE version. Treat as opaque unless parsing a specific GMS2 build.
 
@@ -485,20 +516,39 @@ types:
     doc: |
       Object definitions — the game's "classes", each with physics properties
       and event handlers (Create, Step, Draw, Collision, etc.).
+
+      Pointer targets are object_entry_gms1 (BC <= 16) or object_entry_gms2 (BC >= 17).
+      Check GEN8.bytecode_version to select the correct entry type.
     seq:
       - id: objects
         type: pointer_list
-        doc: count + count × absolute pointers to object_entry structs.
+        doc: count + count × absolute pointers to object_entry_gms1/gms2 structs.
 
-  object_entry:
+  object_entry_gms1:
     doc: |
-      A single object definition. Accessed via absolute pointer.
+      Object definition for bytecode_version <= 16 (GMS1).
+      Use when GEN8.bytecode_version < 17. Followed by object_entry_tail.
+    seq:
+      - id: name
+        type: u4
+        doc: StringRef — object name (e.g. "obj_Player", "obj_Enemy").
+      - id: sprite_index
+        type: s4
+        doc: Index into the SPRT chunk for this object's default sprite, or -1 for none.
+      - id: visible
+        type: u4
+        doc: Non-zero if the object is visible (drawn) by default.
+      - id: solid
+        type: u4
+        doc: Non-zero if the object is solid (stops other solid objects).
+      - id: tail
+        type: object_entry_tail
 
-      GMS2 VERSION NOTE (bytecode_version >= 17):
-        A `managed` u32 field is inserted between `visible` and `solid`.
-        It is NOT present in GMS1 (bytecode_version <= 16).
-        Consumers must check bytecode_version from GEN8 before parsing this struct.
-        The layout below shows the GMS2 form (with managed); for GMS1 omit it.
+  object_entry_gms2:
+    doc: |
+      Object definition for bytecode_version >= 17 (GMS2).
+      Adds a `managed` field between `visible` and `solid` compared to GMS1.
+      Use when GEN8.bytecode_version >= 17. Followed by object_entry_tail.
     seq:
       - id: name
         type: u4
@@ -511,12 +561,18 @@ types:
         doc: Non-zero if the object is visible (drawn) by default.
       - id: managed
         type: u4
-        doc: |
-          GMS2 only (bytecode_version >= 17): managed instance flag.
-          ABSENT in GMS1. Consumers must version-gate this field.
+        doc: Managed instance flag (GMS2 only). No equivalent in GMS1.
       - id: solid
         type: u4
         doc: Non-zero if the object is solid (stops other solid objects).
+      - id: tail
+        type: object_entry_tail
+
+  object_entry_tail:
+    doc: |
+      The version-invariant tail of an object entry, shared by both GMS1 and GMS2.
+      Immediately follows `solid` in both object_entry_gms1 and object_entry_gms2.
+    seq:
       - id: depth
         type: s4
         doc: Depth layer — higher values are drawn behind lower values.
@@ -537,9 +593,8 @@ types:
         doc: Non-zero if the physics body is a sensor (detects but doesn't block).
       - id: physics_shape
         type: u4
-        doc: |
-          Collision shape for physics:
-            0 = circle    1 = box    2 = custom polygon (use physics_vertices)
+        enum: physics_shape_kind
+        doc: Collision shape type for physics simulation.
       - id: physics_density
         type: f4
       - id: physics_restitution
@@ -570,16 +625,16 @@ types:
       - id: event_type_count
         type: u4
         doc: |
-          Number of event type slots. Typically 12:
-            0=Create, 1=Destroy, 2=Alarm, 3=Step, 4=Collision,
-            5=Keyboard, 6=Mouse, 7=Other, 8=Draw, 9=KeyPress,
-            10=KeyRelease, 11=Trigger
+          Number of event type slots. Typically 12 — index with event_type enum:
+            0=create, 1=destroy, 2=alarm, 3=step, 4=collision,
+            5=keyboard, 6=mouse, 7=other, 8=draw, 9=key_press,
+            10=key_release, 11=trigger
       - id: event_list_ptrs
         type: u4
         repeat: expr
         repeat-expr: event_type_count
         doc: |
-          Absolute file pointers, one per event type.
+          Absolute file pointers, one per event type (indexed by event_type enum).
           Each points to an event_sublist (a pointer_list of event_entry structs).
           An event type with no handlers has an empty pointer_list (count=0).
 
@@ -857,10 +912,12 @@ types:
         doc: Non-zero if the sprite texture is preloaded at room start.
       - id: bbox_mode
         type: u4
-        doc: Bounding box mode — 0=automatic, 1=full image, 2=manual.
+        enum: bbox_mode_kind
+        doc: Bounding box mode.
       - id: sep_masks
         type: u4
-        doc: Collision mask mode — 0=precise, 1=rectangle, 2=rotated rectangle, 3=diamond.
+        enum: sep_masks_kind
+        doc: Collision mask / separate mask mode.
       - id: origin_x
         type: s4
         doc: Horizontal origin (pivot) point in pixels from sprite left.
@@ -948,17 +1005,15 @@ types:
         doc: count + count × absolute pointers to bgnd_entry structs.
 
   bgnd_entry:
-    doc: Background/tileset entry (name + optional extended GMS2 tileset data).
+    doc: |
+      Background/tileset entry. Accessed via absolute pointer.
+      Entry size is not stored; compute from pointer spacing if needed.
+      GMS2 entries have additional tileset fields after name (tile dimensions,
+      border sizes, tile count, texture page item pointer, etc.) — not parsed here.
     seq:
       - id: name
         type: u4
         doc: StringRef — background/tileset name (e.g. "bg_Sky", "tile_WoodFloor").
-      - id: extended_data
-        size-eos: true
-        doc: |
-          GMS2 tileset geometry data (tile width/height, border sizes, tile count,
-          texture page item pointer, etc.). Layout varies by IDE version.
-          Treat as opaque unless parsing a specific GMS2 version.
 
   # ---------------------------------------------------------------------------
   # FONT — Font definitions
@@ -1188,17 +1243,15 @@ types:
         doc: count + count × absolute pointers to shdr_entry structs.
 
   shdr_entry:
-    doc: Shader entry (name + inline source strings, not fully parsed).
+    doc: |
+      Shader entry. Accessed via absolute pointer.
+      Entry size is not stored; compute from pointer spacing if needed.
+      After name: GLSL vertex + fragment source strings and HLSL equivalents,
+      stored as inline gm_strings (length-prefixed). Layout varies by GM version.
     seq:
       - id: name
         type: u4
         doc: StringRef — shader asset name (e.g. "shd_Edge").
-      - id: shader_source
-        size-eos: true
-        doc: |
-          Shader source strings (GLSL vertex + fragment, HLSL vertex + fragment).
-          Stored as inline gm_strings (length-prefixed). Layout varies by GM
-          version; treat as opaque unless parsing a specific target.
 
   # ---------------------------------------------------------------------------
   # SEQN — Sequence definitions (GMS2.3+ only)
@@ -1225,17 +1278,15 @@ types:
         doc: count + count × absolute pointers to seqn_entry structs.
 
   seqn_entry:
-    doc: Sequence entry (name + opaque keyframe/track data).
+    doc: |
+      Sequence entry. Accessed via absolute pointer.
+      Entry size is not stored; compute from pointer spacing if needed.
+      After name: full sequence definition (playback mode, length, origin, tracks,
+      keyframes, embedded animation curves, etc.). Format varies by SEQN version.
     seq:
       - id: name
         type: u4
         doc: StringRef — sequence asset name (e.g. "sqIntro", "sqCutscene").
-      - id: sequence_data
-        size-eos: true
-        doc: |
-          Full sequence definition: playback mode, length, origin, tracks,
-          keyframes, embedded animation curves, etc.
-          Format varies by SEQN version field above. Treat as opaque.
 
   # ---------------------------------------------------------------------------
   # OPTN — Game options and project constants
