@@ -241,6 +241,22 @@ generic unknown-call spam.
   Observed in: Artifact v0.76 (Harlowe).
 
 
+## Format Spec (game_maker_data.ksy)
+
+- [ ] **Submit to kaitai_struct_formats** — PR to `kaitai-io/kaitai_struct_formats`
+  under `game/game_maker_data.ksy`. This is the "never RE it again" step — the spec
+  is only findable by the community once it's in the format gallery.
+
+- [ ] **gml_bytecode.ksy** — Separate Kaitai spec for GML instruction encoding.
+  Would cover: opcode layout (v14 vs v15+ numbering), operand formats (Double/
+  Int32/Int64/String/Variable/Int16), Break signal encoding (GMS2.3+ extended
+  signals including pushref/chknullish/isstaticok), Dup type-size semantics.
+  Companion to game_maker_data.ksy to fully cover what needs to be known.
+
+- [ ] **datawin fixture tests** — Snapshot/round-trip tests using real data.win
+  samples (synthetic minimal fixtures or from public-domain games). The .ksy
+  can be used to independently verify the Rust parser's output.
+
 ## Future
 
 - [ ] **IR-level closure representation** — `MethodKind::Closure` exists as a tag but captures are implicit (lexical scoping in TS handles it today). Design: `Op::MakeClosure { func: FuncId, captures: Vec<(ValueId, CaptureMode)> }` with `CaptureMode` = `ByValue | ByRef`; closure function gets capture params prepended to its signature. Also needed for correct DCE (currently can't see that a closure body keeps an outer-scope value live). **Prerequisite for Rust backend AND for correct SugarCube `<<capture>>` semantics** — without explicit capture lists, the SugarCube frontend's lift-then-inline round-trip can't model captured temp vars (outer-scope ValueIds are inaccessible from a lifted function). `<<capture _i>>` maps directly: snapshot `_i` → `ValueId`, any `Op::MakeClosure` inside the block lists it as a `ByValue` capture.
