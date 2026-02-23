@@ -35,6 +35,7 @@ const CHRONICON_PATH: &str = "/mnt/ssd/steam/steamapps/common/Chronicon/data.win
 // ── Phase 1: ChunkIndex ─────────────────────────────────────────────
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn parse_bounty_chunks() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping: Bounty/data.win not found");
@@ -59,6 +60,7 @@ fn parse_bounty_chunks() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn parse_undertale_chunks() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping: Undertale game.unx not found");
@@ -71,6 +73,7 @@ fn parse_undertale_chunks() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn parse_chronicon_chunks() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping: Chronicon data.win not found");
@@ -86,6 +89,7 @@ fn parse_chronicon_chunks() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chunk_data_extraction() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping: Bounty/data.win not found");
@@ -101,6 +105,7 @@ fn chunk_data_extraction() {
 // ── Phase 2: String Table + GEN8 ────────────────────────────────────
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_string_table() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -122,6 +127,7 @@ fn bounty_string_table() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_string_table() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -140,6 +146,7 @@ fn undertale_string_table() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_gen8() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -162,6 +169,7 @@ fn bounty_gen8() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_gen8() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -180,6 +188,7 @@ fn undertale_gen8() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chronicon_gen8() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping");
@@ -211,6 +220,7 @@ fn parse_code_for(data: &[u8]) -> (Code, Gen8) {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_code_entries() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -229,6 +239,7 @@ fn bounty_code_entries() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_decode_all_bytecode() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -263,6 +274,7 @@ fn bounty_decode_all_bytecode() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_code_entries() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -279,6 +291,7 @@ fn undertale_code_entries() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_decode_all_bytecode() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -314,6 +327,7 @@ fn undertale_decode_all_bytecode() {
 // ── Phase 4: FUNC + VARI ───────────────────────────────────────────
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_func() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -342,6 +356,7 @@ fn bounty_func() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_vari() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -364,6 +379,7 @@ fn bounty_vari() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_func() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -390,6 +406,7 @@ fn undertale_func() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_vari() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -416,6 +433,7 @@ fn undertale_vari() {
 // ── Phase 5: SCPT + OBJT ─────────────────────────────────────────
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_scpt() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -444,6 +462,7 @@ fn bounty_scpt() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_objt() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -506,6 +525,7 @@ fn bounty_objt() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_objt_code_linkage() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -548,6 +568,7 @@ fn bounty_objt_code_linkage() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_scpt() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -567,6 +588,7 @@ fn undertale_scpt() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_objt() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -600,6 +622,7 @@ fn undertale_objt() {
 // ── Phase 6: Asset Chunks ─────────────────────────────────────────
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_sprt() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -618,6 +641,7 @@ fn bounty_sprt() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_tpag() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -636,6 +660,7 @@ fn bounty_tpag() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_txtr() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -653,6 +678,7 @@ fn bounty_txtr() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_font() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -673,6 +699,7 @@ fn bounty_font() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_room() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -691,6 +718,7 @@ fn bounty_room() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_optn() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -705,6 +733,7 @@ fn bounty_optn() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_optn() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -718,6 +747,7 @@ fn undertale_optn() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_sprt() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -732,6 +762,7 @@ fn undertale_sprt() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_tpag() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -746,6 +777,7 @@ fn undertale_tpag() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_txtr() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -770,6 +802,7 @@ fn undertale_txtr() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_sond() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -793,6 +826,7 @@ fn undertale_sond() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_audo() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -812,6 +846,7 @@ fn undertale_audo() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_font() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -826,6 +861,7 @@ fn undertale_font() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_room() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -845,6 +881,7 @@ fn undertale_room() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_glob() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -859,6 +896,7 @@ fn undertale_glob() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_lang() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -877,6 +915,7 @@ fn undertale_lang() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chronicon_sprt() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping");
@@ -891,6 +930,7 @@ fn chronicon_sprt() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chronicon_tpag() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping");
@@ -905,6 +945,7 @@ fn chronicon_tpag() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chronicon_txtr() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping");
@@ -919,6 +960,7 @@ fn chronicon_txtr() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chronicon_sond() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping");
@@ -933,6 +975,7 @@ fn chronicon_sond() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chronicon_room() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping");
@@ -953,6 +996,7 @@ fn chronicon_room() {
 // ── Phase 7: DataWin Lazy Wrapper + Round-Trip Writer ─────────────
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_datawin_lazy() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -987,6 +1031,7 @@ fn bounty_datawin_lazy() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_datawin_lazy() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -1003,6 +1048,7 @@ fn undertale_datawin_lazy() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_round_trip() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -1023,6 +1069,7 @@ fn bounty_round_trip() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_round_trip() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
@@ -1041,6 +1088,7 @@ fn undertale_round_trip() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn chronicon_round_trip() {
     let Some(data) = load_if_exists(CHRONICON_PATH) else {
         eprintln!("skipping");
@@ -1061,6 +1109,7 @@ fn chronicon_round_trip() {
 // ── Phase 8: Bytecode Encoder Round-Trip ──────────────────────────
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn bounty_bytecode_round_trip() {
     let Some(data) = load_if_exists(&bounty_path()) else {
         eprintln!("skipping");
@@ -1107,6 +1156,7 @@ fn bounty_bytecode_round_trip() {
 }
 
 #[test]
+#[ignore = "requires local game files; run with --include-ignored"]
 fn undertale_bytecode_round_trip() {
     let Some(data) = load_if_exists(UNDERTALE_PATH) else {
         eprintln!("skipping");
