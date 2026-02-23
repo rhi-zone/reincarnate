@@ -39,6 +39,9 @@ pub fn rewrite_introduced_calls(system: &str, method: &str) -> &'static [&'stati
         ("GameMaker.Instance", "setField") => &["setInstanceField"],
         ("GameMaker.Instance", "withBegin") => &["withInstances"],
         ("GameMaker.Instance", "withInstances") => &["withInstances"],
+        // getOther/setOther rewrite to expressions using `other` (the collision partner).
+        ("GameMaker.Instance", "getOther") => &["other"],
+        ("GameMaker.Instance", "setOther") => &["other", "setOtherField"],
         _ => &[],
     }
 }

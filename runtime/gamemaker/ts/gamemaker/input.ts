@@ -1,7 +1,7 @@
 /** GML input handling — mouse, keyboard. */
 
 import type { GameRuntime } from "./runtime";
-import { onMouseMove, onMouseDown, onMouseUp, onKeyDown } from "./platform";
+import { onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp } from "./platform";
 import { ACTIVE, noop } from "./constants";
 
 interface ButtonState { pressed: boolean; released: boolean; held: boolean; }
@@ -18,6 +18,9 @@ export class InputState {
   };
   domButtonMap = [0, 2, 1];
   keyboard_string = "";
+  keysDown = new Set<number>();
+  keysPressed = new Set<number>();
+  keysReleased = new Set<number>();
 }
 
 export function createInputAPI(rt: GameRuntime) {
@@ -38,11 +41,25 @@ export function createInputAPI(rt: GameRuntime) {
     return input.mouse.buttons[button - 1]?.released ?? false;
   }
 
+  function keyboard_check(key: number): boolean {
+    return input.keysDown.has(key);
+  }
+
+  function keyboard_check_pressed(key: number): boolean {
+    return input.keysPressed.has(key);
+  }
+
+  function keyboard_check_released(key: number): boolean {
+    return input.keysReleased.has(key);
+  }
+
   function resetFrameInput(): void {
     for (const b of input.mouse.buttons) {
       b.pressed = false;
       b.released = false;
     }
+    input.keysPressed.clear();
+    input.keysReleased.clear();
   }
 
   function activateMouse(ax: number, ay: number, override = false): void {
@@ -88,6 +105,8 @@ export function createInputAPI(rt: GameRuntime) {
     });
 
     onKeyDown(canvas, (key, keyCode) => {
+      input.keysPressed.add(keyCode);
+      input.keysDown.add(keyCode);
       if (key.length === 1) {
         input.keyboard_string += key;
         if (input.keyboard_string.length > 1024) {
@@ -99,6 +118,11 @@ export function createInputAPI(rt: GameRuntime) {
         }
       }
       dispatchKeyPress(keyCode);
+    });
+
+    onKeyUp(canvas, (_key, keyCode) => {
+      input.keysReleased.add(keyCode);
+      input.keysDown.delete(keyCode);
     });
   }
 
@@ -114,6 +138,7 @@ export function createInputAPI(rt: GameRuntime) {
   return {
     mouse_x, mouse_y,
     mouse_check_button, mouse_check_button_pressed, mouse_check_button_released,
+    keyboard_check, keyboard_check_pressed, keyboard_check_released,
     resetFrameInput, activateMouse, setupInput, dispatchKeyPress,
   };
 }

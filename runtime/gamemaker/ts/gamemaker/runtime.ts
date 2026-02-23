@@ -747,10 +747,381 @@ export class GameRuntime {
   ds_queue_size(queue: number): number { return this._dsQueues.get(queue)?.length ?? 0; }
   ds_queue_empty(queue: number): boolean { return (this._dsQueues.get(queue)?.length ?? 0) === 0; }
 
+  // ---- GML static-variable housekeeping (no-ops in TypeScript) ----
+  // GMS2.3+ emits __SetStatic__() / __CopyStatic__(n) calls to manage per-function
+  // static-variable scopes.  In our translation we discard static semantics, so
+  // these are safe no-ops.
+  __SetStatic__(): void {}
+  __CopyStatic__(_n: number): void {}
+
+  // ---- Method binding ----
+  // GML method(instance, func) binds `instance` as the self context for func.
+  // Our functions take (_rt, self, ...args), so we partially-apply both.
+  method(_instance: any, func: (...args: any[]) => any): (...args: any[]) => any {
+    const rt = this;
+    return (...args: any[]) => func(rt, _instance, ...args);
+  }
+
+  // ---- Variable struct helpers ----
+  variable_struct_exists(struct: any, name: string): boolean {
+    return struct != null && Object.prototype.hasOwnProperty.call(struct, name);
+  }
+  variable_struct_set(struct: any, name: string, value: any): void {
+    if (struct != null) struct[name] = value;
+  }
+  variable_struct_get(struct: any, name: string): any {
+    return struct?.[name];
+  }
+  variable_struct_remove(struct: any, name: string): void {
+    if (struct != null) delete struct[name];
+  }
+  variable_struct_names_count(struct: any): number {
+    return struct != null ? Object.keys(struct).length : 0;
+  }
+  variable_struct_get_names(struct: any): string[] {
+    return struct != null ? Object.keys(struct) : [];
+  }
+  is_instanceof(value: any, constructor: any): boolean {
+    if (value == null || constructor == null) return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto !== null && (proto.constructor === constructor || value instanceof constructor);
+  }
+
+  // ---- Point / geometry helpers ----
+  point_in_rectangle(px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean {
+    return px >= x1 && px <= x2 && py >= y1 && py <= y2;
+  }
+  distance_to_object(_classIndex: number): number {
+    throw new Error("distance_to_object: implement using instance spatial data");
+  }
+  collision_line(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean): any {
+    throw new Error("collision_line: requires collision system implementation");
+  }
+  collision_rectangle(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean): any {
+    throw new Error("collision_rectangle: requires collision system implementation");
+  }
+  place_meeting(_x: number, _y: number, _classIndex: number): boolean {
+    throw new Error("place_meeting: requires collision system implementation");
+  }
+  instance_place(_x: number, _y: number, _classIndex: number): any {
+    throw new Error("instance_place: requires collision system implementation");
+  }
+  instance_find(classIndex: number, n: number): any {
+    const clazz = this.classes[classIndex];
+    if (!clazz) return -4; // noone
+    const instances = this._getInstances(clazz);
+    return instances[n] ?? -4;
+  }
+
+  // ---- Object metadata ----
+  object_get_name(classIndex: number): string {
+    const clazz = this.classes[classIndex];
+    return clazz?.name ?? `object_${classIndex}`;
+  }
+  object_exists(classIndex: number): boolean {
+    return classIndex >= 0 && classIndex < this.classes.length && this.classes[classIndex] != null;
+  }
+
+  // ---- Color helpers ----
+  make_color_hsv(h: number, s: number, v: number): number {
+    // h: 0-255, s: 0-255, v: 0-255  →  BGR packed int (GML color format)
+    const hf = (h / 255) * 360;
+    const sf = s / 255;
+    const vf = v / 255;
+    const c = vf * sf;
+    const x = c * (1 - Math.abs(((hf / 60) % 2) - 1));
+    const m = vf - c;
+    let r = 0, g = 0, b = 0;
+    if (hf < 60)       { r = c; g = x; b = 0; }
+    else if (hf < 120) { r = x; g = c; b = 0; }
+    else if (hf < 180) { r = 0; g = c; b = x; }
+    else if (hf < 240) { r = 0; g = x; b = c; }
+    else if (hf < 300) { r = x; g = 0; b = c; }
+    else               { r = c; g = 0; b = x; }
+    const ri = Math.round((r + m) * 255);
+    const gi = Math.round((g + m) * 255);
+    const bi = Math.round((b + m) * 255);
+    return (bi << 16) | (gi << 8) | ri; // GML: BGR packed
+  }
+
+  // ---- String helpers ----
+  string_width(_str: string): number {
+    // Approximate — requires canvas font metrics for accuracy
+    return (_str?.length ?? 0) * 8;
+  }
+  string_height(_str: string): number {
+    // Approximate — requires canvas font metrics for accuracy
+    return 16;
+  }
+  string_format(n: number, tot: number, dec: number): string {
+    const s = n.toFixed(dec);
+    return s.length < tot ? s.padStart(tot) : s;
+  }
+  font_get_name(_font: number): string { return ""; }
+  font_exists(_font: number): boolean { return false; }
+
+  // ---- Camera API ----
+  camera_get_view_x(_cam: number): number { return 0; }
+  camera_get_view_y(_cam: number): number { return 0; }
+  camera_set_view_pos(_cam: number, _x: number, _y: number): void {}
+  camera_get_view_width(_cam: number): number { return 800; }
+  camera_get_view_height(_cam: number): number { return 600; }
+
+  // ---- Layer API ----
+  layer_background_get_id(_layer: any, _name: string): number { return -1; }
+  layer_background_get_sprite(_id: number): number { return -1; }
+  layer_background_set_sprite(_id: number, _spr: number): void {}
+
+  // ---- Keyboard (delegated to createInputAPI) ----
+  keyboard_check!: (key: number) => boolean;
+  keyboard_check_pressed!: (key: number) => boolean;
+  keyboard_check_released!: (key: number) => boolean;
+
+  // ---- Window ----
+  window_get_width(): number { return window.innerWidth; }
+  window_get_height(): number { return window.innerHeight; }
+  window_get_fullscreen(): boolean { return !!document.fullscreenElement; }
+
+  // ---- Draw extras ----
+  draw_clear_alpha(colour: number, alpha: number): void {
+    const r = colour & 0xff;
+    const g = (colour >> 8) & 0xff;
+    const b = (colour >> 16) & 0xff;
+    const ctx = this._gfx.ctx;
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  }
+  draw_sprite_stretched_ext(_spr: number, _sub: number, _x: number, _y: number, _w: number, _h: number, _col: number, _alpha: number): void {
+    throw new Error("draw_sprite_stretched_ext: implement in graphics layer");
+  }
+  draw_circle(_x: number, _y: number, _r: number, _outline: boolean): void {
+    throw new Error("draw_circle: implement in graphics layer");
+  }
+  draw_vertex(_x: number, _y: number): void {}
+  draw_primitive_end(): void {}
+  draw_rectangle_color(_x1: number, _y1: number, _x2: number, _y2: number, _c1: number, _c2: number, _c3: number, _c4: number, _outline: boolean): void {
+    throw new Error("draw_rectangle_color: implement in graphics layer");
+  }
+  draw_sprite_tiled_ext(_spr: number, _sub: number, _x: number, _y: number, _xscale: number, _yscale: number, _col: number, _alpha: number): void {
+    throw new Error("draw_sprite_tiled_ext: implement in graphics layer");
+  }
+
+  // ---- Other-instance field setter (used by setOther rewrite) ----
+  setOtherField(other: any, field: string, value: any): void {
+    if (other != null) other[field] = value;
+  }
+
+  // ---- Object name registry (set by generated code) ----
+  getObjectName(classIndex: number): string {
+    return this.object_get_name(classIndex);
+  }
+
+  // ---- Particle extra ----
+  part_system_automatic_draw(_syst: number, _on: boolean): void {}
+  part_type_exists(_part: number): boolean { return false; }
+
+  // ---- Misc ----
+  show_error(str: string, _abort: boolean): void { console.error("GML show_error:", str); }
+  event_user(_n: number): void {}
+  sprite_create_from_surface(_srf: number, _x: number, _y: number, _w: number, _h: number, _removeback: boolean, _smooth: boolean, _xorig: number, _yorig: number): number { return -1; }
+  vertex_normal(_x: number, _y: number, _z: number): void {}
+
+  // ---- ds_exists ----
+  ds_exists(id: number, type: number): boolean {
+    switch (type) {
+      case 1: return this._dsLists.has(id);
+      case 2: return this._dsMaps.has(id);
+      case 3: return this._dsGrids.has(id);
+      case 5: return this._dsStacks.has(id);
+      case 6: return this._dsQueues.has(id);
+      default: return false;
+    }
+  }
+
+  // ---- Buffer API (stubs — TODO: implement in platform layer) ----
+  buffer_create(_size: number, _type: number, _alignment: number): number {
+    throw new Error("buffer_create: implement in platform layer");
+  }
+  buffer_write(_buffer: number, _type: number, _value: any): void {
+    throw new Error("buffer_write: implement in platform layer");
+  }
+  buffer_read(_buffer: number, _type: number): any {
+    throw new Error("buffer_read: implement in platform layer");
+  }
+  buffer_delete(_buffer: number): void {
+    throw new Error("buffer_delete: implement in platform layer");
+  }
+
+  // ---- File API (stubs — TODO: implement in platform layer) ----
+  file_text_write_string(_file: number, _str: string): void {
+    throw new Error("file_text_write_string: implement in platform layer");
+  }
+  file_text_close(_file: number): void {
+    throw new Error("file_text_close: implement in platform layer");
+  }
+  file_exists(_path: string): boolean {
+    throw new Error("file_exists: implement in platform layer");
+  }
+
   // ---- Steam API (platform-provided or no-op) ----
 
   steam_current_game_language(): string { return "english"; }
   steam_inventory_result_destroy(_result: number): void {}
+  steam_ugc_get_item_install_info(_id: number, _arr: any): boolean { return false; }
+  steam_ugc_get_subscribed_items(_arr: any): number { return 0; }
+  steam_lobby_get_lobby_id(): number { return 0; }
+  steam_lobby_join_id(_id: number): void {}
+  steam_lobby_set_data(_lobby: number, _key: string, _val: string): void {}
+  steam_lobby_get_data(_lobby: number, _key: string): string { return ""; }
+  steam_activate_overlay_store(_app: number): void {}
+  steam_input_get_digital_action_handle(_name: string): number { return 0; }
+
+  // ---- More Steam API ----
+  steam_activate_overlay(_type: string): void {}
+  steam_activate_overlay_user(_type: string, _steamid: number): void {}
+  steam_get_app_id(): number { return 0; }
+  steam_get_user_persona_name_sync(): string { return ""; }
+  steam_get_stat_int(_name: string): number { return 0; }
+  steam_get_global_stat_history_int(_name: string, _days: number): number { return 0; }
+  steam_is_overlay_activated(): boolean { return false; }
+  steam_image_get_size(_image: number): [number, number] { return [0, 0]; }
+  steam_lobby_get_member_count(_lobby: number): number { return 0; }
+  steam_lobby_list_add_string_filter(_key: string, _val: string, _type: number): void {}
+  steam_lobby_get_chat_message_data(_lobby: number, _msg: number, _buf: number): number { return 0; }
+  steam_ugc_subscribe_item(_id: number): void {}
+  steam_input_run_frame(): void {}
+  steam_file_write(_path: string, _data: string): boolean { return false; }
+  steam_file_exists(_path: string): boolean { return false; }
+  psn_post_uds_event(_evtype: number, ..._args: any[]): void {}
+
+  // ---- More file/buffer API ----
+  file_text_open_write(_path: string): number {
+    throw new Error("file_text_open_write: implement in platform layer");
+  }
+  buffer_seek(_buffer: number, _base: number, _offset: number): void {
+    throw new Error("buffer_seek: implement in platform layer");
+  }
+  buffer_async_group_option(_option: string, _value: any): void {}
+
+  // ---- Array/struct GML internals ----
+  // GMS2.3+ runtime sentinels.  As values they act as: null object = null,
+  // new-array constructor = function that returns its args, new-object constructor = empty struct.
+  __NullObject__: null = null;
+  __NewGMLArray__ = (...args: any[]): any[] => args;
+  __NewGMLObject__ = (): Record<string, any> => ({});
+  // GML throw (called as a function in generated try/catch patterns).
+  __throw__(msg: any): never { throw new Error(String(msg)); }
+
+  // ---- Array helpers ----
+  array_length(arr: any[]): number { return arr?.length ?? 0; }
+
+  // ---- Misc missing built-ins ----
+  draw_clear(colour: number): void {
+    const r = colour & 0xff;
+    const g = (colour >> 8) & 0xff;
+    const b = (colour >> 16) & 0xff;
+    const ctx = this._gfx.ctx;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  }
+  draw_vertex_texture(_x: number, _y: number, _xtex: number, _ytex: number): void {}
+  vertex_position(_vbuf: number, _x: number, _y: number, _z: number): void {}
+  vertex_colour(_vbuf: number, _col: number, _alpha: number): void {}
+  position_meeting(_x: number, _y: number, _classIndex: number): boolean {
+    throw new Error("position_meeting: requires collision system implementation");
+  }
+  variable_instance_set(instance: any, name: string, value: any): void {
+    if (instance != null) instance[name] = value;
+  }
+  sprite_delete(_spr: number): void {}
+  surface_get_texture(_surf: number): number {
+    throw new Error("surface_get_texture: requires WebGL implementation");
+  }
+  object_get_sprite(classIndex: number): number {
+    const clazz = this.classes[classIndex];
+    if (!clazz) return -1;
+    const inst = this._getInstances(clazz)[0];
+    return inst?.sprite_index ?? -1;
+  }
+  room_duplicate(_room: number): number {
+    throw new Error("room_duplicate: not implemented");
+  }
+  room_set_persistent(_room: number, _persistent: boolean): void {}
+  event_perform(_type: number, _n: number): void {}
+  is_debug_overlay_open(): boolean { return false; }
+  path_exists(_path: number): boolean { return false; }
+  path_delete(_path: number): void {}
+  part_type_gravity(_part: number, _gx: number, _gy: number): void {}
+  part_system_depth(_syst: number, _depth: number): void {}
+  layer_background_visible(_bg: number, _visible: boolean): void {}
+  layer_sequence_create(_layer: any, _x: number, _y: number, _seq: number): number { return -1; }
+  layer_sequence_is_finished(_seq: number): boolean { return true; }
+  string_repeat(str: string, count: number): string { return str.repeat(count); }
+
+  // ---- Gamepad API (stubs) ----
+  gamepad_get_device_count(): number { return 0; }
+  gamepad_axis_value(_device: number, _axis: number): number { return 0; }
+  gamepad_button_check_pressed(_device: number, _button: number): boolean { return false; }
+  gamepad_button_check_released(_device: number, _button: number): boolean { return false; }
+  gamepad_button_check(_device: number, _button: number): boolean { return false; }
+
+  // ---- Display ----
+  display_get_width(): number { return window.innerWidth; }
+  display_get_height(): number { return window.innerHeight; }
+
+  // ---- JSON ----
+  json_stringify(val: any): string { return JSON.stringify(val) ?? "undefined"; }
+  json_parse(str: string): any { return JSON.parse(str); }
+
+  // ---- More draw functions ----
+  draw_surface_stretched(_surf: number, _x: number, _y: number, _w: number, _h: number): void {
+    throw new Error("draw_surface_stretched: requires WebGL implementation");
+  }
+  draw_circle_color(_x: number, _y: number, _r: number, _col1: number, _col2: number, _outline: boolean): void {
+    throw new Error("draw_circle_color: implement in graphics layer");
+  }
+  draw_path(_path: number, _x: number, _y: number, _absolute: boolean): void {}
+
+  // ---- More buffer functions ----
+  buffer_get_size(_buffer: number): number {
+    throw new Error("buffer_get_size: implement in platform layer");
+  }
+  buffer_exists(_buffer: number): boolean { return false; }
+
+  // ---- Layer extras ----
+  layer_get_x(_layer: any): number { return 0; }
+  layer_get_y(_layer: any): number { return 0; }
+  layer_depth(_layer: any): number { return 0; }
+  layer_sequence_destroy(_seq: number): void {}
+
+  // ---- More collision ----
+  collision_ellipse_list(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean, _list: number): number { return 0; }
+
+  // ---- Instance change ----
+  instance_change(_classIndex: number, _performEvents: boolean): void {}
+
+  // ---- More Steam ----
+  steam_initialised(): boolean { return false; }
+  steam_indicate_achievement_progress(_name: string, _cur: number, _max: number): void {}
+  steam_get_user_steam_id(): number { return 0; }
+  steam_get_persona_name(): string { return ""; }
+  steam_set_achievement(_name: string): void {}
+  steam_request_global_achievement_percentages(): void {}
+  steam_get_achievement(_name: string): boolean { return false; }
+  steam_store_stats(): void {}
+  steam_set_stat_int(_name: string, _val: number): void {}
+  steam_net_packet_get_sender_id(): number { return 0; }
+  steam_is_cloud_enabled_for_app(): boolean { return false; }
+  steam_ugc_create_query_user(_account_id: number, _list_type: number, _matching_type: number, _sort_order: number, _creator_app_id: number, _consumer_app_id: number, _page: number): number { return 0; }
+
+  // ---- Misc ----
+  show_message_async(_str: string): void { console.log("GML show_message_async:", _str); }
+  sprite_get_name(_spr: number): string { return `sprite_${_spr}`; }
+  room_exists(_room: number): boolean { return _room >= 0 && _room < this._roomInstances.length; }
+  string_byte_at(str: string, n: number): number { return str.charCodeAt(n - 1) || 0; }
+  video_seek_to(_time: number): void {}
+  video_get_position(): number { return 0; }
 
   // ---- Instance position/collision with DS list ----
 

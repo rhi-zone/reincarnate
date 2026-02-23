@@ -822,9 +822,11 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
 
     let (class_groups, free_funcs) = group_by_class(module);
+    // Sanitize function names so `prepend_rt_arg_expr` lookup works for names
+    // containing `@` (e.g. `anon@123@...` → `anon_123_...`).
     let free_func_names: HashSet<String> = free_funcs
         .iter()
-        .map(|&fid| module.functions[fid].name.clone())
+        .map(|&fid| sanitize_ident(&module.functions[fid].name))
         .collect();
     let registry = ClassRegistry::from_module(module);
     let class_names = build_class_names(module);
@@ -1342,7 +1344,9 @@ fn collect_call_names_from_funcs<'a>(
         for (_inst_id, inst) in func.insts.iter() {
             match &inst.op {
                 Op::Call { func: name, .. } => {
-                    used.insert(name.clone());
+                    // Sanitize the raw IR name (e.g. `@@SetStatic@@` → `__SetStatic__`)
+                    // so it matches the sanitized names stored in runtime.json.
+                    used.insert(sanitize_ident(name));
                     if engine == EngineKind::GameMaker {
                         for introduced in crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name) {
                             used.insert((*introduced).to_string());
@@ -1362,10 +1366,9 @@ fn collect_call_names_from_funcs<'a>(
                 // Function/asset references used as values (via @@pushref@@) — these
                 // appear as bare Var nodes in the emitted JS and need the same import
                 // treatment as direct calls.  Names are sanitized (e.g. `anon@N@...` →
-                // `anon_N_...`) at print time, and emit_free_function_imports applies
-                // the same sanitization to the import list.
+                // `anon_N_...`) at print time; sanitize here too so runtime.json lookup works.
                 Op::GlobalRef(name) => {
-                    used.insert(name.clone());
+                    used.insert(sanitize_ident(name));
                     if engine == EngineKind::GameMaker {
                         for introduced in crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name) {
                             used.insert((*introduced).to_string());
