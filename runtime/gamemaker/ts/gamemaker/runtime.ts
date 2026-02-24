@@ -2,7 +2,8 @@
  * GML Runtime — game loop, GMLObject base class, room system.
  */
 
-import { GraphicsContext, initCanvas, createCanvas, resizeCanvas, loadImage, scheduleFrame, initPersistence, saveItem, loadItem, removeItem } from "./platform";
+import { GraphicsContext, initCanvas, createCanvas, resizeCanvas, loadImage, scheduleTimeout } from "./platform";
+import { PersistenceState, init as initPersistence, save, load as loadItem, remove } from "./platform/persistence";
 import type { RenderRoot } from "../../../shared/ts/render-root";
 import { DrawState, createDrawAPI } from "./draw";
 import { InputState, createInputAPI } from "./input";
@@ -261,6 +262,7 @@ export class GameRuntime {
   _storage = new StorageState();
   _audio = new AudioState();
   _math = new MathState();
+  _persistence = new PersistenceState();
   _gfx = new GraphicsContext();
   _root?: RenderRoot;
 
@@ -1050,7 +1052,7 @@ export class GameRuntime {
   steam_inventory_result_get_items(_result: number, _arr?: any[]): any[] { throw new Error("steam_inventory_result_get_items: not yet implemented"); }
   steam_lobby_get_member_id(_index: number, _lobby?: number): number { throw new Error("steam_lobby_get_member_id: not yet implemented"); }
   steam_input_get_action_set_handle(_name: string): number { return 0; }
-  steam_get_stat_float(_name: string): number { return parseFloat(loadItem(this._steamStatKey(_name)) ?? "0"); }
+  steam_get_stat_float(_name: string): number { return parseFloat(loadItem(this._persistence, this._steamStatKey(_name)) ?? "0"); }
   steam_get_global_stat_int(_name: string): number { return 0; }
   steam_get_user_account_id(): number { return 0; }
   steam_image_get_rgba(_image: number, _buf: number, _size: number): boolean { return false; }
@@ -1286,7 +1288,7 @@ export class GameRuntime {
   steam_activate_overlay_user(_type: string, _steamid: number): void { /* no-op */ }
   steam_get_app_id(): number { return 0; }
   steam_get_user_persona_name_sync(_steamid?: number): string { return ""; }
-  steam_get_stat_int(_name: string): number { return parseInt(loadItem(this._steamStatKey(_name)) ?? "0", 10); }
+  steam_get_stat_int(_name: string): number { return parseInt(loadItem(this._persistence, this._steamStatKey(_name)) ?? "0", 10); }
   steam_get_global_stat_history_int(_name: string, _days?: number): number { return 0; }
   steam_is_overlay_activated(): boolean { return false; }
   steam_image_get_size(_image: number): [number, number] { return [0, 0]; }
@@ -1297,11 +1299,11 @@ export class GameRuntime {
   steam_input_run_frame(): void { /* no-op */ }
   steam_file_write(_path: string, _data: string, _length?: number): boolean {
     const data = _length !== undefined ? _data.slice(0, _length) : _data;
-    saveItem(this._steamCloudKey(_path), data);
+    save(this._persistence, this._steamCloudKey(_path), data);
     this._steamCloudAddToIndex(_path);
     return true;
   }
-  steam_file_exists(_path: string): boolean { return loadItem(this._steamCloudKey(_path)) !== null; }
+  steam_file_exists(_path: string): boolean { return loadItem(this._persistence, this._steamCloudKey(_path)) !== null; }
   /** UDS (User Data System) is PS4-specific telemetry — no browser equivalent. */
   psn_post_uds_event(_evtype: number, ..._args: any[]): void { /* no-op — PS4 telemetry, no browser equivalent */ }
 
@@ -1438,7 +1440,7 @@ export class GameRuntime {
   steam_request_global_achievement_percentages(): void { /* no-op */ }
   steam_get_achievement(_name: string): boolean { return this._steamAchSet().has(_name); }
   steam_store_stats(): void { /* no-op — stats are already persisted to localStorage immediately */ }
-  steam_set_stat_int(_name: string, _val: number): void { saveItem(this._steamStatKey(_name), String(Math.trunc(_val))); }
+  steam_set_stat_int(_name: string, _val: number): void { save(this._persistence, this._steamStatKey(_name), String(Math.trunc(_val))); }
   steam_net_packet_get_sender_id(): number { throw new Error("steam_net_packet_get_sender_id: not yet implemented"); }
   steam_is_cloud_enabled_for_app(): boolean { return false; }
   steam_ugc_create_query_user(_account_id: number, _list_type: number, _matching_type: number, _sort_order: number, _creator_app_id?: number, _consumer_app_id?: number, _page?: number): number { throw new Error("steam_ugc_create_query_user: not yet implemented"); }
@@ -1694,7 +1696,7 @@ export class GameRuntime {
   steam_inventory_get_all_items(_arr?: any): number { throw new Error("steam_inventory_get_all_items: not yet implemented"); }
   steam_get_quota_total(): number { return 104857600; /* 100 MB typical Steam Cloud quota */ }
   steam_get_global_stat_history_real(_name: string, _days?: number): number { return 0; }
-  steam_file_read(_path: string): string { return loadItem(this._steamCloudKey(_path)) ?? ""; }
+  steam_file_read(_path: string): string { return loadItem(this._persistence, this._steamCloudKey(_path)) ?? ""; }
   steam_set_rich_presence(_key: string, _val: string): void { /* no-op — Steam rich presence not available in browser */ }
   steam_user_get_auth_session_ticket(_arr?: any): number { throw new Error("steam_user_get_auth_session_ticket: not yet implemented"); }
 
@@ -1736,7 +1738,7 @@ export class GameRuntime {
     }
   }
   steam_set_stat_avg_rate(_name: string, _session: number, _session_len: number): void { /* no-op — complex running-average stat */ }
-  steam_set_stat_float(_name: string, _val: number): void { saveItem(this._steamStatKey(_name), String(_val)); }
+  steam_set_stat_float(_name: string, _val: number): void { save(this._persistence, this._steamStatKey(_name), String(_val)); }
   steam_show_floating_gamepad_text_input(_mode: number, _x: number, _y: number, _w: number, _h: number): void { throw new Error("steam_show_floating_gamepad_text_input: not yet implemented"); }
   steam_shutdown(): void { /* no-op */ }
   steam_lobby_set_owner_id(_steamid: number, _lobby?: number): void { throw new Error("steam_lobby_set_owner_id: not yet implemented"); }
@@ -1885,7 +1887,7 @@ export class GameRuntime {
   /** Load trophy unlock state from storage into the in-memory set. */
   psn_init_trophy(_pad_index?: number): void {
     const gameName = this._storage.gameName;
-    const raw = loadItem("__psn_trophy_" + gameName);
+    const raw = loadItem(this._persistence, "__psn_trophy_" + gameName);
     if (raw) {
       try {
         const ids: number[] = JSON.parse(raw);
@@ -1897,7 +1899,7 @@ export class GameRuntime {
   /** Unlock a trophy by ID; persist immediately. */
   psn_unlock_trophy(id: number, _slot: number = 0): void {
     this._psnTrophies.add(id);
-    saveItem("__psn_trophy_" + this._storage.gameName, JSON.stringify([...this._psnTrophies]));
+    save(this._persistence, "__psn_trophy_" + this._storage.gameName, JSON.stringify([...this._psnTrophies]));
   }
 
   /**
@@ -1926,7 +1928,7 @@ export class GameRuntime {
     return "__steam_cloud_" + this._storage.gameName + "_" + path;
   }
   private _steamCloudIndex(): string[] {
-    const raw = loadItem("__steam_cloud_" + this._storage.gameName + "__index");
+    const raw = loadItem(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index");
     if (!raw) return [];
     try { return JSON.parse(raw) as string[]; } catch { return []; }
   }
@@ -1934,20 +1936,20 @@ export class GameRuntime {
     const idx = this._steamCloudIndex();
     if (!idx.includes(path)) {
       idx.push(path);
-      saveItem("__steam_cloud_" + this._storage.gameName + "__index", JSON.stringify(idx));
+      save(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index", JSON.stringify(idx));
     }
   }
   private _steamCloudRemoveFromIndex(path: string): void {
     const idx = this._steamCloudIndex().filter(p => p !== path);
-    saveItem("__steam_cloud_" + this._storage.gameName + "__index", JSON.stringify(idx));
+    save(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index", JSON.stringify(idx));
   }
   private _steamAchSet(): Set<string> {
-    const raw = loadItem("__steam_ach_" + this._storage.gameName);
+    const raw = loadItem(this._persistence, "__steam_ach_" + this._storage.gameName);
     if (!raw) return new Set();
     try { return new Set(JSON.parse(raw) as string[]); } catch { return new Set(); }
   }
   private _steamAchSave(set: Set<string>): void {
-    saveItem("__steam_ach_" + this._storage.gameName, JSON.stringify([...set]));
+    save(this._persistence, "__steam_ach_" + this._storage.gameName, JSON.stringify([...set]));
   }
   private _steamStatKey(name: string): string {
     return "__steam_stat_" + this._storage.gameName + "_" + name;
@@ -1962,12 +1964,12 @@ export class GameRuntime {
     this._steamAchSave(set);
   }
   steam_file_delete(_path: string): void {
-    removeItem(this._steamCloudKey(_path));
+    remove(this._persistence, this._steamCloudKey(_path));
     this._steamCloudRemoveFromIndex(_path);
   }
   steam_file_get_list(): string[] { return this._steamCloudIndex(); }
   steam_file_share(_path: string): void { /* no-op — Steam file sharing not available in browser */ }
-  steam_file_size(_path: string): number { return (loadItem(this._steamCloudKey(_path)) ?? "").length; }
+  steam_file_size(_path: string): number { return (loadItem(this._persistence, this._steamCloudKey(_path)) ?? "").length; }
   steam_file_write_buffer(_path: string, _buf: number, _size?: number): boolean { throw new Error("steam_file_write_buffer: not yet implemented"); }
   steam_file_write_file(_path: string, _srcpath: string): boolean { throw new Error("steam_file_write_file: not yet implemented"); }
   steam_get_achievement_progress_limits_int(_name: string): [number, number] { throw new Error("steam_get_achievement_progress_limits_int: not yet implemented"); }
@@ -2046,7 +2048,7 @@ export class GameRuntime {
     const elapsed = end - start;
     const newfps = 1000 / Math.max(0.01, elapsed);
     this.fps_real = 0.9 * this.fps_real + 0.1 * newfps;
-    this._drawHandle = scheduleFrame(
+    this._drawHandle = scheduleTimeout(
       () => this._runFrame(),
       Math.max(0, 1000 / this.room_speed - elapsed),
     );
@@ -2056,7 +2058,7 @@ export class GameRuntime {
 
   async start(config: GameConfig): Promise<void> {
     // Init persistence before anything else — preloads OPFS into sync cache (falls back to localStorage).
-    await initPersistence();
+    await initPersistence(this._persistence);
 
     this._roomDatas = config.rooms;
     this.sprites = config.sprites;

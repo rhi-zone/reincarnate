@@ -1,7 +1,7 @@
 /** GML input handling — mouse, keyboard. */
 
 import type { GameRuntime } from "./runtime";
-import { onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp, onMouseWheel } from "./platform";
+import { onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp, onScroll } from "./platform";
 import { ACTIVE, noop } from "./constants";
 
 interface ButtonState { pressed: boolean; released: boolean; held: boolean; }
@@ -131,7 +131,7 @@ export function createInputAPI(rt: GameRuntime) {
       input.keysDown.delete(keyCode);
     });
 
-    onMouseWheel(canvas, (delta) => {
+    onScroll(canvas, (delta) => {
       if (delta < 0) input.mouse.wheelUp = true;
       else input.mouse.wheelDown = true;
     });

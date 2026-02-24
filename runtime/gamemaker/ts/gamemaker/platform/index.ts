@@ -1,8 +1,8 @@
 export { GraphicsContext, initCanvas, createCanvas, resizeCanvas } from "./graphics";
 export { loadImage } from "./images";
-export { onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp, onMouseWheel } from "./input";
-export { scheduleFrame, cancelFrame } from "./timing";
-export { initPersistence, saveItem, loadItem, removeItem } from "./persistence";
+export { onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp, onScroll } from "./input";
+export { scheduleTimeout, cancelTimeout } from "./timing";
+export { PersistenceState, init, save, load, remove } from "./persistence";
 export {
   AudioState, loadAudio,
   play, stop, stopAll, pause, resume, resumeAll,

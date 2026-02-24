@@ -21,6 +21,6 @@ export function onKeyUp(canvas: HTMLCanvasElement, cb: (key: string, keyCode: nu
   canvas.addEventListener("keyup", (e) => cb(e.key, e.keyCode));
 }
 
-export function onMouseWheel(canvas: HTMLCanvasElement, cb: (delta: number) => void): void {
+export function onScroll(canvas: HTMLCanvasElement, cb: (delta: number) => void): void {
   canvas.addEventListener("wheel", (e) => { e.preventDefault(); cb(e.deltaY); }, { passive: false });
 }
