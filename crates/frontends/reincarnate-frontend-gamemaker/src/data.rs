@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use datawin::DataWin;
 use reincarnate_core::project::{Asset, AssetCatalog, AssetKind};
 
+use crate::assets::detect_audio_extension;
 use crate::naming;
 
 /// Return true if `s` is a valid JavaScript identifier.
@@ -26,6 +27,7 @@ pub fn generate_data_files(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: 
     generate_textures(dw, catalog);
     generate_sprites(dw, catalog);
     generate_fonts(dw, catalog);
+    generate_sounds(dw, catalog);
     generate_rooms(dw, catalog, obj_names);
     generate_objects(catalog, obj_names);
     generate_asset_ids(dw, catalog);
@@ -202,6 +204,57 @@ fn generate_fonts(dw: &DataWin, catalog: &mut AssetCatalog) {
         kind: AssetKind::Data,
         original_name: "fonts".into(),
         path: PathBuf::from("data/fonts.ts"),
+        size: out.len() as u64,
+        data: out.into_bytes(),
+    });
+}
+
+/// Generate `data/sounds.ts` from SOND/AUDO entries.
+fn generate_sounds(dw: &DataWin, catalog: &mut AssetCatalog) {
+    let sond = match dw.sond() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let audo = match dw.audo() {
+        Ok(a) => a,
+        Err(_) => return,
+    };
+
+    let mut out = String::new();
+    out.push_str("export interface Sound {
+");
+    out.push_str("  name: string;
+");
+    out.push_str("  url: string;
+");
+    out.push_str("}
+
+");
+    out.push_str("export const sounds: Sound[] = [
+");
+
+    for entry in &sond.sounds {
+        let name = dw.resolve_string(entry.name).unwrap_or_else(|_| "???".into());
+        if entry.audio_id >= 0 {
+            let idx = entry.audio_id as usize;
+            let data = audo.audio_data(idx, dw.data()).unwrap_or(&[]);
+            let ext = detect_audio_extension(data);
+            let _ = writeln!(out, "  {{ name: {:?}, url: {:?} }},",
+                name, format!("assets/audio/{name}.{ext}"));
+        } else {
+            // External audio (not embedded in data.win) — no URL available.
+            let _ = writeln!(out, "  {{ name: {:?}, url: \"\" }},", name);
+        }
+    }
+
+    out.push_str("];
+");
+
+    catalog.add(Asset {
+        id: "data_sounds".into(),
+        kind: AssetKind::Data,
+        original_name: "sounds".into(),
+        path: PathBuf::from("data/sounds.ts"),
         size: out.len() as u64,
         data: out.into_bytes(),
     });

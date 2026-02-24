@@ -93,7 +93,7 @@ fn build_sound_names(dw: &DataWin) -> std::collections::HashMap<i32, String> {
 }
 
 /// Detect audio format from magic bytes.
-fn detect_audio_extension(data: &[u8]) -> &'static str {
+pub(crate) fn detect_audio_extension(data: &[u8]) -> &'static str {
     if data.starts_with(b"OggS") {
         "ogg"
     } else if data.starts_with(b"RIFF") {

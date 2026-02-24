@@ -47,9 +47,15 @@
           "Classes"
         ],
         "path": "data/objects"
+      },
+      {
+        "names": [
+          "sounds"
+        ],
+        "path": "data/sounds"
       }
     ],
-    "entry": "createGameRuntime().start({ rooms, sprites, textures, fonts, classes: [{classes}], Classes, initialRoom: Rooms.Init, roomCreationCode: [{roomCreationCode}] });"
+    "entry": "createGameRuntime().start({ rooms, sprites, textures, fonts, sounds, classes: [{classes}], Classes, initialRoom: Rooms.Init, roomCreationCode: [{roomCreationCode}] });"
   },
   "class_preamble": {
     "names": [

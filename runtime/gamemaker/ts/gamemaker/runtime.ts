@@ -8,6 +8,7 @@ import { DrawState, createDrawAPI } from "./draw";
 import { InputState, createInputAPI } from "./input";
 import { gmlColorToCss } from "./color";
 import { StorageState, createStorageAPI } from "./storage";
+import { AudioState, createAudioAPI, loadAudio } from "./audio";
 import { MathState, createMathAPI } from "./math";
 import { createGlobalAPI } from "./global";
 import { createInstanceAPI } from "./instance";
@@ -16,6 +17,7 @@ import type { Sprite } from "../../data/sprites";
 import type { Texture } from "../../data/textures";
 import type { Font } from "../../data/fonts";
 import type { Room } from "../../data/rooms";
+import type { Sound } from "../../data/sounds";
 
 // Re-exports for class_preamble
 export { Colors, HAligns, VAligns } from "./color";
@@ -245,6 +247,7 @@ export class GameRuntime {
   _draw = new DrawState();
   _input = new InputState();
   _storage = new StorageState();
+  _audio = new AudioState();
   _math = new MathState();
   _gfx = new GraphicsContext();
   _root?: RenderRoot;
@@ -266,6 +269,7 @@ export class GameRuntime {
   textures: Texture[] = [];
   textureSheets: HTMLImageElement[] = [];
   fonts: Font[] = [];
+  sounds: Sound[] = [];
   _classesEnum: Record<string, number> = {};
   _roomInstances: GMLRoom[] = [];
   _instancesByClass = new Map<Function, GMLObject[]>();
@@ -346,6 +350,7 @@ export class GameRuntime {
     Object.assign(this, createDrawAPI(this));
     Object.assign(this, createInputAPI(this));
     Object.assign(this, createStorageAPI(this));
+    Object.assign(this, createAudioAPI(this));
     Object.assign(this, createMathAPI(this));
     Object.assign(this, createGlobalAPI(this));
     Object.assign(this, createInstanceAPI(this));
@@ -583,30 +588,26 @@ export class GameRuntime {
   gpu_set_zwriteenable(_enabled: boolean): void { throw new Error("gpu_set_zwriteenable: requires WebGL implementation"); }
   gpu_set_cullmode(_mode: number): void { throw new Error("gpu_set_cullmode: requires WebGL implementation"); }
 
-  // ---- Audio API (unimplemented — requires platform audio layer) ----
-  //
-  // Audio belongs in the platform layer (platform/audio.ts), not here.
-  // These methods need to be wired to a platform audio implementation
-  // that abstracts HTMLAudioElement or Web Audio API.
-  // See: docs/architecture.md "Runtime Architecture" → Platform Interface.
+  // ---- Audio API (implemented via createAudioAPI / platform/audio.ts) ----
+  // Methods declared here for type-checking; implementations injected in constructor.
 
-  audio_play_sound(_sound: number, _priority: number, _loop: boolean, _gain?: number, _offset?: number, _pitch?: number): number { throw new Error("audio_play_sound: implement in platform/audio.ts"); }
-  audio_play_sound_at(_sound: number, _x: number, _y: number, _z: number, _falloff: number, _min: number, _max: number, _priority: number, _loop: boolean): number { throw new Error("audio_play_sound_at: implement in platform/audio.ts"); }
-  audio_is_playing(_handle: number): boolean { throw new Error("audio_is_playing: implement in platform/audio.ts"); }
-  audio_stop_sound(_handle: number): void { throw new Error("audio_stop_sound: implement in platform/audio.ts"); }
-  audio_stop_all(): void { throw new Error("audio_stop_all: implement in platform/audio.ts"); }
-  audio_pause_sound(_handle: number): void { throw new Error("audio_pause_sound: implement in platform/audio.ts"); }
-  audio_resume_sound(_handle: number): void { throw new Error("audio_resume_sound: implement in platform/audio.ts"); }
-  audio_resume_all(): void { throw new Error("audio_resume_all: implement in platform/audio.ts"); }
-  audio_exists(_sound: number): boolean { throw new Error("audio_exists: implement in platform/audio.ts"); }
-  audio_get_name(_sound: number): string { throw new Error("audio_get_name: implement in platform/audio.ts"); }
-  audio_sound_gain(_handle: number, _gain: number, _time: number): void { throw new Error("audio_sound_gain: implement in platform/audio.ts"); }
-  audio_sound_get_gain(_handle: number): number { throw new Error("audio_sound_get_gain: implement in platform/audio.ts"); }
-  audio_sound_pitch(_handle: number, _pitch: number): void { throw new Error("audio_sound_pitch: implement in platform/audio.ts"); }
-  audio_master_gain(_gain: number): void { throw new Error("audio_master_gain: implement in platform/audio.ts"); }
-  audio_group_load(_group: number): void { throw new Error("audio_group_load: implement in platform/audio.ts"); }
-  audio_group_stop_all(_group: number): void { throw new Error("audio_group_stop_all: implement in platform/audio.ts"); }
-  audio_group_set_gain(_group: number, _gain: number, _time: number): void { throw new Error("audio_group_set_gain: implement in platform/audio.ts"); }
+  audio_play_sound!: (sound: number, priority: number, loop: boolean, gain?: number, offset?: number, pitch?: number) => number;
+  audio_play_sound_at!: (sound: number, x: number, y: number, z: number, falloff: number, min: number, max: number, priority: number, loop: boolean) => number;
+  audio_is_playing!: (handle: number) => boolean;
+  audio_stop_sound!: (handle: number) => void;
+  audio_stop_all!: () => void;
+  audio_pause_sound!: (handle: number) => void;
+  audio_resume_sound!: (handle: number) => void;
+  audio_resume_all!: () => void;
+  audio_exists!: (sound: number) => boolean;
+  audio_get_name!: (sound: number) => string;
+  audio_sound_gain!: (handle: number, gain: number, timeMs: number) => void;
+  audio_sound_get_gain!: (handle: number) => number;
+  audio_sound_pitch!: (handle: number, pitch: number) => void;
+  audio_master_gain!: (gain: number) => void;
+  audio_group_load!: (group: number) => void;
+  audio_group_stop_all!: (group: number) => void;
+  audio_group_set_gain!: (group: number, gain: number, timeMs: number) => void;
 
   // ---- Particle API (unimplemented — requires particle simulation) ----
 
@@ -1190,9 +1191,9 @@ export class GameRuntime {
   directory_create(_path: string): void { throw new Error("directory_create: not yet implemented"); }
   directory_exists(_path: string): boolean { throw new Error("directory_exists: not yet implemented"); }
 
-  // ---- Audio extras ----
-  audio_sound_length(_sound: number): number { throw new Error("audio_sound_length: not yet implemented"); }
-  audio_sound_get_pitch(_handle: number): number { throw new Error("audio_sound_get_pitch: implement in platform/audio.ts"); }
+  // ---- Audio extras (injected via createAudioAPI) ----
+  audio_sound_length!: (sound: number) => number;
+  audio_sound_get_pitch!: (handle: number) => number;
 
   // ---- Buffer extras ----
   buffer_base64_decode(_str: string): number { throw new Error("buffer_base64_decode: implement in platform layer"); }
@@ -1499,9 +1500,9 @@ export class GameRuntime {
     return str.replace(sub, rep);
   }
 
-  // ---- More audio ----
-  audio_sound_set_track_position(_sound: number, _pos: number): void { throw new Error("audio_sound_set_track_position: not yet implemented"); }
-  audio_sound_get_track_position(_sound: number): number { throw new Error("audio_sound_get_track_position: not yet implemented"); }
+  // ---- More audio (injected via createAudioAPI) ----
+  audio_sound_set_track_position!: (handle: number, pos: number) => void;
+  audio_sound_get_track_position!: (handle: number) => number;
 
   // ---- Clipboard ----
   clipboard_set_text(str: string): void { navigator.clipboard?.writeText(str); }
@@ -2046,6 +2047,7 @@ export class GameRuntime {
     this.sprites = config.sprites;
     this.textures = config.textures;
     this.fonts = config.fonts;
+    this.sounds = config.sounds ?? [];
     this.classes = config.classes;
     this._classesEnum = config.Classes;
     this.roomCreationCode = config.roomCreationCode ?? [];
@@ -2077,13 +2079,16 @@ export class GameRuntime {
     this._gfx.canvas.focus();
     this.setupInput();
 
-    // Load texture sheets
+    // Load texture sheets and audio in parallel
     const sheetCount = Math.max(0, ...config.textures.map((t) => t.sheetId)) + 1;
     const sheetPromises: Promise<HTMLImageElement>[] = [];
     for (let i = 0; i < sheetCount; i++) {
       sheetPromises.push(loadImage(`assets/textures/texture_${i}.png`));
     }
-    const sheets = await Promise.all(sheetPromises);
+    const [sheets] = await Promise.all([
+      Promise.all(sheetPromises),
+      loadAudio(this._audio, config.sounds),
+    ]);
     this.textureSheets.push(...sheets);
 
     // Start
@@ -2099,6 +2104,7 @@ export interface GameConfig {
   sprites: Sprite[];
   textures: Texture[];
   fonts: Font[];
+  sounds?: Sound[];
   classes: (typeof GMLObject)[];
   Classes: Record<string, number>;
   initialRoom: number;
