@@ -8,7 +8,12 @@ import { DrawState, createDrawAPI } from "./draw";
 import { InputState, createInputAPI } from "./input";
 import { gmlColorToCss } from "./color";
 import { StorageState, createStorageAPI } from "./storage";
-import { AudioState, createAudioAPI, loadAudio } from "./audio";
+import {
+  AudioState, loadAudio,
+  audioPlay, audioStop, audioStopAll, audioPause, audioResume, audioResumeAll,
+  audioIsPlaying, audioSetGain, audioGetGain, audioSetPitch, audioGetPitch,
+  audioSetMasterGain, audioGetTrackPosition, audioSetTrackPosition, audioSoundLength,
+} from "./platform/audio";
 import { MathState, createMathAPI } from "./math";
 import { createGlobalAPI } from "./global";
 import { createInstanceAPI } from "./instance";
@@ -350,7 +355,6 @@ export class GameRuntime {
     Object.assign(this, createDrawAPI(this));
     Object.assign(this, createInputAPI(this));
     Object.assign(this, createStorageAPI(this));
-    Object.assign(this, createAudioAPI(this));
     Object.assign(this, createMathAPI(this));
     Object.assign(this, createGlobalAPI(this));
     Object.assign(this, createInstanceAPI(this));
@@ -588,26 +592,33 @@ export class GameRuntime {
   gpu_set_zwriteenable(_enabled: boolean): void { throw new Error("gpu_set_zwriteenable: requires WebGL implementation"); }
   gpu_set_cullmode(_mode: number): void { throw new Error("gpu_set_cullmode: requires WebGL implementation"); }
 
-  // ---- Audio API (implemented via createAudioAPI / platform/audio.ts) ----
-  // Methods declared here for type-checking; implementations injected in constructor.
+  // ---- Audio API ----
 
-  audio_play_sound!: (sound: number, priority: number, loop: boolean, gain?: number, offset?: number, pitch?: number) => number;
-  audio_play_sound_at!: (sound: number, x: number, y: number, z: number, falloff: number, min: number, max: number, priority: number, loop: boolean) => number;
-  audio_is_playing!: (handle: number) => boolean;
-  audio_stop_sound!: (handle: number) => void;
-  audio_stop_all!: () => void;
-  audio_pause_sound!: (handle: number) => void;
-  audio_resume_sound!: (handle: number) => void;
-  audio_resume_all!: () => void;
-  audio_exists!: (sound: number) => boolean;
-  audio_get_name!: (sound: number) => string;
-  audio_sound_gain!: (handle: number, gain: number, timeMs: number) => void;
-  audio_sound_get_gain!: (handle: number) => number;
-  audio_sound_pitch!: (handle: number, pitch: number) => void;
-  audio_master_gain!: (gain: number) => void;
-  audio_group_load!: (group: number) => void;
-  audio_group_stop_all!: (group: number) => void;
-  audio_group_set_gain!: (group: number, gain: number, timeMs: number) => void;
+  audio_play_sound(sound: number, _priority: number, loop: boolean, gain = 1, offset = 0, pitch = 1): number {
+    return audioPlay(this._audio, sound, loop, gain, offset, pitch);
+  }
+  audio_play_sound_at(sound: number, _x: number, _y: number, _z: number, _falloff: number, _min: number, _max: number, _priority: number, loop: boolean): number {
+    return audioPlay(this._audio, sound, loop);
+  }
+  audio_stop_sound(handle: number): void { audioStop(this._audio, handle); }
+  audio_stop_all(): void { audioStopAll(this._audio); }
+  audio_pause_sound(handle: number): void { audioPause(this._audio, handle); }
+  audio_resume_sound(handle: number): void { audioResume(this._audio, handle); }
+  audio_resume_all(): void { audioResumeAll(this._audio); }
+  audio_is_playing(handle: number): boolean { return audioIsPlaying(this._audio, handle); }
+  audio_sound_gain(handle: number, gain: number, timeMs: number): void { audioSetGain(this._audio, handle, gain, timeMs); }
+  audio_sound_get_gain(handle: number): number { return audioGetGain(this._audio, handle); }
+  audio_sound_pitch(handle: number, pitch: number): void { audioSetPitch(this._audio, handle, pitch); }
+  audio_sound_get_pitch(handle: number): number { return audioGetPitch(this._audio, handle); }
+  audio_master_gain(gain: number): void { audioSetMasterGain(this._audio, gain); }
+  audio_sound_length(sound: number): number { return audioSoundLength(this._audio, sound); }
+  audio_sound_set_track_position(handle: number, pos: number): void { audioSetTrackPosition(this._audio, handle, pos); }
+  audio_sound_get_track_position(handle: number): number { return audioGetTrackPosition(this._audio, handle); }
+  audio_exists(sound: number): boolean { return sound >= 0 && sound < this.sounds.length && this.sounds[sound]!.url !== ""; }
+  audio_get_name(sound: number): string { return this.sounds[sound]?.name ?? ""; }
+  audio_group_load(_group: number): void { /* no-op — all audio loaded at startup */ }
+  audio_group_stop_all(_group: number): void { audioStopAll(this._audio); }
+  audio_group_set_gain(_group: number, gain: number, _timeMs: number): void { audioSetMasterGain(this._audio, gain); }
 
   // ---- Particle API (unimplemented — requires particle simulation) ----
 
@@ -1191,9 +1202,6 @@ export class GameRuntime {
   directory_create(_path: string): void { throw new Error("directory_create: not yet implemented"); }
   directory_exists(_path: string): boolean { throw new Error("directory_exists: not yet implemented"); }
 
-  // ---- Audio extras (injected via createAudioAPI) ----
-  audio_sound_length!: (sound: number) => number;
-  audio_sound_get_pitch!: (handle: number) => number;
 
   // ---- Buffer extras ----
   buffer_base64_decode(_str: string): number { throw new Error("buffer_base64_decode: implement in platform layer"); }
@@ -1500,9 +1508,6 @@ export class GameRuntime {
     return str.replace(sub, rep);
   }
 
-  // ---- More audio (injected via createAudioAPI) ----
-  audio_sound_set_track_position!: (handle: number, pos: number) => void;
-  audio_sound_get_track_position!: (handle: number) => number;
 
   // ---- Clipboard ----
   clipboard_set_text(str: string): void { navigator.clipboard?.writeText(str); }
