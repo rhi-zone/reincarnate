@@ -36,7 +36,7 @@ export class SugarCubeRuntime {
   readonly Engine: SCEngine;
 
   constructor(persistence?: PersistenceOpts) {
-    Wikifier.rt = this;
+    Wikifier.setRuntime(this);
     const history = persistence?.history === "diff"
       ? diffHistory()
       : snapshotHistory();

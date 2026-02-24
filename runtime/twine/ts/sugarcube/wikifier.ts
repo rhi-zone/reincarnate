@@ -159,18 +159,46 @@ interface CacheEntry {
 export class Wikifier {
   // --- Static API ---
 
-  /** Set by SugarCubeRuntime constructor — provides access to all sub-objects. */
+  /** Set by SugarCubeRuntime.setRuntime() — identifies the active runtime. */
   static rt: SugarCubeRuntime;
 
-  static Parser: ParserRegistry = new ParserRegistry();
+  /** Per-runtime parser registries. Populated by setRuntime(). */
+  private static _parserByRt = new WeakMap<SugarCubeRuntime, ParserRegistry>();
 
-  private static cache: Map<string, CacheEntry> = new Map();
+  /** Per-runtime markup caches. Lazily created on first cache write. */
+  private static _cacheByRt = new WeakMap<SugarCubeRuntime, Map<string, CacheEntry>>();
+
+  /** The active runtime's parser registry. */
+  static get Parser(): ParserRegistry {
+    return Wikifier._parserByRt.get(Wikifier.rt)!;
+  }
+
+  /** Initialize a new runtime: create its parser registry and register built-in parsers. */
+  static setRuntime(rt: SugarCubeRuntime): void {
+    Wikifier.rt = rt;
+    if (!Wikifier._parserByRt.has(rt)) {
+      const parser = new ParserRegistry();
+      registerBuiltinParsers(parser);
+      Wikifier._parserByRt.set(rt, parser);
+    }
+  }
+
+  private static _getCache(): Map<string, CacheEntry> {
+    let cache = Wikifier._cacheByRt.get(Wikifier.rt);
+    if (!cache) {
+      cache = new Map();
+      Wikifier._cacheByRt.set(Wikifier.rt, cache);
+    }
+    return cache;
+  }
 
   /** Invalidate cache entries that depend on a specific parser. */
   static invalidateCache(parserName: string): void {
-    for (const [key, entry] of Wikifier.cache) {
+    const cache = Wikifier._cacheByRt.get(Wikifier.rt);
+    if (!cache) return;
+    for (const [key, entry] of cache) {
       if (entry.parserDeps.has(parserName)) {
-        Wikifier.cache.delete(key);
+        cache.delete(key);
       }
     }
   }
@@ -180,14 +208,15 @@ export class Wikifier {
     // Build cache key that incorporates options
     const cacheKey = options ? markup + "\0" + JSON.stringify(options) : markup;
 
-    const cached = Wikifier.cache.get(cacheKey);
+    const cache = Wikifier._getCache();
+    const cached = cache.get(cacheKey);
     if (cached) {
       return cached.fragment.cloneNode(true) as DocumentFragment;
     }
 
     const frag = Wikifier.rt.Output.doc.createDocumentFragment();
     const w = new Wikifier(frag, markup, options);
-    Wikifier.cache.set(cacheKey, {
+    cache.set(cacheKey, {
       fragment: frag.cloneNode(true) as DocumentFragment,
       parserDeps: w.parserDeps,
     });
@@ -436,6 +465,13 @@ export class Wikifier {
 
   // --- Instance ---
 
+  /** The runtime this Wikifier instance is bound to (snapshotted at construction). */
+  rt: SugarCubeRuntime;
+
+  /** The parser registry for this instance's runtime. */
+  private get _parser(): ParserRegistry {
+    return Wikifier._parserByRt.get(this.rt)!;
+  }
   output: DocumentFragment | Node;
   source: string;
   options: WikifierOptions;
@@ -448,7 +484,8 @@ export class Wikifier {
   private _match: RegExpExecArray | null = null;
 
   constructor(output: DocumentFragment | Node | null, source: string, options?: WikifierOptions) {
-    this.output = output || Wikifier.rt.Output.doc.createDocumentFragment();
+    this.rt = Wikifier.rt;
+    this.output = output || this.rt.Output.doc.createDocumentFragment();
     this.source = source;
     this.options = Object.assign({}, DEFAULT_OPTIONS, options);
     this.subWikify(this.output);
@@ -457,7 +494,7 @@ export class Wikifier {
   /** Output plain text between two source positions. */
   outputText(destination: Node, startPos: number, endPos: number): void {
     if (endPos > startPos) {
-      destination.appendChild(Wikifier.rt.Output.doc.createTextNode(this.source.slice(startPos, endPos)));
+      destination.appendChild(this.rt.Output.doc.createTextNode(this.source.slice(startPos, endPos)));
     }
   }
 
@@ -476,7 +513,7 @@ export class Wikifier {
     }
 
     const profile = this.options.profile || "all";
-    const { re, parsers } = Wikifier.Parser.getProfile(profile);
+    const { re, parsers } = this._parser.getProfile(profile);
     re.lastIndex = this.nextMatch;
 
     // Handle ignoreTerminatorCase
@@ -573,11 +610,31 @@ export class Wikifier {
 }
 
 // ---------------------------------------------------------------------------
-// Built-in parsers — Phase 1: simple formatting
+// Built-in parsers — registered per-runtime via registerBuiltinParsers()
 // ---------------------------------------------------------------------------
 
+/** Internal helper: add a parser to a registry (avoids touching Wikifier.Parser static). */
+function _addParser(registry: ParserRegistry, def: ParserDef): void {
+  registry.add(def);
+}
+
+const VOID_ELEMENTS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "param", "source", "track", "wbr",
+]);
+
+function isVoidElement(tagName: string): boolean {
+  return VOID_ELEMENTS.has(tagName);
+}
+
+/**
+ * Register all built-in SugarCube parsers into the given registry.
+ * Called once per SugarCubeRuntime by Wikifier.setRuntime().
+ */
+export function registerBuiltinParsers(registry: ParserRegistry): void {
+
 /** Block comment: /% ... %/ (SugarCube-style) and /* ... *​/ (CSS-style). */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "comment",
   match: "(?:/(?:%|\\*))",
   handler(w: Wikifier) {
@@ -605,7 +662,7 @@ Wikifier.Parser.add({
 });
 
 /** Inline HTML comment: <!-- ... --> */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "htmlComment",
   match: "<!--",
   handler(w: Wikifier) {
@@ -619,43 +676,43 @@ Wikifier.Parser.add({
 });
 
 /** Line break: literal \n. Suppressed when options.nobr is true. */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "lineBreak",
   match: "\\n",
   handler(w: Wikifier) {
     if (!w.options.nobr) {
-      w.output.appendChild(Wikifier.rt.Output.doc.createElement("br"));
+      w.output.appendChild(w.rt.Output.doc.createElement("br"));
     }
   },
 });
 
 /** Emdash: -- → — */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "emdash",
   match: "--",
   handler(w: Wikifier) {
-    w.output.appendChild(Wikifier.rt.Output.doc.createTextNode("\u2014"));
+    w.output.appendChild(w.rt.Output.doc.createTextNode("\u2014"));
   },
 });
 
 /** Escape: backslash followed by any char. */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "escape",
   match: "\\\\.",
   handler(w: Wikifier) {
     // Output the character after the backslash
-    w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText.slice(1)));
+    w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText.slice(1)));
   },
 });
 
 /** Heading: ! at start of line. Block-level, excluded from 'core' profile. */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "heading",
   profiles: ["all"],
   match: "^!{1,6}",
   handler(w: Wikifier) {
     const level = Math.min(w.matchText.length, 6);
-    const h = Wikifier.rt.Output.doc.createElement(`h${level}`);
+    const h = w.rt.Output.doc.createElement(`h${level}`);
     // Parse until end of line
     const termRe = /\n/gm;
     w.subWikify(h, termRe);
@@ -666,17 +723,17 @@ Wikifier.Parser.add({
 /** Horizontal rule: ---- (4+ hyphens) at start of line.
  *  Block-level, excluded from 'core' profile.
  */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "horizontalRule",
   profiles: ["all"],
   match: "^-{4,}$",
   handler(w: Wikifier) {
-    w.output.appendChild(Wikifier.rt.Output.doc.createElement("hr"));
+    w.output.appendChild(w.rt.Output.doc.createElement("hr"));
   },
 });
 
 /** Bold/italic toggle pairs. */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "boldItalic",
   match: "'{2,3}|/{2}",
   handler(w: Wikifier) {
@@ -694,7 +751,7 @@ Wikifier.Parser.add({
       tag = "i";
       termPattern = "//";
     }
-    const el = Wikifier.rt.Output.doc.createElement(tag);
+    const el = w.rt.Output.doc.createElement(tag);
     const termRe = new RegExp(termPattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gm");
     w.subWikify(el, termRe);
     w.output.appendChild(el);
@@ -702,77 +759,77 @@ Wikifier.Parser.add({
 });
 
 /** Underline: __text__ */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "underline",
   match: "__",
   handler(w: Wikifier) {
-    const el = Wikifier.rt.Output.doc.createElement("u");
+    const el = w.rt.Output.doc.createElement("u");
     w.subWikify(el, /__/gm);
     w.output.appendChild(el);
   },
 });
 
 /** Strikethrough: ==text== */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "strikethrough",
   match: "==",
   handler(w: Wikifier) {
-    const el = Wikifier.rt.Output.doc.createElement("s");
+    const el = w.rt.Output.doc.createElement("s");
     w.subWikify(el, /==/gm);
     w.output.appendChild(el);
   },
 });
 
 /** Superscript: ^^text^^ */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "superscript",
   match: "\\^\\^",
   handler(w: Wikifier) {
-    const el = Wikifier.rt.Output.doc.createElement("sup");
+    const el = w.rt.Output.doc.createElement("sup");
     w.subWikify(el, /\^\^/gm);
     w.output.appendChild(el);
   },
 });
 
 /** Subscript: ~~text~~ */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "subscript",
   match: "~~",
   handler(w: Wikifier) {
-    const el = Wikifier.rt.Output.doc.createElement("sub");
+    const el = w.rt.Output.doc.createElement("sub");
     w.subWikify(el, /~~/gm);
     w.output.appendChild(el);
   },
 });
 
 /** Monospaced inline: {{{text}}} */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "monospacedByLine",
   match: "\\{\\{\\{",
   handler(w: Wikifier) {
     const end = w.source.indexOf("}}}", w.nextMatch);
     if (end >= 0) {
-      const code = Wikifier.rt.Output.doc.createElement("code");
+      const code = w.rt.Output.doc.createElement("code");
       code.textContent = w.source.slice(w.nextMatch, end);
       w.output.appendChild(code);
       w.nextMatch = end + 3;
     } else {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
     }
   },
 });
 
 /** Nowiki: """text""" — prevents parsing. */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "nowiki",
   match: '"{3}',
   handler(w: Wikifier) {
     const end = w.source.indexOf('"""', w.nextMatch);
     if (end >= 0) {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.source.slice(w.nextMatch, end)));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.source.slice(w.nextMatch, end)));
       w.nextMatch = end + 3;
     } else {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
     }
   },
 });
@@ -784,21 +841,21 @@ Wikifier.Parser.add({
 /** Link: [[passage]], [[text|passage]], [[text->passage]], [[passage<-text]]
  *  with optional setter [$var = val].
  */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "link",
   match: "\\[\\[",
   handler(w: Wikifier) {
     const parsed = Wikifier.helpers.parseSquareBracketedMarkup(w);
 
     if (parsed.error) {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
       return;
     }
 
     w.nextMatch = parsed.pos;
 
     if (!parsed.link) {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
       return;
     }
 
@@ -820,21 +877,21 @@ Wikifier.Parser.add({
 });
 
 /** Image: [img[src]], [img[src][link]] */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "image",
   match: "\\[img\\[",
   handler(w: Wikifier) {
     const parsed = Wikifier.helpers.parseSquareBracketedMarkup(w);
 
     if (parsed.error || !parsed.source) {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
       return;
     }
 
     w.nextMatch = parsed.pos;
 
     const src = Wikifier.helpers.evalText(parsed.source.trim());
-    const img = Wikifier.rt.Output.doc.createElement("img") as HTMLImageElement;
+    const img = w.rt.Output.doc.createElement("img") as HTMLImageElement;
     img.src = src;
 
     if (parsed.link) {
@@ -859,7 +916,7 @@ Wikifier.Parser.add({
 /** Macro: <<name args>>, block macros <<name>>...body...<</name>>.
  *  Handles self-closing, block, and widget-fallback macros.
  */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "macro",
   match: "<<(?:\\/[A-Za-z][\\w-]*|[A-Za-z][\\w-]*)",
   handler(w: Wikifier) {
@@ -868,14 +925,14 @@ Wikifier.Parser.add({
 
     // Check if this is a closing tag (handled by subWikify terminator)
     if (src[start + 2] === "/") {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
       return;
     }
 
     // Parse macro name from matchText: <<name...
     const nameMatch = w.matchText.match(/^<<([A-Za-z][\w-]*)/);
     if (!nameMatch) {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
       return;
     }
 
@@ -903,7 +960,7 @@ Wikifier.Parser.add({
     if (!foundClose) {
       const loc = offsetToLineCol(src, start);
       console.warn(`[wikifier] unclosed macro <<${macroName}>> at ${loc.line}:${loc.col}`);
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(w.matchText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(w.matchText));
       return;
     }
 
@@ -912,7 +969,7 @@ Wikifier.Parser.add({
     w.nextMatch = pos + 2; // past >>
 
     // Look up macro
-    const macroDef = Wikifier.rt.Macro.get(macroName);
+    const macroDef = w.rt.Macro.get(macroName);
 
     if (macroDef) {
       // Parse arguments
@@ -929,7 +986,7 @@ Wikifier.Parser.add({
       }
 
       // Build macro context
-      const macroOutput = Wikifier.rt.Output.doc.createDocumentFragment();
+      const macroOutput = w.rt.Output.doc.createDocumentFragment();
       const context = {
         name: macroName,
         args: parsedArgs,
@@ -958,14 +1015,14 @@ Wikifier.Parser.add({
       w.output.appendChild(macroOutput);
     } else {
       // Try widget fallback
-      if (Wikifier.rt.Navigation.has(macroName) || Wikifier.rt.Navigation.has("widget_" + macroName)) {
+      if (w.rt.Navigation.has(macroName) || w.rt.Navigation.has("widget_" + macroName)) {
         const parsedArgs = parseMacroArgs(rawArgs);
-        Wikifier.rt.Widget.call(macroName, ...parsedArgs);
+        w.rt.Widget.call(macroName, ...parsedArgs);
       } else {
         // Unknown macro — output as text with warning
         const loc = offsetToLineCol(src, start);
         console.warn(`[wikifier] unknown macro <<${macroName}>> at ${loc.line}:${loc.col}`);
-        w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(`<<${macroName}${rawArgs ? " " + rawArgs : ""}>>`));
+        w.output.appendChild(w.rt.Output.doc.createTextNode(`<<${macroName}${rawArgs ? " " + rawArgs : ""}>>`));
       }
     }
   },
@@ -1022,7 +1079,7 @@ function collectMacroPayload(
         // Capture final body segment
         const bodyEnd = match.index;
         const bodyContent = src.slice(bodyStart, bodyEnd);
-        const bodyFrag = Wikifier.rt.Output.doc.createDocumentFragment();
+        const bodyFrag = w.rt.Output.doc.createDocumentFragment();
         new BodyWikifier(w, bodyFrag, bodyStart, bodyEnd);
         payload.push({
           name: currentName,
@@ -1049,7 +1106,7 @@ function collectMacroPayload(
       // Clause tag at our depth
       const bodyEnd = match.index;
       const bodyContent = src.slice(bodyStart, bodyEnd);
-      const bodyFrag = Wikifier.rt.Output.doc.createDocumentFragment();
+      const bodyFrag = w.rt.Output.doc.createDocumentFragment();
       new BodyWikifier(w, bodyFrag, bodyStart, bodyEnd);
       payload.push({
         name: currentName,
@@ -1149,19 +1206,19 @@ function escapeRegex(s: string): string {
 // ---------------------------------------------------------------------------
 
 /** Variable interpolation: $var, _var, $obj.prop, $arr[0], etc.
- *  Evaluates via Wikifier.rt.State.get() and outputs the result as text.
+ *  Evaluates via w.rt.State.get() and outputs the result as text.
  */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "variable",
   match: "(?:\\$|_)\\w+(?:(?:\\.\\w+)|(?:\\[[^\\]]+\\]))*",
   handler(w: Wikifier) {
     const expr = w.matchText;
     try {
       const value = Wikifier.evalExpression(expr);
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(value == null ? "" : String(value)));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(value == null ? "" : String(value)));
     } catch {
       // If evaluation fails, output the raw text
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(expr));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(expr));
     }
   },
 });
@@ -1170,7 +1227,7 @@ Wikifier.Parser.add({
  *  Supports @attr="expr" for dynamic attribute evaluation.
  *  Void elements are self-closing. Block elements use subWikify.
  */
-Wikifier.Parser.add({
+_addParser(registry, {
   name: "html",
   match: "<\\/?[A-Za-z][\\w-]*(?:\\s[^>]*)?\\/?>",
   handler(w: Wikifier) {
@@ -1181,21 +1238,21 @@ Wikifier.Parser.add({
     if (tagText.startsWith("</")) {
       // Closing tags are handled by subWikify terminators, not here.
       // If we hit one outside subWikify, output it as text.
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(tagText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(tagText));
       return;
     }
 
     // Parse tag name
     const tagMatch = tagText.match(/^<([A-Za-z][\w-]*)/);
     if (!tagMatch) {
-      w.output.appendChild(Wikifier.rt.Output.doc.createTextNode(tagText));
+      w.output.appendChild(w.rt.Output.doc.createTextNode(tagText));
       return;
     }
 
     const tagName = tagMatch[1]!.toLowerCase();
     const isSelfClosing = tagText.endsWith("/>") || isVoidElement(tagName);
 
-    const el = Wikifier.rt.Output.doc.createElement(tagName);
+    const el = w.rt.Output.doc.createElement(tagName);
 
     // Parse attributes
     const attrRegex = /\s+([@\w-]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
@@ -1228,14 +1285,7 @@ Wikifier.Parser.add({
   },
 });
 
-const VOID_ELEMENTS = new Set([
-  "area", "base", "br", "col", "embed", "hr", "img", "input",
-  "link", "meta", "param", "source", "track", "wbr",
-]);
-
-function isVoidElement(tagName: string): boolean {
-  return VOID_ELEMENTS.has(tagName);
-}
-
 // Reset modified flag after initial parser registration
-Wikifier.Parser.modified = false;
+registry.modified = false;
+
+} // end registerBuiltinParsers
