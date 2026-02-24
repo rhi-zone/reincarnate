@@ -644,6 +644,10 @@ export class GameRuntime {
   private _dsNextId = 1;
   private _cameras = new Map<number, { x: number; y: number; w: number; h: number }>();
   private _nextCamId = 0;
+  private _varHashMap = new Map<string, number>();
+  private _hashVarMap = new Map<number, string>();
+  private _nextVarHash = 1;
+  private _gamepadDeadzones = new Map<number, number>();
 
   ds_list_create(): number { const id = this._dsNextId++; this._dsLists.set(id, []); return id; }
   ds_list_destroy(list: number): void { this._dsLists.delete(list); }
@@ -1203,7 +1207,19 @@ export class GameRuntime {
 
   // ---- Struct extras ----
   struct_get(struct: any, name: string): any { return struct?.[name]; }
-  struct_get_from_hash(_struct: any, _hash: number): any { return undefined; }
+  variable_get_hash(name: string): number {
+    let h = this._varHashMap.get(name);
+    if (h === undefined) {
+      h = this._nextVarHash++;
+      this._varHashMap.set(name, h);
+      this._hashVarMap.set(h, name);
+    }
+    return h;
+  }
+  struct_get_from_hash(struct: any, hash: number): any {
+    const name = this._hashVarMap.get(hash);
+    return name != null && struct != null ? struct[name] : undefined;
+  }
 
   // ---- Surface extras ----
   surface_copy(_dest: number, _x: number, _y: number, _src: number): void {
@@ -1211,7 +1227,7 @@ export class GameRuntime {
   }
 
   // ---- Tags / misc ----
-  tag_get_assets(_tag: string, _kind?: number): any[] { return []; }
+  tag_get_assets(_tag: string, _kind?: number): any[] { throw new Error("tag_get_assets: not yet implemented"); }
   url_open_ext(url: string, _target: string): void { window.open(url, "_blank"); }
 
   // ---- View extras ----
@@ -1312,12 +1328,16 @@ export class GameRuntime {
   part_system_depth(_syst: number, _depth: number): void { /* no-op */ }
   layer_background_visible(_bg: number, _visible: boolean): void { /* no-op */ }
   layer_sequence_create(_layer: any, _x: number, _y: number, _seq: number): number { throw new Error("layer_sequence_create: not yet implemented"); }
-  layer_sequence_is_finished(_seq: number): boolean { return true; }
+  layer_sequence_is_finished(_seq: number): boolean { throw new Error("layer_sequence_is_finished: not yet implemented"); }
   string_repeat(str: string, count: number): string { return str.repeat(count); }
 
   // ---- Gamepad API (stubs) ----
   gamepad_get_device_count(): number { return navigator.getGamepads().filter(g => g != null).length; }
-  gamepad_axis_value(device: number, axis: number): number { return navigator.getGamepads()[device]?.axes[axis] ?? 0; }
+  gamepad_axis_value(device: number, axis: number): number {
+    const raw = navigator.getGamepads()[device]?.axes[axis] ?? 0;
+    const dz = this._gamepadDeadzones.get(device) ?? 0;
+    return Math.abs(raw) < dz ? 0 : raw;
+  }
   gamepad_button_check_pressed(_device: number, _button: number): boolean { throw new Error("gamepad_button_check_pressed: requires per-frame gamepad state tracking"); }
   gamepad_button_check_released(_device: number, _button: number): boolean { throw new Error("gamepad_button_check_released: requires per-frame gamepad state tracking"); }
   gamepad_button_check(device: number, button: number): boolean { return navigator.getGamepads()[device]?.buttons[button]?.pressed ?? false; }
@@ -1736,7 +1756,7 @@ export class GameRuntime {
   game_get_speed(_type: number): number { return this.room_speed; }
 
   // ---- Layer extras ----
-  layer_get_depth(_layer: any): number { return 0; }
+  layer_get_depth(_layer: any): number { throw new Error("layer_get_depth: not yet implemented"); }
   layer_set_visible(_layer: any, _visible: boolean): void { /* no-op */ }
   layer_x(_layer: any, _x?: number): any { if (_x !== undefined) return; return 0; }
   layer_y(_layer: any, _y?: number): any { if (_y !== undefined) return; return 0; }
@@ -1772,7 +1792,7 @@ export class GameRuntime {
   // ---- Gamepad extras ----
   gamepad_get_description(device: number): string { return navigator.getGamepads()[device]?.id ?? ""; }
   gamepad_is_supported(): boolean { return "getGamepads" in navigator; }
-  gamepad_set_axis_deadzone(_device: number, _deadzone: number): void { /* no-op */ }
+  gamepad_set_axis_deadzone(device: number, deadzone: number): void { this._gamepadDeadzones.set(device, deadzone); }
   gamepad_set_color(_device: number, _col: number): void { /* no-op */ }
 
   // ---- GC extras ----
