@@ -1,14 +1,17 @@
-use serde::{de::DeserializeOwned, Serialize};
-
-/// Persistence system trait — handles save/load storage.
+/// Persistence platform trait — key-value string storage.
 ///
-/// Uses serde for serialization, allowing backends to choose
-/// the storage mechanism (filesystem, localStorage, cloud, etc.).
+/// The platform interface stores raw strings. Serialization (JSON, bincode, etc.)
+/// is the API shim's responsibility, not the platform's. This keeps the platform
+/// contract free of serde or any encoding dependency.
+///
+/// Implementations: browser localStorage + OPFS, filesystem, IndexedDB, etc.
 pub trait Persistence {
-    type Error: std::error::Error;
+    /// Write a string value under key.
+    fn save(&mut self, key: &str, data: &str);
 
-    fn save<T: Serialize>(&mut self, slot: &str, data: &T) -> Result<(), Self::Error>;
-    fn load<T: DeserializeOwned>(&self, slot: &str) -> Result<Option<T>, Self::Error>;
-    fn delete(&mut self, slot: &str) -> Result<(), Self::Error>;
-    fn list_slots(&self) -> Result<Vec<String>, Self::Error>;
+    /// Read a string value by key. Returns None if not found.
+    fn load(&self, key: &str) -> Option<String>;
+
+    /// Remove a key from storage.
+    fn remove(&mut self, key: &str);
 }

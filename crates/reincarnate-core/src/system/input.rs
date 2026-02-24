@@ -19,6 +19,12 @@ pub enum MouseButton {
 }
 
 /// Input system trait — handles keyboard, mouse, and touch input.
+///
+/// This uses a polling model (`is_key_down`, `is_mouse_pressed`, etc.), which
+/// is idiomatic for Rust/winit game loops. The TypeScript platform uses a
+/// callback model (`on_key_down(cb)`, `on_scroll(cb)`) because browser input
+/// is inherently event-driven. Both are valid implementations of the same
+/// conceptual interface. `on_scroll` has no polling equivalent here yet.
 pub trait Input {
     fn is_key_down(&self, key: Key) -> bool;
     fn is_key_pressed(&self, key: Key) -> bool;
