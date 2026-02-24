@@ -2,7 +2,7 @@
  * GML Runtime — game loop, GMLObject base class, room system.
  */
 
-import { GraphicsContext, initCanvas, createCanvas, resizeCanvas, loadImage, scheduleFrame, saveItem, loadItem } from "./platform";
+import { GraphicsContext, initCanvas, createCanvas, resizeCanvas, loadImage, scheduleFrame, saveItem, loadItem, removeItem } from "./platform";
 import type { RenderRoot } from "../../../shared/ts/render-root";
 import { DrawState, createDrawAPI } from "./draw";
 import { InputState, createInputAPI } from "./input";
@@ -1002,7 +1002,19 @@ export class GameRuntime {
 
   // ---- Steam API (platform-provided or no-op) ----
 
-  steam_current_game_language(): string { throw new Error("steam_current_game_language: not yet implemented"); }
+  steam_current_game_language(): string {
+    const code = (navigator.language ?? "en").split("-")[0]!.toLowerCase();
+    const map: Record<string, string> = {
+      en: "english", fr: "french", de: "german", es: "spanish",
+      pt: "portuguese", it: "italian", nl: "dutch", ru: "russian",
+      ja: "japanese", ko: "korean", zh: "schinese", pl: "polish",
+      cs: "czech", da: "danish", fi: "finnish", nb: "norwegian",
+      sv: "swedish", ro: "romanian", tr: "turkish", hu: "hungarian",
+      sk: "slovak", uk: "ukrainian", bg: "bulgarian", el: "greek",
+      th: "thai", vi: "vietnamese",
+    };
+    return map[code] ?? "english";
+  }
   steam_inventory_result_destroy(_result: number): void { throw new Error("steam_inventory_result_destroy: not yet implemented"); }
   steam_ugc_get_item_install_info(_id: number, _arr: any): boolean { throw new Error("steam_ugc_get_item_install_info: not yet implemented"); }
   steam_ugc_get_subscribed_items(_arr: any): number { throw new Error("steam_ugc_get_subscribed_items: not yet implemented"); }
@@ -1010,20 +1022,20 @@ export class GameRuntime {
   steam_lobby_join_id(_id: number): void { throw new Error("steam_lobby_join_id: not yet implemented"); }
   steam_lobby_set_data(_key: string, _val: string, _lobby?: number): void { throw new Error("steam_lobby_set_data: not yet implemented"); }
   steam_lobby_get_data(_key: string, _lobby?: number): string { throw new Error("steam_lobby_get_data: not yet implemented"); }
-  steam_activate_overlay_store(_app: number): void { throw new Error("steam_activate_overlay_store: not yet implemented"); }
-  steam_input_get_digital_action_handle(_name: string): number { throw new Error("steam_input_get_digital_action_handle: not yet implemented"); }
-  steam_is_cloud_enabled_for_account(): boolean { throw new Error("steam_is_cloud_enabled_for_account: not yet implemented"); }
+  steam_activate_overlay_store(_app: number): void { /* no-op */ }
+  steam_input_get_digital_action_handle(_name: string): number { return 0; }
+  steam_is_cloud_enabled_for_account(): boolean { return false; }
   steam_inventory_result_get_items(_result: number, _arr?: any[]): any[] { throw new Error("steam_inventory_result_get_items: not yet implemented"); }
   steam_lobby_get_member_id(_index: number, _lobby?: number): number { throw new Error("steam_lobby_get_member_id: not yet implemented"); }
-  steam_input_get_action_set_handle(_name: string): number { throw new Error("steam_input_get_action_set_handle: not yet implemented"); }
-  steam_get_stat_float(_name: string): number { throw new Error("steam_get_stat_float: not yet implemented"); }
-  steam_get_global_stat_int(_name: string): number { throw new Error("steam_get_global_stat_int: not yet implemented"); }
-  steam_get_user_account_id(): number { throw new Error("steam_get_user_account_id: not yet implemented"); }
-  steam_image_get_rgba(_image: number, _buf: number, _size: number): boolean { throw new Error("steam_image_get_rgba: not yet implemented"); }
-  steam_input_enable_device_callbacks(): void { throw new Error("steam_input_enable_device_callbacks: not yet implemented"); }
+  steam_input_get_action_set_handle(_name: string): number { return 0; }
+  steam_get_stat_float(_name: string): number { return parseFloat(loadItem(this._steamStatKey(_name)) ?? "0"); }
+  steam_get_global_stat_int(_name: string): number { return 0; }
+  steam_get_user_account_id(): number { return 0; }
+  steam_image_get_rgba(_image: number, _buf: number, _size: number): boolean { return false; }
+  steam_input_enable_device_callbacks(): void { /* no-op */ }
   steam_lobby_get_chat_message_text(_index: number, _lobby?: number): string { throw new Error("steam_lobby_get_chat_message_text: not yet implemented"); }
   steam_lobby_get_owner_id(_lobby?: number): number { throw new Error("steam_lobby_get_owner_id: not yet implemented"); }
-  steam_request_friend_rich_presence(_steamid: number): void { throw new Error("steam_request_friend_rich_presence: not yet implemented"); }
+  steam_request_friend_rich_presence(_steamid: number): void { /* no-op */ }
   steam_ugc_get_item_update_info(_handle: number, _arr: any): boolean { throw new Error("steam_ugc_get_item_update_info: not yet implemented"); }
   steam_ugc_submit_item_update(_handle: number, _note: string): void { throw new Error("steam_ugc_submit_item_update: not yet implemented"); }
 
@@ -1251,21 +1263,26 @@ export class GameRuntime {
   }
 
   // ---- More Steam API ----
-  steam_activate_overlay(_type: string): void { throw new Error("steam_activate_overlay: not yet implemented"); }
-  steam_activate_overlay_user(_type: string, _steamid: number): void { throw new Error("steam_activate_overlay_user: not yet implemented"); }
-  steam_get_app_id(): number { throw new Error("steam_get_app_id: not yet implemented"); }
-  steam_get_user_persona_name_sync(_steamid?: number): string { throw new Error("steam_get_user_persona_name_sync: not yet implemented"); }
-  steam_get_stat_int(_name: string): number { throw new Error("steam_get_stat_int: not yet implemented"); }
-  steam_get_global_stat_history_int(_name: string, _days?: number): number { throw new Error("steam_get_global_stat_history_int: not yet implemented"); }
-  steam_is_overlay_activated(): boolean { throw new Error("steam_is_overlay_activated: not yet implemented"); }
-  steam_image_get_size(_image: number): [number, number] { throw new Error("steam_image_get_size: not yet implemented"); }
+  steam_activate_overlay(_type: string): void { /* no-op — no Steam overlay in browser */ }
+  steam_activate_overlay_user(_type: string, _steamid: number): void { /* no-op */ }
+  steam_get_app_id(): number { return 0; }
+  steam_get_user_persona_name_sync(_steamid?: number): string { return ""; }
+  steam_get_stat_int(_name: string): number { return parseInt(loadItem(this._steamStatKey(_name)) ?? "0", 10); }
+  steam_get_global_stat_history_int(_name: string, _days?: number): number { return 0; }
+  steam_is_overlay_activated(): boolean { return false; }
+  steam_image_get_size(_image: number): [number, number] { return [0, 0]; }
   steam_lobby_get_member_count(_lobby?: number): number { throw new Error("steam_lobby_get_member_count: not yet implemented"); }
   steam_lobby_list_add_string_filter(_key: string, _val: string, _type: number): void { throw new Error("steam_lobby_list_add_string_filter: not yet implemented"); }
   steam_lobby_get_chat_message_data(_msg: number, _buf: number, _lobby?: number): number { throw new Error("steam_lobby_get_chat_message_data: not yet implemented"); }
   steam_ugc_subscribe_item(_id: number): void { throw new Error("steam_ugc_subscribe_item: not yet implemented"); }
-  steam_input_run_frame(): void { throw new Error("steam_input_run_frame: not yet implemented"); }
-  steam_file_write(_path: string, _data: string, _length?: number): boolean { throw new Error("steam_file_write: not yet implemented"); }
-  steam_file_exists(_path: string): boolean { throw new Error("steam_file_exists: not yet implemented"); }
+  steam_input_run_frame(): void { /* no-op */ }
+  steam_file_write(_path: string, _data: string, _length?: number): boolean {
+    const data = _length !== undefined ? _data.slice(0, _length) : _data;
+    saveItem(this._steamCloudKey(_path), data);
+    this._steamCloudAddToIndex(_path);
+    return true;
+  }
+  steam_file_exists(_path: string): boolean { return loadItem(this._steamCloudKey(_path)) !== null; }
   /** UDS (User Data System) is PS4-specific telemetry — no browser equivalent. */
   psn_post_uds_event(_evtype: number, ..._args: any[]): void { /* no-op — PS4 telemetry, no browser equivalent */ }
 
@@ -1390,17 +1407,21 @@ export class GameRuntime {
   instance_change(_classIndex: number, _performEvents: boolean): void { throw new Error("instance_change: not yet implemented"); }
 
   // ---- More Steam ----
-  steam_initialised(): boolean { throw new Error("steam_initialised: not yet implemented"); }
-  steam_indicate_achievement_progress(_name: string, _cur: number, _max: number): void { throw new Error("steam_indicate_achievement_progress: not yet implemented"); }
-  steam_get_user_steam_id(): number { throw new Error("steam_get_user_steam_id: not yet implemented"); }
-  steam_get_persona_name(): string { throw new Error("steam_get_persona_name: not yet implemented"); }
-  steam_set_achievement(_name: string): void { throw new Error("steam_set_achievement: not yet implemented"); }
-  steam_request_global_achievement_percentages(): void { throw new Error("steam_request_global_achievement_percentages: not yet implemented"); }
-  steam_get_achievement(_name: string): boolean { throw new Error("steam_get_achievement: not yet implemented"); }
-  steam_store_stats(): void { throw new Error("steam_store_stats: not yet implemented"); }
-  steam_set_stat_int(_name: string, _val: number): void { throw new Error("steam_set_stat_int: not yet implemented"); }
+  steam_initialised(): boolean { return false; }
+  steam_indicate_achievement_progress(_name: string, _cur: number, _max: number): void { /* no-op — progress display only */ }
+  steam_get_user_steam_id(): number { return 0; }
+  steam_get_persona_name(): string { return ""; }
+  steam_set_achievement(_name: string): void {
+    const set = this._steamAchSet();
+    set.add(_name);
+    this._steamAchSave(set);
+  }
+  steam_request_global_achievement_percentages(): void { /* no-op */ }
+  steam_get_achievement(_name: string): boolean { return this._steamAchSet().has(_name); }
+  steam_store_stats(): void { /* no-op — stats are already persisted to localStorage immediately */ }
+  steam_set_stat_int(_name: string, _val: number): void { saveItem(this._steamStatKey(_name), String(Math.trunc(_val))); }
   steam_net_packet_get_sender_id(): number { throw new Error("steam_net_packet_get_sender_id: not yet implemented"); }
-  steam_is_cloud_enabled_for_app(): boolean { throw new Error("steam_is_cloud_enabled_for_app: not yet implemented"); }
+  steam_is_cloud_enabled_for_app(): boolean { return false; }
   steam_ugc_create_query_user(_account_id: number, _list_type: number, _matching_type: number, _sort_order: number, _creator_app_id?: number, _consumer_app_id?: number, _page?: number): number { throw new Error("steam_ugc_create_query_user: not yet implemented"); }
 
   // ---- Misc ----
@@ -1637,7 +1658,7 @@ export class GameRuntime {
   }
 
   // ---- More Steam ----
-  steam_utils_enable_callbacks(_enable?: boolean): void { throw new Error("steam_utils_enable_callbacks: not yet implemented"); }
+  steam_utils_enable_callbacks(_enable?: boolean): void { /* no-op */ }
   steam_upload_score_buffer_ext(_name: string, _score: number, _buf: number, ..._args: any[]): void { throw new Error("steam_upload_score_buffer_ext: not yet implemented"); }
   steam_upload_score_ext(_name: string, _score: number, ..._args: any[]): void { throw new Error("steam_upload_score_ext: not yet implemented"); }
   steam_ugc_start_item_update(_appId: number, _fileId: number): number { throw new Error("steam_ugc_start_item_update: not yet implemented"); }
@@ -1645,20 +1666,20 @@ export class GameRuntime {
   steam_net_packet_get_data(_buf: number): void { throw new Error("steam_net_packet_get_data: not yet implemented"); }
   steam_net_packet_receive(): boolean { throw new Error("steam_net_packet_receive: not yet implemented"); }
   steam_net_packet_send(_steamid: number, _buf: number, _size?: number, _type?: number): void { throw new Error("steam_net_packet_send: not yet implemented"); }
-  steam_music_play(): void { throw new Error("steam_music_play: not yet implemented"); }
-  steam_music_is_enabled(): boolean { throw new Error("steam_music_is_enabled: not yet implemented"); }
-  steam_music_get_status(): number { throw new Error("steam_music_get_status: not yet implemented"); }
+  steam_music_play(): void { /* no-op — browser does not control Steam Music */ }
+  steam_music_is_enabled(): boolean { return false; }
+  steam_music_get_status(): number { return 0; }
   steam_lobby_list_request(): void { throw new Error("steam_lobby_list_request: not yet implemented"); }
   steam_lobby_list_get_lobby_id(_index: number): number { throw new Error("steam_lobby_list_get_lobby_id: not yet implemented"); }
   steam_lobby_list_get_count(): number { throw new Error("steam_lobby_list_get_count: not yet implemented"); }
-  steam_get_most_achieved_achievement_info(_info?: any[]): boolean { throw new Error("steam_get_most_achieved_achievement_info: not yet implemented"); }
-  steam_get_local_file_change_count(): number { throw new Error("steam_get_local_file_change_count: not yet implemented"); }
-  steam_available_languages(): string { throw new Error("steam_available_languages: not yet implemented"); }
+  steam_get_most_achieved_achievement_info(_info?: any[]): boolean { return false; }
+  steam_get_local_file_change_count(): number { return 0; }
+  steam_available_languages(): string { return this.steam_current_game_language(); }
   steam_inventory_get_all_items(_arr?: any): number { throw new Error("steam_inventory_get_all_items: not yet implemented"); }
-  steam_get_quota_total(): number { throw new Error("steam_get_quota_total: not yet implemented"); }
-  steam_get_global_stat_history_real(_name: string, _days?: number): number { throw new Error("steam_get_global_stat_history_real: not yet implemented"); }
-  steam_file_read(_path: string): string { throw new Error("steam_file_read: not yet implemented"); }
-  steam_set_rich_presence(_key: string, _val: string): void { throw new Error("steam_set_rich_presence: not yet implemented"); }
+  steam_get_quota_total(): number { return 104857600; /* 100 MB typical Steam Cloud quota */ }
+  steam_get_global_stat_history_real(_name: string, _days?: number): number { return 0; }
+  steam_file_read(_path: string): string { return loadItem(this._steamCloudKey(_path)) ?? ""; }
+  steam_set_rich_presence(_key: string, _val: string): void { /* no-op — Steam rich presence not available in browser */ }
   steam_user_get_auth_session_ticket(_arr?: any): number { throw new Error("steam_user_get_auth_session_ticket: not yet implemented"); }
 
   // ---- PS5 stubs ----
@@ -1669,7 +1690,7 @@ export class GameRuntime {
   pass(): void { /* no-op: GMS2.3+ no-op statement */ }
 
   // ---- More Steam (third batch) ----
-  steam_update(): void { throw new Error("steam_update: not yet implemented"); }
+  steam_update(): void { /* no-op — no Steamworks runtime in browser */ }
   steam_ugc_set_item_tags(_handle: number, _tags: string[]): void { throw new Error("steam_ugc_set_item_tags: not yet implemented"); }
   steam_ugc_set_item_content(_handle: number, _path: string): void { throw new Error("steam_ugc_set_item_content: not yet implemented"); }
   steam_ugc_send_query(_handle: number): void { throw new Error("steam_ugc_send_query: not yet implemented"); }
@@ -1682,43 +1703,55 @@ export class GameRuntime {
   steam_ugc_set_item_preview(_handle: number, _path: string): void { throw new Error("steam_ugc_set_item_preview: not yet implemented"); }
   steam_ugc_set_item_title(_handle: number, _title: string): void { throw new Error("steam_ugc_set_item_title: not yet implemented"); }
   steam_ugc_set_item_visibility(_handle: number, _vis: number): void { throw new Error("steam_ugc_set_item_visibility: not yet implemented"); }
-  steam_stats_ready(): boolean { throw new Error("steam_stats_ready: not yet implemented"); }
-  steam_send_screenshot(_path?: string, _w?: number, _h?: number): void { throw new Error("steam_send_screenshot: not yet implemented"); }
-  steam_request_global_stats(_days: number): void { throw new Error("steam_request_global_stats: not yet implemented"); }
-  steam_reset_all_stats_achievements(_also_achievements?: boolean): void { throw new Error("steam_reset_all_stats_achievements: not yet implemented"); }
-  steam_set_stat_avg_rate(_name: string, _session: number, _session_len: number): void { throw new Error("steam_set_stat_avg_rate: not yet implemented"); }
-  steam_set_stat_float(_name: string, _val: number): void { throw new Error("steam_set_stat_float: not yet implemented"); }
+  steam_stats_ready(): boolean { return true; }
+  steam_send_screenshot(_path?: string, _w?: number, _h?: number): void { /* no-op */ }
+  steam_request_global_stats(_days: number): void { /* no-op — no server-side stats in browser */ }
+  steam_reset_all_stats_achievements(_also_achievements?: boolean): void {
+    // Clear all stats: scan localStorage for __steam_stat_<gameName>_ prefix
+    const prefix = "__steam_stat_" + this._storage.gameName + "_";
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) keysToRemove.push(k);
+    }
+    for (const k of keysToRemove) localStorage.removeItem(k);
+    if (_also_achievements !== false) {
+      this._steamAchSave(new Set());
+    }
+  }
+  steam_set_stat_avg_rate(_name: string, _session: number, _session_len: number): void { /* no-op — complex running-average stat */ }
+  steam_set_stat_float(_name: string, _val: number): void { saveItem(this._steamStatKey(_name), String(_val)); }
   steam_show_floating_gamepad_text_input(_mode: number, _x: number, _y: number, _w: number, _h: number): void { throw new Error("steam_show_floating_gamepad_text_input: not yet implemented"); }
-  steam_shutdown(): void { throw new Error("steam_shutdown: not yet implemented"); }
+  steam_shutdown(): void { /* no-op */ }
   steam_lobby_set_owner_id(_steamid: number, _lobby?: number): void { throw new Error("steam_lobby_set_owner_id: not yet implemented"); }
   steam_lobby_send_chat_message_buffer(_buf: number, _size?: number, _lobby?: number): boolean { throw new Error("steam_lobby_send_chat_message_buffer: not yet implemented"); }
   steam_lobby_is_owner(_lobby?: number): boolean { throw new Error("steam_lobby_is_owner: not yet implemented"); }
   steam_lobby_create(_type: number, _max_members: number): void { throw new Error("steam_lobby_create: not yet implemented"); }
-  steam_lobby_activate_invite_overlay(_lobby?: number): void { throw new Error("steam_lobby_activate_invite_overlay: not yet implemented"); }
+  steam_lobby_activate_invite_overlay(_lobby?: number): void { /* no-op */ }
   steam_lobby_list_get_data(_index: number, _key: string): string { throw new Error("steam_lobby_list_get_data: not yet implemented"); }
   steam_lobby_list_join(_lobby: number): void { throw new Error("steam_lobby_list_join: not yet implemented"); }
-  steam_is_user_logged_on(): boolean { throw new Error("steam_is_user_logged_on: not yet implemented"); }
-  steam_is_screenshot_requested(): boolean { throw new Error("steam_is_screenshot_requested: not yet implemented"); }
-  steam_is_overlay_enabled(): boolean { throw new Error("steam_is_overlay_enabled: not yet implemented"); }
-  steam_get_quota_free(): number { throw new Error("steam_get_quota_free: not yet implemented"); }
+  steam_is_user_logged_on(): boolean { return false; }
+  steam_is_screenshot_requested(): boolean { return false; }
+  steam_is_overlay_enabled(): boolean { return false; }
+  steam_get_quota_free(): number { return 104857600; }
   steam_get_number_of_current_players(): void { throw new Error("steam_get_number_of_current_players: not yet implemented"); }
   steam_get_app_ownership_ticket_data(_appId: number): string { throw new Error("steam_get_app_ownership_ticket_data: not yet implemented"); }
   steam_file_read_buffer(_path: string, _buf?: number): boolean { throw new Error("steam_file_read_buffer: not yet implemented"); }
-  steam_file_persisted(_path: string): boolean { throw new Error("steam_file_persisted: not yet implemented"); }
+  steam_file_persisted(_path: string): boolean { return this.steam_file_exists(_path); }
   steam_download_scores_around_user(_board: string, _range: number, _range2?: number): void { throw new Error("steam_download_scores_around_user: not yet implemented"); }
   steam_download_scores(_board: string, _start: number, _end: number): void { throw new Error("steam_download_scores: not yet implemented"); }
   steam_download_friends_scores(_board: string): void { throw new Error("steam_download_friends_scores: not yet implemented"); }
-  steam_music_pause(): void { throw new Error("steam_music_pause: not yet implemented"); }
-  steam_music_play_next(): void { throw new Error("steam_music_play_next: not yet implemented"); }
-  steam_music_play_previous(): void { throw new Error("steam_music_play_previous: not yet implemented"); }
-  steam_music_set_volume(_vol: number): void { throw new Error("steam_music_set_volume: not yet implemented"); }
-  steam_music_is_playing(): boolean { throw new Error("steam_music_is_playing: not yet implemented"); }
-  steam_user_cancel_auth_ticket(_ticket: number): void { throw new Error("steam_user_cancel_auth_ticket: not yet implemented"); }
-  steam_user_installed_dlc(_appId: number): boolean { throw new Error("steam_user_installed_dlc: not yet implemented"); }
-  steam_user_owns_dlc(_appId: number): boolean { throw new Error("steam_user_owns_dlc: not yet implemented"); }
-  steam_user_request_encrypted_app_ticket(_extra: any): void { throw new Error("steam_user_request_encrypted_app_ticket: not yet implemented"); }
+  steam_music_pause(): void { /* no-op */ }
+  steam_music_play_next(): void { /* no-op */ }
+  steam_music_play_previous(): void { /* no-op */ }
+  steam_music_set_volume(_vol: number): void { /* no-op */ }
+  steam_music_is_playing(): boolean { return false; }
+  steam_user_cancel_auth_ticket(_ticket: number): void { /* no-op */ }
+  steam_user_installed_dlc(_appId: number): boolean { return true; /* assume all DLC available when running from extracted files */ }
+  steam_user_owns_dlc(_appId: number): boolean { return true; }
+  steam_user_request_encrypted_app_ticket(_extra: any): void { /* no-op */ }
   steam_utils_get_server_real_time(): number { return Math.floor(Date.now() / 1000); }
-  steam_utils_is_steam_running_on_steam_deck(): boolean { throw new Error("steam_utils_is_steam_running_on_steam_deck: not yet implemented"); }
+  steam_utils_is_steam_running_on_steam_deck(): boolean { return false; }
 
   // ---- More sprite/font ----
   sprite_save(_spr: number, _sub: number, _fname: string): void { throw new Error("sprite_save: not yet implemented"); }
@@ -1872,29 +1905,68 @@ export class GameRuntime {
 
   /** Return communication restriction status. 0 = unrestricted (no PSN parental controls in browser). */
   psn_communication_restriction_status(_pad_index?: number): number { return 0; }
+  // ---- Steam Cloud VFS helpers ----
+  private _steamCloudKey(path: string): string {
+    return "__steam_cloud_" + this._storage.gameName + "_" + path;
+  }
+  private _steamCloudIndex(): string[] {
+    const raw = loadItem("__steam_cloud_" + this._storage.gameName + "__index");
+    if (!raw) return [];
+    try { return JSON.parse(raw) as string[]; } catch { return []; }
+  }
+  private _steamCloudAddToIndex(path: string): void {
+    const idx = this._steamCloudIndex();
+    if (!idx.includes(path)) {
+      idx.push(path);
+      saveItem("__steam_cloud_" + this._storage.gameName + "__index", JSON.stringify(idx));
+    }
+  }
+  private _steamCloudRemoveFromIndex(path: string): void {
+    const idx = this._steamCloudIndex().filter(p => p !== path);
+    saveItem("__steam_cloud_" + this._storage.gameName + "__index", JSON.stringify(idx));
+  }
+  private _steamAchSet(): Set<string> {
+    const raw = loadItem("__steam_ach_" + this._storage.gameName);
+    if (!raw) return new Set();
+    try { return new Set(JSON.parse(raw) as string[]); } catch { return new Set(); }
+  }
+  private _steamAchSave(set: Set<string>): void {
+    saveItem("__steam_ach_" + this._storage.gameName, JSON.stringify([...set]));
+  }
+  private _steamStatKey(name: string): string {
+    return "__steam_stat_" + this._storage.gameName + "_" + name;
+  }
+
 
   // ---- More Steam ----
-  steam_activate_overlay_browser(_url: string): void { throw new Error("steam_activate_overlay_browser: not yet implemented"); }
-  steam_clear_achievement(_name: string): void { throw new Error("steam_clear_achievement: not yet implemented"); }
-  steam_file_delete(_path: string): void { throw new Error("steam_file_delete: not yet implemented"); }
-  steam_file_get_list(): string[] { throw new Error("steam_file_get_list: not yet implemented"); }
-  steam_file_share(_path: string): void { throw new Error("steam_file_share: not yet implemented"); }
-  steam_file_size(_path: string): number { throw new Error("steam_file_size: not yet implemented"); }
+  steam_activate_overlay_browser(_url: string): void { window.open(_url, "_blank"); }
+  steam_clear_achievement(_name: string): void {
+    const set = this._steamAchSet();
+    set.delete(_name);
+    this._steamAchSave(set);
+  }
+  steam_file_delete(_path: string): void {
+    removeItem(this._steamCloudKey(_path));
+    this._steamCloudRemoveFromIndex(_path);
+  }
+  steam_file_get_list(): string[] { return this._steamCloudIndex(); }
+  steam_file_share(_path: string): void { /* no-op — Steam file sharing not available in browser */ }
+  steam_file_size(_path: string): number { return (loadItem(this._steamCloudKey(_path)) ?? "").length; }
   steam_file_write_buffer(_path: string, _buf: number, _size?: number): boolean { throw new Error("steam_file_write_buffer: not yet implemented"); }
   steam_file_write_file(_path: string, _srcpath: string): boolean { throw new Error("steam_file_write_file: not yet implemented"); }
   steam_get_achievement_progress_limits_int(_name: string): [number, number] { throw new Error("steam_get_achievement_progress_limits_int: not yet implemented"); }
-  steam_get_global_stat_real(_name: string): number { throw new Error("steam_get_global_stat_real: not yet implemented"); }
+  steam_get_global_stat_real(_name: string): number { return 0; }
   steam_get_local_file_change(_index: number): string { throw new Error("steam_get_local_file_change: not yet implemented"); }
-  steam_input_activate_action_set(_handle: number, _setHandle: number): void { throw new Error("steam_input_activate_action_set: not yet implemented"); }
-  steam_input_get_action_origin_from_xbox_origin(_handle: number, _origin: number): number { throw new Error("steam_input_get_action_origin_from_xbox_origin: not yet implemented"); }
-  steam_input_get_analog_action_handle(_name: string): number { throw new Error("steam_input_get_analog_action_handle: not yet implemented"); }
-  steam_input_get_connected_controllers(): number[] { throw new Error("steam_input_get_connected_controllers: not yet implemented"); }
-  steam_input_get_digital_action_data(_controller: number, _action: number): boolean { throw new Error("steam_input_get_digital_action_data: not yet implemented"); }
-  steam_input_get_digital_action_origins(_controller: number, _action_set: number, _action: number): number[] { throw new Error("steam_input_get_digital_action_origins: not yet implemented"); }
-  steam_input_get_glyph_png_for_action_origin(_origin: number, _style: number, _flags: number): string { throw new Error("steam_input_get_glyph_png_for_action_origin: not yet implemented"); }
-  steam_input_init(_explicit: boolean): void { throw new Error("steam_input_init: not yet implemented"); }
+  steam_input_activate_action_set(_handle: number, _setHandle: number): void { /* no-op */ }
+  steam_input_get_action_origin_from_xbox_origin(_handle: number, _origin: number): number { return 0; }
+  steam_input_get_analog_action_handle(_name: string): number { return 0; }
+  steam_input_get_connected_controllers(): number[] { return []; }
+  steam_input_get_digital_action_data(_controller: number, _action: number): boolean { return false; }
+  steam_input_get_digital_action_origins(_controller: number, _action_set: number, _action: number): number[] { return []; }
+  steam_input_get_glyph_png_for_action_origin(_origin: number, _style: number, _flags: number): string { return ""; }
+  steam_input_init(_explicit: boolean): void { /* no-op — no Steam Input in browser */ }
   steam_inventory_trigger_item_drop(_id: number): void { throw new Error("steam_inventory_trigger_item_drop: not yet implemented"); }
-  steam_is_subscribed(): boolean { throw new Error("steam_is_subscribed: not yet implemented"); }
+  steam_is_subscribed(): boolean { return false; }
   steam_lobby_leave(_lobby?: number): void { throw new Error("steam_lobby_leave: not yet implemented"); }
 
   // ---- Instance position/collision with DS list ----
