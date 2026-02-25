@@ -154,6 +154,8 @@ impl Frontend for GameMakerFrontend {
 
         // Populate sprite names for constant resolution at emit time.
         mb.set_sprite_names(data::extract_sprite_names(&dw));
+        // Populate object names for backend rewrite resolution (int → class name).
+        mb.set_object_names(obj_names.to_vec());
 
         let module = mb.build();
 

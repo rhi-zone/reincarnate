@@ -127,7 +127,7 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
         let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
-                emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &module.sprite_names, &closure_bodies, &no_stateful, &no_free_fns, &no_sys_aliases, runtime_config, debug, &mut out)?;
+                emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &module.sprite_names, &module.object_names, &closure_bodies, &no_stateful, &no_free_fns, &no_sys_aliases, runtime_config, debug, &mut out)?;
             }
         }
     }
@@ -1026,7 +1026,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             let func = &module.functions[fid];
             collect_type_refs_from_function(
                 func, "", &registry, &module.external_imports,
-                &HashMap::new(), &HashMap::new(), &global_names, engine, &mut refs,
+                &HashMap::new(), &HashMap::new(), &global_names, &module.object_names, engine, &mut refs,
             );
         }
         emit_external_imports(&refs.ext_value_refs, &refs.ext_type_refs, &module.external_imports, module_exports, "..", &mut out);
@@ -1070,7 +1070,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let no_sys_aliases = BTreeMap::new();
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
-                emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, &free_stateful_names, &free_func_names, &no_sys_aliases, runtime_config, debug, &mut out)?;
+                emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &module.sprite_names, &module.object_names, &closure_bodies, &free_stateful_names, &free_func_names, &no_sys_aliases, runtime_config, debug, &mut out)?;
             }
         }
         strip_unused_namespace_imports(&mut out);
@@ -1585,7 +1585,7 @@ fn collect_class_references(
     // Scan all method bodies for type references.
     for &fid in &group.methods {
         let func = &module.functions[fid];
-        collect_type_refs_from_function(func, self_name, registry, external_imports, static_method_owners, static_field_owners, global_names, engine, &mut refs);
+        collect_type_refs_from_function(func, self_name, registry, external_imports, static_method_owners, static_field_owners, global_names, &module.object_names, engine, &mut refs);
     }
 
     refs
@@ -1601,6 +1601,7 @@ fn collect_type_refs_from_function(
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     global_names: &HashSet<String>,
+    object_names: &[String],
     engine: EngineKind,
     refs: &mut RefSets,
 ) {
@@ -1619,6 +1620,18 @@ fn collect_type_refs_from_function(
         .filter_map(|(_id, inst)| {
             if let Op::Const(Constant::String(s)) = &inst.op {
                 inst.result.map(|v| (v, s.as_str()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    let const_ints: HashMap<_, _> = func
+        .insts
+        .iter()
+        .filter_map(|(_id, inst)| {
+            if let Op::Const(Constant::Int(n)) = &inst.op {
+                inst.result.map(|v| (v, *n))
             } else {
                 None
             }
@@ -1692,6 +1705,27 @@ fn collect_type_refs_from_function(
                         crate::rewrites::gamemaker::collect_gamemaker_instance_refs(
                             args, &const_strings, self_name, registry, external_imports, refs,
                         );
+                    }
+                    // getField with a const-int first arg: the rewrite resolves
+                    // the integer to ObjName.instances[0]!.field — register the
+                    // class name as a value import.
+                    EngineKind::GameMaker if system == "GameMaker.Instance"
+                        && method == "getField"
+                        && !args.is_empty() =>
+                    {
+                        if let Some(&obj_idx) = args.first().and_then(|v| const_ints.get(v)) {
+                            if obj_idx >= 0 {
+                                if let Some(obj_name) = object_names.get(obj_idx as usize) {
+                                    if obj_name != self_name {
+                                        if let Some(entry) = registry.lookup(obj_name) {
+                                            refs.value_refs.insert(entry.short_name.clone());
+                                        } else if external_imports.contains_key(obj_name.as_str()) {
+                                            refs.ext_value_refs.insert(obj_name.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     _ => {}
                 }
@@ -2439,7 +2473,7 @@ fn emit_functions(
         if module.functions[id].method_kind != MethodKind::Closure {
             let no_stateful = BTreeSet::new();
             let no_free_fns = HashSet::new();
-            emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, &module.sprite_names, &closure_bodies, &no_stateful, &no_free_fns, stateful_system_aliases, runtime_config, debug, out)?;
+            emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, &module.sprite_names, &module.object_names, &closure_bodies, &no_stateful, &no_free_fns, stateful_system_aliases, runtime_config, debug, out)?;
         }
     }
     Ok(())
@@ -2454,6 +2488,7 @@ fn emit_function(
     lowering_config: &LoweringConfig,
     engine: EngineKind,
     sprite_names: &[String],
+    object_names: &[String],
     closure_bodies: &HashMap<String, JsFunction>,
     stateful_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
@@ -2476,7 +2511,7 @@ fn emit_function(
     };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
-        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, closure_bodies, None),
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, object_names, closure_bodies, None),
         EngineKind::Flash => {
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
@@ -2841,7 +2876,7 @@ fn emit_class(
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, parent_method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, &closure_bodies, known_classes, lowering_config, engine, &module.sprite_names, stateful_names, free_func_names, debug, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, parent_method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, &closure_bodies, known_classes, lowering_config, engine, &module.sprite_names, &module.object_names, stateful_names, free_func_names, debug, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -2928,6 +2963,7 @@ fn emit_class_method(
     lowering_config: &LoweringConfig,
     engine: EngineKind,
     sprite_names: &[String],
+    object_names: &[String],
     stateful_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
     debug: &DebugConfig,
@@ -2974,7 +3010,7 @@ fn emit_class_method(
     let ctx = crate::lower::LowerCtx { self_param_name };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
-        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, closure_bodies, Some(&raw_name)),
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, object_names, closure_bodies, Some(&raw_name)),
         EngineKind::Flash => {
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),

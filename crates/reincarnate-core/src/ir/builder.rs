@@ -704,6 +704,10 @@ impl ModuleBuilder {
         self.module.sprite_names = names;
     }
 
+    pub fn set_object_names(&mut self, names: Vec<String>) {
+        self.module.object_names = names;
+    }
+
     pub fn add_passage_name(&mut self, display_name: String, func_name: String) {
         self.module.passage_names.insert(display_name, func_name);
     }

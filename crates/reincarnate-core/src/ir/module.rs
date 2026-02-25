@@ -146,6 +146,11 @@ pub struct Module {
     /// field defaults to named constants instead of raw integers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sprite_names: Vec<String>,
+    /// Object names indexed by object ID. Contains PascalCase names matching
+    /// the emitted class names. Used by backend rewrites to resolve integer
+    /// object indices to class-based `ObjName.instances[0]` accesses.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_names: Vec<String>,
     /// Passage names: original display name → sanitized function name.
     /// Populated by the Twine frontend so the scaffold can build a passage
     /// registry mapping names to callable functions.
@@ -185,6 +190,7 @@ impl Module {
             external_function_sigs: BTreeMap::new(),
             room_creation_code: BTreeMap::new(),
             sprite_names: Vec::new(),
+            object_names: Vec::new(),
             passage_names: BTreeMap::new(),
             passage_tags: BTreeMap::new(),
             passage_sources: BTreeMap::new(),

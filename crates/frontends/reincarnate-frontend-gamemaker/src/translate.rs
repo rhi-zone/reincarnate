@@ -2115,7 +2115,6 @@ fn translate_push_variable(
         } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
             // Constant integer target = object index pushed before stacktop access.
             // Resolve to getOn(objName, field) for clean class-based access.
-
             if obj_idx >= 0 {
                 let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                     fb.const_string(name)
