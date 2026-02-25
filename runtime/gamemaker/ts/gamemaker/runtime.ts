@@ -313,6 +313,7 @@ export class GameRuntime {
   // Video element for video_open/draw
   private _video: HTMLVideoElement | null = null;
 
+
   // Vertex buffer state
   private _vbufs = new Map<number, { verts: { x: number; y: number; col: number; alpha: number }[]; recording: boolean }>();
   private _nextVbufId = 1;
@@ -570,7 +571,17 @@ export class GameRuntime {
     if (s) { s.origin.x = xoff; s.origin.y = yoff; }
   }
   sprite_get_texture(spr: number, sub: number): number { return this.sprites[spr]?.textures[sub] ?? -1; }
-  sprite_add_from_surface(_index: number, _srf: number, _x: number, _y: number, _w: number, _h: number, _removeback: boolean, _smooth: boolean): void { throw new Error("sprite_add_from_surface: not yet implemented"); }
+  sprite_add_from_surface(index: number, srf: number, x: number, y: number, w: number, h: number, _removeback: boolean, _smooth: boolean): void {
+    // Append a new animation frame (from surface region) to an existing sprite.
+    const canvas = this._surfaces.get(srf); if (!canvas) return;
+    const sprite = this.sprites[index]; if (!sprite) return;
+    const frame = new OffscreenCanvas(w, h);
+    frame.getContext("2d")!.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+    // Push into the live arrays so existing draw code finds it by index.
+    const sheetId = this.textureSheets.push(frame as unknown as HTMLImageElement) - 1;
+    const texIdx = this.textures.push({ src: { x: 0, y: 0, w, h }, dest: { w, h }, sheetId }) - 1;
+    sprite.textures.push(texIdx);
+  }
   sprite_get_bbox_left(spr: number): number { return this.sprites[spr]?.bbox?.left ?? 0; }
   sprite_get_bbox_right(spr: number): number { return this.sprites[spr]?.bbox?.right ?? 0; }
   sprite_get_bbox_top(spr: number): number { return this.sprites[spr]?.bbox?.top ?? 0; }
@@ -1219,7 +1230,22 @@ export class GameRuntime {
     const method = (this._self as any)["user" + n];
     if (method && method !== noop) { const prev = this._self; method.call(prev); this._self = prev; }
   }
-  sprite_create_from_surface(_srf: number, _x: number, _y: number, _w: number, _h: number, _removeback: boolean, _smooth: boolean, _xorig: number, _yorig: number): number { throw new Error("sprite_create_from_surface: not yet implemented"); }
+  sprite_create_from_surface(srf: number, x: number, y: number, w: number, h: number, _removeback: boolean, _smooth: boolean, xorig: number, yorig: number): number {
+    const canvas = this._surfaces.get(srf); if (!canvas) return -1;
+    const frame = new OffscreenCanvas(w, h);
+    frame.getContext("2d")!.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+    const sheetId = this.textureSheets.push(frame as unknown as HTMLImageElement) - 1;
+    const texIdx = this.textures.push({ src: { x: 0, y: 0, w, h }, dest: { w, h }, sheetId }) - 1;
+    const newIdx = this.sprites.length;
+    this.sprites.push({
+      name: `__surface_sprite_${newIdx}`,
+      size: { width: w, height: h },
+      origin: { x: xorig, y: yorig },
+      bbox: { left: 0, right: w, top: 0, bottom: h },
+      textures: [texIdx],
+    });
+    return newIdx;
+  }
 
   // ---- ds_exists ----
   ds_exists(id: number, type: number): boolean {
@@ -1611,9 +1637,63 @@ export class GameRuntime {
     for (const byte of slice) binary += String.fromCharCode(byte);
     return btoa(binary);
   }
-  buffer_load(_filename: string, _buf: number = -1, _offset: number = 0, _size: number = 0): number { throw new Error("buffer_load: not yet implemented"); }
-  buffer_load_async(_path: string, _buf: number, _offset: number, _size: number): number { throw new Error("buffer_load_async: not yet implemented"); }
-  buffer_save_async(_buf: number, _path: string, _offset: number, _size: number): number { throw new Error("buffer_save_async: not yet implemented"); }
+  buffer_load(filename: string, buf: number = -1, offset: number = 0, _size: number = 0): number {
+    // Load from localStorage (base64-encoded binary written by buffer_save_async).
+    const stored = localStorage.getItem(this._fileKey(filename));
+    if (stored === null) return -1;
+    let data: Uint8Array;
+    try {
+      const bin = atob(stored); data = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
+    } catch {
+      // Fallback: treat as UTF-8 text
+      data = new TextEncoder().encode(stored);
+    }
+    if (buf !== -1) {
+      const b = this._buffers.get(buf); if (!b) return -1;
+      const end = offset + data.length;
+      if (end > b.data.length) this._bufferGrow(b, end);
+      b.data.set(data, offset);
+      return buf;
+    }
+    const id = this._nextBufferId++;
+    this._buffers.set(id, { data, pos: offset, kind: 1, align: 1 });
+    return id;
+  }
+  buffer_save(buf: number, filename: string): void {
+    const b = this._buffers.get(buf); if (!b) return;
+    let binary = ""; for (const byte of b.data) binary += String.fromCharCode(byte);
+    try { localStorage.setItem(this._fileKey(filename), btoa(binary)); } catch { /* storage full */ }
+  }
+  buffer_load_async(path: string, buf: number, offset: number, size: number): number {
+    // Kick off async fetch; fire ds_map async_load event when done.
+    // Returns a request handle (reuse nextBufferId counter as a request ID).
+    const reqId = this._nextBufferId++;
+    fetch(path).then(async (r) => {
+      if (!r.ok) return;
+      const data = new Uint8Array(await r.arrayBuffer());
+      const slice = size > 0 ? data.slice(offset, offset + size) : data.slice(offset);
+      if (buf !== -1) {
+        const b = this._buffers.get(buf);
+        if (b) { if (offset + slice.length > b.data.length) this._bufferGrow(b, offset + slice.length); b.data.set(slice, offset); }
+      }
+      // GML fires an Async - Load event; we approximate by setting global.async_load.
+      this.global.async_load = reqId;
+    }).catch(() => { this.global.async_load = -1; });
+    return reqId;
+  }
+  buffer_save_async(bufId: number, path: string, offset: number, size: number): number {
+    const b = this._buffers.get(bufId); if (!b) return -1;
+    const reqId = this._nextBufferId++;
+    const slice = size > 0 ? b.data.slice(offset, offset + size) : b.data.slice(offset);
+    let binary = ""; for (const byte of slice) binary += String.fromCharCode(byte);
+    try {
+      localStorage.setItem(this._fileKey(path), btoa(binary));
+      // Fire async_load on next tick to match GML semantics.
+      setTimeout(() => { this.global.async_load = reqId; }, 0);
+    } catch { this.global.async_load = -1; }
+    return reqId;
+  }
   buffer_set_surface(bufId: number, surf: number, offset: number): void {
     // Copy surface RGBA pixels into buffer at given offset (BGRA → RGBA conversion).
     const canvas = this._surfaces.get(surf);
