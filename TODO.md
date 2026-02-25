@@ -319,6 +319,14 @@ generic unknown-call spam.
 
   **`reincarnate info <name-or-path>`** — unified: accepts registry name, directory, or `.json` path; replaces old `--manifest`-only form
 
+## CLI — Build Configuration
+
+- [ ] **Feature-gate frontends, backends, and checkers in the CLI** — Currently all frontends
+  (Flash, GameMaker, Twine), the TypeScript backend, and the TypeScript checker are unconditionally
+  compiled into the CLI binary. Each should be behind a Cargo feature flag so users can build a
+  slimmer binary with only the engines they need. Pattern: `features = ["flash", "gamemaker", "twine", "ts-backend", "ts-checker"]`,
+  all enabled by default.
+
 ## Future
 
 - [ ] **Split OPFS out of localStorage backend** — `runtime/gamemaker/ts/shared/platform/persistence.ts` currently bakes OPFS in as a fire-and-forget side effect of localStorage writes. Per the persistence design, OPFS should be its own backend composed via `tee(localStorage, opfs)`. Split into `persistence/localstorage.ts` + `persistence/opfs.ts`, wire with `tee()` in `platform/index.ts`. Twine platform (`runtime/twine/ts/platform/persistence.ts`) is localStorage-only and will benefit from the same split.
@@ -333,12 +341,11 @@ generic unknown-call spam.
 
 ## CLI — `reincarnate check` (language-agnostic output validation)
 
-- [ ] **`reincarnate check` subcommand** — Runs the appropriate type-checker on emitted output and
-  prints a categorized error summary. Language-agnostic: TypeScript backend runs tsgo (`@typescript/native-preview --noEmit`),
-  future Rust backend runs `cargo clippy`. Output: total error count + per-error-code breakdown table.
-  Should support `--manifest` (or bare path / registry name once project registry lands).
-  Optional `--baseline <file>` to compare against a saved snapshot and report regressions/improvements.
-  The manifest's `backend` field (or output dir contents) determines which checker to invoke.
+- [x] **`reincarnate check` subcommand** — Implemented: Checker trait in core, TsChecker crate
+  (tsgo via bunx), CLI wiring with `--no-emit`, `--json`, `--all` flags. Supports registry names,
+  paths, and bare positional args. Prints per-code and per-file breakdown.
+- [ ] **`--baseline <file>` for check** — Compare against a saved snapshot and report regressions/improvements.
+  Not yet implemented.
 
 ## Diagnostics
 
