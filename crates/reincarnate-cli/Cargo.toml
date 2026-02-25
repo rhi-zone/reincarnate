@@ -16,6 +16,7 @@ reincarnate-frontend-flash = { path = "../frontends/reincarnate-frontend-flash" 
 reincarnate-backend-typescript = { path = "../backends/reincarnate-backend-typescript" }
 reincarnate-frontend-gamemaker = { path = "../frontends/reincarnate-frontend-gamemaker" }
 reincarnate-frontend-twine = { path = "../frontends/reincarnate-frontend-twine" }
+reincarnate-checker-ts = { path = "../checkers/reincarnate-checker-ts" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }

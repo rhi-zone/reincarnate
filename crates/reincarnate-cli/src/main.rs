@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
-use reincarnate_core::pipeline::{Backend, BackendInput, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
+use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
+use reincarnate_checker_ts::TsChecker;
 use reincarnate_core::transforms::default_pipeline;
 
 mod registry;
@@ -80,6 +81,31 @@ enum Command {
         /// Filter IR/AST dumps to functions whose name contains this substring.
         #[arg(long = "dump-function")]
         dump_function: Option<String>,
+    },
+    /// Emit and type-check the output.
+    Check {
+        /// Registry name, path to manifest file, or directory containing reincarnate.json.
+        /// Conflicts with --manifest and --all.
+        #[arg(conflicts_with_all = ["manifest", "all"])]
+        target: Option<String>,
+        /// Path to the project manifest (legacy flag; prefer positional target).
+        #[arg(long, conflicts_with_all = ["target", "all"])]
+        manifest: Option<PathBuf>,
+        /// Check all registered projects sequentially.
+        #[arg(long, conflicts_with_all = ["target", "manifest"])]
+        all: bool,
+        /// Skip emission and check existing output.
+        #[arg(long)]
+        no_emit: bool,
+        /// Output results as JSON.
+        #[arg(long)]
+        json: bool,
+        /// Transform passes to skip on top of the preset.
+        #[arg(long = "skip-pass")]
+        skip_passes: Vec<String>,
+        /// Pipeline preset: "literal" (1:1 translation) or "optimized" (default).
+        #[arg(long, default_value = "optimized")]
+        preset: String,
     },
     /// Add a project to the registry.
     Add {
@@ -389,7 +415,8 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
     Ok(())
 }
 
-fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Result<()> {
+/// Run emit and return the list of output directories produced.
+fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Result<Vec<PathBuf>> {
     let manifest = load_manifest(manifest_path)?;
     let Some(frontend) = find_frontend(&manifest.engine) else {
         bail!("no frontend available for engine {:?}", manifest.engine);
@@ -438,6 +465,7 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, debug: &
     })?;
     eprintln!("[emit] linking done, emitting...");
 
+    let mut output_dirs = Vec::new();
     for target in &manifest.targets {
         let Some(backend) = find_backend(&target.backend) else {
             bail!("no backend available for {:?}", target.backend);
@@ -460,9 +488,10 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, debug: &
         }
 
         println!("Emitted {} output to {}", backend.name(), target.output_dir.display());
+        output_dirs.push(target.output_dir.clone());
     }
 
-    Ok(())
+    Ok(output_dirs)
 }
 
 /// After a successful emit, update `last_emitted_at` for any registry entry whose
@@ -501,7 +530,7 @@ fn cmd_emit_all(skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Re
 
         let manifest_path = PathBuf::from(&entry.manifest);
         match cmd_emit(&manifest_path, skip_passes, preset, debug) {
-            Ok(()) => {
+            Ok(_) => {
                 try_update_last_emitted(&manifest_path);
             }
             Err(e) => {
@@ -520,6 +549,152 @@ fn cmd_emit_all(skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Re
             println!("  {name}: {err:#}");
         }
         bail!("{} project(s) failed to emit", failures.len())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Check command
+// ---------------------------------------------------------------------------
+
+fn find_checker(backend: &TargetBackend) -> Option<Box<dyn Checker>> {
+    match backend {
+        TargetBackend::TypeScript => Some(Box::new(TsChecker)),
+        _ => None,
+    }
+}
+
+/// Collect output dirs from the manifest without emitting.
+fn collect_output_dirs(manifest_path: &Path) -> Result<Vec<(PathBuf, TargetBackend)>> {
+    let manifest = load_manifest(manifest_path)?;
+    Ok(manifest
+        .targets
+        .iter()
+        .map(|t| (t.output_dir.clone(), t.backend.clone()))
+        .collect())
+}
+
+fn run_checks(targets: &[(PathBuf, TargetBackend)], json: bool) -> Result<()> {
+    let mut all_outputs: Vec<CheckerOutput> = Vec::new();
+    let mut has_errors = false;
+
+    for (output_dir, backend) in targets {
+        let Some(checker) = find_checker(backend) else {
+            eprintln!("[check] no checker for {:?}, skipping", backend);
+            continue;
+        };
+
+        eprintln!("[check] running {} checker on {}...", checker.name(), output_dir.display());
+        let result = checker
+            .check(CheckerInput {
+                output_dir: output_dir.clone(),
+            })
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        if result.summary.total_errors > 0 {
+            has_errors = true;
+        }
+        all_outputs.push(result);
+    }
+
+    if json {
+        let summaries: Vec<_> = all_outputs.iter().map(|o| &o.summary).collect();
+        println!("{}", serde_json::to_string_pretty(&summaries)?);
+    } else {
+        for output in &all_outputs {
+            let s = &output.summary;
+            println!("\n[check] {}", s.output_dir);
+            if s.total_errors == 0 && s.total_warnings == 0 {
+                println!("No errors.");
+                continue;
+            }
+            println!(
+                "Total: {} error(s), {} warning(s)",
+                s.total_errors, s.total_warnings
+            );
+
+            if !s.by_code.is_empty() {
+                println!("\nBy error code:");
+                for (code, count) in &s.by_code {
+                    println!("  {count:>5}  {code}");
+                }
+            }
+
+            if !s.by_file.is_empty() {
+                let max_files = 20;
+                println!("\nBy file (top {max_files}):");
+                for (file, count) in s.by_file.iter().take(max_files) {
+                    println!("  {count:>5}  {file}");
+                }
+                if s.by_file.len() > max_files {
+                    println!("  ... and {} more file(s)", s.by_file.len() - max_files);
+                }
+            }
+        }
+    }
+
+    if has_errors {
+        let total: usize = all_outputs.iter().map(|o| o.summary.total_errors).sum();
+        bail!("type checking found {total} error(s)");
+    }
+
+    Ok(())
+}
+
+fn cmd_check(
+    manifest_path: &Path,
+    no_emit: bool,
+    json: bool,
+    skip_passes: &[String],
+    preset: &str,
+) -> Result<()> {
+    let targets = if no_emit {
+        collect_output_dirs(manifest_path)?
+    } else {
+        let debug = DebugConfig::default();
+        let output_dirs = cmd_emit(manifest_path, skip_passes, preset, &debug)?;
+        try_update_last_emitted(manifest_path);
+        // Pair output dirs with backends from the manifest.
+        let manifest = load_manifest(manifest_path)?;
+        output_dirs
+            .into_iter()
+            .zip(manifest.targets.iter().map(|t| t.backend.clone()))
+            .collect()
+    };
+
+    run_checks(&targets, json)
+}
+
+fn cmd_check_all(no_emit: bool, json: bool, skip_passes: &[String], preset: &str) -> Result<()> {
+    let reg = load_registry()?;
+    if reg.projects.is_empty() {
+        println!("No projects in registry. Use `reincarnate add` to register a project.");
+        return Ok(());
+    }
+
+    let projects: Vec<(&String, &ProjectEntry)> = reg.projects.iter().collect();
+    let total = projects.len();
+    let mut failures: Vec<(String, anyhow::Error)> = Vec::new();
+
+    for (i, (name, entry)) in projects.iter().enumerate() {
+        let engine_label = entry.engine.as_deref().unwrap_or("unknown");
+        println!("\n[{}/{}] {} ({})", i + 1, total, name, engine_label);
+
+        let manifest_path = PathBuf::from(&entry.manifest);
+        if let Err(e) = cmd_check(&manifest_path, no_emit, json, skip_passes, preset) {
+            eprintln!("  [error] {e:#}");
+            failures.push((name.to_string(), e));
+        }
+    }
+
+    if failures.is_empty() {
+        println!("\nAll {total} project(s) checked successfully.");
+        Ok(())
+    } else {
+        println!("\n{} of {} project(s) had errors:", failures.len(), total);
+        for (name, err) in &failures {
+            println!("  {name}: {err:#}");
+        }
+        bail!("{} project(s) had check errors", failures.len())
     }
 }
 
@@ -727,7 +902,15 @@ fn main() -> Result<()> {
                 if result.is_ok() {
                     try_update_last_emitted(&path);
                 }
-                result
+                result.map(|_| ())
+            }
+        }
+        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset } => {
+            if *all {
+                cmd_check_all(*no_emit, *json, skip_passes, preset)
+            } else {
+                let path = resolve_target(target.as_deref(), manifest.as_deref())?;
+                cmd_check(&path, *no_emit, *json, skip_passes, preset)
             }
         }
         Command::Add { path, name, force } => {
