@@ -32,7 +32,7 @@ pub struct CheckerOutput {
     pub summary: CheckSummary,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckSummary {
     pub output_dir: String,
     pub total_errors: usize,

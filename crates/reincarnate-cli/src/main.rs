@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
-use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
+use std::collections::HashMap;
+use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, CheckSummary, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 #[cfg(feature = "checker-typescript")]
 use reincarnate_checker_typescript::TsChecker;
@@ -107,6 +108,12 @@ enum Command {
         /// Pipeline preset: "literal" (1:1 translation) or "optimized" (default).
         #[arg(long, default_value = "optimized")]
         preset: String,
+        /// Save check results as a baseline to the given file.
+        #[arg(long)]
+        save_baseline: Option<PathBuf>,
+        /// Compare check results against a previously saved baseline.
+        #[arg(long)]
+        baseline: Option<PathBuf>,
     },
     /// Add a project to the registry.
     Add {
@@ -579,7 +586,12 @@ fn collect_output_dirs(manifest_path: &Path) -> Result<Vec<(PathBuf, TargetBacke
         .collect())
 }
 
-fn run_checks(targets: &[(PathBuf, TargetBackend)], json: bool) -> Result<()> {
+fn run_checks(
+    targets: &[(PathBuf, TargetBackend)],
+    json: bool,
+    save_baseline: Option<&Path>,
+    baseline: Option<&Path>,
+) -> Result<()> {
     let mut all_outputs: Vec<CheckerOutput> = Vec::new();
     let mut has_errors = false;
 
@@ -602,12 +614,40 @@ fn run_checks(targets: &[(PathBuf, TargetBackend)], json: bool) -> Result<()> {
         all_outputs.push(result);
     }
 
-    if json {
-        let summaries: Vec<_> = all_outputs.iter().map(|o| &o.summary).collect();
-        println!("{}", serde_json::to_string_pretty(&summaries)?);
+    let summaries: Vec<CheckSummary> = all_outputs.iter().map(|o| o.summary.clone()).collect();
+
+    // Save baseline if requested.
+    if let Some(path) = save_baseline {
+        let json_str = serde_json::to_string_pretty(&summaries)?;
+        fs::write(path, json_str).with_context(|| format!("failed to write baseline: {}", path.display()))?;
+        eprintln!("[check] baseline saved to {}", path.display());
+    }
+
+    // Load and compare against baseline if requested.
+    let baseline_diff = if let Some(path) = baseline {
+        let file = File::open(path).with_context(|| format!("failed to open baseline: {}", path.display()))?;
+        let reader = BufReader::new(file);
+        let old: Vec<CheckSummary> = serde_json::from_reader(reader)
+            .with_context(|| format!("failed to parse baseline: {}", path.display()))?;
+        Some(compute_baseline_diff(&old, &summaries))
     } else {
-        for output in &all_outputs {
-            let s = &output.summary;
+        None
+    };
+
+    if json {
+        if let Some(diff) = &baseline_diff {
+            #[derive(serde::Serialize)]
+            struct JsonOutput<'a> {
+                summaries: &'a [CheckSummary],
+                baseline_diff: &'a BaselineDiff,
+            }
+            let output = JsonOutput { summaries: &summaries, baseline_diff: diff };
+            println!("{}", serde_json::to_string_pretty(&output)?);
+        } else {
+            println!("{}", serde_json::to_string_pretty(&summaries)?);
+        }
+    } else {
+        for s in &summaries {
             println!("\n[check] {}", s.output_dir);
             if s.total_errors == 0 && s.total_warnings == 0 {
                 println!("No errors.");
@@ -636,14 +676,140 @@ fn run_checks(targets: &[(PathBuf, TargetBackend)], json: bool) -> Result<()> {
                 }
             }
         }
+
+        if let Some(diff) = &baseline_diff {
+            print_baseline_diff(diff, baseline.unwrap());
+        }
     }
 
-    if has_errors {
-        let total: usize = all_outputs.iter().map(|o| o.summary.total_errors).sum();
+    if let Some(diff) = &baseline_diff {
+        if diff.total_delta > 0 {
+            bail!(
+                "regression detected: {} more error(s) than baseline ({} → {})",
+                diff.total_delta, diff.old_total, diff.new_total
+            );
+        }
+    }
+
+    if has_errors && baseline.is_none() {
+        let total: usize = summaries.iter().map(|s| s.total_errors).sum();
         bail!("type checking found {total} error(s)");
     }
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Baseline comparison
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, serde::Serialize)]
+struct BaselineDiff {
+    old_total: usize,
+    new_total: usize,
+    total_delta: isize,
+    by_code: Vec<(String, usize, usize, isize)>,
+    by_file: Vec<(String, usize, usize, isize)>,
+}
+
+fn compute_baseline_diff(old: &[CheckSummary], new: &[CheckSummary]) -> BaselineDiff {
+    let old_total: usize = old.iter().map(|s| s.total_errors).sum();
+    let new_total: usize = new.iter().map(|s| s.total_errors).sum();
+
+    // Aggregate by_code across all summaries.
+    let mut old_codes: HashMap<&str, usize> = HashMap::new();
+    let mut new_codes: HashMap<&str, usize> = HashMap::new();
+    for s in old {
+        for (code, count) in &s.by_code {
+            *old_codes.entry(code.as_str()).or_default() += count;
+        }
+    }
+    for s in new {
+        for (code, count) in &s.by_code {
+            *new_codes.entry(code.as_str()).or_default() += count;
+        }
+    }
+
+    let mut all_codes: Vec<&str> = old_codes.keys().chain(new_codes.keys()).copied().collect();
+    all_codes.sort();
+    all_codes.dedup();
+
+    let mut by_code: Vec<(String, usize, usize, isize)> = Vec::new();
+    for code in &all_codes {
+        let o = old_codes.get(code).copied().unwrap_or(0);
+        let n = new_codes.get(code).copied().unwrap_or(0);
+        if o != n {
+            by_code.push((code.to_string(), o, n, n as isize - o as isize));
+        }
+    }
+    by_code.sort_by(|a, b| b.3.unsigned_abs().cmp(&a.3.unsigned_abs()));
+
+    // Aggregate by_file across all summaries.
+    let mut old_files: HashMap<&str, usize> = HashMap::new();
+    let mut new_files: HashMap<&str, usize> = HashMap::new();
+    for s in old {
+        for (file, count) in &s.by_file {
+            *old_files.entry(file.as_str()).or_default() += count;
+        }
+    }
+    for s in new {
+        for (file, count) in &s.by_file {
+            *new_files.entry(file.as_str()).or_default() += count;
+        }
+    }
+
+    let mut all_files: Vec<&str> = old_files.keys().chain(new_files.keys()).copied().collect();
+    all_files.sort();
+    all_files.dedup();
+
+    let mut by_file: Vec<(String, usize, usize, isize)> = Vec::new();
+    for file in &all_files {
+        let o = old_files.get(file).copied().unwrap_or(0);
+        let n = new_files.get(file).copied().unwrap_or(0);
+        if o != n {
+            by_file.push((file.to_string(), o, n, n as isize - o as isize));
+        }
+    }
+    by_file.sort_by(|a, b| b.3.unsigned_abs().cmp(&a.3.unsigned_abs()));
+
+    BaselineDiff {
+        old_total,
+        new_total,
+        total_delta: new_total as isize - old_total as isize,
+        by_code,
+        by_file,
+    }
+}
+
+fn print_baseline_diff(diff: &BaselineDiff, baseline_path: &Path) {
+    println!("\n[check] Comparing against baseline: {}", baseline_path.display());
+
+    let sign = if diff.total_delta > 0 { "+" } else { "" };
+    println!(
+        "Total: {} → {} errors ({}{})",
+        diff.old_total, diff.new_total, sign, diff.total_delta
+    );
+
+    if !diff.by_code.is_empty() {
+        println!("\nBy error code (changes only):");
+        for (code, old, new, delta) in &diff.by_code {
+            let s = if *delta > 0 { "+" } else { "" };
+            let marker = if *delta > 0 { "  <- regression" } else { "" };
+            println!("  {code}: {old} → {new} ({s}{delta}){marker}");
+        }
+    }
+
+    if !diff.by_file.is_empty() {
+        let max_files = 30;
+        println!("\nBy file (changes only, top {max_files}):");
+        for (file, old, new, delta) in diff.by_file.iter().take(max_files) {
+            let s = if *delta > 0 { "+" } else { "" };
+            println!("  {s}{delta}  {file} ({old} → {new})");
+        }
+        if diff.by_file.len() > max_files {
+            println!("  ... and {} more file(s)", diff.by_file.len() - max_files);
+        }
+    }
 }
 
 fn cmd_check(
@@ -652,6 +818,8 @@ fn cmd_check(
     json: bool,
     skip_passes: &[String],
     preset: &str,
+    save_baseline: Option<&Path>,
+    baseline: Option<&Path>,
 ) -> Result<()> {
     let targets = if no_emit {
         collect_output_dirs(manifest_path)?
@@ -667,10 +835,17 @@ fn cmd_check(
             .collect()
     };
 
-    run_checks(&targets, json)
+    run_checks(&targets, json, save_baseline, baseline)
 }
 
-fn cmd_check_all(no_emit: bool, json: bool, skip_passes: &[String], preset: &str) -> Result<()> {
+fn cmd_check_all(
+    no_emit: bool,
+    json: bool,
+    skip_passes: &[String],
+    preset: &str,
+    save_baseline: Option<&Path>,
+    baseline: Option<&Path>,
+) -> Result<()> {
     let reg = load_registry()?;
     if reg.projects.is_empty() {
         println!("No projects in registry. Use `reincarnate add` to register a project.");
@@ -686,7 +861,7 @@ fn cmd_check_all(no_emit: bool, json: bool, skip_passes: &[String], preset: &str
         println!("\n[{}/{}] {} ({})", i + 1, total, name, engine_label);
 
         let manifest_path = PathBuf::from(&entry.manifest);
-        if let Err(e) = cmd_check(&manifest_path, no_emit, json, skip_passes, preset) {
+        if let Err(e) = cmd_check(&manifest_path, no_emit, json, skip_passes, preset, save_baseline, baseline) {
             eprintln!("  [error] {e:#}");
             failures.push((name.to_string(), e));
         }
@@ -911,12 +1086,12 @@ fn main() -> Result<()> {
                 result.map(|_| ())
             }
         }
-        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset } => {
+        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset, save_baseline, baseline } => {
             if *all {
-                cmd_check_all(*no_emit, *json, skip_passes, preset)
+                cmd_check_all(*no_emit, *json, skip_passes, preset, save_baseline.as_deref(), baseline.as_deref())
             } else {
                 let path = resolve_target(target.as_deref(), manifest.as_deref())?;
-                cmd_check(&path, *no_emit, *json, skip_passes, preset)
+                cmd_check(&path, *no_emit, *json, skip_passes, preset, save_baseline.as_deref(), baseline.as_deref())
             }
         }
         Command::Add { path, name, force } => {
