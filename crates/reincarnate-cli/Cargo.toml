@@ -10,13 +10,21 @@ description = "CLI for the Reincarnate legacy software lifting framework"
 name = "reincarnate"
 path = "src/main.rs"
 
+[features]
+default = ["frontend-flash", "frontend-gamemaker", "frontend-twine", "backend-typescript", "checker-typescript"]
+frontend-flash = ["dep:reincarnate-frontend-flash"]
+frontend-gamemaker = ["dep:reincarnate-frontend-gamemaker"]
+frontend-twine = ["dep:reincarnate-frontend-twine"]
+backend-typescript = ["dep:reincarnate-backend-typescript"]
+checker-typescript = ["dep:reincarnate-checker-typescript"]
+
 [dependencies]
 reincarnate-core = { path = "../reincarnate-core" }
-reincarnate-frontend-flash = { path = "../frontends/reincarnate-frontend-flash" }
-reincarnate-backend-typescript = { path = "../backends/reincarnate-backend-typescript" }
-reincarnate-frontend-gamemaker = { path = "../frontends/reincarnate-frontend-gamemaker" }
-reincarnate-frontend-twine = { path = "../frontends/reincarnate-frontend-twine" }
-reincarnate-checker-typescript = { path = "../checkers/reincarnate-checker-typescript" }
+reincarnate-frontend-flash = { path = "../frontends/reincarnate-frontend-flash", optional = true }
+reincarnate-backend-typescript = { path = "../backends/reincarnate-backend-typescript", optional = true }
+reincarnate-frontend-gamemaker = { path = "../frontends/reincarnate-frontend-gamemaker", optional = true }
+reincarnate-frontend-twine = { path = "../frontends/reincarnate-frontend-twine", optional = true }
+reincarnate-checker-typescript = { path = "../checkers/reincarnate-checker-typescript", optional = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }

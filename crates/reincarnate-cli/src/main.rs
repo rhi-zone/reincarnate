@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
 use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
+#[cfg(feature = "checker-typescript")]
 use reincarnate_checker_typescript::TsChecker;
 use reincarnate_core::transforms::default_pipeline;
 
@@ -294,8 +295,11 @@ fn copy_manifest_assets(assets: &[AssetMapping], output_dir: &Path) -> Result<()
 
 fn find_frontend(engine: &EngineOrigin) -> Option<Box<dyn Frontend>> {
     match engine {
+        #[cfg(feature = "frontend-flash")]
         EngineOrigin::Flash => Some(Box::new(reincarnate_frontend_flash::FlashFrontend)),
+        #[cfg(feature = "frontend-gamemaker")]
         EngineOrigin::GameMaker => Some(Box::new(reincarnate_frontend_gamemaker::GameMakerFrontend)),
+        #[cfg(feature = "frontend-twine")]
         EngineOrigin::Twine => Some(Box::new(reincarnate_frontend_twine::TwineFrontend)),
         _ => None,
     }
@@ -358,6 +362,7 @@ fn resolve_runtime(engine: &EngineOrigin, backend: &TargetBackend, variant: Opti
 
 fn find_backend(backend: &TargetBackend) -> Option<Box<dyn Backend>> {
     match backend {
+        #[cfg(feature = "backend-typescript")]
         TargetBackend::TypeScript => Some(Box::new(reincarnate_backend_typescript::TypeScriptBackend)),
         _ => None,
     }
@@ -558,6 +563,7 @@ fn cmd_emit_all(skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Re
 
 fn find_checker(backend: &TargetBackend) -> Option<Box<dyn Checker>> {
     match backend {
+        #[cfg(feature = "checker-typescript")]
         TargetBackend::TypeScript => Some(Box::new(TsChecker)),
         _ => None,
     }
