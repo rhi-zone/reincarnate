@@ -1142,6 +1142,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "reincarnate-checker-ts"
+version = "0.1.0"
+dependencies = [
+ "reincarnate-core",
+]
+
+[[package]]
 name = "reincarnate-cli"
 version = "0.1.0"
 dependencies = [
@@ -1151,6 +1158,7 @@ dependencies = [
  "dirs",
  "include_dir",
  "reincarnate-backend-typescript",
+ "reincarnate-checker-ts",
  "reincarnate-core",
  "reincarnate-frontend-flash",
  "reincarnate-frontend-gamemaker",
