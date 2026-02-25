@@ -152,7 +152,7 @@ class GMLRoom {
             if (alarmVal - 1 === 0) {
               delete instance.alarm[i];
               const method = (instance as any)["alarm" + i];
-              if (method !== noop) method.call(instance);
+              if (method !== noop) { rt._self = instance; method.call(instance); rt._self = null; }
               if (oldRoom !== rt.room) break;
             }
           }
@@ -168,7 +168,7 @@ class GMLRoom {
         if ((instance as any).beginstep === noop) continue;
         instance.xprevious = instance.x;
         instance.yprevious = instance.y;
-        instance.beginstep();
+        rt._self = instance; instance.beginstep(); rt._self = null;
         if (oldRoom !== rt.room) break;
       }
       toStep = rt._pendingStep;
@@ -180,7 +180,7 @@ class GMLRoom {
       rt._pendingStep = [];
       for (const instance of toStep) {
         if ((instance as any).step === noop) continue;
-        instance.step();
+        rt._self = instance; instance.step(); rt._self = null;
         if (oldRoom !== rt.room) break;
       }
       toStep = rt._pendingStep;
@@ -192,7 +192,7 @@ class GMLRoom {
       rt._pendingStep = [];
       for (const instance of toStep) {
         if ((instance as any).endstep === noop) continue;
-        instance.endstep();
+        rt._self = instance; instance.endstep(); rt._self = null;
         if (oldRoom !== rt.room) break;
       }
       toStep = rt._pendingStep;
@@ -204,7 +204,7 @@ class GMLRoom {
     const sorted = rt.roomVariables.slice().sort((a, b) => b.depth - a.depth);
     for (const instance of sorted) {
       if ((instance as any).draw === noop) continue;
-      instance.draw();
+      rt._self = instance; instance.draw(); rt._self = null;
       if (oldRoom !== rt.room) break;
     }
 
@@ -212,7 +212,7 @@ class GMLRoom {
     if (rt._drawguiUsed) {
       for (const instance of sorted) {
         if ((instance as any).drawgui === noop) continue;
-        instance.drawgui();
+        rt._self = instance; instance.drawgui(); rt._self = null;
         if (oldRoom !== rt.room) break;
       }
     }
@@ -236,7 +236,7 @@ class GMLRoom {
       }
     }
     for (const instance of instances) {
-      instance.create();
+      rt._self = instance; instance.create(); rt._self = null;
     }
     // Room creation code runs after all instance creation events (GML semantics).
     const creationCode = rt.roomCreationCode[idx];
@@ -253,6 +253,19 @@ class GMLRoom {
   }
 }
 
+// ---- Buffer helpers ----
+
+/** Returns the byte size of a GML buffer type constant, or 0 for string types. */
+function bufferTypeSize(type: number): number {
+  switch (type) {
+    case 1: case 2: case 13: return 1;   // buffer_u8, buffer_s8, buffer_bool
+    case 3: case 4: return 2;            // buffer_u16, buffer_s16
+    case 5: case 6: case 7: return 4;    // buffer_u32, buffer_s32, buffer_f32
+    case 8: case 16: return 8;           // buffer_f64, buffer_u64
+    default: return 0;                   // buffer_string, buffer_text (variable)
+  }
+}
+
 // ---- GameRuntime ----
 
 export class GameRuntime {
@@ -265,6 +278,19 @@ export class GameRuntime {
   _persistence = new PersistenceState();
   _gfx = new GraphicsContext();
   _root?: RenderRoot;
+
+  // Surface state
+  _surfaces = new Map<number, OffscreenCanvas>();
+  _surfaceCtxStack: (CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D)[] = [];
+  _surfaceIdStack: number[] = [];
+  _nextSurfaceId = 1;
+
+  // Buffer state: each entry is { data, pos, kind, align }
+  _buffers = new Map<number, { data: Uint8Array; pos: number; kind: number; align: number }>();
+  _nextBufferId = 1;
+
+  // Current "self" instance for alarm_set / event_user dispatch
+  _self: GMLObject | null = null;
 
   // Runtime state
   _drawHandle = 0;
@@ -406,7 +432,7 @@ export class GameRuntime {
     instance.ystart = instance.y = y;
     this.roomVariables.push(instance);
     if (!roomStart) {
-      instance.create();
+      this._self = instance; instance.create(); this._self = null;
     }
     if (!this._drawguiUsed && (instance as any).drawgui !== noop) {
       this._drawguiUsed = true;
@@ -507,7 +533,9 @@ export class GameRuntime {
 
   // ---- Alarm API ----
 
-  alarm_set(_alarm: number, _steps: number): void { throw new Error("alarm_set: not yet implemented"); }
+  alarm_set(alarm: number, steps: number): void {
+    if (this._self) this._self.alarm[alarm] = steps;
+  }
   alarm_get(inst: any, alarm: number): number {
     return inst?.alarm?.[alarm] ?? -1;
   }
@@ -563,19 +591,58 @@ export class GameRuntime {
   is_infinity(val: any): boolean { return val === Infinity || val === -Infinity; }
   is_numeric(val: any): boolean { return !isNaN(Number(val)); }
 
-  // ---- Surface API (unimplemented — requires WebGL offscreen rendering) ----
+  // ---- Surface API (Canvas 2D offscreen rendering) ----
+  // Surfaces are OffscreenCanvas objects. surface_set_target redirects all
+  // draw calls by swapping _gfx.ctx; surface_reset_target restores it.
 
-  surface_exists(_surf: number): boolean { throw new Error("surface_exists: surfaces require WebGL implementation"); }
-  surface_create(_w: number, _h: number, _format: number = 0): number { throw new Error("surface_create: surfaces require WebGL implementation"); }
-  surface_free(_surf: number): void { throw new Error("surface_free: surfaces require WebGL implementation"); }
-  surface_set_target(_surf: number): void { throw new Error("surface_set_target: surfaces require WebGL implementation"); }
-  surface_reset_target(): void { throw new Error("surface_reset_target: surfaces require WebGL implementation"); }
-  draw_surface(_surf: number, _x: number, _y: number): void { throw new Error("draw_surface: surfaces require WebGL implementation"); }
-  draw_surface_ext(_surf: number, _x: number, _y: number, _xs: number, _ys: number, _rot: number, _col: number, _alpha: number): void { throw new Error("draw_surface_ext: surfaces require WebGL implementation"); }
-  draw_surface_part(_surf: number, _left: number, _top: number, _w: number, _h: number, _x: number, _y: number): void { throw new Error("draw_surface_part: surfaces require WebGL implementation"); }
-  surface_get_width(_surf: number): number { throw new Error("surface_get_width: surfaces require WebGL implementation"); }
-  surface_get_height(_surf: number): number { throw new Error("surface_get_height: surfaces require WebGL implementation"); }
-  surface_getpixel(_surf: number, _x: number, _y: number): number { throw new Error("surface_getpixel: surfaces require WebGL implementation"); }
+  surface_create(w: number, h: number, _format: number = 0): number {
+    const id = this._nextSurfaceId++;
+    this._surfaces.set(id, new OffscreenCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h))));
+    return id;
+  }
+  surface_exists(surf: number): boolean { return this._surfaces.has(surf); }
+  surface_free(surf: number): void { this._surfaces.delete(surf); }
+  surface_set_target(surf: number): void {
+    const canvas = this._surfaces.get(surf);
+    if (!canvas) return;
+    this._surfaceCtxStack.push(this._gfx.ctx);
+    this._surfaceIdStack.push(surf);
+    (this._gfx as any).ctx = canvas.getContext("2d")!;
+  }
+  surface_reset_target(): void {
+    const prev = this._surfaceCtxStack.pop();
+    this._surfaceIdStack.pop();
+    if (prev !== undefined) (this._gfx as any).ctx = prev;
+  }
+  surface_get_width(surf: number): number { return this._surfaces.get(surf)?.width ?? 0; }
+  surface_get_height(surf: number): number { return this._surfaces.get(surf)?.height ?? 0; }
+  surface_getpixel(surf: number, x: number, y: number): number {
+    const canvas = this._surfaces.get(surf);
+    if (!canvas) return 0;
+    const ctx = canvas.getContext("2d")!;
+    const px = ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+    return px[0]! | (px[1]! << 8) | (px[2]! << 16);  // GML BGR color
+  }
+  draw_surface(surf: number, x: number, y: number): void {
+    const canvas = this._surfaces.get(surf);
+    if (canvas) this._gfx.ctx.drawImage(canvas, x, y);
+  }
+  draw_surface_ext(surf: number, x: number, y: number, xs: number, ys: number, rot: number, _col: number, alpha: number): void {
+    const canvas = this._surfaces.get(surf);
+    if (!canvas) return;
+    const ctx = this._gfx.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    if (xs !== 1 || ys !== 1) ctx.scale(xs, ys);
+    if (rot !== 0) ctx.rotate(-rot * Math.PI / 180);
+    if (alpha !== 1) ctx.globalAlpha = alpha;
+    ctx.drawImage(canvas, 0, 0);
+    ctx.restore();
+  }
+  draw_surface_part(surf: number, left: number, top: number, w: number, h: number, x: number, y: number): void {
+    const canvas = this._surfaces.get(surf);
+    if (canvas) this._gfx.ctx.drawImage(canvas, left, top, w, h, x, y, w, h);
+  }
 
   // ---- Shader API (unimplemented — requires WebGL shaders) ----
 
@@ -978,12 +1045,28 @@ export class GameRuntime {
   variable_instance_exists(inst: any, name: string): boolean { return inst != null && name in Object(inst); }
 
   // ---- Surface API (stubs — requires WebGL offscreen rendering) ----
-  surface_resize(_srf: number, _w: number, _h: number): void { throw new Error("surface_resize: not yet implemented"); }
-  surface_get_target(): number { throw new Error("surface_get_target: not yet implemented"); }
+  surface_resize(surf: number, w: number, h: number): void {
+    const canvas = this._surfaces.get(surf);
+    if (!canvas) return;
+    const newCanvas = new OffscreenCanvas(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+    newCanvas.getContext("2d")!.drawImage(canvas, 0, 0);
+    this._surfaces.set(surf, newCanvas);
+    // Update active ctx if this surface is on top of the stack
+    if (this._surfaceIdStack[this._surfaceIdStack.length - 1] === surf) {
+      (this._gfx as any).ctx = newCanvas.getContext("2d")!;
+    }
+  }
+  surface_get_target(): number {
+    return this._surfaceIdStack[this._surfaceIdStack.length - 1] ?? -1;
+  }
 
   // ---- Misc ----
   show_error(str: string, _abort: boolean): void { console.error("GML show_error:", str); }
-  event_user(_n: number): void { throw new Error("event_user: not yet implemented"); }
+  event_user(n: number): void {
+    if (!this._self) return;
+    const method = (this._self as any)["user" + n];
+    if (method && method !== noop) { const prev = this._self; method.call(prev); this._self = prev; }
+  }
   sprite_create_from_surface(_srf: number, _x: number, _y: number, _w: number, _h: number, _removeback: boolean, _smooth: boolean, _xorig: number, _yorig: number): number { throw new Error("sprite_create_from_surface: not yet implemented"); }
   vertex_normal(_vbuf: number, _x: number, _y: number, _z: number): void { throw new Error("vertex_normal: not yet implemented"); }
 
@@ -999,18 +1082,114 @@ export class GameRuntime {
     }
   }
 
-  // ---- Buffer API (stubs — TODO: implement in platform layer) ----
-  buffer_create(_size: number, _type: number, _alignment: number): number {
-    throw new Error("buffer_create: implement in platform layer");
+  // ---- Buffer API ----
+  // GML buffer kind constants: 0=fixed, 1=grow, 2=wrap, 3=fast(grow), 4=vbuffer
+  // GML buffer type constants: 1=u8,2=s8,3=u16,4=s16,5=u32,6=s32,7=f32,8=f64,13=bool,14=string,15=text,16=u64
+
+  buffer_create(size: number, kind: number, alignment: number): number {
+    const id = this._nextBufferId++;
+    this._buffers.set(id, {
+      data: new Uint8Array(Math.max(size, 1)),
+      pos: 0,
+      kind,
+      align: Math.max(1, alignment),
+    });
+    return id;
   }
-  buffer_write(_buffer: number, _type: number, _value: any): void {
-    throw new Error("buffer_write: implement in platform layer");
+
+  _bufferAlignPos(buf: { pos: number; align: number }, typeSize: number): void {
+    const align = Math.min(buf.align, typeSize);
+    if (align > 1) {
+      const rem = buf.pos % align;
+      if (rem !== 0) buf.pos += align - rem;
+    }
   }
-  buffer_read(_buffer: number, _type: number): any {
-    throw new Error("buffer_read: implement in platform layer");
+
+  _bufferGrow(buf: { data: Uint8Array; pos: number; kind: number }, needed: number): void {
+    if (buf.kind === 0 || buf.kind === 4) return;  // fixed/vbuffer: no grow
+    if (buf.data.length >= needed) return;
+    let newSize = Math.max(buf.data.length * 2, needed);
+    const newData = new Uint8Array(newSize);
+    newData.set(buf.data);
+    buf.data = newData;
   }
-  buffer_delete(_buffer: number): void {
-    throw new Error("buffer_delete: implement in platform layer");
+
+  buffer_write(bufId: number, type: number, value: any): void {
+    const buf = this._buffers.get(bufId);
+    if (!buf) return;
+    if (type === 14 || type === 15) {  // string types
+      const str = String(value ?? "");
+      const encoded = new TextEncoder().encode(str);
+      const needed = buf.pos + encoded.length + (type === 14 ? 1 : 0);
+      this._bufferGrow(buf, needed);
+      if (buf.pos + encoded.length > buf.data.length) return;
+      buf.data.set(encoded, buf.pos);
+      buf.pos += encoded.length;
+      if (type === 14 && buf.pos < buf.data.length) { buf.data[buf.pos++] = 0; }
+      return;
+    }
+    const sz = bufferTypeSize(type);
+    if (sz === 0) return;
+    this._bufferAlignPos(buf, sz);
+    this._bufferGrow(buf, buf.pos + sz);
+    if (buf.pos + sz > buf.data.length) return;  // fixed buffer full
+    const view = new DataView(buf.data.buffer, buf.data.byteOffset, buf.data.byteLength);
+    switch (type) {
+      case 1:  view.setUint8(buf.pos, (value as number) & 0xFF); break;
+      case 2:  view.setInt8(buf.pos, value as number); break;
+      case 3:  view.setUint16(buf.pos, (value as number) & 0xFFFF, true); break;
+      case 4:  view.setInt16(buf.pos, value as number, true); break;
+      case 5:  view.setUint32(buf.pos, (value as number) >>> 0, true); break;
+      case 6:  view.setInt32(buf.pos, (value as number) | 0, true); break;
+      case 7:  view.setFloat32(buf.pos, value as number, true); break;
+      case 8:  view.setFloat64(buf.pos, value as number, true); break;
+      case 13: view.setUint8(buf.pos, value ? 1 : 0); break;
+      case 16: try { view.setBigUint64(buf.pos, BigInt(Math.trunc(value as number)), true); } catch { view.setUint32(buf.pos, (value as number) >>> 0, true); } break;
+    }
+    buf.pos += sz;
+  }
+
+  buffer_read(bufId: number, type: number): any {
+    const buf = this._buffers.get(bufId);
+    if (!buf) return 0;
+    if (typeof type !== 'number') return 0;  // guard against non-type args
+    if (type === 14) {  // buffer_string: read until null terminator
+      let end = buf.pos;
+      while (end < buf.data.length && buf.data[end] !== 0) end++;
+      const str = new TextDecoder().decode(buf.data.subarray(buf.pos, end));
+      buf.pos = Math.min(end + 1, buf.data.length);
+      return str;
+    }
+    if (type === 15) {  // buffer_text: read remaining bytes
+      const str = new TextDecoder().decode(buf.data.subarray(buf.pos));
+      buf.pos = buf.data.length;
+      return str;
+    }
+    const sz = bufferTypeSize(type);
+    if (sz === 0) return 0;
+    this._bufferAlignPos(buf, sz);
+    if (buf.pos + sz > buf.data.length) return 0;
+    const view = new DataView(buf.data.buffer, buf.data.byteOffset, buf.data.byteLength);
+    let result: any;
+    switch (type) {
+      case 1:  result = view.getUint8(buf.pos); break;
+      case 2:  result = view.getInt8(buf.pos); break;
+      case 3:  result = view.getUint16(buf.pos, true); break;
+      case 4:  result = view.getInt16(buf.pos, true); break;
+      case 5:  result = view.getUint32(buf.pos, true); break;
+      case 6:  result = view.getInt32(buf.pos, true); break;
+      case 7:  result = view.getFloat32(buf.pos, true); break;
+      case 8:  result = view.getFloat64(buf.pos, true); break;
+      case 13: result = view.getUint8(buf.pos) !== 0; break;
+      case 16: try { result = Number(view.getBigUint64(buf.pos, true)); } catch { result = view.getUint32(buf.pos, true); } break;
+      default: return 0;
+    }
+    buf.pos += sz;
+    return result;
+  }
+
+  buffer_delete(bufId: number): void {
+    this._buffers.delete(bufId);
   }
 
   // ---- File API (stubs — TODO: implement in platform layer) ----
@@ -1145,8 +1324,13 @@ export class GameRuntime {
       }
     }
   }
-  draw_surface_stretched_ext(_surf: number, _x: number, _y: number, _w: number, _h: number, _col: number, _alpha: number): void {
-    throw new Error("draw_surface_stretched_ext: requires WebGL implementation");
+  draw_surface_stretched_ext(surf: number, x: number, y: number, w: number, h: number, _col: number, alpha: number): void {
+    const canvas = this._surfaces.get(surf);
+    if (!canvas) return;
+    const ctx = this._gfx.ctx;
+    if (alpha !== 1) { ctx.save(); ctx.globalAlpha = alpha; }
+    ctx.drawImage(canvas, x, y, w, h);
+    if (alpha !== 1) ctx.restore();
   }
   draw_get_font(): number { return this._draw.config.font; }
 
@@ -1216,15 +1400,46 @@ export class GameRuntime {
 
 
   // ---- Buffer extras ----
-  buffer_base64_decode(_str: string): number { throw new Error("buffer_base64_decode: implement in platform layer"); }
-  buffer_load(_filename: string, _buf: number = -1, _offset: number = 0, _size: number = 0): number { throw new Error("buffer_load: implement in platform layer"); }
-  buffer_load_async(_path: string, _buf: number, _offset: number, _size: number): number { throw new Error("buffer_load_async: implement in platform layer"); }
-  buffer_save_async(_buf: number, _path: string, _offset: number, _size: number): number { throw new Error("buffer_save_async: implement in platform layer"); }
-  buffer_set_surface(_buf: number, _surf: number, _offset: number): void {
-    throw new Error("buffer_set_surface: requires WebGL implementation");
+  buffer_base64_decode(str: string): number {
+    const binary = atob(str);
+    const data = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
+    const id = this._nextBufferId++;
+    this._buffers.set(id, { data, pos: 0, kind: 0, align: 1 });
+    return id;
   }
-  buffer_async_group_begin(_groupname: string): void { throw new Error("buffer_async_group_begin: not yet implemented"); }
-  buffer_async_group_end(): number { throw new Error("buffer_async_group_end: not yet implemented"); }
+  buffer_base64_encode(bufId: number, offset: number, size: number): string {
+    const buf = this._buffers.get(bufId);
+    if (!buf) return "";
+    const slice = buf.data.subarray(offset, offset + size);
+    let binary = "";
+    for (const byte of slice) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+  buffer_load(_filename: string, _buf: number = -1, _offset: number = 0, _size: number = 0): number { throw new Error("buffer_load: not yet implemented"); }
+  buffer_load_async(_path: string, _buf: number, _offset: number, _size: number): number { throw new Error("buffer_load_async: not yet implemented"); }
+  buffer_save_async(_buf: number, _path: string, _offset: number, _size: number): number { throw new Error("buffer_save_async: not yet implemented"); }
+  buffer_set_surface(bufId: number, surf: number, offset: number): void {
+    // Copy surface RGBA pixels into buffer at given offset (BGRA → RGBA conversion).
+    const canvas = this._surfaces.get(surf);
+    if (!canvas) return;
+    const buf = this._buffers.get(bufId);
+    if (!buf) return;
+    const ctx = canvas.getContext("2d")!;
+    const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const needed = offset + px.length;
+    this._bufferGrow(buf, needed);
+    if (needed <= buf.data.length) {
+      for (let i = 0; i < px.length; i += 4) {
+        buf.data[offset + i]     = px[i]!;      // R
+        buf.data[offset + i + 1] = px[i + 1]!;  // G
+        buf.data[offset + i + 2] = px[i + 2]!;  // B
+        buf.data[offset + i + 3] = px[i + 3]!;  // A
+      }
+    }
+  }
+  buffer_async_group_begin(_groupname: string): void { /* no-op — async buffer groups not needed in browser */ }
+  buffer_async_group_end(): number { return 0; }
 
   // ---- Display extras ----
   display_get_gui_width(): number { return window.innerWidth; }
@@ -1256,8 +1471,10 @@ export class GameRuntime {
   }
 
   // ---- Surface extras ----
-  surface_copy(_dest: number, _x: number, _y: number, _src: number): void {
-    throw new Error("surface_copy: requires WebGL implementation");
+  surface_copy(dest: number, x: number, y: number, src: number): void {
+    const srcCanvas = this._surfaces.get(src);
+    const destCanvas = this._surfaces.get(dest);
+    if (srcCanvas && destCanvas) destCanvas.getContext("2d")!.drawImage(srcCanvas, x, y);
   }
 
   // ---- Tags / misc ----
@@ -1311,10 +1528,18 @@ export class GameRuntime {
   file_text_open_write(_path: string): number {
     throw new Error("file_text_open_write: implement in platform layer");
   }
-  buffer_seek(_buffer: number, _base: number, _offset: number): void {
-    throw new Error("buffer_seek: implement in platform layer");
+  buffer_seek(bufId: number, base: number, offset: number): void {
+    const buf = this._buffers.get(bufId);
+    if (!buf) return;
+    // base: 0=buffer_seek_start, 1=buffer_seek_relative, 2=buffer_seek_end
+    switch (base) {
+      case 0: buf.pos = offset; break;
+      case 1: buf.pos += offset; break;
+      case 2: buf.pos = buf.data.length - offset; break;
+    }
+    buf.pos = Math.max(0, Math.min(buf.pos, buf.data.length));
   }
-  buffer_async_group_option(_option: string, _value: any): void { throw new Error("buffer_async_group_option: not yet implemented"); }
+  buffer_async_group_option(_option: string, _value: any): void { /* no-op — async buffer groups not needed in browser */ }
 
   // ---- Array/struct GML internals ----
   // GMS2.3+ runtime sentinels.  As values they act as: null object = null,
@@ -1348,7 +1573,9 @@ export class GameRuntime {
   }
   sprite_delete(_spr: number): void { /* no-op */ }
   surface_get_texture(_surf: number): number {
-    throw new Error("surface_get_texture: requires WebGL implementation");
+    // Returns a texture handle for use with draw_primitive_begin_texture.
+    // In our 2D canvas model, texture primitives are not supported.
+    return -1;
   }
   object_get_sprite(classIndex: number): number {
     const clazz = this.classes[classIndex];
@@ -1393,8 +1620,9 @@ export class GameRuntime {
   json_parse(str: string): any { return JSON.parse(str); }
 
   // ---- More draw functions ----
-  draw_surface_stretched(_surf: number, _x: number, _y: number, _w: number, _h: number): void {
-    throw new Error("draw_surface_stretched: requires WebGL implementation");
+  draw_surface_stretched(surf: number, x: number, y: number, w: number, h: number): void {
+    const canvas = this._surfaces.get(surf);
+    if (canvas) this._gfx.ctx.drawImage(canvas, x, y, w, h);
   }
   draw_circle_color(x: number, y: number, r: number, col1: number, col2: number, outline: boolean): void {
     const ctx = this._gfx.ctx;
@@ -1410,10 +1638,10 @@ export class GameRuntime {
   draw_path(_path: number, _x: number, _y: number, _absolute: boolean): void { throw new Error("draw_path: not yet implemented"); }
 
   // ---- More buffer functions ----
-  buffer_get_size(_buffer: number): number {
-    throw new Error("buffer_get_size: implement in platform layer");
+  buffer_get_size(bufId: number): number {
+    return this._buffers.get(bufId)?.data.length ?? 0;
   }
-  buffer_exists(_buffer: number): boolean { throw new Error("buffer_exists: not yet implemented"); }
+  buffer_exists(bufId: number): boolean { return this._buffers.has(bufId); }
 
   // ---- Layer extras ----
   layer_get_x(_layer: any): number { throw new Error("layer_get_x: not yet implemented"); }
@@ -1671,8 +1899,34 @@ export class GameRuntime {
   chr(code: number): string { return String.fromCharCode(code); }
 
   // ---- More buffer ----
-  buffer_peek(_buffer: number, _offset: number, _type: number): any {
-    throw new Error("buffer_peek: implement in platform layer");
+  buffer_peek(bufId: number, offset: number, type: number): any {
+    const buf = this._buffers.get(bufId);
+    if (!buf) return 0;
+    // Read at absolute offset without moving pos
+    const savedPos = buf.pos;
+    buf.pos = offset;
+    const result = this.buffer_read(bufId, type);
+    buf.pos = savedPos;
+    return result;
+  }
+  buffer_poke(bufId: number, offset: number, type: number, value: any): void {
+    const buf = this._buffers.get(bufId);
+    if (!buf) return;
+    const savedPos = buf.pos;
+    buf.pos = offset;
+    this.buffer_write(bufId, type, value);
+    buf.pos = savedPos;
+  }
+  buffer_tell(bufId: number): number {
+    return this._buffers.get(bufId)?.pos ?? 0;
+  }
+  buffer_copy(src: number, srcOff: number, size: number, dest: number, destOff: number): void {
+    const srcBuf = this._buffers.get(src);
+    const destBuf = this._buffers.get(dest);
+    if (!srcBuf || !destBuf) return;
+    const slice = srcBuf.data.subarray(srcOff, srcOff + size);
+    this._bufferGrow(destBuf, destOff + size);
+    if (destOff + size <= destBuf.data.length) destBuf.data.set(slice, destOff);
   }
 
   // ---- More Steam ----

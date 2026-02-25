@@ -42,12 +42,13 @@ export function createInstanceAPI(rt: GameRuntime) {
     }
   }
 
-  /** Execute a block for each instance of a given type (or all). */
+  /** Execute a block for each instance of a given type (or all).
+   * Sets rt._self to the current with-target so alarm_set/event_user work correctly. */
   function withInstances(target: number, callback: (inst: GMLObject) => void): void {
+    const prevSelf = rt._self;
     if (target === -1) {
-      // all
       for (const inst of rt.roomVariables.slice()) {
-        callback(inst);
+        rt._self = inst; callback(inst);
       }
     } else if (target === -2) {
       // other — handled by caller
@@ -55,9 +56,10 @@ export function createInstanceAPI(rt: GameRuntime) {
       const clazz = rt.classes[target];
       if (!clazz) return;
       for (const inst of rt.roomVariables.slice()) {
-        if (inst instanceof clazz) callback(inst);
+        if (inst instanceof clazz) { rt._self = inst; callback(inst); }
       }
     }
+    rt._self = prevSelf;
   }
 
   return {
