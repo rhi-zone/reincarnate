@@ -57,9 +57,18 @@ Storage implementations that the platform provides.
 |---------|-------|----------|
 | **localStorage** | Persistent, per-origin | Web default |
 | **sessionStorage** | Session-scoped, per-tab | Temporary/undo only |
-| **filesystem** | Persistent, user-visible | Desktop, FS Access API |
+| **opfs** | Persistent, per-origin, larger quota | Durable web storage (Chrome 86+, Firefox 111+, Safari 15.2+) |
+| **filesystem** | Persistent, user-visible | Desktop via FS Access API |
 | **IndexedDB** | Persistent, large storage | WASM, large saves |
-| **cloud** | Persistent, cross-device | Multiplayer / sync |
+| **onedrive** | Persistent, cross-device | Microsoft account sync |
+| **gdrive** | Persistent, cross-device | Google account sync |
+| **dropbox** | Persistent, cross-device | Dropbox account sync |
+| **s3** / **r2** / **b2** | Persistent, cross-device | Self-hosted / operator cloud |
+
+> **Current state:** the `gamemaker` platform implementation bakes OPFS into the
+> localStorage backend as a fire-and-forget write. This is a temporary shortcut.
+> OPFS should be its own backend, composed via `tee(localStorage, opfs)` —
+> tracked in TODO.
 
 ### Composition
 
