@@ -8,7 +8,7 @@ members = [
     "crates/formats/datawin",
     "crates/frontends/reincarnate-frontend-gamemaker",
     "crates/frontends/reincarnate-frontend-twine",
-    "crates/checkers/reincarnate-checker-ts",
+    "crates/checkers/reincarnate-checker-typescript",
 ]
 
 [workspace.package]

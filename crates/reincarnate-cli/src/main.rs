@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
 use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
-use reincarnate_checker_ts::TsChecker;
+use reincarnate_checker_typescript::TsChecker;
 use reincarnate_core::transforms::default_pipeline;
 
 mod registry;
