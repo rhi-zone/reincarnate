@@ -131,7 +131,7 @@ for (const ev of [
 // ---- GMLRoom ----
 
 class GMLRoom {
-  constructor(private rt: GameRuntime)  { throw new Error("constructor: not yet implemented"); }
+  constructor(private rt: GameRuntime) {}
 
   draw(): void {
     const rt = this.rt;
@@ -142,8 +142,11 @@ class GMLRoom {
     const oldRoom = rt.room;
     rt._isStepping = true;
 
+    const deact = rt._deactivatedInstances;
+
     // Alarms
     for (const instance of rt.roomVariables) {
+      if (deact.has(instance)) continue;
       if (instance.alarm.length !== 0) {
         for (let i = 0; i < 12; i++) {
           const alarmVal = instance.alarm[i];
@@ -165,6 +168,7 @@ class GMLRoom {
     while (toStep.length !== 0) {
       rt._pendingStep = [];
       for (const instance of toStep) {
+        if (deact.has(instance)) continue;
         if ((instance as any).beginstep === noop) continue;
         instance.xprevious = instance.x;
         instance.yprevious = instance.y;
@@ -179,6 +183,7 @@ class GMLRoom {
     while (toStep.length !== 0) {
       rt._pendingStep = [];
       for (const instance of toStep) {
+        if (deact.has(instance)) continue;
         if ((instance as any).step === noop) continue;
         rt._self = instance; instance.step(); rt._self = null;
         if (oldRoom !== rt.room) break;
@@ -191,6 +196,7 @@ class GMLRoom {
     while (toStep.length !== 0) {
       rt._pendingStep = [];
       for (const instance of toStep) {
+        if (deact.has(instance)) continue;
         if ((instance as any).endstep === noop) continue;
         rt._self = instance; instance.endstep(); rt._self = null;
         if (oldRoom !== rt.room) break;
@@ -200,9 +206,10 @@ class GMLRoom {
 
     rt._isStepping = false;
 
-    // Draw (sorted by depth, descending)
+    // Draw (sorted by depth, descending; skip deactivated)
     const sorted = rt.roomVariables.slice().sort((a, b) => b.depth - a.depth);
     for (const instance of sorted) {
+      if (deact.has(instance)) continue;
       if ((instance as any).draw === noop) continue;
       rt._self = instance; instance.draw(); rt._self = null;
       if (oldRoom !== rt.room) break;
@@ -211,6 +218,7 @@ class GMLRoom {
     // Draw GUI
     if (rt._drawguiUsed) {
       for (const instance of sorted) {
+        if (deact.has(instance)) continue;
         if ((instance as any).drawgui === noop) continue;
         rt._self = instance; instance.drawgui(); rt._self = null;
         if (oldRoom !== rt.room) break;
@@ -291,6 +299,23 @@ export class GameRuntime {
 
   // Current "self" instance for alarm_set / event_user dispatch
   _self: GMLObject | null = null;
+
+  // Deactivated instances (skipped in game loop until reactivated)
+  _deactivatedInstances = new Set<GMLObject>();
+
+  // Draw primitive accumulator
+  _primKind = 0;
+  _primVerts: { x: number; y: number }[] = [];
+
+  // Per-sprite speed overrides (sprite_set_speed); default is room_speed
+  _spriteSpeedOverrides = new Map<number, number>();
+
+  // Layer background sprite assignments (layer_background_set_sprite)
+  _layerBackgroundSprites = new Map<number, number>();
+
+  // File text handles: id → { path, content, pos, mode: 'r'|'w' }
+  _textFiles = new Map<number, { path: string; content: string; pos: number; mode: 'r' | 'w' }>();
+  _nextTextFileId = 1;
 
   // Runtime state
   _drawHandle = 0;
@@ -511,14 +536,26 @@ export class GameRuntime {
     return false;
   }
 
-  layer_get_id(_name: string): number { throw new Error("layer_get_id: not yet implemented"); }
+  layer_get_id(name: string): number {
+    // Layers are not parsed from the data file; return a stable integer handle derived from the name.
+    // Games that only use the returned value as an opaque handle (e.g. layer_background_get_id) will work correctly.
+    let h = 0x811c9dc5;
+    for (let i = 0; i < name.length; i++) {
+      h ^= name.charCodeAt(i);
+      h = (h * 0x01000193) >>> 0;
+    }
+    // Keep in positive range (GML uses positive layer IDs)
+    return (h & 0x7fffffff) || 1;
+  }
 
   // ---- Sprite API extensions ----
 
   sprite_get_xoffset(spr: number): number { return this.sprites[spr]?.origin.x ?? 0; }
   sprite_get_yoffset(spr: number): number { return this.sprites[spr]?.origin.y ?? 0; }
   sprite_get_number(spr: number): number { return this.sprites[spr]?.textures.length ?? 1; }
-  sprite_get_speed(_spr: number): number { throw new Error("sprite_get_speed: not yet implemented"); }
+  sprite_get_speed(spr: number): number {
+    return this._spriteSpeedOverrides.get(spr) ?? this.room_speed;
+  }
   sprite_set_offset(spr: number, xoff: number, yoff: number): void {
     const s = this.sprites[spr];
     if (s) { s.origin.x = xoff; s.origin.y = yoff; }
@@ -552,9 +589,20 @@ export class GameRuntime {
     return Math.max(value - amount, target);
   }
 
-  asset_get_index(_name: string): number { throw new Error("asset_get_index: not yet implemented"); }
-  asset_get_tags(_asset: number, _type: number = -1): string[] { throw new Error("asset_get_tags: not yet implemented"); }
-  asset_has_tags(_asset: number, _tags: string | string[], _not?: boolean | number): boolean { throw new Error("asset_has_tags: not yet implemented"); }
+  asset_get_index(name: string): number {
+    // Search objects, sprites, sounds, rooms, fonts in that order.
+    if (name in this._classesEnum) return this._classesEnum[name]!;
+    if (name in this.Sprites) return (this.Sprites as Record<string, number>)[name]!;
+    const snd = this.sounds.findIndex((s) => s.name === name);
+    if (snd !== -1) return snd;
+    const room = this._roomDatas.findIndex((r) => r.name === name);
+    if (room !== -1) return room;
+    const font = this.fonts.findIndex((f) => f.name === name);
+    if (font !== -1) return font;
+    return -1;
+  }
+  asset_get_tags(_asset: number, _type: number = -1): string[] { return []; }
+  asset_has_tags(_asset: number, _tags: string | string[], _not?: boolean | number): boolean { return false; }
 
   // ---- Array API (GMS2 style) ----
 
@@ -854,8 +902,19 @@ export class GameRuntime {
   point_in_rectangle(px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean {
     return px >= x1 && px <= x2 && py >= y1 && py <= y2;
   }
-  distance_to_object(_classIndex: number): number {
-    throw new Error("distance_to_object: implement using instance spatial data");
+  distance_to_object(classIndex: number): number {
+    if (!this._self) return 0;
+    const sx = this._self.x, sy = this._self.y;
+    const clazz = this.classes[classIndex];
+    if (!clazz) return 0;
+    let best = Infinity;
+    for (const inst of this.roomVariables) {
+      if (inst === this._self) continue;
+      if (!(inst instanceof clazz)) continue;
+      const d = Math.hypot(inst.x - sx, inst.y - sy);
+      if (d < best) best = d;
+    }
+    return best === Infinity ? 0 : best;
   }
   collision_line(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean): any {
     throw new Error("collision_line: requires collision system implementation");
@@ -931,9 +990,11 @@ export class GameRuntime {
   camera_get_view_height(cam: number): number { return this._cameras.get(cam)?.h ?? 0; }
 
   // ---- Layer API ----
-  layer_background_get_id(_layer: any): number { throw new Error("layer_background_get_id: not yet implemented"); }
-  layer_background_get_sprite(_id: number): number { throw new Error("layer_background_get_sprite: not yet implemented"); }
-  layer_background_set_sprite(_id: number, _spr: number): void { throw new Error("layer_background_set_sprite: not yet implemented"); }
+  // Layers are not parsed from the data file — layer_get_id returns a stable hash-based handle.
+  // Background element IDs use a derived handle (layerId | 0x80000000 pattern).
+  layer_background_get_id(layer: any): number { return (typeof layer === "number" ? layer : this.layer_get_id(String(layer))) | 0x80000000; }
+  layer_background_get_sprite(id: number): number { return this._layerBackgroundSprites.get(id) ?? -1; }
+  layer_background_set_sprite(id: number, spr: number): void { this._layerBackgroundSprites.set(id, spr); }
 
   // ---- Keyboard (delegated to createInputAPI) ----
   keyboard_check!: (key: number) => boolean;
@@ -970,9 +1031,70 @@ export class GameRuntime {
     if (outline) { ctx.strokeStyle = css; ctx.stroke(); }
     else { ctx.fillStyle = css; ctx.fill(); }
   }
-  draw_vertex(_x: number, _y: number): void { throw new Error("draw_vertex: not yet implemented"); }
-  draw_primitive_begin(_kind: number): void { throw new Error("draw_primitive_begin: not yet implemented"); }
-  draw_primitive_end(): void { throw new Error("draw_primitive_end: not yet implemented"); }
+  draw_primitive_begin(kind: number): void { this._primKind = kind; this._primVerts = []; }
+  draw_primitive_begin_texture(kind: number, _tex: number): void { this._primKind = kind; this._primVerts = []; }
+  draw_vertex(x: number, y: number): void { this._primVerts.push({ x, y }); }
+  draw_vertex_texture(x: number, y: number, _xtex: number, _ytex: number): void { this._primVerts.push({ x, y }); }
+  draw_primitive_end(): void {
+    const verts = this._primVerts;
+    if (verts.length === 0) return;
+    const ctx = this._gfx.ctx;
+    const css = gmlColorToCss(this._draw.config.color);
+    // GML primitive kinds: 1=pr_pointlist, 2=pr_linelist, 3=pr_linestrip, 4=pr_trianglelist, 5=pr_trianglestrip, 6=pr_trianglefan
+    if (this._primKind === 1) {
+      // Point list: draw 1×1 rect at each vertex
+      ctx.fillStyle = css;
+      for (const v of verts) ctx.fillRect(v.x, v.y, 1, 1);
+    } else if (this._primKind === 2) {
+      // Line list: pairs of vertices
+      ctx.strokeStyle = css;
+      ctx.beginPath();
+      for (let i = 0; i + 1 < verts.length; i += 2) {
+        ctx.moveTo(verts[i]!.x, verts[i]!.y); ctx.lineTo(verts[i + 1]!.x, verts[i + 1]!.y);
+      }
+      ctx.stroke();
+    } else if (this._primKind === 3) {
+      // Line strip
+      ctx.strokeStyle = css;
+      ctx.beginPath();
+      ctx.moveTo(verts[0]!.x, verts[0]!.y);
+      for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i]!.x, verts[i]!.y);
+      ctx.stroke();
+    } else if (this._primKind === 4) {
+      // Triangle list
+      ctx.fillStyle = css;
+      for (let i = 0; i + 2 < verts.length; i += 3) {
+        ctx.beginPath();
+        ctx.moveTo(verts[i]!.x, verts[i]!.y);
+        ctx.lineTo(verts[i + 1]!.x, verts[i + 1]!.y);
+        ctx.lineTo(verts[i + 2]!.x, verts[i + 2]!.y);
+        ctx.closePath(); ctx.fill();
+      }
+    } else if (this._primKind === 5) {
+      // Triangle strip
+      ctx.fillStyle = css;
+      for (let i = 0; i + 2 < verts.length; i++) {
+        ctx.beginPath();
+        const [a, b, c] = i % 2 === 0
+          ? [verts[i]!, verts[i + 1]!, verts[i + 2]!]
+          : [verts[i + 1]!, verts[i]!, verts[i + 2]!];
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y);
+        ctx.closePath(); ctx.fill();
+      }
+    } else if (this._primKind === 6) {
+      // Triangle fan
+      ctx.fillStyle = css;
+      const origin = verts[0]!;
+      for (let i = 1; i + 1 < verts.length; i++) {
+        ctx.beginPath();
+        ctx.moveTo(origin.x, origin.y);
+        ctx.lineTo(verts[i]!.x, verts[i]!.y);
+        ctx.lineTo(verts[i + 1]!.x, verts[i + 1]!.y);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+    this._primVerts = [];
+  }
   draw_rectangle_color(x1: number, y1: number, x2: number, y2: number, c1: number, _c2: number, _c3: number, _c4: number, outline: boolean): void {
     const ctx = this._gfx.ctx;
     if (outline) { ctx.strokeStyle = gmlColorToCss(c1); ctx.strokeRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1); }
@@ -1035,10 +1157,29 @@ export class GameRuntime {
   part_type_size_y(_type: number, _ymin: number, _ymax: number, _yinc: number, _ywiggle: number): void { throw new Error("part_type_size_y: particle system not yet implemented"); }
 
   // ---- Instance activation/deactivation ----
-  instance_activate_object(_classIndex: number): void { throw new Error("instance_activate_object: not yet implemented"); }
-  instance_deactivate_object(_classIndex: number, _notme?: boolean): void { throw new Error("instance_deactivate_object: not yet implemented"); }
-  instance_deactivate_layer(_layer: any): void { throw new Error("instance_deactivate_layer: not yet implemented"); }
-  instance_deactivate_region(_x1: number, _y1: number, _x2: number, _y2: number, _inside: boolean, _notme?: boolean): void { throw new Error("instance_deactivate_region: not yet implemented"); }
+  instance_activate_object(classIndex: number): void {
+    const clazz = this.classes[classIndex];
+    if (!clazz) return;
+    for (const inst of this._deactivatedInstances) {
+      if (inst instanceof clazz) this._deactivatedInstances.delete(inst);
+    }
+  }
+  instance_deactivate_object(classIndex: number, notme: boolean = false): void {
+    const clazz = this.classes[classIndex];
+    if (!clazz) return;
+    for (const inst of this.roomVariables) {
+      if (notme && inst === this._self) continue;
+      if (inst instanceof clazz) this._deactivatedInstances.add(inst);
+    }
+  }
+  instance_deactivate_layer(_layer: any): void { /* no-op: layer data not available */ }
+  instance_deactivate_region(x1: number, y1: number, x2: number, y2: number, inside: boolean, notme: boolean = false): void {
+    for (const inst of this.roomVariables) {
+      if (notme && inst === this._self) continue;
+      const inRegion = inst.x >= x1 && inst.x <= x2 && inst.y >= y1 && inst.y <= y2;
+      if (inRegion === inside) this._deactivatedInstances.add(inst);
+    }
+  }
 
   // ---- Variable instance helpers ----
   variable_instance_get(inst: any, name: string): any { return inst?.[name]; }
@@ -1192,15 +1333,23 @@ export class GameRuntime {
     this._buffers.delete(bufId);
   }
 
-  // ---- File API (stubs — TODO: implement in platform layer) ----
-  file_text_write_string(_file: number, _str: string): void {
-    throw new Error("file_text_write_string: implement in platform layer");
+  // ---- File API (localStorage-backed text file simulation) ----
+  private _fileKey(path: string): string { return `gml_file:${path}`; }
+  file_text_write_string(file: number, str: string): void {
+    const f = this._textFiles.get(file); if (f && f.mode === 'w') f.content += str;
   }
-  file_text_close(_file: number): void {
-    throw new Error("file_text_close: implement in platform layer");
+  file_text_writeln(file: number): void {
+    const f = this._textFiles.get(file); if (f && f.mode === 'w') f.content += "\n";
   }
-  file_exists(_path: string): boolean {
-    throw new Error("file_exists: implement in platform layer");
+  file_text_close(file: number): void {
+    const f = this._textFiles.get(file);
+    if (f && f.mode === 'w') {
+      try { localStorage.setItem(this._fileKey(f.path), f.content); } catch { /* storage full */ }
+    }
+    this._textFiles.delete(file);
+  }
+  file_exists(path: string): boolean {
+    return localStorage.getItem(this._fileKey(path)) !== null;
   }
 
   // ---- Steam API (platform-provided or no-op) ----
@@ -1248,8 +1397,9 @@ export class GameRuntime {
   collision_ellipse(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean): any { throw new Error("collision_ellipse: requires collision system implementation"); }
   collision_line_list(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean, _list: number, _ordered: number | boolean = 0): number { throw new Error("collision_line_list: requires collision system implementation"); }
   collision_rectangle_list(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean, _list: number, _ordered: boolean = false): number { throw new Error("collision_rectangle_list: requires collision system implementation"); }
-  distance_to_point(_x: number, _y: number): number {
-    throw new Error("distance_to_point: implement using instance spatial data");
+  distance_to_point(x: number, y: number): number {
+    if (!this._self) return 0;
+    return Math.hypot(x - this._self.x, y - this._self.y);
   }
 
   // ---- More draw ----
@@ -1283,7 +1433,6 @@ export class GameRuntime {
     if (outline) { ctx.strokeStyle = gmlColorToCss(c1); ctx.stroke(); }
     else { ctx.fillStyle = gmlColorToCss(c1); ctx.fill(); }
   }
-  draw_primitive_begin_texture(_kind: number, _tex: number): void { throw new Error("draw_primitive_begin_texture: not yet implemented"); }
   draw_set_circle_precision(_n: number): void { /* canvas uses native arcs */ }
   draw_sprite_part_ext(spr: number, sub: number, left: number, top: number, w: number, h: number, x: number, y: number, xscale: number, yscale: number, _col: number, alpha: number): void {
     const ctx = this._gfx.ctx;
@@ -1304,7 +1453,28 @@ export class GameRuntime {
     }
     ctx.restore();
   }
-  draw_sprite_pos(_spr: number, _sub: number, _x1: number, _y1: number, _x2: number, _y2: number, _x3: number, _y3: number, _x4: number, _y4: number, _alpha: number): void { throw new Error("draw_sprite_pos: not yet implemented"); }
+  draw_sprite_pos(spr: number, sub: number, x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, x4: number, y4: number, alpha: number): void {
+    // GML corner order: top-left, top-right, bottom-right, bottom-left
+    const sprite = this.sprites[spr]; if (!sprite) return;
+    const texIdx = sprite.textures[sub] ?? sprite.textures[0]; if (texIdx === undefined) return;
+    const tex = this.textures[texIdx]; if (!tex) return;
+    const sheet = this.textureSheets[tex.sheetId]; if (!sheet) return;
+    const ctx = this._gfx.ctx;
+    ctx.save();
+    if (alpha !== this._draw.alpha) ctx.globalAlpha = alpha;
+    // Use a canvas transform to map from sprite rect to four corners (top-left→top-right→bottom-right→bottom-left).
+    // We approximate by computing the affine transform that maps the sprite rectangle's corners to x1/x2/x3/x4.
+    const sw = tex.dest.w, sh = tex.dest.h;
+    // Top-left corner anchor: translate to (x1, y1), scale by (x2-x1)/sw, (y4-y1)/sh.
+    const dw = Math.hypot(x2 - x1, y2 - y1);
+    const dh = Math.hypot(x4 - x1, y4 - y1);
+    const angleX = Math.atan2(y2 - y1, x2 - x1);
+    ctx.translate(x1, y1);
+    ctx.rotate(angleX);
+    ctx.scale(dw / sw, dh / sh);
+    ctx.drawImage(sheet, tex.src.x, tex.src.y, tex.src.w, tex.src.h, 0, 0, sw, sh);
+    ctx.restore();
+  }
   draw_sprite_tiled(spr: number, sub: number, x: number, y: number): void {
     const sprite = this.sprites[spr];
     if (!sprite) return;
@@ -1388,15 +1558,30 @@ export class GameRuntime {
   }
 
   // ---- File extras ----
-  file_text_open_read(_path: string): number { throw new Error("file_text_open_read: not yet implemented"); }
-  file_text_read_string(_file: number): string { throw new Error("file_text_read_string: not yet implemented"); }
-  file_delete(_path: string): void { throw new Error("file_delete: not yet implemented"); }
-  file_find_first(_mask: string, _attr: number): string { throw new Error("file_find_first: not yet implemented"); }
-  file_find_next(): string { throw new Error("file_find_next: not yet implemented"); }
+  file_text_open_read(path: string): number {
+    const content = localStorage.getItem(this._fileKey(path)) ?? "";
+    const id = this._nextTextFileId++;
+    this._textFiles.set(id, { path, content, pos: 0, mode: 'r' });
+    return id;
+  }
+  file_text_read_string(file: number): string {
+    const f = this._textFiles.get(file); if (!f || f.mode !== 'r') return "";
+    const nl = f.content.indexOf('\n', f.pos);
+    const line = nl === -1 ? f.content.slice(f.pos) : f.content.slice(f.pos, nl);
+    f.pos = nl === -1 ? f.content.length : nl + 1;
+    return line;
+  }
+  file_text_eof(file: number): boolean {
+    const f = this._textFiles.get(file); return !f || f.pos >= f.content.length;
+  }
+  file_delete(path: string): void { localStorage.removeItem(this._fileKey(path)); }
+  file_find_first(_mask: string, _attr: number): string { return ""; /* no filesystem enumeration in browser */ }
+  file_find_next(): string { return ""; }
+  file_find_close(): void { /* no-op */ }
 
   // ---- Directory ----
-  directory_create(_path: string): void { throw new Error("directory_create: not yet implemented"); }
-  directory_exists(_path: string): boolean { throw new Error("directory_exists: not yet implemented"); }
+  directory_create(_path: string): void { /* no-op: no filesystem access in browser */ }
+  directory_exists(_path: string): boolean { return false; }
 
 
   // ---- Buffer extras ----
@@ -1525,8 +1710,16 @@ export class GameRuntime {
   psn_post_uds_event(_evtype: number, ..._args: any[]): void { /* no-op — PS4 telemetry, no browser equivalent */ }
 
   // ---- More file/buffer API ----
-  file_text_open_write(_path: string): number {
-    throw new Error("file_text_open_write: implement in platform layer");
+  file_text_open_write(path: string): number {
+    const id = this._nextTextFileId++;
+    this._textFiles.set(id, { path, content: "", pos: 0, mode: 'w' });
+    return id;
+  }
+  file_text_open_append(path: string): number {
+    const existing = localStorage.getItem(this._fileKey(path)) ?? "";
+    const id = this._nextTextFileId++;
+    this._textFiles.set(id, { path, content: existing, pos: existing.length, mode: 'w' });
+    return id;
   }
   buffer_seek(bufId: number, base: number, offset: number): void {
     const buf = this._buffers.get(bufId);
@@ -1562,7 +1755,6 @@ export class GameRuntime {
     ctx.fillStyle = `rgb(${r},${g},${b})`;
     ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   }
-  draw_vertex_texture(_x: number, _y: number, _xtex: number, _ytex: number): void { throw new Error("draw_vertex_texture: not yet implemented"); }
   vertex_position(_vbuf: number, _x: number, _y: number, _z: number = 0): void { throw new Error("vertex_position: not yet implemented"); }
   vertex_colour(_vbuf: number, _col: number, _alpha: number): void { throw new Error("vertex_colour: not yet implemented"); }
   position_meeting(_x: number, _y: number, _classIndex: number): boolean {
@@ -1586,16 +1778,21 @@ export class GameRuntime {
   room_duplicate(_room: number): number {
     throw new Error("room_duplicate: not implemented");
   }
-  room_set_persistent(_room: number, _persistent: boolean): void { throw new Error("room_set_persistent: not yet implemented"); }
-  event_perform(_type: number, _n: number): void { throw new Error("event_perform: not yet implemented"); }
+  room_set_persistent(_room: number, _persistent: boolean): void { /* no-op: persistence state not tracked per-room */ }
+  event_perform(type: number, n: number): void {
+    // type 10 = user event; type 7 = alarm — dispatch on _self if available
+    if (!this._self) return;
+    if (type === 10) { const m = (this._self as any)["user" + n]; if (m && m !== noop) m.call(this._self); }
+    else if (type === 7) { const m = (this._self as any)["alarm" + n]; if (m && m !== noop) m.call(this._self); }
+  }
   is_debug_overlay_open(): boolean { return false; }
   path_exists(_path: number): boolean { return false; }
   path_delete(_path: number): void { /* no-op */ }
   part_type_gravity(_part: number, _gx: number, _gy: number): void { /* no-op */ }
   part_system_depth(_syst: number, _depth: number): void { /* no-op */ }
   layer_background_visible(_bg: number, _visible: boolean): void { /* no-op */ }
-  layer_sequence_create(_layer: any, _x: number, _y: number, _seq: number): number { throw new Error("layer_sequence_create: not yet implemented"); }
-  layer_sequence_is_finished(_seq: number): boolean { throw new Error("layer_sequence_is_finished: not yet implemented"); }
+  layer_sequence_create(_layer: any, _x: number, _y: number, _seq: number): number { return -1; }
+  layer_sequence_is_finished(_seq: number): boolean { return true; }
   string_repeat(str: string, count: number): string { return str.repeat(count); }
 
   // ---- Gamepad API (stubs) ----
@@ -1647,7 +1844,7 @@ export class GameRuntime {
   layer_get_x(_layer: any): number { throw new Error("layer_get_x: not yet implemented"); }
   layer_get_y(_layer: any): number { throw new Error("layer_get_y: not yet implemented"); }
   layer_depth(_layer: any, _depth?: number): number { throw new Error("layer_depth: not yet implemented"); }
-  layer_sequence_destroy(_seq: number): void { throw new Error("layer_sequence_destroy: not yet implemented"); }
+  layer_sequence_destroy(_seq: number): void { /* no-op */ }
 
   // ---- More collision ----
   collision_ellipse_list(_x1: number, _y1: number, _x2: number, _y2: number, _classIndex: number, _prec: boolean, _notme: boolean, _list: number, _ordered: boolean = false): number { throw new Error("collision_ellipse_list: requires collision system implementation"); }
@@ -2039,7 +2236,9 @@ export class GameRuntime {
     return [u0, v0, u1, v1, 0, 0, tex.dest.w, tex.dest.h];
   }
   sprite_prefetch(_spr: number): void { /* no-op */ }
-  sprite_set_speed(_spr: number, _speed: number, _type: number): void { throw new Error("sprite_set_speed: not yet implemented"); }
+  sprite_set_speed(spr: number, speed: number, _type: number): void {
+    this._spriteSpeedOverrides.set(spr, speed);
+  }
 
   // ---- ord / chr extras ----
   ord(char: string): number { return char.charCodeAt(0) || 0; }
@@ -2063,13 +2262,28 @@ export class GameRuntime {
   game_get_speed(_type: number): number { return this.room_speed; }
 
   // ---- Layer extras ----
-  layer_get_depth(_layer: any): number { throw new Error("layer_get_depth: not yet implemented"); }
+  layer_get_depth(_layer: any): number { return 0; }
   layer_set_visible(_layer: any, _visible: boolean): void { /* no-op */ }
   layer_x(_layer: any, _x?: number): any { if (_x !== undefined) return; return 0; }
   layer_y(_layer: any, _y?: number): any { if (_y !== undefined) return; return 0; }
 
   // ---- More instance ----
-  instance_deactivate_all(_notme: boolean): void { throw new Error("instance_deactivate_all: requires instance activation system"); }
+  instance_deactivate_all(notme: boolean): void {
+    for (const inst of this.roomVariables) {
+      if (notme && inst === this._self) continue;
+      this._deactivatedInstances.add(inst);
+    }
+  }
+  instance_activate_all(): void {
+    this._deactivatedInstances.clear();
+  }
+  instance_activate_region(x1: number, y1: number, x2: number, y2: number, inside: boolean): void {
+    for (const inst of this._deactivatedInstances) {
+      const inRegion = inst.x >= x1 && inst.x <= x2 && inst.y >= y1 && inst.y <= y2;
+      if (inRegion === inside) this._deactivatedInstances.delete(inst);
+    }
+  }
+  instance_activate_layer(_layer: any): void { /* no-op: layer data not available */ }
   instance_furthest(_x: number, _y: number, _classIndex: number): any { throw new Error("instance_furthest: requires spatial instance index"); }
   instance_position(_x: number, _y: number, _classIndex: number): any { throw new Error("instance_position: requires collision system implementation"); }
 
