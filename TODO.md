@@ -557,6 +557,13 @@ type 0 = Object (OBJT) in all GameMaker versions. Fix: added OBJT names to `buil
 at type_tag=0, removed special-case FUNC lookup, added Objects group to `generate_asset_ids`.
 Result: TS2345 2043 → 846, total errors 4151 → 2112.
 
+**Remaining risk:** pushref type_tag mapping is **version-dependent** (UndertaleModTool
+`AdaptAssetType`). Our code uses the GM 2024.4+ layout. Pre-2024.4 games have a different
+mapping (e.g. type 4=Background instead of Path, type 6=Script instead of Font, type 8=Timeline
+instead of Shader, type 10=Shader instead of AnimCurve). Types 0–3 are the same in both versions.
+Need version detection + dual mapping for pre-2024.4 games. See `lib.rs` comment on
+`build_asset_ref_names` for full table.
+
 #### Bug 7b: GML number↔boolean calling convention (~450 TS2345)
 
 GML has no boolean type — all boolean parameters receive `0` or `1` (sometimes computed values).
@@ -680,6 +687,18 @@ Fixed in previous sessions (2026-02-24):
   subsequent pops underflow. Investigation needs bytecode dump of RunLoader::step to see which
   join point has inconsistent depths. Consider: (a) asserting stack depth consistency at join
   points, (b) using a worklist-based depth propagation instead of linear walk.
+
+### 9. Pushref type_tag mapping is version-dependent — wrong for pre-2024.4 games
+
+`build_asset_ref_names` currently uses the GM 2024.4+ type_tag layout. Pre-2024.4 games use a
+different mapping where types 4–13 are shuffled (e.g. 4=Background, 6=Script, 8=Timeline,
+10=Shader). Types 0–3 (Object, Sprite, Sound, Room) are the same in both versions, so games
+using only those assets are unaffected. Need:
+- [ ] Version detection (check `IsVersionAtLeast(2024, 4)` equivalent — likely in GEN8 chunk)
+- [ ] Dual mapping in `build_asset_ref_names` based on detected version
+- [ ] Same dual mapping in `generate_asset_ids`
+
+Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleCode.cs`.
 
 ### New game inventory
 

@@ -655,20 +655,27 @@ fn strip_script_prefix(name: &str) -> &str {
 /// In GMS2.3+, the `Break -11` (pushref) instruction's `extra` field encodes both
 /// an asset type tag and an asset index as `(type_tag << 24) | asset_index`.
 ///
-/// The type tag matches the GML `asset_get_type()` / `asset_*` constant enumeration:
+/// The type tag mapping is **version-dependent** (see UndertaleModTool `AdaptAssetType`):
 ///
-///   Type 0 → OBJT objects          (asset_object)
-///   Type 1 → SPRT sprites          (asset_sprite)
-///   Type 2 → SOND sounds           (asset_sound)
-///   Type 3 → ROOM rooms            (asset_room)
-///   Type 4 → PATH paths            (asset_path, deprecated in GMS2)
-///   Type 5 → SCPT scripts          (asset_script)
-///   Type 6 → FONT fonts            (asset_font)
-///   Type 7 → TMLN timelines        (asset_timeline)
-///   Type 8 → SHDR shaders          (asset_shader in GMS2.3+ encoding)
-///   Type 9 → SEQN sequences        (GMS2.3+ sequences; not present in GMS1)
+/// GM 2024.4+ layout (currently implemented):
+///   Type 0  → OBJT objects         Type 1  → SPRT sprites
+///   Type 2  → SOND sounds          Type 3  → ROOM rooms
+///   Type 4  → PATH paths           Type 5  → SCPT scripts
+///   Type 6  → FONT fonts           Type 7  → TMLN timelines
+///   Type 8  → SHDR shaders         Type 9  → SEQN sequences
+///   Type 10 → AnimCurve            Type 11 → ParticleSystem
+///   Type 13 → BGND backgrounds     Type 14 → RoomInstance
 ///
-/// Note: empirical evidence from Dead Estate (GMS2.3+) confirms:
+/// Pre-2024.4 layout (NOT yet implemented — see TODO.md):
+///   Type 0  → OBJT objects         Type 1  → SPRT sprites
+///   Type 2  → SOND sounds          Type 3  → ROOM rooms
+///   Type 4  → BGND backgrounds     Type 5  → PATH paths
+///   Type 6  → SCPT scripts         Type 7  → FONT fonts
+///   Type 8  → TMLN timelines       Type 10 → SHDR shaders
+///   Type 11 → SEQN sequences       Type 12 → AnimCurve
+///   Type 13 → ParticleSystem       Type 14 → RoomInstance
+///
+/// Dead Estate (GMS2.3+) uses the 2024.4+ layout empirically:
 ///   - type=3 used with room_goto → ROOM
 ///   - type=8 used with shader_set → SHDR
 ///
