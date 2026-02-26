@@ -223,6 +223,7 @@ fn collect_bool_demands(
     func: &Function,
     external_param_types: &HashMap<String, Vec<Type>>,
     internal_sigs: &HashMap<String, Vec<Type>>,
+    struct_fields: &HashMap<String, HashMap<String, Type>>,
 ) -> Vec<ValueId> {
     let mut demands = Vec::new();
 
@@ -243,6 +244,23 @@ fn collect_bool_demands(
                     for (i, arg) in args.iter().enumerate() {
                         if param_types.get(i) == Some(&Type::Bool) {
                             demands.push(*arg);
+                        }
+                    }
+                }
+            }
+            // SetField: if the target field is Bool-typed, demand bool for the value
+            Op::SetField {
+                object,
+                field,
+                value,
+            } => {
+                if let Type::Struct(name) = &func.value_types[*object] {
+                    if let Some(field_ty) = struct_fields
+                        .get(name)
+                        .and_then(|fields| fields.get(field))
+                    {
+                        if *field_ty == Type::Bool {
+                            demands.push(*value);
                         }
                     }
                 }
@@ -268,8 +286,9 @@ fn promote_demands(
     func: &mut Function,
     external_param_types: &HashMap<String, Vec<Type>>,
     internal_sigs: &HashMap<String, Vec<Type>>,
+    struct_fields: &HashMap<String, HashMap<String, Type>>,
 ) -> bool {
-    let demands = collect_bool_demands(func, external_param_types, internal_sigs);
+    let demands = collect_bool_demands(func, external_param_types, internal_sigs, struct_fields);
     let mut changed = false;
 
     for demand_val in demands {
@@ -295,23 +314,18 @@ fn infer_bool_return(func: &mut Function) -> bool {
         return false;
     }
 
-    let return_vals: Vec<ValueId> = func
-        .blocks
-        .keys()
-        .flat_map(|block_id| {
-            func.blocks[block_id]
-                .insts
-                .iter()
-                .filter_map(|&inst_id| {
-                    if let Op::Return(Some(val)) = &func.insts[inst_id].op {
-                        Some(*val)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    let mut return_vals = Vec::new();
+    for block_id in func.blocks.keys() {
+        for &inst_id in &func.blocks[block_id].insts {
+            match &func.insts[inst_id].op {
+                Op::Return(Some(val)) => return_vals.push(*val),
+                // Bare return (Exit) — function has void-return paths,
+                // so we cannot infer Bool return type.
+                Op::Return(None) => return false,
+                _ => {}
+            }
+        }
+    }
 
     if return_vals.is_empty() {
         return false;
@@ -372,6 +386,30 @@ impl Transform for IntToBoolPromotion {
         // Build external param type map once
         let external_param_types = build_external_param_types(&module.external_function_sigs);
 
+        // Build struct field type map from module structs + external type defs
+        let mut struct_fields: HashMap<String, HashMap<String, Type>> = HashMap::new();
+        for s in &module.structs {
+            let fields: HashMap<String, Type> = s
+                .fields
+                .iter()
+                .map(|(n, t, _)| (n.clone(), t.clone()))
+                .collect();
+            struct_fields.insert(s.name.clone(), fields);
+        }
+        for (name, ext) in &module.external_type_defs {
+            if !ext.fields.is_empty() {
+                let fields: HashMap<String, Type> = ext
+                    .fields
+                    .iter()
+                    .map(|(f, t)| (f.clone(), parse_type_notation(t)))
+                    .collect();
+                struct_fields
+                    .entry(name.clone())
+                    .or_default()
+                    .extend(fields);
+            }
+        }
+
         // Build internal function sig param types map
         let internal_sigs: HashMap<String, Vec<Type>> = module
             .functions
@@ -388,6 +426,7 @@ impl Transform for IntToBoolPromotion {
                 &mut module.functions[func_id],
                 &external_param_types,
                 &internal_sigs,
+                &struct_fields,
             );
         }
 
@@ -423,6 +462,7 @@ impl Transform for IntToBoolPromotion {
                     &mut module.functions[func_id],
                     &external_param_types,
                     &updated_internal_sigs,
+                    &struct_fields,
                 );
             }
         }
@@ -815,6 +855,77 @@ mod tests {
         let module = mb.build();
         let result = IntToBoolPromotion.apply(module).unwrap();
         assert!(!result.changed);
+    }
+
+    #[test]
+    fn does_not_infer_bool_return_with_bare_exit() {
+        // Function with one explicit `return 0` and one bare `exit` (Return(None)).
+        // Should NOT infer Bool return — the bare exit produces `undefined`.
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("step", sig, Visibility::Public);
+        let cond = fb.param(0);
+        let then_block = fb.create_block();
+        let else_block = fb.create_block();
+        fb.br_if(cond, then_block, &[], else_block, &[]);
+
+        fb.switch_to_block(then_block);
+        fb.ret(None); // bare exit
+
+        fb.switch_to_block(else_block);
+        let zero = fb.const_int(0);
+        fb.ret(Some(zero));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+
+        let result = IntToBoolPromotion.apply(module).unwrap();
+        // Return type must NOT be changed to Bool
+        assert_eq!(
+            result.module.functions[FuncId::new(0)].sig.return_ty,
+            Type::Dynamic,
+        );
+    }
+
+    #[test]
+    fn promotes_int_at_bool_struct_field() {
+        use crate::ir::module::StructDef;
+        // Setting a Bool-typed field with Int(1) should promote to Bool(true).
+        let sig = FunctionSig {
+            params: vec![Type::Struct("Obj".into())],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
+        let obj = fb.param(0);
+        let one = fb.const_int(1);
+        fb.set_field(obj, "persistent", one);
+        fb.ret(None);
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        mb.add_struct(StructDef {
+            name: "Obj".into(),
+            namespace: vec![],
+            fields: vec![("persistent".into(), Type::Bool, None)],
+            visibility: Visibility::Public,
+        });
+        let module = mb.build();
+
+        let result = IntToBoolPromotion.apply(module).unwrap();
+        assert!(result.changed);
+
+        let func = &result.module.functions[FuncId::new(0)];
+        for inst_id in func.insts.keys() {
+            if let Op::Const(Constant::Bool(true)) = &func.insts[inst_id].op {
+                return;
+            }
+        }
+        panic!("Expected Bool(true) constant for struct field assignment");
     }
 
     #[test]
