@@ -498,44 +498,58 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   pushac target, or (b) the TS printer detecting integer-as-collection in SetIndex and routing
   to a GameMaker.setIndex runtime call. Only 6 errors in Schism, low priority.
 
-### 7. Dead Estate remaining TS errors — 845 as of 2026-02-26
+### 7. Dead Estate remaining TS errors — 879 as of 2026-02-26
 
-Progress: 12350 → 4151 → 3341 → 2112 → 1666 → 1378 → 845 (93% reduction). 1 translation error (RunLoader::step stack underflow — see Bug 8 below).
+Progress: 12350 → 4151 → 3341 → 2112 → 879 (93% reduction). 1 translation error (RunLoader::step stack underflow — see Bug 8 below).
 
 | Code | Count | Root cause |
 |------|-------|------------|
-| TS2345 | 330 | Argument type mismatch (see detailed breakdown below) |
-| TS2322 | 303 | Type not assignable |
+| TS2345 | 325 | Argument type mismatch (pushref name resolution remnants + misc) |
+| TS2322 | 319 | Type not assignable |
 | TS2367 | 53 | Comparison always false — type mismatch in `===` (game author errors) |
-| TS2339 | 42 | Property doesn't exist — scattered built-in fields |
+| TS2339 | 42 | Property doesn't exist |
+| TS7027 | 29 | Unreachable code — **structurizer/emitter bug** (see Bug 7c below) |
 | TS2365 | 27 | Operator not applicable — bitwise/arithmetic on wrong type |
 | TS2362 | 20 | Left side of `**`/arithmetic must be number |
 | TS2304 | 17 | Cannot find name — **linearizer/structurizer bugs** (see Bug 7d below) |
 | TS18050 | 13 | Value of type `void` is not callable |
-| TS7027 | 11 | Unreachable code — **structurizer/emitter bug** (see Bug 7c below) |
-| TS7053 | 8 | Element implicitly has `any` type (remaining after pushaf/popaf fix) |
+| TS7053 | 8 | Element implicitly has `any` type |
 | TS2363 | 6 | Right side of `**` must be number |
 | TS2554 | 5 | Wrong argument count — game-author errors or decompiler arg-count mismatches |
 | TS2416 | 4 | Property not assignable to same in base type |
-| TS2872 | 3 | Unnecessary comparison |
+| TS2872 | 3 | Comparison appears unintentional |
 | TS2308 | 3 | Module not found |
 | TS2300 | 2 | Duplicate identifier |
 | TS2552 | 1 | Cannot find name (with-body self-reference bug) |
 | TS2307 | 1 | Cannot find module |
 | TS18047 | 1 | Object is possibly null |
 
-#### TS2345 Detailed Breakdown (330 remaining, by expected type)
+#### TS2345 Detailed Breakdown (2043 errors, by type pair)
 
-| Count | Expected type | Root cause |
-|------:|---------------|------------|
-| 176 | `GMLObject` | Instance refs used where GMLObject expected (type inference gap) |
-| 110 | `number` | Type mismatches (struct→number, string→number, etc.) |
-| 17 | `(...args) => any` | Function type mismatch |
-| 16 | `string` | Type mismatches |
-| 3 | `any[]` | Array type mismatch |
-| 2 | `(inst: GMLObject) => void` | Callback type mismatch |
+| Count | Source type → Expected type | Root cause |
+|------:|----------------------------|------------|
+| 505 | `(_rt, self) => void` → `number` | **pushref name resolution (Bug 7a)**: GMS2.3+ constructor refs resolved to imported function values instead of numeric asset indices |
+| 432 | `number` → `boolean` | **GML calling convention (Bug 7b)**: GML has no boolean type; `0`/`1` used everywhere for boolean params (`audio_play_sound(..., loop)`, `sprite_create_from_surface(..., removeback, smooth)`) |
+| 116 | `() => string` → `number` | **pushref name resolution (Bug 7a)**: e.g. `instance_exists(steam_current_game_language)` — `steam_current_game_language` is a runtime function but should be a numeric object ID |
+| 111 | `(_rt, self, arg0?, arg1?) => any` → `number` | **pushref name resolution (Bug 7a)**: multi-arg function refs where object index expected |
+| 58 | `(_rt, self) => void` → `GMLObject` | Same pushref issue, different target type |
+| 55 | `(_rt, self, ...) => void` → `number` | Same pushref issue, various arities |
+| 50 | `(_rt, self, arg0?) => any` → `number` | Same |
+| 47 | `(_rt, self, arg0?) => void` → `number` | Same |
+| 41 | `(_result: number) => void` → `number` | **pushref name resolution**: e.g. `collision_line(..., steam_inventory_result_destroy, ...)` — clearly wrong name for a collision object |
+| 33 | `string` → `number` | Mixed: some genuine type mismatches, some asset name resolution |
+| 28 | `(_rt, self, ..4 args) => void` → `number` | Same pushref issue |
+| 24 | `(_rt, self, ..4 args) => void` → `GMLObject` | Same |
+| 23 | `(font: number) => void` → `number` | Same pushref issue |
+| 22 | `Record<string, any>` → `number` | Struct objects used as numeric IDs |
+| 22 | `GMLObject \| null` → `number` | Instance refs used as numeric IDs |
+| 21 | `() => void` → `number` | Same pushref issue |
+| 17 | `(s: string) => number` → `number` | Same |
+| 16 | `boolean` → `number` | Reverse of Bug 7b |
+| 14 | `() => number` → `number` | Same pushref issue |
+| ~400 | (remaining long tail) | Mix of pushref, type inference gaps, game author errors |
 
-Previously: ~900 were pushref name resolution (Bug 7a, fixed), ~536 were number→boolean (Bug 7b, fixed).
+**~900 errors are pushref name resolution (Bug 7a)**, **~450 are number↔boolean (Bug 7b)**.
 
 #### Bug 7a: FIXED — pushref type_tag=0 is OBJT, not FUNC (2026-02-26)
 
@@ -551,13 +565,16 @@ instead of Shader, type 10=Shader instead of AnimCurve). Types 0–3 are the sam
 Need version detection + dual mapping for pre-2024.4 games. See `lib.rs` comment on
 `build_asset_ref_names` for full table.
 
-#### Bug 7b: FIXED — GML number→boolean coercion pass (2026-02-26)
+#### Bug 7b: FIXED — GML number↔boolean calling convention (2026-02-26)
 
-GML has no boolean type — all boolean parameters receive `0` or `1` (sometimes computed values).
-Fix: post-rewrite pass `coerce_bool_args` in `rewrites/gamemaker.rs` wraps numeric arguments with
-`!!arg` at call sites where `function_signatures` in `runtime.json` declares the parameter as
-`boolean`. Also added ~30 missing runtime method signatures to `function_signatures`.
-Result: TS2345 boolean errors 536 → 0, total errors 1378 → 845.
+Root cause: GML has no boolean type — `0`/`1` used everywhere for boolean params. The IR
+represented these as `Int(0)`/`Int(1)` but the constraint solver skipped non-Dynamic values.
+
+Fix: new `IntToBoolPromotion` transform pass that identifies values demanded as Bool (via
+`external_function_sigs` param types, `BrIf` conditions, `Not` operands, internal function
+sig param types) and traces backward through SSA. If all leaves are Int(0/1)/Bool, the
+chain is promoted to Bool. Also subsumes `BoolLiteralReturn` (return type inference).
+Result: TS2345 846 → 325, total errors 2112 → 879.
 
 #### Bug 7c: Unreachable code after return/continue (207 TS7027)
 
@@ -600,14 +617,12 @@ Three distinct sub-patterns:
 All 17 are **correctness bugs**, not cosmetic issues — the emitted code references variables
 that don't exist, meaning these functions would crash at runtime.
 
-#### TS7053: FIXED — pushaf/popaf stack order (454 → 8, 2026-02-26)
+#### TS7053: `int(x)[field]` indexing number (454 errors)
 
-Root cause: GMS2.3+ array access via Break signals pushaf (0xFFFE) and popaf (0xFFFD) had the
-collection and index arguments to GetIndex/SetIndex reversed. pushac saves the INDEX (not the
-array as previously documented); popaf pops VALUE and ARRAY from the stack, then writes
-ARRAY[INDEX] = VALUE. Also: Conv.v.i32 before pushac is a VM byte-layout artifact — stripped
-via `try_peel_int_coerce()`. Remaining 8 errors are likely different patterns (struct field
-access on number-typed vars).
+Pattern: `int(global.argument0)[AceDoll.instances[0]!.items] = 0` — `int()` returns `number`,
+which can't be indexed. These are 2D array access patterns where the array variable is coerced
+to `int` before being used as an array target. Root cause: the 2D array access codegen wraps
+the array in `int()` (from a `coerce i32` instruction) when it should be accessing the array directly.
 
 #### TS2339: Missing particle system properties (107 of 149)
 
@@ -626,9 +641,6 @@ Fixed in previous sessions (2026-02-24):
 **Highest-leverage next targets (by error reduction potential):**
 
 - [x] **Bug 7a: pushref type_tag=0 is OBJT (~1200 TS2345 fixed)** — Fixed 2026-02-26.
-
-- [x] **TS7053 (454→8): pushaf/popaf stack order** — Fixed 2026-02-26. Array and index were
-  swapped in both read and write paths. pushac saves INDEX, not array.
 
 - [ ] **Bug 7b: number→boolean casting (~450 TS2345)** — Emitter should insert `!!x` casts
   when passing `number` to `boolean`-typed parameters. Requires matching call-site arg types
@@ -694,7 +706,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 845 TS errors + 1 translation error (2026-02-26) |
+| Dead Estate | `data.win` 192MB | ⚠️ 879 TS errors + 1 translation error (2026-02-26) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |

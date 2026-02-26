@@ -4,6 +4,7 @@ pub mod const_fold;
 pub mod constraint_solve;
 pub mod coroutine_lower;
 pub mod dce;
+pub mod int_to_bool;
 pub mod mem2reg;
 pub mod red_cast_elim;
 pub mod type_infer;
@@ -15,6 +16,7 @@ pub use const_fold::ConstantFolding;
 pub use constraint_solve::ConstraintSolve;
 pub use coroutine_lower::CoroutineLowering;
 pub use dce::DeadCodeElimination;
+pub use int_to_bool::IntToBoolPromotion;
 pub use mem2reg::Mem2Reg;
 pub use red_cast_elim::RedundantCastElimination;
 pub use type_infer::TypeInference;
@@ -53,6 +55,9 @@ pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     // previously coerce(load(alloc), i32)).
     if config.constant_folding && config.mem2reg {
         pipeline.add(Box::new(ConstantFolding));
+    }
+    if config.int_to_bool_promotion {
+        pipeline.add(Box::new(IntToBoolPromotion));
     }
     if config.bool_literal_return {
         pipeline.add(Box::new(BoolLiteralReturn));
