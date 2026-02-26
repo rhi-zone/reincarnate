@@ -481,7 +481,9 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // Fall-through: no body, no break.
                 } else {
                     print_stmts(case_stmts, out, &case_indent);
-                    let _ = writeln!(out, "{indent}    break;");
+                    if !ends_with_terminal(case_stmts) {
+                        let _ = writeln!(out, "{indent}    break;");
+                    }
                 }
             }
             if !default_body.is_empty() {
