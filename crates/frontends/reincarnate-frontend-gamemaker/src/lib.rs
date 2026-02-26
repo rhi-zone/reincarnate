@@ -163,7 +163,10 @@ impl Frontend for GameMakerFrontend {
             modules: vec![module],
             assets,
             runtime_variant: None,
-            extra_passes: vec![Box::new(logical_op::GmlLogicalOpNormalize)],
+            extra_passes: vec![
+                Box::new(reincarnate_core::transforms::IntToBoolPromotion),
+                Box::new(logical_op::GmlLogicalOpNormalize),
+            ],
         })
     }
 }

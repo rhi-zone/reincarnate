@@ -54,9 +54,6 @@ pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     if config.constant_folding && config.mem2reg {
         pipeline.add(Box::new(ConstantFolding));
     }
-    if config.int_to_bool_promotion {
-        pipeline.add(Box::new(IntToBoolPromotion));
-    }
     if config.redundant_cast_elimination {
         pipeline.add(Box::new(RedundantCastElimination));
     }
