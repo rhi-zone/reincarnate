@@ -9,7 +9,7 @@ use reincarnate_core::ir::{
     Module, Op, StructDef, Type, Visibility,
 };
 use reincarnate_core::pipeline::{DebugConfig, LoweringConfig};
-use reincarnate_core::project::{ExternalTypeDef, RuntimeConfig};
+use reincarnate_core::project::{ExternalMethodSig, ExternalTypeDef, RuntimeConfig};
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::runtime::SYSTEM_NAMES;
@@ -117,8 +117,10 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
         let no_stateful = BTreeSet::new();
         let no_free_fns = HashSet::new();
         let no_sys_aliases = BTreeMap::new();
+        let empty_func_sigs = BTreeMap::new();
+        let func_sigs = runtime_config.map(|c| &c.function_signatures).unwrap_or(&empty_func_sigs);
         for group in &class_groups {
-            emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, &known_classes, lowering_config, engine, &no_stateful, &no_free_fns, debug, &mut out)?;
+            emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, &known_classes, lowering_config, engine, &no_stateful, &no_free_fns, func_sigs, debug, &mut out)?;
         }
         let closure_fids: Vec<FuncId> = free_funcs.iter()
             .copied()
@@ -834,6 +836,8 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     let type_defs = runtime_config.map(|c| &c.type_definitions).unwrap_or(&empty_type_defs);
     let empty_mod_exports = BTreeMap::new();
     let module_exports = runtime_config.map(|c| &c.module_exports).unwrap_or(&empty_mod_exports);
+    let empty_func_sigs = BTreeMap::new();
+    let func_sigs = runtime_config.map(|c| &c.function_signatures).unwrap_or(&empty_func_sigs);
     let class_meta = ClassMeta::build(module, type_defs);
     let global_names: HashSet<String> = module.globals.iter().map(|g| g.name.clone()).collect();
     let mutable_global_names: HashSet<String> = module.globals.iter()
@@ -975,7 +979,7 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             validate_member_accesses(&module.functions[fid], Some(&qualified), &class_meta, &registry, &short_to_qualified, type_defs);
         }
 
-        emit_class(group, module, &class_names, &class_meta, &mutable_global_names, &late_bound, &short_to_qualified, &known_classes, lowering_config, engine, &stateful_names, &free_func_names, debug, &mut out)?;
+        emit_class(group, module, &class_names, &class_meta, &mutable_global_names, &late_bound, &short_to_qualified, &known_classes, lowering_config, engine, &stateful_names, &free_func_names, func_sigs, debug, &mut out)?;
 
         strip_unused_namespace_imports(&mut out);
         let path = file_dir.join(format!("{short_name}.ts"));
@@ -2534,6 +2538,14 @@ fn emit_function(
         }
         EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies),
     };
+    // Coerce numeric arguments to boolean at call sites where the signature expects boolean.
+    if engine == EngineKind::GameMaker {
+        let empty_sigs = BTreeMap::new();
+        let func_sigs = runtime_config
+            .map(|c| &c.function_signatures)
+            .unwrap_or(&empty_sigs);
+        crate::rewrites::gamemaker::coerce_bool_args(&mut js_func, func_sigs);
+    }
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
     crate::ast_passes::recover_switch_statements(&mut js_func.body);
     crate::ast_passes::strip_redundant_casts(&mut js_func);
@@ -2755,6 +2767,7 @@ fn emit_class(
     engine: EngineKind,
     stateful_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
+    func_sigs: &BTreeMap<String, ExternalMethodSig>,
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -2876,7 +2889,7 @@ fn emit_class(
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, parent_method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, &closure_bodies, known_classes, lowering_config, engine, &module.sprite_names, &module.object_names, stateful_names, free_func_names, debug, out)?;
+        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, parent_method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, &closure_bodies, known_classes, lowering_config, engine, &module.sprite_names, &module.object_names, stateful_names, free_func_names, func_sigs, debug, out)?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -2966,6 +2979,7 @@ fn emit_class_method(
     object_names: &[String],
     stateful_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
+    func_sigs: &BTreeMap<String, ExternalMethodSig>,
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -3039,6 +3053,10 @@ fn emit_class_method(
         }
         EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies),
     };
+    // Coerce numeric arguments to boolean at call sites where the signature expects boolean.
+    if engine == EngineKind::GameMaker {
+        crate::rewrites::gamemaker::coerce_bool_args(&mut js_func, func_sigs);
+    }
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
     rewrite_late_bound_types(&mut js_func.body, late_bound, short_to_qualified);
     // Hoist super() to top of constructor body (after rewrite produces SuperCall nodes).

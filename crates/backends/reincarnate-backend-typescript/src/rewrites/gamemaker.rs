@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{CmpKind, ExternalImport, Type, ValueId};
+use reincarnate_core::project::ExternalMethodSig;
 
 use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
@@ -841,6 +842,189 @@ pub(crate) fn collect_gamemaker_instance_refs(
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Boolean argument coercion for GML → TypeScript
+// ---------------------------------------------------------------------------
+
+/// Wrap numeric arguments with `!!` at positions where the function signature
+/// expects `boolean`.  GML has no boolean type — 0/1 are used everywhere —
+/// but the TypeScript runtime declarations use `boolean` params, causing
+/// TS2345 ("Argument of type 'number' is not assignable to parameter of type
+/// 'boolean'").  This pass inserts `!!arg` to coerce at the call site.
+pub fn coerce_bool_args(
+    func: &mut JsFunction,
+    sigs: &BTreeMap<String, ExternalMethodSig>,
+) {
+    if sigs.is_empty() {
+        return;
+    }
+    coerce_bool_stmts(&mut func.body, sigs);
+}
+
+fn coerce_bool_stmts(stmts: &mut [JsStmt], sigs: &BTreeMap<String, ExternalMethodSig>) {
+    for stmt in stmts.iter_mut() {
+        coerce_bool_stmt(stmt, sigs);
+    }
+}
+
+fn coerce_bool_stmt(stmt: &mut JsStmt, sigs: &BTreeMap<String, ExternalMethodSig>) {
+    match stmt {
+        JsStmt::VarDecl { init, .. } => {
+            if let Some(e) = init {
+                coerce_bool_expr(e, sigs);
+            }
+        }
+        JsStmt::Assign { target, value } | JsStmt::CompoundAssign { target, value, .. } => {
+            coerce_bool_expr(target, sigs);
+            coerce_bool_expr(value, sigs);
+        }
+        JsStmt::Expr(e) | JsStmt::Throw(e) => coerce_bool_expr(e, sigs),
+        JsStmt::Return(Some(e)) => coerce_bool_expr(e, sigs),
+        JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
+        JsStmt::If { cond, then_body, else_body } => {
+            coerce_bool_expr(cond, sigs);
+            coerce_bool_stmts(then_body, sigs);
+            coerce_bool_stmts(else_body, sigs);
+        }
+        JsStmt::While { cond, body } => {
+            coerce_bool_expr(cond, sigs);
+            coerce_bool_stmts(body, sigs);
+        }
+        JsStmt::For { init, cond, update, body } => {
+            coerce_bool_stmts(init, sigs);
+            coerce_bool_expr(cond, sigs);
+            coerce_bool_stmts(update, sigs);
+            coerce_bool_stmts(body, sigs);
+        }
+        JsStmt::Loop { body } => coerce_bool_stmts(body, sigs),
+        JsStmt::ForOf { iterable, body, .. } => {
+            coerce_bool_expr(iterable, sigs);
+            coerce_bool_stmts(body, sigs);
+        }
+        JsStmt::Dispatch { blocks, .. } => {
+            for (_, stmts) in blocks {
+                coerce_bool_stmts(stmts, sigs);
+            }
+        }
+        JsStmt::Switch { value, cases, default_body } => {
+            coerce_bool_expr(value, sigs);
+            for (_, stmts) in cases {
+                coerce_bool_stmts(stmts, sigs);
+            }
+            coerce_bool_stmts(default_body, sigs);
+        }
+    }
+}
+
+fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig>) {
+    // Recurse into children first.
+    match expr {
+        JsExpr::Call { callee, args } => {
+            coerce_bool_expr(callee, sigs);
+            // Check if this is a call to a known function with boolean params.
+            if let JsExpr::Var(name) = callee.as_ref() {
+                if let Some(sig) = sigs.get(name.as_str()) {
+                    for (i, arg) in args.iter_mut().enumerate() {
+                        coerce_bool_expr(arg, sigs);
+                        if let Some(param_ty) = sig.params.get(i) {
+                            if param_ty == "boolean" && !is_already_boolean(arg) {
+                                let inner = std::mem::replace(arg, JsExpr::Literal(Constant::Null));
+                                *arg = JsExpr::Not(Box::new(JsExpr::Not(Box::new(inner))));
+                            }
+                        }
+                    }
+                    return;
+                }
+            }
+            for arg in args.iter_mut() {
+                coerce_bool_expr(arg, sigs);
+            }
+        }
+        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+            coerce_bool_expr(lhs, sigs);
+            coerce_bool_expr(rhs, sigs);
+        }
+        JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
+            coerce_bool_expr(lhs, sigs);
+            coerce_bool_expr(rhs, sigs);
+        }
+        JsExpr::Unary { expr: inner, .. }
+        | JsExpr::Not(inner)
+        | JsExpr::PostIncrement(inner)
+        | JsExpr::Spread(inner)
+        | JsExpr::NonNull(inner)
+        | JsExpr::TypeOf(inner)
+        | JsExpr::GeneratorResume(inner) => coerce_bool_expr(inner, sigs),
+        JsExpr::Field { object, .. } => coerce_bool_expr(object, sigs),
+        JsExpr::Index { collection, index } => {
+            coerce_bool_expr(collection, sigs);
+            coerce_bool_expr(index, sigs);
+        }
+        JsExpr::Ternary { cond, then_val, else_val } => {
+            coerce_bool_expr(cond, sigs);
+            coerce_bool_expr(then_val, sigs);
+            coerce_bool_expr(else_val, sigs);
+        }
+        JsExpr::ArrayInit(items) | JsExpr::TupleInit(items) => {
+            for item in items {
+                coerce_bool_expr(item, sigs);
+            }
+        }
+        JsExpr::ObjectInit(fields) => {
+            for (_, val) in fields {
+                coerce_bool_expr(val, sigs);
+            }
+        }
+        JsExpr::New { callee, args } => {
+            coerce_bool_expr(callee, sigs);
+            for arg in args.iter_mut() {
+                coerce_bool_expr(arg, sigs);
+            }
+        }
+        JsExpr::SuperMethodCall { args, .. } | JsExpr::GeneratorCreate { args, .. } => {
+            for arg in args.iter_mut() {
+                coerce_bool_expr(arg, sigs);
+            }
+        }
+        JsExpr::In { key, object } | JsExpr::Delete { object, key } => {
+            coerce_bool_expr(key, sigs);
+            coerce_bool_expr(object, sigs);
+        }
+        JsExpr::Cast { expr: inner, .. } | JsExpr::TypeCheck { expr: inner, .. } => {
+            coerce_bool_expr(inner, sigs);
+        }
+        JsExpr::ArrowFunction { body, .. } => coerce_bool_stmts(body, sigs),
+        JsExpr::SuperCall(args) => {
+            for arg in args {
+                coerce_bool_expr(arg, sigs);
+            }
+        }
+        JsExpr::SuperSet { value, .. } => coerce_bool_expr(value, sigs),
+        JsExpr::Yield(inner) => {
+            if let Some(e) = inner {
+                coerce_bool_expr(e, sigs);
+            }
+        }
+        JsExpr::SystemCall { args, .. } => {
+            for arg in args {
+                coerce_bool_expr(arg, sigs);
+            }
+        }
+        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => {}
+    }
+}
+
+/// Returns true if the expression is already boolean-typed and doesn't need `!!`.
+fn is_already_boolean(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Literal(Constant::Bool(_))
+            | JsExpr::Not(_)
+            | JsExpr::Cmp { .. }
+            | JsExpr::TypeCheck { .. }
+    )
 }
 
 #[cfg(test)]

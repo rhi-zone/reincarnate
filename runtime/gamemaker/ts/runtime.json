@@ -850,11 +850,11 @@
         "number",
         "number",
         "number",
-        "int",
+        "number",
         "boolean",
         "boolean"
       ],
-      "returns": "int"
+      "returns": "*"
     },
     "collision_circle": {
       "params": [
@@ -2004,6 +2004,293 @@
         "number",
         "number",
         "number"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_colorwriteenable": {
+      "params": [
+        "boolean",
+        "boolean",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_fog": {
+      "params": [
+        "boolean",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_sprite": {
+      "params": [
+        "number",
+        "number",
+        "boolean",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_system_automatic_draw": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_type_orientation": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "room_set_persistent": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "sprite_create_from_surface": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean",
+        "boolean",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "draw_path": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_triangle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_circle_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_ellipse": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_system_draw_order": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_texfilter": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "window_set_fullscreen": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_add_instances": {
+      "params": [
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "path_start": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "sprite_add": {
+      "params": [
+        "string",
+        "number",
+        "boolean",
+        "boolean",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "view_set_visible": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "show_debug_overlay": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "steam_input_init": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_rectangle_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "instance_place_list": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "number"
+    },
+    "sprite_collision_mask": {
+      "params": [
+        "number",
+        "boolean",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_path": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "boolean"
+    },
+    "collision_ellipse": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "*"
+    },
+    "show_error": {
+      "params": [
+        "string",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "collision_line_list": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean",
+        "boolean",
+        "number",
+        "boolean"
+      ],
+      "returns": "number"
+    },
+    "layer_set_visible": {
+      "params": [
+        "*",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_triangle_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "layer_background_visible": {
+      "params": [
+        "number",
+        "boolean"
       ],
       "returns": "void"
     }
