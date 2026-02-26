@@ -571,8 +571,7 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
     }
     for _ in 0..arg_count {
         params.push(Type::Dynamic);
-        // GML arguments are optional and default to 0 when not provided.
-        defaults.push(Some(reincarnate_core::ir::value::Constant::Float(0.0)));
+        defaults.push(None);
     }
     FunctionSig {
         params,
