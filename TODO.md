@@ -337,6 +337,16 @@ generic unknown-call spam.
   `FunctionSig.defaults`. Also sets type-matched defaults for variadic script params
   (post-inference, reads narrowed types from `value_types`): `""` for string, `false` for
   bool, `0` for number. Dead Estate TS2554: 2069→859, TS2555: 149→0. Bounty TS2555: 251→0.
+- [ ] **GML param type inference gaps** — 76% of GML function `argumentN` params remain `: any`
+  after inference. Dead Estate: 1407 `any` vs 448 narrowed. Bounty: 53 `any` vs 24 narrowed.
+  These are not "polymorphic" — inference isn't reaching them. Likely causes: (1) TypeInference
+  only does forward flow within a function; params with no in-function type constraint stay
+  Dynamic. (2) ConstraintSolve now sees narrowed sig.params (after the sync fix), but most GML
+  functions are called with Dynamic args (runtime destructured values). (3) GML's untyped
+  nature means callers pass `any` to callees, so constraint propagation can't narrow without
+  external type knowledge (`function_signatures`). Investigation needed: what fraction of the
+  1407 could be narrowed by expanding `function_signatures` coverage vs improving intra-function
+  inference (e.g. narrowing from comparison operators, field access patterns, arithmetic use)?
 - [ ] **Frontend-controlled pass ordering** — `extra_passes` are currently appended after the
   entire default pipeline. Frontends should be able to specify where their passes run (e.g.
   "after constraint-solve but before mem2reg"). Current approach works for IntToBoolPromotion
