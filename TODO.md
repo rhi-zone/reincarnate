@@ -334,15 +334,9 @@ generic unknown-call spam.
 - [x] **IR-level closure representation** — `Op::MakeClosure { func, captures }`, `CaptureMode::ByValue`/`ByRef`, `CaptureParam`, and `add_capture_params` on `FunctionBuilder` are all implemented. SugarCube, Harlowe, and GML frontends emit `MakeClosure` with explicit capture lists. TypeScript backend rewrites to IIFE-with-captures (by value) or plain arrow (no captures). DCE tracks captures as uses. `<<capture>>` is a correct no-op — our IIFE pattern already snapshots by value, making SugarCube's workaround unnecessary. Remaining gaps: (1) Flash closures still use `MethodKind::Closure` + TS lexical closure rather than `Op::MakeClosure` — see "Inline closures" below; (2) `CaptureMode::ByRef` is defined but unused.
 - [x] **GML default argument recovery pass** — `GmlDefaultArgRecovery` detects the GMS2.3+
   `if (arg === self.undefined) arg = default` IR pattern and folds constant defaults into
-  `FunctionSig.defaults`. GMS1 variadic scripts (`uses_dynamic_args`) get `= 0.0` on fixed
-  params. Dead Estate TS2554: 2069→859, TS2555: 149→0. Bounty TS2555: 251→0.
-- [ ] **Variadic GMS1 param default vs inferred type mismatch** — When `uses_dynamic_args` is
-  true, all fixed argument params get `defaults = Some(Float(0.0))`. But type inference may
-  narrow a param to `string` or `bool`, causing TS2322 (`Type 'number' is not assignable to
-  type 'string'`). Example: `roll_d6` in Bounty has `argument1: string = 0.0`. Options:
-  (1) post-inference pass that adjusts defaults to match narrowed types (`""` for string,
-  `false` for bool), (2) prevent type inference from narrowing variadic script params, or
-  (3) make defaults type-aware at IR level. Only 1 new TS2322 in Bounty from this.
+  `FunctionSig.defaults`. Also sets type-matched defaults for variadic script params
+  (post-inference, reads narrowed types from `value_types`): `""` for string, `false` for
+  bool, `0` for number. Dead Estate TS2554: 2069→859, TS2555: 149→0. Bounty TS2555: 251→0.
 - [ ] **Frontend-controlled pass ordering** — `extra_passes` are currently appended after the
   entire default pipeline. Frontends should be able to specify where their passes run (e.g.
   "after constraint-solve but before mem2reg"). Current approach works for IntToBoolPromotion
