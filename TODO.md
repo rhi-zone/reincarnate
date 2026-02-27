@@ -705,24 +705,32 @@ which can't be indexed. These are 2D array access patterns where the array varia
 to `int` before being used as an array target. Root cause: the 2D array access codegen wraps
 the array in `int()` (from a `coerce i32` instruction) when it should be accessing the array directly.
 
-#### Bug 7f: `isType` not defined in GML TypeScript output (TS2304, ~4 errors)
+#### Bug 7f: FIXED — `instanceof` for GML TypeCheck (2026-02-27)
 
-`Op::TypeCheck(value, Type::Struct("ClassName"))` emits `isType(value, ClassName)` in the
-TypeScript backend (`ast_printer.rs` line ~908). But `isType` is not a GML runtime function
-— it's a Flash runtime concept. For GML, `TypeCheck` should emit `value instanceof ClassName`.
-
-Fix: in `ast_printer.rs`, add an engine-specific check — when engine is GameMaker and the type
-is `Struct(name)`, emit `value instanceof name` instead of `isType(value, name)`.
-Alternatively, add `isType` as a runtime helper that wraps `instanceof`.
-
-Affected: functions that contain `Op::TypeCheck` from `GmlInstanceTypeFlow`'s Step C (object_index
-→ instanceof rewrite).
+Added `use_instanceof: bool` to `JsExpr::TypeCheck`. The GML rewrite pass (`rewrites/gamemaker.rs`)
+sets `use_instanceof = true` for `Type::Struct` TypeCheck nodes. The printer emits `x instanceof T`
+when true, `isType(x, T)` (AS3 interface-aware) when false. Flash keeps `use_instanceof: false`.
+Regression tests added in `ast_printer.rs`.
 
 #### TS2304: `dynamic` identifier (Dead Estate, ~10 errors)
 
 GML has a `dynamic` keyword for struct literals. Some game code uses `dynamic` as an identifier
 (likely from GML 2.3+ struct definitions). The translator emits `dynamic` as a bare identifier
 which TypeScript doesn't recognize. Needs investigation — may be a translator keyword lookup bug.
+
+#### `!(!1)` double-negation for GML boolean literals — investigate origin
+
+GML has no boolean type; `true` and `false` are integers `1` and `0`. When GML code writes
+`true` (e.g. `gpu_set_colorwriteenable(true, true, true, true)`) it is stored as integer 1.
+The emitter currently emits `!(!1)` — a double negation to coerce 1 to a boolean.
+
+**Investigate**: is `!(!1)` produced by our own decomp logic (a bug in `IntToBoolPromotion`,
+constant propagation, or the bool-coercion rewrite), or is it faithful to what the GML compiler
+actually emits at the bytecode level (i.e. GML truly stores `!(!1)` as two NOT operations)?
+Check the bytecode for a simple `gpu_set_colorwriteenable(true, ...)` call in Dead Estate.
+If it's our artifact, find where in the pipeline the double negation is introduced and eliminate
+it (probably: detect `Not(Not(x))` in a pass and simplify to `Bool(x)`). If the GML bytecode
+genuinely has two consecutive NOT ops, the emission is correct and the issue is cosmetic.
 
 #### TS2345: OBJT class constructors passed to user scripts typed as `number` (~524 errors)
 

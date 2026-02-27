@@ -82,10 +82,16 @@ pub enum JsExpr {
         ty: Type,
         kind: CastKind,
     },
-    /// Runtime type check (`instanceof` / `typeof ===`).
+    /// Runtime type check (`instanceof` / `typeof ===` / `isType()`).
+    ///
+    /// When `use_instanceof` is true the printer emits `expr instanceof T`
+    /// (correct for GML where all objects are classes). When false it emits
+    /// `isType(expr, T)` which also handles AS3 interface checks (Flash).
     TypeCheck {
         expr: Box<JsExpr>,
         ty: Type,
+        /// Use `instanceof` instead of `isType()`. Set by the GML rewrite pass.
+        use_instanceof: bool,
     },
     /// Array literal: `[elements...]`.
     ArrayInit(Vec<JsExpr>),

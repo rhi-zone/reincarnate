@@ -2167,7 +2167,7 @@ fn rewrite_late_bound_expr(
         let dummy = JsExpr::Literal(Constant::Null);
         let old = std::mem::replace(expr, dummy);
         match old {
-            JsExpr::TypeCheck { expr: inner, ty } => {
+            JsExpr::TypeCheck { expr: inner, ty, .. } => {
                 let name = match &ty {
                     Type::Struct(n) | Type::Enum(n) => n,
                     _ => unreachable!(),

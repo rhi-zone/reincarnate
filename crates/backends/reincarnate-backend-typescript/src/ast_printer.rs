@@ -696,7 +696,9 @@ fn print_expr(expr: &JsExpr) -> String {
             }
         }
 
-        JsExpr::TypeCheck { expr: inner, ty } => print_type_check(inner, ty),
+        JsExpr::TypeCheck { expr: inner, ty, use_instanceof } => {
+            print_type_check(inner, ty, *use_instanceof)
+        }
 
         JsExpr::ArrayInit(elems) => {
             let elems_str: Vec<_> = elems.iter().map(print_expr).collect();
@@ -876,6 +878,9 @@ fn needs_parens(expr: &JsExpr) -> bool {
         //   (-4).length  not  -4.length  (TS1351: identifier after numeric literal)
         JsExpr::Literal(Constant::Int(n)) if *n < 0 => true,
         JsExpr::Literal(Constant::Float(f)) if *f < 0.0 => true,
+        // `x instanceof T` is a binary expression — needs parens in unary context,
+        // e.g. `!(x instanceof T)` not `!x instanceof T` (wrong precedence).
+        JsExpr::TypeCheck { use_instanceof: true, .. } => true,
         JsExpr::Binary { .. }
             | JsExpr::Cmp { .. }
             | JsExpr::Ternary { .. }
@@ -894,7 +899,7 @@ fn needs_parens(expr: &JsExpr) -> bool {
 // Type check printing
 // ---------------------------------------------------------------------------
 
-fn print_type_check(expr: &JsExpr, ty: &Type) -> String {
+fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
     let operand = print_expr_operand(expr);
     match ty {
         Type::Bool => format!("typeof {operand} === \"boolean\""),
@@ -904,13 +909,18 @@ fn print_type_check(expr: &JsExpr, ty: &Type) -> String {
         Type::String => format!("typeof {operand} === \"string\""),
         Type::Struct(name) | Type::Enum(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
-            // Use isType() instead of instanceof — works for both classes and interfaces.
-            format!("isType({}, {})", print_expr(expr), sanitize_ident(short))
+            if use_instanceof {
+                // GML: all objects are class instances, `instanceof` is correct.
+                format!("{} instanceof {}", print_expr(expr), sanitize_ident(short))
+            } else {
+                // Flash: use isType() — handles both classes and AS3 interfaces.
+                format!("isType({}, {})", print_expr(expr), sanitize_ident(short))
+            }
         }
         Type::Union(types) => {
             let checks: Vec<_> = types
                 .iter()
-                .map(|t| print_type_check(expr, t))
+                .map(|t| print_type_check(expr, t, use_instanceof))
                 .collect();
             format!("({})", checks.join(" || "))
         }
@@ -1032,5 +1042,40 @@ fn visibility_prefix(vis: Visibility) -> &'static str {
     match vis {
         Visibility::Public => "export ",
         Visibility::Private | Visibility::Protected => "",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reincarnate_core::ir::Type;
+
+    #[test]
+    fn type_check_struct_is_type_for_flash() {
+        let expr = JsExpr::Var("v0".into());
+        let result = print_type_check(&expr, &Type::Struct("Monster".into()), false);
+        assert_eq!(result, "isType(v0, Monster)", "Flash TypeCheck should use isType()");
+    }
+
+    #[test]
+    fn type_check_struct_instanceof_for_gml() {
+        let expr = JsExpr::Var("v0".into());
+        let result = print_type_check(&expr, &Type::Struct("OEnemy".into()), true);
+        assert_eq!(result, "v0 instanceof OEnemy", "GML TypeCheck should use instanceof");
+    }
+
+    #[test]
+    fn type_check_instanceof_needs_parens_when_negated() {
+        // `!x instanceof T` is wrong — TypeScript parses as `(!x) instanceof T`.
+        // `needs_parens` must return true for TypeCheck { use_instanceof: true }.
+        let tc = JsExpr::TypeCheck {
+            expr: Box::new(JsExpr::Var("v0".into())),
+            ty: Type::Struct("OEnemy".into()),
+            use_instanceof: true,
+        };
+        assert!(needs_parens(&tc), "instanceof TypeCheck needs parens as operand");
+        let not_tc = JsExpr::Not(Box::new(tc));
+        let result = print_expr(&not_tc);
+        assert_eq!(result, "!(v0 instanceof OEnemy)", "Not(TypeCheck) must add parens");
     }
 }

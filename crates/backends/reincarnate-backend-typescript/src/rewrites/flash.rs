@@ -934,9 +934,10 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             kind,
         },
 
-        JsExpr::TypeCheck { expr: inner, ty } => JsExpr::TypeCheck {
+        JsExpr::TypeCheck { expr: inner, ty, use_instanceof } => JsExpr::TypeCheck {
             expr: Box::new(rewrite_expr(*inner, ctx)),
             ty,
+            use_instanceof,
         },
 
         JsExpr::ArrayInit(elems) => JsExpr::ArrayInit(rewrite_exprs(elems, ctx)),

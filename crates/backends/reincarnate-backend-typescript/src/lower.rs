@@ -248,6 +248,7 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
         Expr::TypeCheck { expr: inner, ty } => JsExpr::TypeCheck {
             expr: Box::new(lower_expr(inner, ctx)),
             ty: ty.clone(),
+            use_instanceof: false,
         },
 
         Expr::ArrayInit(elems) => JsExpr::ArrayInit(lower_exprs(elems, ctx)),

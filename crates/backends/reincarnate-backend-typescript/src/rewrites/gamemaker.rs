@@ -511,7 +511,14 @@ fn rewrite_expr_children(
             rewrite_expr(object, sprite_names, object_names, closure_bodies, event_name);
             rewrite_expr(key, sprite_names, object_names, closure_bodies, event_name);
         }
-        JsExpr::Cast { expr: inner, .. } | JsExpr::TypeCheck { expr: inner, .. } => {
+        JsExpr::Cast { expr: inner, .. } => {
+            rewrite_expr(inner, sprite_names, object_names, closure_bodies, event_name)
+        }
+        JsExpr::TypeCheck { expr: inner, ty, use_instanceof } => {
+            // GML: all objects are class instances — use `instanceof` for Struct checks.
+            if matches!(ty, reincarnate_core::ir::ty::Type::Struct(_)) {
+                *use_instanceof = true;
+            }
             rewrite_expr(inner, sprite_names, object_names, closure_bodies, event_name)
         }
         // Arrow functions are closures: `event_inherited` inside a closure is
