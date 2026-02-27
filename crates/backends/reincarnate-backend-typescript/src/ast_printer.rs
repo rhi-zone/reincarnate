@@ -31,8 +31,54 @@ fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
                 && ends_with_terminal(then_body)
                 && ends_with_terminal(else_body)
         }
+        // A switch is terminal if it has a default case and every case body (including
+        // default) ends with a terminal.  Without a default, some input value could fall
+        // through without hitting any case, so it is not terminal.
+        Some(JsStmt::Switch {
+            cases,
+            default_body,
+            ..
+        }) => {
+            !default_body.is_empty()
+                && ends_with_terminal(default_body)
+                && cases.iter().all(|(_, body)| ends_with_terminal(body))
+        }
+        // An infinite loop (`while (true)`) is terminal if its body contains no top-level
+        // `break` — i.e. there is no way to fall through to the code below it.
+        // (TypeScript itself will report TS7027 for code after such a loop, which is why
+        // we must not append a synthetic `return 0 as any;` in that case.)
+        Some(JsStmt::Loop { body }) => !loop_body_has_break(body),
         _ => false,
     }
+}
+
+/// Returns `true` if `stmts` contain a `break` (or `continue` — but only `break` matters
+/// for fall-through) at the top level of the current loop body.
+/// Does NOT recurse into nested `Loop`/`While`/`For`/`ForOf` — their `break`s only exit
+/// those inner loops.
+fn loop_body_has_break(stmts: &[JsStmt]) -> bool {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::Break | JsStmt::LabeledBreak { .. } => return true,
+            // Recurse into conditionals — a break inside an if exits the *loop*, not the if.
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                if loop_body_has_break(then_body) || loop_body_has_break(else_body) {
+                    return true;
+                }
+            }
+            // Do NOT recurse into nested loops — their breaks are scoped to those loops.
+            JsStmt::Loop { .. }
+            | JsStmt::While { .. }
+            | JsStmt::For { .. }
+            | JsStmt::ForOf { .. } => {}
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Print a standalone function.
