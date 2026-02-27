@@ -108,6 +108,10 @@ impl Transform for CallSiteTypeFlow {
         "call-site-type-flow"
     }
 
+    fn run_once(&self) -> bool {
+        true
+    }
+
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let observations = collect_call_site_types(&module);
         let mut changed = false;

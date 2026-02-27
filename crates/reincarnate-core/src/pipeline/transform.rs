@@ -19,6 +19,13 @@ pub trait Transform {
     /// Apply this transform to a module, returning the transformed module
     /// and whether any changes were made.
     fn apply(&self, module: Module) -> Result<TransformResult, CoreError>;
+
+    /// If true, the pipeline skips this pass on fixpoint iterations after the
+    /// first. Use for interprocedural passes whose evidence becomes circular
+    /// when repeated with bidirectional constraint solving.
+    fn run_once(&self) -> bool {
+        false
+    }
 }
 
 /// Maximum number of fixpoint iterations before giving up.
@@ -54,9 +61,13 @@ impl TransformPipeline {
     /// pass over all transforms produces no changes.
     pub fn run(&self, mut module: Module) -> Result<Module, CoreError> {
         if self.fixpoint {
-            for _ in 0..MAX_FIXPOINT_ITERATIONS {
+            for iteration in 0..MAX_FIXPOINT_ITERATIONS {
                 let mut any_changed = false;
                 for transform in &self.transforms {
+                    // Skip run-once passes on iterations after the first.
+                    if iteration > 0 && transform.run_once() {
+                        continue;
+                    }
                     let result = transform.apply(module)?;
                     any_changed |= result.changed;
                     module = result.module;
