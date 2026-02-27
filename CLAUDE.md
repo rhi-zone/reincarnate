@@ -6,11 +6,6 @@ Behavioral rules for Claude Code in this repository.
 
 Reincarnate is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents.
 
-### Key Components
-
-- **Explant**: Bytecode/script extraction and decompilation
-- **Hypha**: Game/app translation with UI overlay replacement
-
 ### Goals
 
 - **High-performance, maintainable emitted code** — The output is compiled TypeScript (or Rust) functions, not a bundled interpreter. Shipped output should be readable, optimisable, and auditable.
