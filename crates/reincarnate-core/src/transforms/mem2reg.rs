@@ -463,16 +463,28 @@ fn promote_multi_store(func: &mut Function) -> bool {
 
         // Create initial value at entry for the "load before store" case.
         // This is the conservative SSA reaching-definition for code paths where
-        // no store dominates — representing "uninitialized". We always use
-        // Const(Null) and mark it as a sentinel so the linearizer skips its
-        // block-arg assign entirely. The variable is declared as `let name!: T`
-        // (definite assignment assertion), leaving it truly uninitialized on
-        // those paths — which is correct: if the original code had no assignment
-        // on that path, the runtime value was also uninitialized/undefined.
+        // no store dominates — representing "uninitialized". We use a
+        // type-appropriate zero constant and mark it as a sentinel so the
+        // linearizer skips its block-arg assign (emitting `let name!: T`).
+        //
+        // For numeric / Dynamic types we use 0.0 rather than null so that any
+        // arithmetic involving the sentinel (e.g. `null * 1.66`) is
+        // TypeScript-valid.  GML uninitialized variables are 0/undefined which
+        // coerces to 0 in arithmetic, so 0.0 is the semantically correct value.
         let initial_value = {
+            let sentinel_const = match &info.ty {
+                Type::Bool => Constant::Bool(false),
+                Type::Int(_) => Constant::Int(0),
+                Type::UInt(_) => Constant::UInt(0),
+                Type::Float(_) | Type::Dynamic => Constant::Float(0.0),
+                // Struct / String / Array / opaque: keep null (not used in
+                // arithmetic; a null struct ref is the right uninitialized
+                // sentinel for reference types).
+                _ => Constant::Null,
+            };
             let v = func.value_types.push(info.ty.clone());
             let init_inst_id = func.insts.push(crate::ir::Inst {
-                op: Op::Const(Constant::Null),
+                op: Op::Const(sentinel_const),
                 result: Some(v),
                 span: None,
             });
