@@ -730,6 +730,18 @@ impl Transform for TypeInference {
             changed |= infer_function(&mut module.functions[func], &ctx);
         }
 
+        // Sync narrowed entry-block param types back to sig.params so that
+        // cross-function passes (ConstraintSolve) see the inferred types.
+        for func in module.functions.values_mut() {
+            let entry = func.entry;
+            for (i, p) in func.blocks[entry].params.iter().enumerate() {
+                if i < func.sig.params.len() && func.sig.params[i] != p.ty {
+                    func.sig.params[i] = p.ty.clone();
+                    changed = true;
+                }
+            }
+        }
+
         // Infer return types from actual Return instructions.
         for func in module.functions.values_mut() {
             if func.sig.return_ty != Type::Dynamic {
