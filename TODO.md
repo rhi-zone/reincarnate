@@ -332,6 +332,16 @@ generic unknown-call spam.
 - [ ] **Cloud save backends** — Platform persistence interface already abstracts save/load/remove; swapping the backend is just a different platform implementation. Candidates: OneDrive, Google Drive, Dropbox, S3/R2/B2. Design: `platform/onedrive.ts`, `platform/gdrive.ts`, etc., each re-exporting the same persistence interface. Config: deployer switches backend by changing re-export in `platform/index.ts`.
 
 - [x] **IR-level closure representation** — `Op::MakeClosure { func, captures }`, `CaptureMode::ByValue`/`ByRef`, `CaptureParam`, and `add_capture_params` on `FunctionBuilder` are all implemented. SugarCube, Harlowe, and GML frontends emit `MakeClosure` with explicit capture lists. TypeScript backend rewrites to IIFE-with-captures (by value) or plain arrow (no captures). DCE tracks captures as uses. `<<capture>>` is a correct no-op — our IIFE pattern already snapshots by value, making SugarCube's workaround unnecessary. Remaining gaps: (1) Flash closures still use `MethodKind::Closure` + TS lexical closure rather than `Op::MakeClosure` — see "Inline closures" below; (2) `CaptureMode::ByRef` is defined but unused.
+- [ ] **GML default argument recovery pass** — GML default parameter values are compiled into
+  the function body as `if (argument_count < N) arg = default;` patterns. A GML-specific pass
+  should detect these patterns and fold the recovered defaults into `FunctionSig.defaults`.
+  This replaces the removed synthetic `= 0.0` defaults with correct, source-faithful values.
+  Without this pass, 2069 TS2554 "wrong argument count" errors surface because callers pass
+  fewer args than functions declare.
+- [ ] **Frontend-controlled pass ordering** — `extra_passes` are currently appended after the
+  entire default pipeline. Frontends should be able to specify where their passes run (e.g.
+  "after constraint-solve but before mem2reg"). Current approach works for IntToBoolPromotion
+  and GmlLogicalOpNormalize which are fine running last, but won't scale.
 - [ ] Rust codegen backend (emit `.rs` files from typed IR — **blocked on multi-typed locals**)
 - [ ] wgpu + winit renderer system implementation
 - [ ] Web Audio system implementation
@@ -498,30 +508,34 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   pushac target, or (b) the TS printer detecting integer-as-collection in SetIndex and routing
   to a GameMaker.setIndex runtime call. Only 6 errors in Schism, low priority.
 
-### 7. Dead Estate remaining TS errors — 879 as of 2026-02-26
+### 7. Dead Estate remaining TS errors — 2927 as of 2026-02-27
 
-Progress: 12350 → 4151 → 3341 → 2112 → 879 (93% reduction). 1 translation error (RunLoader::step stack underflow — see Bug 8 below).
+Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927. Error count increased because
+synthetic `= 0.0` defaults were removed from GML function params (they were wrong — real
+defaults are compiled into function bodies). 2069 TS2554 + 149 TS2555 surfaced as genuine
+arg-count mismatches that need a default-recovery pass to fix properly.
 
 | Code | Count | Root cause |
 |------|-------|------------|
-| TS2345 | 325 | Argument type mismatch (pushref name resolution remnants + misc) |
-| TS2322 | 319 | Type not assignable |
+| TS2554 | 2069 | Wrong argument count — callers pass fewer args than function declares (needs default recovery pass) |
+| TS2345 | 318 | Argument type mismatch — 176 are `number→GMLObject` at `instance_destroy` (see Bug 7e below) |
+| TS2322 | 162 | Type not assignable — 113 `boolean→number` (GML no-bool-type) + misc |
+| TS2555 | 149 | Expected at least N args but got M — same root cause as TS2554 (variadic functions) |
 | TS2367 | 53 | Comparison always false — type mismatch in `===` (game author errors) |
 | TS2339 | 42 | Property doesn't exist |
-| TS7027 | 29 | Unreachable code — **structurizer/emitter bug** (see Bug 7c below) |
+| TS7027 | 32 | Unreachable code — **structurizer/emitter bug** (see Bug 7c below) |
 | TS2365 | 27 | Operator not applicable — bitwise/arithmetic on wrong type |
 | TS2362 | 20 | Left side of `**`/arithmetic must be number |
 | TS2304 | 17 | Cannot find name — **linearizer/structurizer bugs** (see Bug 7d below) |
-| TS18050 | 13 | Value of type `void` is not callable |
+| TS18050 | 13 | `null` in non-null position — Mem2Reg null sentinels used in comparisons/arithmetic |
 | TS7053 | 8 | Element implicitly has `any` type |
 | TS2363 | 6 | Right side of `**` must be number |
 | TS2554 | 5 | Wrong argument count — game-author errors or decompiler arg-count mismatches |
-| TS2416 | 4 | Property not assignable to same in base type |
 | TS2872 | 3 | Comparison appears unintentional |
-| TS2308 | 3 | Module not found |
+| TS2308 | 3 | Duplicate re-export (`___struct___127/128`, `TextEffect`) in barrel `index.ts` |
 | TS2300 | 2 | Duplicate identifier |
 | TS2552 | 1 | Cannot find name (with-body self-reference bug) |
-| TS2307 | 1 | Cannot find module |
+| TS2307 | 1 | Cannot find module — `runtime/argument` (out-of-range GML `argument` access) |
 | TS18047 | 1 | Object is possibly null |
 
 #### TS2345 Detailed Breakdown (2043 errors, by type pair)
@@ -575,6 +589,32 @@ Fix: new `IntToBoolPromotion` transform pass that identifies values demanded as 
 sig param types) and traces backward through SSA. If all leaves are Int(0/1)/Bool, the
 chain is promoted to Bool. Also subsumes `BoolLiteralReturn` (return type inference).
 Result: TS2345 846 → 325, total errors 2112 → 879.
+
+#### Bug 7b2: FIXED — IntToBoolPromotion bare-exit + SetField gaps (2026-02-27)
+
+Two bugs in `IntToBoolPromotion`:
+1. `infer_bool_return` set return type to `Bool` even when the function had `Op::Return(None)`
+   (bare `exit;` paths), causing 121 TS2322 `undefined → boolean` errors.
+2. `collect_bool_demands` didn't check `SetField` operations, so `this.persistent = 1` stayed
+   as `number` even though the field was `Type::Bool`, causing ~12 TS2322 `boolean → number` errors.
+Result: TS2322 319 → 187, total errors 879 → 743.
+
+#### Bug 7e: HIGH PRIORITY — Object indices exposed as bare numbers (176 TS2345)
+
+All 176 `number → GMLObject` errors are at `instance_destroy(objName)` call sites. The object
+constants (from pushref type_tag=0 OBJT) are declared as `number` in `asset_ids.d.ts`. GML's
+`instance_destroy` accepts both instances and object indices.
+
+**Design decision:** Object indices should NOT be exposed as bare numbers. Passing numbers
+around instead of objects is bad for maintainability and type safety. Instead:
+- [ ] Pushref OBJT references should resolve to class references (constructor functions), not numeric indices
+- [ ] Runtime functions (`instance_destroy`, `instance_create_depth`, `instance_exists`,
+  `instance_find`, `instance_nearest`, etc.) should accept class constructors, not numeric indices
+- [ ] `asset_ids.d.ts` object entries should be typed as class refs, not `number`
+- [ ] The runtime internally can still use numeric indices, but the external API hides them
+
+This is a significant refactor touching: pushref resolution in translator, asset_ids generation,
+runtime function signatures, and emitter import generation for object classes.
 
 #### Bug 7c: Unreachable code after return/continue (207 TS7027)
 
@@ -642,9 +682,8 @@ Fixed in previous sessions (2026-02-24):
 
 - [x] **Bug 7a: pushref type_tag=0 is OBJT (~1200 TS2345 fixed)** — Fixed 2026-02-26.
 
-- [ ] **Bug 7b: number→boolean casting (~450 TS2345)** — Emitter should insert `!!x` casts
-  when passing `number` to `boolean`-typed parameters. Requires matching call-site arg types
-  against callee param types during emission.
+- [x] **Bug 7b: number→boolean casting (~450 TS2345 fixed)** — Fixed 2026-02-26/27. `IntToBoolPromotion`
+  pass + bare-exit fix + SetField demands.
 
 - [ ] **TS7053 (454): int() wrapping array access targets** — The `coerce i32` instruction
   before a 2D array access should not wrap the array variable in `int()`. Fix in GML translator

@@ -89,7 +89,8 @@ pub fn translate_code_entry(
     // Old-style scripts may use argumentN without declaring parameters —
     // scan for implicit argument references to determine true arg count.
     let scan = scan_implicit_args(&instructions, ctx);
-    let effective_arg_count = ctx.arg_count.max(scan.count);
+    let effective_arg_count = ctx.arg_count.max(scan.count).max(scan.global_arg_count);
+    let global_arg_count = scan.global_arg_count;
     let mut sig = build_signature_with_args(ctx, effective_arg_count);
     // Scripts that read `argument_count` or use `argument[dynamic_idx]` are truly
     // variadic — they accept any number of arguments at the call site.  Emit a
@@ -160,6 +161,7 @@ pub fn translate_code_entry(
         &mut locals,
         ctx,
         &mut extra_funcs,
+        global_arg_count,
     )?;
 
     // If the last block wasn't terminated, add a void return.
@@ -597,6 +599,14 @@ struct ImplicitArgScan {
     /// emitted with a rest parameter (`...args: any[]`) so TypeScript call sites
     /// can pass any number of arguments without TS2554 errors.
     uses_dynamic_args: bool,
+    /// Number of arguments detected via `InstanceType::Global` references to
+    /// `argumentN` variables.  In GMS2.3+, the VM copies call-stack arguments
+    /// into `global.argument0`..`global.argumentN` before entering the function,
+    /// so the bytecode reads/writes them as globals rather than using
+    /// `InstanceType::Own`/`Builtin`.  When this is non-zero, the translation
+    /// loop must rewrite `global.argumentN` accesses to use formal parameters
+    /// instead of emitting `GameMaker.Global.get/set` calls.
+    global_arg_count: u16,
 }
 
 /// Scan instructions for implicit `argument0`..`argumentN` references
@@ -608,6 +618,7 @@ struct ImplicitArgScan {
 /// `argument[N]` with a non-constant index) which require a rest parameter.
 fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> ImplicitArgScan {
     let mut max_idx: Option<usize> = None;
+    let mut global_max_idx: Option<usize> = None;
     let mut uses_dynamic_args = false;
     for (i, inst) in instructions.iter().enumerate() {
         if let Operand::Variable { var_ref, instance } = &inst.operand {
@@ -618,6 +629,23 @@ fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> Impli
                     max_idx = Some(max_idx.map_or(idx, |m: usize| m.max(idx)));
                 } else if name == "argument_count" {
                     // Script reads how many arguments were passed — must be variadic.
+                    uses_dynamic_args = true;
+                }
+            } else if matches!(
+                it,
+                Some(InstanceType::Global) | Some(InstanceType::Static)
+            ) {
+                // GMS2.3+ pattern: arguments are passed via global/static variables.
+                // The VM copies call-stack args into global.argument0..N before
+                // entering the function.  Static (-15) is used in GMS2.3+ for
+                // argument references within struct/constructor functions.
+                // Detect these so we can rewrite them to formal parameters in
+                // the translation loop.
+                let name = resolve_variable_name(inst, ctx);
+                if let Some(idx) = parse_argument_index(&name) {
+                    global_max_idx =
+                        Some(global_max_idx.map_or(idx, |m: usize| m.max(idx)));
+                } else if name == "argument_count" {
                     uses_dynamic_args = true;
                 }
             } else if matches!(it, Some(InstanceType::Stacktop)) {
@@ -652,6 +680,7 @@ fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> Impli
     ImplicitArgScan {
         count: max_idx.map_or(0, |m| (m + 1) as u16),
         uses_dynamic_args,
+        global_arg_count: global_max_idx.map_or(0, |m| (m + 1) as u16),
     }
 }
 
@@ -838,9 +867,14 @@ fn scan_body_argument_indices(body_insts: &[Instruction], ctx: &TranslateCtx<'_>
                 Some(var_ref.variable_id as usize)
             } else if matches!(
                 instance_ty,
-                Some(InstanceType::Own) | Some(InstanceType::Builtin)
+                Some(InstanceType::Own)
+                    | Some(InstanceType::Builtin)
+                    | Some(InstanceType::Static)
+                    | Some(InstanceType::Global)
             ) {
                 // Named form: argument0, argument1, ...
+                // Static (-15) and Global (-5) are used in GMS2.3+ for argument
+                // references within struct/constructor functions.
                 parse_argument_index(&resolve_variable_name(inst, ctx))
             } else if var_ref.ref_type == 0 && *instance >= 0 {
                 // 2D-array form: `argument[N]`.  dim1 (the argument index) is
@@ -1018,6 +1052,7 @@ fn translate_with_body(
         &mut locals,
         &inner_ctx,
         extra_funcs,
+        0, // with-bodies don't have their own argument params
     )?;
 
     if !terminated {
@@ -1047,6 +1082,7 @@ fn run_translation_loop(
     locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx<'_>,
     extra_funcs: &mut Vec<Function>,
+    global_arg_count: u16,
 ) -> Result<bool, String> {
     let mut stack: Vec<ValueId> = Vec::new();
     // Track GML type sizes (in 4-byte units) for each value on the stack.
@@ -1203,6 +1239,7 @@ fn run_translation_loop(
             &mut gml_sizes,
             &mut compound_2d_pending,
             &mut pushac_array,
+            global_arg_count,
         )?;
     }
 
@@ -1511,6 +1548,7 @@ fn translate_instruction(
     gml_sizes: &mut HashMap<ValueId, u8>,
     compound_2d_pending: &mut bool,
     pushac_array: &mut Option<ValueId>,
+    global_arg_count: u16,
 ) -> Result<(), String> {
     match inst.opcode {
         // ============================================================
@@ -1518,7 +1556,7 @@ fn translate_instruction(
         // ============================================================
         Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn => {
             let depth_before = stack.len();
-            translate_push(inst, fb, stack, locals, ctx, compound_2d_pending)?;
+            translate_push(inst, fb, stack, locals, ctx, compound_2d_pending, global_arg_count)?;
             // Annotate newly pushed value with its GML type size.
             if stack.len() > depth_before {
                 if let Some(&val) = stack.last() {
@@ -1815,7 +1853,7 @@ fn translate_instruction(
         // Pop (variable store)
         // ============================================================
         Opcode::Pop => {
-            translate_pop(inst, fb, stack, locals, ctx, compound_2d_pending)?;
+            translate_pop(inst, fb, stack, locals, ctx, compound_2d_pending, global_arg_count)?;
         }
 
         // ============================================================
@@ -2060,6 +2098,7 @@ fn translate_push(
     locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx,
     compound_2d_pending: &mut bool,
+    global_arg_count: u16,
 ) -> Result<(), String> {
     match &inst.operand {
         Operand::Int16(v) => stack.push(fb.const_int(*v as i64)),
@@ -2075,7 +2114,7 @@ fn translate_push(
             stack.push(fb.const_string(s));
         }
         Operand::Variable { var_ref, instance } => {
-            translate_push_variable(inst, fb, stack, locals, ctx, var_ref, *instance, compound_2d_pending)?;
+            translate_push_variable(inst, fb, stack, locals, ctx, var_ref, *instance, compound_2d_pending, global_arg_count)?;
         }
         _ => {
             return Err(format!(
@@ -2098,6 +2137,7 @@ fn translate_push_variable(
     var_ref: &VariableRef,
     instance: i16,
     compound_2d_pending: &mut bool,
+    global_arg_count: u16,
 ) -> Result<(), String> {
     let var_name = resolve_variable_name(inst, ctx);
 
@@ -2323,6 +2363,32 @@ fn translate_push_variable(
             }
         }
         Some(InstanceType::Global) => {
+            // GMS2.3+: global.argumentN references are really this function's
+            // formal parameters — the VM copies stack args into globals before
+            // entry.  Rewrite to use the formal param directly.
+            if global_arg_count > 0 {
+                if let Some(arg_idx) = parse_argument_index(&var_name) {
+                    // If a previous write created a local alloc, read from that.
+                    let local_key = format!("argument{arg_idx}");
+                    if let Some(&slot) = locals.get(&local_key) {
+                        stack.push(fb.load(slot, Type::Dynamic));
+                    } else {
+                        let param_offset = if ctx.has_self { 1 } else { 0 }
+                            + if ctx.has_other { 1 } else { 0 };
+                        let param = fb.param(param_offset + arg_idx);
+                        stack.push(param);
+                    }
+                    return Ok(());
+                } else if var_name == "argument_count" {
+                    // Same as Own/Builtin argument_count — use rest param length
+                    // or fall through to global lookup.
+                    if let Some(&rest_id) = locals.get("_args") {
+                        let val = fb.get_field(rest_id, "length", Type::Dynamic);
+                        stack.push(val);
+                        return Ok(());
+                    }
+                }
+            }
             let name_val = fb.const_string(&var_name);
             let val = fb.system_call(
                 "GameMaker.Global",
@@ -2478,7 +2544,30 @@ fn translate_push_variable(
                 );
                 stack.push(val);
             } else {
-                // Unknown instance type — treat as global.
+                // GMS2.3+ Static (-15) or other unknown negative instance type.
+                // Check for argumentN → formal param or captured slot rewrite.
+                if let Some(arg_idx) = parse_argument_index(&var_name) {
+                    // With-body: captured outer argument as _argumentN local.
+                    let captured_key = format!("_argument{arg_idx}");
+                    if let Some(&slot) = locals.get(&captured_key) {
+                        stack.push(fb.load(slot, Type::Dynamic));
+                        return Ok(());
+                    }
+                    // Direct function: rewrite to formal param.
+                    if global_arg_count > 0 {
+                        let local_key = format!("argument{arg_idx}");
+                        if let Some(&slot) = locals.get(&local_key) {
+                            stack.push(fb.load(slot, Type::Dynamic));
+                        } else {
+                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                                + if ctx.has_other { 1 } else { 0 };
+                            let param = fb.param(param_offset + arg_idx);
+                            stack.push(param);
+                        }
+                        return Ok(());
+                    }
+                }
+                // Treat as global.
                 let name_val = fb.const_string(&var_name);
                 let val = fb.system_call(
                     "GameMaker.Global",
@@ -2501,6 +2590,7 @@ fn translate_pop(
     locals: &mut HashMap<String, ValueId>,
     ctx: &TranslateCtx,
     compound_2d_pending: &mut bool,
+    global_arg_count: u16,
 ) -> Result<(), String> {
     if let Operand::Variable { var_ref, instance } = &inst.operand {
         let var_name = resolve_variable_name(inst, ctx);
@@ -2716,6 +2806,26 @@ fn translate_pop(
                 }
             }
             Some(InstanceType::Global) => {
+                // GMS2.3+: global.argumentN writes are really writes to this
+                // function's formal parameters.  Create an alloc slot so
+                // subsequent reads see the updated value.
+                if global_arg_count > 0 {
+                    if let Some(arg_idx) = parse_argument_index(&var_name) {
+                        let param_offset = if ctx.has_self { 1 } else { 0 }
+                            + if ctx.has_other { 1 } else { 0 };
+                        let abs_idx = param_offset + arg_idx;
+                        if abs_idx < fb.param_count() {
+                            let param = fb.param(abs_idx);
+                            let slot = fb.alloc(Type::Dynamic);
+                            let name = format!("argument{arg_idx}");
+                            fb.name_value(slot, name.clone());
+                            fb.store(slot, param);
+                            fb.store(slot, value);
+                            locals.insert(name, slot);
+                        }
+                        return Ok(());
+                    }
+                }
                 let name_val = fb.const_string(&var_name);
                 fb.system_call(
                     "GameMaker.Global",
@@ -2844,6 +2954,32 @@ fn translate_pop(
                         Type::Void,
                     );
                 } else {
+                    // GMS2.3+ Static (-15) or other unknown negative instance.
+                    // Check for argumentN → captured slot or formal param rewrite.
+                    if let Some(arg_idx) = parse_argument_index(&var_name) {
+                        // With-body: store to captured outer argument slot.
+                        let captured_key = format!("_argument{arg_idx}");
+                        if let Some(&slot) = locals.get(&captured_key) {
+                            fb.store(slot, value);
+                            return Ok(());
+                        }
+                        // Direct function: rewrite to formal param alloc.
+                        if global_arg_count > 0 {
+                            let param_offset = if ctx.has_self { 1 } else { 0 }
+                                + if ctx.has_other { 1 } else { 0 };
+                            let abs_idx = param_offset + arg_idx;
+                            if abs_idx < fb.param_count() {
+                                let param = fb.param(abs_idx);
+                                let slot = fb.alloc(Type::Dynamic);
+                                let name = format!("argument{arg_idx}");
+                                fb.name_value(slot, name.clone());
+                                fb.store(slot, param);
+                                fb.store(slot, value);
+                                locals.insert(name, slot);
+                            }
+                            return Ok(());
+                        }
+                    }
                     let name_val = fb.const_string(&var_name);
                     fb.system_call(
                         "GameMaker.Global",
