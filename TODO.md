@@ -718,19 +718,13 @@ GML has a `dynamic` keyword for struct literals. Some game code uses `dynamic` a
 (likely from GML 2.3+ struct definitions). The translator emits `dynamic` as a bare identifier
 which TypeScript doesn't recognize. Needs investigation — may be a translator keyword lookup bug.
 
-#### `!(!1)` double-negation for GML boolean literals — investigate origin
+#### ~~`!(!1)` double-negation for GML boolean literals~~ — **FIXED**
 
-GML has no boolean type; `true` and `false` are integers `1` and `0`. When GML code writes
-`true` (e.g. `gpu_set_colorwriteenable(true, true, true, true)`) it is stored as integer 1.
-The emitter currently emits `!(!1)` — a double negation to coerce 1 to a boolean.
-
-**Investigate**: is `!(!1)` produced by our own decomp logic (a bug in `IntToBoolPromotion`,
-constant propagation, or the bool-coercion rewrite), or is it faithful to what the GML compiler
-actually emits at the bytecode level (i.e. GML truly stores `!(!1)` as two NOT operations)?
-Check the bytecode for a simple `gpu_set_colorwriteenable(true, ...)` call in Dead Estate.
-If it's our artifact, find where in the pipeline the double negation is introduced and eliminate
-it (probably: detect `Not(Not(x))` in a pass and simplify to `Bool(x)`). If the GML bytecode
-genuinely has two consecutive NOT ops, the emission is correct and the issue is cosmetic.
+Was our artifact, not GML bytecode. `coerce_bool_args` in `rewrites/gamemaker.rs` wrapped
+non-bool args in `!!` — but `Int(0)`/`Int(1)` should become `false`/`true` directly.
+Fixed in `coerce_to_bool()`: int literals are replaced with bool literals; all other
+non-bool expressions still get `!!`. GML bytecode emits a single `Not` instruction; it
+never emits two consecutive NOTs for boolean true.
 
 #### TS2345: OBJT class constructors passed to user scripts typed as `number` (~524 errors)
 

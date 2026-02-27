@@ -937,8 +937,7 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
                         coerce_bool_expr(arg, sigs);
                         if let Some(param_ty) = sig.params.get(i) {
                             if param_ty == "boolean" && !is_already_boolean(arg) {
-                                let inner = std::mem::replace(arg, JsExpr::Literal(Constant::Null));
-                                *arg = JsExpr::Not(Box::new(JsExpr::Not(Box::new(inner))));
+                                coerce_to_bool(arg);
                             }
                         }
                     }
@@ -1023,6 +1022,18 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
     }
 }
 
+/// Coerces an expression to boolean in-place.
+/// Integer literals 0/1 are replaced with `false`/`true` directly.
+/// All other non-boolean expressions are wrapped with `!!`.
+fn coerce_to_bool(arg: &mut JsExpr) {
+    if let JsExpr::Literal(Constant::Int(n)) = arg {
+        *arg = JsExpr::Literal(Constant::Bool(*n != 0));
+        return;
+    }
+    let inner = std::mem::replace(arg, JsExpr::Literal(Constant::Null));
+    *arg = JsExpr::Not(Box::new(JsExpr::Not(Box::new(inner))));
+}
+
 /// Returns true if the expression is already boolean-typed and doesn't need `!!`.
 fn is_already_boolean(expr: &JsExpr) -> bool {
     matches!(
@@ -1037,6 +1048,34 @@ fn is_already_boolean(expr: &JsExpr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coerce_to_bool_int_literal_becomes_bool_literal() {
+        let mut expr = JsExpr::Literal(Constant::Int(1));
+        coerce_to_bool(&mut expr);
+        assert!(
+            matches!(expr, JsExpr::Literal(Constant::Bool(true))),
+            "Int(1) should become Bool(true)"
+        );
+
+        let mut expr = JsExpr::Literal(Constant::Int(0));
+        coerce_to_bool(&mut expr);
+        assert!(
+            matches!(expr, JsExpr::Literal(Constant::Bool(false))),
+            "Int(0) should become Bool(false)"
+        );
+    }
+
+    #[test]
+    fn coerce_to_bool_non_int_gets_double_not() {
+        // A float literal that isn't 0/1 should be wrapped with !!
+        let mut expr = JsExpr::Literal(Constant::Float(2.0));
+        coerce_to_bool(&mut expr);
+        assert!(
+            matches!(&expr, JsExpr::Not(inner) if matches!(inner.as_ref(), JsExpr::Not(_))),
+            "expected !!<expr>"
+        );
+    }
 
     #[test]
     fn rewrite_introduced_calls_maps_with_instances() {
