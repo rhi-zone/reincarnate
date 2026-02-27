@@ -2151,7 +2151,7 @@ fn translate_push(
         Operand::Int64(v) => stack.push(fb.const_int(*v)),
         Operand::Double(v) => stack.push(fb.const_float(*v)),
         Operand::Float(v) => stack.push(fb.const_float(*v as f64)),
-        Operand::Bool(v) => stack.push(fb.const_bool(*v)),
+        Operand::Bool(v) => stack.push(fb.const_bool(*v)), // Push.Bool: valid per spec, not emitted by real GML compilers
         Operand::StringIndex(idx) => {
             let s = ctx.string_table.get(*idx as usize).ok_or_else(|| {
                 format!("string index {} out of range (table size={})", idx, ctx.string_table.len())

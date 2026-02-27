@@ -286,6 +286,9 @@ fn decode_push_operand(
         DataType::Float => Ok(Operand::Float(read_f32(bytecode, pos)?)),
         DataType::Int32 => Ok(Operand::Int32(read_i32(bytecode, pos)?)),
         DataType::Int64 => Ok(Operand::Int64(read_i64(bytecode, pos)?)),
+        // DataType::Bool (0x4) exists in the spec and is handled defensively,
+        // but the GML compiler does not appear to emit Push.Bool in practice.
+        // Verified against Bounty (GMS1) and Dead Estate (GMS2.3+): zero occurrences.
         DataType::Bool => Ok(Operand::Bool(read_u32(bytecode, pos)? != 0)),
         DataType::String => Ok(Operand::StringIndex(read_u32(bytecode, pos)?)),
         DataType::Variable => {
