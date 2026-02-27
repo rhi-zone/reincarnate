@@ -1,3 +1,4 @@
+pub mod call_site_flow;
 pub mod cfg_simplify;
 pub mod const_fold;
 pub mod constraint_solve;
@@ -9,6 +10,7 @@ pub mod red_cast_elim;
 pub mod type_infer;
 pub mod util;
 
+pub use call_site_flow::CallSiteTypeFlow;
 pub use cfg_simplify::CfgSimplify;
 pub use const_fold::ConstantFolding;
 pub use constraint_solve::ConstraintSolve;
@@ -32,6 +34,9 @@ pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     let mut pipeline = TransformPipeline::new();
     if config.type_inference {
         pipeline.add(Box::new(TypeInference));
+    }
+    if config.call_site_flow {
+        pipeline.add(Box::new(CallSiteTypeFlow));
     }
     if config.constraint_solve {
         pipeline.add(Box::new(ConstraintSolve));

@@ -35,6 +35,7 @@ impl DebugConfig {
 #[derive(Debug, Clone)]
 pub struct PassConfig {
     pub type_inference: bool,
+    pub call_site_flow: bool,
     pub constraint_solve: bool,
     pub constant_folding: bool,
     pub cfg_simplify: bool,
@@ -50,6 +51,7 @@ impl Default for PassConfig {
     fn default() -> Self {
         Self {
             type_inference: true,
+            call_site_flow: true,
             constraint_solve: true,
             constant_folding: true,
             cfg_simplify: true,
@@ -67,6 +69,7 @@ impl PassConfig {
     ///
     /// Pass names correspond to `Transform::name()` values:
     /// - `"type-inference"`
+    /// - `"call-site-type-flow"`
     /// - `"constraint-solve"`
     /// - `"constant-folding"`
     /// - `"cfg-simplify"`
@@ -81,6 +84,7 @@ impl PassConfig {
         for name in skip {
             match *name {
                 "type-inference" => config.type_inference = false,
+                "call-site-type-flow" => config.call_site_flow = false,
                 "constraint-solve" => config.constraint_solve = false,
                 "constant-folding" => config.constant_folding = false,
                 "cfg-simplify" => config.cfg_simplify = false,
@@ -168,6 +172,7 @@ impl Preset {
                 PassConfig {
                     // Structural passes — needed for correct output.
                     type_inference: true,
+                    call_site_flow: true,
                     constraint_solve: true,
                     coroutine_lowering: true,
                     mem2reg: true,
@@ -188,6 +193,7 @@ impl Preset {
         for name in skip_passes {
             match *name {
                 "type-inference" => pass.type_inference = false,
+                "call-site-type-flow" => pass.call_site_flow = false,
                 "constraint-solve" => pass.constraint_solve = false,
                 "constant-folding" => pass.constant_folding = false,
                 "cfg-simplify" => pass.cfg_simplify = false,
@@ -234,6 +240,7 @@ mod tests {
     fn skip_list_all() {
         let config = PassConfig::from_skip_list(&[
             "type-inference",
+            "call-site-type-flow",
             "constraint-solve",
             "constant-folding",
             "cfg-simplify",
@@ -244,6 +251,7 @@ mod tests {
             "fixpoint",
         ]);
         assert!(!config.type_inference);
+        assert!(!config.call_site_flow);
         assert!(!config.constraint_solve);
         assert!(!config.constant_folding);
         assert!(!config.cfg_simplify);

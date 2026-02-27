@@ -337,21 +337,21 @@ generic unknown-call spam.
   `FunctionSig.defaults`. Also sets type-matched defaults for variadic script params
   (post-inference, reads narrowed types from `value_types`): `""` for string, `false` for
   bool, `0` for number. Dead Estate TS2554: 2069→859, TS2555: 149→0. Bounty TS2555: 251→0.
-- [ ] **GML param type inference gaps — cross-function call-site narrowing** — 76% of GML
+- [x] **GML param type inference gaps — cross-function call-site narrowing** — 76% of GML
   function `argumentN` params remain `: any` after inference. Dead Estate: 1407/1855 `any`.
   Bounty: 53/77 `any`. Root cause: ConstraintSolve runs per-function and only propagates
   callee param types → caller arg types, never the reverse. Call sites are the biggest
   untapped source of type info.
-  **Fix**: add a cross-function pass (before or as part of ConstraintSolve) that:
-  1. Walk all functions, collect `(callee_name, param_index, caller_arg_type)` from every
-     `Op::Call` / `Op::CallIndirect` / `Op::MethodCall`
-  2. For each callee param, compute the union of all call-site arg types
-  3. If all callers pass `string` → narrow to `string`. If callers pass `string | number` →
-     narrow to `string | number` (union type, not `any`). Only stays `any` if truly unknown.
-  4. Write back to `sig.params` + entry block param + `value_types`
-  5. Re-run ConstraintSolve to propagate the new constraints inward
-  This is the standard interprocedural type inference approach. May need a fixpoint loop
-  (narrow params → re-solve → callers see narrowed return types → narrow more params).
+  **Implemented**: `CallSiteTypeFlow` pass in `transforms/call_site_flow.rs`. Runs between
+  TypeInference and ConstraintSolve. Collects argument types from all `Op::Call` and
+  `Op::MethodCall` sites, narrows `Dynamic` params when all callers agree on a concrete type.
+  Skips self-calls, `CallIndirect`, `SystemCall`, and `Dynamic` args.
+- [ ] **CallSiteTypeFlow: union type narrowing (intentionally deferred)** — When callers
+  disagree on types (e.g. one passes `string`, another `number`), the param stays `Dynamic`
+  rather than being narrowed to `string | number`. Adding union narrowing would require
+  downstream work in ConstraintSolve (union unification) and emitter (union type annotations).
+  Deferred indefinitely — the single-type narrowing covers the majority of cases where all
+  callers agree, and disagreement genuinely suggests `any` is appropriate.
 - [ ] **Frontend-controlled pass ordering** — `extra_passes` are currently appended after the
   entire default pipeline. Frontends should be able to specify where their passes run (e.g.
   "after constraint-solve but before mem2reg"). Current approach works for IntToBoolPromotion
