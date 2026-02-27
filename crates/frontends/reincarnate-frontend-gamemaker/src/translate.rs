@@ -866,8 +866,9 @@ fn scan_body_argument_indices(body_insts: &[Instruction], ctx: &TranslateCtx<'_>
         if let Operand::Variable { var_ref, instance } = &inst.operand {
             let instance_ty = InstanceType::from_i16(*instance);
             let found: Option<usize> = if matches!(instance_ty, Some(InstanceType::Arg)) {
-                // InstanceType::Arg: variable_id is the argument index directly.
-                Some(var_ref.variable_id as usize)
+                // variable_id is the VARI table index, not the argument index —
+                // extract the actual index from the variable name ("argument3" → 3).
+                parse_argument_index(&resolve_variable_name(inst, ctx))
             } else if matches!(
                 instance_ty,
                 Some(InstanceType::Own)
@@ -2549,7 +2550,10 @@ fn translate_push_variable(
         }
         Some(InstanceType::Arg) => {
             // Argument variable: map to function parameter (or captured slot).
-            let arg_idx = var_ref.variable_id as usize;
+            // variable_id is the VARI table index, not the argument index —
+            // extract the actual index from the variable name ("argument3" → 3).
+            let arg_idx = parse_argument_index(&var_name)
+                .unwrap_or(var_ref.variable_id as usize);
             if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
                 stack.push(fb.load(slot, Type::Dynamic));
             } else {

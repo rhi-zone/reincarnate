@@ -1,5 +1,8 @@
 {
   "system_modules": {
+    "GameMaker.Argument": {
+      "path": "gamemaker/argument"
+    },
     "GameMaker.Global": {
       "path": "gamemaker/global"
     },
