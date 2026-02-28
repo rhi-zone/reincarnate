@@ -126,6 +126,15 @@ enum Command {
         /// 0 = counts only, -1 = show all. Default: 3.
         #[arg(long, default_value = "3")]
         examples: i32,
+        /// Only show diagnostics with this error code (e.g. TS2345); case-insensitive.
+        #[arg(long = "filter-code")]
+        filter_code: Option<String>,
+        /// Only show diagnostics where the file path contains this substring.
+        #[arg(long = "filter-file")]
+        filter_file: Option<String>,
+        /// Only show diagnostics where the message contains this substring; case-insensitive.
+        #[arg(long = "filter-message")]
+        filter_message: Option<String>,
     },
     /// Add a project to the registry.
     Add {
@@ -614,6 +623,9 @@ struct CheckConfig<'a> {
     save_baseline: Option<&'a Path>,
     baseline: Option<&'a Path>,
     examples: i32,
+    filter_code: Option<&'a str>,
+    filter_file: Option<&'a str>,
+    filter_message: Option<&'a str>,
 }
 
 fn find_checker(backend: &TargetBackend) -> Option<Box<dyn Checker>> {
@@ -642,6 +654,10 @@ fn run_checks(
     let save_baseline = cfg.save_baseline;
     let baseline = cfg.baseline;
     let examples = cfg.examples;
+    let filter_code = cfg.filter_code.map(|s| s.to_ascii_lowercase());
+    let filter_file = cfg.filter_file;
+    let filter_message = cfg.filter_message.map(|s| s.to_ascii_lowercase());
+    let has_filters = filter_code.is_some() || filter_file.is_some() || filter_message.is_some();
     let mut all_outputs: Vec<CheckerOutput> = Vec::new();
     let mut has_errors = false;
 
@@ -666,14 +682,14 @@ fn run_checks(
 
     let summaries: Vec<CheckSummary> = all_outputs.iter().map(|o| o.summary.clone()).collect();
 
-    // Save baseline if requested.
+    // Save baseline if requested (always uses unfiltered summaries).
     if let Some(path) = save_baseline {
         let json_str = serde_json::to_string_pretty(&summaries)?;
         fs::write(path, json_str).with_context(|| format!("failed to write baseline: {}", path.display()))?;
         eprintln!("[check] baseline saved to {}", path.display());
     }
 
-    // Load and compare against baseline if requested.
+    // Load and compare against baseline if requested (always uses unfiltered).
     let baseline_diff = if let Some(path) = baseline {
         let file = File::open(path).with_context(|| format!("failed to open baseline: {}", path.display()))?;
         let reader = BufReader::new(file);
@@ -684,8 +700,43 @@ fn run_checks(
         None
     };
 
+    // Helper: does a diagnostic match all active filters?
+    let matches_filters = |d: &Diagnostic| -> bool {
+        if let Some(fc) = &filter_code {
+            if d.code.to_ascii_lowercase() != *fc {
+                return false;
+            }
+        }
+        if let Some(ff) = filter_file {
+            if !d.file.contains(ff) {
+                return false;
+            }
+        }
+        if let Some(fm) = &filter_message {
+            if !d.message.to_ascii_lowercase().contains(fm.as_str()) {
+                return false;
+            }
+        }
+        true
+    };
+
     if json {
-        if let Some(diff) = &baseline_diff {
+        if has_filters {
+            // Filtered JSON: emit only matching diagnostics from each output.
+            #[derive(serde::Serialize)]
+            struct FilteredOutput<'a> {
+                output_dir: &'a str,
+                diagnostics: Vec<&'a Diagnostic>,
+            }
+            let filtered: Vec<FilteredOutput<'_>> = all_outputs
+                .iter()
+                .map(|o| FilteredOutput {
+                    output_dir: &o.summary.output_dir,
+                    diagnostics: o.diagnostics.iter().filter(|d| matches_filters(d)).collect(),
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&filtered)?);
+        } else if let Some(diff) = &baseline_diff {
             #[derive(serde::Serialize)]
             struct JsonOutput<'a> {
                 summaries: &'a [CheckSummary],
@@ -700,6 +751,79 @@ fn run_checks(
         for output in &all_outputs {
             let s = &output.summary;
             println!("\n[check] {}", s.output_dir);
+
+            if has_filters {
+                // Collect all diagnostics matching the filters.
+                let unfiltered_total = output.diagnostics.len();
+                let mut matched: Vec<&Diagnostic> =
+                    output.diagnostics.iter().filter(|d| matches_filters(d)).collect();
+                matched.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
+
+                // Build a description of the active filter(s).
+                let mut filter_desc = Vec::new();
+                if let Some(fc) = cfg.filter_code {
+                    filter_desc.push(format!("--filter-code {fc}"));
+                }
+                if let Some(ff) = filter_file {
+                    filter_desc.push(format!("--filter-file {ff}"));
+                }
+                if let Some(fm) = cfg.filter_message {
+                    filter_desc.push(format!("--filter-message {fm}"));
+                }
+                println!(
+                    "Showing {} of {} diagnostics matching {}",
+                    matched.len(),
+                    unfiltered_total,
+                    filter_desc.join(", ")
+                );
+
+                if matched.is_empty() {
+                    continue;
+                }
+
+                // Determine whether to show all or apply --examples limit.
+                // When --filter-code is the only active filter (one code), default to showing all.
+                let single_code_filter =
+                    filter_code.is_some() && filter_file.is_none() && filter_message.is_none();
+                let limit: Option<usize> = if examples == 0 {
+                    Some(0) // counts only — but there's no "by code" table here, so just skip bodies
+                } else if examples < 0 || single_code_filter {
+                    None // show all
+                } else {
+                    Some(examples as usize)
+                };
+
+                if examples == 0 {
+                    // Just show the count header (already printed above), no detail.
+                    continue;
+                }
+
+                let mut seen_messages: std::collections::HashSet<&str> =
+                    std::collections::HashSet::new();
+                let mut shown = 0usize;
+                for diag in &matched {
+                    if !seen_messages.insert(diag.message.as_str()) {
+                        continue;
+                    }
+                    println!(
+                        "  {}:{}:{} [{}] \u{2013} {}",
+                        diag.file, diag.line, diag.col, diag.code, diag.message
+                    );
+                    shown += 1;
+                    if let Some(lim) = limit {
+                        if shown >= lim {
+                            let remaining = matched.len() - shown;
+                            if remaining > 0 {
+                                println!("  ... and {} more (use --examples -1 to show all)", remaining);
+                            }
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
+
+            // Unfiltered output path (original behavior).
             if s.total_errors == 0 && s.total_warnings == 0 {
                 println!("No errors.");
                 continue;
@@ -771,6 +895,9 @@ fn run_checks(
     }
 
     if has_errors && baseline.is_none() {
+        // When filters are active, still exit non-zero based on unfiltered total (original behavior
+        // is to fail if there are errors). Filters affect display only; the overall pass/fail
+        // decision is based on the full result set.
         let total: usize = summaries.iter().map(|s| s.total_errors).sum();
         bail!("type checking found {total} error(s)");
     }
@@ -1203,12 +1330,15 @@ fn main() -> Result<()> {
                 result.map(|_| ())
             }
         }
-        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset, save_baseline, baseline, examples } => {
+        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset, save_baseline, baseline, examples, filter_code, filter_file, filter_message } => {
             let cfg = CheckConfig {
                 json: *json,
                 save_baseline: save_baseline.as_deref(),
                 baseline: baseline.as_deref(),
                 examples: *examples,
+                filter_code: filter_code.as_deref(),
+                filter_file: filter_file.as_deref(),
+                filter_message: filter_message.as_deref(),
             };
             if *all {
                 cmd_check_all(*no_emit, skip_passes, preset, &cfg)
