@@ -1,4 +1,5 @@
 pub mod call_site_flow;
+pub mod call_site_widen;
 pub mod cfg_simplify;
 pub mod const_fold;
 pub mod constraint_solve;
@@ -11,6 +12,7 @@ pub mod type_infer;
 pub mod util;
 
 pub use call_site_flow::CallSiteTypeFlow;
+pub use call_site_widen::CallSiteTypeWiden;
 pub use cfg_simplify::CfgSimplify;
 pub use const_fold::ConstantFolding;
 pub use constraint_solve::ConstraintSolve;
@@ -40,6 +42,11 @@ pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     }
     if config.constraint_solve {
         pipeline.add(Box::new(ConstraintSolve));
+    }
+    // Widen after ConstraintSolve: if ConstraintSolve narrowed a param via body
+    // constraints but callers pass incompatible types, widen back to Dynamic.
+    if config.call_site_widen {
+        pipeline.add(Box::new(CallSiteTypeWiden));
     }
     if config.constant_folding {
         pipeline.add(Box::new(ConstantFolding));

@@ -37,6 +37,11 @@ pub struct PassConfig {
     pub type_inference: bool,
     pub call_site_flow: bool,
     pub constraint_solve: bool,
+    /// Widen params narrowed by ConstraintSolve when callers pass incompatible
+    /// types. Runs immediately after `constraint_solve`. Requires both
+    /// `call_site_flow` and `constraint_solve` to have run for useful results,
+    /// but is not gated on them (it is a no-op on already-Dynamic params).
+    pub call_site_widen: bool,
     pub constant_folding: bool,
     pub cfg_simplify: bool,
     pub coroutine_lowering: bool,
@@ -53,6 +58,7 @@ impl Default for PassConfig {
             type_inference: true,
             call_site_flow: true,
             constraint_solve: true,
+            call_site_widen: true,
             constant_folding: true,
             cfg_simplify: true,
             coroutine_lowering: true,
@@ -71,6 +77,7 @@ impl PassConfig {
     /// - `"type-inference"`
     /// - `"call-site-type-flow"`
     /// - `"constraint-solve"`
+    /// - `"call-site-type-widen"`
     /// - `"constant-folding"`
     /// - `"cfg-simplify"`
     /// - `"coroutine-lowering"`
@@ -86,6 +93,7 @@ impl PassConfig {
                 "type-inference" => config.type_inference = false,
                 "call-site-type-flow" => config.call_site_flow = false,
                 "constraint-solve" => config.constraint_solve = false,
+                "call-site-type-widen" => config.call_site_widen = false,
                 "constant-folding" => config.constant_folding = false,
                 "cfg-simplify" => config.cfg_simplify = false,
                 "coroutine-lowering" => config.coroutine_lowering = false,
@@ -174,6 +182,7 @@ impl Preset {
                     type_inference: true,
                     call_site_flow: true,
                     constraint_solve: true,
+                    call_site_widen: true,
                     coroutine_lowering: true,
                     mem2reg: true,
                     // Optimization passes — disabled for literal.
@@ -195,6 +204,7 @@ impl Preset {
                 "type-inference" => pass.type_inference = false,
                 "call-site-type-flow" => pass.call_site_flow = false,
                 "constraint-solve" => pass.constraint_solve = false,
+                "call-site-type-widen" => pass.call_site_widen = false,
                 "constant-folding" => pass.constant_folding = false,
                 "cfg-simplify" => pass.cfg_simplify = false,
                 "coroutine-lowering" => pass.coroutine_lowering = false,
@@ -242,6 +252,7 @@ mod tests {
             "type-inference",
             "call-site-type-flow",
             "constraint-solve",
+            "call-site-type-widen",
             "constant-folding",
             "cfg-simplify",
             "coroutine-lowering",
@@ -253,6 +264,7 @@ mod tests {
         assert!(!config.type_inference);
         assert!(!config.call_site_flow);
         assert!(!config.constraint_solve);
+        assert!(!config.call_site_widen);
         assert!(!config.constant_folding);
         assert!(!config.cfg_simplify);
         assert!(!config.coroutine_lowering);

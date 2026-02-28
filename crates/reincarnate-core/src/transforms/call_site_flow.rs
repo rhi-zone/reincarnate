@@ -25,10 +25,14 @@ pub struct CallSiteTypeFlow;
 ///
 /// A `Dynamic` entry means a caller passed an unresolved value — this prevents
 /// narrowing because Dynamic means "could be anything at runtime."
-type Observations = HashMap<(String, usize), Vec<Type>>;
+pub(crate) type Observations = HashMap<(String, usize), Vec<Type>>;
 
 /// Collect argument types from all call sites in the module.
-fn collect_call_site_types(module: &Module) -> Observations {
+///
+/// Shared by `CallSiteTypeFlow` (narrows Dynamic params) and
+/// `CallSiteTypeWiden` (widens params whose ConstraintSolve-narrowed type
+/// conflicts with what callers actually pass).
+pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
     let mut observations: Observations = HashMap::new();
 
     for func in module.functions.values() {

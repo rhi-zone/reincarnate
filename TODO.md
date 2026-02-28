@@ -31,6 +31,14 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 ---
 
+## Developer Experience / Tooling Gaps (HIGH PRIORITY)
+
+- [ ] **Session tooling review** — Review all past sessions (`.claude/projects/*/`) and catalogue every instance where multi-turn confusion, temp file hacks, or repeated grep workarounds indicate a missing tool. Build a prioritized list of tooling gaps. Known examples discovered so far:
+  - Per-function IR dump: `--dump-function` on `emit` only works post-transform. Need a `dump-ir --function <name>` subcommand that shows both pre- and post-transform IR for a single function without running the whole pipeline.
+  - Bytecode disassembler: no way to inspect raw GML bytecode for a specific function/object event to debug translation bugs. A `disasm` subcommand (or flag on `extract`) that prints human-readable GML instructions for a named function would eliminate most bytecode-level debug hacks.
+  - IR diff between pipeline stages: when a transform changes IR unexpectedly, there's no way to see what changed without dumping full before/after and diffing manually.
+  - TypeScript error archaeology: no tool to go from a specific TS error back to the IR value that caused it. An `explain-error <file> <line>` subcommand could resolve a TS error back to the IR value ID and the GML bytecode offset that produced it.
+
 ## TODO.md Staleness Audit (HIGH PRIORITY)
 
 - [ ] **Audit TODO.md for stale items** — Many items were written months ago and may already be implemented, superseded, or no longer relevant. Go through each open `[ ]` item, check against the codebase, and either mark `[x]` with a note, update the description, or delete if obsolete. Known example: `IR-level closure representation` was stale (now marked done). `withBegin`/withEnd design debt references "no closure construct" which is now resolved but the debt itself is still live.
@@ -537,34 +545,33 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   pushac target, or (b) the TS printer detecting integer-as-collection in SetIndex and routing
   to a GameMaker.setIndex runtime call. Only 6 errors in Schism, low priority.
 
-### 7. Dead Estate remaining TS errors — 2108 as of 2026-02-27 (post-Bug-7e)
+### 7. Dead Estate remaining TS errors — 596 as of 2026-02-28 (post CallSiteTypeWiden)
 
-Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 → 2108 (Bug 7e: OBJT as class constructors).
-Note: 2108 > 1622 because the OBJT constructor change surfaces ~524 new game-author TS2345 errors
-(user scripts that typed OBJT params as `number` from arithmetic context). The gain is typed
-`instance_create_*` returns and typed `with`-body `_self`. GmlDefaultArgRecovery
-pass folds GMS2.3+ `if (arg === undefined) arg = val` patterns into FunctionSig.defaults;
-variadic scripts get `= 0.0` on fixed params. TS2554: 2069→859, TS2555: 149→0.
+Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 → 2108 → 946 (cross-obj 2D read fix) → 883 (ClassRef + OBJT constructor type fix) → 596 (CallSiteTypeWiden: −284 TS2345).
+
+CallSiteTypeWiden: ConstraintSolve narrows params via body constraints (e.g. `cmp.eq(i64_val, param)`)
+but callers may pass incompatible types (ClassRef vs Int). The widening pass detects these conflicts
+post-ConstraintSolve and widens back to Dynamic. Critical: must read from entry block params, not
+sig.params, because ConstraintSolve only updates entry.params[i].ty and value_types, not func.sig.params.
 
 | Code | Count | Root cause |
 |------|-------|------------|
-| TS2554 | 859 | Wrong argument count — remaining are non-default-related mismatches |
-| TS2345 | 330 | Argument type mismatch — 176 are `number→GMLObject` at `instance_destroy` (see Bug 7e below) |
-| TS2322 | 189 | Type not assignable — `boolean→number` (GML no-bool-type) + misc |
-| TS2367 | 53 | Comparison always false — type mismatch in `===` (game author errors) |
-| TS2339 | 44 | Property doesn't exist |
-| TS7027 | 32 | Unreachable code — **structurizer/emitter bug** (see Bug 7c below) |
-| TS2365 | 27 | Operator not applicable — bitwise/arithmetic on wrong type |
-| TS2304 | 25 | Cannot find name — **linearizer/structurizer bugs** (see Bug 7d below) |
-| TS2362 | 20 | Left side of `**`/arithmetic must be number |
-| TS18050 | 19 | `null` in non-null position — Mem2Reg null sentinels used in comparisons/arithmetic |
-| TS7053 | 8 | Element implicitly has `any` type |
-| TS2363 | 6 | Right side of `**` must be number |
+| TS2345 | 222 | Argument type mismatch — remaining mismatches (ClassRef vs number etc.) |
+| TS2322 | 200 | Type not assignable — `boolean→number` (GML no-bool-type) + misc |
+| TS2339 | 43 | Property doesn't exist |
+| TS2365 | 31 | Operator not applicable — bitwise/arithmetic on wrong type |
+| TS2362 | 29 | Left side of `**`/arithmetic must be number |
+| TS7027 | 24 | Unreachable code — **structurizer/emitter bug** (see Bug 7c below) |
+| TS2304 | 17 | Cannot find name — **linearizer/structurizer bugs** (see Bug 7d below) |
+| TS2367 | 7 | Comparison always false — type mismatch in `===` (game author errors) |
+| TS2554 | 5 | Wrong argument count |
+| TS2363 | 5 | Right side of `**` must be number |
 | TS2872 | 3 | Comparison appears unintentional |
 | TS2308 | 3 | Duplicate re-export (`___struct___127/128`, `TextEffect`) in barrel `index.ts` |
+| TS2358 | 2 | Left operand of `in` must be string |
 | TS2300 | 2 | Duplicate identifier |
 | TS2552 | 1 | Cannot find name (with-body self-reference bug) |
-| TS2307 | 1 | Cannot find module — `runtime/argument` (out-of-range GML `argument` access) |
+| TS2440 | 1 | Import declaration conflicts |
 | TS18047 | 1 | Object is possibly null |
 
 #### TS2345 Detailed Breakdown (2043 errors, by type pair)
@@ -818,7 +825,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 879 TS errors + 1 translation error (2026-02-26) |
+| Dead Estate | `data.win` 192MB | ⚠️ 596 TS errors + 1 translation error (2026-02-28) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
