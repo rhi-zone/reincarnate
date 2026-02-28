@@ -85,6 +85,22 @@ fn loop_body_has_break(stmts: &[JsStmt]) -> bool {
     false
 }
 
+/// Returns the GML implicit return literal for a given return type, or `None`
+/// if no synthetic return is needed (void, any, or types where TypeScript
+/// doesn't require all paths to return).
+///
+/// GML implicitly returns 0 when a function exits without a `return` statement.
+/// The zero value is type-appropriate: `0` for numbers, `false` for booleans.
+/// Dynamic (`any`) return types are excluded — TypeScript doesn't enforce
+/// complete returns for `any`, so no synthetic return is needed.
+fn implicit_gml_return(ty: &Type) -> Option<&'static str> {
+    match ty {
+        Type::Int(_) | Type::UInt(_) | Type::Float(_) => Some("0"),
+        Type::Bool => Some("false"),
+        _ => None,
+    }
+}
+
 /// Print a standalone function.
 pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String) {
     let vis = visibility_prefix(js.visibility);
@@ -104,10 +120,14 @@ pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String)
 
     print_stmts(&js.body, out, "  ");
 
-    // GML functions that don't return on all paths implicitly return 0/undefined.
-    // Emit a synthetic return to suppress TS2366 "lacks ending return statement".
-    if !matches!(js.return_ty, Type::Void) && !ends_with_terminal(&js.body) {
-        let _ = writeln!(out, "  return 0 as any;");
+    // GML functions implicitly return 0 when no explicit return is reached.
+    // Emit a synthetic return to suppress TS2366 for concrete return types.
+    // Dynamic (any) return types don't need this — TypeScript doesn't require
+    // all paths to return for `any`-typed functions.
+    if let Some(implicit) = implicit_gml_return(&js.return_ty) {
+        if !ends_with_terminal(&js.body) {
+            let _ = writeln!(out, "  return {implicit};");
+        }
     }
 
     let _ = writeln!(out, "}}\n");
@@ -182,13 +202,14 @@ pub fn print_class_method(
     }
     print_stmts(&js.body, out, indent);
 
-    // GML functions that don't return on all paths implicitly return 0/undefined.
-    // Emit a synthetic return to suppress TS2366 "lacks ending return statement".
-    if !matches!(js.return_ty, Type::Void)
-        && !matches!(js.method_kind, MethodKind::Constructor | MethodKind::Setter | MethodKind::Getter)
-        && !ends_with_terminal(&js.body)
-    {
-        let _ = writeln!(out, "{indent}return 0 as any;");
+    // GML methods implicitly return 0 when no explicit return is reached.
+    // Emit a synthetic return to suppress TS2366 for concrete return types.
+    if let Some(implicit) = implicit_gml_return(&js.return_ty) {
+        if !matches!(js.method_kind, MethodKind::Constructor | MethodKind::Setter | MethodKind::Getter)
+            && !ends_with_terminal(&js.body)
+        {
+            let _ = writeln!(out, "{indent}return {implicit};");
+        }
     }
 
     let _ = writeln!(out, "  }}");
