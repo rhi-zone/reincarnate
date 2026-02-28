@@ -238,6 +238,9 @@ fn fold_cmp(kind: CmpKind, a: &Constant, b: &Constant) -> Option<Constant> {
 /// Try to fold a cast from a constant to a target type.
 fn fold_cast(c: &Constant, ty: &Type) -> Option<Constant> {
     match (c, ty) {
+        // Identity: same-type coercion is always a no-op.
+        (Constant::Bool(_), Type::Bool) => Some(c.clone()),
+        (Constant::String(_), Type::String) => Some(c.clone()),
         // Same-family: truncate/widen within the stored representation.
         (Constant::Int(x), Type::Int(bits)) => {
             let bits = *bits as u32;

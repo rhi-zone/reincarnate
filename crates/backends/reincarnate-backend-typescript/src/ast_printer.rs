@@ -34,6 +34,10 @@ fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
         // A switch is terminal if it has a default case and every case body (including
         // default) ends with a terminal.  Without a default, some input value could fall
         // through without hitting any case, so it is not terminal.
+        //
+        // Empty case bodies (fall-through cases like `case A: case B: return X;`) are
+        // terminal by convention — they produce no code and their fall-through target
+        // will be checked separately.  Only non-empty bodies need to end with a terminal.
         Some(JsStmt::Switch {
             cases,
             default_body,
@@ -41,7 +45,7 @@ fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
         }) => {
             !default_body.is_empty()
                 && ends_with_terminal(default_body)
-                && cases.iter().all(|(_, body)| ends_with_terminal(body))
+                && cases.iter().all(|(_, body)| body.is_empty() || ends_with_terminal(body))
         }
         // An infinite loop (`while (true)`) is terminal if its body contains no top-level
         // `break` — i.e. there is no way to fall through to the code below it.
