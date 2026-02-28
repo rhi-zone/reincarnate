@@ -1743,19 +1743,29 @@ fn translate_instruction(
         }
 
         // ============================================================
-        // Bitwise
+        // Bitwise / Boolean
         // ============================================================
         Opcode::And => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.bit_and(a, b);
+            // GML uses one And opcode for both `&&` (Bool operands) and `&` (Int operands).
+            let r = if inst.type1 == DataType::Bool {
+                fb.bool_and(a, b)
+            } else {
+                fb.bit_and(a, b)
+            };
             gml_sizes.insert(r, gml_slot_units(inst.type1));
             stack.push(r);
         }
         Opcode::Or => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.bit_or(a, b);
+            // GML uses one Or opcode for both `||` (Bool operands) and `|` (Int operands).
+            let r = if inst.type1 == DataType::Bool {
+                fb.bool_or(a, b)
+            } else {
+                fb.bit_or(a, b)
+            };
             gml_sizes.insert(r, gml_slot_units(inst.type1));
             stack.push(r);
         }

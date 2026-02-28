@@ -447,6 +447,15 @@ fn generate_constraints(
                     }
                 }
 
+                // BoolAnd/BoolOr: a = Bool, b = Bool, r = Bool
+                Op::BoolAnd(a, b) | Op::BoolOr(a, b) => {
+                    solver.constrain_value_to_type(*a, &Type::Bool);
+                    solver.constrain_value_to_type(*b, &Type::Bool);
+                    if let Some(r) = result {
+                        solver.constrain_value_to_type(r, &Type::Bool);
+                    }
+                }
+
                 // Select: cond = Bool, on_true = on_false, on_true = r
                 Op::Select {
                     cond,

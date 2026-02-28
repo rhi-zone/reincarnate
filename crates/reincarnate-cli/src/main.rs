@@ -838,11 +838,13 @@ fn run_checks(
                     continue;
                 }
 
+                // When a limit is in effect, deduplicate by message to show diverse examples.
+                // When showing all (no limit), show every location without deduplication.
                 let mut seen_messages: std::collections::HashSet<&str> =
                     std::collections::HashSet::new();
                 let mut shown = 0usize;
                 for diag in &matched {
-                    if !seen_messages.insert(diag.message.as_str()) {
+                    if limit.is_some() && !seen_messages.insert(diag.message.as_str()) {
                         continue;
                     }
                     println!(

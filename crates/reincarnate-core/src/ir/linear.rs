@@ -733,6 +733,8 @@ fn is_deferrable(op: &Op) -> bool {
             | Op::Rem(..)
             | Op::Neg(..)
             | Op::Not(..)
+            | Op::BoolAnd(..)
+            | Op::BoolOr(..)
             | Op::BitAnd(..)
             | Op::BitOr(..)
             | Op::BitXor(..)
@@ -1545,6 +1547,16 @@ impl<'a> EmitCtx<'a> {
             },
 
             Op::Not(a) => Expr::Not(Box::new(self.build_val(*a))),
+            Op::BoolAnd(a, b) => Expr::Binary {
+                op: BinOp::BoolAnd,
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
+            },
+            Op::BoolOr(a, b) => Expr::Binary {
+                op: BinOp::BoolOr,
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
+            },
             Op::Select {
                 cond,
                 on_true,

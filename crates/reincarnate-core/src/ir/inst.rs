@@ -95,6 +95,12 @@ pub enum Op {
 
     // -- Logic --
     Not(ValueId),
+    /// Eager boolean AND: `a & b` where both operands are `Bool`.
+    /// GML's `&&` on bool operands. Distinct from `BitAnd` (integer bitwise).
+    BoolAnd(ValueId, ValueId),
+    /// Eager boolean OR: `a | b` where both operands are `Bool`.
+    /// GML's `||` on bool operands. Distinct from `BitOr` (integer bitwise).
+    BoolOr(ValueId, ValueId),
     /// Conditional select: `cond ? on_true : on_false`
     Select {
         cond: ValueId,

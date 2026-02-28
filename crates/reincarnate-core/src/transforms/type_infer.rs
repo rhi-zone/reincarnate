@@ -343,7 +343,7 @@ fn infer_inst_type(
         Op::BitNot(a) => func.value_types[*a].clone(),
 
         // Comparison and logic always produce Bool.
-        Op::Cmp(..) | Op::Not(_) | Op::TypeCheck(..) => Type::Bool,
+        Op::Cmp(..) | Op::Not(_) | Op::TypeCheck(..) | Op::BoolAnd(..) | Op::BoolOr(..) => Type::Bool,
 
         // Cast always produces the target type.
         Op::Cast(_, ty, _) => ty.clone(),

@@ -300,6 +300,19 @@ impl fmt::Display for Function {
                         fmt_value(*a, f)?;
                     }
 
+                    Op::BoolAnd(a, b) => {
+                        write!(f, "bool_and ")?;
+                        fmt_value(*a, f)?;
+                        write!(f, ", ")?;
+                        fmt_value(*b, f)?;
+                    }
+                    Op::BoolOr(a, b) => {
+                        write!(f, "bool_or ")?;
+                        fmt_value(*a, f)?;
+                        write!(f, ", ")?;
+                        fmt_value(*b, f)?;
+                    }
+
                     Op::Br { target, args } => {
                         write!(f, "br ")?;
                         fmt_block_target(*target, args, f)?;

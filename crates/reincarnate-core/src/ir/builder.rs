@@ -410,6 +410,14 @@ impl FunctionBuilder {
         self.emit(Op::Not(a), Type::Bool)
     }
 
+    pub fn bool_and(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.emit(Op::BoolAnd(a, b), Type::Bool)
+    }
+
+    pub fn bool_or(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.emit(Op::BoolOr(a, b), Type::Bool)
+    }
+
     // ========================================================================
     // Control flow
     // ========================================================================

@@ -1,6 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
+use crate::ir::block::BlockId;
 use crate::ir::inst::CmpKind;
 use crate::ir::{Constant, Function, InstId, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
@@ -9,12 +10,110 @@ use crate::pipeline::{Transform, TransformResult};
 /// at compile time, replacing them with `Op::Const(result)`.
 pub struct ConstantFolding;
 
+/// Compute the set of blocks reachable from the function's entry block.
+fn reachable_blocks(func: &Function) -> HashSet<BlockId> {
+    let mut reachable = HashSet::new();
+    let mut worklist = vec![func.entry];
+    while let Some(block_id) = worklist.pop() {
+        if !reachable.insert(block_id) {
+            continue;
+        }
+        for &inst_id in &func.blocks[block_id].insts {
+            match &func.insts[inst_id].op {
+                Op::Br { target, .. } => worklist.push(*target),
+                Op::BrIf { then_target, else_target, .. } => {
+                    worklist.push(*then_target);
+                    worklist.push(*else_target);
+                }
+                Op::Switch { cases, default, .. } => {
+                    for (_, target, _) in cases {
+                        worklist.push(*target);
+                    }
+                    worklist.push(default.0);
+                }
+                _ => {}
+            }
+        }
+    }
+    reachable
+}
+
 /// Build a map from ValueId → Constant for all `Op::Const` instructions.
+///
+/// Also propagates constants through block parameters: if every *reachable*
+/// predecessor that passes to a block param passes the same constant, the
+/// param is effectively a constant.  Only reachable predecessors are counted
+/// so that dead-branch edges (from previously folded `BrIf`s) don't prevent
+/// propagation.
 fn build_const_map(func: &Function) -> HashMap<ValueId, Constant> {
     let mut map = HashMap::new();
     for (_, inst) in func.insts.iter() {
         if let (Op::Const(c), Some(result)) = (&inst.op, inst.result) {
             map.insert(result, c.clone());
+        }
+    }
+    // Propagate constants through block parameters.
+    // Only edges from reachable blocks are counted — unreachable blocks
+    // (e.g. dead branches from a previously folded BrIf) must not block
+    // propagation through the surviving predecessor's constant.
+    let reachable = reachable_blocks(func);
+    let mut param_vals: HashMap<(BlockId, usize), Vec<ValueId>> = HashMap::new();
+    for (block_id, block) in func.blocks.iter() {
+        if !reachable.contains(&block_id) {
+            continue;
+        }
+        for &inst_id in &block.insts {
+            match &func.insts[inst_id].op {
+                Op::Br { target, args } => {
+                    for (i, &arg) in args.iter().enumerate() {
+                        param_vals.entry((*target, i)).or_default().push(arg);
+                    }
+                }
+                Op::BrIf { then_target, then_args, else_target, else_args, .. } => {
+                    for (i, &arg) in then_args.iter().enumerate() {
+                        param_vals.entry((*then_target, i)).or_default().push(arg);
+                    }
+                    for (i, &arg) in else_args.iter().enumerate() {
+                        param_vals.entry((*else_target, i)).or_default().push(arg);
+                    }
+                }
+                Op::Switch { cases, default, .. } => {
+                    for (_, target, args) in cases {
+                        for (i, &arg) in args.iter().enumerate() {
+                            param_vals.entry((*target, i)).or_default().push(arg);
+                        }
+                    }
+                    for (i, &arg) in default.1.iter().enumerate() {
+                        param_vals.entry((default.0, i)).or_default().push(arg);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    for (block_id, block) in func.blocks.iter() {
+        for (i, param) in block.params.iter().enumerate() {
+            let Some(vals) = param_vals.get(&(block_id, i)) else { continue };
+            if vals.is_empty() {
+                continue;
+            }
+            // All reachable predecessor values must resolve to the same constant.
+            let mut agreed: Option<Constant> = None;
+            let all_const = vals.iter().all(|v| {
+                if let Some(c) = map.get(v) {
+                    match &agreed {
+                        None => { agreed = Some(c.clone()); true }
+                        Some(a) => a == c,
+                    }
+                } else {
+                    false
+                }
+            });
+            if all_const {
+                if let Some(c) = agreed {
+                    map.insert(param.value, c);
+                }
+            }
         }
     }
     map
@@ -77,6 +176,21 @@ fn fold_binary_bitwise(
         ("shr", Constant::Int(x), Constant::Int(y)) => Some(Constant::Int(x.wrapping_shr(*y as u32))),
         ("shr", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x.wrapping_shr(*y as u32))),
 
+        _ => None,
+    }
+}
+
+/// Absorbing-element fold for bitwise ops where only one operand is a constant.
+///
+/// - `x & 0`     / `0 & x`     → `0`      (zero is absorbing for integer AND)
+/// - `x | -1`    / `-1 | x`    → `-1`     (-1 / all-ones is absorbing for integer OR)
+///
+/// Note: Bool AND/OR absorbing cases are handled by `Op::BoolAnd`/`Op::BoolOr` in `try_fold`.
+fn fold_bitwise_absorbing(op_name: &str, known: &Constant) -> Option<Constant> {
+    match (op_name, known) {
+        ("and", Constant::Int(0)) => Some(Constant::Int(0)),
+        ("and", Constant::UInt(0)) => Some(Constant::UInt(0)),
+        ("or", Constant::Int(-1)) => Some(Constant::Int(-1)),
         _ => None,
     }
 }
@@ -157,6 +271,13 @@ fn fold_cast(c: &Constant, ty: &Type) -> Option<Constant> {
         (Constant::UInt(x), Type::Int(_)) => Some(Constant::Int(*x as i64)),
         (Constant::Float(x), Type::Int(_)) => Some(Constant::Int(*x as i64)),
         (Constant::Float(x), Type::UInt(_)) => Some(Constant::UInt(*x as u64)),
+        // Conversions to/from Bool: non-zero is truthy (matches GML semantics).
+        (Constant::Int(x), Type::Bool) => Some(Constant::Bool(*x != 0)),
+        (Constant::UInt(x), Type::Bool) => Some(Constant::Bool(*x != 0)),
+        (Constant::Float(x), Type::Bool) => Some(Constant::Bool(*x != 0.0 && !x.is_nan())),
+        (Constant::Bool(b), Type::Int(_)) => Some(Constant::Int(*b as i64)),
+        (Constant::Bool(b), Type::UInt(_)) => Some(Constant::UInt(*b as u64)),
+        (Constant::Bool(b), Type::Float(_)) => Some(Constant::Float(*b as u8 as f64)),
         _ => None,
     }
 }
@@ -184,8 +305,33 @@ fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
         }
 
         // Binary bitwise
-        Op::BitAnd(a, b) => fold_binary_bitwise("and", consts.get(a)?, consts.get(b)?),
-        Op::BitOr(a, b) => fold_binary_bitwise("or", consts.get(a)?, consts.get(b)?),
+        Op::BitAnd(a, b) => {
+            if let (Some(ca), Some(cb)) = (consts.get(a), consts.get(b)) {
+                // Try exact-type fold first; fall back to absorbing element on type mismatch.
+                fold_binary_bitwise("and", ca, cb)
+                    .or_else(|| fold_bitwise_absorbing("and", ca))
+                    .or_else(|| fold_bitwise_absorbing("and", cb))
+            } else if let Some(ca) = consts.get(a) {
+                fold_bitwise_absorbing("and", ca)
+            } else if let Some(cb) = consts.get(b) {
+                fold_bitwise_absorbing("and", cb)
+            } else {
+                None
+            }
+        }
+        Op::BitOr(a, b) => {
+            if let (Some(ca), Some(cb)) = (consts.get(a), consts.get(b)) {
+                fold_binary_bitwise("or", ca, cb)
+                    .or_else(|| fold_bitwise_absorbing("or", ca))
+                    .or_else(|| fold_bitwise_absorbing("or", cb))
+            } else if let Some(ca) = consts.get(a) {
+                fold_bitwise_absorbing("or", ca)
+            } else if let Some(cb) = consts.get(b) {
+                fold_bitwise_absorbing("or", cb)
+            } else {
+                None
+            }
+        }
         Op::BitXor(a, b) => fold_binary_bitwise("xor", consts.get(a)?, consts.get(b)?),
         Op::Shl(a, b) => fold_binary_bitwise("shl", consts.get(a)?, consts.get(b)?),
         Op::Shr(a, b) => fold_binary_bitwise("shr", consts.get(a)?, consts.get(b)?),
@@ -209,6 +355,32 @@ fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
                 Some(Constant::Bool(!v))
             } else {
                 None
+            }
+        }
+
+        // Boolean AND/OR: short-circuit absorbing elements, then full fold.
+        Op::BoolAnd(a, b) => {
+            match (consts.get(a), consts.get(b)) {
+                (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => {
+                    Some(Constant::Bool(false))
+                }
+                (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => {
+                    Some(Constant::Bool(*x && *y))
+                }
+                (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => None,
+                _ => None,
+            }
+        }
+        Op::BoolOr(a, b) => {
+            match (consts.get(a), consts.get(b)) {
+                (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => {
+                    Some(Constant::Bool(true))
+                }
+                (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => {
+                    Some(Constant::Bool(*x || *y))
+                }
+                (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => None,
+                _ => None,
             }
         }
 
@@ -343,50 +515,57 @@ fn is_constant_truthy(c: &Constant) -> Option<bool> {
 
 /// Fold `BrIf(const_cond, then, else)` → `Br(then)` or `Br(else)`.
 ///
-/// Runs after the main constant-folding loop so that any conditions that were
-/// just folded to constants are handled.  The resulting dead branch will be
-/// pruned by DCE.
+/// Runs iteratively: each iteration rebuilds the const map (with reachability
+/// filtering) so that blocks made unreachable by a previous fold don't prevent
+/// subsequent block-param propagation.  The resulting dead branches are pruned
+/// by DCE.
 fn fold_brif_constants(func: &mut Function) -> bool {
-    let consts = build_const_map(func);
+    let mut any_changed = false;
+    loop {
+        let consts = build_const_map(func);
 
-    let updates: Vec<(InstId, Op)> = func
-        .insts
-        .keys()
-        .filter_map(|inst_id| {
-            let inst = &func.insts[inst_id];
-            if let Op::BrIf {
-                cond,
-                then_target,
-                then_args,
-                else_target,
-                else_args,
-            } = &inst.op
-            {
-                let c = consts.get(cond)?;
-                let truthy = is_constant_truthy(c)?;
-                let new_op = if truthy {
-                    Op::Br {
-                        target: *then_target,
-                        args: then_args.clone(),
-                    }
+        let updates: Vec<(InstId, Op)> = func
+            .insts
+            .keys()
+            .filter_map(|inst_id| {
+                let inst = &func.insts[inst_id];
+                if let Op::BrIf {
+                    cond,
+                    then_target,
+                    then_args,
+                    else_target,
+                    else_args,
+                } = &inst.op
+                {
+                    let c = consts.get(cond)?;
+                    let truthy = is_constant_truthy(c)?;
+                    let new_op = if truthy {
+                        Op::Br {
+                            target: *then_target,
+                            args: then_args.clone(),
+                        }
+                    } else {
+                        Op::Br {
+                            target: *else_target,
+                            args: else_args.clone(),
+                        }
+                    };
+                    Some((inst_id, new_op))
                 } else {
-                    Op::Br {
-                        target: *else_target,
-                        args: else_args.clone(),
-                    }
-                };
-                Some((inst_id, new_op))
-            } else {
-                None
-            }
-        })
-        .collect();
+                    None
+                }
+            })
+            .collect();
 
-    let changed = !updates.is_empty();
-    for (inst_id, new_op) in updates {
-        func.insts[inst_id].op = new_op;
+        if updates.is_empty() {
+            break;
+        }
+        for (inst_id, new_op) in updates {
+            func.insts[inst_id].op = new_op;
+        }
+        any_changed = true;
     }
-    changed
+    any_changed
 }
 
 impl Transform for ConstantFolding {
@@ -614,6 +793,65 @@ mod tests {
 
         let func = apply_fold(fb.build());
         assert!(matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Int(15))));
+    }
+
+    /// `param && false` folds to `Bool(false)` (absorbing element).
+    /// This covers GML `&&` patterns like `condition && isstaticok()` where
+    /// `isstaticok()` always produces `Bool(false)`.
+    #[test]
+    fn bool_and_absorbing_false() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Bool, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let param = fb.param(0);
+        let b = fb.const_bool(false);
+        let result = fb.bool_and(param, b);
+        fb.ret(Some(result));
+
+        let func = apply_fold(fb.build());
+        assert!(
+            matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Bool(false))),
+            "expected BoolAnd(param, false) to fold to Bool(false)"
+        );
+    }
+
+    /// `false && param` folds to `Bool(false)` (absorbing element, commutative).
+    #[test]
+    fn bool_and_absorbing_false_lhs() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Bool, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let param = fb.param(0);
+        let a = fb.const_bool(false);
+        let result = fb.bool_and(a, param);
+        fb.ret(Some(result));
+
+        let func = apply_fold(fb.build());
+        assert!(
+            matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Bool(false))),
+            "expected BoolAnd(false, param) to fold to Bool(false)"
+        );
+    }
+
+    /// `param || true` folds to `Bool(true)` (absorbing element for OR).
+    #[test]
+    fn bool_or_absorbing_true() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Bool, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let param = fb.param(0);
+        let b = fb.const_bool(true);
+        let result = fb.bool_or(param, b);
+        fb.ret(Some(result));
+
+        let func = apply_fold(fb.build());
+        assert!(
+            matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Bool(true))),
+            "expected BoolOr(param, true) to fold to Bool(true)"
+        );
     }
 
     // ---- Edge case tests ----

@@ -142,6 +142,13 @@ pub enum BinOp {
     BitXor,
     Shl,
     Shr,
+    /// Eager boolean AND: both operands are `bool`, result is `bool`.
+    /// Emitted as `&&` in TypeScript. Semantically non-short-circuit
+    /// (matches GML's `&&` on Bool-typed operands).
+    BoolAnd,
+    /// Eager boolean OR: both operands are `bool`, result is `bool`.
+    /// Emitted as `||` in TypeScript.
+    BoolOr,
 }
 
 /// Unary operators.
