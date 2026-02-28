@@ -35,9 +35,13 @@ pub fn ts_type(ty: &Type) -> String {
             }
             sanitize_ident(short)
         }
-        Type::ClassRef(name) => {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            format!("typeof {}", sanitize_ident(short))
+        Type::ClassRef(_) => {
+            // GML OBJT class names are used as integer object indices at runtime.
+            // While TypeScript represents the class constructor as `typeof ClassName`,
+            // callers of such a function get a misleading type. Since ClassRef values
+            // are always widened to `as any` at their use sites, `any` is the correct
+            // declared type for function signatures too.
+            "any".into()
         }
         Type::Function(sig) => {
             let params: Vec<_> = sig

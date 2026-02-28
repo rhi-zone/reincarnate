@@ -800,6 +800,13 @@ fn classify_defs(
                     continue;
                 }
 
+                // GlobalRef (class/asset name references) always rebuilt so that
+                // the ClassRef → `as any` cast in build_val fires on every use.
+                if matches!(op, Op::GlobalRef(_)) {
+                    always_inlines.insert(*result);
+                    continue;
+                }
+
                 // Cascade: GetField/GetIndex on always-inlined object.
                 let object_always_inlined = match op {
                     Op::GetField { object, .. }
