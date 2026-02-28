@@ -147,6 +147,20 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// List all IR function names in a project (useful for verifying --dump-function strings).
+    ListFunctions {
+        /// Registry name, path to manifest file, or directory containing reincarnate.json.
+        /// Defaults to searching ancestor directories from the current directory.
+        #[arg(conflicts_with = "manifest")]
+        target: Option<String>,
+        /// Path to the project manifest (legacy flag; prefer positional target).
+        #[arg(long, conflicts_with = "target")]
+        manifest: Option<PathBuf>,
+        /// Only show function names matching this filter (same logic as --dump-function:
+        /// case-insensitive substring, or split-part matching on `.`/`::` separators).
+        #[arg(long)]
+        filter: Option<String>,
+    },
 }
 
 #[derive(clap::ValueEnum, Clone)]
@@ -924,6 +938,36 @@ fn cmd_check_all(
     }
 }
 
+fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> {
+    let manifest = load_manifest(manifest_path)?;
+    let Some(frontend) = find_frontend(&manifest.engine) else {
+        bail!("no frontend available for engine {:?}", manifest.engine);
+    };
+
+    let input = FrontendInput {
+        source: manifest.source.clone(),
+        engine: manifest.engine.clone(),
+        options: manifest.frontend_options.clone(),
+    };
+    let output = frontend.extract(input).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let debug_config = DebugConfig {
+        dump_ir: false,
+        dump_ast: false,
+        function_filter: filter.map(|s| s.to_string()),
+    };
+
+    for module in &output.modules {
+        for (_, func) in module.functions.iter() {
+            if debug_config.should_dump(&func.name) {
+                println!("{}", func.name);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Registry commands
 // ---------------------------------------------------------------------------
@@ -1150,5 +1194,9 @@ fn main() -> Result<()> {
         }
         Command::Remove { name } => cmd_remove(name),
         Command::List { sort, json } => cmd_list(sort, *json),
+        Command::ListFunctions { target, manifest, filter } => {
+            let path = resolve_target(target.as_deref(), manifest.as_deref())?;
+            cmd_list_functions(&path, filter.as_deref())
+        }
     }
 }
