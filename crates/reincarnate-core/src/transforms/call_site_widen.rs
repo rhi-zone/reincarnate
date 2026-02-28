@@ -116,6 +116,54 @@ impl Transform for CallSiteTypeWiden {
             }
         }
 
+        // For functions with zero IR call sites (e.g., `withInstances` closures
+        // called by the runtime, not by IR-visible call instructions), ConstraintSolve
+        // may have narrowed a param that was originally `Dynamic`. Since there are no
+        // IR callers to validate the narrowing, and the runtime can dispatch any
+        // GMLObject instance to such callbacks, restore `Dynamic`.
+        //
+        // Detection: `sig.params[i]` is NOT updated by ConstraintSolve, so it still
+        // holds the original type from TypeInference. If sig says `Dynamic` but the
+        // entry-block param (post-ConstraintSolve) is concrete, the narrowing was
+        // intra-procedural only — not validated by any caller.
+        // Collect (func_id, name) pairs first to avoid borrow conflicts.
+        let zero_caller_ids: Vec<_> = module
+            .functions
+            .iter()
+            .filter(|(_, f)| !per_callee.contains_key(&f.name))
+            .map(|(id, _)| id)
+            .collect();
+
+        for func_id in zero_caller_ids {
+            let func = &module.functions[func_id];
+            let entry = func.entry;
+            let param_count = func.sig.params.len();
+
+            // Find params where sig says Dynamic but entry block was narrowed.
+            let mut to_widen: Vec<usize> = Vec::new();
+            for i in 0..param_count {
+                if func.sig.params[i] != Type::Dynamic {
+                    continue;
+                }
+                if i >= func.blocks[entry].params.len() {
+                    continue;
+                }
+                if func.blocks[entry].params[i].ty != Type::Dynamic {
+                    to_widen.push(i);
+                }
+            }
+
+            for i in to_widen {
+                let func = &mut module.functions[func_id];
+                let entry = func.entry;
+                func.blocks[entry].params[i].ty = Type::Dynamic;
+                let value = func.blocks[entry].params[i].value;
+                func.value_types[value] = Type::Dynamic;
+                // sig.params[i] is already Dynamic — no change needed there.
+                changed = true;
+            }
+        }
+
         Ok(TransformResult { module, changed })
     }
 }
@@ -286,10 +334,14 @@ mod tests {
         assert_eq!(target.sig.params[0], Type::Dynamic);
     }
 
-    // ---- No callers → no change ----
+    // ---- No callers, non-Dynamic sig → no change ----
 
+    /// Function with no IR callers and a concrete sig param (e.g. TypeInference
+    /// already inferred Int(64)) is left alone even if ConstraintSolve narrowed
+    /// the entry block param further. We only restore Dynamic where the sig itself
+    /// declared Dynamic.
     #[test]
-    fn no_callers_no_change() {
+    fn no_callers_non_dynamic_sig_no_change() {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
@@ -305,6 +357,60 @@ mod tests {
         assert!(!result.changed);
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(target.sig.params[0], Type::Int(64));
+    }
+
+    // ---- No callers, Dynamic sig narrowed by ConstraintSolve → restore Dynamic ----
+
+    /// Closure callbacks (e.g. `withInstances` bodies) are never called by IR
+    /// call instructions — the runtime dispatches them. Their `_self` param is
+    /// originally `Dynamic` (from the GML with-body translator), but
+    /// `ConstraintSolve` may narrow it to a concrete type based on body usage
+    /// (e.g. `collision_rectangle(_self, ...)` constrains it to `number`).
+    /// With no IR callers to validate the narrowing, we must restore `Dynamic`.
+    #[test]
+    fn no_callers_dynamic_sig_narrowed_by_cs_restores_dynamic() {
+        use crate::ir::Module;
+
+        let mut mb = ModuleBuilder::new("test");
+
+        // Closure with Dynamic sig param (as emitted by with-body translator).
+        let closure_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut closure = FunctionBuilder::new("withBody_0", closure_sig, Visibility::Private);
+        closure.ret(None);
+        mb.add_function(closure.build());
+
+        // Simulate ConstraintSolve: mutate the entry block param to Float(64).
+        let mut module: Module = mb.build();
+        let func_id = FuncId::new(0);
+        let entry = module.functions[func_id].entry;
+        module.functions[func_id].blocks[entry].params[0].ty = Type::Float(64);
+        let value = module.functions[func_id].blocks[entry].params[0].value;
+        module.functions[func_id].value_types[value] = Type::Float(64);
+        // sig.params is NOT updated by ConstraintSolve — leave it as Dynamic.
+
+        let result = CallSiteTypeWiden.apply(module).unwrap();
+
+        assert!(result.changed, "should restore Dynamic for no-caller closure param");
+        let target = &result.module.functions[FuncId::new(0)];
+        // Entry block param and value_types should be restored to Dynamic.
+        let entry = target.entry;
+        assert_eq!(
+            target.blocks[entry].params[0].ty,
+            Type::Dynamic,
+            "entry block param should be restored to Dynamic"
+        );
+        let val = target.blocks[entry].params[0].value;
+        assert_eq!(
+            target.value_types[val],
+            Type::Dynamic,
+            "value_types should be restored to Dynamic"
+        );
+        // sig.params was already Dynamic — stays Dynamic.
+        assert_eq!(target.sig.params[0], Type::Dynamic);
     }
 
     // ---- ClassRef conflict (the playerIsCharacter scenario) ----
