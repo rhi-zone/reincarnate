@@ -6,6 +6,11 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use datawin::DataWin;
+use datawin::bytecode::decode;
+use datawin::bytecode::decode::{Instruction, Operand};
+use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType};
+use datawin::bytecode::opcode::Opcode;
 use reincarnate_core::ir::Module;
 use std::collections::HashMap;
 use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, CheckSummary, DebugConfig, Diagnostic, Frontend, FrontendInput, Linker, PassConfig, PipelineOutput, Preset, RuntimePackage, VALID_PASS_NAMES};
@@ -195,6 +200,20 @@ enum Command {
         /// case-insensitive substring, or split-part matching on `.`/`::` separators).
         #[arg(long)]
         filter: Option<String>,
+    },
+    /// Disassemble GML bytecode for a named function (GameMaker projects only).
+    Disasm {
+        /// Registry name, path to manifest file, or directory containing reincarnate.json.
+        /// Defaults to searching ancestor directories from the current directory.
+        #[arg(conflicts_with = "manifest")]
+        target: Option<String>,
+        /// Path to the project manifest (legacy flag; prefer positional target).
+        #[arg(long, conflicts_with = "target")]
+        manifest: Option<PathBuf>,
+        /// Function name filter (case-insensitive substring, or split-part on `.`/`::`).
+        /// If omitted, lists all CODE entry names and exits.
+        #[arg(long)]
+        function: Option<String>,
     },
 }
 
@@ -1102,6 +1121,320 @@ fn cmd_check_all(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Disasm command
+// ---------------------------------------------------------------------------
+
+/// Format an instance type value as a human-readable prefix.
+fn format_instance_type(instance: i16) -> String {
+    match InstanceType::from_i16(instance) {
+        Some(InstanceType::Own) => "self".to_string(),
+        Some(InstanceType::Other) => "other".to_string(),
+        Some(InstanceType::All) => "all".to_string(),
+        Some(InstanceType::Noone) => "noone".to_string(),
+        Some(InstanceType::Global) => "global".to_string(),
+        Some(InstanceType::Builtin) => "builtin".to_string(),
+        Some(InstanceType::Local) => "local".to_string(),
+        Some(InstanceType::Stacktop) => "stacktop".to_string(),
+        Some(InstanceType::Static) => "static".to_string(),
+        Some(InstanceType::Arg) => "argument".to_string(),
+        None => format!("inst_{instance}"),
+    }
+}
+
+/// Format a break signal value as its name.
+fn break_signal_name(signal: i16) -> Option<&'static str> {
+    match signal {
+        -1 => Some("chkindex"),
+        -2 => Some("pushaf"),
+        -3 => Some("popaf"),
+        -4 => Some("pushac"),
+        -5 => Some("setowner"),
+        -6 => Some("isstaticok"),
+        -7 => Some("setstatic"),
+        -8 => Some("savearef"),
+        -9 => Some("restorearef"),
+        -10 => Some("chknullish"),
+        -11 => Some("pushref"),
+        _ => None,
+    }
+}
+
+/// Format a DataType for display (returns empty string for Raw(0) / Double / irrelevant types).
+fn format_type(dt: DataType) -> &'static str {
+    match dt {
+        DataType::Double => "d",
+        DataType::Float => "f",
+        DataType::Int32 => "i",
+        DataType::Int64 => "l",
+        DataType::Bool => "b",
+        DataType::Variable => "v",
+        DataType::String => "s",
+        DataType::Int16 => "e",
+        DataType::Raw(_) => "",
+    }
+}
+
+/// Whether a DataType is "uninteresting" for display purposes (raw 0 = Double when used as
+/// opcode type placeholder, or genuinely absent).
+fn type_is_irrelevant(dt: DataType) -> bool {
+    matches!(dt, DataType::Raw(0))
+}
+
+/// Format a single instruction as a disassembly line.
+fn format_instruction(
+    inst: &Instruction,
+    vari_names: &HashMap<u32, String>,
+    func_names: &HashMap<u32, String>,
+    dw: &DataWin,
+) -> String {
+    let opcode_str = match inst.opcode {
+        Opcode::Conv => "Conv",
+        Opcode::Mul => "Mul",
+        Opcode::Div => "Div",
+        Opcode::Rem => "Rem",
+        Opcode::Mod => "Mod",
+        Opcode::Add => "Add",
+        Opcode::Sub => "Sub",
+        Opcode::And => "And",
+        Opcode::Or => "Or",
+        Opcode::Xor => "Xor",
+        Opcode::Neg => "Neg",
+        Opcode::Not => "Not",
+        Opcode::Shl => "Shl",
+        Opcode::Shr => "Shr",
+        Opcode::Cmp => "Cmp",
+        Opcode::Pop => "Pop",
+        Opcode::Dup => "Dup",
+        Opcode::Ret => "Ret",
+        Opcode::Exit => "Exit",
+        Opcode::Popz => "Popz",
+        Opcode::B => "B",
+        Opcode::Bt => "Bt",
+        Opcode::Bf => "Bf",
+        Opcode::PushEnv => "PushEnv",
+        Opcode::PopEnv => "PopEnv",
+        Opcode::Push => "Push",
+        Opcode::PushLoc => "PushLoc",
+        Opcode::PushGlb => "PushGlb",
+        Opcode::PushBltn => "PushBltn",
+        Opcode::PushI => "PushI",
+        Opcode::Call => "Call",
+        Opcode::CallV => "CallV",
+        Opcode::Break => "Break",
+    };
+
+    // Build type suffix: ".type1" or ".type1[type2]"
+    let type_suffix = if type_is_irrelevant(inst.type1) {
+        String::new()
+    } else {
+        let t1 = format_type(inst.type1);
+        let t2 = format_type(inst.type2);
+        // Show [type2] only if it differs from type1 and is not irrelevant.
+        if !type_is_irrelevant(inst.type2) && inst.type2 != inst.type1 {
+            format!(".{t1}[{t2}]")
+        } else if !t1.is_empty() {
+            format!(".{t1}")
+        } else {
+            String::new()
+        }
+    };
+
+    // Format the operand
+    let operand_str = match &inst.operand {
+        Operand::None => String::new(),
+        Operand::Int16(v) => format!("{v}"),
+        Operand::Int32(v) => format!("{v}"),
+        Operand::Int64(v) => format!("{v}"),
+        Operand::Double(v) => format!("{v}"),
+        Operand::Float(v) => format!("{v}"),
+        Operand::Bool(v) => format!("{v}"),
+        Operand::StringIndex(idx) => {
+            let s = dw.resolve_string(datawin::StringRef(*idx)).unwrap_or_else(|_| format!("<string#{idx}>"));
+            // Truncate at 40 chars
+            if s.chars().count() > 40 {
+                let truncated: String = s.chars().take(40).collect();
+                format!("\"{}...\"", truncated)
+            } else {
+                format!("\"{s}\"")
+            }
+        }
+        Operand::Variable { var_ref, instance } => {
+            let inst_name = format_instance_type(*instance);
+            let var_name = vari_names
+                .get(&var_ref.variable_id)
+                .map(|s| s.as_str())
+                .unwrap_or("<unknown>");
+            if var_ref.ref_type != 0 {
+                format!("{inst_name}.{var_name}  [ref_type={:#04x}]", var_ref.ref_type)
+            } else {
+                format!("{inst_name}.{var_name}")
+            }
+        }
+        Operand::Branch(offset) => {
+            let abs_target = inst.offset as i64 + *offset as i64;
+            format!("{:+#010x}  (-> {:#06x})", offset, abs_target)
+        }
+        Operand::Comparison(kind) => {
+            let sym = match kind {
+                ComparisonKind::Less => "<",
+                ComparisonKind::LessEqual => "<=",
+                ComparisonKind::Equal => "==",
+                ComparisonKind::NotEqual => "!=",
+                ComparisonKind::GreaterEqual => ">=",
+                ComparisonKind::Greater => ">",
+            };
+            sym.to_string()
+        }
+        Operand::Call { function_id, argc } => {
+            let name = func_names
+                .get(function_id)
+                .map(|s| s.as_str())
+                .unwrap_or("<unknown>");
+            format!("{name}  (argc={argc})")
+        }
+        Operand::Dup(val) => format!("{val}"),
+        Operand::Break { signal, extra } => {
+            let sig_i16 = *signal as i16;
+            let name = break_signal_name(sig_i16)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("{signal}"));
+            if let Some(ex) = extra {
+                format!("{name}  extra={ex:#010x}")
+            } else {
+                name
+            }
+        }
+    };
+
+    if operand_str.is_empty() {
+        format!("  {:#06x}: {opcode_str}{type_suffix}", inst.offset)
+    } else {
+        format!("  {:#06x}: {opcode_str}{type_suffix}  {operand_str}", inst.offset)
+    }
+}
+
+/// Check whether `name` matches `filter` using the same logic as DebugConfig::should_dump.
+fn matches_function_filter(name: &str, filter: &str) -> bool {
+    // Strategy 1: case-sensitive substring
+    if name.contains(filter) {
+        return true;
+    }
+    // Strategy 2: case-insensitive substring
+    let name_lower = name.to_lowercase();
+    let filter_lower = filter.to_lowercase();
+    if name_lower.contains(&filter_lower) {
+        return true;
+    }
+    // Strategy 3: split-part matching
+    if filter.contains('.') || filter.contains("::") {
+        let parts: Vec<&str> = filter.split(['.', ':']).filter(|p| !p.is_empty()).collect();
+        if !parts.is_empty() && parts.iter().all(|p| name_lower.contains(&p.to_lowercase())) {
+            return true;
+        }
+    }
+    false
+}
+
+fn cmd_disasm(manifest_path: &Path, function_filter: Option<&str>) -> Result<()> {
+    let manifest = load_manifest(manifest_path)?;
+
+    // Guard: only GameMaker projects have DataWin bytecode.
+    if manifest.engine != reincarnate_core::project::EngineOrigin::GameMaker {
+        bail!(
+            "disasm is only supported for GameMaker projects (this project is {:?})",
+            manifest.engine
+        );
+    }
+
+    let data = fs::read(&manifest.source)
+        .with_context(|| format!("failed to read source: {}", manifest.source.display()))?;
+    let dw = DataWin::parse(data)
+        .with_context(|| format!("failed to parse DataWin: {}", manifest.source.display()))?;
+
+    let code = dw.code().context("failed to parse CODE chunk")?;
+    let func = dw.func().context("failed to parse FUNC chunk")?;
+    let vari = dw.vari().context("failed to parse VARI chunk")?;
+
+    // Build variable name lookup: variable_id → name.
+    let mut vari_names: HashMap<u32, String> = HashMap::new();
+    for (i, entry) in vari.variables.iter().enumerate() {
+        if let Ok(name) = dw.resolve_string(entry.name) {
+            vari_names.insert(i as u32, name);
+        }
+    }
+
+    // Build function name lookup: function_id (index) → name.
+    let mut func_names: HashMap<u32, String> = HashMap::new();
+    for (i, entry) in func.functions.iter().enumerate() {
+        if let Ok(name) = dw.resolve_string(entry.name) {
+            func_names.insert(i as u32, name);
+        }
+    }
+
+    // Collect all CODE entry names.
+    let mut entries: Vec<(usize, String)> = Vec::new();
+    for (i, entry) in code.entries.iter().enumerate() {
+        match dw.resolve_string(entry.name) {
+            Ok(name) => entries.push((i, name)),
+            Err(e) => {
+                eprintln!("[warn] CODE entry {i}: failed to resolve name: {e}");
+            }
+        }
+    }
+
+    // If no filter, just list all entry names.
+    let Some(filter) = function_filter else {
+        for (_, name) in &entries {
+            println!("{name}");
+        }
+        return Ok(());
+    };
+
+    // Find matching entries.
+    let matched: Vec<(usize, &str)> = entries
+        .iter()
+        .filter(|(_, name)| matches_function_filter(name, filter))
+        .map(|(i, name)| (*i, name.as_str()))
+        .collect();
+
+    if matched.is_empty() {
+        eprintln!("No function matching '{}' found.", filter);
+        eprintln!("Available CODE entry names:");
+        for (_, name) in &entries {
+            eprintln!("  {name}");
+        }
+        std::process::exit(1);
+    }
+
+    // Disassemble each matched entry.
+    for (idx, name) in &matched {
+        let entry = &code.entries[*idx];
+        let num_bytes = entry.length as usize;
+
+        let Some(bytecode) = code.entry_bytecode(*idx, dw.data()) else {
+            eprintln!("[warn] {name}: bytecode out of bounds, skipping");
+            continue;
+        };
+
+        let instructions = match decode::decode(bytecode) {
+            Ok(insts) => insts,
+            Err(e) => {
+                eprintln!("[warn] {name}: decode failed: {e}, skipping");
+                continue;
+            }
+        };
+
+        println!("{name} ({} instructions, {num_bytes} bytes)", instructions.len());
+        for inst in &instructions {
+            let line = format_instruction(inst, &vari_names, &func_names, &dw);
+            println!("{line}");
+        }
+    }
+
+    Ok(())
+}
+
 fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> {
     let manifest = load_manifest(manifest_path)?;
     let Some(frontend) = find_frontend(&manifest.engine) else {
@@ -1587,6 +1920,10 @@ fn main() -> Result<()> {
         Command::ListFunctions { target, manifest, filter } => {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_list_functions(&path, filter.as_deref())
+        }
+        Command::Disasm { target, manifest, function } => {
+            let path = resolve_target(target.as_deref(), manifest.as_deref())?;
+            cmd_disasm(&path, function.as_deref())
         }
     }
 }
