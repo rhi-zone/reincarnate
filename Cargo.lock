@@ -1211,6 +1211,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "datawin",
  "dirs",
  "include_dir",
  "reincarnate-backend-typescript",
