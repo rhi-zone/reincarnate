@@ -1,15 +1,19 @@
 /// Configuration for debug dumps during the pipeline.
 ///
 /// When enabled, dumps IR and/or AST to stderr at key points. An optional
-/// function filter restricts output to functions whose name contains the
-/// given substring.
+/// function filter restricts output to matching functions (see
+/// [`DebugConfig::should_dump`] for matching rules).
 #[derive(Debug, Clone, Default)]
 pub struct DebugConfig {
     /// Dump post-transform IR to stderr before structurization.
     pub dump_ir: bool,
     /// Dump raw AST to stderr before AST-to-AST passes.
     pub dump_ast: bool,
-    /// Filter dumps to functions whose name contains this substring.
+    /// Filter dumps to functions whose name matches this string.
+    ///
+    /// Matching is flexible: plain substring, case-insensitive substring, and
+    /// split-part matching on `.`/`::` separators are all tried. See
+    /// [`DebugConfig::should_dump`] for the full rules.
     pub function_filter: Option<String>,
 }
 
@@ -19,12 +23,49 @@ impl DebugConfig {
         Self::default()
     }
 
-    /// Returns `true` if any dump is enabled and the function name matches
-    /// the filter (or no filter is set).
+    /// Returns `true` if no filter is set, or if the function name matches
+    /// the filter under any of these strategies (tried in order):
+    ///
+    /// 1. **Case-sensitive substring** — `"step"` matches `"Gun::event_step_2"`.
+    /// 2. **Case-insensitive substring** — `"STEP"` matches `"Gun::event_step_2"`.
+    /// 3. **Split-part matching** — if the filter contains `.` or `::`, split on
+    ///    those separators and require all parts to appear in the name as
+    ///    case-insensitive substrings. This lets users write `"Gun.step"` or
+    ///    `"Gun::step"` and match `"Gun::event_step_2"`.
+    ///
+    /// IR function names use `::` as the class/method separator (e.g.
+    /// `"Gun::event_step_2"`, `"ClassName::methodName"`). Free functions have
+    /// no separator (e.g. `"scr_init"`).
     pub fn should_dump(&self, func_name: &str) -> bool {
-        self.function_filter
-            .as_ref()
-            .is_none_or(|f| func_name.contains(f.as_str()))
+        let Some(filter) = self.function_filter.as_deref() else {
+            return true;
+        };
+
+        // Strategy 1: case-sensitive substring (original behaviour).
+        if func_name.contains(filter) {
+            return true;
+        }
+
+        // Strategy 2: case-insensitive substring.
+        let name_lower = func_name.to_lowercase();
+        let filter_lower = filter.to_lowercase();
+        if name_lower.contains(&filter_lower) {
+            return true;
+        }
+
+        // Strategy 3: split-part matching — split filter on `.` and `::`,
+        // require every non-empty part to appear in the lowercased name.
+        if filter.contains('.') || filter.contains("::") {
+            let parts: Vec<&str> = filter
+                .split(['.', ':'])
+                .filter(|p| !p.is_empty())
+                .collect();
+            if !parts.is_empty() && parts.iter().all(|p| name_lower.contains(&p.to_lowercase())) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -322,5 +363,74 @@ mod tests {
     #[test]
     fn preset_unknown_returns_none() {
         assert!(Preset::resolve("unknown", &[]).is_none());
+    }
+
+    fn debug_with_filter(filter: &str) -> DebugConfig {
+        DebugConfig {
+            dump_ir: true,
+            dump_ast: false,
+            function_filter: Some(filter.to_string()),
+        }
+    }
+
+    #[test]
+    fn should_dump_no_filter() {
+        let cfg = DebugConfig { dump_ir: true, dump_ast: false, function_filter: None };
+        assert!(cfg.should_dump("Gun::event_step_2"));
+        assert!(cfg.should_dump("anything"));
+    }
+
+    #[test]
+    fn should_dump_exact_substring() {
+        // Original behaviour: case-sensitive substring match.
+        let cfg = debug_with_filter("event_step");
+        assert!(cfg.should_dump("Gun::event_step_2"));
+        assert!(!cfg.should_dump("Gun::event_draw_0"));
+    }
+
+    #[test]
+    fn should_dump_case_insensitive_substring() {
+        let cfg = debug_with_filter("EVENT_STEP");
+        assert!(cfg.should_dump("Gun::event_step_2"));
+        assert!(!cfg.should_dump("Gun::event_draw_0"));
+    }
+
+    #[test]
+    fn should_dump_dot_split_parts() {
+        // "Gun.step" → parts ["Gun", "step"] — both must appear in the name.
+        let cfg = debug_with_filter("Gun.step");
+        assert!(cfg.should_dump("Gun::event_step_2"));
+        assert!(!cfg.should_dump("Bullet::event_step_2")); // "gun" not present
+        assert!(!cfg.should_dump("Gun::event_draw_0"));    // "step" not present
+    }
+
+    #[test]
+    fn should_dump_colons_split_parts() {
+        // "Gun::step" → parts ["Gun", "step"].
+        let cfg = debug_with_filter("Gun::step");
+        assert!(cfg.should_dump("Gun::event_step_2"));
+        assert!(!cfg.should_dump("Bullet::event_step_2"));
+    }
+
+    #[test]
+    fn should_dump_split_case_insensitive() {
+        // Parts are compared case-insensitively.
+        let cfg = debug_with_filter("GUN.STEP");
+        assert!(cfg.should_dump("Gun::event_step_2"));
+    }
+
+    #[test]
+    fn should_dump_free_function() {
+        // Free functions have no separator.
+        let cfg = debug_with_filter("scr_init");
+        assert!(cfg.should_dump("scr_init"));
+        assert!(!cfg.should_dump("scr_cleanup"));
+    }
+
+    #[test]
+    fn should_dump_no_false_positive_on_dot_filter() {
+        // "Gun.draw" must NOT match "Gun::event_step_2".
+        let cfg = debug_with_filter("Gun.draw");
+        assert!(!cfg.should_dump("Gun::event_step_2"));
     }
 }
