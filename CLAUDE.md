@@ -251,20 +251,28 @@ Test projects live under `~/reincarnate/<engine>/<game>/`:
 - GML (GMS2): `~/reincarnate/gamemaker/deadestate/`
 - Twine: `~/reincarnate/twine/` (subfolders `dol/`, `trc/`, and 19+ Harlowe games)
 
-**Checking TypeScript output:** Use `@typescript/native-preview` (tsgo, ~4× faster than tsc, bug-for-bug compatible). Always run from the `out/` subdirectory — the `tsconfig.json` lives there; running from the game root silently passes (no tsconfig found = no files checked).
+**Checking TypeScript output:** Use `reincarnate check` for counts and summaries:
 ```bash
-# Correct: run from out/ with native preview
-(cd ~/reincarnate/twine/mygame/out && bunx @typescript/native-preview --noEmit)
+cargo run -p reincarnate-cli -- check --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json
+# With baseline comparison:
+cargo run -p reincarnate-cli -- check --manifest ... --baseline baseline.json
+# Save a new baseline:
+cargo run -p reincarnate-cli -- check --manifest ... --save-baseline baseline.json
+```
+Output: per-code counts (`TS2345: 222`, `TS2322: 180`, ...), per-file top 20, and total. Use `--json` for machine-readable output (includes full `diagnostics` array with file/line/message).
 
-# Wrong: running from game root silently finds nothing
-bunx @typescript/native-preview --noEmit  # from ~/reincarnate/twine/mygame/ — always exits 0
+**If you need to read error messages** (not just counts), use `--json` and pipe through jq, or fall back to raw tsgo from the `out/` subdirectory. Always run from `out/` — the `tsconfig.json` lives there; running from the game root silently passes:
+```bash
+# reincarnate check --json for full diagnostics:
+cargo run -p reincarnate-cli -- check --manifest ... --json | jq '.[] | .diagnostics[] | select(.code == "TS2345")'
+
+# Raw tsgo from out/:
+(cd ~/reincarnate/gamemaker/deadestate/out && bunx @typescript/native-preview --noEmit 2>&1 | head -50)
 ```
 
-**TS error summary:** After running tsgo, use this to get a categorized breakdown:
-```bash
-(cd ~/reincarnate/<engine>/<game>/out && bunx @typescript/native-preview --noEmit 2>&1 | grep -oP 'error TS\d+' | sort | uniq -c | sort -rn)
-```
-When reporting TS error counts (e.g. in TODO.md), always include the total count AND the per-code breakdown. This replaces eyeballing raw tsgo output.
+Note: `reincarnate check` currently only prints counts by code and file — no example messages. The intended default is a curated summary (counts + ~3 representative examples per code, deduplicated), tracked in TODO.md.
+
+When reporting TS error counts (e.g. in TODO.md), always include the total count AND the per-code breakdown.
 
 ## Crate Structure
 

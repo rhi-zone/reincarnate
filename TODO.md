@@ -33,11 +33,29 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 ## Developer Experience / Tooling Gaps (HIGH PRIORITY)
 
-- [ ] **Session tooling review** — Review all past sessions (`.claude/projects/*/`) and catalogue every instance where multi-turn confusion, temp file hacks, or repeated grep workarounds indicate a missing tool. Build a prioritized list of tooling gaps. Known examples discovered so far:
-  - Per-function IR dump: `--dump-function` on `emit` only works post-transform. Need a `dump-ir --function <name>` subcommand that shows both pre- and post-transform IR for a single function without running the whole pipeline.
-  - Bytecode disassembler: no way to inspect raw GML bytecode for a specific function/object event to debug translation bugs. A `disasm` subcommand (or flag on `extract`) that prints human-readable GML instructions for a named function would eliminate most bytecode-level debug hacks.
-  - IR diff between pipeline stages: when a transform changes IR unexpectedly, there's no way to see what changed without dumping full before/after and diffing manually.
-  - TypeScript error archaeology: no tool to go from a specific TS error back to the IR value that caused it. An `explain-error <file> <line>` subcommand could resolve a TS error back to the IR value ID and the GML bytecode offset that produced it.
+- [x] **Session tooling review** — Completed 2026-02-28. Found gaps below (items added as separate entries).
+
+- [ ] **`--dump-function` doesn't match class-qualified names** — `--dump-function "Gun.step"`, `"Gun::step"`, `"Gun.event_step"` all fail to match; only bare substrings against the internal IR name work, but the internal names use a format investigators don't know upfront. Fix: support `ClassName.method` and `ClassName::method` qualified matching, and make the substring match case-insensitive. Also: flag ordering matters — `--dump-ir --dump-function NAME` works but `--dump-function NAME --dump-ir` exits with a usage error; clap should make these order-independent. This caused dozens of failed debug attempts across sessions.
+
+- [ ] **`list-functions` subcommand** — No way to see what function names are available to filter on with `--dump-function`. When the filter produces no output, there's no way to know whether it's a name mismatch or the function genuinely doesn't exist. `reincarnate list-functions --manifest <path>` should print all function names in the module exactly as they appear in the IR.
+
+- [ ] **`--dump-ir-after <pass>` flag** — `--dump-ir` only dumps post-transform IR (after all passes). Debugging transform interactions (e.g. "what does the IR look like after GmlLogicalOpNormalize but before Mem2Reg?") requires reasoning backward from emitted TypeScript. Add `--dump-ir-after <pass-name>` to run the pipeline up to the named pass and dump IR at that point. Complements the existing IR diff gap (IR diff between stages: when a transform changes IR unexpectedly, there's no way to see what changed without dumping full before/after and diffing manually).
+
+- [ ] **Bytecode disassembler subcommand** — No way to inspect raw GML bytecode for a specific function/object event. Debugging stack-order bugs (pushaf/popaf, DupSwap, pushref asset refs) required mentally simulating the stack from code reading, taking many turns per bug. `reincarnate disasm --manifest <path> --function <name>` should disassemble a named GML function's bytecode to stdout in human-readable form (analogous to UndertaleModTool's disassembler).
+
+- [ ] **TypeScript error archaeology tool** — No way to go from a specific TS error (file + line) back to the IR value that caused it. An `explain-error <file> <line>` subcommand could resolve the error back to the IR value ID and the GML bytecode offset that produced it.
+
+- [x] **`reincarnate check` workflow adoption** — Documented in CLAUDE.md 2026-02-28.
+
+- [ ] **`reincarnate check` curated diagnostic output** — `CheckerOutput.diagnostics` has full file/line/col/code/message data but the CLI only prints bare counts. Design:
+  - **Default output**: counts by code + N representative examples per code (e.g. 3, deduplicated by message text). No info is lost — examples are a view into the full list, not a replacement.
+  - **`--filter-code TS2345`**: show all diagnostics for that code (full list, not just examples).
+  - **`--filter-file foo.ts`** / **`--filter-message <regex>`**: narrow the diagnostic set before display.
+  - **`--examples N`**: control example count in default output (default 3; `--examples 0` = counts only, `--examples -1` or `--all` = all diagnostics).
+  - **`--json`**: always emits the full `diagnostics` array regardless of other flags.
+  Invariant: no diagnostic is ever silently dropped — filters and example limits only affect *display*, and the total count always reflects the true count. The goal is "immediately understand what each error code means" from default output, without noise from a raw dump and without needing extra flags for the common case.
+
+- [ ] **Pipeline fixpoint stress tester** — No automated way to detect oscillation or divergence when adding a new transform pass. `reincarnate stress --manifest <path> --passes <N>` would run the full transform pipeline N times and report whether the module reaches fixpoint or oscillates, catching circular reinforcement bugs before they ship.
 
 ## TODO.md Staleness Audit (HIGH PRIORITY)
 
