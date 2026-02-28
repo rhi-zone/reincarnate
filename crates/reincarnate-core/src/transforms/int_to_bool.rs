@@ -456,19 +456,27 @@ impl Transform for IntToBoolPromotion {
         }
 
         // Phase 4: Infer Bool return types
-        let mut changed_funcs: HashSet<String> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if infer_bool_return(&mut module.functions[func_id]) {
-                changed_funcs.insert(module.functions[func_id].name.clone());
                 changed = true;
             }
         }
 
-        // Phase 5: Cross-function propagation
-        if !changed_funcs.is_empty() {
+        // Phase 5: Forward propagation — for every Op::Call whose target function has
+        // Bool return type (whether inferred in this run or pre-existing), ensure the
+        // call-site result value is also typed Bool. This fixes TS2322 errors of the form
+        // `let xx: number = bool_returning_func(...)`.
+        let all_bool_return_funcs: HashSet<String> = module
+            .functions
+            .keys()
+            .filter(|&fid| module.functions[fid].sig.return_ty == Type::Bool)
+            .map(|fid| module.functions[fid].name.clone())
+            .collect();
+
+        if !all_bool_return_funcs.is_empty() {
             for func_id in module.functions.keys().collect::<Vec<_>>() {
                 changed |=
-                    propagate_call_types(&mut module.functions[func_id], &changed_funcs);
+                    propagate_call_types(&mut module.functions[func_id], &all_bool_return_funcs);
             }
 
             // Re-run demand promotion with newly Bool-typed call results

@@ -815,6 +815,32 @@ Fixed in previous sessions (2026-02-24):
   Adjacent references correctly use `self.sarr[...]` — one reference dropped the `self.` prefix.
   This is a with-body codegen bug; needs investigation in GML translator.
 
+- [ ] **TS2308/TS2300/TS2440 (6): struct constructor / object class name collision in barrel** —
+  `_init.ts` exports `function TextEffect(...)` (GML struct ctor) and `objects/TextEffect.ts` exports
+  `class TextEffect extends GMLObject`. Same for `___struct___127/128`: exported as both a variable
+  in `_globals.ts` and a function in `_init.ts`. `index.ts` does `export *` from both → TS2308
+  duplicate re-export. Fix: when a struct ctor name collides with an object class of the same name,
+  skip emitting the struct ctor as a separate export (the class IS the constructor). For `___struct___N`
+  naming conflicts, either deduplicate or suppress the variable export when a same-named function
+  already exists.
+
+- [x] **TS2322 boolean↔number (135 errors): IntToBoolPromotion missing forward propagation** —
+  Forward propagation was added (Phase 5 now iterates all Bool-return funcs, not just newly
+  changed ones). Additionally, the root cause of many of these errors was `GmlLogicalOpNormalize`
+  incorrectly substituting `cond: bool` for `const 0: i64` loop counter initial values when the
+  merge target happened to be a loop header. Fixed with a `is_loop_header` BFS guard.
+  Combined result: 553 → 472 total errors (−81); TS2322: 135 → 126.
+
+- [ ] **TS2345/TS2322/TS2365 (~80 errors): GmlInstanceTypeFlow arithmetic widening** —
+  When a class constructor (`Struct(ClassName)` / `typeof ClassName`) participates in arithmetic
+  (Add, Sub, Mul, Div, etc.), the result type should NOT inherit the constructor type. The game uses
+  GML object indices as plain integers in arithmetic (e.g. `return Game - self.cameraX`, or
+  field `creatorObject` narrowed to `typeof Player` then used in comparisons). Fix options:
+  (a) In GmlInstanceTypeFlow, don't narrow fields/variables to class constructor types when they
+  appear in arithmetic operand positions — use `Dynamic` instead. (b) In type inference, when
+  an arithmetic op has a `Struct` or class-ref operand, widen the result to `Dynamic`/`Float`.
+  Also affects return type inference: `getUIMouseX` returns `typeof Game` instead of `number`.
+
 ### 8. RunLoader::step stack underflow on Popz at 0x19c — Dead Estate translation error
 
 - [ ] **`compute_block_stack_depths` uses `or_insert` — first path to reach a join point wins** —

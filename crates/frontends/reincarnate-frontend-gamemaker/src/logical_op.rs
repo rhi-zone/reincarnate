@@ -63,9 +63,15 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
         // Guard: skip if the trivial block is shared by multiple BrIf predecessors —
         // normalizing a shared block is unsafe because the replacement value (cond)
         // is only correct for THIS BrIf, not for the other predecessor(s).
+        // Guard: skip if the merge target is a loop header — the trivially-truthy
+        // then-block would be a loop initializer, not a short-circuit OR arm.
         if let Some(br_inst_id) = trivially_pure_const_branch(func, then_target, true) {
             let then_pred_count = brifs.iter().filter(|(_, _, t, _)| *t == then_target).count();
-            if then_pred_count == 1 && !is_trivially_pure_block(func, else_target) {
+            let merge_target = get_br_target(func, br_inst_id);
+            if then_pred_count == 1
+                && !is_trivially_pure_block(func, else_target)
+                && !is_loop_header(func, merge_target)
+            {
                 func.insts[br_inst_id].op = replace_br_arg(func, br_inst_id, cond);
                 changed = true;
                 continue;
@@ -73,9 +79,14 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
         }
         // Try GML AND: else-block is trivially pure with a const-falsy result,
         // then-block has real computation.
+        // Guard: skip if the merge target is a loop header — the trivially-falsy
+        // else-block is initializing a loop variable (e.g. `counter = 0`), not
+        // short-circuiting a logical AND. Substituting `cond` would replace the
+        // correctly-typed loop counter initial value with a bool condition.
         if let Some(br_inst_id) = trivially_pure_const_branch(func, else_target, false) {
             let else_pred_count = brifs.iter().filter(|(_, _, _, e)| *e == else_target).count();
-            if !is_trivially_pure_block(func, then_target) {
+            let merge_target = get_br_target(func, br_inst_id);
+            if !is_trivially_pure_block(func, then_target) && !is_loop_header(func, merge_target) {
                 if else_pred_count == 1 {
                     // Sole predecessor: rewrite the trivial block in place.
                     func.insts[br_inst_id].op = replace_br_arg(func, br_inst_id, cond);
@@ -86,7 +97,6 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
                     // rewrite the shared block in place — that would corrupt the other
                     // predecessor's path. Instead, insert a fresh bypass block
                     // `Br merge(cond)` and redirect only this BrIf's else_target.
-                    let merge_target = get_br_target(func, br_inst_id);
                     let bypass = insert_bypass_block(func, merge_target, cond);
                     update_brif_else_target(&mut func.insts[brif_id].op, bypass);
                     changed = true;
@@ -172,6 +182,44 @@ fn get_br_target(func: &Function, br_inst_id: InstId) -> BlockId {
         unreachable!("get_br_target called on non-Br");
     };
     *target
+}
+
+/// Return all successor block IDs of `block`'s terminator instruction.
+fn block_successors(func: &Function, block: BlockId) -> Vec<BlockId> {
+    let blk = &func.blocks[block];
+    let Some(&last_id) = blk.insts.last() else {
+        return vec![];
+    };
+    match &func.insts[last_id].op {
+        Op::Br { target, .. } => vec![*target],
+        Op::BrIf { then_target, else_target, .. } => vec![*then_target, *else_target],
+        Op::Switch { cases, default, .. } => {
+            let mut succs: Vec<BlockId> = cases.iter().map(|(_, b, _)| *b).collect();
+            succs.push(default.0);
+            succs
+        }
+        _ => vec![],
+    }
+}
+
+/// Return true if `block` is a loop header — i.e., at least one block reachable
+/// from `block` has `block` as a successor (back-edge).
+fn is_loop_header(func: &Function, block: BlockId) -> bool {
+    let mut visited = std::collections::HashSet::new();
+    let mut queue = std::collections::VecDeque::new();
+    queue.push_back(block);
+    while let Some(bid) = queue.pop_front() {
+        if !visited.insert(bid) {
+            continue;
+        }
+        for succ in block_successors(func, bid) {
+            if succ == block {
+                return true;
+            }
+            queue.push_back(succ);
+        }
+    }
+    false
 }
 
 /// Insert a new bypass block `Br merge_target(bypass_arg)` into `func` and
@@ -313,5 +361,85 @@ mod tests {
         };
         assert_eq!(bypass_target, block4, "bypass block should Br to block4");
         assert_eq!(bypass_args[0], cond_b, "bypass block should forward cond_b to merge");
+    }
+
+    /// Regression test: a BrIf whose else-block is trivially falsy (const 0 + Br)
+    /// must NOT be rewritten when the Br's target is a loop header.
+    ///
+    /// Pattern:
+    ///   block0: BrIf(v_cond) → then=block1(real), else=block2(trivially falsy)
+    ///   block2: v_zero = const 0; br block3(v_zero)   ← trivially falsy, sole pred
+    ///   block3(v_counter: i64): BrIf(...) → body=block4, exit=block5
+    ///   block4: br block3(v_one)     ← back-edge → block3 is a loop header
+    ///   block5: return
+    ///
+    /// Without the guard, GmlLogicalOpNormalize would replace block2's
+    /// `br block3(v_zero)` with `br block3(v_cond)`, changing the type of
+    /// the loop counter's initial value from i64 to bool — causing TS2322.
+    #[test]
+    fn test_loop_header_not_normalized_as_logical_and() {
+        let sig = FunctionSig {
+            params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("loop_header_and_guard", sig, Visibility::Public);
+        let v_cond = fb.param(0);
+        let v_a = fb.param(1);
+        let v_b = fb.param(2);
+
+        let block1 = fb.create_block();
+        let block2 = fb.create_block();
+        let (block3, block3_params) = fb.create_block_with_params(&[Type::Int(64)]);
+        let v_counter = block3_params[0];
+        let block4 = fb.create_block();
+        let block5 = fb.create_block();
+
+        // block0: BrIf(v_cond) → block1, block2
+        fb.br_if(v_cond, block1, &[], block2, &[]);
+
+        // block1: v_cmp = cmp.lt(v_a, v_b); br block3(v_a)  ← not trivially pure
+        fb.switch_to_block(block1);
+        let _v_cmp = fb.cmp(CmpKind::Lt, v_a, v_b);
+        fb.br(block3, &[v_a]);
+
+        // block2: v_zero = const 0; br block3(v_zero)  ← trivially falsy, sole pred
+        fb.switch_to_block(block2);
+        let v_zero = fb.const_int(0);
+        fb.br(block3, &[v_zero]);
+
+        // block3(v_counter: i64): BrIf(v_cond) → block4, block5
+        fb.switch_to_block(block3);
+        fb.br_if(v_cond, block4, &[], block5, &[]);
+
+        // block4: v_one = const 1; br block3(v_one)  ← back-edge → block3 is loop header
+        fb.switch_to_block(block4);
+        let v_one = fb.const_int(1);
+        let _ = v_counter; // used structurally as the loop param, not in body here
+        fb.br(block3, &[v_one]);
+
+        // block5: return
+        fb.switch_to_block(block5);
+        fb.ret(None);
+
+        let func = fb.build();
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let result = GmlLogicalOpNormalize.apply(module).unwrap();
+
+        let func = result.module.functions.values().next().unwrap();
+
+        // block2's Br arg must remain v_zero — NOT replaced with v_cond.
+        let b2 = &func.blocks[block2];
+        let last_inst = func.insts[*b2.insts.last().unwrap()].op.clone();
+        let Op::Br { args, .. } = last_inst else {
+            panic!("Expected Br terminator in block2");
+        };
+        assert_eq!(
+            args[0], v_zero,
+            "block2's Br arg must remain v_zero (loop counter init), not be replaced with v_cond"
+        );
     }
 }
