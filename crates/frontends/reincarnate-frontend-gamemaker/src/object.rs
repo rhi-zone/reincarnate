@@ -24,6 +24,7 @@ pub fn translate_objects(
     mb: &mut ModuleBuilder,
     obj_names: &[String],
     script_names: &HashSet<String>,
+    bc_version: datawin::BytecodeVersion,
 ) -> Result<(usize, usize), String> {
     let objt = dw.objt().map_err(|e| e.to_string())?;
     let mut translated = 0;
@@ -121,6 +122,7 @@ pub fn translate_objects(
                         ancestor_indices: build_ancestor_chain(&objt.objects, obj_idx),
                         script_names,
                         is_with_body: false,
+                        bytecode_version: bc_version,
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {

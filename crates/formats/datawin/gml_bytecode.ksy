@@ -229,8 +229,8 @@ types:
         -7  (0xFFF9)  setstatic   — enter static scope; nop for decompilation.
         -8  (0xFFF8)  savearef    — save array ref to temp; nop for decompilation.
         -9  (0xFFF7)  restorearef — restore array ref from temp; nop for decompilation.
-        -10 (0xFFF6)  chknullish  — peek TOS; push bool (is TOS nullish?). Used for ?? / ?. .
-        -11 (0xFFF5)  pushref     — push asset reference. extra = (type_tag << 24) | asset_index.
+        -10 (0xFFF6)  chknullish  — GMS2.3+ (bc >= 17). Peek TOS; push bool (is TOS nullish?). Used for ?? / ?. .
+        -11 (0xFFF5)  pushref     — GMS2.3+ (bc >= 17). Push asset reference. extra = (type_tag << 24) | asset_index.
                                     type1 == Int32; one extra word follows.
 
       pushref asset type_tag values (bits 31-24 of extra):

@@ -58,6 +58,9 @@ pub struct TranslateCtx<'a> {
     /// In this context, a PopEnv instruction is an early-exit signal — the outer with-loop
     /// is managed by `withInstances`, so we do NOT emit `withEnd()` for PopEnv.
     pub is_with_body: bool,
+    /// Bytecode version from GEN8. Used to guard version-specific behaviours
+    /// (GMS2.3+ Break signals, Dup swap-mode encoding, etc.).
+    pub bytecode_version: datawin::BytecodeVersion,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
@@ -1054,6 +1057,7 @@ fn translate_with_body(
         // This IS a with-body closure — PopEnv inside is an early-exit signal,
         // not a loop-control instruction (the loop is managed by withInstances).
         is_with_body: true,
+        bytecode_version: ctx.bytecode_version,
     };
 
     fb.switch_to_block(fb.entry_block());
@@ -1894,6 +1898,9 @@ fn translate_instruction(
         }
         Opcode::Dup => {
             if let Operand::Dup(n) = inst.operand {
+                // dup_extra is the high byte of the 16-bit operand. In GMS2.3+ (bc >= 17),
+                // a non-zero dup_extra signals swap/no-op modes. On older versions this byte
+                // is always zero, so this interpretation is safe unconditionally.
                 let dup_extra = (n >> 8) & 0xFF;
                 let dup_size = (n & 0xFF) as usize;
                 if dup_extra != 0 {
@@ -2170,9 +2177,15 @@ fn translate_instruction(
                     0xFFF8 => {} // savearef — save array ref to temp, nop for decompilation
                     0xFFF7 => {} // restorearef — restore array ref from temp, nop for decompilation
                     0xFFF6 => {
-                        // chknullish — check if top of stack is nullish (undefined).
+                        // chknullish — GMS2.3+ only. Check if top of stack is nullish.
                         // Pushes boolean; original value stays on stack below.
                         // Used for ?? (nullish coalescing) and ?. (optional chaining).
+                        if !ctx.bytecode_version.is_gms23_plus() {
+                            eprintln!(
+                                "[warn] chknullish (Break -10) seen in bytecode_version={}, expected GMS2.3+",
+                                ctx.bytecode_version.0
+                            );
+                        }
                         let val = *stack.last().ok_or_else(|| {
                             format!("{:#x}: stack underflow on chknullish", inst.offset)
                         })?;
@@ -2182,8 +2195,14 @@ fn translate_instruction(
                         stack.push(is_null);
                     }
                     0xFFF5 => {
-                        // pushref — push asset reference onto stack.
+                        // pushref — GMS2.3+ only. Push asset reference onto stack.
                         // The extra Int32 operand encodes (type_tag << 24) | asset_index.
+                        if !ctx.bytecode_version.is_gms23_plus() {
+                            eprintln!(
+                                "[warn] pushref (Break -11) seen in bytecode_version={}, expected GMS2.3+",
+                                ctx.bytecode_version.0
+                            );
+                        }
                         // Type 0 = OBJT (object), 1 = SPRT, 2 = SOND, 3 = ROOM, etc.
                         // All types are resolved via asset_ref_names. Fall back to
                         // func_ref_map (for GMS1 compatibility) and then to a placeholder.
@@ -3269,6 +3288,8 @@ mod tests {
             ancestor_indices: HashSet::new(),
             script_names,
             is_with_body: false,
+            // Tests exercise GMS2.3+ bytecode by default (shared blobs, Break signals, etc.).
+            bytecode_version: datawin::BytecodeVersion(17),
         }
     }
 

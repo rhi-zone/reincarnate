@@ -45,6 +45,15 @@ impl BytecodeVersion {
     pub fn func_first_address_is_operand(self) -> bool {
         self.0 >= 17
     }
+
+    /// Returns true for GameMaker Studio 2.3+ (bytecode version >= 17).
+    ///
+    /// GMS2.3+ introduced: shared bytecode blobs, Break signals -10/-11
+    /// (chknullish/pushref), struct constructors, and the Dup swap-mode
+    /// encoding (high byte of the operand = DupExtra).
+    pub fn is_gms23_plus(self) -> bool {
+        self.0 >= 17
+    }
 }
 
 impl std::fmt::Display for BytecodeVersion {

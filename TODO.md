@@ -479,16 +479,25 @@ paths that make version-sensitive decisions.
   be documented and guarded with a version assertion). Also: FUNC chunk translation, GLOB chunk
   translation, `scan_code_refs` — all may need version guards.
 
-- [ ] **`decode.rs`** — Dup swap mode no-op (`dup_extra != 0` branch), Break signal decoding
-  (signals -10/-11 etc. are GMS2.3+ only; older games don't have them). The `DataType` and
-  `OpCode` decoding may differ between v14 and v15+ instruction formats — confirm `has_new_instruction_format` is respected.
+- [ ] **`decode.rs`** — The `DataType` and `OpCode` decoding may differ between v14 and v15+
+  instruction formats — confirm `has_new_instruction_format` is respected.
 
-- [ ] **`translate.rs`** — All code that assumes GMS2.3+ behaviour:
-  - Shared bytecode blobs (`filter_reachable`) — only needed for GMS2.3+ shared CODE entries
-  - `scan_body_argument_indices` + `argument` captures in with-body — may not apply to GMS1 where `argument` is always global
-  - `InstanceType::Stacktop` (-9) as struct method self-reference — GMS2.3+ construct; in GMS1 `-9` is always a genuine stack pop
-  - `args_count & 0x7FFF` masking — 0x8000 flag meaning differs between versions
-  - Negative instance IDs below -9 (e.g. -16 for `Arg`) — confirm range is version-stable
+- [x] **`translate.rs`** — Partial. Completed 2026-02-28:
+  - [x] `bytecode_version: BytecodeVersion` field added to `TranslateCtx`; threaded through all
+    4 construction sites (3 in lib.rs, 1 in object.rs) plus the with-body inner context.
+  - [x] `is_gms23_plus()` added to `BytecodeVersion` (bc >= 17).
+  - [x] Break signal -10 (chknullish, 0xFFF6): version guard added — logs warning if seen on
+    bytecode_version < 17.
+  - [x] Break signal -11 (pushref, 0xFFF5): version guard added — logs warning if seen on
+    bytecode_version < 17.
+  - [x] Dup swap-mode encoding (`dup_extra != 0`): comment added explaining it is safe
+    unconditionally because older versions always have high byte == 0.
+  - Remaining items still open:
+  - [ ] `filter_reachable` — only needed for GMS2.3+ shared CODE entries
+  - [ ] `scan_body_argument_indices` + `argument` captures in with-body — may not apply to GMS1
+  - [ ] `InstanceType::Stacktop` (-9) as struct method self-reference — GMS2.3+ construct
+  - [ ] `args_count & 0x7FFF` masking — 0x8000 flag meaning differs between versions
+  - [ ] Negative instance IDs below -9 (e.g. -16 for `Arg`) — confirm range is version-stable
 
 - [ ] **`object.rs`** — Event type encoding may differ between GMS1 and GMS2; object/event
   structure differences (e.g. `persistent`, `visible` fields, parent indices).
@@ -498,9 +507,9 @@ paths that make version-sensitive decisions.
   older versions.
 
 **Action**: Add `bytecode_version: BytecodeVersion` to `TranslateCtx`; add version-check
-helper methods (`is_gms23_plus()`, `is_gms2_plus()`) to `BytecodeVersion`; replace any
-implicit version assumptions with explicit version guards. Log a warning when a GMS2.3+ feature
-is detected on a game that reports an older version.
+helper methods (`is_gms23_plus()`) to `BytecodeVersion`; replace any implicit version
+assumptions with explicit version guards. Log a warning when a GMS2.3+ feature is detected
+on a game that reports an older version.
 
 ## GameMaker — New Game Failures (discovered 2026-02-22)
 
