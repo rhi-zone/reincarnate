@@ -35,11 +35,11 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 - [x] **Session tooling review** — Completed 2026-02-28. Found gaps below (items added as separate entries).
 
-- [ ] **`--dump-function` doesn't match class-qualified names** — `--dump-function "Gun.step"`, `"Gun::step"`, `"Gun.event_step"` all fail to match; only bare substrings against the internal IR name work, but the internal names use a format investigators don't know upfront. Fix: support `ClassName.method` and `ClassName::method` qualified matching, and make the substring match case-insensitive. Also: flag ordering matters — `--dump-ir --dump-function NAME` works but `--dump-function NAME --dump-ir` exits with a usage error; clap should make these order-independent. This caused dozens of failed debug attempts across sessions.
+- [x] **`--dump-function` doesn't match class-qualified names** — Fixed 2026-02-28. `should_dump()` now tries: (1) case-sensitive substring, (2) case-insensitive substring, (3) split-part matching on `.`/`::` — so `"Gun.step"` matches `"Gun::event_step_2"`. Flag ordering was a non-issue (clap handles it fine).
 
-- [ ] **`list-functions` subcommand** — No way to see what function names are available to filter on with `--dump-function`. When the filter produces no output, there's no way to know whether it's a name mismatch or the function genuinely doesn't exist. `reincarnate list-functions --manifest <path>` should print all function names in the module exactly as they appear in the IR.
+- [x] **`list-functions` subcommand** — Implemented 2026-02-28. `reincarnate list-functions [--filter <pattern>]` prints all IR function names, using same matching as `--dump-function`.
 
-- [ ] **`--dump-ir-after <pass>` flag** — `--dump-ir` only dumps post-transform IR (after all passes). Debugging transform interactions (e.g. "what does the IR look like after GmlLogicalOpNormalize but before Mem2Reg?") requires reasoning backward from emitted TypeScript. Add `--dump-ir-after <pass-name>` to run the pipeline up to the named pass and dump IR at that point. Complements the existing IR diff gap (IR diff between stages: when a transform changes IR unexpectedly, there's no way to see what changed without dumping full before/after and diffing manually).
+- [x] **`--dump-ir-after <pass>` flag** — Implemented 2026-02-28. Runs pipeline up through named pass, dumps IR (honoring `--dump-function`), then exits. Special value `frontend` dumps raw IR before any transforms. Valid pass names listed in `VALID_PASS_NAMES`.
 
 - [ ] **Bytecode disassembler subcommand** — No way to inspect raw GML bytecode for a specific function/object event. Debugging stack-order bugs (pushaf/popaf, DupSwap, pushref asset refs) required mentally simulating the stack from code reading, taking many turns per bug. `reincarnate disasm --manifest <path> --function <name>` should disassemble a named GML function's bytecode to stdout in human-readable form (analogous to UndertaleModTool's disassembler).
 
@@ -47,13 +47,7 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 - [x] **`reincarnate check` workflow adoption** — Documented in CLAUDE.md 2026-02-28.
 
-- [ ] **`reincarnate check` curated diagnostic output** — `CheckerOutput.diagnostics` has full file/line/col/code/message data but the CLI only prints bare counts. Design:
-  - **Default output**: counts by code + N representative examples per code (e.g. 3, deduplicated by message text). No info is lost — examples are a view into the full list, not a replacement.
-  - **`--filter-code TS2345`**: show all diagnostics for that code (full list, not just examples).
-  - **`--filter-file foo.ts`** / **`--filter-message <regex>`**: narrow the diagnostic set before display.
-  - **`--examples N`**: control example count in default output (default 3; `--examples 0` = counts only, `--examples -1` or `--all` = all diagnostics).
-  - **`--json`**: always emits the full `diagnostics` array regardless of other flags.
-  Invariant: no diagnostic is ever silently dropped — filters and example limits only affect *display*, and the total count always reflects the true count. The goal is "immediately understand what each error code means" from default output, without noise from a raw dump and without needing extra flags for the common case.
+- [x] **`reincarnate check` curated diagnostic output** — Implemented 2026-02-28. Default output now shows counts by code + up to 3 deduplicated example messages per code. `--examples N` controls count (0 = counts only, -1 = all). Total counts always reflect truth. `--json` still emits full diagnostics array. Remaining gap: `--filter-code` / `--filter-file` / `--filter-message` flags not yet implemented.
 
 - [ ] **Pipeline fixpoint stress tester** — No automated way to detect oscillation or divergence when adding a new transform pass. `reincarnate stress --manifest <path> --passes <N>` would run the full transform pipeline N times and report whether the module reaches fixpoint or oscillates, catching circular reinforcement bugs before they ship.
 

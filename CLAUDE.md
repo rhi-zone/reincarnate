@@ -243,7 +243,11 @@ The `--manifest` flag defaults to `reincarnate.json` in the current directory. U
 Debug flags (on `emit` only):
 - `--dump-ir` — dump post-transform IR to stderr before structurization
 - `--dump-ast` — dump raw AST to stderr before AST-to-AST passes
-- `--dump-function <substring>` — filter dumps to functions whose name contains the substring
+- `--dump-function <pattern>` — filter dumps to matching functions; supports bare substring, case-insensitive, and qualified names (`Gun.step`, `Gun::step`) via split-part matching
+- `--dump-ir-after <pass>` — run pipeline up through the named pass, dump IR, then exit; use `frontend` to dump before any transforms; valid pass names: `type-inference`, `call-site-type-flow`, `constraint-solve`, `call-site-type-widen`, `constant-folding`, `cfg-simplify`, `coroutine-lowering`, `redundant-cast-elimination`, `mem2reg`, `dead-code-elimination`
+
+Additional subcommands:
+- `list-functions [--filter <pattern>]` — list all IR function names (exact names used internally, same matching as `--dump-function`; run this first when `--dump-function` produces no output)
 
 Test projects live under `~/reincarnate/<engine>/<game>/`:
 - Flash: `~/reincarnate/flash/cc/`
