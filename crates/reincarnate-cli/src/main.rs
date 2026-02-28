@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
 use std::collections::HashMap;
-use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, CheckSummary, DebugConfig, Diagnostic, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
+use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, CheckSummary, DebugConfig, Diagnostic, Frontend, FrontendInput, Linker, PassConfig, PipelineOutput, Preset, RuntimePackage, VALID_PASS_NAMES};
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 #[cfg(feature = "checker-typescript")]
 use reincarnate_checker_typescript::TsChecker;
@@ -86,6 +86,11 @@ enum Command {
         /// Filter IR/AST dumps to functions whose name contains this substring.
         #[arg(long = "dump-function")]
         dump_function: Option<String>,
+        /// Run transforms up through the named pass, dump IR, then exit without
+        /// emitting code. Pass name is kebab-case (e.g. "type-inference",
+        /// "mem2reg"). Use "frontend" to dump raw IR before any transforms.
+        #[arg(long = "dump-ir-after")]
+        dump_ir_after: Option<String>,
     },
     /// Emit and type-check the output.
     Check {
@@ -486,13 +491,24 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
     }
 
     let mut modules = Vec::new();
+    let mut stopped_early = false;
     for mut module in output.modules {
         eprintln!("[emit] transforming module: {}", module.name);
         module.external_type_defs = external_type_defs.clone();
         module.external_function_sigs = external_function_sigs.clone();
-        let module = pipeline.run(module).map_err(|e| anyhow::anyhow!("{e}"))?;
+        let PipelineOutput { module, stopped_early: early } =
+            pipeline.run_with_debug(module, debug).map_err(|e| anyhow::anyhow!("{e}"))?;
         modules.push(module);
+        if early {
+            stopped_early = true;
+            break;
+        }
     }
+
+    if stopped_early {
+        return Ok(Vec::new());
+    }
+
     eprintln!("[emit] transforms done, linking...");
 
     Linker::link(&modules).map_err(|errors| {
@@ -955,6 +971,7 @@ fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> 
         dump_ir: false,
         dump_ast: false,
         function_filter: filter.map(|s| s.to_string()),
+        dump_ir_after: None,
     };
 
     for module in &output.modules {
@@ -1158,11 +1175,22 @@ fn main() -> Result<()> {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_extract(&path, skip_passes)
         }
-        Command::Emit { target, manifest, all, parallel: _, skip_passes, preset, fixpoint, dump_ir, dump_ast, dump_function } => {
+        Command::Emit { target, manifest, all, parallel: _, skip_passes, preset, fixpoint, dump_ir, dump_ast, dump_function, dump_ir_after } => {
+            // Validate --dump-ir-after pass name early so the error is clear.
+            if let Some(pass) = dump_ir_after.as_deref() {
+                if !VALID_PASS_NAMES.contains(&pass) {
+                    bail!(
+                        "unknown pass {:?} for --dump-ir-after\nValid pass names: {}",
+                        pass,
+                        VALID_PASS_NAMES.join(", ")
+                    );
+                }
+            }
             let debug = DebugConfig {
                 dump_ir: *dump_ir,
                 dump_ast: *dump_ast,
                 function_filter: dump_function.clone(),
+                dump_ir_after: dump_ir_after.clone(),
             };
             if *all {
                 cmd_emit_all(skip_passes, preset, &debug)

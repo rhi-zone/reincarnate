@@ -15,6 +15,14 @@ pub struct DebugConfig {
     /// split-part matching on `.`/`::` separators are all tried. See
     /// [`DebugConfig::should_dump`] for the full rules.
     pub function_filter: Option<String>,
+    /// Stop the transform pipeline after the named pass, dump IR, then exit
+    /// without emitting code.
+    ///
+    /// Pass names use the same kebab-case as `--skip-pass` (e.g.
+    /// `"type-inference"`, `"mem2reg"`). The special value `"frontend"` dumps
+    /// raw IR before any transforms run.  Honoured by
+    /// [`crate::pipeline::TransformPipeline::run_with_debug`].
+    pub dump_ir_after: Option<String>,
 }
 
 impl DebugConfig {
@@ -369,13 +377,14 @@ mod tests {
         DebugConfig {
             dump_ir: true,
             dump_ast: false,
+            dump_ir_after: None,
             function_filter: Some(filter.to_string()),
         }
     }
 
     #[test]
     fn should_dump_no_filter() {
-        let cfg = DebugConfig { dump_ir: true, dump_ast: false, function_filter: None };
+        let cfg = DebugConfig { dump_ir: true, dump_ast: false, function_filter: None, dump_ir_after: None };
         assert!(cfg.should_dump("Gun::event_step_2"));
         assert!(cfg.should_dump("anything"));
     }

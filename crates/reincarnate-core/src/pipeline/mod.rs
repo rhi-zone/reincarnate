@@ -10,4 +10,4 @@ pub use checker::{CheckSummary, CheckerInput, CheckerOutput, Checker, Diagnostic
 pub use config::{DebugConfig, LoweringConfig, PassConfig, Preset};
 pub use frontend::{Frontend, FrontendInput, FrontendOutput};
 pub use linker::{Linker, SymbolTable};
-pub use transform::{Transform, TransformPipeline, TransformResult};
+pub use transform::{PipelineOutput, Transform, TransformPipeline, TransformResult, VALID_PASS_NAMES};

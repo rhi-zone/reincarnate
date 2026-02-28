@@ -1,11 +1,20 @@
 use crate::error::CoreError;
 use crate::ir::Module;
+use super::config::DebugConfig;
 
 /// Result of applying a transform pass.
 pub struct TransformResult {
     pub module: Module,
     /// Whether the pass modified the module.
     pub changed: bool,
+}
+
+/// Output of the transform pipeline.
+pub struct PipelineOutput {
+    pub module: Module,
+    /// `true` when the pipeline was stopped early by `--dump-ir-after`.
+    /// The caller should skip the backend (structurize/emit) step.
+    pub stopped_early: bool,
 }
 
 /// Transform trait — a pass that transforms IR modules.
@@ -30,6 +39,21 @@ pub trait Transform {
 
 /// Maximum number of fixpoint iterations before giving up.
 const MAX_FIXPOINT_ITERATIONS: usize = 100;
+
+/// Valid pass names for `--dump-ir-after`, in pipeline order.
+pub const VALID_PASS_NAMES: &[&str] = &[
+    "frontend",
+    "type-inference",
+    "call-site-type-flow",
+    "constraint-solve",
+    "call-site-type-widen",
+    "constant-folding",
+    "cfg-simplify",
+    "coroutine-lowering",
+    "redundant-cast-elimination",
+    "mem2reg",
+    "dead-code-elimination",
+];
 
 /// An ordered sequence of transforms to apply.
 pub struct TransformPipeline {
@@ -59,12 +83,41 @@ impl TransformPipeline {
     ///
     /// When fixpoint mode is enabled, the pipeline repeats until a full
     /// pass over all transforms produces no changes.
-    pub fn run(&self, mut module: Module) -> Result<Module, CoreError> {
+    pub fn run(&self, module: Module) -> Result<Module, CoreError> {
+        Ok(self.run_with_debug(module, &DebugConfig::default())?.module)
+    }
+
+    /// Run the pipeline, honouring debug configuration.
+    ///
+    /// When `debug.dump_ir_after` is `Some(pass_name)`:
+    /// - The special value `"frontend"` dumps the module before any transforms
+    ///   and returns immediately.
+    /// - Otherwise, the pipeline runs transforms one-by-one and stops after the
+    ///   named pass, dumping IR (filtered by `debug.function_filter`) and
+    ///   returning with `stopped_early = true`.
+    /// - If the named pass is not in the pipeline (e.g. it was disabled via
+    ///   `--skip-pass`), the pipeline runs to completion and returns
+    ///   `stopped_early = false` — the caller can emit a warning.
+    pub fn run_with_debug(
+        &self,
+        mut module: Module,
+        debug: &DebugConfig,
+    ) -> Result<PipelineOutput, CoreError> {
+        // Special case: dump raw IR before any transforms.
+        if debug.dump_ir_after.as_deref() == Some("frontend") {
+            dump_ir_functions(&module, debug);
+            return Ok(PipelineOutput { module, stopped_early: true });
+        }
+
+        let stop_after = debug.dump_ir_after.as_deref();
+
         if self.fixpoint {
+            // In fixpoint mode we can't meaningfully stop mid-iteration, so we
+            // run to completion and ignore `dump_ir_after`.  The non-fixpoint
+            // single-pass path below handles the interactive debug workflow.
             for iteration in 0..MAX_FIXPOINT_ITERATIONS {
                 let mut any_changed = false;
                 for transform in &self.transforms {
-                    // Skip run-once passes on iterations after the first.
                     if iteration > 0 && transform.run_once() {
                         continue;
                     }
@@ -79,6 +132,10 @@ impl TransformPipeline {
         } else {
             for transform in &self.transforms {
                 module = transform.apply(module)?.module;
+                if stop_after == Some(transform.name()) {
+                    dump_ir_functions(&module, debug);
+                    return Ok(PipelineOutput { module, stopped_early: true });
+                }
             }
         }
 
@@ -89,7 +146,16 @@ impl TransformPipeline {
             func.compact_insts();
         }
 
-        Ok(module)
+        Ok(PipelineOutput { module, stopped_early: false })
+    }
+}
+
+/// Dump IR for all functions in `module` that pass the debug filter.
+fn dump_ir_functions(module: &Module, debug: &DebugConfig) {
+    for func in module.functions.values() {
+        if debug.should_dump(&func.name) {
+            eprintln!("=== IR: {} ===\n{}\n=== end IR ===\n", func.name, func);
+        }
     }
 }
 
