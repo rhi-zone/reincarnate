@@ -6,7 +6,7 @@ use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
 use reincarnate_core::ir::Module;
 use std::collections::HashMap;
-use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, CheckSummary, DebugConfig, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
+use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, CheckSummary, DebugConfig, Diagnostic, Frontend, FrontendInput, Linker, PassConfig, Preset, RuntimePackage};
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 #[cfg(feature = "checker-typescript")]
 use reincarnate_checker_typescript::TsChecker;
@@ -117,6 +117,10 @@ enum Command {
         /// Compare check results against a previously saved baseline.
         #[arg(long)]
         baseline: Option<PathBuf>,
+        /// Number of representative example messages to show per error code.
+        /// 0 = counts only, -1 = show all. Default: 3.
+        #[arg(long, default_value = "3")]
+        examples: i32,
     },
     /// Add a project to the registry.
     Add {
@@ -574,6 +578,14 @@ fn cmd_emit_all(skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Re
 // Check command
 // ---------------------------------------------------------------------------
 
+/// Options shared by all check invocations.
+struct CheckConfig<'a> {
+    json: bool,
+    save_baseline: Option<&'a Path>,
+    baseline: Option<&'a Path>,
+    examples: i32,
+}
+
 fn find_checker(backend: &TargetBackend) -> Option<Box<dyn Checker>> {
     match backend {
         #[cfg(feature = "checker-typescript")]
@@ -594,10 +606,12 @@ fn collect_output_dirs(manifest_path: &Path) -> Result<Vec<(PathBuf, TargetBacke
 
 fn run_checks(
     targets: &[(PathBuf, TargetBackend)],
-    json: bool,
-    save_baseline: Option<&Path>,
-    baseline: Option<&Path>,
+    cfg: &CheckConfig<'_>,
 ) -> Result<()> {
+    let json = cfg.json;
+    let save_baseline = cfg.save_baseline;
+    let baseline = cfg.baseline;
+    let examples = cfg.examples;
     let mut all_outputs: Vec<CheckerOutput> = Vec::new();
     let mut has_errors = false;
 
@@ -653,7 +667,8 @@ fn run_checks(
             println!("{}", serde_json::to_string_pretty(&summaries)?);
         }
     } else {
-        for s in &summaries {
+        for output in &all_outputs {
+            let s = &output.summary;
             println!("\n[check] {}", s.output_dir);
             if s.total_errors == 0 && s.total_warnings == 0 {
                 println!("No errors.");
@@ -668,6 +683,34 @@ fn run_checks(
                 println!("\nBy error code:");
                 for (code, count) in &s.by_code {
                     println!("  {count:>5}  {code}");
+                    if examples != 0 {
+                        // Collect diagnostics for this code, deduplicated by message text,
+                        // sorted by file+line for reproducibility.
+                        let mut seen_messages: std::collections::HashSet<&str> =
+                            std::collections::HashSet::new();
+                        let mut sorted: Vec<&Diagnostic> = output
+                            .diagnostics
+                            .iter()
+                            .filter(|d| &d.code == code)
+                            .collect();
+                        sorted.sort_by(|a, b| {
+                            a.file.cmp(&b.file).then(a.line.cmp(&b.line))
+                        });
+                        let mut shown = 0usize;
+                        for diag in &sorted {
+                            if !seen_messages.insert(diag.message.as_str()) {
+                                continue;
+                            }
+                            println!(
+                                "             {}:{}:{} \u{2013} {}",
+                                diag.file, diag.line, diag.col, diag.message
+                            );
+                            shown += 1;
+                            if examples > 0 && shown >= examples as usize {
+                                break;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -821,11 +864,9 @@ fn print_baseline_diff(diff: &BaselineDiff, baseline_path: &Path) {
 fn cmd_check(
     manifest_path: &Path,
     no_emit: bool,
-    json: bool,
     skip_passes: &[String],
     preset: &str,
-    save_baseline: Option<&Path>,
-    baseline: Option<&Path>,
+    cfg: &CheckConfig<'_>,
 ) -> Result<()> {
     let targets = if no_emit {
         collect_output_dirs(manifest_path)?
@@ -841,16 +882,14 @@ fn cmd_check(
             .collect()
     };
 
-    run_checks(&targets, json, save_baseline, baseline)
+    run_checks(&targets, cfg)
 }
 
 fn cmd_check_all(
     no_emit: bool,
-    json: bool,
     skip_passes: &[String],
     preset: &str,
-    save_baseline: Option<&Path>,
-    baseline: Option<&Path>,
+    cfg: &CheckConfig<'_>,
 ) -> Result<()> {
     let reg = load_registry()?;
     if reg.projects.is_empty() {
@@ -867,7 +906,7 @@ fn cmd_check_all(
         println!("\n[{}/{}] {} ({})", i + 1, total, name, engine_label);
 
         let manifest_path = PathBuf::from(&entry.manifest);
-        if let Err(e) = cmd_check(&manifest_path, no_emit, json, skip_passes, preset, save_baseline, baseline) {
+        if let Err(e) = cmd_check(&manifest_path, no_emit, skip_passes, preset, cfg) {
             eprintln!("  [error] {e:#}");
             failures.push((name.to_string(), e));
         }
@@ -1092,12 +1131,18 @@ fn main() -> Result<()> {
                 result.map(|_| ())
             }
         }
-        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset, save_baseline, baseline } => {
+        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset, save_baseline, baseline, examples } => {
+            let cfg = CheckConfig {
+                json: *json,
+                save_baseline: save_baseline.as_deref(),
+                baseline: baseline.as_deref(),
+                examples: *examples,
+            };
             if *all {
-                cmd_check_all(*no_emit, *json, skip_passes, preset, save_baseline.as_deref(), baseline.as_deref())
+                cmd_check_all(*no_emit, skip_passes, preset, &cfg)
             } else {
                 let path = resolve_target(target.as_deref(), manifest.as_deref())?;
-                cmd_check(&path, *no_emit, *json, skip_passes, preset, save_baseline.as_deref(), baseline.as_deref())
+                cmd_check(&path, *no_emit, skip_passes, preset, &cfg)
             }
         }
         Command::Add { path, name, force } => {
