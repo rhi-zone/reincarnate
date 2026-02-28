@@ -445,12 +445,15 @@ fn infer_inst_type(
             Type::Tuple(elems.iter().map(|v| func.value_types[*v].clone()).collect())
         }
 
-        // GlobalRef: look up global type.
-        Op::GlobalRef(name) => ctx
-            .global_types
-            .get(name)
-            .cloned()
-            .unwrap_or(Type::Dynamic),
+        // GlobalRef: class constructor references get ClassRef type so that
+        // callee signatures use `typeof ClassName` rather than `number`.
+        Op::GlobalRef(name) => {
+            if ctx.class_hierarchy.contains_key(name.as_str()) {
+                Type::ClassRef(name.clone())
+            } else {
+                ctx.global_types.get(name).cloned().unwrap_or(Type::Dynamic)
+            }
+        }
 
         // Select: infer common type of the two branches.
         Op::Select {

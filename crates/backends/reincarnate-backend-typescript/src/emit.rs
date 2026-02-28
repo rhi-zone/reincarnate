@@ -1734,13 +1734,11 @@ fn collect_type_refs_from_function(
                     _ => {}
                 }
             }
-            // GlobalRef to a known class (OBJT in GameMaker) → runtime value ref
-            // (class constructor import). Previously these were declared as
-            // `declare const OEnemy: number` in asset_ids.d.ts; now they are class
-            // constructors imported from their object module.
+            // GlobalRef to a known class (OBJT in GameMaker) → class constructor
+            // import. ClassRef type means the value IS the class, not an instance.
             Op::GlobalRef(name) if registry.lookup(name).is_some() => {
                 collect_type_ref(
-                    &Type::Struct(name.clone()),
+                    &Type::ClassRef(name.clone()),
                     self_name,
                     registry,
                     external_imports,
@@ -1769,7 +1767,7 @@ fn collect_type_ref(
     ext_refs: &mut BTreeSet<String>,
 ) {
     match ty {
-        Type::Struct(name) | Type::Enum(name) => {
+        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             if short != self_name {
                 if let Some(entry) = registry.lookup(name) {
@@ -1818,7 +1816,7 @@ fn collect_type_ref(
 /// Collect short names of intra-module classes referenced by a type (for globals).
 fn collect_global_type_imports(ty: &Type, registry: &ClassRegistry, refs: &mut BTreeSet<String>) {
     match ty {
-        Type::Struct(name) | Type::Enum(name) => {
+        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
             if let Some(entry) = registry.lookup(name) {
                 refs.insert(entry.short_name.clone());
             }
@@ -2673,7 +2671,7 @@ fn as3_type_name(ty: &Type) -> String {
         Type::String => "String".into(),
         Type::Array(_) => "Array".into(),
         Type::Map(_, _) => "Object".into(),
-        Type::Struct(name) | Type::Enum(name) => {
+        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
             name.rsplit("::").next().unwrap_or(name).into()
         }
         _ => "*".into(),

@@ -2208,7 +2208,14 @@ fn translate_instruction(
                             let abs_addr = ctx.bytecode_offset + inst.offset;
                             format!("func_ref_unknown_{:#x}", abs_addr)
                         });
-                        let val = fb.global_ref(&func_name, Type::Dynamic);
+                        // OBJT references are class constructors; everything else
+                        // (SPRT, SOND, ROOM, SCPT, etc.) is a plain asset index.
+                        let ref_ty = if is_objt {
+                            Type::ClassRef(func_name.clone())
+                        } else {
+                            Type::Dynamic
+                        };
+                        let val = fb.global_ref(&func_name, ref_ty);
                         gml_sizes.insert(val, 4); // Variable (16 bytes)
                         stack.push(val);
                         // Track OBJT references so with-body closures can be typed.

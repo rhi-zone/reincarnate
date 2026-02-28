@@ -31,6 +31,9 @@ pub enum Type {
     Struct(String),
     /// Named enum reference.
     Enum(String),
+    /// Class constructor reference — the class itself, not an instance.
+    /// TypeScript: `typeof ClassName`.
+    ClassRef(String),
     /// Function type.
     Function(Box<FunctionSig>),
     /// Coroutine that yields a type and returns a type.

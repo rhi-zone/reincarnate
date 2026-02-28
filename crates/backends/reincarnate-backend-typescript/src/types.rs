@@ -35,6 +35,10 @@ pub fn ts_type(ty: &Type) -> String {
             }
             sanitize_ident(short)
         }
+        Type::ClassRef(name) => {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            format!("typeof {}", sanitize_ident(short))
+        }
         Type::Function(sig) => {
             let params: Vec<_> = sig
                 .params

@@ -97,6 +97,8 @@ From ecosystem-wide session analysis:
 
 ## Design Principles
 
+**Multi-turn confusion means missing tooling.** When a debugging or investigation task requires multiple rounds of grep/hack combos, redirecting output through temp files, or improvised extraction scripts that don't belong in the codebase — that is a signal that the *correct tool for the job doesn't exist yet*. Stop, note what tool is missing (e.g. "per-function IR dump command", "bytecode disassembler subcommand", "IR diff between two pipeline stages"), and add it to TODO.md before continuing. Don't build the missing tool on the spot if it's non-trivial, but don't keep hacking around its absence either — the workaround accumulates over sessions and the tool never gets built.
+
 **Correctness over copouts.** When a design problem surfaces, solve it correctly — don't paper over it with string substitution, special-case hacks, or "simplest thing that works". A correct solution may take more time, but a hacky one accumulates debt that costs more later. When two things are fundamentally different (e.g. SugarCube and Harlowe), model them as different — don't force-merge them because they share a container format.
 
 **Unify, don't multiply.** One interface for multiple engines > separate implementations per engine. Plugin systems > hardcoded switches.
