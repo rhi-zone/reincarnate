@@ -184,6 +184,23 @@ Always pass `--include-ignored` when running tests locally — some tests (e.g. 
 ~/git/rhizone/normalize/target/debug/normalize view <dir>     # directory structure
 ```
 
+## Session Handoff
+
+Use plan mode as a handoff mechanism when:
+- A task is fully complete (committed, pushed, docs updated)
+- The session has drifted from its original purpose
+- Context has accumulated enough that a fresh start would help
+
+Before entering plan mode:
+- Update TODO.md with any remaining work
+- Update memory files with anything worth preserving across sessions
+
+Then enter plan mode and write a plan file that either:
+- Proposes the next task if it's clear: "next up: X — see TODO.md"
+- Flags that direction is needed: "task complete / session drifted — see TODO.md"
+
+ExitPlanMode hands control back to the user to approve, redirect, or stop.
+
 ## Commit Convention
 
 Use conventional commits: `type(scope): message`
