@@ -17,7 +17,7 @@ Reincarnate is a legacy software lifting framework. It extracts and transforms a
 
 ## Core Rule
 
-**Note things down immediately:**
+**Note things down immediately — before writing code, not after:**
 - Bugs/issues → fix or add to TODO.md
 - Design decisions → docs/ or code comments
 - Future work → TODO.md
@@ -27,8 +27,6 @@ Reincarnate is a legacy software lifting framework. It extracts and transforms a
 
 **Conversation is not memory.** Anything said in conversation — a promise, a correction, a resolution — evaporates at the end of the session. If a statement implies future behavior change, it MUST be written to CLAUDE.md or a memory file immediately, or it will not happen. A statement like "I won't do X again" made only in conversation is a lie by omission: the next session has no access to it.
 
-**Documentation before implementation.** Known limitations, new rules, and design decisions go to TODO.md/CLAUDE.md *before* writing code — not as cleanup after.
-
 **Every observed problem goes to TODO.md. No exceptions.** Code comments, commit messages, and conversation are not tracked items. If you write a `// TODO` in source code, open TODO.md next. Pre-existing bugs you discover go to TODO.md as critical priority.
 
 **Something unexpected is a signal, not noise.** Surprising results are almost always early bug evidence. Investigate before proceeding.
@@ -37,13 +35,12 @@ Reincarnate is a legacy software lifting framework. It extracts and transforms a
 
 **Do the work properly.** When asked to analyze X, actually read X - don't synthesize from conversation.
 
-**Investigation findings go to TODO.md before continuing.** When you investigate errors, profile output, or analyze a class of bugs — the findings go to TODO.md immediately, not after the next step. Investigation without written findings is wasted work: the next session can't see what you learned. Write the detailed breakdown (root causes, affected counts, code locations, fix strategies) to TODO.md, THEN proceed to fix or dig deeper. Presenting findings in conversation without recording them is the same as not finding them.
+**Investigation findings go to TODO.md before continuing.** Root causes, affected counts, code locations, fix strategies — write them before the next step. The next session can't see what you learned in conversation.
 
 ## Behavioral Patterns
 
 From ecosystem-wide session analysis:
 
-- **CLAUDE.md updates are immediate priority.** When the user asks to update CLAUDE.md or documentation, drop everything and do it NOW. Context rots — defer even one task and the insight is lost. This overrides any in-progress work.
 - **Question scope early:** Before implementing, ask whether it belongs in this crate/module
 - **Check consistency:** Look at how similar things are done elsewhere in the codebase
 - **Implement fully.** Test projects are examples, not the spec — fix the entire class, not just the case that blew up. In a multi-stage pipeline, grep all stages (parser, translator, emitter) before closing a task; each encodes its own assumptions. Every API method, even ones no test game uses, belongs in the runtime.
@@ -53,10 +50,9 @@ From ecosystem-wide session analysis:
 - **Treat special-casing as a smell:** When a fix adds a narrow guard (`if this_specific_case { continue }`) to a pass, stop and ask whether the pass's core logic is wrong. A special case that prevents one crash often means the pass's assumptions are too broad — fix the assumption, not the symptom. Use `git blame` on the file to check whether a cluster of special-case guards have accumulated around the same function; that pattern indicates a deeper design gap.
 - **Don't hand-roll what a library does; use the right abstraction level.** Use the high-level API by default — only drop to low-level with a concrete reason (streaming, performance). Building state machines on a tokenizer when a DOM parser exists is the same mistake as hand-rolling string parsing. Specific instances: JS identifier validity → `unicode_ident::is_xid_start`/`is_xid_continue` (plus `$`), NOT `[a-zA-Z_$][a-zA-Z0-9_$]*`; JS string escaping → `serde_json::to_string`, not `format!("\"{}\"", s)`.
 - **Correctness is non-negotiable — 100%, always.** If a standard says X, implement X. Never defend a shortcut with "our inputs are ASCII-only" or "this won't come up in practice."
-- **Fewer errors does not mean more correct.** A change that reduces error counts can silently substitute *wrong* values for *missing* ones — trading loud failures for quiet ones. Always verify that *output values* are right, not just that the error count went down. A wrong answer that type-checks is worse than a placeholder that doesn't.
+- **Never optimize for fewer errors.** Reduced error counts can mean wrong values replaced missing ones — verify output correctness, not just diagnostics. Never weaken types (`any`, optional params, wider unions) to silence errors. `any` means inference failed — find the missing information. Defaults must match source-language missing-arg semantics with the correct type; a `string` param defaulting to `0.0` is always wrong.
 - **Verify semantics against the authoritative source.** When reimplementing runtime behavior, check what the original actually does — read the source if available (SugarCube, UndertaleModTool are open source). If no authoritative source is found, record the assumption in TODO.md. An unverified guess is indistinguishable from verified fact to the next session.
 - **When something exists, it exists for a reason.** Before removing or bypassing a mechanism, read why it was added. Fix how it works; don't delete it because it causes a symptom.
-- **Never weaken the type system to silence diagnostics.** TS errors from game author mistakes are correct behavior — don't make signatures more lenient (`optional`, unions, `any`). `any` in emitted output means inference gave up — ask what information would eliminate it, then get it. Defaults must match the source language's missing-arg semantics and inferred type, not make the type checker shut up. A `string` param defaulting to `0.0` is always wrong.
 
 ## Design Principles
 
@@ -70,9 +66,7 @@ From ecosystem-wide session analysis:
 
 **Lazy extraction.** Don't parse everything upfront. Extract on demand, cache aggressively.
 
-**Preserve fidelity.** The goal is accurate reproduction, not "improvement". Make the old thing work, don't redesign it.
-
-**Reproduce source faithfully, including bugs.** When emitted TypeScript reflects a bug in the source (e.g. `|` instead of `||`, `array_length(noone)`), that is correct behavior — don't suppress it. Don't add special-case guards in rewrite passes to "fix" source bugs; the emitted code should be wrong in exactly the same way the source was. The only exception: if the error stems from imprecise type inference on our end, fix the inference.
+**Preserve fidelity, including source bugs.** The goal is accurate reproduction, not improvement. When emitted TypeScript reflects a bug in the source (e.g. `|` instead of `||`, `array_length(noone)`), that is correct behavior — don't suppress it. Don't add special-case guards in rewrite passes to "fix" source bugs; the emitted code should be wrong in exactly the same way the source was. The only exception: if the error stems from imprecise type inference on our end, fix the inference.
 
 **Overlay > Patch.** When possible, render a modern UI layer over the original rather than patching internal rendering.
 
@@ -103,7 +97,7 @@ Always pass `--include-ignored` when running tests locally — some tests (e.g. 
 
 **Minimize file churn.** When editing a file, read it once, plan all changes, and apply them in one pass. Avoid read-edit-build-fail-read-fix cycles by thinking through the complete change before starting.
 
-**Commit after every phase.** When a plan has multiple steps, commit after each step that passes `cargo clippy && cargo test`. Do not accumulate changes across phases. Do not defer commits to the end. Do not rationalize skipping commits because changes are "intertwined" or "small". Each commit should represent one logical unit of progress. This is non-negotiable.
+**Commit after every phase.** Commit after each step that passes `cargo clippy && cargo test`. Each commit = one logical unit of progress. No exceptions.
 
 **Use `bun` for JavaScript/TypeScript scripting tasks** (e.g. inspecting HTML files, running quick JS snippets). `bun` is available in the dev environment — use it instead of `node` or `python3`.
 
@@ -155,17 +149,13 @@ Scope is optional but recommended for multi-crate repos.
 
 Do not:
 - Announce actions ("I will now...") - just do them
-- Leave work uncommitted — commit after every phase, no exceptions
-- Create special cases - design to avoid them
 - Add to the monolith - split by domain into sub-crates
-- Cut corners with fallbacks - implement properly for each case
 - **Stubs must throw, not silently fail.** Implement the function or `throw Error("name: not yet implemented")` + add a TODO.md entry immediately. Silent returns (`0`, `""`, `false`, `null`, `{}`) are always wrong. For platform APIs with no browser equivalent: explicit no-op with a comment (`/* no-op — PSN commerce not available in browser */`), not a silent return.
-- Mark as done prematurely; dismiss known issues as "fine for now" — every gap goes to TODO.md immediately
 - Use path dependencies in Cargo.toml - causes clippy to stash changes across repos
 - Use `--no-verify` - fix the issue or fix the hook
 - Use `git add -p` or any other interactive command (`git rebase -i`, `git add -i`, etc.) — these block waiting for stdin and will hang forever in a non-interactive shell. Always stage files by name: `git add <file1> <file2>`.
 - Assume tools are missing - check if `nix develop` is available for the right environment
-- Use module-level mutable state — state belongs on the runtime instance. Pass data explicitly (return value, parameter, field). No exceptions — even registries belong on the instance. See "Games are instantiable."
+- Use module-level mutable state — see "Games are instantiable"
 - Use DOM data attributes as a state-passing mechanism — pass values through function parameters or object fields instead
 - **Promote `|`/`&` to `||`/`&&` based on inferred types.** They're semantically different: `|` evaluates both operands, `||` short-circuits. TS2447/TS2363 from `boolean | boolean` are game-author errors — don't suppress them by changing the emitted operator.
 
