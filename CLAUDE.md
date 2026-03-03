@@ -184,6 +184,17 @@ Always pass `--include-ignored` when running tests locally — some tests (e.g. 
 ~/git/rhizone/normalize/target/debug/normalize view <dir>     # directory structure
 ```
 
+## Context Management
+
+**Use subagents to protect the main context window.** For broad exploration or mechanical multi-file work, delegate to an Explore or general-purpose subagent rather than running searches inline. The subagent returns a distilled summary; raw tool output stays out of the main context.
+
+Rules of thumb:
+- Research tasks (investigating a question, surveying patterns) → subagent; don't pollute main context with exploratory noise
+- Searching >5 files or running >3 rounds of grep/read → use a subagent
+- Codebase-wide analysis (architecture, patterns, cross-file survey) → always subagent
+- Mechanical work across many files (applying the same change everywhere) → parallel subagents
+- Single targeted lookup (one file, one symbol) → inline is fine
+
 ## Session Handoff
 
 Use plan mode as a handoff mechanism when:
@@ -191,15 +202,11 @@ Use plan mode as a handoff mechanism when:
 - The session has drifted from its original purpose
 - Context has accumulated enough that a fresh start would help
 
-Before entering plan mode:
-- Update TODO.md with any remaining work
-- Update memory files with anything worth preserving across sessions
+**For handoffs:** enter plan mode, write a short plan pointing at TODO.md, and ExitPlanMode. **Do NOT investigate first** — the session is context-heavy and about to be discarded. The fresh session investigates after approval.
 
-Then enter plan mode and write a plan file that either:
-- Proposes the next task if it's clear: "next up: X — see TODO.md"
-- Flags that direction is needed: "task complete / session drifted — see TODO.md"
+**For mid-session planning** on a different topic: investigating inside plan mode is fine — context isn't being thrown away.
 
-ExitPlanMode hands control back to the user to approve, redirect, or stop.
+Before the handoff plan, update TODO.md and memory files with anything worth preserving.
 
 ## Commit Convention
 
