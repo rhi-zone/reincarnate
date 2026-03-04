@@ -31,23 +31,14 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 ---
 
-## Platform Interface Redesign (HIGH PRIORITY)
+## Platform Interface Redesign
 
-Audit (2026-03-04) found that platform interfaces were built per-engine rather than as a unified contract. Audio is the only concern that is unified and principled. All others need redesign. Root cause: Flash and GameMaker implementations diverged independently. Fix: design canonical interface once in `architecture.md`, then make all engines conform.
+**Design phase complete** (2026-03-04 through 2026-03-04 follow-up). Canonical interface for all concerns is now in `architecture.md`: Timing, Input, Persistence, Images, Graphics 2D, Graphics 3D, Audio, Window, Clipboard, Network. Three audit rounds (consistency, gaps, devil's advocate × 2) applied.
 
-Design order: Timing → Input → Persistence → Images → Graphics 2D → Audio (gaps only).
+**Remaining work: implementation** — Flash and GML runtimes still expose the old per-engine APIs. Each must be updated to match the canonical interface.
 
-- [ ] **Timing** — Flash exports `scheduleInterval`; GameMaker exports `scheduleTimeout` — different functions for the same layer. Names are browser-isms. Missing: `request_frame` (rAF equivalent), `current_time_ms` (high-res timestamp). No documented semantics (units, re-entrancy, invalid handle behavior). Canonical names needed: `schedule_delayed`, `schedule_recurring`, `cancel`.
-
-- [ ] **Input** — Flash is raw DOM event binding (returns `DOMRect`, exposes `addCanvasEventListener`); GameMaker is normalized callbacks — fundamentally incompatible. Callback-only model; no polling (`isKeyDown`, `getMouseX`). Canvas element baked into every call (breaks multi-instance). Missing entirely: gamepad, touch, pointer lock, modifier key state. Uses deprecated `keyCode` (should be `code`). Scroll captures Y-axis only.
-
-- [ ] **Persistence** — Flash uses `loadLocal`/`saveLocal`/`removeLocal`; GameMaker uses `init`/`save`/`load`/`remove` — different names and shapes. Flash has no `PersistenceState` (implicit global state, breaks multi-instance). String-only storage — no binary. No composition layer exposed. No error handling contract (silent on quota exceeded).
-
-- [ ] **Images** — Both engines return browser-specific types (`HTMLImageElement` vs `ImageBitmap`) instead of opaque handles. URL-only loading (no embedded bytes). No dimensions query, no lifecycle (`destroyImage`), no pixel readback. Only one line in architecture.md spec. Flash and GameMaker have different signatures for the same operation.
-
-- [ ] **Graphics 2D** — Neither engine implements the actual drawing primitives from the spec (`set_transform`, `fill_rect`, `draw_image`, `draw_text`, `measure_text`, etc.). Both expose raw DOM types (`HTMLCanvasElement`, `CanvasRenderingContext2D`, `WebGL2RenderingContext`). GML has mutable state class; Flash has functional returns — incompatible. WebGL mixed into 2D module (must be separate per architecture). No opaque handles.
-
-- [ ] **Audio (gaps)** — No voice group API (shims must track grouping manually). VoiceId lifecycle contract undocumented (monotonically increasing, non-reusable). No `audioReady`/`ensureAudioReady` check for AudioContext suspend/resume state.
+- [ ] **Update Flash runtime** (`runtime/flash/ts/`) — replace diverged platform implementations with canonical interface
+- [ ] **Update GML runtime** (`runtime/gamemaker/ts/`) — replace diverged platform implementations with canonical interface
 
 ---
 
