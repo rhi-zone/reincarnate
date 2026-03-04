@@ -41,7 +41,7 @@ Frontends parse engine-specific formats and emit untyped IR. Type inference reco
 | **Flash (AVM2)** | ABC bytecode | Full recompilation (first target) |
 | **Ren'Py** | RPY scripts / RPYC bytecode | Full recompilation |
 | **RPG Maker VX Ace** | Ruby/RGSS scripts | Full recompilation |
-| **RPG Maker MV/MZ** | JSON event scripts + JS engine | Patch-in-place (compile JSON events, optimize engine, inject plugins) |
+| **RPG Maker MV/MZ** | JSON event scripts + JS engine | Full recompilation |
 | **GameMaker** | GML bytecode | Full recompilation |
 | **Director/Shockwave** | Lingo scripts | Full recompilation |
 | **Twine (SugarCube)** | SugarCube macro DSL in HTML | Full recompilation |
@@ -52,7 +52,7 @@ Frontends parse engine-specific formats and emit untyped IR. Type inference reco
 | **Silverlight** | .NET IL | Full recompilation |
 | **HyperCard / ToolBook** | Stack formats | Full recompilation |
 
-RPG Maker MV/MZ is a special case: since the engine already runs in JavaScript, it may be more practical to compile event scripts and optimize the existing engine rather than full recompilation.
+RPG Maker MV/MZ ships a JavaScript engine, but Reincarnate still performs full recompilation to preserve fidelity and enable cross-target optimization.
 
 ### Twine story format coverage
 
@@ -353,7 +353,24 @@ drawing, audio playback, keyboard input, file access). It must be:
 
 ### Platform capabilities
 
-The platform interface is a **cross-language contract** — TypeScript, Rust, C#/Unity, SDL all implement the same conceptual interface. Names below are the canonical snake_case form; TypeScript implementations camelCase them. API surfaces use only primitive types (int, float, bool, string, opaque handles) — no language-specific types (`AudioBuffer`, `HTMLImageElement`) in exported signatures.
+The platform interface is a **cross-language contract** — TypeScript, Rust, C#/Unity, SDL all implement the same conceptual interface. Names below are the canonical snake_case form; TypeScript implementations camelCase them. API surfaces use only primitive types (int, float, bool, string, opaque handles) — no language-specific types (`AudioBuffer`, `HTMLImageElement`) in exported signatures. Some functions are optional or have platform-specific implementations; unsupported calls must fail explicitly rather than silently no-op.
+
+### Capability query
+
+Platforms expose a small capability map so shims can branch without hardcoding target checks. Capabilities are opaque strings scoped to a concern, with boolean values.
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `capabilities` | `() → {str: bool}` | Example keys: `graphics.pointer_lock`, `clipboard.read`, `clipboard.write`, `window.fullscreen` |
+
+Example usage in a shim:
+
+```typescript
+const caps = capabilities();
+if (caps["graphics.pointer_lock"]) {
+    request_pointer_lock();
+}
+```
 
 #### Graphics (2D)
 
@@ -380,7 +397,7 @@ Note: Graphics 3D uses `Blend` (not `BlendMode`) since the valid set differs: `n
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `init_canvas` | `(id: str) → CanvasHandle` | Bind to existing canvas element by ID |
+| `init_surface` | `(id: str) → CanvasHandle` | Bind to an existing render surface by ID/handle (DOM canvas id on web; window/surface id on native) |
 | `create_canvas` | `(w, h: int) → CanvasHandle` | Create offscreen canvas |
 | `resize_canvas` | `(canvas: CanvasHandle, w, h: int) → void` | |
 | `load_font` | `(url: str) → FontHandle` (async) | Load and register a font |
@@ -665,10 +682,10 @@ Gamepad buttons surface through the keyboard callbacks with synthetic codes (`"B
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `request_pointer_lock` | `() → void` | |
-| `release_pointer_lock` | `() → void` | |
-| `is_pointer_locked` | `() → bool` | |
-| `on_mouse_delta` | `(cb: (device: int, dx, dy: float) → void) → void` | Relative motion; only meaningful while locked |
+| `request_pointer_lock` | `() → void` | Web-only; unsupported platforms throw a clear error |
+| `release_pointer_lock` | `() → void` | Web-only; unsupported platforms throw a clear error |
+| `is_pointer_locked` | `() → bool` | Web-only; unsupported platforms throw a clear error |
+| `on_mouse_delta` | `(cb: (device: int, dx, dy: float) → void) → void` | Relative motion; only meaningful while locked; web-only |
 
 **Touch:**
 
@@ -700,7 +717,7 @@ Gamepad buttons surface through the keyboard callbacks with synthetic codes (`"B
 
 `ImageHandle` is an opaque u32. It is defined in a shared types module — not owned by the images concern or the graphics concern. This is what allows `graphics_3d` to accept `ImageHandle` in `upload_image` without importing from the images concern.
 
-Sub-images are views into a parent — no copy. `image_width`/`image_height` on a sub-image return the sub-region dimensions. `destroy_image` on a sub-image releases the view, not the parent. `destroy_image` on a **parent** decrements its reference count. The parent is actually deallocated only when the last sub-image is also destroyed (reference counting). This is safe in GC'd languages where sub-image handles may be held by unreachable-but-uncollected objects.
+Sub-images are views into a parent — no copy. `image_width`/`image_height` on a sub-image return the sub-region dimensions. `destroy_image` on a sub-image releases the view, not the parent. `destroy_image` on a **parent** decrements its reference count. The parent is actually deallocated only when the last sub-image is also destroyed (reference counting). GC'd languages do not free native image resources automatically; shims must call `destroy_image` explicitly (or provide a finalizer/auto-release layer with leak detection).
 
 `format` in `load_image_bytes` is a MIME type string (`"image/png"`, `"image/webp"`, etc.), or `null` to request format sniffing from magic bytes. Use explicit format when known; `null` as an escape hatch for raw blobs with no format information.
 
@@ -728,16 +745,20 @@ Sub-images are views into a parent — no copy. `image_width`/`image_height` on 
 |----------|-----------|-------|
 | `destroy_image` | `(handle: ImageHandle) → void` | Releases view (sub-image) or backing data (root image) |
 
+**Recommended shim behavior:** Track ownership of image handles and release deterministically when game objects are destroyed. If the target language is GC'd, add an auto-release/finalizer layer plus leak logging in debug builds to catch missed `destroy_image` calls.
+
 #### Persistence
 
 A key-value byte store. "Save" is a shim-level concept; the platform is just storage. Naming reflects that: `store`/`fetch`/`remove`, not `save`/`load`.
 
 **Contract:**
 - `init` is async — preloads cache, initialises backing store. After `init` returns, all reads are sync.
-- `store` and `remove` are **atomic** — on failure, the old value remains intact. Never a partial write. Implementations use write-to-temp-then-rename (OPFS, filesystem) or the natural atomicity of `localStorage.setItem`.
+- `store` and `remove` are **atomic** where the backend supports it — on failure, the old value remains intact. Implementations use write-to-temp-then-rename (OPFS, filesystem) or the best available semantics on the platform; web storage does not guarantee crash-consistent atomicity, so callers should tolerate recovery and retries.
 - `store` **throws on failure** — never swallows errors silently. Callers decide how to handle quota exceeded, permission denied, etc.
 - Data is **bytes**, not strings — strings are just UTF-8 bytes; the more general interface subsumes the string case.
 - Backend composition (OPFS + localStorage tee, fallback, debounce, rolling history) is above the platform layer. A `fallback(primary, secondary)` utility wrapper handles degradation — the platform interface itself does not decide which backend to use.
+
+**Recommended shim behavior:** Use a small write-ahead or temp-file strategy on capable platforms and include a recovery step at startup to reconcile partial writes (especially on web storage).
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
@@ -788,7 +809,7 @@ Window and display management. Fullscreen state is async on browsers (requires u
 
 #### Clipboard
 
-Text-only clipboard access. `read_clipboard` and `write_clipboard` are async and may require user permission on browsers.
+Text-only clipboard access. `read_clipboard` and `write_clipboard` are async and may require user permission on browsers; unsupported platforms throw a clear error.
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
@@ -897,7 +918,7 @@ The `Op` enum covers:
 ### SystemCall
 
 ```
-SystemCall { system: "Renderer", method: "draw_sprite", args: [v0, v1, v2] }
+SystemCall { system: "Graphics", method: "draw_image", args: [v0, v1, v2] }
 ```
 
 String-based at IR level, resolved to concrete trait method calls at codegen. Keeps the `Op` enum from exploding with per-engine operations.
