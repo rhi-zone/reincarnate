@@ -72,18 +72,25 @@ From ecosystem-wide session analysis:
 
 **Two-tier approach.** Accept that some targets need binary patching (Tier 1) while others can be fully lifted (Tier 2). Design APIs that work for both.
 
+**Interface contracts are consumer-independent.** Design the minimal complete primitive set that any implementation can satisfy and any engine can build on. The consumer's needs don't drive the contract — engine-specific behaviors (named audio channels, BGM crossfade, sprite batching) belong in the shim layer, not the platform layer. An interface shaped by one consumer will be wrong for the next.
+
+**Setup tier / hot tier split.** Separate init-time operations from per-frame operations. The game loop never sees async. Expensive work (decoding, compilation, upload) is front-loaded into init; the hot path is synchronous and allocation-free. Corollary: register strings at setup time and use opaque integer handles everywhere hot — strings are pointer-unstable across FFI and hash-compared on every lookup.
+
+**Prefer expressive interfaces over simple ones.** When a platform interface can express more or less information, choose the more expressive form if the additional information maps to real hardware capabilities that some implementations can exploit. Simpler implementations can ignore the extra information; a less expressive interface loses it permanently and can never recover it. Example: `begin_pass` with `load_op`/`store_op` > `set_render_target` — tile-based GPU implementations need the information; WebGL2 implementations can ignore it.
+
 **Games are instantiable — no singletons.** Multiple game instances must coexist on one page. All mutable runtime state lives on a root runtime instance (`GameRuntime`, `FlashRuntime`, etc.) threaded through generated code — never in module-level `let` variables. Do not argue "one instance is realistic"; it's a load-bearing rule (breaks hot reload, parallel testing, local multiplayer). Ask *where does this state belong?*, not *does the rule apply?*
 
 ## Runtime Architecture
 
 Three-layer architecture: API Shims → Platform Interface (`platform/index.ts`) → Platform Implementation (`platform/browser.ts`). Swap platforms by changing the re-export in `platform/index.ts`. See `docs/architecture.md` for the full concern table and platform function list.
 
-**Platform concern modules never import from siblings.** Each is independently swappable. Cross-concern deps are injected via callbacks (`init(showDialog, closeDialog)`), never via `import`. Direct DOM ops stay in shim modules, not the platform layer.
+**Platform concern modules never import from siblings — not for cleanliness, but because cross-concern imports break the swap-by-re-export pattern.** A concern that imports from a sibling cannot be independently swapped. The fix is always shared primitive types (opaque u32 handles defined in a shared types module), never cross-concern imports. Example: `graphics_3d` takes `ImageHandle` as a plain u32 — no import from the images concern needed. Cross-concern deps that genuinely must exist are injected via callbacks (`init(showDialog, closeDialog)`), never via `import`.
 
 **The platform interface is a cross-language contract** (TS, Rust, C#/Unity, SDL). Three hard rules:
 - **Generic names only**: `play`/`stop`/`save` — never `audioPlay`/`audio_play_sound`. Engine-specific args are absorbed in the shim layer.
 - **Primitives only in the API surface**: no `AudioBuffer`/`HTMLImageElement` in exported signatures — opaque handles instead.
 - **Canonical names are snake_case** (TS implements as camelCase).
+
 
 ## Workflow
 

@@ -355,19 +355,146 @@ drawing, audio playback, keyboard input, file access). It must be:
 
 The platform interface is a **cross-language contract** — TypeScript, Rust, C#/Unity, SDL all implement the same conceptual interface. Names below are the canonical snake_case form; TypeScript implementations camelCase them. API surfaces use only primitive types (int, float, bool, string, opaque handles) — no language-specific types (`AudioBuffer`, `HTMLImageElement`) in exported signatures.
 
-#### Graphics
+#### Graphics (2D)
+
+**Opaque handle types** (u32, defined in shared types module): `CanvasHandle`, `FontHandle`, `PathHandle`
+
+All hot-tier draw operations take an explicit `CanvasHandle` — there is no implicit "active canvas" state. Multiple canvases can be drawn to in the same frame without set/restore ceremony.
+
+Colors are RGBA packed as `0xRRGGBBAA`. Matches WebGL convention, maps directly to GPU formats with no swizzling. Engines using other packing (e.g. Flash ARGB) convert in the shim.
+
+Per-draw effect state (`set_alpha`, `set_blend_mode`, `set_color_transform`, `set_image_smoothing`) lives on the canvas state stack — saved and restored with `save_state`/`restore_state`. Not parameters on draw calls (avoids draw_image becoming a bag of effects). `set_transform` follows the same pattern.
+
+Text alignment and baseline are parameters on `draw_text`, not state — they are intrinsic to where text lands, not an effect layered on top.
+
+**Named constant types** (closed sets — Rust `enum`, TS const union, C# `enum`):
+- `BlendMode`: `normal | additive | multiply | screen | erase`
+- `TextAlign`: `left | center | right`
+- `TextBaseline`: `top | middle | bottom | alphabetic`
+
+Note: Graphics 3D uses `Blend` (not `BlendMode`) since the valid set differs: `none | alpha | additive | premultiplied`.
+
+**Setup tier:**
 
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `init_canvas` | `(id: str, doc?) → void` | Bind to canvas element by ID |
-| `create_canvas` | `(doc?) → canvas_handle` | Create an offscreen canvas |
-| `resize_canvas` | `(w: int, h: int) → void` | Resize the main canvas |
-| `set_transform` | `(a,b,c,d,e,f: float) → void` | Set CTM (6-element affine) |
-| `fill_rect` | `(x,y,w,h: float, color: int) → void` | Filled rectangle |
-| `draw_image` | `(img: handle, sx,sy,sw,sh, dx,dy,dw,dh: float) → void` | Draw image with source/dest rects |
-| `draw_text` | `(text: str, x,y: float, font: str, size: float) → void` | Text rendering |
-| `measure_text` | `(text: str, font: str, size: float) → float` | Text width measurement |
-| `begin_path` / `clip` / `save_state` / `restore_state` | — | Path clipping and state stack |
+| `init_canvas` | `(id: str) → CanvasHandle` | Bind to existing canvas element by ID |
+| `create_canvas` | `(w, h: int) → CanvasHandle` | Create offscreen canvas |
+| `resize_canvas` | `(canvas: CanvasHandle, w, h: int) → void` | |
+| `load_font` | `(url: str) → FontHandle` (async) | Load and register a font |
+| `create_path` | `() → PathHandle` | Begin recording a reusable path |
+| `path_move_to` | `(path: PathHandle, x, y: float) → void` | |
+| `path_line_to` | `(path: PathHandle, x, y: float) → void` | |
+| `path_bezier_to` | `(path: PathHandle, cp1x, cp1y, cp2x, cp2y, x, y: float) → void` | Cubic bezier |
+| `path_quadratic_to` | `(path: PathHandle, cpx, cpy, x, y: float) → void` | Quadratic bezier |
+| `path_arc` | `(path: PathHandle, x, y, r, start, end: float, ccw: bool) → void` | |
+| `path_close` | `(path: PathHandle) → void` | |
+| `destroy_path` | `(path: PathHandle) → void` | |
+
+**Hot tier — state (all saved/restored with save_state/restore_state):**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `set_transform` | `(canvas: CanvasHandle, a,b,c,d,e,f: float) → void` | Set CTM (6-element affine) |
+| `set_alpha` | `(canvas: CanvasHandle, alpha: float) → void` | Global opacity multiplier (0..1) |
+| `set_blend_mode` | `(canvas: CanvasHandle, mode: BlendMode) → void` | |
+| `set_color_transform` | `(canvas: CanvasHandle, matrix: float[20]) → void` | 4×5 RGBA multiply+add matrix |
+| `set_image_smoothing` | `(canvas: CanvasHandle, enabled: bool) → void` | false = nearest-neighbor (pixel art) |
+| `save_state` | `(canvas: CanvasHandle) → void` | Push transform + clip + effect state |
+| `restore_state` | `(canvas: CanvasHandle) → void` | Pop state |
+
+**Hot tier — drawing:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `fill_rect` | `(canvas: CanvasHandle, x,y,w,h: float, color: int) → void` | RGBA `0xRRGGBBAA` |
+| `draw_image` | `(canvas: CanvasHandle, img: ImageHandle, sx,sy,sw,sh, dx,dy,dw,dh: float) → void` | Source and dest rects |
+| `draw_canvas` | `(dst: CanvasHandle, src: CanvasHandle, sx,sy,sw,sh, dx,dy,dw,dh: float) → void` | Composite offscreen canvas onto another |
+| `draw_text` | `(canvas: CanvasHandle, text: str, x,y: float, font: FontHandle, size: float, align: TextAlign, baseline: TextBaseline) → void` | |
+| `measure_text` | `(font: FontHandle, text: str, size: float) → float` | Text width; no canvas needed |
+
+**Hot tier — one-off paths (canvas-local, not reusable):**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `begin_path` | `(canvas: CanvasHandle) → void` | Start a new path |
+| `move_to` | `(canvas: CanvasHandle, x, y: float) → void` | |
+| `line_to` | `(canvas: CanvasHandle, x, y: float) → void` | |
+| `bezier_to` | `(canvas: CanvasHandle, cp1x, cp1y, cp2x, cp2y, x, y: float) → void` | |
+| `quadratic_to` | `(canvas: CanvasHandle, cpx, cpy, x, y: float) → void` | |
+| `arc` | `(canvas: CanvasHandle, x, y, r, start, end: float, ccw: bool) → void` | |
+| `close_path` | `(canvas: CanvasHandle) → void` | |
+| `fill_path` | `(canvas: CanvasHandle, color: int) → void` | Fill current path |
+| `stroke_path` | `(canvas: CanvasHandle, color: int, width: float) → void` | Stroke current path |
+| `clip` | `(canvas: CanvasHandle) → void` | Clip to current path |
+| `begin_text_path` | `(canvas: CanvasHandle, text: str, x, y: float, font: FontHandle, size: float) → void` | Add glyph outlines to current path; then fill/stroke/clip as normal |
+
+**Hot tier — reusable paths:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `fill_path_handle` | `(canvas: CanvasHandle, path: PathHandle, color: int) → void` | |
+| `stroke_path_handle` | `(canvas: CanvasHandle, path: PathHandle, color: int, width: float) → void` | |
+| `clip_path_handle` | `(canvas: CanvasHandle, path: PathHandle) → void` | |
+
+#### Graphics 3D
+
+A **separate platform concern** from `graphics` (2D). A 2D-only engine pays nothing for 3D init; a headless test renderer can omit it entirely. Never import from or into the 2D graphics concern.
+
+**Named constant types** (closed sets — Rust `enum`, TS const union, C# `enum`):
+- `LoadOp`: `clear | load`
+- `StoreOp`: `store | discard`
+- `Primitive`: `triangles | lines | points`
+- `Blend`: `none | alpha | additive | premultiplied` (distinct from 2D `BlendMode` — different valid set)
+- `CullMode`: `none | back | front`
+
+**Opaque handle types** (u32, cross-language safe):
+- `ShaderId` — compiled shader program (identified by name; impl provides source)
+- `LayoutId` — interned vertex layout descriptor
+- `MeshId` — uploaded vertex + index buffer pair
+- `TextureId` — GPU texture
+- `RenderTargetId` — framebuffer / render texture (0 = main framebuffer)
+
+**Design decisions:**
+- **Uniforms**: named string API at the call site; implementation resolves name→(block, offset) at shader compile time via reflection and batches into a UBO. Callers never see binding indices.
+- **Uniform lifetime**: persistent per shader object — set once, reused across draws until changed.
+- **Shader creation**: sync ID, async compile. `create_shader` returns immediately; compilation happens in the background. Poll `shader_ready`. Draw calls against an unready shader are silently no-oped — the engine is responsible for not drawing until ready. Supports streaming (shaders not known at init time).
+- **Vertex layout**: interned via `create_vertex_layout(format: str) → LayoutId`. Format string parsed once; `LayoutId` used everywhere else. Format: attribute letter + component count, e.g. `"p3n3uv2"` = position(3) + normal(3) + uv(2).
+- **Render passes**: explicit `begin_pass`/`end_pass` with `load_op`/`store_op` declared upfront — required for tile-based GPU efficiency on mobile. Implicit `set_render_target` silently assumes load+store, which wastes bandwidth on tile GPUs.
+
+**Setup tier:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `create_shader` | `(name: str) → ShaderId` | Sync ID; async compile in background |
+| `shader_ready` | `(id: ShaderId) → bool` | Poll until true before drawing |
+| `create_vertex_layout` | `(format: str) → LayoutId` | Intern once; use ID everywhere |
+| `create_mesh` | `(layout: LayoutId, vertices: float[], indices: int[]) → MeshId` | Upload geometry |
+| `update_mesh` | `(id: MeshId, vertices: float[]) → void` | Dynamic geometry update |
+| `destroy_mesh` | `(id: MeshId) → void` | |
+| `create_texture` | `(w: int, h: int, data: int[]) → TextureId` | RGBA8 pixels |
+| `destroy_texture` | `(id: TextureId) → void` | |
+| `create_render_target` | `(w: int, h: int) → RenderTargetId` | |
+| `render_target_texture` | `(id: RenderTargetId) → TextureId` | Read result as texture |
+
+**Hot tier:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `begin_pass` | `(color: RenderTargetId, depth: RenderTargetId, cr,cg,cb,ca: float, clear_depth: float, load_op: LoadOp, store_op: StoreOp) → void` | |
+| `end_pass` | `() → void` | |
+| `set_uniform_float` | `(shader: ShaderId, name: str, v: float) → void` | |
+| `set_uniform_vec2` | `(shader: ShaderId, name: str, x,y: float) → void` | |
+| `set_uniform_vec3` | `(shader: ShaderId, name: str, x,y,z: float) → void` | |
+| `set_uniform_vec4` | `(shader: ShaderId, name: str, x,y,z,w: float) → void` | |
+| `set_uniform_mat4` | `(shader: ShaderId, name: str, m: float[16]) → void` | Column-major |
+| `set_uniform_texture` | `(shader: ShaderId, name: str, tex: TextureId) → void` | |
+| `draw_mesh` | `(mesh: MeshId, shader: ShaderId, prim: Primitive) → void` | |
+| `set_viewport` | `(x,y,w,h: int) → void` | |
+| `set_depth_test` | `(enabled: bool) → void` | |
+| `set_depth_write` | `(enabled: bool) → void` | |
+| `set_blend` | `(mode: Blend) → void` | |
+| `set_cull` | `(mode: CullMode) → void` | |
 
 #### Audio
 
@@ -384,7 +511,8 @@ Fixed topologies (Buffer→Bus→Master) are special cases of the graph, not the
 **Opaque handle types** (u32, cross-language safe):
 - `BufferId` — decoded audio data (`load_audio` assigns IDs = SOND index)
 - `NodeId` — a DSP node in the graph (0 = master output, always valid)
-- `VoiceId` — a playing voice instance (0 = invalid)
+- `VoiceId` — a playing voice instance (0 = invalid). VoiceIds are monotonically increasing and never reused. Any operation on an invalid or stopped VoiceId is a silent no-op.
+- `GroupId` — a voice group for bulk operations
 
 **Node kinds**: `gain | pan | low_pass | high_pass | band_pass | notch | compressor | reverb | delay | mixer`
 
@@ -413,7 +541,9 @@ Each node kind accepts only its own params; others throw at runtime.
 | Function | Signature | Notes |
 |----------|-----------|-------|
 | `load_audio` | `(sounds: [{name,url}]) → void` (async) | Decode all sounds; assigns BufferIds |
+| `audio_ready` | `() → bool` | True when AudioContext is running and playback is possible; poll before first play call |
 | `create_node` | `(kind: NodeKind) → NodeId` | Create a DSP node |
+| `create_voice_group` | `() → GroupId` | Create a group for bulk voice operations |
 | `connect` | `(from: NodeId, to: NodeId) → void` | Add DAG edge: from.output → to.input |
 | `disconnect` | `(from: NodeId, to: NodeId) → void` | Remove edge |
 | `set_node_param` | `(node: NodeId, kind: ParamKind, value: float, fade_ms: float) → void` | Set/animate a node param |
@@ -444,6 +574,12 @@ Each node kind accepts only its own params; others throw at runtime.
 | `stop_node` | `(node: NodeId) → void` | Stop all voices routed to node |
 | `pause_node` | `(node: NodeId) → void` | Pause all voices routed to node |
 | `resume_node` | `(node: NodeId) → void` | Resume all paused voices routed to node |
+| `add_to_group` | `(group: GroupId, voice: VoiceId) → void` | Add voice to group |
+| `remove_from_group` | `(group: GroupId, voice: VoiceId) → void` | Remove voice from group |
+| `stop_group` | `(group: GroupId) → void` | Stop all voices in group |
+| `pause_group` | `(group: GroupId) → void` | Pause all voices in group |
+| `resume_group` | `(group: GroupId) → void` | Resume all paused voices in group |
+| `set_group_gain` | `(group: GroupId, gain: float, fade_ms: float) → void` | Set gain on all voices in group |
 
 Engine-specific audio behaviors (exclusive channels, BGM crossfade, voice stealing by priority,
 named channels) are shim concerns — implemented by composing the above primitives, not baked
@@ -451,36 +587,135 @@ into the platform interface.
 
 #### Input
 
+**Named constant types**: `DeviceKind`: `keyboard | mouse | touch | gamepad`
+
+Every input source carries a `device: int` ID. Device 0 is the primary/default for each kind. Multiple devices of the same kind (two keyboards, two mice, split controllers) are distinguished by ID. Use `devices(kind)` to enumerate on init; `on_device_connect`/`on_device_disconnect` handle changes after init.
+
+Gamepad buttons surface through the keyboard callbacks with synthetic codes (`"Button0"`, `"Button1"`, etc.) on their device ID — engines that just want "button pressed" get it for free. Raw analog state uses `device_axis`.
+
+`on_mouse_move` delivers absolute canvas coordinates. When pointer-locked, use `on_mouse_delta` for relative motion — these are distinct concerns and must not be conflated.
+
+**Device enumeration:**
+
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `on_mouse_move` | `(cb: (x,y: float) → void) → void` | |
-| `on_mouse_down` | `(cb: (button: int) → void) → void` | |
-| `on_mouse_up` | `(cb: (button: int) → void) → void` | |
-| `on_key_down` | `(cb: (key: str, keycode: int) → void) → void` | |
-| `on_key_up` | `(cb: (key: str, keycode: int) → void) → void` | |
-| `on_scroll` | `(cb: (delta: float) → void) → void` | |
+| `devices` | `(kind: DeviceKind) → int[]` | IDs of connected devices of that kind |
+| `on_device_connect` | `(cb: (device: int, kind: DeviceKind) → void) → void` | |
+| `on_device_disconnect` | `(cb: (device: int) → void) → void` | |
+
+**Keyboard:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `on_key_down` | `(cb: (device: int, code: str, key: str) → void) → void` | `code` = physical key position; `key` = character produced |
+| `on_key_up` | `(cb: (device: int, code: str, key: str) → void) → void` | |
+| `is_key_down` | `(device: int, code: str) → bool` | Poll current state |
+
+**Mouse:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `on_mouse_down` | `(cb: (device: int, button: int) → void) → void` | |
+| `on_mouse_up` | `(cb: (device: int, button: int) → void) → void` | |
+| `on_mouse_move` | `(cb: (device: int, x, y: float) → void) → void` | Absolute canvas coordinates |
+| `on_scroll` | `(cb: (device: int, dx, dy: float) → void) → void` | Both axes |
+| `is_mouse_down` | `(device: int, button: int) → bool` | |
+| `mouse_x` | `(device: int) → float` | |
+| `mouse_y` | `(device: int) → float` | |
+
+**Pointer lock:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `request_pointer_lock` | `() → void` | |
+| `release_pointer_lock` | `() → void` | |
+| `is_pointer_locked` | `() → bool` | |
+| `on_mouse_delta` | `(cb: (device: int, dx, dy: float) → void) → void` | Relative motion; only meaningful while locked |
+
+**Touch:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `on_touch_start` | `(cb: (device: int, id: int, x, y: float) → void) → void` | `id` = touch point ID within device |
+| `on_touch_move` | `(cb: (device: int, id: int, x, y: float) → void) → void` | |
+| `on_touch_end` | `(cb: (device: int, id: int, x, y: float) → void) → void` | |
+| `touch_count` | `(device: int) → int` | Active touch points |
+| `touch_x` | `(device: int, id: int) → float` | |
+| `touch_y` | `(device: int, id: int) → float` | |
+
+**Gamepad (analog):**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `device_axis` | `(device: int, axis: int) → float` | Analog axis value (-1..1); buttons use keyboard callbacks |
 
 #### Images
 
+`ImageHandle` is an opaque u32. It is defined in a shared types module — not owned by the images concern or the graphics concern. This is what allows `graphics_3d` to accept `ImageHandle` in `upload_image` without importing from the images concern.
+
+Sub-images are views into a parent — no copy. `image_width`/`image_height` on a sub-image return the sub-region dimensions. `destroy_image` on a sub-image releases the view, not the parent.
+
+`format` in `load_image_bytes` is a MIME type string (`"image/png"`, `"image/webp"`, etc.), or `null` to request format sniffing from magic bytes. Use explicit format when known; `null` as an escape hatch for raw blobs with no format information.
+
+**Setup tier** (async):
+
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `load_image` | `(url: str) → handle` (async) | Decode image from URL |
+| `load_image_url` | `(url: str) → ImageHandle` | Decode image from URL |
+| `load_image_bytes` | `(data: bytes, format: str \| null) → ImageHandle` | Decode from raw bytes; `null` format = sniff |
+| `create_sub_image` | `(parent: ImageHandle, x, y, w, h: int) → ImageHandle` | View into parent; no copy |
+
+**Query** (sync):
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `image_width` | `(handle: ImageHandle) → int` | |
+| `image_height` | `(handle: ImageHandle) → int` | |
+| `read_pixels` | `(handle: ImageHandle, x, y, w, h: int) → bytes` | RGBA8; throws if unsupported by backend |
+
+**Lifecycle:**
+
+| Function | Signature | Notes |
+|----------|-----------|-------|
+| `destroy_image` | `(handle: ImageHandle) → void` | Releases view (sub-image) or backing data (root image) |
 
 #### Persistence
 
+A key-value byte store. "Save" is a shim-level concept; the platform is just storage. Naming reflects that: `store`/`fetch`/`remove`, not `save`/`load`.
+
+**Contract:**
+- `init` is async — preloads cache, initialises backing store. After `init` returns, all reads are sync.
+- `store` and `remove` are **atomic** — on failure, the old value remains intact. Never a partial write. Implementations use write-to-temp-then-rename (OPFS, filesystem) or the natural atomicity of `localStorage.setItem`.
+- `store` **throws on failure** — never swallows errors silently. Callers decide how to handle quota exceeded, permission denied, etc.
+- Data is **bytes**, not strings — strings are just UTF-8 bytes; the more general interface subsumes the string case.
+- Backend composition (OPFS + localStorage tee, fallback, debounce, rolling history) is above the platform layer. A `fallback(primary, secondary)` utility wrapper handles degradation — the platform interface itself does not decide which backend to use.
+
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `init` | `() → void` (async) | Preload storage (OPFS or equivalent) |
-| `save` | `(key: str, data: str) → void` | Write-through: sync + async backing |
-| `load` | `(key: str) → str \| null` | Sync read from in-memory cache |
-| `remove` | `(key: str) → void` | |
+| `init` | `() → void` (async) | Preload cache from backing store |
+| `store` | `(key: str, data: bytes) → void` | Atomic replace; throws on failure |
+| `fetch` | `(key: str) → bytes \| null` | Sync read from in-memory cache |
+| `remove` | `(key: str) → void` | Atomic; throws on failure |
+| `list` | `(prefix: str) → str[]` | Enumerate keys with given prefix |
 
 #### Timing
 
+Handles are typed opaque u32s — distinct types prevent mixing delayed/recurring/frame handles. Zero runtime cost (branded types in TS, newtype structs in Rust).
+
+`request_frame` is the game loop driver — register once, fires every vsync until cancelled. The callback receives a monotonic timestamp so the loop can compute delta time without a separate call.
+
+**Handle types**: `DelayHandle`, `RecurringHandle`, `FrameHandle` (all u32)
+
 | Function | Signature | Notes |
 |----------|-----------|-------|
-| `schedule_timeout` | `(cb: () → void, delay_ms: float) → handle` | |
-| `cancel_timeout` | `(handle: int) → void` | |
+| `schedule_delayed` | `(cb: () → void, delay_ms: float) → DelayHandle` | One-shot; cb fires once after delay |
+| `cancel_delayed` | `(handle: DelayHandle) → void` | No-op if already fired or invalid |
+| `schedule_recurring` | `(cb: () → void, interval_ms: float) → RecurringHandle` | Repeating; fires until cancelled |
+| `cancel_recurring` | `(handle: RecurringHandle) → void` | |
+| `request_frame` | `(cb: (time_ms: float) → void) → FrameHandle` | Vsync driver; fires every frame until cancelled; `time_ms` is monotonic |
+| `cancel_frame` | `(handle: FrameHandle) → void` | |
+| `current_time_ms` | `() → float` | Monotonic clock — for game timing, delta computation |
+| `current_wall_time_ms` | `() → float` | Wall clock — for save file timestamps |
 
 ### Rust: generic traits
 
