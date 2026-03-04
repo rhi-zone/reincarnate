@@ -1,6 +1,11 @@
-export { GraphicsContext, initCanvas, createCanvas, resizeCanvas, initWebGL } from "./graphics";
-export { loadImage } from "./images";
-export { onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp, onScroll } from "./input";
+export type { CanvasHandle, FontHandle, PathHandle, GradientHandle, BlendMode, TextAlign, TextBaseline, LineCap, LineJoin } from "./graphics";
+export { GraphicsState, initSurface, createCanvas, resizeCanvas, canvasWidth, canvasHeight, readCanvasPixels, canvasToImage, createImageBitmapAsync, loadFont, createPath, pathMoveTo, pathLineTo, pathBezierTo, pathQuadraticTo, pathArc, pathClose, destroyPath, destroyCanvas, destroyFont, createLinearGradient, createRadialGradient, gradientAddStop, destroyGradient, setTransform, setAlpha, setBlendMode, setColorTransform, setImageSmoothing, setStrokeStyle, setDashPattern, saveState, restoreState, resetCanvasState, clearCanvas, fillRect, drawImage, drawCanvas, drawText, measureText, beginPath, moveTo, lineTo, bezierTo, quadraticTo, arc, closePath, fillPath, fillPathGradient, strokePath, clip, beginTextPath, fillPathHandle, fillPathHandleGradient, strokePathHandle, clipPathHandle } from "./graphics";
+// Legacy exports preserved for backward compatibility:
+export { GraphicsContext, initCanvas, initWebGL } from "./graphics";
+export type { ImageHandle } from "./images";
+export { ImageState, createImage, loadImageUrl, loadImageBytes, createSubImage, imageWidth, imageHeight, readPixels, writePixels, destroyImage } from "./images";
+export type { DeviceKind } from "./input";
+export { InputState, devices, onDeviceConnect, onDeviceDisconnect, onKeyDown, onKeyUp, isKeyDown, onMouseDown, onMouseUp, onMouseMove, onScroll, isMouseDown, mouseX, mouseY, requestPointerLock, releasePointerLock, isPointerLocked, onMouseDelta, onTouchStart, onTouchMove, onTouchEnd, touchCount, touchX, touchY, deviceAxis, onTextInput, onCompositionStart, onCompositionUpdate, onCompositionEnd } from "./input";
 export type { DelayHandle, RecurringHandle, FrameHandle } from "./timing";
 export { scheduleDelayed, cancelDelayed, scheduleRecurring, cancelRecurring, requestFrame, cancelFrame, currentTimeMs, currentWallTimeMs } from "./timing";
 export { PersistenceState, init, store, fetch, remove, list } from "./persistence";
