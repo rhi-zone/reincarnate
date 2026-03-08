@@ -2,7 +2,7 @@
  * GML Runtime — game loop, GMLObject base class, room system.
  */
 
-import { GraphicsContext, initCanvas, createCanvas, resizeCanvas, loadImage, initWebGL } from "../shared/platform";
+import { GraphicsContext, initCanvas, loadImage, initWebGL } from "../shared/platform";
 import { requestFrame, cancelFrame, FrameHandle } from "../shared/platform";
 import { PersistenceState, init as initPersistence, store, fetch as fetchItem, remove } from "../shared/platform/persistence";
 import type { RenderRoot } from "../shared/render-root";
@@ -3525,7 +3525,9 @@ export class GameRuntime {
     this._currentRoom = newRoom;
     this.room = id;
     this.room_speed = this._roomDatas[id]?.speed ?? 60;
-    resizeCanvas(this._gfx, this._roomDatas[id]?.size.width ?? 800, this._roomDatas[id]?.size.height ?? 600);
+    const roomSize = this._roomDatas[id]?.size;
+    this._gfx.canvas.width = roomSize?.width ?? 800;
+    this._gfx.canvas.height = roomSize?.height ?? 600;
     newRoom.create(restart);
     for (const instance of this.roomVariables) {
       instance.roomstart();
@@ -3601,7 +3603,7 @@ export class GameRuntime {
 
     // Init canvas and input
     if (this._root) {
-      const canvas = createCanvas(this._root.doc);
+      const canvas = this._root.doc.createElement("canvas") as HTMLCanvasElement;
       canvas.id = "reincarnate-canvas";
       this._root.container.appendChild(canvas);
       initCanvas(this._gfx, "reincarnate-canvas", this._root.doc);
