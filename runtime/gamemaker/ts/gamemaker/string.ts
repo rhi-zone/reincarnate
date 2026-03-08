@@ -7,7 +7,7 @@ export function string_copy(s: string, index: number, count: number): string {
 }
 
 export function string_insert(sub: string, s: string, index: number): string {
-  return s.slice(0, index) + sub + s.slice(index);
+  return s.slice(0, index - 1) + sub + s.slice(index - 1);
 }
 
 export function string_replace_all(content: string, replacee: string, replacer: string): string {
