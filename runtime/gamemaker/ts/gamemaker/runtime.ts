@@ -3503,11 +3503,13 @@ export class GameRuntime {
     }
   }
 
-  instance_exists(target: typeof GMLObject | GMLObject): boolean {
+  instance_exists(target: typeof GMLObject | GMLObject | number | null): boolean {
+    if (target === null || target === -4) return false;
+    if (typeof target === 'number') return this.roomVariables.some(inst => (inst as any).instanceId === target);
     if (typeof target === 'function') {
       return this._getInstances(target as typeof GMLObject).length > 0;
     }
-    return this.roomVariables.includes(target);
+    return this.roomVariables.includes(target as GMLObject);
   }
 
   instance_number(cls: typeof GMLObject): number {
