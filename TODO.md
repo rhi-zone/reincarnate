@@ -967,6 +967,29 @@ Fixed in previous sessions (2026-02-24):
   join point has inconsistent depths. Consider: (a) asserting stack depth consistency at join
   points, (b) using a worklist-based depth propagation instead of linear walk.
 
+### 10. GMS1 integer object indices not resolved to class references (Bounty: 15 TS2345)
+
+In GMS1, object type names are compile-time integer constants (no `pushref`/Break -11 mechanism).
+When game code calls `instance_create(x, y, 2)` or `instance_number(4)`, the integer literal is
+emitted as `Int64(2)`, not as a `ClassRef`. Our runtime signatures expect `new() => T` / `typeof
+GMLObject`, so TypeScript raises TS2345.
+
+Root cause: the GMS1 translator never resolves plain integer pushes to named object references. The
+OBJT table provides the index → name mapping (same data used by `build_asset_ref_names` for GMS2.3+
+pushref), but GMS1 uses inline integers without the Break -11 signal.
+
+Fix direction: during translation, when a constant `Int32/Int16` value is pushed and the subsequent
+opcode context indicates it will be used as an object type argument (e.g. passed to `instance_create`,
+`instance_number`, `object_is_ancestor` etc.), resolve it via the OBJT name table to a `GlobalRef`
+with `ClassRef` type. This requires knowing at push-time that the value will be used as an object
+type — which may require a two-pass approach or forward-looking context.
+
+Alternative simpler fix: widen those runtime signatures to accept `number` as well
+(e.g., `instance_create(x, y, cls: new() => T | number)`) — but this weakens the type system.
+
+Affected Bounty errors: ~15 TS2345 (`number` not assignable to `typeof GMLObject` / `new () => GMLObject`).
+Also affects `AdvReader.ts:18` where literal `4` is passed as `GMLObject | typeof GMLObject | null`.
+
 ### 9. Pushref type_tag mapping is version-dependent — wrong for pre-2024.4 games
 
 `build_asset_ref_names` currently uses the GM 2024.4+ type_tag layout. Pre-2024.4 games use a
