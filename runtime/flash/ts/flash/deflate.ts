@@ -111,7 +111,7 @@ class DeflateState {
   fixedDist: HuffmanTable | null = null;
 }
 
-const _deflateState = new DeflateState();
+const _deflateState = new DeflateState(); // TODO(multi-instance): move to FlashRuntime — module-level state prevents multiple game instances
 
 function getFixedTables(): [HuffmanTable, HuffmanTable] {
   if (!_deflateState.fixedLitLen) {

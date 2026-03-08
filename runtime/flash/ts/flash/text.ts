@@ -16,7 +16,7 @@ class TextModuleState {
   measureCtx: CanvasRenderingContext2D | null = null;
 }
 
-const _textState = new TextModuleState();
+const _textState = new TextModuleState(); // TODO(multi-instance): move to FlashRuntime — module-level state prevents multiple game instances
 
 function getMeasureCtx(): CanvasRenderingContext2D {
   if (!_textState.measureCtx) {

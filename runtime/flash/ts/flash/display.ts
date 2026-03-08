@@ -961,7 +961,7 @@ export class MovieClip extends Sprite {
 // ---------------------------------------------------------------------------
 
 /** Factory map for built-in display types that can be auto-created as timeline children. */
-const _timelineFactories = new Map<string, () => DisplayObject>();
+const _timelineFactories = new Map<string, () => DisplayObject>(); // TODO(multi-instance): move to FlashRuntime — module-level state prevents multiple game instances
 
 /** Register a factory for a display type name (used by text.ts for TextField). */
 export function registerTimelineFactory(typeName: string, factory: () => DisplayObject): void {
