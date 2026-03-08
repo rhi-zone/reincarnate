@@ -423,6 +423,14 @@ impl FunctionBuilder {
     // ========================================================================
 
     pub fn br(&mut self, target: BlockId, args: &[ValueId]) {
+        debug_assert_eq!(
+            args.len(),
+            self.func.blocks[target].params.len(),
+            "br to {:?} with {} args but block has {} params",
+            target,
+            args.len(),
+            self.func.blocks[target].params.len()
+        );
         self.emit_void(Op::Br {
             target,
             args: args.to_vec(),
@@ -437,6 +445,22 @@ impl FunctionBuilder {
         else_target: BlockId,
         else_args: &[ValueId],
     ) {
+        debug_assert_eq!(
+            then_args.len(),
+            self.func.blocks[then_target].params.len(),
+            "br_if then-branch to {:?} with {} args but block has {} params",
+            then_target,
+            then_args.len(),
+            self.func.blocks[then_target].params.len()
+        );
+        debug_assert_eq!(
+            else_args.len(),
+            self.func.blocks[else_target].params.len(),
+            "br_if else-branch to {:?} with {} args but block has {} params",
+            else_target,
+            else_args.len(),
+            self.func.blocks[else_target].params.len()
+        );
         self.emit_void(Op::BrIf {
             cond,
             then_target,
@@ -452,6 +476,24 @@ impl FunctionBuilder {
         cases: Vec<(Constant, BlockId, Vec<ValueId>)>,
         default: (BlockId, Vec<ValueId>),
     ) {
+        for (_, target, args) in &cases {
+            debug_assert_eq!(
+                args.len(),
+                self.func.blocks[*target].params.len(),
+                "switch case to {:?} with {} args but block has {} params",
+                target,
+                args.len(),
+                self.func.blocks[*target].params.len()
+            );
+        }
+        debug_assert_eq!(
+            default.1.len(),
+            self.func.blocks[default.0].params.len(),
+            "switch default to {:?} with {} args but block has {} params",
+            default.0,
+            default.1.len(),
+            self.func.blocks[default.0].params.len()
+        );
         self.emit_void(Op::Switch {
             value,
             cases,
