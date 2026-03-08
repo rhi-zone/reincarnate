@@ -1503,23 +1503,6 @@ impl<'a> EmitCtx<'a> {
         Expr::Var(self.value_name(v))
     }
 
-    /// Wrap a Bool-typed value with `Number()` coercion when used in arithmetic/bitwise context.
-    ///
-    /// GML treats boolean values (0/1) as numbers — `(x < y) * 0.5` is valid GML.
-    /// TypeScript `boolean` is not allowed as an arithmetic operand (TS2362/TS2363).
-    /// This coercion emits `Number(expr)` for Bool-typed values so the output compiles.
-    fn arith_val(&mut self, v: ValueId) -> Expr {
-        let expr = self.build_val(v);
-        if self.func.value_types[v] == Type::Bool {
-            Expr::Cast {
-                expr: Box::new(expr),
-                ty: Type::Float(64),
-                kind: CastKind::Coerce,
-            }
-        } else {
-            expr
-        }
-    }
 
     /// Build an Expr from an Op.
     fn build_expr_from_op(&mut self, op: &Op) -> Option<Expr> {
@@ -1528,62 +1511,62 @@ impl<'a> EmitCtx<'a> {
 
             Op::Add(a, b) => Expr::Binary {
                 op: BinOp::Add,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::Sub(a, b) => Expr::Binary {
                 op: BinOp::Sub,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::Mul(a, b) => Expr::Binary {
                 op: BinOp::Mul,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::Div(a, b) => Expr::Binary {
                 op: BinOp::Div,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::Rem(a, b) => Expr::Binary {
                 op: BinOp::Rem,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::Neg(a) => Expr::Unary {
                 op: UnaryOp::Neg,
-                expr: Box::new(self.arith_val(*a)),
+                expr: Box::new(self.build_val(*a)),
             },
 
             Op::BitAnd(a, b) => Expr::Binary {
                 op: BinOp::BitAnd,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::BitOr(a, b) => Expr::Binary {
                 op: BinOp::BitOr,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::BitXor(a, b) => Expr::Binary {
                 op: BinOp::BitXor,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::BitNot(a) => Expr::Unary {
                 op: UnaryOp::BitNot,
-                expr: Box::new(self.arith_val(*a)),
+                expr: Box::new(self.build_val(*a)),
             },
             Op::Shl(a, b) => Expr::Binary {
                 op: BinOp::Shl,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
             Op::Shr(a, b) => Expr::Binary {
                 op: BinOp::Shr,
-                lhs: Box::new(self.arith_val(*a)),
-                rhs: Box::new(self.arith_val(*b)),
+                lhs: Box::new(self.build_val(*a)),
+                rhs: Box::new(self.build_val(*b)),
             },
 
             Op::Cmp(kind, a, b) => Expr::Cmp {
@@ -1967,7 +1950,9 @@ impl<'a> EmitCtx<'a> {
                 {
                     decls.push(Stmt::VarDecl {
                         name,
-                        ty: Some(param.ty.clone()),
+                        // Use value_types (post-transform authoritative type), NOT
+                        // param.ty (set at creation, not updated by TypeInference).
+                        ty: Some(self.func.value_types[param.value].clone()),
                         init: None,
                         mutable: true,
                     });
@@ -2175,14 +2160,12 @@ impl<'a> EmitCtx<'a> {
 
         // Alloc → VarDecl.
         if let Op::Alloc(ty) = op {
-            let init = self
-                .resolve
-                .alloc_inits
-                .get(&result)
-                .map(|iv| self.build_val(*iv));
+            let alloc_ty = ty.clone();
+            let alloc_init_v = self.resolve.alloc_inits.get(&result).copied();
+            let init = alloc_init_v.map(|iv| self.build_val(iv));
             stmts.push(Stmt::VarDecl {
                 name: self.value_name(result),
-                ty: Some(ty.clone()),
+                ty: Some(alloc_ty),
                 init,
                 mutable: true,
             });
@@ -2247,8 +2230,7 @@ impl<'a> EmitCtx<'a> {
                     object: Box::new(self.build_val(*object)),
                     field: field.clone(),
                 };
-                let val = self.build_val(*value);
-                stmts.push(Stmt::Assign { target, value: val });
+                stmts.push(Stmt::Assign { target, value: self.build_val(*value) });
             }
             Op::SetIndex {
                 collection,

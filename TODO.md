@@ -577,9 +577,9 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   pushac target, or (b) the TS printer detecting integer-as-collection in SetIndex and routing
   to a GameMaker.setIndex runtime call. Only 6 errors in Schism, low priority.
 
-### 7. Dead Estate remaining TS errors — 281 as of 2026-03-08
+### 7. Dead Estate remaining TS errors — 248 as of 2026-03-08
 
-Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 → 2108 → 946 (cross-obj 2D read fix) → 883 (ClassRef + OBJT constructor type fix) → 596 (CallSiteTypeWiden: −284 TS2345) → 573 (BoolAnd/BoolOr IR ops) → 561 (BrIf cascade via reachability-aware const map) → 559 (fold_cast Bool→Bool + ends_with_terminal fall-through switch) → 472 (wrap ClassRef GlobalRef with `as any`) → 345 (also fix lazy-inline ClassRef path) → 335 (ClassRef→any in ts_type + GlobalRef always-inline) → 282 (CallSiteTypeWiden zero-caller: `_self: number` in closures fixed) → 307 (NorthPassage regression from Switch SE inline fix; 3 TS2304 fixed) → 285 (arith_val: Bool→Number coercion in arithmetic ops; 22 fixed) → 281 (runtime createCanvas/resizeCanvas stale calls fixed).
+Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 → 2108 → 946 (cross-obj 2D read fix) → 883 (ClassRef + OBJT constructor type fix) → 596 (CallSiteTypeWiden: −284 TS2345) → 573 (BoolAnd/BoolOr IR ops) → 561 (BrIf cascade via reachability-aware const map) → 559 (fold_cast Bool→Bool + ends_with_terminal fall-through switch) → 472 (wrap ClassRef GlobalRef with `as any`) → 345 (also fix lazy-inline ClassRef path) → 335 (ClassRef→any in ts_type + GlobalRef always-inline) → 282 (CallSiteTypeWiden zero-caller: `_self: number` in closures fixed) → 307 (NorthPassage regression from Switch SE inline fix; 3 TS2304 fixed) → 285 (arith_val: Bool→Number coercion in arithmetic ops; 22 fixed) → 281 (runtime createCanvas/resizeCanvas stale calls fixed) → 248 (collect_block_param_decls reads value_types instead of BlockParam.ty; removed arith_val and all Bool-coercion hacks from core linearizer; TS2362 now correctly surfaces as intended diagnostics).
 
 CallSiteTypeWiden: ConstraintSolve narrows params via body constraints (e.g. `cmp.eq(i64_val, param)`)
 but callers may pass incompatible types (ClassRef vs Int). The widening pass detects these conflicts
@@ -589,14 +589,14 @@ sig.params, because ConstraintSolve only updates entry.params[i].ty and value_ty
 | Code | Count | Root cause |
 |------|-------|------------|
 | TS2345 | 126 | Argument type mismatch — string/bool/null/struct passed as number, game author duck-typing |
-| TS2322 | 95 | Type not assignable — `boolean↔number` (GML no-bool-type), null/struct assignments |
-| TS2339 | 18 | Property doesn't exist — `length` on number (array inferred as number), withInstances residual |
+| TS2322 | 38 | Type not assignable — 29× `boolean` → `number` (wrong type inference, needs investigation), 2× `GMLObject` → number |
+| TS2362 | 16 | Bool-typed operand in arithmetic — **intended diagnostic** (game author using bool in arithmetic) |
+| TS2339 | 13 | Property doesn't exist — `length` on number (array inferred as number), withInstances residual |
 | TS2304 | 14 | Cannot find name — structurizer SSA name leakage + `spd` in with-body closure capture gap |
-| TS2362 | 8 | Bool-typed operand in arithmetic — 8 remain where IR type is Dynamic but TS sig says boolean (e.g. `mouse_wheel_down()`) |
-| TS2554 | 5 | Wrong argument count — GML scripts called with more args than declared (loose calling convention) |
+| TS2554 | 4 | Wrong argument count — GML scripts called with more args than declared (loose calling convention) |
 | TS2367 | 5 | Comparison with void — functions that use `return` inside `with` block inferred as void |
-| TS2363 | 2 | Right side of `**` must be number — Bool in exponent position |
-| TS2365 | 2 | Operator not applicable — Bool in operator context |
+| TS2363 | 2 | Right side of `**` must be number — Bool in exponent position (intended diagnostic) |
+| TS2365 | 2 | Operator not applicable — Bool in operator context (intended diagnostic) |
 | TS2872 | 2 | Comparison appears unintentional |
 | TS7027 | 1 | Unreachable code — game-author bug (DiavoloEye::destroy infinite loop) |
 | TS18047 | 1 | Object is possibly null |
@@ -605,11 +605,15 @@ sig.params, because ConstraintSolve only updates entry.params[i].ty and value_ty
 | TS2724 | 1 | Exported name collision |
 | TS2769 | 1 | No overload matches |
 
-**Remaining TS2362 (8):** IR type is `Dynamic` but TypeScript runtime declares return type as `boolean`
-(e.g. `mouse_wheel_down(): boolean`, `mouse_wheel_up(): boolean`). `arith_val` coercion only activates
-for IR-level `Type::Bool`; Dynamic values pass through. Fix: change GML runtime declarations of
-bool-as-number functions to `: number`, OR add a GML rewrite pass that detects boolean call results
-in arithmetic context.
+**TS2362 / TS2363 / TS2365 (Bool in arithmetic/operators):** These are **intended diagnostics**. GML game
+author is using boolean values in arithmetic/operator context. Do NOT suppress with coercions. If the
+source GML is clearly wrong (a bug), the error is correct. `arith_val` coercion was removed 2026-03-08.
+
+**TS2322 "boolean not assignable to number" (29):** Wrong type inference — some variable or field is
+declared as `number` but receives a `boolean` value. Root cause is NOT a game-author error; it's our
+type inference producing `number` when the correct type is `boolean` or `boolean | number`. Needs
+investigation: use `--filter-code TS2322 --filter-message 'boolean'` to find instances, then trace
+which IR value/alloc/block-param has wrong type.
 
 **TS2367 (5):** GML functions with `return value` inside a `with` block. Our `withInstances` callback
 model doesn't propagate return values — the function is typed as `void` even though it should return
