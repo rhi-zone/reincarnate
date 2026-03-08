@@ -1000,7 +1000,9 @@ fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
             let short = name.rsplit("::").next().unwrap_or(name);
             if use_instanceof {
                 // GML: all objects are class instances, `instanceof` is correct.
-                format!("{} instanceof {}", print_expr(expr), sanitize_ident(short))
+                // Use `(expr as any)` to prevent TypeScript control-flow narrowing
+                // (`this instanceof Wall` in a Wall method narrows else-branch to `never`).
+                format!("({} as any) instanceof {}", print_expr(expr), sanitize_ident(short))
             } else {
                 // Flash: use isType() — handles both classes and AS3 interfaces.
                 format!("isType({}, {})", print_expr(expr), sanitize_ident(short))
@@ -1152,7 +1154,9 @@ mod tests {
     fn type_check_struct_instanceof_for_gml() {
         let expr = JsExpr::Var("v0".into());
         let result = print_type_check(&expr, &Type::Struct("OEnemy".into()), true);
-        assert_eq!(result, "v0 instanceof OEnemy", "GML TypeCheck should use instanceof");
+        // Uses `(expr as any) instanceof T` to prevent TypeScript control-flow narrowing
+        // (`this instanceof Wall` in a Wall method would narrow else-branch to `never`).
+        assert_eq!(result, "(v0 as any) instanceof OEnemy", "GML TypeCheck should use (as any) instanceof");
     }
 
     #[test]
@@ -1167,6 +1171,6 @@ mod tests {
         assert!(needs_parens(&tc), "instanceof TypeCheck needs parens as operand");
         let not_tc = JsExpr::Not(Box::new(tc));
         let result = print_expr(&not_tc);
-        assert_eq!(result, "!(v0 instanceof OEnemy)", "Not(TypeCheck) must add parens");
+        assert_eq!(result, "!((v0 as any) instanceof OEnemy)", "Not(TypeCheck) must add parens");
     }
 }
