@@ -89,4 +89,3 @@ Do not:
 - Use module-level mutable state — see "Games are instantiable"
 - Use DOM data attributes as a state-passing mechanism
 - **Promote `|`/`&` to `||`/`&&` based on inferred types.** They're semantically different. TS2447/TS2363 from `boolean | boolean` are game-author errors — don't suppress them.
-- **Eliminate megamorphic dispatch at compile time.** When a runtime method dispatches on a string literal, the backend rewrite pass must resolve it to a direct call. A missing method is a compile-time error, not silent `undefined`.
