@@ -80,7 +80,7 @@ export function readPixels(state: ImageState, handle: ImageHandle, x: number, y:
   return new Uint8Array(imageData.data.buffer);
 }
 
-export function writePixels(state: ImageState, handle: ImageHandle, x: number, y: number, w: number, h: number, data: Uint8Array): void {
+export function writePixels(state: ImageState, handle: ImageHandle, x: number, y: number, w: number, h: number, data: Uint8Array<ArrayBuffer>): void {
   const entry = state.get(handle);
   if (!entry) throw new Error(`writePixels: invalid handle ${handle}`);
   if (entry.parent !== undefined) throw new Error("writePixels: cannot write to sub-image view");
