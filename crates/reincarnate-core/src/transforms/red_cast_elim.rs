@@ -115,7 +115,7 @@ mod tests {
 
     // ---- Edge case tests ----
 
-    /// Coerce vs AsType — both kinds tested when redundant.
+    /// Coerce vs NullableCoerce — both kinds tested when redundant.
     #[test]
     fn coerce_redundant_rewritten() {
         let sig = FunctionSig {
@@ -184,7 +184,7 @@ mod tests {
         assert!(!result.changed, "Dynamic → Int cast is NOT redundant");
     }
 
-    /// AsType(x: Foo, Foo) where source is Struct → redundant, becomes Copy.
+    /// NullableCoerce(x: Foo, Foo) where source is Struct → redundant, becomes Copy.
     #[test]
     fn astype_same_struct() {
         let sig = FunctionSig {
@@ -194,14 +194,14 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
-        // cast() produces AsType kind.
+        // cast() produces NullableCoerce kind.
         let cast = fb.cast(p, Type::Struct("Foo".into()));
         fb.ret(Some(cast));
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let result = RedundantCastElimination.apply(mb.build()).unwrap();
-        assert!(result.changed, "AsType(Foo, Foo) should be redundant");
+        assert!(result.changed, "NullableCoerce(Foo, Foo) should be redundant");
         let func = &result.module.functions[FuncId::new(0)];
         let inst = func
             .insts
@@ -210,7 +210,7 @@ mod tests {
             .unwrap();
         assert!(
             matches!(inst.op, Op::Copy(_)),
-            "same-struct AsType should become Copy"
+            "same-struct NullableCoerce should become Copy"
         );
     }
 

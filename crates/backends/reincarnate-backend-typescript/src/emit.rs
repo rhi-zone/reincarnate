@@ -1581,7 +1581,7 @@ pub(crate) struct RefSets {
     pub(crate) value_refs: BTreeSet<String>,
     /// Intra-module type-only refs (erased at runtime).
     pub(crate) type_refs: BTreeSet<String>,
-    /// Intra-module value refs from TypeCheck/AsType only (may be late-bound).
+    /// Intra-module value refs from TypeCheck/NullableCoerce only (may be late-bound).
     pub(crate) typecheck_value_refs: BTreeSet<String>,
     /// External value refs (e.g. Flash stdlib runtime classes).
     pub(crate) ext_value_refs: BTreeSet<String>,
@@ -1711,14 +1711,14 @@ fn collect_type_refs_from_function(
                     collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
                 }
             }
-            // Alloc is type-only. Cast with Struct/Enum: AsType needs runtime value, Coerce is type-only.
+            // Alloc is type-only. Cast with Struct/Enum: NullableCoerce needs runtime value, Coerce is type-only.
             Op::Alloc(ty) => {
                 collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
             }
             Op::Cast(_, ty, kind) => {
                 let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
-                if is_struct_or_enum && *kind == CastKind::AsType {
-                    // AsType needs runtime constructor — collected separately
+                if is_struct_or_enum && *kind == CastKind::NullableCoerce {
+                    // NullableCoerce needs runtime constructor — collected separately
                     // so circular imports can be detected and late-bound.
                     collect_type_ref(ty, self_name, registry, external_imports, &mut refs.typecheck_value_refs, &mut refs.ext_value_refs);
                 } else {
@@ -2023,7 +2023,7 @@ fn compute_transitive_value_imports(
 
 /// Emit `import` / `import type` statements for intra-module class references.
 ///
-/// Returns the set of short names that are late-bound (circular TypeCheck/AsType
+/// Returns the set of short names that are late-bound (circular TypeCheck/NullableCoerce
 /// refs that should use `getDefinitionByName()` instead of a static import).
 #[allow(clippy::too_many_arguments)]
 fn emit_intra_imports(
@@ -2210,7 +2210,7 @@ fn rewrite_late_bound_expr(
             let short = name.rsplit("::").next().unwrap_or(name);
             late_bound.contains(short)
         }
-        JsExpr::Cast { ty: Type::Struct(name) | Type::Enum(name), kind: CastKind::AsType, .. } => {
+        JsExpr::Cast { ty: Type::Struct(name) | Type::Enum(name), kind: CastKind::NullableCoerce, .. } => {
             let short = name.rsplit("::").next().unwrap_or(name);
             late_bound.contains(short)
         }

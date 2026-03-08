@@ -240,7 +240,7 @@ fn resolve_scope_call(
                 return JsExpr::Cast {
                     expr: Box::new(rest_args.into_iter().next().unwrap()),
                     ty: Type::Struct(name.clone()),
-                    kind: CastKind::AsType,
+                    kind: CastKind::NullableCoerce,
                 };
             }
         }
@@ -2033,7 +2033,7 @@ mod tests {
             vec![JsExpr::Var("obj".into())],
             &ctx,
         );
-        assert!(matches!(&rewritten, JsExpr::Cast { kind: CastKind::AsType, .. }));
+        assert!(matches!(&rewritten, JsExpr::Cast { kind: CastKind::NullableCoerce, .. }));
     }
 
     // --- hoist_super_call ---

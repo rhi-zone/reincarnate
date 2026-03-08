@@ -1460,7 +1460,7 @@ impl<'a> EmitCtx<'a> {
                     return Expr::Cast {
                         expr: Box::new(expr),
                         ty: self.func.value_types[v].clone(),
-                        kind: CastKind::AsType,
+                        kind: CastKind::NullableCoerce,
                     };
                 }
                 return expr;
@@ -1482,7 +1482,7 @@ impl<'a> EmitCtx<'a> {
                     return Expr::Cast {
                         expr: Box::new(expr),
                         ty: self.func.value_types[v].clone(),
-                        kind: CastKind::AsType,
+                        kind: CastKind::NullableCoerce,
                     };
                 }
                 return expr;

@@ -629,7 +629,7 @@ impl FunctionBuilder {
     // ========================================================================
 
     pub fn cast(&mut self, value: ValueId, ty: Type) -> ValueId {
-        self.emit(Op::Cast(value, ty.clone(), CastKind::AsType), ty)
+        self.emit(Op::Cast(value, ty.clone(), CastKind::NullableCoerce), ty)
     }
 
     pub fn coerce(&mut self, value: ValueId, ty: Type) -> ValueId {

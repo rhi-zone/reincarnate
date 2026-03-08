@@ -441,7 +441,7 @@ impl fmt::Display for Function {
 
                     Op::Cast(val, ty, kind) => {
                         match kind {
-                            CastKind::AsType => write!(f, "as_type ")?,
+                            CastKind::NullableCoerce => write!(f, "nullable_coerce ")?,
                             CastKind::Coerce => write!(f, "coerce ")?,
                         }
                         fmt_value(*val, f)?;

@@ -414,7 +414,7 @@ fn all_constants_distinct(cases: &[(Constant, Vec<JsStmt>)]) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Redundant AsType cast elimination
+// Redundant NullableCoerce cast elimination
 // ---------------------------------------------------------------------------
 
 /// Strip `x as T` casts where the variable `x` is already declared with type
@@ -454,7 +454,7 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
                 init:
                     Some(JsExpr::Cast {
                         ty: cast_ty,
-                        kind: CastKind::AsType,
+                        kind: CastKind::NullableCoerce,
                         ..
                     }),
                 ..
@@ -596,7 +596,7 @@ fn strip_casts_in_expr(expr: &mut JsExpr, var_types: &HashMap<String, Type>) {
         kind,
     } = &*expr
     {
-        if *kind == CastKind::AsType {
+        if *kind == CastKind::NullableCoerce {
             is_cast_redundant(inner, cast_ty, var_types)
         } else {
             false

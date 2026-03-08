@@ -2227,14 +2227,14 @@ pub fn rewrite_compound_assign(body: &mut [Stmt]) {
     }
 }
 
-/// Strip `AsType` casts to get the underlying expression.
-/// `AsType` is a pure type assertion with no runtime effect, so it's safe
+/// Strip `NullableCoerce` casts to get the underlying expression.
+/// `NullableCoerce` is a pure type assertion with no runtime effect, so it's safe
 /// to look through for structural comparison.
 fn strip_as_type(expr: &Expr) -> &Expr {
     match expr {
         Expr::Cast {
             expr: inner,
-            kind: CastKind::AsType,
+            kind: CastKind::NullableCoerce,
             ..
         } => strip_as_type(inner),
         _ => expr,
@@ -2248,7 +2248,7 @@ fn match_compound_assign(target: &Expr, value: &Expr) -> Option<Stmt> {
         _ => return None,
     };
 
-    // Look through AsType casts when comparing lhs to target.
+    // Look through NullableCoerce casts when comparing lhs to target.
     if strip_as_type(lhs) != target {
         return None;
     }
@@ -4344,7 +4344,7 @@ fn expr_references(expr: &Expr, name: &str) -> bool {
 
 /// Check if a statement is an increment/update of the named variable.
 /// Returns true for `name += expr`, `name -= expr`, `name = name + expr`, etc.
-/// Looks through `AsType` casts on the binary LHS (e.g. `name = (name as int) + 1`).
+/// Looks through `NullableCoerce` casts on the binary LHS (e.g. `name = (name as int) + 1`).
 fn is_var_update(stmt: &Stmt, name: &str) -> bool {
     match stmt {
         Stmt::CompoundAssign { target, .. } => matches!(target, Expr::Var(n) if n == name),

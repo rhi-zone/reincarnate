@@ -29,8 +29,9 @@ pub struct Inst {
 /// Distinguishes the two semantics of `Op::Cast`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CastKind {
-    /// AS3 `as` operator: type-check-or-null.
-    AsType,
+    /// Nullable cast — returns null if the value is not an instance of the target type
+    /// (e.g. AS3 `as`, Kotlin `as?`, C# `as`).
+    NullableCoerce,
     /// Runtime coercion (Coerce/Convert opcodes).
     Coerce,
 }

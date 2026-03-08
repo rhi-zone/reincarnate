@@ -288,7 +288,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // annotation. Keep function-call forms (asType, Number, int, etc.).
                     if let JsExpr::Cast { expr, ty: cast_ty, kind } = init {
                         let is_ts_assertion = match kind {
-                            CastKind::AsType => !matches!(ty, Type::Struct(_) | Type::Enum(_)),
+                            CastKind::NullableCoerce => !matches!(ty, Type::Struct(_) | Type::Enum(_)),
                             CastKind::Coerce => matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic),
                         };
                         if cast_ty == ty && is_ts_assertion {
@@ -323,7 +323,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // to type annotation) or a runtime call (must keep in expr).
                     if let JsExpr::Cast { expr, ty, kind } = init {
                         let is_ts_assertion = match kind {
-                            CastKind::AsType => !matches!(ty, Type::Struct(_) | Type::Enum(_)),
+                            CastKind::NullableCoerce => !matches!(ty, Type::Struct(_) | Type::Enum(_)),
                             CastKind::Coerce => matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic),
                         };
                         if is_ts_assertion {
@@ -737,8 +737,8 @@ fn print_expr(expr: &JsExpr) -> String {
 
         JsExpr::Cast { expr: inner, ty, kind } => {
             match (kind, ty) {
-                // AsType + Struct/Enum → asType(x, Foo) (runtime null-on-failure).
-                (CastKind::AsType, Type::Struct(name) | Type::Enum(name)) => {
+                // NullableCoerce + Struct/Enum → asType(x, Foo) (runtime null-on-failure).
+                (CastKind::NullableCoerce, Type::Struct(name) | Type::Enum(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
                     format!("asType({}, {})", print_expr(inner), sanitize_ident(short))
                 }
@@ -769,17 +769,17 @@ fn print_expr(expr: &JsExpr) -> String {
                 }
                 // Coerce + Dynamic/other → passthrough (no-op).
                 (CastKind::Coerce, _) => print_expr(inner),
-                // AsType + Dynamic/other → passthrough (no-op).
-                (CastKind::AsType, Type::Dynamic) => print_expr(inner),
-                // AsType + ClassRef → widen to `any`. GML object class names (OBJT)
+                // NullableCoerce + Dynamic/other → passthrough (no-op).
+                (CastKind::NullableCoerce, Type::Dynamic) => print_expr(inner),
+                // NullableCoerce + ClassRef → widen to `any`. GML object class names (OBJT)
                 // are integer indices at runtime; `as any` allows usage in numeric /
                 // arithmetic contexts while still passing the class constructor at
                 // runtime (e.g. for `instanceof` and `instance_create_*`).
-                (CastKind::AsType, Type::ClassRef(_)) => {
+                (CastKind::NullableCoerce, Type::ClassRef(_)) => {
                     format!("{} as any", print_expr_operand(inner))
                 }
-                // AsType + Primitive → TS type assertion.
-                (CastKind::AsType, _) => {
+                // NullableCoerce + Primitive → TS type assertion.
+                (CastKind::NullableCoerce, _) => {
                     format!("{} as {}", print_expr_operand(inner), ts_type(ty))
                 }
             }
@@ -956,12 +956,12 @@ fn needs_parens(expr: &JsExpr) -> bool {
         // Function-call forms (asType, Number, int, etc.) don't need parens.
         // Only `x as T` forms need them.
         JsExpr::Cast { ty, kind, .. } => match (kind, ty) {
-            (CastKind::AsType, Type::Struct(_) | Type::Enum(_)) => false,
+            (CastKind::NullableCoerce, Type::Struct(_) | Type::Enum(_)) => false,
             (CastKind::Coerce, Type::Struct(_) | Type::Enum(_)) => true,  // `x as Foo`
             (CastKind::Coerce, Type::Float(_) | Type::Int(32) | Type::UInt(32) | Type::String | Type::Bool) => false,
             (CastKind::Coerce, _) => false,  // passthrough
-            (CastKind::AsType, Type::Dynamic) => false,  // passthrough
-            (CastKind::AsType, _) => true,  // `x as T`
+            (CastKind::NullableCoerce, Type::Dynamic) => false,  // passthrough
+            (CastKind::NullableCoerce, _) => true,  // `x as T`
         },
         // Negative numeric literals need parens to allow member access:
         //   (-4).length  not  -4.length  (TS1351: identifier after numeric literal)
