@@ -3585,7 +3585,7 @@ export class GameRuntime {
   }
 
   instance_exists(target: typeof GMLObject | GMLObject | null): boolean {
-    if (target === null || target === -4) return false;
+    if (target === null || (target as unknown) === -4) return false;
     if (typeof target === 'function') {
       return this._getInstances(target as typeof GMLObject).length > 0;
     }
