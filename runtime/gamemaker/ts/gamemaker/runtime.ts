@@ -1996,7 +1996,9 @@ export class GameRuntime {
     }
     return -4;
   }
-  collision_circle(x: number, y: number, r: number, cls: typeof GMLObject | GMLObject | -1, _prec: boolean, notme: boolean): any {
+  collision_circle(x: number, y: number, r: number, cls: typeof GMLObject | GMLObject | -1,
+    // TODO: prec=true should use pixel-precise sprite masks; currently always uses bounding box
+    _prec: boolean, notme: boolean): any {
     for (const inst of this._getCandidates(cls, notme)) {
       const bb = this._getBBox(inst);
       if (bb && this._bboxOverlapsCircle(bb, x, y, r)) return inst;

@@ -68,6 +68,7 @@ export function createMathAPI(rt: GameRuntime) {
   }
 
   function irandom(max: number): number {
+    if (max < 0 || !isFinite(max)) return 0;
     const maxp1 = max + 1;
     let res: number;
     do {
@@ -77,6 +78,7 @@ export function createMathAPI(rt: GameRuntime) {
   }
 
   function irandom_range(min: number, max: number): number {
+    if (max < min || !isFinite(min) || !isFinite(max)) return 0;
     const deltap1 = max - min + 1;
     let res: number;
     do {
