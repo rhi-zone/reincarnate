@@ -49,6 +49,7 @@ Reincarnate is a legacy software lifting framework. It extracts and transforms a
 - **Preserve fidelity, including source bugs.** When emitted TypeScript reflects a bug in the source (e.g. `|` instead of `||`), that is correct behavior. Don't add special-case guards to "fix" source bugs. The only exception: if the error stems from imprecise type inference on our end, fix the inference.
 - **Verify semantics against the authoritative source.** Check what the original actually does. If no authoritative source is found, record the assumption in TODO.md.
 - **When something exists, it exists for a reason.** Before removing or bypassing a mechanism, read why it was added.
+- **Eliminate megamorphic dispatch at compile time.** When a runtime method dispatches on a string literal (e.g. `math("round", x)`), the backend rewrite pass must resolve it to a direct monomorphic call. A missing method is a compile-time error, not silent `undefined`. Existing namespaces: `Math` (built-in), `Collections`, `Colors`, `StringOps`.
 - **Games are instantiable — no singletons.** All mutable runtime state lives on a root runtime instance threaded through generated code — never in module-level `let` variables.
 
 ## Workflow
