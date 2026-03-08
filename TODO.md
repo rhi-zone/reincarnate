@@ -978,18 +978,20 @@ Root cause: the GMS1 translator never resolves plain integer pushes to named obj
 OBJT table provides the index → name mapping (same data used by `build_asset_ref_names` for GMS2.3+
 pushref), but GMS1 uses inline integers without the Break -11 signal.
 
-Fix direction: emit `_rt.classes[N]` (a `SystemCall` or direct `GlobalRef`) rather than the bare
-integer `N`. `_rt.classes` is already `(typeof GMLObject)[]` indexed by object index, populated at
-init from `config.classes`. So `_rt.classes[4]` gives the class constructor for object index 4.
+Fix direction: resolve the integer via the OBJT name table at translation time — emit a named
+`ClassRef("Enemy")` directly, exactly the same as GMS2.3+ pushref does via `build_asset_ref_names`.
+`asset_ref_names` already contains the full OBJT index → name map; `Push Int32(4)` in an
+object-index context just needs the same lookup. Fall back to `_rt.classes[N]` only for indices
+not found in the table (should be rare).
 
 The translation challenge is knowing at push-time that `Push Int32(4)` is an object index, not a
 plain number. Options:
-- Two-pass: scan call arguments against known signatures (instance_create arg2, instance_number arg0,
-  etc.) and rewrite integer constants to `_rt.classes[N]` lookups post-translation.
+- Two-pass: scan call arguments against known `function_signatures` (instance_create arg2,
+  instance_number arg0, etc.) and rewrite integer constants to named ClassRef post-translation.
 - Lookahead: at the push site, peek at how the value will be consumed (similar to how 2D array reads
   use `lookahead_next_af_is_pushaf`).
-- Post-IR pass: a GML-specific IR transform that rewrites `Int64(N)` → `_rt.classes[N]` when the
-  value flows into a `ClassRef`-typed parameter (using `CallSiteTypeFlow` observations).
+- Post-IR pass: a GML-specific IR transform that rewrites `Int64(N)` → `ClassRef("Name")` when the
+  value flows into a `ClassRef`-typed parameter (using `function_signatures` + `CallSiteTypeFlow`).
 
 Affected Bounty errors: ~15 TS2345 (`number` not assignable to `typeof GMLObject` / `new () => GMLObject`).
 Also affects `AdvReader.ts:18` where literal `4` is passed as `GMLObject | typeof GMLObject | null`.
