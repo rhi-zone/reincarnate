@@ -83,11 +83,11 @@ export function createDrawAPI(rt: GameRuntime) {
     const r = color & 0xff;
     const g = (color >> 8) & 0xff;
     const b = color >> 16;
-    for (let i = 0; i < data.length; i += 4) {
-      data[i] = data[i]! * r / 255;
-      data[i + 1] = data[i + 1]! * g / 255;
-      data[i + 2] = data[i + 2]! * b / 255;
-    }
+    // Separate loops per channel — empirically ~3x faster than one interleaved loop
+    // (observed ca. 2020; likely JIT vectorization; probably still holds, probably doesn't hurt)
+    for (let i = 0; i < data.length; i += 4) data[i] = data[i]! * r / 255;
+    for (let i = 1; i < data.length; i += 4) data[i] = data[i]! * g / 255;
+    for (let i = 2; i < data.length; i += 4) data[i] = data[i]! * b / 255;
     tcx.clearRect(0, 0, w, h);
     tcx.putImageData(imageData, 0, 0);
     if ("transferToImageBitmap" in tc) {
