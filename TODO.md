@@ -558,6 +558,27 @@ improve output fidelity:
 
 ## Flash Output Quality
 
+### Flash CC TypeScript Error Tracking
+
+Progress: 21,557 → 8,962 (2026-03-10: 4 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114).
+
+Remaining top issues (8,962 total):
+| Count | Code | Root cause |
+|-------|------|-----------|
+| 1,433 | TS2576 | `instance.STATIC_FIELD` — `this.consumables.SUCMILK` where consumables is ConsumableLib; needs IR-level or emitter-level rewrite when FieldRead target is typed as a class with that static field |
+| 740 | TS2345 | Mixed: 617 `null` passed as Function arg (pre-existing game-author bug) + 123 property-doesn't-exist |
+| 539 | TS2352 | 511 `null`-to-Function cast (pre-existing game-author bug) + 28 others |
+| 459 | TS7015 | String indexing on string/array typed values (bracket AS3 method calls like `name["toLowerCase"]()`) |
+| ~530 | TS7053 | Non-Proxy classes with string/QN_KEY indexing (Monster::outputText, Player::outputText etc.) |
+| 204+198+167+74 | TS2339 | Various property-not-exist: `{}` typed closures, `_shims` on CoC subclasses |
+| 146 | TS2322 | `null` assignment to Function fields |
+| 96 | TS2554 | Argument count mismatch (runtime class constructor arity e.g. Font takes 0, called with 1) |
+| 53 | TS2552 | `_undefined` not declared — runtime.ts missing `const _undefined = undefined` |
+
+Next fix opportunity: TS2576 `instance.STATIC_FIELD` — need a type-aware rewrite in emit.rs
+when `FieldRead(v, field)` where `value_types[v]` is a ClassRef and `field` is in that class's
+`static_fields`. Emit `ClassName.field` instead of `object.field`. This could eliminate ~1,200+ errors.
+
 ### Correctness
 
 - [ ] **Complex loop decompilation** — Some while-loop bodies have unreachable
@@ -714,6 +735,7 @@ Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 →
 → 112 (2026-03-10: added mouse_wheel_up/down, point_in_rectangle/circle/triangle to runtime.json function_signatures with boolean returns; GmlBoolArithCoerce now inserts Number() wraps; −5).
 → 112 (2026-03-10: GMS1 array scope fix — dim2 (second stack pop) drives self-vs-cross-object for ref_type=0x00; fixes Bounty `this.advantages is undefined` runtime error; Dead Estate unchanged).
 → 112 (2026-03-10: with-body self-object-index normalization fix — `!ctx.is_with_body` guard in push/pop normalizations; cross-object writes to outer object inside with-body now emit setOn instead of _self.field; fixes Bounty AdvReader/TimelineReader "undefined" screens; Dead Estate unchanged).
+→ 121 (2026-03-10: regression from linear coalescing collision fix `1167690` — renamed dominating block-param values to `v{idx}` causing new TS2304 "Cannot find name 'v36'"; needs investigation). Bounty: 11.
 
 
 CallSiteTypeWiden: ConstraintSolve narrows params via body constraints (e.g. `cmp.eq(i64_val, param)`)
