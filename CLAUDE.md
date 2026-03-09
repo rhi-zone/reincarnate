@@ -4,9 +4,11 @@ Behavioral rules for Claude Code in this repository.
 
 ## Overview
 
-Reincarnate is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents. Output is compiled TypeScript (or Rust) — not a bundled interpreter. See `docs/architecture.md` for design details.
+Reincarnate is a **decompiler that produces working, type-safe, maintainable code** from legacy game binaries (Flash, Director, VB6, HyperCard, RPG Maker, GameMaker, etc.). The emitted TypeScript (or Rust) is the artifact — it compiles, runs, and is as editable as any normal codebase. See `docs/architecture.md` and [ADR 003](docs/adr/003-project-identity-and-mod-surface.md) for design rationale.
 
 **Never suggest bundling an existing interpreter.** inkjs, Parchment, renpyweb, libqsp-WASM produce running games but not emitted code. Note them as "quick deploy" alternatives — not the goal.
+
+**The emitted TypeScript is the mod surface.** If someone wants to mod a lifted game, they edit the output. No IR mutation API is needed for this. Lift once, edit the TypeScript, forward-port via cherry-pick if the upstream game updates.
 
 ## Fundamental Laws
 

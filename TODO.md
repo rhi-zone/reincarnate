@@ -4,6 +4,37 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## IR-Based Modding Framework (Investigation)
+
+**Status: Investigated. Mod is logic-heavy — full IR mutation API required.**
+
+`~/git/bounty/` is the original game hand-decompiled to JS, then **further modified** as a mod. `git diff 98423b5 HEAD` (first commit → current) shows 2262 insertions / 596 deletions across 115 files.
+
+**Delta breakdown:**
+
+New classes (entirely new objects not in original):
+- `classes/overview_button.js` (318 lines) — new overview/character screen
+- `classes/overview_main.js`, `classes/overview_finished.js` — overview system
+- `classes/appearance_reader.js` (163 lines) — appearance screen
+- `classes/debug_main.js`, `classes/debug_button.js` — debug tools
+- `classes/name_block.js`, `classes/name_input.js` — custom name input
+- New rooms: `rooms/appearance.js`, `rooms/debug.js`
+
+New script functions:
+- `scripts/main6.js` (495 lines, new) — gangbang encounter system
+
+Modified existing classes:
+- `classes/stats.js` (+144 lines) — new stat fields added to `create()`
+- `classes/encounter.js` (+85 lines) — new encounter types
+- `scripts/main.js` (+102 changes), `main2.js`, `main3.js`, `main5.js` — mixed logic/text
+
+Data changes:
+- `data/0.png` — texture atlas updated (new sprites)
+- `data/sprites.js`, `data/textures.js` — new sprite/texture entries
+- `data/roomdatas.js` — new room placements
+
+**Conclusion:** Logic-heavy mod. But the correct mod surface under Reincarnate's design is **the emitted TypeScript** — lift once, edit the output, forward-port via cherry-pick if upstream updates. No IR mutation API needed. See [ADR 003](docs/adr/003-project-identity-and-mod-surface.md). **Closed.**
+
 ## Planned Engines (not yet started)
 
 Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
