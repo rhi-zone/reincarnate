@@ -2653,8 +2653,14 @@ fn translate_push_variable(
     // The GameMaker compiler sometimes uses the owning object's index (or a
     // parent's index) as the instance type for self-references instead of -1
     // (Own). Normalize here.
+    //
+    // Exception: inside a with-body closure, param(0) is the iteration target
+    // (_self), NOT the outer object. A cross-object access to the outer object
+    // (instance == outer_obj_idx) must NOT be normalized to Own here — it
+    // belongs to the outer instance and should go through the setOn/getOn path.
     let instance = if instance >= 0
         && ctx.has_self
+        && !ctx.is_with_body
         && (ctx.self_object_index == Some(instance as usize)
             || ctx.ancestor_indices.contains(&(instance as usize)))
     {
@@ -3158,8 +3164,12 @@ fn translate_pop(
         let value = pop(stack, inst)?;
 
         // Normalize self-referencing instance types (see translate_push_variable).
+        // Not applied inside with-body closures: param(0) there is the iteration
+        // target, not the outer object. Cross-object writes to the outer object
+        // must go through setOn, not set_field(param(0)).
         let instance = if *instance >= 0
             && ctx.has_self
+            && !ctx.is_with_body
             && (ctx.self_object_index == Some(*instance as usize)
                 || ctx.ancestor_indices.contains(&(*instance as usize)))
         {
