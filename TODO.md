@@ -681,6 +681,7 @@ Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 →
 → 125 (2026-03-10: GmlBoolArithCoerce pass — Cast(Bool→Float) before bool arithmetic operands → Number(expr); −15).
 → 117 (2026-03-10: GmlBoolArithCoerce Fix A (Bool-returning callee in arithmetic) + Fix C (Br/BrIf bool→numeric block-param args) + IntToBoolPromotion ordered before coerce pass; −8).
 → 112 (2026-03-10: added mouse_wheel_up/down, point_in_rectangle/circle/triangle to runtime.json function_signatures with boolean returns; GmlBoolArithCoerce now inserts Number() wraps; −5).
+→ 112 (2026-03-10: GMS1 array scope fix — dim2 (second stack pop) drives self-vs-cross-object for ref_type=0x00; fixes Bounty `this.advantages is undefined` runtime error; Dead Estate unchanged).
 
 CallSiteTypeWiden: ConstraintSolve narrows params via body constraints (e.g. `cmp.eq(i64_val, param)`)
 but callers may pass incompatible types (ClassRef vs Int). The widening pass detects these conflicts
