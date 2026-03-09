@@ -508,16 +508,15 @@ export class GameRuntime {
   Sprites: Record<string, number> = {};
 
   constructor() {
-    // Bind core methods for destructuring
-    this.instance_create = this.instance_create.bind(this);
-    this.instance_destroy = this.instance_destroy.bind(this);
-    this.instance_exists = this.instance_exists.bind(this);
-    this.instance_number = this.instance_number.bind(this);
-    this.room_goto = this.room_goto.bind(this);
-    this.room_goto_next = this.room_goto_next.bind(this);
-    this.room_goto_previous = this.room_goto_previous.bind(this);
-    this.room_restart = this.room_restart.bind(this);
-    this.game_restart = this.game_restart.bind(this);
+    // Bind all prototype methods so they work when destructured off _rt.
+    // Game code does `const { randomize, draw_sprite, ... } = _rt` and calls
+    // them without a receiver — auto-binding ensures `this` is always correct.
+    const proto = Object.getPrototypeOf(this);
+    for (const key of Object.getOwnPropertyNames(proto)) {
+      if (key !== 'constructor' && typeof (this as any)[key] === 'function') {
+        (this as any)[key] = (this as any)[key].bind(this);
+      }
+    }
   }
 
   // ---- Draw API helpers ----
