@@ -248,13 +248,29 @@ fn print_params(
                 .unwrap_or_default();
             // When infer_dynamic is set and the type is Dynamic, omit `: any` so
             // TypeScript can contextually infer the type from the call site.
+            // When a non-scalar parameter (Struct, Array, etc.) has a numeric literal
+            // default (the GML missing-arg sentinel 0.0), widen the annotation to `any`
+            // — type inference narrowed the param from callers, but the variadic sentinel
+            // means the param can also be a number, making the narrowed type too narrow.
+            let has_numeric_default = defaults
+                .get(i)
+                .and_then(|d| d.as_ref())
+                .map(|c| matches!(c, Constant::Float(_) | Constant::Int(_) | Constant::UInt(_)))
+                .unwrap_or(false);
+            let effective_ty = if has_numeric_default
+                && !matches!(ty, Type::Bool | Type::Int(_) | Type::UInt(_) | Type::Float(_) | Type::String | Type::Dynamic)
+            {
+                &Type::Dynamic
+            } else {
+                ty
+            };
             if infer_dynamic && matches!(ty, Type::Dynamic) {
                 format!("{prefix}{}{default_suffix}", sanitize_ident(name))
             } else {
                 format!(
                     "{prefix}{}: {}{default_suffix}",
                     sanitize_ident(name),
-                    ts_type(ty)
+                    ts_type(effective_ty)
                 )
             }
         })

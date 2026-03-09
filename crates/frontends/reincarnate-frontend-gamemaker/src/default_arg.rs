@@ -127,14 +127,29 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
                 }
             }
         }
-        // Use the narrowed type from value_types (set by type inference) rather
-        // than sig.params (which stays as the original Dynamic).
-        let ty = func.blocks[func.entry]
+        // Use the narrowed type from value_types (set by type inference) for scalar types
+        // (Bool/Int/UInt/Float/String) so their defaults are type-appropriate (false, 0, "").
+        // For non-scalar types (Struct, Array, Dynamic, etc.), fall back to the GML missing-arg
+        // sentinel (0.0 / Float(0.0)).  A Struct-typed parameter that accepts the 0.0 sentinel
+        // is effectively `any` at the call site — using the narrowed type would produce
+        // `argument0: GMLObject = 0.0` which TypeScript rejects.
+        let narrowed = func.blocks[func.entry]
             .params
             .get(i)
             .map(|p| &func.value_types[p.value])
             .unwrap_or(&func.sig.params[i]);
+        let is_scalar = matches!(narrowed, Type::Bool | Type::Int(_) | Type::UInt(_) | Type::Float(_) | Type::String);
+        let ty = if is_scalar { narrowed } else { &Type::Dynamic };
         func.sig.defaults[i] = Some(zero_for_type(ty));
+        // Widen the param's value_type back to Dynamic for non-scalar types so the
+        // TypeScript annotation (`any = 0.0`) is consistent with the variadic sentinel.
+        // The narrowed type (e.g. GMLObject) is correct for callers that DO pass a value;
+        // the variadic sentinel 0.0 means the type annotation must accommodate both.
+        if !is_scalar {
+            if let Some(pv) = param_value {
+                func.value_types[pv] = Type::Dynamic;
+            }
+        }
         changed = true;
     }
     changed
