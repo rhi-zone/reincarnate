@@ -31,6 +31,9 @@ pub struct BackendInput {
     pub debug: DebugConfig,
     /// Persistence configuration from project manifest.
     pub persistence: Option<PersistenceConfig>,
+    /// Favicon filename (relative to output dir), e.g. `"favicon.png"`.
+    /// When `Some`, the scaffold emits `<link rel="icon" href="./<name>">` in `index.html`.
+    pub favicon: Option<String>,
 }
 
 /// Backend trait — emits target code from IR.

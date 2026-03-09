@@ -12,11 +12,11 @@ use reincarnate_core::project::{AssetCatalog, AssetKind, PersistenceConfig, Runt
 use crate::emit::sanitize_ident;
 
 /// Write all scaffold files into `output_dir`.
-pub fn emit_scaffold(modules: &[Module], output_dir: &Path, runtime_config: Option<&RuntimeConfig>, assets: &AssetCatalog, persistence: Option<&PersistenceConfig>) -> Result<(), CoreError> {
+pub fn emit_scaffold(modules: &[Module], output_dir: &Path, runtime_config: Option<&RuntimeConfig>, assets: &AssetCatalog, persistence: Option<&PersistenceConfig>, favicon: Option<&str>) -> Result<(), CoreError> {
     let html = if is_twine(modules) {
-        generate_twine_index_html(modules, assets)
+        generate_twine_index_html(modules, assets, favicon)
     } else {
-        generate_index_html(modules)
+        generate_index_html(modules, favicon)
     };
     fs::write(output_dir.join("index.html"), html)?;
     fs::write(output_dir.join("tsconfig.json"), TSCONFIG)?;
@@ -30,11 +30,15 @@ fn is_twine(modules: &[Module]) -> bool {
     modules.iter().any(|m| !m.passage_names.is_empty())
 }
 
-fn generate_index_html(modules: &[Module]) -> String {
+fn generate_index_html(modules: &[Module], favicon: Option<&str>) -> String {
     let title = modules
         .first()
         .map(|m| m.name.as_str())
         .unwrap_or("Reincarnate App");
+
+    let favicon_link = favicon
+        .map(|f| format!("  <link rel=\"icon\" href=\"./{f}\">\n"))
+        .unwrap_or_default();
 
     format!(
         r#"<!DOCTYPE html>
@@ -43,7 +47,7 @@ fn generate_index_html(modules: &[Module]) -> String {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title}</title>
-  <style>
+{favicon_link}  <style>
     body {{
       margin: 0;
       background: #000;
@@ -66,7 +70,7 @@ fn generate_index_html(modules: &[Module]) -> String {
     )
 }
 
-fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog) -> String {
+fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog, favicon: Option<&str>) -> String {
     let title = modules
         .first()
         .map(|m| m.name.as_str())
@@ -80,6 +84,9 @@ fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog) -> Strin
 
     // Collect stylesheet asset paths for <link> tags
     let mut style_links = String::new();
+    if let Some(f) = favicon {
+        let _ = writeln!(style_links, "  <link rel=\"icon\" href=\"./{f}\">");
+    }
     for asset in &assets.assets {
         if asset.kind == AssetKind::Stylesheet && !asset.data.is_empty() {
             let path = asset.path.display();
@@ -932,9 +939,19 @@ mod tests {
         let mb = ModuleBuilder::new("my_game");
         let module = mb.build();
 
-        let html = generate_index_html(&[module]);
+        let html = generate_index_html(&[module], None);
         assert!(html.contains("reincarnate-canvas"));
         assert!(html.contains("<title>my_game</title>"));
         assert!(html.contains("dist/bundle.js"));
+        assert!(!html.contains("rel=\"icon\""));
+    }
+
+    #[test]
+    fn index_html_with_favicon() {
+        let mb = ModuleBuilder::new("my_game");
+        let module = mb.build();
+
+        let html = generate_index_html(&[module], Some("favicon.png"));
+        assert!(html.contains("<link rel=\"icon\" href=\"./favicon.png\">"));
     }
 }

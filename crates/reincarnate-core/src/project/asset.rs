@@ -13,6 +13,8 @@ pub enum AssetKind {
     Data,
     Shader,
     Stylesheet,
+    /// Game icon, used as the browser favicon.
+    Icon,
     Other(String),
 }
 

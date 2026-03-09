@@ -139,6 +139,11 @@ pub struct ProjectManifest {
     /// Persistence configuration (save/load/autosave behavior).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persistence: Option<PersistenceConfig>,
+    /// Path to a game icon file (relative to the manifest), used as the browser
+    /// favicon in the emitted `index.html`. The file is copied to the output
+    /// directory as `favicon.<ext>` and referenced via `<link rel="icon">`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// Frontend-specific options passed verbatim to the frontend.
     ///
     /// Known keys by engine:

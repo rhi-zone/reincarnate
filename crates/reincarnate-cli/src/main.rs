@@ -323,6 +323,11 @@ fn load_manifest(path: &Path) -> Result<ProjectManifest> {
                 asset.src = base.join(&asset.src);
             }
         }
+        if let Some(icon) = &manifest.icon {
+            if std::path::Path::new(icon).is_relative() {
+                manifest.icon = Some(base.join(icon).to_string_lossy().into_owned());
+            }
+        }
     }
 
     Ok(manifest)
@@ -572,6 +577,27 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
             bail!("no backend available for {:?}", target.backend);
         };
 
+        // Copy icon to output dir and compute the favicon filename.
+        let favicon = if let Some(icon_path) = &manifest.icon {
+            let icon_src = std::path::Path::new(icon_path);
+            if icon_src.exists() {
+                let ext = icon_src.extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("png");
+                let favicon_name = format!("favicon.{ext}");
+                fs::create_dir_all(&target.output_dir)?;
+                fs::copy(icon_src, target.output_dir.join(&favicon_name))
+                    .with_context(|| format!("failed to copy icon: {}", icon_src.display()))?;
+                eprintln!("[emit] copied icon {} -> {}", icon_src.display(), favicon_name);
+                Some(favicon_name)
+            } else {
+                eprintln!("[warn] icon not found, skipping: {icon_path}");
+                None
+            }
+        } else {
+            None
+        };
+
         let input = BackendInput {
             modules: modules.clone(),
             assets: output.assets.clone(),
@@ -580,6 +606,7 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
             runtime: resolve_runtime(&manifest.engine, &target.backend, runtime_variant),
             debug: debug.clone(),
             persistence: manifest.persistence.clone(),
+            favicon,
         };
         eprintln!("[emit] emitting to {}...", target.output_dir.display());
         backend.emit(input).map_err(|e| anyhow::anyhow!("{e}"))?;

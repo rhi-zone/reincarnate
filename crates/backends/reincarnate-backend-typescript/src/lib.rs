@@ -33,7 +33,7 @@ impl Backend for TypeScriptBackend {
             emit::emit_module(module, &input.output_dir, &input.lowering_config, runtime_config, &input.debug)?;
         }
 
-        scaffold::emit_scaffold(&input.modules, &input.output_dir, runtime_config, &input.assets, input.persistence.as_ref())?;
+        scaffold::emit_scaffold(&input.modules, &input.output_dir, runtime_config, &input.assets, input.persistence.as_ref(), input.favicon.as_deref())?;
 
         // Write extracted assets to disk.
         for asset in &input.assets.assets {
