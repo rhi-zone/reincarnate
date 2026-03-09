@@ -248,22 +248,32 @@ fn print_params(
                 .unwrap_or_default();
             // When infer_dynamic is set and the type is Dynamic, omit `: any` so
             // TypeScript can contextually infer the type from the call site.
-            // When a non-scalar parameter (Struct, Array, etc.) has a numeric literal
-            // default (the GML missing-arg sentinel 0.0), widen the annotation to `any`
-            // — type inference narrowed the param from callers, but the variadic sentinel
-            // means the param can also be a number, making the narrowed type too narrow.
-            let has_numeric_default = defaults
+            // When the default constant's TypeScript type is incompatible with the declared
+            // param type, widen the annotation to `any`.  This arises when type inference
+            // narrows a param (e.g. to `number` from callers) but the actual default is a
+            // different type (e.g. `false` for a bool default, or `0.0` for GML's missing-arg
+            // sentinel on a GMLObject-typed param).
+            let default_mismatches_type = defaults
                 .get(i)
                 .and_then(|d| d.as_ref())
-                .map(|c| matches!(c, Constant::Float(_) | Constant::Int(_) | Constant::UInt(_)))
+                .map(|c| {
+                    !matches!(
+                        (c, ty),
+                        // Bool default is compatible with Bool type
+                        (Constant::Bool(_), Type::Bool)
+                        // Numeric default is compatible with numeric types
+                        | (Constant::Float(_) | Constant::Int(_) | Constant::UInt(_),
+                           Type::Int(_) | Type::UInt(_) | Type::Float(_))
+                        // String default is compatible with String type
+                        | (Constant::String(_), Type::String)
+                        // Null is compatible with Option or Dynamic
+                        | (Constant::Null, Type::Option(_) | Type::Dynamic)
+                        // Any default is compatible with Dynamic
+                        | (_, Type::Dynamic)
+                    )
+                })
                 .unwrap_or(false);
-            let effective_ty = if has_numeric_default
-                && !matches!(ty, Type::Bool | Type::Int(_) | Type::UInt(_) | Type::Float(_) | Type::String | Type::Dynamic)
-            {
-                &Type::Dynamic
-            } else {
-                ty
-            };
+            let effective_ty = if default_mismatches_type { &Type::Dynamic } else { ty };
             if infer_dynamic && matches!(ty, Type::Dynamic) {
                 format!("{prefix}{}{default_suffix}", sanitize_ident(name))
             } else {
