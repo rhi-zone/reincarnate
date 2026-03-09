@@ -6,59 +6,48 @@ Behavioral rules for Claude Code in this repository.
 
 Reincarnate is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents. Output is compiled TypeScript (or Rust) — not a bundled interpreter. See `docs/architecture.md` for design details.
 
-**The IR is the sole channel between frontends and backends.** Everything a backend needs to produce correct output — types, constants, class registries, asset tables, control flow — must be in the IR. Side channels (metadata fields on `Module`, raw source blobs in `AssetCatalog`, engine-specific callbacks) mean the IR is incomplete. Extend the IR; don't route around it.
-
-**Corollary: frontends never produce target-language output.** A frontend that writes TypeScript or Rust source (even as a "data file") has violated the pipeline. `AssetCatalog` is for binary assets only — textures, audio. If it can be expressed as IR, it must be.
-
-**Corollary: backends are engine-agnostic.** If a backend must know what a "GML object" or "DataWin OBJT index" is to produce correct output, the IR isn't carrying enough information. The backend sees typed IR — functions, types, constants — never engine-specific constructs. Engine-specific knowledge stays in the frontend that produced the IR.
-
-**Corollary: if a backend needs data that isn't in the IR, extend the IR.** Don't add `module.object_names`, `module.sprite_names`, or similar metadata fields as a shortcut. The IR `Constant` enum lacking `Array`/`Map` variants is an IR incompleteness bug, not a reason to bypass the pipeline.
-
-**Corollary: type inference belongs in the IR, not in a backend.** Inference happens in the frontend, IR transform passes, or a dedicated pass — never inside the TypeScript printer. `FunctionSig`/`Type` in the IR is the source of truth. Backends read from it; they don't create it.
-
 **Never suggest bundling an existing interpreter.** inkjs, Parchment, renpyweb, libqsp-WASM produce running games but not emitted code. Note them as "quick deploy" alternatives — not the goal.
+
+## Fundamental Laws
+
+These are invariant. When a violation appears, adjust the law — don't add a corollary.
+
+**1. Pipeline Stage Isolation.** The IR is the only channel between pipeline stages. Everything a backend needs — types, constants, class registries, control flow — must be in the IR. Side channels (metadata fields, raw source blobs in `AssetCatalog`, engine-specific callbacks) mean the IR is incomplete. Extend the IR; don't route around it.
+
+**2. Engine Specificity at Boundaries.** Engine-specific knowledge belongs only in the stage that interfaces with that engine. Frontends know the source engine. Backends know the target language. Core (IR, transforms) knows neither. If core contains logic that only one engine needs, that logic is in the wrong place.
+
+**3. Behavioral Equivalence.** Emitted code produces identical observable output for any input. This includes preserving source-language bugs — if GML uses `|` where `||` was intended, the emitted code uses `|`. Never add special-case guards to "fix" source bugs. The only exception: if the fidelity gap stems from our type inference being wrong, fix the inference.
+
+**4. Honest Representation.** IR types reflect source-language semantics, not VM storage format. A GML boolean is `Bool`, not `Float`. A GML object is its class type, not a numeric ID. Source-level semantic violations (wrong operator, wrong type) surface as target-language type errors — that is correct behavior. When a type error appears in emitted code, ask *why is the type wrong?* — the answer is one of: (a) game-author bug, leave it; (b) our inference is wrong, fix the inference; (c) the emitter reads a stale type (use `value_types[v]`), fix it. Never suppress any of these with a coercion or by widening the IR type.
+
+**5. Instantiability.** All mutable runtime state lives on root runtime instances threaded through generated code. No module-level mutable variables. Multiple game instances must coexist on one page.
 
 ## Core Rule
 
-**Note things down immediately — before writing code, not after:**
+**Document before acting:**
 - Bugs/issues → fix or add to TODO.md
 - Design decisions → docs/ or code comments
 - Future work → TODO.md
 - Key insights → this file
 
-**Triggers:** User corrects you, 2+ failed attempts, "aha" moment, framework quirk discovered → document **before** proceeding. Never describe a bug in conversation and move on — write it to TODO.md first.
-
-**Conversation is not memory.** Anything said in conversation evaporates at the end of the session. If a statement implies future behavior change, it MUST be written to CLAUDE.md or a memory file immediately. A statement like "I won't do X again" made only in conversation is a lie by omission.
+**Conversation is not memory.** If a statement implies future behavior change, write it to CLAUDE.md or a memory file immediately. A statement like "I won't do X again" made only in conversation evaporates at session end.
 
 **Every observed problem goes to TODO.md. No exceptions.** Code comments, commit messages, and conversation are not tracked items. If you write a `// TODO` in source code, open TODO.md next.
 
-**Something unexpected is a signal, not noise.** Surprising results are almost always early bug evidence. Investigate before proceeding.
-
-**Any correction or realization means update CLAUDE.md now.** Ask: what rule would have prevented this? Write it before proceeding. A correction without a new rule will repeat. If corrected twice on the same topic, write a broader principle covering the entire class.
+**Any correction means update CLAUDE.md now.** Ask: what rule would have prevented this? A correction without a rule change will repeat. If corrected twice on the same topic, write a broader principle covering the entire class.
 
 **Do the work properly.** When asked to analyze X, actually read X — don't synthesize from conversation.
 
-**Investigation findings go to TODO.md before continuing.** Root causes, affected counts, code locations, fix strategies — write them before the next step.
-
 ## Behavioral Patterns
 
-- **Question scope early:** Before implementing, ask whether it belongs in this crate/module.
-- **Check consistency:** Look at how similar things are done elsewhere in the codebase.
-- **Implement fully.** Test projects are examples, not the spec — fix the entire class, not just the case that blew up. In a multi-stage pipeline, grep all stages before closing a task. Every API method, even ones no test game uses, belongs in the runtime.
-- **Verify before stating:** Don't assert API behavior or codebase facts without checking.
-- **Write regression tests for reproducible compiler bugs.** Tests must assert correct externally-observable behavior — not mirror the implementation. If writing the correct assertion causes it to fail, mark it `#[ignore = "known bug: ..."]` and add to TODO.md; never adjust the assertion to match broken behavior.
-- **Treat special-casing as a smell:** A fix that adds a narrow guard often means the pass's core logic is wrong. Fix the assumption, not the symptom. Use `git blame` to check whether special-case guards have accumulated — that pattern indicates a deeper design gap.
-- **A type error in emitted code is a diagnostic, not a prompt to coerce.** When emitted code has a type mismatch (TS2322, TS2345, TS2554, etc.), ask *why is the type wrong?* The error may be: (a) a correct diagnostic of a game-author bug — leave it; (b) a sign our type inference is wrong — fix the inference; (c) the emitter using a stale type — fix it to read `value_types`. Never suppress (a) with a coercion, never widen a runtime API signature to suppress (b), and never add `...args: any[]` to suppress (c). Coercions that paper over wrong IR types hide bugs and compound over time.
-- **`value_types[v]` is the authoritative post-transform type; `BlockParam.ty` / `param.ty` may be stale.** The emitter's `collect_block_param_decls` must use `value_types[param.value]`, not `param.ty`.
-- **Frontend/backend specific logic never belongs in `reincarnate-core`.** This includes language-specific coercions, target-specific type mappings, and engine-specific idioms. Before adding any logic to core, ask: "which language/engine requires this?" If specific, it belongs in that frontend/backend.
+- **Implement fully.** Test projects are examples, not the spec — fix the entire class, not just the case that blew up. In a multi-stage pipeline, check all stages before closing a task. Every API method, even ones no test game uses, belongs in the runtime.
+- **Verify before stating.** Don't assert API behavior or codebase facts without checking.
+- **Write regression tests for reproducible compiler bugs.** Tests must assert correct externally-observable behavior — not mirror the implementation. If writing the correct assertion fails, mark `#[ignore = "known bug: ..."]` and add to TODO.md; never adjust the assertion to match broken behavior.
+- **Treat special-casing as a smell.** A fix that adds a narrow guard often means the pass's core logic is wrong. Fix the assumption, not the symptom. Use `git blame` to check for accumulated guards — that pattern indicates a design gap.
+- **Stubs must throw, not silently fail.** Implement the function or `throw Error("name: not yet implemented")` + add a TODO.md entry. Silent returns (`0`, `""`, `false`, `null`, `{}`) are always wrong.
 - **Don't hand-roll what a library does.** JS identifier validity → `unicode_ident::is_xid_start`/`is_xid_continue` (plus `$`); JS string escaping → `serde_json::to_string`.
-- **Correctness is non-negotiable — 100%, always.** Never defend a shortcut with "our inputs are ASCII-only" or "this won't come up in practice."
-- **Never optimize for fewer errors.** Never weaken types (`any`, optional params, wider unions) to silence errors. `any` means inference failed — find the missing information.
-- **Preserve fidelity, including source bugs.** When emitted TypeScript reflects a bug in the source (e.g. `|` instead of `||`), that is correct behavior. Don't add special-case guards to "fix" source bugs. The only exception: if the error stems from imprecise type inference on our end, fix the inference.
 - **Verify semantics against the authoritative source.** Check what the original actually does. If no authoritative source is found, record the assumption in TODO.md.
 - **When something exists, it exists for a reason.** Before removing or bypassing a mechanism, read why it was added.
-- **Eliminate megamorphic dispatch at compile time.** When a runtime method dispatches on a string literal (e.g. `math("round", x)`), the backend rewrite pass must resolve it to a direct monomorphic call. A missing method is a compile-time error, not silent `undefined`.
-- **Games are instantiable — no singletons.** All mutable runtime state lives on a root runtime instance threaded through generated code — never in module-level `let` variables.
 
 ## Workflow
 
@@ -91,10 +80,35 @@ Conventional commits: `type(scope): message`. Types: `feat`, `fix`, `refactor`, 
 Do not:
 - Announce actions ("I will now...") — just do them
 - Add to the monolith — split by domain into sub-crates
-- **Stubs must throw, not silently fail.** Use `throw Error("name: not yet implemented")` + add a TODO.md entry. Silent returns (`0`, `""`, `false`, `null`, `{}`) are always wrong.
 - Use path dependencies in Cargo.toml — causes clippy to stash changes across repos
 - Use `--no-verify` — fix the issue or fix the hook
-- Use interactive git commands (`git rebase -i`, `git add -i`, `git add -p`) — they hang forever. Stage files by name: `git add <file1> <file2>`.
-- Use module-level mutable state — see "Games are instantiable"
+- Use interactive git commands (`git rebase -i`, `git add -i`, `git add -p`) — they hang waiting for stdin. Stage files by name: `git add <file1> <file2>`.
 - Use DOM data attributes as a state-passing mechanism
-- **Promote `|`/`&` to `||`/`&&` based on inferred types.** They're semantically different. TS2447/TS2363 from `boolean | boolean` are game-author errors — don't suppress them.
+
+## Crate Structure
+
+All crates use the `reincarnate-` prefix:
+- `reincarnate-core` — Core types and traits
+- `reincarnate-cli` — CLI binary (named `reincarnate`)
+- `reincarnate-frontend-flash` — Flash/SWF frontend (in `crates/frontends/`)
+- `reincarnate-frontend-gamemaker` — GML/GameMaker frontend (in `crates/frontends/`)
+- etc.
+
+## CLI Usage
+
+Run via cargo from the repo root:
+
+```bash
+# Full pipeline: extract → IR → transform → emit TypeScript
+cargo run -p reincarnate-cli -- emit --manifest ~/reincarnate/<engine>/<game>/reincarnate.json
+
+# Check TypeScript output (error counts + summary):
+cargo run -p reincarnate-cli -- check --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json
+
+# Print human-readable IR:
+cargo run -p reincarnate-cli -- print-ir <ir-json-file>
+```
+
+Debug flags on `emit`: `--dump-ir`, `--dump-ast`, `--dump-function <pattern>`, `--dump-ir-after <pass>`.
+
+Additional subcommands: `list-functions`, `disasm`, `stress`.
