@@ -1,4 +1,5 @@
 mod assets;
+mod bool_arith_coerce;
 mod classref_resolve;
 mod data;
 mod default_arg;
@@ -176,6 +177,7 @@ impl Frontend for GameMakerFrontend {
             runtime_variant: None,
             extra_passes: vec![
                 Box::new(default_arg::GmlDefaultArgRecovery),
+                Box::new(bool_arith_coerce::GmlBoolArithCoerce),
                 Box::new(reincarnate_core::transforms::IntToBoolPromotion),
                 Box::new(logical_op::GmlLogicalOpNormalize),
                 Box::new(instance_type_flow::GmlInstanceTypeFlow {
