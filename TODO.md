@@ -201,7 +201,7 @@ Measured after TypeInference + ConstraintSolve + Alloc refinement.
 
 These are recurring health-checks, not one-off fixes. Run them periodically and update the "last audited" date.
 
-### Module-level mutable state — last audited 2026-02-22
+### Module-level mutable state — last audited 2026-03-09
 
 State at module scope prevents two game instances from coexisting on the same page. Any `let` or lowercase-named singleton `const` at the top level of a `.ts` file is a smell.
 
@@ -213,18 +213,8 @@ grep -rn "^let \|^export let " runtime/ --include="*.ts" | grep -v node_modules
 grep -rn "^const [a-z].* = new " runtime/ --include="*.ts" | grep -v node_modules
 ```
 
-Known violations as of 2026-02-22 (see high-priority issues below for details):
-- `runtime/flash/ts/flash/display.ts` — `export let _dragTarget/Bounds/LockCenter/OffsetX/OffsetY`
-- `runtime/flash/ts/audio.ts` — `_audio` (AudioState singleton)
-- `runtime/flash/ts/input.ts` — `state` (InputState singleton)
-- `runtime/flash/ts/timing.ts` — `state` (TimingState singleton)
-- `runtime/flash/ts/renderer.ts` — `canvas`, `ctx` (hardcoded DOM element)
-- `runtime/twine/ts/platform/save.ts` — `state`, `backend`, `gotoFn`, `slotPrefix`, `autosaveEnabled`
-- `runtime/twine/ts/platform/_overlay.ts` — `dialog` (DialogManager singleton)
-- `runtime/twine/ts/platform/input.ts` — `input` (InputManager singleton)
-- `runtime/twine/ts/platform/layout.ts` — `layout` (LayoutManager singleton)
-- `runtime/twine/ts/platform/save-ui.ts` — `saveUI` (SaveUI singleton)
-- `runtime/twine/ts/platform/settings-ui.ts` — `settingsUI` (SettingsUI singleton)
+Known violations as of 2026-03-09:
+- `runtime/flash/ts/flash/memory.ts` — `heap`/typed array views at module scope (AVM2 Alchemy domain memory); fix requires moving to `FlashRuntime` + updating emitter to call `this._rt.memory.load_i8(...)` instead of free function imports
 
 ### GML runtime stubs — silent returns audit — last audited: (never)
 
@@ -278,26 +268,19 @@ The rule: never widen types to accommodate buggy game code — TypeScript catchi
 All mutable state in the Flash runtime lives at module scope, which means two Flash games cannot run on the same page and a second `createFlashRuntime()` call would stomp on the first. All of the following need to move onto the `FlashRuntime` instance (analogous to how `GameRuntime` was designed from the start).
 
 - [x] **`flash/display.ts` — exported drag state** (`_dragTarget`, `_dragBounds`, `_dragLockCenter`, `_dragOffsetX`, `_dragOffsetY`). Replaced with `_dragStateByStage: WeakMap<Stage, DragState | null>` — now keyed by Stage so each FlashRuntime has isolated drag state.
-- [ ] **`flash/display.ts` — `_displayState` singleton** (line ~1209). Single-threaded JS means two concurrent `constructRoot()` can't interleave, so this is safe in practice but still wrong in principle. Move to a WeakMap keyed by Stage or pass stage directly.
-- [ ] **`flash/display.ts` — `_timelineFactories` map** (`const _timelineFactories = new Map<string, () => DisplayObject>()` at module scope, line ~964). Keyed by string name — cross-game pollution if two Flash games share a class name. Move to `FlashRuntime`.
-- [ ] **`flash/text.ts` — `_textState` singleton** (`const _textState = new TextModuleState()` at module scope, line ~19). Move to `FlashRuntime`.
-- [ ] **`flash/deflate.ts` — `_deflateState` singleton** (`const _deflateState = new DeflateState()` at module scope, line ~114). Move to `FlashRuntime`.
-- [ ] **`flash/timing.ts` — `TimingState` singleton** — `state = new TimingState()` at module scope (line 9); `timing` object wraps it. Move to `FlashRuntime.timing` instance field; same pattern as `GameRuntime.onTick`.
-- [ ] **`flash/input.ts` — `InputState` singleton** — `state = new InputState()` at module scope (line 12); DOM event listeners registered unconditionally on import. Move to `FlashRuntime.input`; attach/detach listeners in `start()`/`stop()`.
-- [ ] **`flash/audio.ts` — `AudioState` singleton** — `_audio = new AudioState()` at module scope. Move to `FlashRuntime.audio`; `_ensureInit()` becomes part of `FlashRuntime.start()`.
-- [ ] **`flash/renderer.ts` — hardcoded canvas** — `canvas = document.getElementById("reincarnate-canvas")` at module scope (lines 1–2). Move to `FlashRuntime.renderer`; accept canvas element (or ID) as a constructor arg.
-- [ ] **`flash/memory.ts` — shared heap** — `heap = new ArrayBuffer(HEAP_SIZE)` and typed array views at module scope (lines 4–13). Unlikely to matter in practice (single game per page for Flash), but still wrong in principle. Move to `FlashRuntime`.
+- [x] **`flash/display.ts` — `_displayState` singleton** — fixed (2026-03-09)
+- [x] **`flash/display.ts` — `_timelineFactories` map** — fixed (2026-03-09)
+- [x] **`flash/text.ts` — `_textState` singleton** — fixed (2026-03-09)
+- [x] **`flash/deflate.ts` — `_deflateState` singleton** — fixed (2026-03-09)
+- [x] **`flash/timing.ts` — `TimingState` singleton** — fixed (2026-03-09)
+- [x] **`flash/input.ts` — `InputState` singleton** — fixed (2026-03-09)
+- [x] **`flash/audio.ts` — `AudioState` singleton** — fixed (2026-03-09)
+- [x] **`flash/renderer.ts` — hardcoded canvas** — fixed (2026-03-09)
+- [ ] **`flash/memory.ts` — shared heap** — `heap = new ArrayBuffer(HEAP_SIZE)` and typed array views at module scope (lines 4–13). Move heap + DataView to `FlashRuntime`; update emitter to emit memory ops as `_rt.memory.load_i8(...)` calls instead of free function imports.
 
 ### Twine platform: module-level singletons (multi-instance blocker)
 
-The Twine platform modules (`save`, `input`, `layout`, `save-ui`, `settings-ui`, `_overlay`) all follow the same pattern: define a class, instantiate it once at module scope, export methods that close over the singleton. They should export the class (or a factory) and let the runtime wire instances together — same as how GML's `GameRuntime` works.
-
-- [ ] **`platform/save.ts`** — five `let` declarations at module scope (`state`, `backend`, `gotoFn`, `slotPrefix`, `autosaveEnabled`). Export a `SaveManager` class; `SugarCubeRuntime`/`HarloweRuntime` constructs it.
-- [ ] **`platform/_overlay.ts`** — `dialog = new DialogManager()` singleton. Export the class.
-- [ ] **`platform/input.ts`** — `input = new InputManager()` singleton. Export the class.
-- [ ] **`platform/layout.ts`** — `layout = new LayoutManager()` singleton. Export the class.
-- [ ] **`platform/save-ui.ts`** — `saveUI = new SaveUI()` singleton. Export the class.
-- [ ] **`platform/settings-ui.ts`** — `settingsUI = new SettingsUI()` singleton. Export the class.
+- [x] All Twine platform singletons fixed (2026-03-09): `save.ts`, `_overlay.ts`, `input.ts`, `layout.ts`, `save-ui.ts`, `settings-ui.ts`
 
 ### `flash/utils.ts` — module-level class registries (multi-instance, emitter change required)
 
