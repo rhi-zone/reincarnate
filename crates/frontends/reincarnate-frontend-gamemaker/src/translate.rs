@@ -2047,7 +2047,16 @@ fn translate_instruction(
                 if func_name == "instance_destroy" && argc == 0 && ctx.has_self {
                     args.push(fb.param(0));
                 }
-                let result = fb.call(&func_name, &args, Type::Dynamic);
+                // @@NewGMLObject@@() creates an anonymous GML struct. In GMS2.3+, anonymous
+                // structs are GMLObject instances (no events, not a room instance, but the
+                // same base type). Giving it a concrete return type lets type inference produce
+                // proper unions (e.g. `GMLObject | boolean | number`) instead of Dynamic.
+                let ret_ty = if func_name == "@@NewGMLObject@@" {
+                    Type::Struct("GMLObject".to_string())
+                } else {
+                    Type::Dynamic
+                };
+                let result = fb.call(&func_name, &args, ret_ty);
                 gml_sizes.insert(result, 4); // Call returns Variable (16 bytes)
                 stack.push(result);
             }

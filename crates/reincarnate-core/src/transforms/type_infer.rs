@@ -713,6 +713,30 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
         }
     }
 
+    // Post-convergence widening: block params that still receive a Dynamic argument
+    // must themselves be Dynamic.  The main fixpoint loop above filters out Dynamic
+    // args to avoid premature widening during early iterations when most values are
+    // still unresolved (Dynamic).  After convergence, any remaining Dynamic arg is
+    // genuinely dynamic (e.g. a struct-constructor result, or a call whose return
+    // type can't be narrowed), so the block param must accommodate it.
+    {
+        let incoming = collect_branch_args(func);
+        for (block_id, block) in func.blocks.iter() {
+            for (i, param) in block.params.iter().enumerate() {
+                if let Some(args) = incoming.get(&(block_id, i)) {
+                    let has_persistent_dynamic =
+                        args.iter().any(|v| func.value_types[*v] == Type::Dynamic);
+                    if has_persistent_dynamic
+                        && func.value_types[param.value] != Type::Dynamic
+                    {
+                        func.value_types[param.value] = Type::Dynamic;
+                        any_changed = true;
+                    }
+                }
+            }
+        }
+    }
+
     // Sync BlockParam.ty fields with value_types.
     for block in func.blocks.keys().collect::<Vec<_>>() {
         let param_vals: Vec<(usize, Type)> = func.blocks[block]
@@ -1122,6 +1146,60 @@ mod tests {
         assert_eq!(func.value_types[merge_vals[0]], Type::Int(64));
         // BlockParam.ty should also be synced.
         assert_eq!(func.blocks[merge].params[0].ty, Type::Int(64));
+    }
+
+    /// A block param that receives a persistently-Dynamic argument must remain
+    /// Dynamic after convergence.  GML struct-constructor results (e.g.
+    /// `@@NewGMLObject@@`) stay `dyn` forever; a merge param that receives one
+    /// such value alongside concrete values must be widened to Dynamic.
+    #[test]
+    fn dynamic_input_widens_block_param_at_convergence() {
+        // Function: if (cond) { let x = <Dynamic call>; merge(x) }
+        //           else      { let y = 0 (i64);        merge(y) }
+        // The merge param starts Dynamic, gets tentatively narrowed toward Int(64)
+        // by the concrete branch, but must end as Dynamic because the other branch
+        // sends a genuinely-Dynamic value.
+        let sig = FunctionSig {
+            params: vec![Type::Bool],
+            return_ty: Type::Dynamic, ..Default::default() };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let cond = fb.param(0);
+
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Dynamic]);
+        let then_block = fb.create_block();
+        let else_block = fb.create_block();
+
+        fb.br_if(cond, then_block, &[], else_block, &[]);
+
+        fb.switch_to_block(then_block);
+        // A Dynamic value: entry param typed Dynamic.  TypeInference can't narrow it.
+        let dynamic_val = fb.param(0); // reuse cond (Bool) — but actually we need a Dynamic val.
+        // Use a system call whose return type is Dynamic (TypeInference can't narrow it).
+        let dyn_val = fb.system_call("Ext", "create", &[], Type::Dynamic);
+        fb.br(merge, &[dyn_val]);
+
+        fb.switch_to_block(else_block);
+        let zero = fb.const_int(0); // Int(64)
+        fb.br(merge, &[zero]);
+
+        fb.switch_to_block(merge);
+        fb.ret(Some(merge_vals[0]));
+
+        // Discard unused `dynamic_val`
+        let _ = dynamic_val;
+
+        let func = fb.build();
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let transform = TypeInference;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        // The merge param receives (Dynamic, Int(64)) — must stay Dynamic.
+        assert_eq!(func.value_types[merge_vals[0]], Type::Dynamic,
+            "block param receiving a genuinely-Dynamic arg must remain Dynamic");
     }
 
     /// Mixed types produce Union: branches sending different types → Union.

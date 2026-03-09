@@ -412,9 +412,15 @@ fn rewrite_expr(
                     *expr = JsExpr::ArrayInit(std::mem::take(args));
                     return;
                 }
-                // @@NewGMLObject@@() → {}
+                // @@NewGMLObject@@() → new GMLObject()
+                // Anonymous GML structs (GMS2.3+) are GMLObject instances — not room
+                // instances, but the same base type. `new GMLObject()` gives the correct
+                // TypeScript type and satisfies GMLObject | typeof GMLObject parameters.
                 "@@NewGMLObject@@" => {
-                    *expr = JsExpr::ObjectInit(vec![]);
+                    *expr = JsExpr::New {
+                        callee: Box::new(JsExpr::Var("GMLObject".into())),
+                        args: vec![],
+                    };
                     return;
                 }
                 // @@Global@@() → global

@@ -903,16 +903,40 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
 
         // Collect type imports for Struct-typed globals.
         let mut type_imports: BTreeSet<String> = BTreeSet::new();
+        // All struct/enum names used in globals (includes runtime types not in registry).
+        let mut all_struct_names: BTreeSet<String> = BTreeSet::new();
         for global in &module.globals {
             collect_global_type_imports(&global.ty, &registry, &mut type_imports);
+            collect_all_struct_names(&global.ty, &mut all_struct_names);
+        }
+        let mut any_import = false;
+        // Import runtime/preamble types (e.g. GMLObject) that are used as global types
+        // but are not emitted classes. _globals.ts is one level below the output root.
+        if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+            let preamble_needed: Vec<&str> = preamble
+                .names
+                .iter()
+                .filter(|n| all_struct_names.contains(n.as_str()))
+                .map(|n| n.as_str())
+                .collect();
+            if !preamble_needed.is_empty() {
+                let _ = writeln!(
+                    out,
+                    "import {{ {} }} from \"../runtime/{}\";",
+                    preamble_needed.join(", "),
+                    preamble.path,
+                );
+                any_import = true;
+            }
         }
         for short_name in &type_imports {
             if let Some(entry) = registry.classes.get(short_name) {
                 let rel = format!("./{}", entry.path_segments.join("/"));
                 let _ = writeln!(out, "import type {{ {short_name} }} from \"{rel}\";");
+                any_import = true;
             }
         }
-        if !type_imports.is_empty() {
+        if any_import {
             out.push('\n');
         }
 
@@ -1922,6 +1946,34 @@ fn collect_global_type_imports(ty: &Type, registry: &ClassRegistry, refs: &mut B
             collect_global_type_imports(&sig.return_ty, registry, refs);
             for p in &sig.params {
                 collect_global_type_imports(p, registry, refs);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Collect ALL struct/enum short names referenced by a type, regardless of registry membership.
+/// Used to detect runtime types (e.g. `GMLObject`) that are not in the emitted class registry.
+fn collect_all_struct_names(ty: &Type, refs: &mut BTreeSet<String>) {
+    match ty {
+        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            refs.insert(short.to_string());
+        }
+        Type::Array(inner) | Type::Option(inner) => collect_all_struct_names(inner, refs),
+        Type::Map(k, v) => {
+            collect_all_struct_names(k, refs);
+            collect_all_struct_names(v, refs);
+        }
+        Type::Tuple(elems) | Type::Union(elems) => {
+            for elem in elems {
+                collect_all_struct_names(elem, refs);
+            }
+        }
+        Type::Function(sig) => {
+            collect_all_struct_names(&sig.return_ty, refs);
+            for p in &sig.params {
+                collect_all_struct_names(p, refs);
             }
         }
         _ => {}
