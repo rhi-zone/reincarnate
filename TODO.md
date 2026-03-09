@@ -614,9 +614,11 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   pushac target, or (b) the TS printer detecting integer-as-collection in SetIndex and routing
   to a GameMaker.setIndex runtime call. Only 6 errors in Schism, low priority.
 
-### 7. Dead Estate remaining TS errors — 186 as of 2026-03-09 (post resolve_classref_args)
+### 7. Dead Estate remaining TS errors — 278 as of 2026-03-09 (post preamble-removal fixes)
 
 Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 → 2108 → 946 (cross-obj 2D read fix) → 883 (ClassRef + OBJT constructor type fix) → 596 (CallSiteTypeWiden: −284 TS2345) → 573 (BoolAnd/BoolOr IR ops) → 561 (BrIf cascade via reachability-aware const map) → 559 (fold_cast Bool→Bool + ends_with_terminal fall-through switch) → 472 (wrap ClassRef GlobalRef with `as any`) → 345 (also fix lazy-inline ClassRef path) → 335 (ClassRef→any in ts_type + GlobalRef always-inline) → 282 (CallSiteTypeWiden zero-caller: `_self: number` in closures fixed) → 307 (NorthPassage regression from Switch SE inline fix; 3 TS2304 fixed) → 285 (arith_val: Bool→Number coercion in arithmetic ops; 22 fixed) → 281 (runtime createCanvas/resizeCanvas stale calls fixed) → 248 (collect_block_param_decls reads value_types instead of BlockParam.ty; removed arith_val and all Bool-coercion hacks from core linearizer; TS2362 now correctly surfaces as intended diagnostics) → 222 (GmlLogicalOpNormalize: `else_target == merge_target` guard prevents if-then mis-identified as `||`; TS2322 38→6) → 183 (Uint8Array TS5.9 compat + steam/psn persistence string↔bytes + sprite_index sentinel + loadImage local def) → 176 (object_exists accepts number; z/mask_index in GMLObject; initialRoom template substitution) → 181 (reverted instance_exists(number): those errors are correct diagnostics of instance_place/instance_find returning number instead of GMLObject|null — fix belongs in type inference, not runtime signature) → 206 (2026-03-09 session: instance_type_flow Ne fix, record_depth min, runtime physics/particles/string/irandom fixes, NullableCoerce rename, GetField on Union; count increased due to newly-surfaced IR from br() arg mismatch warnings + record_depth changes) → 192 (2026-03-09: (as any) instanceof prevents TS never-narrowing in Wall class; scan_body_local_names uses live locals map fixing on-the-fly capture gap for TS2304) → 191 (2026-03-09: `(target as unknown) === -4` in instance_exists suppresses TS2367) → 186 (2026-03-09: CallSiteArityWiden pass — GML loose calling convention; 5 TS2554 eliminated) → 186 (2026-03-09: resolve_classref_args backend rewrite — GMS1 integer object indices → class names; 31 classref params in runtime.json; Bounty 48→13 TS errors. Fixed regression: parse_type_notation("classref") now maps to Dynamic instead of Struct("classref"), preventing `argument0: classref` TS type annotations in callee params).
+→ 6199 (af06ab3 preamble removal regression: `global`/`other`/`__SetStatic__` etc. no longer rewritten)
+→ 278 (2026-03-09: fix stateful call rewriting — sanitize_ident before stateful_names lookup fixes @@SetStatic@@/@@CopyStatic@@/etc.; Var("global")/Var("other") arms rewrite to _rt.global/_rt.other. New TS2345 +91 are CORRECT pipeline bug diagnostics: dynamic integer class indices reaching setInstanceField(GMLObject|typeof GMLObject), not regressions. Bounty: 13 TS errors unchanged).
 
 CallSiteTypeWiden: ConstraintSolve narrows params via body constraints (e.g. `cmp.eq(i64_val, param)`)
 but callers may pass incompatible types (ClassRef vs Int). The widening pass detects these conflicts
@@ -625,7 +627,7 @@ sig.params, because ConstraintSolve only updates entry.params[i].ty and value_ty
 
 | Code | Count | Root cause |
 |------|-------|------------|
-| TS2345 | 93 | Argument type mismatch — string/bool/null/struct/GMLObject passed as wrong type; game author duck-typing |
+| TS2345 | 184 | 93 pre-existing game-author type mismatches + 91 new CORRECT diagnostics (dynamic integer class indices reaching setInstanceField(GMLObject\|typeof GMLObject) — pipeline bug, not runtime bug) |
 | TS2322 | 39 | Type not assignable — bool→number (GML idiom), GMLObject→number, string→number, array→number |
 | TS2339 | 14 | Property doesn't exist — `length` on number (instancePlaceList3d wrong return type); `invulnerable` on intersection type |
 | TS2362 | 14 | Bool-typed operand in arithmetic — **intended diagnostic** (game author using bool in arithmetic) |
@@ -634,9 +636,14 @@ sig.params, because ConstraintSolve only updates entry.params[i].ty and value_ty
 | TS2554 | 0 | Fixed by CallSiteArityWiden pass (2026-03-09) |
 | TS2363 | 4 | Right side of arithmetic — Bool in operator context (intended diagnostic) |
 | TS2872 | 2 | Always truthy expression (emitter `!(!const)` pattern — pre-existing) |
-| TS2304 | 0 | Fixed: scan_body_local_names now captures on-the-fly locals from obfuscated games |
+| TS2304 | 0 | Fixed: scan_body_local_names; global/other/SetStatic/etc. rewritten to _rt.X (2026-03-09) |
 | TS2552 | 1 | Cannot find name `sarr` — SSA name leakage variant (pre-existing) |
-| TS7027 | 1 | Unreachable code — game-author bug (DiavolaEye::destroy infinite loop, pre-existing) |
+| TS7027 | 2 | Unreachable code — game-author bugs (pre-existing) |
+
+**New TS2345 +91 (dynamic integer class indices):** `setInstanceField` now correctly typed as
+`(GMLObject | typeof GMLObject, ...)`. Pipeline passes IR values with type `Int(64)` (class
+indices) instead of `Dynamic` to these arguments — type inference bug. Fix belongs in the pipeline
+(CallSiteTypeFlow or type inference), not in the runtime signature. These are CORRECT diagnostics.
 
 **TS2362 / TS2363 / TS2365 (Bool in arithmetic/operators):** These are **intended diagnostics**. GML game
 author is using boolean values in arithmetic/operator context. Do NOT suppress with coercions. If the
