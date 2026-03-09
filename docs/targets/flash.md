@@ -65,7 +65,7 @@ Remaining quality issues:
 
 ### Runtime coverage
 
-See **[API-COVERAGE-FLASH.md](../../API-COVERAGE-FLASH.md)** for full per-class/method tracking.
+See **[API-COVERAGE-FLASH.md](../API-COVERAGE-FLASH.md)** for full per-class/method tracking.
 
 High-level gaps:
 - `flash.display` — 3D types (Matrix3D, Vector3D, PerspectiveProjection), Stage3D pipeline
@@ -91,4 +91,4 @@ High-level gaps:
 - [AS3 API Reference (AIRSDK)](https://airsdk.dev/reference/actionscript/3.0/)
 - [SWF File Format Specification](https://www.adobe.com/content/dam/acom/en/devnet/pdf/swf-file-format-spec.pdf)
 - [Ruffle SWF parser](https://github.com/ruffle-rs/ruffle)
-- [API Coverage Tracker](../../API-COVERAGE-FLASH.md)
+- [API Coverage Tracker](../API-COVERAGE-FLASH.md)

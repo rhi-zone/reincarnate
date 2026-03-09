@@ -63,7 +63,7 @@ Key remaining issues:
 
 ### Runtime coverage
 
-See **[API-COVERAGE-GML.md](../../API-COVERAGE-GML.md)** for full per-function tracking.
+See **[API-COVERAGE-GML.md](../API-COVERAGE-GML.md)** for full per-function tracking.
 
 High-level gaps:
 
@@ -106,4 +106,4 @@ High-level gaps:
 
 - [GML Reference (GameMaker Manual)](https://manual.gamemaker.io/lts/en/GameMaker_Language/GML_Reference/GML_Reference.htm)
 - [UndertaleModTool](https://github.com/UndertaleMod/UndertaleModTool) — data.win editor and bytecode reference
-- [API Coverage Tracker](../../API-COVERAGE-GML.md)
+- [API Coverage Tracker](../API-COVERAGE-GML.md)

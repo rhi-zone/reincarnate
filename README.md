@@ -33,13 +33,11 @@ Reincarnate extracts and transforms applications from obsolete runtimes into mod
 
 ### Approach
 
-**Tier 1 (Native Patching)**: For binaries you can't fully lift — pointer relocation, font replacement, hex editing.
-
-**Tier 2 (Runtime Replacement)**: For engines you can shim — extract bytecode/script, decompile to IR, transform, and emit modern TypeScript with a replacement runtime.
+Reincarnate lifts legacy application logic by decompiling bytecode or scripts to an intermediate representation (IR), running transformation passes, then re-emitting the logic in a modern target language alongside a replacement runtime. The emitted code is compiled TypeScript (or Rust) — not an interpreter bundle. The original runtime is fully replaced.
 
 ## Architecture
 
-The pipeline: **Frontend** (extract + decompile) → **IR** (SSA-like, block arguments) → **Transform passes** → **Backend** (emit TypeScript).
+The pipeline: **Frontend** (extract + decompile) → **IR** (SSA-like, block arguments) → **Transform passes** → **Backend** (emit target code).
 
 ### Crates
 
