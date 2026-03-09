@@ -6,7 +6,15 @@ Behavioral rules for Claude Code in this repository.
 
 Reincarnate is a legacy software lifting framework. It extracts and transforms applications from obsolete runtimes (Flash, Director, VB6, HyperCard, RPG Maker, etc.) into modern web-based equivalents. Output is compiled TypeScript (or Rust) — not a bundled interpreter. See `docs/architecture.md` for design details.
 
-**Type inference belongs in the IR, not in a backend.** Inference happens in the frontend, IR transform passes, or a dedicated pass — never inside the TypeScript printer. `FunctionSig`/`Type` in the IR is the source of truth. Backends read from it; they don't create it.
+**The IR is the sole channel between frontends and backends.** Everything a backend needs to produce correct output — types, constants, class registries, asset tables, control flow — must be in the IR. Side channels (metadata fields on `Module`, raw source blobs in `AssetCatalog`, engine-specific callbacks) mean the IR is incomplete. Extend the IR; don't route around it.
+
+**Corollary: frontends never produce target-language output.** A frontend that writes TypeScript or Rust source (even as a "data file") has violated the pipeline. `AssetCatalog` is for binary assets only — textures, audio. If it can be expressed as IR, it must be.
+
+**Corollary: backends are engine-agnostic.** If a backend must know what a "GML object" or "DataWin OBJT index" is to produce correct output, the IR isn't carrying enough information. The backend sees typed IR — functions, types, constants — never engine-specific constructs. Engine-specific knowledge stays in the frontend that produced the IR.
+
+**Corollary: if a backend needs data that isn't in the IR, extend the IR.** Don't add `module.object_names`, `module.sprite_names`, or similar metadata fields as a shortcut. The IR `Constant` enum lacking `Array`/`Map` variants is an IR incompleteness bug, not a reason to bypass the pipeline.
+
+**Corollary: type inference belongs in the IR, not in a backend.** Inference happens in the frontend, IR transform passes, or a dedicated pass — never inside the TypeScript printer. `FunctionSig`/`Type` in the IR is the source of truth. Backends read from it; they don't create it.
 
 **Never suggest bundling an existing interpreter.** inkjs, Parchment, renpyweb, libqsp-WASM produce running games but not emitted code. Note them as "quick deploy" alternatives — not the goal.
 
