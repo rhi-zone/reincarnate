@@ -212,10 +212,7 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
             method,
             args,
         } => JsExpr::Call {
-            callee: Box::new(JsExpr::Field {
-                object: Box::new(lower_expr(receiver, ctx)),
-                field: method.clone(),
-            }),
+            callee: Box::new(lower_field(receiver, method, ctx)),
             args: lower_exprs(args, ctx),
         },
 
