@@ -477,6 +477,13 @@ pub(crate) struct ResolveCtx {
     pub alloc_inits: HashMap<ValueId, ValueId>,
     /// Store InstIds merged into their preceding Alloc.
     pub skip_stores: HashSet<InstId>,
+    /// Side-effecting values (count==1) defined in a nested scope (inside an
+    /// if/while branch) but used in an outer scope.  The SE-inline mechanism
+    /// would flush them into the branch's local stmts, putting the declaration
+    /// out of scope at the use site.  These must be emitted as a shared-name
+    /// Assign so `collect_block_param_decls` hoists a `let name!` to the
+    /// function scope.
+    pub cross_scope_defs: HashSet<ValueId>,
 }
 
 /// Classify all values in linearized IR for inlining decisions.
@@ -519,6 +526,11 @@ pub(crate) fn resolve(func: &Function, stmts: &[LinearStmt]) -> ResolveCtx {
     // Step 4: detect adjacent Alloc+Store patterns for merged init.
     let (alloc_inits, skip_stores) = find_alloc_store_merges(func, stmts);
 
+    // Step 5: detect side-effecting values that are defined in a nested scope
+    // (branch body) but used in an outer scope.  These need special treatment
+    // in emit_def to avoid flushing into the wrong scope.
+    let cross_scope_defs = compute_cross_scope_defs(func, stmts, &use_counts);
+
     ResolveCtx {
         use_counts,
         constant_inlines,
@@ -526,6 +538,7 @@ pub(crate) fn resolve(func: &Function, stmts: &[LinearStmt]) -> ResolveCtx {
         lazy_inlines,
         alloc_inits,
         skip_stores,
+        cross_scope_defs,
     }
 }
 
@@ -633,6 +646,136 @@ fn count_uses_in_stmts(
             LinearStmt::Break | LinearStmt::Continue | LinearStmt::LabeledBreak { .. } => {}
         }
     }
+}
+
+// -----------------------------------------------------------------------
+// Cross-scope def detection
+// -----------------------------------------------------------------------
+
+/// Populate def_depths (depth at which each value is defined) and
+/// min_use_depths (minimum depth at which each value is referenced) by
+/// recursively walking the LinearStmt tree.
+///
+/// `depth` conventions:
+/// - 0 = function-level (top-level `stmts` passed to `resolve`)
+/// - Increments by 1 when entering an If/While/Loop/Switch/etc. *body* via
+///   `emit_stmts_protected` in Phase 3.
+/// - While *header* stmts are processed via `emit_stmts_into` (no scope
+///   guard), so they stay at the same depth as the While node itself.
+fn collect_def_use_depths(
+    func: &Function,
+    stmts: &[LinearStmt],
+    depth: usize,
+    defs: &mut HashMap<ValueId, (usize, InstId)>,
+    min_use_depths: &mut HashMap<ValueId, usize>,
+) {
+    let update_use = |v: ValueId, d: usize, mu: &mut HashMap<ValueId, usize>| {
+        let e = mu.entry(v).or_insert(usize::MAX);
+        if d < *e {
+            *e = d;
+        }
+    };
+    for stmt in stmts {
+        match stmt {
+            LinearStmt::Def { result, inst_id } => {
+                defs.entry(*result).or_insert((depth, *inst_id));
+                for v in value_operands(&func.insts[*inst_id].op) {
+                    update_use(v, depth, min_use_depths);
+                }
+            }
+            LinearStmt::Effect { inst_id } => {
+                for v in value_operands(&func.insts[*inst_id].op) {
+                    update_use(v, depth, min_use_depths);
+                }
+            }
+            LinearStmt::Assign { src, .. } => {
+                update_use(*src, depth, min_use_depths);
+            }
+            LinearStmt::Return { value: Some(v) } => {
+                update_use(*v, depth, min_use_depths);
+            }
+            LinearStmt::If { cond, then_body, else_body } => {
+                update_use(*cond, depth, min_use_depths);
+                collect_def_use_depths(func, then_body, depth + 1, defs, min_use_depths);
+                collect_def_use_depths(func, else_body, depth + 1, defs, min_use_depths);
+            }
+            LinearStmt::While { header, cond, body, .. } => {
+                // header: same depth (emit_stmts_into, no protected scope)
+                collect_def_use_depths(func, header, depth, defs, min_use_depths);
+                update_use(*cond, depth, min_use_depths);
+                // body: depth+1 (emit_stmts_protected)
+                collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
+            }
+            LinearStmt::For { init, header, cond, update, body, .. } => {
+                collect_def_use_depths(func, init, depth, defs, min_use_depths);
+                collect_def_use_depths(func, header, depth, defs, min_use_depths);
+                update_use(*cond, depth, min_use_depths);
+                collect_def_use_depths(func, update, depth, defs, min_use_depths);
+                collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
+            }
+            LinearStmt::Loop { body } => {
+                collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
+            }
+            LinearStmt::LogicalOr { cond, rhs_body, rhs, phi }
+            | LinearStmt::LogicalAnd { cond, rhs_body, rhs, phi } => {
+                update_use(*cond, depth, min_use_depths);
+                collect_def_use_depths(func, rhs_body, depth + 1, defs, min_use_depths);
+                if *rhs != *phi {
+                    update_use(*rhs, depth, min_use_depths);
+                }
+            }
+            LinearStmt::Switch { value, cases, default_body } => {
+                update_use(*value, depth, min_use_depths);
+                for (_, case_stmts) in cases {
+                    collect_def_use_depths(func, case_stmts, depth + 1, defs, min_use_depths);
+                }
+                collect_def_use_depths(func, default_body, depth + 1, defs, min_use_depths);
+            }
+            LinearStmt::Dispatch { blocks, .. } => {
+                for (_, block_stmts) in blocks {
+                    collect_def_use_depths(func, block_stmts, depth + 1, defs, min_use_depths);
+                }
+            }
+            LinearStmt::Return { value: None }
+            | LinearStmt::Break
+            | LinearStmt::Continue
+            | LinearStmt::LabeledBreak { .. } => {}
+        }
+    }
+}
+
+/// Compute the set of values that are defined in a nested scope but used in
+/// an outer scope and have exactly one use (i.e., would normally become SE
+/// inlines).  The SE-inline flush mechanism would prematurely declare them
+/// inside the branch; instead they need a hoisted `let name!` declaration.
+fn compute_cross_scope_defs(
+    func: &Function,
+    stmts: &[LinearStmt],
+    use_counts: &HashMap<ValueId, usize>,
+) -> HashSet<ValueId> {
+    // defs maps ValueId → (def_depth, inst_id)
+    let mut defs: HashMap<ValueId, (usize, InstId)> = HashMap::new();
+    let mut min_use_depths: HashMap<ValueId, usize> = HashMap::new();
+    collect_def_use_depths(func, stmts, 0, &mut defs, &mut min_use_depths);
+
+    defs.iter()
+        .filter(|(&v, &(def_d, inst_id))| {
+            // Only SE-inline candidates (count == 1, side-effecting) can
+            // trigger the scoping bug.  Pure values (lazy/always inline)
+            // are rebuilt at the use site so scope doesn't matter.
+            if use_counts.get(&v).copied().unwrap_or(0) != 1 {
+                return false;
+            }
+            if !is_side_effecting_op(&func.insts[inst_id].op) {
+                return false;
+            }
+            // Cross-scope: the value is used at a shallower depth than where
+            // it is defined.
+            let min_use_d = min_use_depths.get(&v).copied().unwrap_or(def_d);
+            min_use_d < def_d
+        })
+        .map(|(&v, _)| v)
+        .collect()
 }
 
 // -----------------------------------------------------------------------
@@ -2182,7 +2325,23 @@ impl<'a> EmitCtx<'a> {
         if count == 0 && side_effecting {
             stmts.push(Stmt::Expr(expr));
         } else if count == 1 && side_effecting {
-            self.side_effecting_inlines.insert(result, expr);
+            if self.resolve.cross_scope_defs.contains(&result) {
+                // Value defined in a nested scope (e.g. an if-branch body)
+                // but used in an outer scope (e.g. a sibling while loop).
+                // The SE-inline flush would declare it inside the branch,
+                // putting the name out of scope at the use site.  Instead,
+                // treat it as a shared name: emit an Assign here and let
+                // collect_block_param_decls hoist `let name!` to function
+                // scope.
+                let name = self.value_name(result);
+                self.shared_names.insert(name.clone());
+                stmts.push(Stmt::Assign {
+                    target: Expr::Var(name),
+                    value: expr,
+                });
+            } else {
+                self.side_effecting_inlines.insert(result, expr);
+            }
         } else {
             let name = self.value_name(result);
             if self.shared_names.contains(&name) {
