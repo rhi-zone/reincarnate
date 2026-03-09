@@ -560,24 +560,18 @@ improve output fidelity:
 
 ### Flash CC TypeScript Error Tracking
 
-Progress: 21,557 → 8,962 (2026-03-10: 4 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114).
+Progress: 21,557 → 7,784 (2026-03-10: 5 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114, unique_static_fields rewrite −1,178 total).
 
-Remaining top issues (8,962 total):
+Remaining top issues (7,784 total):
 | Count | Code | Root cause |
 |-------|------|-----------|
-| 1,433 | TS2576 | `instance.STATIC_FIELD` — `this.consumables.SUCMILK` where consumables is ConsumableLib; needs IR-level or emitter-level rewrite when FieldRead target is typed as a class with that static field |
+| 3,105 | TS7053 | Non-Proxy classes with string/QN_KEY indexing (remaining after Proxy index sig fix) |
+| 1,487 | TS2339 | Various property-not-exist: `{}` typed closures, `_shims` on CoC subclasses, `saveFile`/`i`/`text` |
 | 740 | TS2345 | Mixed: 617 `null` passed as Function arg (pre-existing game-author bug) + 123 property-doesn't-exist |
 | 539 | TS2352 | 511 `null`-to-Function cast (pre-existing game-author bug) + 28 others |
 | 459 | TS7015 | String indexing on string/array typed values (bracket AS3 method calls like `name["toLowerCase"]()`) |
-| ~530 | TS7053 | Non-Proxy classes with string/QN_KEY indexing (Monster::outputText, Player::outputText etc.) |
-| 204+198+167+74 | TS2339 | Various property-not-exist: `{}` typed closures, `_shims` on CoC subclasses |
-| 146 | TS2322 | `null` assignment to Function fields |
-| 96 | TS2554 | Argument count mismatch (runtime class constructor arity e.g. Font takes 0, called with 1) |
-| 53 | TS2552 | `_undefined` not declared — runtime.ts missing `const _undefined = undefined` |
-
-Next fix opportunity: TS2576 `instance.STATIC_FIELD` — need a type-aware rewrite in emit.rs
-when `FieldRead(v, field)` where `value_types[v]` is a ClassRef and `field` is in that class's
-`static_fields`. Emit `ClassName.field` instead of `object.field`. This could eliminate ~1,200+ errors.
+| 31 | TS4114 | Remaining missing `override` (multi-level hierarchy gaps?) |
+| 24 | TS2576 | Remaining `instance.STATIC_FIELD` where field name is ambiguous (shared across multiple classes) |
 
 ### Correctness
 
