@@ -1478,6 +1478,44 @@ impl<'a> EmitCtx<'a> {
             }
         }
 
+        // Conflict resolution: when a non-local value (not one of this block's
+        // own params) is used in a block instruction and shares its name with a
+        // local block param, rename the non-local value to a synthetic "v{index}"
+        // name.  This prevents two distinct SSA values from emitting as the same
+        // identifier in the same expression — e.g. when a dominating "i" (approach
+        // string) and a block-param "i" (race description) are both used in the
+        // same block, `string(i) + string(i)` would appear instead of the correct
+        // combination.
+        {
+            let mut conflicts: Vec<ValueId> = Vec::new();
+            for (_, block) in func.blocks.iter() {
+                let local_param_values: HashSet<ValueId> =
+                    block.params.iter().map(|p| p.value).collect();
+                let local_names: HashSet<String> = block
+                    .params
+                    .iter()
+                    .filter_map(|p| value_names.get(&p.value).cloned())
+                    .collect();
+                if local_names.is_empty() {
+                    continue;
+                }
+                for &iid in &block.insts {
+                    for v in value_operands(&func.insts[iid].op) {
+                        if !local_param_values.contains(&v) {
+                            if let Some(name) = value_names.get(&v) {
+                                if local_names.contains(name) {
+                                    conflicts.push(v);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for v in conflicts {
+                value_names.insert(v, format!("v{}", v.index()));
+            }
+        }
+
         // Propagate names from Cast/Copy results to their source operands.
         // Mem2Reg names the stored value (e.g. Cast(src)), but if the Cast
         // is single-use and gets lazily inlined, its name is never used.
