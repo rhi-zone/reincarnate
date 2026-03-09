@@ -20,7 +20,7 @@ These are invariant. When a violation appears, adjust the law — don't add a co
 
 **4. Honest Representation.** IR types reflect source-language semantics, not VM storage format. A GML boolean is `Bool`, not `Float`. A GML object is its class type, not a numeric ID. Source-level semantic violations (wrong operator, wrong type) surface as target-language type errors — that is correct behavior. When a type error appears in emitted code, ask *why is the type wrong?* — the answer is one of: (a) game-author bug, leave it; (b) our inference is wrong, fix the inference; (c) the emitter reads a stale type (use `value_types[v]`), fix it. Never suppress any of these with a coercion or by widening the IR type.
 
-**5. Instantiability.** All mutable runtime state lives on root runtime instances threaded through generated code. No module-level mutable variables. Multiple game instances must coexist on one page.
+**5. Instantiability.** All mutable runtime state lives on root runtime instances threaded through generated code. No module-level mutable variables. Multiple game instances must be able to coexist on one page.
 
 ## Core Rule
 
