@@ -21,7 +21,11 @@ fn reachable_blocks(func: &Function) -> HashSet<BlockId> {
         for &inst_id in &func.blocks[block_id].insts {
             match &func.insts[inst_id].op {
                 Op::Br { target, .. } => worklist.push(*target),
-                Op::BrIf { then_target, else_target, .. } => {
+                Op::BrIf {
+                    then_target,
+                    else_target,
+                    ..
+                } => {
                     worklist.push(*then_target);
                     worklist.push(*else_target);
                 }
@@ -69,7 +73,13 @@ fn build_const_map(func: &Function) -> HashMap<ValueId, Constant> {
                         param_vals.entry((*target, i)).or_default().push(arg);
                     }
                 }
-                Op::BrIf { then_target, then_args, else_target, else_args, .. } => {
+                Op::BrIf {
+                    then_target,
+                    then_args,
+                    else_target,
+                    else_args,
+                    ..
+                } => {
                     for (i, &arg) in then_args.iter().enumerate() {
                         param_vals.entry((*then_target, i)).or_default().push(arg);
                     }
@@ -93,7 +103,9 @@ fn build_const_map(func: &Function) -> HashMap<ValueId, Constant> {
     }
     for (block_id, block) in func.blocks.iter() {
         for (i, param) in block.params.iter().enumerate() {
-            let Some(vals) = param_vals.get(&(block_id, i)) else { continue };
+            let Some(vals) = param_vals.get(&(block_id, i)) else {
+                continue;
+            };
             if vals.is_empty() {
                 continue;
             }
@@ -102,7 +114,10 @@ fn build_const_map(func: &Function) -> HashMap<ValueId, Constant> {
             let all_const = vals.iter().all(|v| {
                 if let Some(c) = map.get(v) {
                     match &agreed {
-                        None => { agreed = Some(c.clone()); true }
+                        None => {
+                            agreed = Some(c.clone());
+                            true
+                        }
                         Some(a) => a == c,
                     }
                 } else {
@@ -120,11 +135,7 @@ fn build_const_map(func: &Function) -> HashMap<ValueId, Constant> {
 }
 
 /// Try to fold a binary arithmetic operation on two constants.
-fn fold_binary_arith(
-    op_name: &str,
-    a: &Constant,
-    b: &Constant,
-) -> Option<Constant> {
+fn fold_binary_arith(op_name: &str, a: &Constant, b: &Constant) -> Option<Constant> {
     match (op_name, a, b) {
         ("add", Constant::Int(x), Constant::Int(y)) => Some(Constant::Int(x.wrapping_add(*y))),
         ("add", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x.wrapping_add(*y))),
@@ -138,7 +149,7 @@ fn fold_binary_arith(
         ("mul", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x.wrapping_mul(*y))),
         ("mul", Constant::Float(x), Constant::Float(y)) => Some(Constant::Float(x * y)),
 
-        ("div", Constant::Int(_, ), Constant::Int(0)) => None,
+        ("div", Constant::Int(_), Constant::Int(0)) => None,
         ("div", Constant::UInt(_), Constant::UInt(0)) => None,
         ("div", Constant::Int(x), Constant::Int(y)) => Some(Constant::Int(x.wrapping_div(*y))),
         ("div", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x / y)),
@@ -155,11 +166,7 @@ fn fold_binary_arith(
 }
 
 /// Try to fold a bitwise binary operation on two constants.
-fn fold_binary_bitwise(
-    op_name: &str,
-    a: &Constant,
-    b: &Constant,
-) -> Option<Constant> {
+fn fold_binary_bitwise(op_name: &str, a: &Constant, b: &Constant) -> Option<Constant> {
     match (op_name, a, b) {
         ("and", Constant::Int(x), Constant::Int(y)) => Some(Constant::Int(x & y)),
         ("and", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x & y)),
@@ -170,11 +177,19 @@ fn fold_binary_bitwise(
         ("xor", Constant::Int(x), Constant::Int(y)) => Some(Constant::Int(x ^ y)),
         ("xor", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x ^ y)),
 
-        ("shl", Constant::Int(x), Constant::Int(y)) => Some(Constant::Int(x.wrapping_shl(*y as u32))),
-        ("shl", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x.wrapping_shl(*y as u32))),
+        ("shl", Constant::Int(x), Constant::Int(y)) => {
+            Some(Constant::Int(x.wrapping_shl(*y as u32)))
+        }
+        ("shl", Constant::UInt(x), Constant::UInt(y)) => {
+            Some(Constant::UInt(x.wrapping_shl(*y as u32)))
+        }
 
-        ("shr", Constant::Int(x), Constant::Int(y)) => Some(Constant::Int(x.wrapping_shr(*y as u32))),
-        ("shr", Constant::UInt(x), Constant::UInt(y)) => Some(Constant::UInt(x.wrapping_shr(*y as u32))),
+        ("shr", Constant::Int(x), Constant::Int(y)) => {
+            Some(Constant::Int(x.wrapping_shr(*y as u32)))
+        }
+        ("shr", Constant::UInt(x), Constant::UInt(y)) => {
+            Some(Constant::UInt(x.wrapping_shr(*y as u32)))
+        }
 
         _ => None,
     }
@@ -362,30 +377,22 @@ fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
         }
 
         // Boolean AND/OR: short-circuit absorbing elements, then full fold.
-        Op::BoolAnd(a, b) => {
-            match (consts.get(a), consts.get(b)) {
-                (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => {
-                    Some(Constant::Bool(false))
-                }
-                (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => {
-                    Some(Constant::Bool(*x && *y))
-                }
-                (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => None,
-                _ => None,
+        Op::BoolAnd(a, b) => match (consts.get(a), consts.get(b)) {
+            (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => {
+                Some(Constant::Bool(false))
             }
-        }
-        Op::BoolOr(a, b) => {
-            match (consts.get(a), consts.get(b)) {
-                (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => {
-                    Some(Constant::Bool(true))
-                }
-                (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => {
-                    Some(Constant::Bool(*x || *y))
-                }
-                (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => None,
-                _ => None,
+            (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => Some(Constant::Bool(*x && *y)),
+            (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => None,
+            _ => None,
+        },
+        Op::BoolOr(a, b) => match (consts.get(a), consts.get(b)) {
+            (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => {
+                Some(Constant::Bool(true))
             }
-        }
+            (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => Some(Constant::Bool(*x || *y)),
+            (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => None,
+            _ => None,
+        },
 
         // Cast
         Op::Cast(a, ty, _) => fold_cast(consts.get(a)?, ty),
@@ -581,10 +588,7 @@ impl Transform for ConstantFolding {
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             changed |= fold_function(&mut module.functions[func_id]);
         }
-        Ok(TransformResult {
-            module,
-            changed,
-        })
+        Ok(TransformResult { module, changed })
     }
 }
 
@@ -618,7 +622,9 @@ mod tests {
     fn int_arithmetic() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(2);
         let b = fb.const_int(3);
@@ -626,7 +632,10 @@ mod tests {
         fb.ret(Some(sum));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, sum).op, Op::Const(Constant::Int(5))));
+        assert!(matches!(
+            &find_inst_for(&func, sum).op,
+            Op::Const(Constant::Int(5))
+        ));
         assert_eq!(func.value_types[sum], Type::Int(64));
     }
 
@@ -635,7 +644,9 @@ mod tests {
     fn float_arithmetic() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Float(64), ..Default::default() };
+            return_ty: Type::Float(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_float(1.5);
         let b = fb.const_float(2.0);
@@ -643,7 +654,9 @@ mod tests {
         fb.ret(Some(product));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, product).op, Op::Const(Constant::Float(f)) if *f == 3.0));
+        assert!(
+            matches!(&find_inst_for(&func, product).op, Op::Const(Constant::Float(f)) if *f == 3.0)
+        );
     }
 
     /// `5 < 10` folds to `Bool(true)`.
@@ -651,7 +664,9 @@ mod tests {
     fn comparison() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(5);
         let b = fb.const_int(10);
@@ -659,7 +674,10 @@ mod tests {
         fb.ret(Some(cmp));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, cmp).op, Op::Const(Constant::Bool(true))));
+        assert!(matches!(
+            &find_inst_for(&func, cmp).op,
+            Op::Const(Constant::Bool(true))
+        ));
     }
 
     /// `not(true)` folds to `Bool(false)`.
@@ -667,14 +685,19 @@ mod tests {
     fn logical_not() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_bool(true);
         let result = fb.not(a);
         fb.ret(Some(result));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Bool(false))));
+        assert!(matches!(
+            &find_inst_for(&func, result).op,
+            Op::Const(Constant::Bool(false))
+        ));
     }
 
     /// `5 / 0` stays unfolded (division by zero).
@@ -682,7 +705,9 @@ mod tests {
     fn division_by_zero_preserved() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(5);
         let b = fb.const_int(0);
@@ -698,7 +723,9 @@ mod tests {
     fn non_constant_operand() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let b = fb.const_int(3);
@@ -714,14 +741,19 @@ mod tests {
     fn negation() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(42);
         let result = fb.neg(a);
         fb.ret(Some(result));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Int(-42))));
+        assert!(matches!(
+            &find_inst_for(&func, result).op,
+            Op::Const(Constant::Int(-42))
+        ));
     }
 
     /// `Not(Cmp(Ge, param, 1))` folds to `Cmp(Lt, param, 1)`.
@@ -729,7 +761,9 @@ mod tests {
     fn not_cmp_folds_to_inverse() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let one = fb.const_int(1);
@@ -753,7 +787,9 @@ mod tests {
     fn identity_no_change() {
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.param(0);
         let b = fb.param(1);
@@ -773,7 +809,9 @@ mod tests {
         use crate::transforms::util::test_helpers::assert_idempotent;
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(2);
         let b = fb.const_int(3);
@@ -787,7 +825,9 @@ mod tests {
     fn bitwise_and() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(0xFF);
         let b = fb.const_int(0x0F);
@@ -795,7 +835,10 @@ mod tests {
         fb.ret(Some(result));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Int(15))));
+        assert!(matches!(
+            &find_inst_for(&func, result).op,
+            Op::Const(Constant::Int(15))
+        ));
     }
 
     /// `param && false` folds to `Bool(false)` (absorbing element).
@@ -805,7 +848,9 @@ mod tests {
     fn bool_and_absorbing_false() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let b = fb.const_bool(false);
@@ -814,7 +859,10 @@ mod tests {
 
         let func = apply_fold(fb.build());
         assert!(
-            matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Bool(false))),
+            matches!(
+                &find_inst_for(&func, result).op,
+                Op::Const(Constant::Bool(false))
+            ),
             "expected BoolAnd(param, false) to fold to Bool(false)"
         );
     }
@@ -824,7 +872,9 @@ mod tests {
     fn bool_and_absorbing_false_lhs() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let a = fb.const_bool(false);
@@ -833,7 +883,10 @@ mod tests {
 
         let func = apply_fold(fb.build());
         assert!(
-            matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Bool(false))),
+            matches!(
+                &find_inst_for(&func, result).op,
+                Op::Const(Constant::Bool(false))
+            ),
             "expected BoolAnd(false, param) to fold to Bool(false)"
         );
     }
@@ -843,7 +896,9 @@ mod tests {
     fn bool_or_absorbing_true() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let b = fb.const_bool(true);
@@ -852,7 +907,10 @@ mod tests {
 
         let func = apply_fold(fb.build());
         assert!(
-            matches!(&find_inst_for(&func, result).op, Op::Const(Constant::Bool(true))),
+            matches!(
+                &find_inst_for(&func, result).op,
+                Op::Const(Constant::Bool(true))
+            ),
             "expected BoolOr(param, true) to fold to Bool(true)"
         );
     }
@@ -864,7 +922,9 @@ mod tests {
     fn void_function_no_fold() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         fb.ret(None);
 
@@ -880,7 +940,9 @@ mod tests {
     fn fold_in_multi_block() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let then_block = fb.create_block();
@@ -900,8 +962,14 @@ mod tests {
         fb.ret(Some(product));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, sum).op, Op::Const(Constant::Int(5))));
-        assert!(matches!(&find_inst_for(&func, product).op, Op::Const(Constant::Int(200))));
+        assert!(matches!(
+            &find_inst_for(&func, sum).op,
+            Op::Const(Constant::Int(5))
+        ));
+        assert!(matches!(
+            &find_inst_for(&func, product).op,
+            Op::Const(Constant::Int(200))
+        ));
     }
 
     /// Chained fold: `(1+2) * 3` folds to `9` in one pass via fixpoint.
@@ -909,7 +977,9 @@ mod tests {
     fn chained_fold() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(2);
@@ -919,7 +989,10 @@ mod tests {
         fb.ret(Some(product));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, product).op, Op::Const(Constant::Int(9))));
+        assert!(matches!(
+            &find_inst_for(&func, product).op,
+            Op::Const(Constant::Int(9))
+        ));
     }
 
     // ---- Adversarial tests ----
@@ -929,17 +1002,22 @@ mod tests {
     fn shared_constant_folded_and_used() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
         let c = fb.const_int(5);
-        let fold_me = fb.add(c, c);     // foldable: 5+5=10
-        let keep_me = fb.add(param, c);  // not foldable: param+5
+        let fold_me = fb.add(c, c); // foldable: 5+5=10
+        let keep_me = fb.add(param, c); // not foldable: param+5
         let result = fb.add(fold_me, keep_me);
         fb.ret(Some(result));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, fold_me).op, Op::Const(Constant::Int(10))));
+        assert!(matches!(
+            &find_inst_for(&func, fold_me).op,
+            Op::Const(Constant::Int(10))
+        ));
         assert!(matches!(&find_inst_for(&func, keep_me).op, Op::Add(_, _)));
     }
 
@@ -948,7 +1026,9 @@ mod tests {
     fn overflow_wraps() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(i64::MAX);
         let b = fb.const_int(1);
@@ -968,7 +1048,9 @@ mod tests {
     fn float_nan_propagation() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Float(64), ..Default::default() };
+            return_ty: Type::Float(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let nan = fb.const_float(f64::NAN);
         let one = fb.const_float(1.0);
@@ -988,7 +1070,9 @@ mod tests {
     fn deeply_chained_folds() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let mut acc = fb.const_int(0);
         for i in 1..=10 {

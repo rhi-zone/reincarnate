@@ -6,21 +6,27 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use reincarnate_datawin::DataWin;
-use reincarnate_datawin::bytecode::decode;
-use reincarnate_datawin::bytecode::decode::{Instruction, Operand};
-use reincarnate_datawin::bytecode::types::{ComparisonKind, DataType, InstanceType};
-use reincarnate_datawin::bytecode::opcode::Opcode;
-use reincarnate_core::ir::Module;
-use std::collections::HashMap;
-use reincarnate_core::pipeline::{Backend, BackendInput, Checker, CheckerInput, CheckerOutput, CheckSummary, DebugConfig, Diagnostic, Frontend, FrontendInput, Linker, PassConfig, PipelineOutput, Preset, RuntimePackage, VALID_PASS_NAMES};
-use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 #[cfg(feature = "checker-typescript")]
 use reincarnate_checker_typescript::TsChecker;
+use reincarnate_core::ir::Module;
+use reincarnate_core::pipeline::{
+    Backend, BackendInput, CheckSummary, Checker, CheckerInput, CheckerOutput, DebugConfig,
+    Diagnostic, Frontend, FrontendInput, Linker, PassConfig, PipelineOutput, Preset,
+    RuntimePackage, VALID_PASS_NAMES,
+};
+use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 use reincarnate_core::transforms::default_pipeline;
+use reincarnate_datawin::bytecode::decode;
+use reincarnate_datawin::bytecode::decode::{Instruction, Operand};
+use reincarnate_datawin::bytecode::opcode::Opcode;
+use reincarnate_datawin::bytecode::types::{ComparisonKind, DataType, InstanceType};
+use reincarnate_datawin::DataWin;
+use std::collections::HashMap;
 
 mod registry;
-use registry::{load_registry, now_iso8601, read_engine_from_manifest, save_registry, ProjectEntry};
+use registry::{
+    load_registry, now_iso8601, read_engine_from_manifest, save_registry, ProjectEntry,
+};
 
 #[derive(Parser)]
 #[command(name = "reincarnate", about = "Legacy software lifting framework")]
@@ -302,11 +308,14 @@ fn resolve_target(target: Option<&str>, manifest: Option<&Path>) -> Result<PathB
 }
 
 fn load_manifest(path: &Path) -> Result<ProjectManifest> {
-    let path = path.canonicalize().with_context(|| format!("failed to canonicalize: {}", path.display()))?;
-    let file = File::open(&path).with_context(|| format!("failed to open manifest: {}", path.display()))?;
+    let path = path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize: {}", path.display()))?;
+    let file = File::open(&path)
+        .with_context(|| format!("failed to open manifest: {}", path.display()))?;
     let reader = BufReader::new(file);
-    let mut manifest: ProjectManifest =
-        serde_json::from_reader(reader).with_context(|| format!("failed to parse manifest: {}", path.display()))?;
+    let mut manifest: ProjectManifest = serde_json::from_reader(reader)
+        .with_context(|| format!("failed to parse manifest: {}", path.display()))?;
 
     // Resolve relative paths against the manifest's parent directory.
     if let Some(base) = path.parent() {
@@ -341,7 +350,9 @@ fn load_manifest(path: &Path) -> Result<ProjectManifest> {
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<u64> {
     let mut count = 0u64;
     fs::create_dir_all(dst)?;
-    for entry in fs::read_dir(src).with_context(|| format!("reading asset dir: {}", src.display()))? {
+    for entry in
+        fs::read_dir(src).with_context(|| format!("reading asset dir: {}", src.display()))?
+    {
         let entry = entry?;
         let ty = entry.file_type()?;
         let dest = dst.join(entry.file_name());
@@ -358,19 +369,31 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<u64> {
 fn copy_manifest_assets(assets: &[AssetMapping], output_dir: &Path) -> Result<()> {
     for mapping in assets {
         if !mapping.src.exists() {
-            eprintln!("[warn] manifest asset not found, skipping: {}", mapping.src.display());
+            eprintln!(
+                "[warn] manifest asset not found, skipping: {}",
+                mapping.src.display()
+            );
             continue;
         }
         let dest = output_dir.join(mapping.dest_name());
         if mapping.src.is_dir() {
             let count = copy_dir_recursive(&mapping.src, &dest)?;
-            eprintln!("[emit] copied {} files from {} -> {}", count, mapping.src.display(), dest.display());
+            eprintln!(
+                "[emit] copied {} files from {} -> {}",
+                count,
+                mapping.src.display(),
+                dest.display()
+            );
         } else {
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
             fs::copy(&mapping.src, &dest)?;
-            eprintln!("[emit] copied {} -> {}", mapping.src.display(), dest.display());
+            eprintln!(
+                "[emit] copied {} -> {}",
+                mapping.src.display(),
+                dest.display()
+            );
         }
     }
     Ok(())
@@ -385,7 +408,9 @@ fn find_frontend(engine: &EngineOrigin) -> Option<Box<dyn Frontend>> {
         #[cfg(feature = "frontend-flash")]
         EngineOrigin::Flash => Some(Box::new(reincarnate_frontend_flash::FlashFrontend)),
         #[cfg(feature = "frontend-gamemaker")]
-        EngineOrigin::GameMaker => Some(Box::new(reincarnate_frontend_gamemaker::GameMakerFrontend)),
+        EngineOrigin::GameMaker => {
+            Some(Box::new(reincarnate_frontend_gamemaker::GameMakerFrontend))
+        }
         #[cfg(feature = "frontend-twine")]
         EngineOrigin::Twine => Some(Box::new(reincarnate_frontend_twine::TwineFrontend)),
         _ => None,
@@ -394,7 +419,8 @@ fn find_frontend(engine: &EngineOrigin) -> Option<Box<dyn Frontend>> {
 
 /// In release builds, embed the entire runtime/ tree so the binary is self-contained.
 #[cfg(not(debug_assertions))]
-static EMBEDDED_RUNTIME: include_dir::Dir = include_dir::include_dir!("$CARGO_MANIFEST_DIR/../../runtime");
+static EMBEDDED_RUNTIME: include_dir::Dir =
+    include_dir::include_dir!("$CARGO_MANIFEST_DIR/../../runtime");
 
 #[cfg(not(debug_assertions))]
 fn runtime_base_dir() -> Option<PathBuf> {
@@ -419,7 +445,11 @@ fn runtime_base_dir() -> Option<PathBuf> {
     }
 }
 
-fn resolve_runtime(engine: &EngineOrigin, backend: &TargetBackend, variant: Option<&str>) -> Option<RuntimePackage> {
+fn resolve_runtime(
+    engine: &EngineOrigin,
+    backend: &TargetBackend,
+    variant: Option<&str>,
+) -> Option<RuntimePackage> {
     let engine_name = match engine {
         EngineOrigin::Flash => "flash",
         EngineOrigin::GameMaker => "gamemaker",
@@ -437,7 +467,11 @@ fn resolve_runtime(engine: &EngineOrigin, backend: &TargetBackend, variant: Opti
     }
     let config_path = if let Some(v) = variant {
         let variant_path = source_dir.join(format!("runtime.{v}.json"));
-        if variant_path.exists() { variant_path } else { source_dir.join("runtime.json") }
+        if variant_path.exists() {
+            variant_path
+        } else {
+            source_dir.join("runtime.json")
+        }
     } else {
         source_dir.join("runtime.json")
     };
@@ -450,7 +484,9 @@ fn resolve_runtime(engine: &EngineOrigin, backend: &TargetBackend, variant: Opti
 fn find_backend(backend: &TargetBackend) -> Option<Box<dyn Backend>> {
     match backend {
         #[cfg(feature = "backend-typescript")]
-        TargetBackend::TypeScript => Some(Box::new(reincarnate_backend_typescript::TypeScriptBackend)),
+        TargetBackend::TypeScript => {
+            Some(Box::new(reincarnate_backend_typescript::TypeScriptBackend))
+        }
         _ => None,
     }
 }
@@ -467,16 +503,21 @@ fn cmd_info(manifest_path: &Path) -> Result<()> {
     println!("Source:  {}", manifest.source.display());
     println!("Targets:");
     for target in &manifest.targets {
-        println!("  - {:?} -> {}", target.backend, target.output_dir.display());
+        println!(
+            "  - {:?} -> {}",
+            target.backend,
+            target.output_dir.display()
+        );
     }
     Ok(())
 }
 
 fn cmd_print_ir(file: &Path) -> Result<()> {
-    let f = File::open(file).with_context(|| format!("failed to open IR file: {}", file.display()))?;
+    let f =
+        File::open(file).with_context(|| format!("failed to open IR file: {}", file.display()))?;
     let reader = BufReader::new(f);
-    let module: Module =
-        serde_json::from_reader(reader).with_context(|| format!("failed to parse IR file: {}", file.display()))?;
+    let module: Module = serde_json::from_reader(reader)
+        .with_context(|| format!("failed to parse IR file: {}", file.display()))?;
     println!("{module}");
     Ok(())
 }
@@ -492,7 +533,9 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let output = frontend.extract(input).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let output = frontend
+        .extract(input)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let config = PassConfig::from_skip_list(&skip_refs);
@@ -508,7 +551,13 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
 }
 
 /// Run emit and return the list of output directories produced.
-fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint: bool, debug: &DebugConfig) -> Result<Vec<PathBuf>> {
+fn cmd_emit(
+    manifest_path: &Path,
+    skip_passes: &[String],
+    preset: &str,
+    fixpoint: bool,
+    debug: &DebugConfig,
+) -> Result<Vec<PathBuf>> {
     let manifest = load_manifest(manifest_path)?;
     let Some(frontend) = find_frontend(&manifest.engine) else {
         bail!("no frontend available for engine {:?}", manifest.engine);
@@ -519,11 +568,14 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let output = frontend.extract(input).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let output = frontend
+        .extract(input)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let runtime_variant = output.runtime_variant.as_deref();
     let first_backend = manifest.targets.first().map(|t| &t.backend);
-    let early_runtime = first_backend.and_then(|b| resolve_runtime(&manifest.engine, b, runtime_variant));
+    let early_runtime =
+        first_backend.and_then(|b| resolve_runtime(&manifest.engine, b, runtime_variant));
     let external_type_defs = early_runtime
         .as_ref()
         .map(|rt| rt.config.type_definitions.clone())
@@ -534,8 +586,10 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
         .unwrap_or_default();
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
-    let (mut pass_config, lowering_config) = Preset::resolve(preset, &skip_refs)
-        .ok_or_else(|| anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")"))?;
+    let (mut pass_config, lowering_config) =
+        Preset::resolve(preset, &skip_refs).ok_or_else(|| {
+            anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")")
+        })?;
     if fixpoint {
         pass_config.fixpoint = true;
     }
@@ -550,8 +604,12 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
         eprintln!("[emit] transforming module: {}", module.name);
         module.external_type_defs = external_type_defs.clone();
         module.external_function_sigs = external_function_sigs.clone();
-        let PipelineOutput { module, stopped_early: early } =
-            pipeline.run_with_debug(module, debug).map_err(|e| anyhow::anyhow!("{e}"))?;
+        let PipelineOutput {
+            module,
+            stopped_early: early,
+        } = pipeline
+            .run_with_debug(module, debug)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         modules.push(module);
         if early {
             stopped_early = true;
@@ -582,22 +640,34 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
         let favicon = if let Some(icon_path) = &manifest.icon {
             let icon_src = std::path::Path::new(icon_path);
             if icon_src.exists() {
-                let ext = icon_src.extension()
+                let ext = icon_src
+                    .extension()
                     .and_then(|e| e.to_str())
                     .unwrap_or("png");
                 let favicon_name = format!("favicon.{ext}");
                 fs::create_dir_all(&target.output_dir)?;
                 fs::copy(icon_src, target.output_dir.join(&favicon_name))
                     .with_context(|| format!("failed to copy icon: {}", icon_src.display()))?;
-                eprintln!("[emit] copied icon {} -> {}", icon_src.display(), favicon_name);
+                eprintln!(
+                    "[emit] copied icon {} -> {}",
+                    icon_src.display(),
+                    favicon_name
+                );
                 Some(favicon_name)
             } else {
                 eprintln!("[warn] icon not found, skipping: {icon_path}");
                 None
             }
-        } else if let Some(icon_asset) = output.assets.find_by_kind(&reincarnate_core::project::AssetKind::Icon).into_iter().next() {
+        } else if let Some(icon_asset) = output
+            .assets
+            .find_by_kind(&reincarnate_core::project::AssetKind::Icon)
+            .into_iter()
+            .next()
+        {
             // Use the icon extracted from the game binary (e.g. Windows .exe PE resources).
-            let favicon_name = icon_asset.path.file_name()
+            let favicon_name = icon_asset
+                .path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("favicon.ico")
                 .to_string();
@@ -627,7 +697,11 @@ fn cmd_emit(manifest_path: &Path, skip_passes: &[String], preset: &str, fixpoint
             copy_manifest_assets(&manifest.assets, &target.output_dir)?;
         }
 
-        println!("Emitted {} output to {}", backend.name(), target.output_dir.display());
+        println!(
+            "Emitted {} output to {}",
+            backend.name(),
+            target.output_dir.display()
+        );
         output_dirs.push(target.output_dir.clone());
     }
 
@@ -725,10 +799,7 @@ fn collect_output_dirs(manifest_path: &Path) -> Result<Vec<(PathBuf, TargetBacke
         .collect())
 }
 
-fn run_checks(
-    targets: &[(PathBuf, TargetBackend)],
-    cfg: &CheckConfig<'_>,
-) -> Result<()> {
+fn run_checks(targets: &[(PathBuf, TargetBackend)], cfg: &CheckConfig<'_>) -> Result<()> {
     let json = cfg.json;
     let save_baseline = cfg.save_baseline;
     let baseline = cfg.baseline;
@@ -746,7 +817,11 @@ fn run_checks(
             continue;
         };
 
-        eprintln!("[check] running {} checker on {}...", checker.name(), output_dir.display());
+        eprintln!(
+            "[check] running {} checker on {}...",
+            checker.name(),
+            output_dir.display()
+        );
         let result = checker
             .check(CheckerInput {
                 output_dir: output_dir.clone(),
@@ -764,13 +839,15 @@ fn run_checks(
     // Save baseline if requested (always uses unfiltered summaries).
     if let Some(path) = save_baseline {
         let json_str = serde_json::to_string_pretty(&summaries)?;
-        fs::write(path, json_str).with_context(|| format!("failed to write baseline: {}", path.display()))?;
+        fs::write(path, json_str)
+            .with_context(|| format!("failed to write baseline: {}", path.display()))?;
         eprintln!("[check] baseline saved to {}", path.display());
     }
 
     // Load and compare against baseline if requested (always uses unfiltered).
     let baseline_diff = if let Some(path) = baseline {
-        let file = File::open(path).with_context(|| format!("failed to open baseline: {}", path.display()))?;
+        let file = File::open(path)
+            .with_context(|| format!("failed to open baseline: {}", path.display()))?;
         let reader = BufReader::new(file);
         let old: Vec<CheckSummary> = serde_json::from_reader(reader)
             .with_context(|| format!("failed to parse baseline: {}", path.display()))?;
@@ -811,7 +888,11 @@ fn run_checks(
                 .iter()
                 .map(|o| FilteredOutput {
                     output_dir: &o.summary.output_dir,
-                    diagnostics: o.diagnostics.iter().filter(|d| matches_filters(d)).collect(),
+                    diagnostics: o
+                        .diagnostics
+                        .iter()
+                        .filter(|d| matches_filters(d))
+                        .collect(),
                 })
                 .collect();
             println!("{}", serde_json::to_string_pretty(&filtered)?);
@@ -821,7 +902,10 @@ fn run_checks(
                 summaries: &'a [CheckSummary],
                 baseline_diff: &'a BaselineDiff,
             }
-            let output = JsonOutput { summaries: &summaries, baseline_diff: diff };
+            let output = JsonOutput {
+                summaries: &summaries,
+                baseline_diff: diff,
+            };
             println!("{}", serde_json::to_string_pretty(&output)?);
         } else {
             println!("{}", serde_json::to_string_pretty(&summaries)?);
@@ -834,8 +918,11 @@ fn run_checks(
             if has_filters {
                 // Collect all diagnostics matching the filters.
                 let unfiltered_total = output.diagnostics.len();
-                let mut matched: Vec<&Diagnostic> =
-                    output.diagnostics.iter().filter(|d| matches_filters(d)).collect();
+                let mut matched: Vec<&Diagnostic> = output
+                    .diagnostics
+                    .iter()
+                    .filter(|d| matches_filters(d))
+                    .collect();
                 matched.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
 
                 // Build a description of the active filter(s).
@@ -895,7 +982,10 @@ fn run_checks(
                         if shown >= lim {
                             let remaining = matched.len() - shown;
                             if remaining > 0 {
-                                println!("  ... and {} more (use --examples -1 to show all)", remaining);
+                                println!(
+                                    "  ... and {} more (use --examples -1 to show all)",
+                                    remaining
+                                );
                             }
                             break;
                         }
@@ -928,9 +1018,7 @@ fn run_checks(
                             .iter()
                             .filter(|d| &d.code == code)
                             .collect();
-                        sorted.sort_by(|a, b| {
-                            a.file.cmp(&b.file).then(a.line.cmp(&b.line))
-                        });
+                        sorted.sort_by(|a, b| a.file.cmp(&b.file).then(a.line.cmp(&b.line)));
                         let mut shown = 0usize;
                         for diag in &sorted {
                             if !seen_messages.insert(diag.message.as_str()) {
@@ -956,7 +1044,10 @@ fn run_checks(
                     println!("  {count:>5}  {msg} [{code}]");
                 }
                 if s.by_message.len() > max_msgs {
-                    println!("  ... and {} more unique message(s)", s.by_message.len() - max_msgs);
+                    println!(
+                        "  ... and {} more unique message(s)",
+                        s.by_message.len() - max_msgs
+                    );
                 }
             }
         }
@@ -970,7 +1061,9 @@ fn run_checks(
         if diff.total_delta > 0 {
             bail!(
                 "regression detected: {} more error(s) than baseline ({} → {})",
-                diff.total_delta, diff.old_total, diff.new_total
+                diff.total_delta,
+                diff.old_total,
+                diff.new_total
             );
         }
     }
@@ -1055,7 +1148,13 @@ fn compute_baseline_diff(old: &[CheckSummary], new: &[CheckSummary]) -> Baseline
         let o = old_msgs.get(&(*msg, *code)).copied().unwrap_or(0);
         let n = new_msgs.get(&(*msg, *code)).copied().unwrap_or(0);
         if o != n {
-            by_message.push((msg.to_string(), code.to_string(), o, n, n as isize - o as isize));
+            by_message.push((
+                msg.to_string(),
+                code.to_string(),
+                o,
+                n,
+                n as isize - o as isize,
+            ));
         }
     }
     by_message.sort_by(|a, b| b.4.unsigned_abs().cmp(&a.4.unsigned_abs()));
@@ -1070,7 +1169,10 @@ fn compute_baseline_diff(old: &[CheckSummary], new: &[CheckSummary]) -> Baseline
 }
 
 fn print_baseline_diff(diff: &BaselineDiff, baseline_path: &Path) {
-    println!("\n[check] Comparing against baseline: {}", baseline_path.display());
+    println!(
+        "\n[check] Comparing against baseline: {}",
+        baseline_path.display()
+    );
 
     let sign = if diff.total_delta > 0 { "+" } else { "" };
     println!(
@@ -1095,7 +1197,10 @@ fn print_baseline_diff(diff: &BaselineDiff, baseline_path: &Path) {
             println!("  {s}{delta:>4}  {msg} [{code}] ({old} → {new})");
         }
         if diff.by_message.len() > max_msgs {
-            println!("  ... and {} more unique message(s)", diff.by_message.len() - max_msgs);
+            println!(
+                "  ... and {} more unique message(s)",
+                diff.by_message.len() - max_msgs
+            );
         }
     }
 }
@@ -1292,7 +1397,9 @@ fn format_instruction(
         Operand::Float(v) => format!("{v}"),
         Operand::Bool(v) => format!("{v}"),
         Operand::StringIndex(idx) => {
-            let s = dw.resolve_string(reincarnate_datawin::StringRef(*idx)).unwrap_or_else(|_| format!("<string#{idx}>"));
+            let s = dw
+                .resolve_string(reincarnate_datawin::StringRef(*idx))
+                .unwrap_or_else(|_| format!("<string#{idx}>"));
             // Truncate at 40 chars
             if s.chars().count() > 40 {
                 let truncated: String = s.chars().take(40).collect();
@@ -1308,7 +1415,10 @@ fn format_instruction(
                 .map(|s| s.as_str())
                 .unwrap_or("<unknown>");
             if var_ref.ref_type != 0 {
-                format!("{inst_name}.{var_name}  [ref_type={:#04x}]", var_ref.ref_type)
+                format!(
+                    "{inst_name}.{var_name}  [ref_type={:#04x}]",
+                    var_ref.ref_type
+                )
             } else {
                 format!("{inst_name}.{var_name}")
             }
@@ -1352,7 +1462,10 @@ fn format_instruction(
     if operand_str.is_empty() {
         format!("  {:#06x}: {opcode_str}{type_suffix}", inst.offset)
     } else {
-        format!("  {:#06x}: {opcode_str}{type_suffix}  {operand_str}", inst.offset)
+        format!(
+            "  {:#06x}: {opcode_str}{type_suffix}  {operand_str}",
+            inst.offset
+        )
     }
 }
 
@@ -1467,7 +1580,10 @@ fn cmd_disasm(manifest_path: &Path, function_filter: Option<&str>) -> Result<()>
             }
         };
 
-        println!("{name} ({} instructions, {num_bytes} bytes)", instructions.len());
+        println!(
+            "{name} ({} instructions, {num_bytes} bytes)",
+            instructions.len()
+        );
         for inst in &instructions {
             let line = format_instruction(inst, &vari_names, &func_names, &dw);
             println!("{line}");
@@ -1488,7 +1604,9 @@ fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> 
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let output = frontend.extract(input).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let output = frontend
+        .extract(input)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let debug_config = DebugConfig {
         dump_ir: false,
@@ -1571,8 +1689,9 @@ fn cmd_stress(
     };
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
-    let (pass_config, _lowering_config) = Preset::resolve(preset, &skip_refs)
-        .ok_or_else(|| anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")"))?;
+    let (pass_config, _lowering_config) = Preset::resolve(preset, &skip_refs).ok_or_else(|| {
+        anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")")
+    })?;
 
     // Extract the initial modules once.
     let initial_input = FrontendInput {
@@ -1580,11 +1699,14 @@ fn cmd_stress(
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let initial_output = frontend.extract(initial_input).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let initial_output = frontend
+        .extract(initial_input)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let runtime_variant = initial_output.runtime_variant.as_deref();
     let first_backend = manifest.targets.first().map(|t| &t.backend);
-    let early_runtime = first_backend.and_then(|b| resolve_runtime(&manifest.engine, b, runtime_variant));
+    let early_runtime =
+        first_backend.and_then(|b| resolve_runtime(&manifest.engine, b, runtime_variant));
     let external_type_defs = early_runtime
         .as_ref()
         .map(|rt| rt.config.type_definitions.clone())
@@ -1597,7 +1719,11 @@ fn cmd_stress(
     let debug = DebugConfig::none();
 
     // Add external defs and collect module names before consuming initial_output.
-    let module_names: Vec<String> = initial_output.modules.iter().map(|m| m.name.clone()).collect();
+    let module_names: Vec<String> = initial_output
+        .modules
+        .iter()
+        .map(|m| m.name.clone())
+        .collect();
     let mut initial_modules: Vec<Module> = initial_output.modules;
     // extra_passes from the initial extraction are consumed by run 0's pipeline.
     // For runs 1+, we re-extract to obtain fresh Box<dyn Transform> instances
@@ -1616,10 +1742,8 @@ fn cmd_stress(
     for (mod_idx, module_name) in module_names.iter().enumerate() {
         eprintln!("[stress] module: {module_name}");
 
-        let mut module = std::mem::replace(
-            &mut initial_modules[mod_idx],
-            Module::new(String::new()),
-        );
+        let mut module =
+            std::mem::replace(&mut initial_modules[mod_idx], Module::new(String::new()));
 
         // History of (whole-module hash, per-function JSON map) for each run.
         let mut run_hashes: Vec<u64> = Vec::with_capacity(runs);
@@ -1654,8 +1778,12 @@ fn cmd_stress(
                 pipeline.add(extra);
             }
 
-            let PipelineOutput { module: transformed, stopped_early: _ } =
-                pipeline.run_with_debug(module, &debug).map_err(|e| anyhow::anyhow!("{e}"))?;
+            let PipelineOutput {
+                module: transformed,
+                stopped_early: _,
+            } = pipeline
+                .run_with_debug(module, &debug)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
             module = transformed;
 
             let module_json = serde_json::to_string(&module)?;
@@ -1678,7 +1806,10 @@ fn cmd_stress(
             } else if let Some(matched) = matched_run {
                 if matched == run_idx {
                     // Identical to the immediately preceding run — fixpoint.
-                    eprintln!("identical to run {matched}. Fixpoint reached after {} run(s).", run_idx);
+                    eprintln!(
+                        "identical to run {matched}. Fixpoint reached after {} run(s).",
+                        run_idx
+                    );
                     fixpoint_run = Some(run_idx);
                     run_hashes.push(module_hash);
                     run_func_maps.push(func_map);
@@ -1740,8 +1871,9 @@ fn resolve_add_manifest(path: Option<&Path>) -> Result<PathBuf> {
         }
         None => {
             let cwd = std::env::current_dir().context("failed to get current directory")?;
-            find_manifest_upward(&cwd)
-                .ok_or_else(|| anyhow::anyhow!("no reincarnate.json found in current directory or ancestors"))
+            find_manifest_upward(&cwd).ok_or_else(|| {
+                anyhow::anyhow!("no reincarnate.json found in current directory or ancestors")
+            })
         }
     }
 }
@@ -1818,10 +1950,16 @@ fn cmd_list(sort: &SortOrder, json: bool) -> Result<()> {
     match sort {
         SortOrder::Name => {} // BTreeMap iteration is already alphabetical.
         SortOrder::Engine => entries.sort_by(|(_, a), (_, b)| {
-            a.engine.as_deref().unwrap_or("").cmp(b.engine.as_deref().unwrap_or(""))
+            a.engine
+                .as_deref()
+                .unwrap_or("")
+                .cmp(b.engine.as_deref().unwrap_or(""))
         }),
         SortOrder::LastEmitted => entries.sort_by(|(_, a), (_, b)| {
-            b.last_emitted_at.as_deref().unwrap_or("").cmp(a.last_emitted_at.as_deref().unwrap_or(""))
+            b.last_emitted_at
+                .as_deref()
+                .unwrap_or("")
+                .cmp(a.last_emitted_at.as_deref().unwrap_or(""))
         }),
     }
 
@@ -1850,7 +1988,12 @@ fn cmd_list(sort: &SortOrder, json: bool) -> Result<()> {
     }
 
     // Compute column widths.
-    let col_name_w = entries.iter().map(|(n, _)| n.len()).max().unwrap_or(4).max(4);
+    let col_name_w = entries
+        .iter()
+        .map(|(n, _)| n.len())
+        .max()
+        .unwrap_or(4)
+        .max(4);
     let col_engine_w = entries
         .iter()
         .map(|(_, e)| e.engine.as_deref().unwrap_or("-").len())
@@ -1901,11 +2044,27 @@ fn main() -> Result<()> {
             cmd_info(&path)
         }
         Command::PrintIr { file } => cmd_print_ir(file),
-        Command::Extract { target, manifest, skip_passes } => {
+        Command::Extract {
+            target,
+            manifest,
+            skip_passes,
+        } => {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_extract(&path, skip_passes)
         }
-        Command::Emit { target, manifest, all, parallel: _, skip_passes, preset, fixpoint, dump_ir, dump_ast, dump_function, dump_ir_after } => {
+        Command::Emit {
+            target,
+            manifest,
+            all,
+            parallel: _,
+            skip_passes,
+            preset,
+            fixpoint,
+            dump_ir,
+            dump_ast,
+            dump_function,
+            dump_ir_after,
+        } => {
             // Validate --dump-ir-after pass name early so the error is clear.
             if let Some(pass) = dump_ir_after.as_deref() {
                 if !VALID_PASS_NAMES.contains(&pass) {
@@ -1933,7 +2092,21 @@ fn main() -> Result<()> {
                 result.map(|_| ())
             }
         }
-        Command::Check { target, manifest, all, no_emit, json, skip_passes, preset, save_baseline, baseline, examples, filter_code, filter_file, filter_message } => {
+        Command::Check {
+            target,
+            manifest,
+            all,
+            no_emit,
+            json,
+            skip_passes,
+            preset,
+            save_baseline,
+            baseline,
+            examples,
+            filter_code,
+            filter_file,
+            filter_message,
+        } => {
             let cfg = CheckConfig {
                 json: *json,
                 save_baseline: save_baseline.as_deref(),
@@ -1950,20 +2123,32 @@ fn main() -> Result<()> {
                 cmd_check(&path, *no_emit, skip_passes, preset, &cfg)
             }
         }
-        Command::Add { path, name, force } => {
-            cmd_add(path.as_deref(), name.as_deref(), *force)
-        }
+        Command::Add { path, name, force } => cmd_add(path.as_deref(), name.as_deref(), *force),
         Command::Remove { name } => cmd_remove(name),
         Command::List { sort, json } => cmd_list(sort, *json),
-        Command::Stress { target, manifest, runs, skip_passes, preset } => {
+        Command::Stress {
+            target,
+            manifest,
+            runs,
+            skip_passes,
+            preset,
+        } => {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_stress(&path, *runs, skip_passes, preset)
         }
-        Command::ListFunctions { target, manifest, filter } => {
+        Command::ListFunctions {
+            target,
+            manifest,
+            filter,
+        } => {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_list_functions(&path, filter.as_deref())
         }
-        Command::Disasm { target, manifest, function } => {
+        Command::Disasm {
+            target,
+            manifest,
+            function,
+        } => {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_disasm(&path, function.as_deref())
         }

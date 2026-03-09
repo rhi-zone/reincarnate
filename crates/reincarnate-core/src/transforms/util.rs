@@ -12,9 +12,7 @@ pub fn branch_targets(op: &Op) -> Vec<BlockId> {
             else_target,
             ..
         } => vec![*then_target, *else_target],
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             let mut targets: Vec<BlockId> = cases.iter().map(|(_, t, _)| *t).collect();
             targets.push(default.0);
             targets
@@ -90,9 +88,7 @@ pub fn value_operands(op: &Op) -> Vec<ValueId> {
             ops
         }
         Op::SystemCall { args, .. } => args.clone(),
-        Op::MethodCall {
-            receiver, args, ..
-        } => {
+        Op::MethodCall { receiver, args, .. } => {
             let mut ops = vec![*receiver];
             ops.extend(args);
             ops
@@ -226,9 +222,7 @@ pub fn substitute_values_in_op(op: &mut Op, subst: &HashMap<ValueId, ValueId>) {
                 sub(a);
             }
         }
-        Op::MethodCall {
-            receiver, args, ..
-        } => {
+        Op::MethodCall { receiver, args, .. } => {
             sub(receiver);
             for a in args {
                 sub(a);
@@ -316,9 +310,7 @@ pub fn append_branch_arg_for_target(op: &mut Op, target: BlockId, value: ValueId
                 else_args.push(value);
             }
         }
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             for (_, t, args) in cases.iter_mut() {
                 if *t == target {
                     args.push(value);
@@ -333,10 +325,7 @@ pub fn append_branch_arg_for_target(op: &mut Op, target: BlockId, value: ValueId
 }
 
 /// Build a preorder traversal of the dominator tree.
-pub fn dom_tree_preorder(
-    entry: BlockId,
-    idom: &HashMap<BlockId, BlockId>,
-) -> Vec<BlockId> {
+pub fn dom_tree_preorder(entry: BlockId, idom: &HashMap<BlockId, BlockId>) -> Vec<BlockId> {
     // Build children map from idom.
     let mut children: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
     for (&block, &parent) in idom {
@@ -511,9 +500,7 @@ pub(crate) mod test_helpers {
                     else_params
                 );
             }
-            Op::Switch {
-                cases, default, ..
-            } => {
+            Op::Switch { cases, default, .. } => {
                 for (val, target, args) in cases {
                     let param_count = func.blocks[*target].params.len();
                     assert_eq!(
@@ -608,14 +595,8 @@ mod tests {
         let df = compute_dominance_frontiers(&preds, &idom);
 
         // DF(1) = {3}, DF(2) = {3}, DF(0) = {}, DF(3) = {}
-        assert_eq!(
-            df.get(&bid(1)),
-            Some(&[bid(3)].into_iter().collect()),
-        );
-        assert_eq!(
-            df.get(&bid(2)),
-            Some(&[bid(3)].into_iter().collect()),
-        );
+        assert_eq!(df.get(&bid(1)), Some(&[bid(3)].into_iter().collect()),);
+        assert_eq!(df.get(&bid(2)), Some(&[bid(3)].into_iter().collect()),);
         assert!(df.get(&bid(0)).is_none_or(|s| s.is_empty()));
         assert!(df.get(&bid(3)).is_none_or(|s| s.is_empty()));
     }
@@ -654,10 +635,7 @@ mod tests {
         // Walk from pred 2: runner=2, idom(2)=1≠0 → DF(2)∋1, runner=1, idom(1)=0=idom_block → stop
         // Walk from pred 0: runner=0=idom_block → stop
         // So DF(2) = {1}
-        assert_eq!(
-            df.get(&bid(2)),
-            Some(&[bid(1)].into_iter().collect()),
-        );
+        assert_eq!(df.get(&bid(2)), Some(&[bid(1)].into_iter().collect()),);
     }
 
     #[test]

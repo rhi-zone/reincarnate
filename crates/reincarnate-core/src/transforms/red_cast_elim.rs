@@ -56,7 +56,9 @@ mod tests {
     fn identity_no_change() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let val = fb.const_int(1); // Int(64)
         let cast = fb.cast(val, Type::Bool);
@@ -75,7 +77,9 @@ mod tests {
         use crate::transforms::util::test_helpers::assert_idempotent;
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(1);
@@ -90,7 +94,9 @@ mod tests {
     fn redundant_cast_rewritten_to_copy() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(1);
@@ -108,7 +114,14 @@ mod tests {
 
         let func = &result.module.functions[FuncId::new(0)];
         assert!(
-            matches!(func.insts.values().find(|i| i.result == Some(cast)).unwrap().op, Op::Copy(_)),
+            matches!(
+                func.insts
+                    .values()
+                    .find(|i| i.result == Some(cast))
+                    .unwrap()
+                    .op,
+                Op::Copy(_)
+            ),
             "redundant cast should become Copy"
         );
     }
@@ -120,7 +133,9 @@ mod tests {
     fn coerce_redundant_rewritten() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         let coerced = fb.coerce(p, Type::Int(64));
@@ -133,7 +148,11 @@ mod tests {
         assert!(result.changed, "same-type coerce should be eliminated");
         let func = &result.module.functions[FuncId::new(0)];
         assert!(matches!(
-            func.insts.values().find(|i| i.result == Some(coerced)).unwrap().op,
+            func.insts
+                .values()
+                .find(|i| i.result == Some(coerced))
+                .unwrap()
+                .op,
             Op::Copy(_)
         ));
     }
@@ -143,7 +162,9 @@ mod tests {
     fn chain_of_casts() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         let c1 = fb.cast(p, Type::Int(64));
@@ -201,7 +222,10 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let result = RedundantCastElimination.apply(mb.build()).unwrap();
-        assert!(result.changed, "NullableCoerce(Foo, Foo) should be redundant");
+        assert!(
+            result.changed,
+            "NullableCoerce(Foo, Foo) should be redundant"
+        );
         let func = &result.module.functions[FuncId::new(0)];
         let inst = func
             .insts
@@ -230,7 +254,10 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let result = RedundantCastElimination.apply(mb.build()).unwrap();
-        assert!(result.changed, "Coerce(Int(32), Int(32)) should be redundant");
+        assert!(
+            result.changed,
+            "Coerce(Int(32), Int(32)) should be redundant"
+        );
         let func = &result.module.functions[FuncId::new(0)];
         let inst = func
             .insts
@@ -245,7 +272,9 @@ mod tests {
     fn non_redundant_cast_unchanged() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let val = fb.const_int(1); // Type::Int(64)
         let cast = fb.cast(val, Type::Bool);

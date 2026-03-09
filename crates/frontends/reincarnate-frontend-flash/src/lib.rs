@@ -49,9 +49,8 @@ impl Frontend for FlashFrontend {
             if let swf::Tag::SymbolClass(symbols) = tag {
                 for link in symbols {
                     if link.id == 0 {
-                        document_class = Some(
-                            link.class_name.to_string_lossy(swf::UTF_8).to_string(),
-                        );
+                        document_class =
+                            Some(link.class_name.to_string_lossy(swf::UTF_8).to_string());
                     }
                 }
             }
@@ -80,17 +79,22 @@ impl Frontend for FlashFrontend {
                     message: format!("ABC parsing failed in tag {tag_idx}: {e}"),
                 })?;
 
-                let module = class::translate_abc_to_module(&abc, &module_name, document_class.as_deref()).map_err(|e| {
-                    CoreError::Parse {
+                let module =
+                    class::translate_abc_to_module(&abc, &module_name, document_class.as_deref())
+                        .map_err(|e| CoreError::Parse {
                         file: input.source.clone(),
                         message: format!("translation failed in {module_name}: {e}"),
-                    }
-                })?;
+                    })?;
 
                 modules.push(module);
             }
         }
 
-        Ok(FrontendOutput { modules, assets, runtime_variant: None, extra_passes: vec![] })
+        Ok(FrontendOutput {
+            modules,
+            assets,
+            runtime_variant: None,
+            extra_passes: vec![],
+        })
     }
 }

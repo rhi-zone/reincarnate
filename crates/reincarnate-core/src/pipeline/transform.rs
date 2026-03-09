@@ -1,6 +1,6 @@
+use super::config::DebugConfig;
 use crate::error::CoreError;
 use crate::ir::Module;
-use super::config::DebugConfig;
 
 /// Result of applying a transform pass.
 pub struct TransformResult {
@@ -110,7 +110,10 @@ impl TransformPipeline {
         // Special case: dump raw IR before any transforms.
         if debug.dump_ir_after.as_deref() == Some("frontend") {
             dump_ir_functions(&module, debug);
-            return Ok(PipelineOutput { module, stopped_early: true });
+            return Ok(PipelineOutput {
+                module,
+                stopped_early: true,
+            });
         }
 
         let stop_after = debug.dump_ir_after.as_deref();
@@ -138,7 +141,10 @@ impl TransformPipeline {
                 module = transform.apply(module)?.module;
                 if stop_after == Some(transform.name()) {
                     dump_ir_functions(&module, debug);
-                    return Ok(PipelineOutput { module, stopped_early: true });
+                    return Ok(PipelineOutput {
+                        module,
+                        stopped_early: true,
+                    });
                 }
             }
         }
@@ -150,7 +156,10 @@ impl TransformPipeline {
             func.compact_insts();
         }
 
-        Ok(PipelineOutput { module, stopped_early: false })
+        Ok(PipelineOutput {
+            module,
+            stopped_early: false,
+        })
     }
 }
 
@@ -195,11 +204,15 @@ mod tests {
         }
 
         fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
-            let prev = self.changes_left.fetch_update(
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-                |n| if n > 0 { Some(n - 1) } else { None },
-            );
+            let prev = self
+                .changes_left
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
+                    if n > 0 {
+                        Some(n - 1)
+                    } else {
+                        None
+                    }
+                });
             Ok(TransformResult {
                 module,
                 changed: prev.is_ok(),
@@ -214,8 +227,7 @@ mod tests {
         pipeline.add(Box::new(MockTransform::new("a", 5)));
         // Without fixpoint, the transform runs exactly once.
         let _result = pipeline.run(module).unwrap();
-        let mock = pipeline.transforms[0]
-            .as_ref() as *const dyn Transform as *const MockTransform;
+        let mock = pipeline.transforms[0].as_ref() as *const dyn Transform as *const MockTransform;
         // Safety: we know the concrete type.
         let remaining = unsafe { (*mock).changes_left.load(Ordering::SeqCst) };
         assert_eq!(remaining, 4); // ran once, decremented from 5 to 4
@@ -228,8 +240,7 @@ mod tests {
         pipeline.add(Box::new(MockTransform::new("a", 3)));
         pipeline.set_fixpoint(true);
         let _result = pipeline.run(module).unwrap();
-        let mock = pipeline.transforms[0]
-            .as_ref() as *const dyn Transform as *const MockTransform;
+        let mock = pipeline.transforms[0].as_ref() as *const dyn Transform as *const MockTransform;
         // After 3 changes + 1 stable iteration = 4 calls total. changes_left = 0.
         let remaining = unsafe { (*mock).changes_left.load(Ordering::SeqCst) };
         assert_eq!(remaining, 0);
@@ -248,10 +259,10 @@ mod tests {
         pipeline.set_fixpoint(true);
         let _result = pipeline.run(module).unwrap();
 
-        let mock_a = pipeline.transforms[0]
-            .as_ref() as *const dyn Transform as *const MockTransform;
-        let mock_b = pipeline.transforms[1]
-            .as_ref() as *const dyn Transform as *const MockTransform;
+        let mock_a =
+            pipeline.transforms[0].as_ref() as *const dyn Transform as *const MockTransform;
+        let mock_b =
+            pipeline.transforms[1].as_ref() as *const dyn Transform as *const MockTransform;
         let remaining_a = unsafe { (*mock_a).changes_left.load(Ordering::SeqCst) };
         let remaining_b = unsafe { (*mock_b).changes_left.load(Ordering::SeqCst) };
         assert_eq!(remaining_a, 0);

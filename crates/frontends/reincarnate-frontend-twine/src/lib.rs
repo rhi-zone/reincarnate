@@ -7,7 +7,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use reincarnate_core::error::CoreError;
-use reincarnate_core::ir::{EntryPoint, Function, FunctionBuilder, FunctionSig, ModuleBuilder, Type, Visibility};
+use reincarnate_core::ir::{
+    EntryPoint, Function, FunctionBuilder, FunctionSig, ModuleBuilder, Type, Visibility,
+};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
 use reincarnate_core::project::{Asset, AssetCatalog, AssetKind, EngineOrigin};
 
@@ -69,10 +71,7 @@ impl Frontend for TwineFrontend {
 }
 
 impl TwineFrontend {
-    fn extract_sugarcube(
-        &self,
-        story: &extract::Story,
-    ) -> Result<FrontendOutput, CoreError> {
+    fn extract_sugarcube(&self, story: &extract::Story) -> Result<FrontendOutput, CoreError> {
         let mut mb = ModuleBuilder::new(&story.name);
         let mut start_func_id = None;
         let mut assets = AssetCatalog::new();
@@ -85,13 +84,13 @@ impl TwineFrontend {
             .map(|p| p.name.clone());
 
         // Build custom macro registry from user scripts before parsing passages.
-        let custom_macro_registry = story
-            .user_scripts
-            .iter()
-            .fold(sugarcube::CustomMacroRegistry::new(), |mut reg, script| {
+        let custom_macro_registry = story.user_scripts.iter().fold(
+            sugarcube::CustomMacroRegistry::new(),
+            |mut reg, script| {
                 reg.extend(sugarcube::extract_custom_macros(script));
                 reg
-            });
+            },
+        );
 
         // Translate each passage → Function
         for passage in &story.passages {
@@ -120,17 +119,12 @@ impl TwineFrontend {
                 continue;
             }
 
-            let ast = sugarcube::parse_passage_with_registry(
-                &passage.source,
-                &custom_macro_registry,
-            );
+            let ast =
+                sugarcube::parse_passage_with_registry(&passage.source, &custom_macro_registry);
 
             let func_name = translate::passage_func_name(&passage.name);
-            let result = translate::translate_passage(
-                &passage.name,
-                &ast,
-                Some(&custom_macro_registry),
-            );
+            let result =
+                translate::translate_passage(&passage.name, &ast, Some(&custom_macro_registry));
             let func_id = mb.add_function(result.func);
 
             // Register passage name → function name mapping for the passage registry
@@ -209,7 +203,8 @@ impl TwineFrontend {
         input: &FrontendInput,
     ) -> Result<FrontendOutput, CoreError> {
         // Check if HAL audio macro translation is enabled (default: true).
-        let hal_audio = input.options
+        let hal_audio = input
+            .options
             .get("hal_audio")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
@@ -269,11 +264,7 @@ impl TwineFrontend {
 
             // Log parse errors but continue
             for err in &ast.errors {
-                let snippet = source_context_snippet(
-                    &passage.source,
-                    err.span.start,
-                    err.span.end,
-                );
+                let snippet = source_context_snippet(&passage.source, err.span.start, err.span.end);
                 eprintln!(
                     "warning: parse error in passage '{}': {}\n  {}",
                     passage.name, err, snippet
@@ -282,7 +273,8 @@ impl TwineFrontend {
             }
 
             let func_name = harlowe::translate::passage_func_name(&passage.name);
-            let result = harlowe::translate::translate_passage(&passage.name, &ast, &passage.source);
+            let result =
+                harlowe::translate::translate_passage(&passage.name, &ast, &passage.source);
             let func_id = mb.add_function(result.func);
 
             // Register passage name → function name mapping

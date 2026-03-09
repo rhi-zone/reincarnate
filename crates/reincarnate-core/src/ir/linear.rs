@@ -17,7 +17,6 @@
 //!   values get `const`/`let` declarations. Produces the AST for existing
 //!   AST-to-AST passes.
 
-
 use std::collections::{HashMap, HashSet};
 
 use super::ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
@@ -126,12 +125,7 @@ pub(crate) fn linearize(func: &Function, shape: &Shape) -> Vec<LinearStmt> {
     out
 }
 
-fn linearize_into(
-    func: &Function,
-    shape: &Shape,
-    out: &mut Vec<LinearStmt>,
-    skip_init: bool,
-) {
+fn linearize_into(func: &Function, shape: &Shape, out: &mut Vec<LinearStmt>, skip_init: bool) {
     match shape {
         Shape::Block(block_id) => {
             emit_block_insts(func, *block_id, out);
@@ -139,20 +133,14 @@ fn linearize_into(
 
         Shape::Seq(parts) => {
             for (i, part) in parts.iter().enumerate() {
-                let next_is_loop = matches!(
-                    parts.get(i + 1),
-                    Some(Shape::ForLoop { .. })
-                );
+                let next_is_loop = matches!(parts.get(i + 1), Some(Shape::ForLoop { .. }));
 
                 // When a non-Block shape precedes a ForLoop in a Seq, its
                 // trailing assigns already set the loop header's block
                 // params — the ForLoop's own init_assigns would duplicate them.
                 let this_skip_init = if i > 0 {
                     let prev = &parts[i - 1];
-                    let is_loop = matches!(
-                        part,
-                        Shape::ForLoop { .. }
-                    );
+                    let is_loop = matches!(part, Shape::ForLoop { .. });
                     is_loop && !matches!(prev, Shape::Block(_))
                 } else {
                     false
@@ -572,10 +560,7 @@ fn count_uses_in_stmts(
                 count_uses_in_stmts(func, else_body, counts);
             }
             LinearStmt::While {
-                header,
-                cond,
-                body,
-                ..
+                header, cond, body, ..
             } => {
                 count_uses_in_stmts(func, header, counts);
                 *counts.entry(*cond).or_default() += 1;
@@ -694,19 +679,32 @@ fn collect_def_use_depths(
             LinearStmt::Return { value: Some(v) } => {
                 update_use(*v, depth, min_use_depths);
             }
-            LinearStmt::If { cond, then_body, else_body } => {
+            LinearStmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
                 update_use(*cond, depth, min_use_depths);
                 collect_def_use_depths(func, then_body, depth + 1, defs, min_use_depths);
                 collect_def_use_depths(func, else_body, depth + 1, defs, min_use_depths);
             }
-            LinearStmt::While { header, cond, body, .. } => {
+            LinearStmt::While {
+                header, cond, body, ..
+            } => {
                 // header: same depth (emit_stmts_into, no protected scope)
                 collect_def_use_depths(func, header, depth, defs, min_use_depths);
                 update_use(*cond, depth, min_use_depths);
                 // body: depth+1 (emit_stmts_protected)
                 collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
             }
-            LinearStmt::For { init, header, cond, update, body, .. } => {
+            LinearStmt::For {
+                init,
+                header,
+                cond,
+                update,
+                body,
+                ..
+            } => {
                 collect_def_use_depths(func, init, depth, defs, min_use_depths);
                 collect_def_use_depths(func, header, depth, defs, min_use_depths);
                 update_use(*cond, depth, min_use_depths);
@@ -716,15 +714,29 @@ fn collect_def_use_depths(
             LinearStmt::Loop { body } => {
                 collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
             }
-            LinearStmt::LogicalOr { cond, rhs_body, rhs, phi }
-            | LinearStmt::LogicalAnd { cond, rhs_body, rhs, phi } => {
+            LinearStmt::LogicalOr {
+                cond,
+                rhs_body,
+                rhs,
+                phi,
+            }
+            | LinearStmt::LogicalAnd {
+                cond,
+                rhs_body,
+                rhs,
+                phi,
+            } => {
                 update_use(*cond, depth, min_use_depths);
                 collect_def_use_depths(func, rhs_body, depth + 1, defs, min_use_depths);
                 if *rhs != *phi {
                     update_use(*rhs, depth, min_use_depths);
                 }
             }
-            LinearStmt::Switch { value, cases, default_body } => {
+            LinearStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
                 update_use(*value, depth, min_use_depths);
                 for (_, case_stmts) in cases {
                     collect_def_use_depths(func, case_stmts, depth + 1, defs, min_use_depths);
@@ -836,8 +848,7 @@ fn collect_dead_uses(
             LinearStmt::Loop { body } => {
                 collect_dead_uses(func, body, counts, dead, changed);
             }
-            LinearStmt::LogicalOr { rhs_body, .. }
-            | LinearStmt::LogicalAnd { rhs_body, .. } => {
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
                 collect_dead_uses(func, rhs_body, counts, dead, changed);
             }
             LinearStmt::Dispatch { blocks, .. } => {
@@ -1058,8 +1069,7 @@ fn classify_defs(
                     lazy_inlines,
                 );
             }
-            LinearStmt::LogicalOr { rhs_body, .. }
-            | LinearStmt::LogicalAnd { rhs_body, .. } => {
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
                 classify_defs(
                     func,
                     rhs_body,
@@ -1138,9 +1148,7 @@ fn scan_alloc_stores(
                 result: alloc_r,
                 inst_id: alloc_iid,
             },
-            LinearStmt::Effect {
-                inst_id: store_iid,
-            },
+            LinearStmt::Effect { inst_id: store_iid },
         ) = (&pair[0], &pair[1])
         {
             if matches!(func.insts[*alloc_iid].op, Op::Alloc(_)) {
@@ -1183,8 +1191,7 @@ fn scan_alloc_stores(
             LinearStmt::Loop { body } => {
                 scan_alloc_stores(func, body, alloc_inits, skip_stores);
             }
-            LinearStmt::LogicalOr { rhs_body, .. }
-            | LinearStmt::LogicalAnd { rhs_body, .. } => {
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
                 scan_alloc_stores(func, rhs_body, alloc_inits, skip_stores);
             }
             LinearStmt::Dispatch { blocks, .. } => {
@@ -1310,7 +1317,6 @@ pub fn lower_function_linear(
     }
 }
 
-
 // -----------------------------------------------------------------------
 // Emit context
 // -----------------------------------------------------------------------
@@ -1401,9 +1407,7 @@ impl<'a> EmitCtx<'a> {
                         propagate_fwd(*then_target, then_args);
                         propagate_fwd(*else_target, else_args);
                     }
-                    Op::Switch {
-                        cases, default, ..
-                    } => {
+                    Op::Switch { cases, default, .. } => {
                         for (_, target, args) in cases {
                             propagate_fwd(*target, args);
                         }
@@ -1452,9 +1456,7 @@ impl<'a> EmitCtx<'a> {
                         collect(*then_target, then_args);
                         collect(*else_target, else_args);
                     }
-                    Op::Switch {
-                        cases, default, ..
-                    } => {
+                    Op::Switch { cases, default, .. } => {
                         for (_, target, args) in cases {
                             collect(*target, args);
                         }
@@ -1534,7 +1536,8 @@ impl<'a> EmitCtx<'a> {
                         _ => None,
                     };
                     if let Some(src) = src {
-                        if let std::collections::hash_map::Entry::Vacant(e) = value_names.entry(src) {
+                        if let std::collections::hash_map::Entry::Vacant(e) = value_names.entry(src)
+                        {
                             e.insert(name);
                             let src_uses = resolve.use_counts.get(&src).copied().unwrap_or(0);
                             if src_uses <= 1 {
@@ -1550,7 +1553,10 @@ impl<'a> EmitCtx<'a> {
         // the self name should use a distinct local name to avoid `this = ...`.
         let has_self = matches!(
             func.method_kind,
-            MethodKind::Instance | MethodKind::Constructor | MethodKind::Getter | MethodKind::Setter
+            MethodKind::Instance
+                | MethodKind::Constructor
+                | MethodKind::Getter
+                | MethodKind::Setter
         );
         if has_self && !func.blocks[func.entry].params.is_empty() {
             let self_value = func.blocks[func.entry].params[0].value;
@@ -1689,7 +1695,6 @@ impl<'a> EmitCtx<'a> {
         Expr::Var(self.value_name(v))
     }
 
-
     /// Build an Expr from an Op.
     fn build_expr_from_op(&mut self, op: &Op) -> Option<Expr> {
         Some(match op {
@@ -1805,10 +1810,7 @@ impl<'a> EmitCtx<'a> {
                 }
             }
 
-            Op::Call {
-                func: fname,
-                args,
-            } => Expr::Call {
+            Op::Call { func: fname, args } => Expr::Call {
                 func: fname.clone(),
                 args: args.iter().map(|a| self.build_val(*a)).collect(),
             },
@@ -1822,10 +1824,7 @@ impl<'a> EmitCtx<'a> {
                 args,
             } => {
                 // Dictionary-specific rewrites for Flash.Object operations.
-                if system == "Flash.Object"
-                    && args.len() >= 2
-                    && self.is_dictionary(args[0])
-                {
+                if system == "Flash.Object" && args.len() >= 2 && self.is_dictionary(args[0]) {
                     match method.as_str() {
                         // deleteProperty(dict, key) → dict.delete(key)
                         "deleteProperty" => {
@@ -1904,10 +1903,7 @@ impl<'a> EmitCtx<'a> {
             }
 
             Op::Yield(v) => Expr::Yield(v.map(|yv| Box::new(self.build_val(yv)))),
-            Op::CoroutineCreate {
-                func: fname,
-                args,
-            } => Expr::CoroutineCreate {
+            Op::CoroutineCreate { func: fname, args } => Expr::CoroutineCreate {
                 func: fname.clone(),
                 args: args.iter().map(|a| self.build_val(*a)).collect(),
             },
@@ -2443,7 +2439,10 @@ impl<'a> EmitCtx<'a> {
                     object: Box::new(self.build_val(*object)),
                     field: field.clone(),
                 };
-                stmts.push(Stmt::Assign { target, value: self.build_val(*value) });
+                stmts.push(Stmt::Assign {
+                    target,
+                    value: self.build_val(*value),
+                });
             }
             Op::SetIndex {
                 collection,
@@ -2978,7 +2977,12 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         assert_eq!(ast.name, "add");
         assert_eq!(ast.params.len(), 2);
@@ -2986,10 +2990,7 @@ mod tests {
         assert_eq!(ast.body.len(), 1);
         assert!(matches!(
             &ast.body[0],
-            Stmt::Return(Some(Expr::Binary {
-                op: BinOp::Add,
-                ..
-            }))
+            Stmt::Return(Some(Expr::Binary { op: BinOp::Add, .. }))
         ));
     }
 
@@ -3008,7 +3009,12 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Constant and sum both inlined into return.
         assert_eq!(ast.body.len(), 1);
@@ -3035,9 +3041,18 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
-        assert!(ast.body.is_empty(), "Expected empty body, got: {:?}", ast.body);
+        assert!(
+            ast.body.is_empty(),
+            "Expected empty body, got: {:?}",
+            ast.body
+        );
     }
 
     #[test]
@@ -3065,7 +3080,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         assert!(!ast.body.is_empty());
     }
@@ -3085,9 +3105,7 @@ mod tests {
             Stmt::Assign { target, value } => {
                 expr_contains_var(target, name) || expr_contains_var(value, name)
             }
-            Stmt::VarDecl { init, .. } => {
-                init.as_ref().is_some_and(|e| expr_contains_var(e, name))
-            }
+            Stmt::VarDecl { init, .. } => init.as_ref().is_some_and(|e| expr_contains_var(e, name)),
             Stmt::If {
                 cond,
                 then_body,
@@ -3142,8 +3160,7 @@ mod tests {
                 args.iter().any(|a| expr_contains_var(a, name))
             }
             Expr::MethodCall { receiver, args, .. } => {
-                expr_contains_var(receiver, name)
-                    || args.iter().any(|a| expr_contains_var(a, name))
+                expr_contains_var(receiver, name) || args.iter().any(|a| expr_contains_var(a, name))
             }
             Expr::Field { object, .. } => expr_contains_var(object, name),
             Expr::Index {
@@ -3168,9 +3185,7 @@ mod tests {
                     else_body,
                     ..
                 } => count_var_decls(then_body, name) + count_var_decls(else_body, name),
-                Stmt::While { body, .. } | Stmt::Loop { body } => {
-                    count_var_decls(body, name)
-                }
+                Stmt::While { body, .. } | Stmt::Loop { body } => count_var_decls(body, name),
                 Stmt::For {
                     init, body, update, ..
                 } => {
@@ -3226,13 +3241,19 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Should have an init assign before the loop, not just a naked while.
         // Verify the body is non-empty and has a loop.
-        let has_while_or_for = ast.body.iter().any(|s| {
-            matches!(s, Stmt::While { .. } | Stmt::For { .. })
-        });
+        let has_while_or_for = ast
+            .body
+            .iter()
+            .any(|s| matches!(s, Stmt::While { .. } | Stmt::For { .. }));
         assert!(
             has_while_or_for,
             "Expected loop in output: {}",
@@ -3273,8 +3294,18 @@ mod tests {
         let mut func = fb.build();
         let shape = structurize(&mut func);
 
-        let ast1 = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
-        let ast2 = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast1 = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
+        let ast2 = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         assert_eq!(
             format!("{:?}", ast1.body),
@@ -3304,7 +3335,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // The output should not panic or produce undeclared variables.
         // It may inline the cast or produce a declaration — either is correct.
@@ -3331,7 +3367,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Params should have distinct names.
         assert_eq!(ast.params.len(), 2);
@@ -3349,10 +3390,7 @@ mod tests {
         // Instance method with self param named "this".
         // Another value also named "this" — should be renamed to "_this".
         let sig = FunctionSig {
-            params: vec![
-                Type::Struct("Foo".to_string()),
-                Type::Int(64),
-            ],
+            params: vec![Type::Struct("Foo".to_string()), Type::Int(64)],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -3369,7 +3407,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // The two "this" params should have different names.
         // param(0) keeps "this", param(1) gets "_this" or similar.
@@ -3453,7 +3496,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Output should reference "hp" somewhere, not a vN identifier.
         let body_str = debug_body(&ast.body);
@@ -3530,7 +3578,12 @@ mod tests {
         let func = fb.build();
         let shape = Shape::Block(func.entry);
         // Should not panic from double-flush.
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
         let _ = debug_body(&ast.body);
     }
 
@@ -3571,7 +3624,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // v_field's declaration must appear before the if/else, not inside it.
         // The return should reference the field value.
@@ -3606,10 +3664,20 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Should produce clean output with "result" name, no broken references.
-        assert_eq!(ast.body.len(), 1, "Expected single return: {}", debug_body(&ast.body));
+        assert_eq!(
+            ast.body.len(),
+            1,
+            "Expected single return: {}",
+            debug_body(&ast.body)
+        );
         assert!(matches!(&ast.body[0], Stmt::Return(Some(_))));
     }
 
@@ -3655,14 +3723,25 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Find the If statement and check its condition.
         let if_stmt = ast.body.iter().find(|s| matches!(s, Stmt::If { .. }));
         if let Some(Stmt::If { cond, .. }) = if_stmt {
             // Condition should be inverted Cmp (Ge), not Not(Cmp(Lt)).
             assert!(
-                matches!(cond, Expr::Cmp { kind: CmpKind::Ge, .. }),
+                matches!(
+                    cond,
+                    Expr::Cmp {
+                        kind: CmpKind::Ge,
+                        ..
+                    }
+                ),
                 "Expected inverted Cmp (Ge), not Not wrapper: {cond:?}"
             );
         }
@@ -3700,7 +3779,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Count VarDecl statements for the phi value's name. There should be
         // at most 1 declaration (not duplicated).
@@ -3756,7 +3840,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Should produce clean output — no panic from SE flush timing.
         assert!(
@@ -3856,7 +3945,11 @@ mod tests {
         // Entry: side-effecting call followed by switch.
         let v_call = fb.call("foo", &[], Type::Dynamic);
         fb.name_value(v_call, "foo_call".to_string());
-        fb.switch(v_key, vec![(Constant::Int(0), case0, vec![])], (case1, vec![]));
+        fb.switch(
+            v_key,
+            vec![(Constant::Int(0), case0, vec![])],
+            (case1, vec![]),
+        );
 
         // case0: contains inner if — this triggers flush_side_effecting_inlines
         // inside case0's scope when emitted, which (without the fix) materialises
@@ -3906,18 +3999,20 @@ mod tests {
             .body
             .iter()
             .any(|s| matches!(s, Stmt::VarDecl { name, .. } if name == "foo_call"));
-        let has_orphan_ref =
-            if let Some(Stmt::Switch { cases, default_body, .. }) =
-                ast.body.iter().find(|s| matches!(s, Stmt::Switch { .. }))
-            {
-                let in_cases = cases
-                    .iter()
-                    .any(|(_, stmts)| body_contains_var_ref(stmts, "foo_call"));
-                let in_default = body_contains_var_ref(default_body, "foo_call");
-                (in_cases || in_default) && !has_outer_decl
-            } else {
-                false
-            };
+        let has_orphan_ref = if let Some(Stmt::Switch {
+            cases,
+            default_body,
+            ..
+        }) = ast.body.iter().find(|s| matches!(s, Stmt::Switch { .. }))
+        {
+            let in_cases = cases
+                .iter()
+                .any(|(_, stmts)| body_contains_var_ref(stmts, "foo_call"));
+            let in_default = body_contains_var_ref(default_body, "foo_call");
+            (in_cases || in_default) && !has_outer_decl
+        } else {
+            false
+        };
         assert!(
             !has_orphan_ref,
             "'foo_call' is referenced inside a switch case but has no outer-scope \
@@ -3933,15 +4028,18 @@ mod tests {
 
     fn stmt_contains_var_ref(stmt: &Stmt, name: &str) -> bool {
         match stmt {
-            Stmt::VarDecl { init, .. } => {
-                init.as_ref().is_some_and(|e| expr_contains_var_ref(e, name))
-            }
-            Stmt::Assign { target, value }
-            | Stmt::CompoundAssign { target, value, .. } => {
+            Stmt::VarDecl { init, .. } => init
+                .as_ref()
+                .is_some_and(|e| expr_contains_var_ref(e, name)),
+            Stmt::Assign { target, value } | Stmt::CompoundAssign { target, value, .. } => {
                 expr_contains_var_ref(target, name) || expr_contains_var_ref(value, name)
             }
             Stmt::Expr(e) | Stmt::Return(Some(e)) => expr_contains_var_ref(e, name),
-            Stmt::If { cond, then_body, else_body } => {
+            Stmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
                 expr_contains_var_ref(cond, name)
                     || body_contains_var_ref(then_body, name)
                     || body_contains_var_ref(else_body, name)
@@ -3949,13 +4047,22 @@ mod tests {
             Stmt::While { cond, body } => {
                 expr_contains_var_ref(cond, name) || body_contains_var_ref(body, name)
             }
-            Stmt::For { init, cond, update, body } => {
+            Stmt::For {
+                init,
+                cond,
+                update,
+                body,
+            } => {
                 body_contains_var_ref(init, name)
                     || expr_contains_var_ref(cond, name)
                     || body_contains_var_ref(update, name)
                     || body_contains_var_ref(body, name)
             }
-            Stmt::Switch { value, cases, default_body } => {
+            Stmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
                 expr_contains_var_ref(value, name)
                     || cases.iter().any(|(_, s)| body_contains_var_ref(s, name))
                     || body_contains_var_ref(default_body, name)
@@ -4002,7 +4109,11 @@ mod tests {
             Expr::Index { collection, index } => {
                 expr_contains_var_ref(collection, name) || expr_contains_var_ref(index, name)
             }
-            Expr::Ternary { cond, then_val, else_val } => {
+            Expr::Ternary {
+                cond,
+                then_val,
+                else_val,
+            } => {
                 expr_contains_var_ref(cond, name)
                     || expr_contains_var_ref(then_val, name)
                     || expr_contains_var_ref(else_val, name)

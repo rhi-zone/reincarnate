@@ -16,7 +16,10 @@ use crate::abc::{
     offset_to_index_map, parse_bytecode, resolve_branch_target, resolve_switch_target, LocatedOp,
 };
 use crate::class::convert_default_value;
-use crate::multiname::{classify_multiname, pool_string, resolve_multiname_index, resolve_type, type_from_name, MultinameKind};
+use crate::multiname::{
+    classify_multiname, pool_string, resolve_multiname_index, resolve_type, type_from_name,
+    MultinameKind,
+};
 use crate::scope::ScopeStack;
 
 /// Translate a single method body into an IR function.
@@ -351,8 +354,8 @@ fn name_from_type(ty: &Type) -> Option<String> {
     if upper_len >= 2 && upper_len < short.len() {
         // E.g. "URLRequest" → strip "URL" → "Request" → "request"
         let remainder = &short[upper_len - 1..]; // keep last uppercase as start
-        // But if the acronym IS the whole prefix (like URL in URLRequest),
-        // strip all but the transition char: "URLRequest" → "Request"
+                                                 // But if the acronym IS the whole prefix (like URL in URLRequest),
+                                                 // strip all but the transition char: "URLRequest" → "Request"
         let stripped = &short[upper_len..];
         if stripped.is_empty() {
             // Entire name is an acronym — just lowercase it.
@@ -541,12 +544,16 @@ fn resolve_property(
         }
         MultinameKind::RuntimeName => {
             // Pop the name/index value from the stack.
-            let idx = stack.pop().unwrap_or_else(|| panic!("stack underflow for RuntimeName"));
+            let idx = stack
+                .pop()
+                .unwrap_or_else(|| panic!("stack underflow for RuntimeName"));
             PropertyAccess::Indexed(idx)
         }
         MultinameKind::RuntimeBoth => {
             // Pop name first, then namespace (AVM2 stack order).
-            let idx = stack.pop().unwrap_or_else(|| panic!("stack underflow for RuntimeBoth name"));
+            let idx = stack
+                .pop()
+                .unwrap_or_else(|| panic!("stack underflow for RuntimeBoth name"));
             stack.pop(); // namespace, discard
             PropertyAccess::Indexed(idx)
         }
@@ -1066,8 +1073,7 @@ fn translate_op(
         }
         Op::GetOuterScope { index } => {
             let idx = fb.const_int(*index as i64);
-            let v =
-                fb.system_call("Flash.Scope", "getOuterScope", &[idx], Type::Dynamic);
+            let v = fb.system_call("Flash.Scope", "getOuterScope", &[idx], Type::Dynamic);
             stack.push(v);
         }
 
@@ -1151,12 +1157,7 @@ fn translate_op(
                     PropertyAccess::Named(name) => fb.const_string(&name),
                     PropertyAccess::Indexed(idx) => idx,
                 };
-                let v = fb.system_call(
-                    "Flash.Class",
-                    "getSuper",
-                    &[obj, name_val],
-                    Type::Dynamic,
-                );
+                let v = fb.system_call("Flash.Class", "getSuper", &[obj, name_val], Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1176,12 +1177,7 @@ fn translate_op(
             // GetLex is always statically named (AVM2 spec: no runtime multinames).
             let name = resolve_multiname_index(pool, index);
             let name_val = fb.const_string(&name);
-            let v = fb.system_call(
-                "Flash.Scope",
-                "findPropStrict",
-                &[name_val],
-                Type::Dynamic,
-            );
+            let v = fb.system_call("Flash.Scope", "findPropStrict", &[name_val], Type::Dynamic);
             let result = fb.get_field(v, &name, Type::Dynamic);
             class_value_hints.insert(result, name);
             stack.push(result);
@@ -1196,12 +1192,7 @@ fn translate_op(
                 PropertyAccess::Named(name) => fb.const_string(&name),
                 PropertyAccess::Indexed(idx) => idx,
             };
-            let v = fb.system_call(
-                "Flash.Scope",
-                "findProperty",
-                &[name_val],
-                Type::Dynamic,
-            );
+            let v = fb.system_call("Flash.Scope", "findProperty", &[name_val], Type::Dynamic);
             stack.push(v);
         }
         Op::FindPropStrict { index } => {
@@ -1210,12 +1201,7 @@ fn translate_op(
                 PropertyAccess::Named(ref name) => fb.const_string(name),
                 PropertyAccess::Indexed(idx) => idx,
             };
-            let v = fb.system_call(
-                "Flash.Scope",
-                "findPropStrict",
-                &[name_val],
-                Type::Dynamic,
-            );
+            let v = fb.system_call("Flash.Scope", "findPropStrict", &[name_val], Type::Dynamic);
             if let PropertyAccess::Named(name) = prop {
                 class_value_hints.insert(v, name);
             }
@@ -1224,12 +1210,7 @@ fn translate_op(
         Op::FindDef { index } => {
             let name = resolve_multiname_index(pool, index);
             let name_val = fb.const_string(&name);
-            let v = fb.system_call(
-                "Flash.Scope",
-                "findDef",
-                &[name_val],
-                Type::Dynamic,
-            );
+            let v = fb.system_call("Flash.Scope", "findDef", &[name_val], Type::Dynamic);
             stack.push(v);
         }
 
@@ -1313,12 +1294,7 @@ fn translate_op(
                 };
                 let mut call_args = vec![obj, name_val];
                 call_args.extend(args);
-                let v = fb.system_call(
-                    "Flash.Class",
-                    "callSuper",
-                    &call_args,
-                    Type::Dynamic,
-                );
+                let v = fb.system_call("Flash.Class", "callSuper", &call_args, Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1374,12 +1350,7 @@ fn translate_op(
             if let Some(obj) = stack.pop() {
                 let mut call_args = vec![obj];
                 call_args.extend(args);
-                let v = fb.system_call(
-                    "Flash.Object",
-                    "construct",
-                    &call_args,
-                    Type::Dynamic,
-                );
+                let v = fb.system_call("Flash.Object", "construct", &call_args, Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1394,12 +1365,7 @@ fn translate_op(
                 };
                 let mut call_args = vec![prop];
                 call_args.extend(args);
-                let v = fb.system_call(
-                    "Flash.Object",
-                    "construct",
-                    &call_args,
-                    Type::Dynamic,
-                );
+                let v = fb.system_call("Flash.Object", "construct", &call_args, Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1430,12 +1396,7 @@ fn translate_op(
             stack.push(v);
         }
         Op::NewActivation => {
-            let v = fb.system_call(
-                "Flash.Scope",
-                "newActivation",
-                &[],
-                Type::Dynamic,
-            );
+            let v = fb.system_call("Flash.Scope", "newActivation", &[], Type::Dynamic);
             stack.push(v);
         }
         Op::NewFunction { index } => {
@@ -1447,10 +1408,7 @@ fn translate_op(
             let method_idx = index.0 as usize;
             let compiled = if method_idx < abc.methods.len() {
                 let closure_method = &abc.methods[method_idx];
-                let closure_body = abc
-                    .method_bodies
-                    .iter()
-                    .find(|b| b.method.0 == index.0);
+                let closure_body = abc.method_bodies.iter().find(|b| b.method.0 == index.0);
                 if let Some(closure_body) = closure_body {
                     let mut closure_params = vec![Type::Dynamic]; // register 0 = scope
                     let mut closure_param_names: Vec<Option<String>> = vec![None];
@@ -1507,24 +1465,14 @@ fn translate_op(
             } else {
                 fb.const_string(format!("anon_func{}", index.0))
             };
-            let v = fb.system_call(
-                "Flash.Object",
-                "newFunction",
-                &[name_val],
-                Type::Dynamic,
-            );
+            let v = fb.system_call("Flash.Object", "newFunction", &[name_val], Type::Dynamic);
             stack.push(v);
         }
         Op::NewClass { index } => {
             let base = stack.pop().unwrap_or_else(|| fb.const_null());
             let class_name = format!("class{}", index.0);
             let name_val = fb.const_string(&class_name);
-            let v = fb.system_call(
-                "Flash.Class",
-                "initClass",
-                &[base, name_val],
-                Type::Dynamic,
-            );
+            let v = fb.system_call("Flash.Class", "initClass", &[base, name_val], Type::Dynamic);
             stack.push(v);
         }
         Op::NewCatch { index } => {
@@ -1543,12 +1491,7 @@ fn translate_op(
             if let Some(base) = stack.pop() {
                 let mut args = vec![base];
                 args.extend(type_args);
-                let v = fb.system_call(
-                    "Flash.Object",
-                    "applyType",
-                    &args,
-                    Type::Dynamic,
-                );
+                let v = fb.system_call("Flash.Object", "applyType", &args, Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1824,12 +1767,7 @@ fn translate_op(
         // ====================================================================
         Op::HasNext => {
             if let (Some(idx_val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let v = fb.system_call(
-                    "Flash.Iterator",
-                    "hasNext",
-                    &[obj, idx_val],
-                    Type::Dynamic,
-                );
+                let v = fb.system_call("Flash.Iterator", "hasNext", &[obj, idx_val], Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1850,12 +1788,7 @@ fn translate_op(
                 fb.const_null()
             };
             // hasNext2 returns [updatedObj, newIndex, hasMore]
-            let result = fb.system_call(
-                "Flash.Iterator",
-                "hasNext2",
-                &[obj, idx],
-                Type::Dynamic,
-            );
+            let result = fb.system_call("Flash.Iterator", "hasNext2", &[obj, idx], Type::Dynamic);
             let idx0 = fb.const_int(0);
             let idx1 = fb.const_int(1);
             let idx2 = fb.const_int(2);
@@ -1872,12 +1805,8 @@ fn translate_op(
         }
         Op::NextName => {
             if let (Some(idx_val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let v = fb.system_call(
-                    "Flash.Iterator",
-                    "nextName",
-                    &[obj, idx_val],
-                    Type::Dynamic,
-                );
+                let v =
+                    fb.system_call("Flash.Iterator", "nextName", &[obj, idx_val], Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -1894,12 +1823,7 @@ fn translate_op(
         }
         Op::In => {
             if let (Some(obj), Some(name)) = (stack.pop(), stack.pop()) {
-                let v = fb.system_call(
-                    "Flash.Object",
-                    "hasProperty",
-                    &[obj, name],
-                    Type::Bool,
-                );
+                let v = fb.system_call("Flash.Object", "hasProperty", &[obj, name], Type::Bool);
                 stack.push(v);
             }
         }
@@ -1927,15 +1851,13 @@ fn translate_op(
         }
         Op::Lf32 => {
             if let Some(addr) = stack.pop() {
-                let v =
-                    fb.system_call("Flash.Memory", "load_f32", &[addr], Type::Float(32));
+                let v = fb.system_call("Flash.Memory", "load_f32", &[addr], Type::Float(32));
                 stack.push(v);
             }
         }
         Op::Lf64 => {
             if let Some(addr) = stack.pop() {
-                let v =
-                    fb.system_call("Flash.Memory", "load_f64", &[addr], Type::Float(64));
+                let v = fb.system_call("Flash.Memory", "load_f64", &[addr], Type::Float(64));
                 stack.push(v);
             }
         }
@@ -1988,34 +1910,19 @@ fn translate_op(
         // ====================================================================
         Op::EscXAttr => {
             if let Some(val) = stack.pop() {
-                let v = fb.system_call(
-                    "Flash.XML",
-                    "escapeAttribute",
-                    &[val],
-                    Type::String,
-                );
+                let v = fb.system_call("Flash.XML", "escapeAttribute", &[val], Type::String);
                 stack.push(v);
             }
         }
         Op::EscXElem => {
             if let Some(val) = stack.pop() {
-                let v = fb.system_call(
-                    "Flash.XML",
-                    "escapeElement",
-                    &[val],
-                    Type::String,
-                );
+                let v = fb.system_call("Flash.XML", "escapeElement", &[val], Type::String);
                 stack.push(v);
             }
         }
         Op::CheckFilter => {
             if let Some(val) = stack.pop() {
-                let v = fb.system_call(
-                    "Flash.XML",
-                    "checkFilter",
-                    &[val],
-                    Type::Dynamic,
-                );
+                let v = fb.system_call("Flash.XML", "checkFilter", &[val], Type::Dynamic);
                 stack.push(v);
             }
         }
@@ -2038,21 +1945,11 @@ fn translate_op(
         Op::Dxns { index } => {
             let ns = pool_string(pool, index);
             let ns_val = fb.const_string(&ns);
-            fb.system_call(
-                "Flash.XML",
-                "setDefaultNamespace",
-                &[ns_val],
-                Type::Void,
-            );
+            fb.system_call("Flash.XML", "setDefaultNamespace", &[ns_val], Type::Void);
         }
         Op::DxnsLate => {
             if let Some(val) = stack.pop() {
-                fb.system_call(
-                    "Flash.XML",
-                    "setDefaultNamespace",
-                    &[val],
-                    Type::Void,
-                );
+                fb.system_call("Flash.XML", "setDefaultNamespace", &[val], Type::Void);
             }
         }
 
@@ -2126,20 +2023,10 @@ fn emit_conditional_branch(
             if let (Some(&then_block), Some(&else_block)) =
                 (block_map.get(&target_idx), block_map.get(&fallthrough_idx))
             {
-                let then_args = prepare_branch_args(
-                    fb,
-                    stack,
-                    then_block,
-                    target_idx,
-                    block_param_values,
-                );
-                let else_args = prepare_branch_args(
-                    fb,
-                    stack,
-                    else_block,
-                    fallthrough_idx,
-                    block_param_values,
-                );
+                let then_args =
+                    prepare_branch_args(fb, stack, then_block, target_idx, block_param_values);
+                let else_args =
+                    prepare_branch_args(fb, stack, else_block, fallthrough_idx, block_param_values);
                 fb.br_if(cond, then_block, &then_args, else_block, &else_args);
             }
         }
@@ -2166,20 +2053,10 @@ fn emit_comparison_branch(
             if let (Some(&then_block), Some(&else_block)) =
                 (block_map.get(&target_idx), block_map.get(&fallthrough_idx))
             {
-                let then_args = prepare_branch_args(
-                    fb,
-                    stack,
-                    then_block,
-                    target_idx,
-                    block_param_values,
-                );
-                let else_args = prepare_branch_args(
-                    fb,
-                    stack,
-                    else_block,
-                    fallthrough_idx,
-                    block_param_values,
-                );
+                let then_args =
+                    prepare_branch_args(fb, stack, then_block, target_idx, block_param_values);
+                let else_args =
+                    prepare_branch_args(fb, stack, else_block, fallthrough_idx, block_param_values);
                 fb.br_if(cond, then_block, &then_args, else_block, &else_args);
             }
         }
@@ -2242,9 +2119,12 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
 
-        let func = translate_method_body(&abc, &body, "test", sig, &[], false, &mut vec![]).unwrap();
+        let func =
+            translate_method_body(&abc, &body, "test", sig, &[], false, &mut vec![]).unwrap();
         let output = format!("{func}");
         assert!(output.contains("return"), "expected return in:\n{output}");
     }
@@ -2274,11 +2154,17 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(32), ..Default::default() };
+            return_ty: Type::Int(32),
+            ..Default::default()
+        };
 
-        let func = translate_method_body(&abc, &body, "answer", sig, &[], false, &mut vec![]).unwrap();
+        let func =
+            translate_method_body(&abc, &body, "answer", sig, &[], false, &mut vec![]).unwrap();
         let output = format!("{func}");
-        assert!(output.contains("const 42"), "expected const 42 in:\n{output}");
+        assert!(
+            output.contains("const 42"),
+            "expected const 42 in:\n{output}"
+        );
         assert!(output.contains("return"), "expected return in:\n{output}");
     }
 
@@ -2307,9 +2193,12 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic, ..Default::default() };
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
 
-        let func = translate_method_body(&abc, &body, "add_test", sig, &[], false, &mut vec![]).unwrap();
+        let func =
+            translate_method_body(&abc, &body, "add_test", sig, &[], false, &mut vec![]).unwrap();
         let output = format!("{func}");
         assert!(output.contains("const 3"), "expected const 3 in:\n{output}");
         assert!(output.contains("const 4"), "expected const 4 in:\n{output}");
@@ -2342,9 +2231,12 @@ mod tests {
         let abc = make_abc(pool, vec![body.clone()], vec![method]);
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic, ..Default::default() };
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
 
-        let func = translate_method_body(&abc, &body, "local_test", sig, &[], false, &mut vec![]).unwrap();
+        let func =
+            translate_method_body(&abc, &body, "local_test", sig, &[], false, &mut vec![]).unwrap();
         let output = format!("{func}");
         assert!(output.contains("store"), "expected store in:\n{output}");
         assert!(output.contains("load"), "expected load in:\n{output}");

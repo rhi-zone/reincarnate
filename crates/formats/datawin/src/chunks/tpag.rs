@@ -91,7 +91,10 @@ impl Tpag {
             });
         }
 
-        Ok(Self { items, pointer_to_index })
+        Ok(Self {
+            items,
+            pointer_to_index,
+        })
     }
 
     /// Entry size in bytes (useful for serialization).

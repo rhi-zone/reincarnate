@@ -32,7 +32,6 @@ mod interaction_tests;
 #[cfg(test)]
 mod stress_tests;
 
-
 /// Build a transform pipeline based on the given pass configuration.
 pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     let mut pipeline = TransformPipeline::new();

@@ -43,8 +43,7 @@ fn const_fold_then_dce() {
     assert_well_formed(func);
 
     // Only the folded Const(3) and Return should remain.
-    let live_ops: Vec<_> = func
-        .blocks[func.entry]
+    let live_ops: Vec<_> = func.blocks[func.entry]
         .insts
         .iter()
         .map(|&id| &func.insts[id].op)
@@ -188,7 +187,10 @@ fn cfg_simplify_then_mem2reg() {
 
     // Now Mem2Reg on the simplified CFG.
     let r2 = Mem2Reg.apply(r1.module).unwrap();
-    assert!(r2.changed, "mem2reg should promote after CFG simplification");
+    assert!(
+        r2.changed,
+        "mem2reg should promote after CFG simplification"
+    );
 
     let func = &r2.module.functions[FuncId::new(0)];
     assert_well_formed(func);

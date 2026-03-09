@@ -27,9 +27,6 @@ pub fn parse_passage(source: &str) -> PassageAst {
 /// Custom macros extracted from `Macro.add()` calls in user scripts are
 /// used to correctly classify block vs self-closing macros and handle
 /// `skipArgs` semantics.
-pub fn parse_passage_with_registry(
-    source: &str,
-    registry: &CustomMacroRegistry,
-) -> PassageAst {
+pub fn parse_passage_with_registry(source: &str, registry: &CustomMacroRegistry) -> PassageAst {
     parser::parse(source, Some(registry))
 }

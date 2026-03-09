@@ -12,7 +12,6 @@ mod translate;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 
-use reincarnate_datawin::DataWin;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::ModuleBuilder;
 use reincarnate_core::ir::func::Visibility;
@@ -20,6 +19,7 @@ use reincarnate_core::ir::module::Global;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
 use reincarnate_core::project::EngineOrigin;
+use reincarnate_datawin::DataWin;
 
 use crate::translate::TranslateCtx;
 
@@ -68,7 +68,9 @@ impl Frontend for GameMakerFrontend {
         // (4 bytes into the instruction), while earlier formats and VARI always
         // use instruction-word addressing. build_func_ref_map normalises to
         // instruction-word addresses so lookups match bytecode_offset + inst.offset.
-        let bc_version = dw.bytecode_version().unwrap_or(reincarnate_datawin::BytecodeVersion(15));
+        let bc_version = dw
+            .bytecode_version()
+            .unwrap_or(reincarnate_datawin::BytecodeVersion(15));
         let func_ref_map = build_func_ref_map(func, dw.data(), bc_version);
         let vari_ref_map = build_vari_ref_map(vari, dw.data());
 
@@ -104,8 +106,24 @@ impl Frontend for GameMakerFrontend {
         let asset_ref_names = build_asset_ref_names(&dw, scpt);
 
         // Translate scripts.
-        let (script_ok, script_err) =
-            translate_scripts(&dw, code, scpt, &code_name_map, &function_names, &asset_ref_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &string_table, &mut mb, &input, &obj_names, &script_names, bc_version)?;
+        let (script_ok, script_err) = translate_scripts(
+            &dw,
+            code,
+            scpt,
+            &code_name_map,
+            &function_names,
+            &asset_ref_names,
+            &variables,
+            &func_ref_map,
+            &vari_ref_map,
+            &code_locals_map,
+            &string_table,
+            &mut mb,
+            &input,
+            &obj_names,
+            &script_names,
+            bc_version,
+        )?;
         eprintln!("[gamemaker] translated {script_ok} scripts ({script_err} errors)");
 
         // Translate objects → ClassDefs with event handler methods.
@@ -128,11 +146,26 @@ impl Frontend for GameMakerFrontend {
             file: input.source.clone(),
             message: e,
         })?;
-        eprintln!("[gamemaker] translated {obj_ok} event handlers ({obj_err} errors) across {} objects", obj_names.len());
+        eprintln!(
+            "[gamemaker] translated {obj_ok} event handlers ({obj_err} errors) across {} objects",
+            obj_names.len()
+        );
 
         // Translate global init scripts (GLOB chunk).
         let glob_count = translate_global_inits(
-            &dw, code, &function_names, &asset_ref_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &string_table, &mut mb, &obj_names, &script_names, bc_version,
+            &dw,
+            code,
+            &function_names,
+            &asset_ref_names,
+            &variables,
+            &func_ref_map,
+            &vari_ref_map,
+            &code_locals_map,
+            &string_table,
+            &mut mb,
+            &obj_names,
+            &script_names,
+            bc_version,
         );
         if glob_count > 0 {
             eprintln!("[gamemaker] translated {glob_count} global init scripts");
@@ -140,7 +173,19 @@ impl Frontend for GameMakerFrontend {
 
         // Translate room creation code.
         let (room_count, room_creation_code) = translate_room_creation(
-            &dw, code, &function_names, &asset_ref_names, &variables, &func_ref_map, &vari_ref_map, &code_locals_map, &string_table, &mut mb, &obj_names, &script_names, bc_version,
+            &dw,
+            code,
+            &function_names,
+            &asset_ref_names,
+            &variables,
+            &func_ref_map,
+            &vari_ref_map,
+            &code_locals_map,
+            &string_table,
+            &mut mb,
+            &obj_names,
+            &script_names,
+            bc_version,
         );
         if room_count > 0 {
             eprintln!("[gamemaker] translated {room_count} room creation scripts");
@@ -213,10 +258,12 @@ fn translate_scripts(
     let mut errors = 0;
 
     for script in &scpt.scripts {
-        let script_name = dw.resolve_string(script.name).map_err(|e| CoreError::Parse {
-            file: input.source.clone(),
-            message: format!("failed to resolve script name: {e}"),
-        })?;
+        let script_name = dw
+            .resolve_string(script.name)
+            .map_err(|e| CoreError::Parse {
+                file: input.source.clone(),
+                message: format!("failed to resolve script name: {e}"),
+            })?;
 
         // In GMS2.3+ native games, constructor/nested-function SCPT entries have
         // code_id with the high bit set (>= 0x80000000).  The lower bits are NOT a
@@ -236,14 +283,18 @@ fn translate_scripts(
             match code_name {
                 Some(idx) => idx,
                 None => {
-                    eprintln!("[gamemaker] warn: constructor script {script_name} has no CODE entry");
+                    eprintln!(
+                        "[gamemaker] warn: constructor script {script_name} has no CODE entry"
+                    );
                     continue;
                 }
             }
         } else {
             let idx = script.code_id as usize;
             if idx >= code.entries.len() {
-                eprintln!("[gamemaker] warn: script {script_name} references invalid code entry {idx}");
+                eprintln!(
+                    "[gamemaker] warn: script {script_name} references invalid code entry {idx}"
+                );
                 continue;
             }
             idx
@@ -377,7 +428,8 @@ fn translate_global_inits(
             bytecode_version: bc_version,
         };
 
-        if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
+        if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
+        {
             mb.add_function(func);
             for extra in extra_funcs {
                 mb.add_function(extra);
@@ -429,7 +481,9 @@ fn translate_room_creation(
         };
         let code_entry = &code.entries[code_idx];
         let code_name = dw.resolve_string(code_entry.name).unwrap_or_default();
-        let room_name = dw.resolve_string(room_entry.name).unwrap_or_else(|_| format!("room_{code_idx}"));
+        let room_name = dw
+            .resolve_string(room_entry.name)
+            .unwrap_or_else(|_| format!("room_{code_idx}"));
         let func_name = format!("room{}Create", naming::room_name_to_pascal(&room_name));
         let locals = code_locals_map.get(&code_name).copied();
 
@@ -455,7 +509,8 @@ fn translate_room_creation(
             bytecode_version: bc_version,
         };
 
-        if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx) {
+        if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
+        {
             mb.add_function(func);
             for extra in extra_funcs {
                 mb.add_function(extra);
@@ -526,7 +581,9 @@ fn build_function_names(
 ) -> Result<HashMap<u32, String>, CoreError> {
     let mut names = HashMap::new();
     for (idx, entry) in func.functions.iter().enumerate() {
-        let raw = dw.resolve_string(entry.name).unwrap_or_else(|_| format!("func_{idx}"));
+        let raw = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| format!("func_{idx}"));
         // Strip the gml_Script_/gml_GlobalScript_ prefix so resolved names
         // match the exported identifiers and the script_names lookup set.
         let name = strip_script_prefix(&raw).to_string();
@@ -566,9 +623,7 @@ fn build_func_ref_map(
             if operand_addr + 4 > data.len() {
                 break;
             }
-            let raw = u32::from_le_bytes(
-                data[operand_addr..operand_addr + 4].try_into().unwrap(),
-            );
+            let raw = u32::from_le_bytes(data[operand_addr..operand_addr + 4].try_into().unwrap());
             // Lower 27 bits = additive byte offset to next occurrence's addr.
             let offset = (raw & 0x07FF_FFFF) as usize;
             if offset == 0 {
@@ -602,9 +657,7 @@ fn build_vari_ref_map(
             if operand_addr + 4 > data.len() {
                 break;
             }
-            let raw = u32::from_le_bytes(
-                data[operand_addr..operand_addr + 4].try_into().unwrap(),
-            );
+            let raw = u32::from_le_bytes(data[operand_addr..operand_addr + 4].try_into().unwrap());
             // Lower 27 bits = additive offset to next occurrence.
             let offset = (raw & 0x07FF_FFFF) as usize;
             if offset == 0 {
@@ -623,7 +676,9 @@ fn build_variable_table(
 ) -> Result<Vec<(String, i32)>, CoreError> {
     let mut vars = Vec::with_capacity(vari.variables.len());
     for entry in &vari.variables {
-        let name = dw.resolve_string(entry.name).unwrap_or_else(|_| "???".to_string());
+        let name = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| "???".to_string());
         vars.push((name, entry.instance_type));
     }
     Ok(vars)
@@ -667,7 +722,9 @@ fn resolve_object_names(
 ) -> Result<Vec<String>, CoreError> {
     let mut names = Vec::with_capacity(objt.objects.len());
     for obj in &objt.objects {
-        let raw = dw.resolve_string(obj.name).unwrap_or_else(|_| "???".to_string());
+        let raw = dw
+            .resolve_string(obj.name)
+            .unwrap_or_else(|_| "???".to_string());
         names.push(naming::object_name_to_pascal(&raw));
     }
     Ok(names)
@@ -710,7 +767,10 @@ fn strip_script_prefix(name: &str) -> &str {
 ///   - type=8 used with shader_set → SHDR
 ///
 /// Returns a map of `(type_tag << 24) | asset_index → raw GML asset name`.
-fn build_asset_ref_names(dw: &DataWin, scpt: &reincarnate_datawin::chunks::scpt::Scpt) -> HashMap<u32, String> {
+fn build_asset_ref_names(
+    dw: &DataWin,
+    scpt: &reincarnate_datawin::chunks::scpt::Scpt,
+) -> HashMap<u32, String> {
     let mut map = HashMap::new();
 
     // Type 0: objects (OBJT).

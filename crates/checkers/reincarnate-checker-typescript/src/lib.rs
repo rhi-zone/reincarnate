@@ -3,7 +3,7 @@ use std::process::Command;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::pipeline::{
-    CheckSummary, CheckerInput, CheckerOutput, Checker, Diagnostic, Severity,
+    CheckSummary, Checker, CheckerInput, CheckerOutput, Diagnostic, Severity,
 };
 
 pub struct TsChecker;
@@ -23,13 +23,16 @@ impl Checker for TsChecker {
         }
 
         let output = Command::new("bunx")
-            .args(["@typescript/native-preview", "--noEmit", "--pretty", "false"])
+            .args([
+                "@typescript/native-preview",
+                "--noEmit",
+                "--pretty",
+                "false",
+            ])
             .current_dir(&input.output_dir)
             .output()
             .map_err(|e| {
-                CoreError::Project(format!(
-                    "failed to run tsgo: {e} (is bun installed?)"
-                ))
+                CoreError::Project(format!("failed to run tsgo: {e} (is bun installed?)"))
             })?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -117,7 +120,11 @@ fn build_summary(output_dir: &str, diagnostics: &[Diagnostic]) -> CheckSummary {
         .into_iter()
         .map(|((msg, code), count)| (msg, code, count))
         .collect();
-    by_message.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.1.cmp(&b.1)).then_with(|| a.0.cmp(&b.0)));
+    by_message.sort_by(|a, b| {
+        b.2.cmp(&a.2)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.0.cmp(&b.0))
+    });
 
     CheckSummary {
         output_dir: output_dir.to_string(),
@@ -146,7 +153,8 @@ mod tests {
 
     #[test]
     fn parse_warning_line() {
-        let line = "lib/util.ts(10,1): warning TS6133: 'x' is declared but its value is never read.";
+        let line =
+            "lib/util.ts(10,1): warning TS6133: 'x' is declared but its value is never read.";
         let d = parse_diagnostic(line).expect("should parse");
         assert_eq!(d.file, "lib/util.ts");
         assert_eq!(d.severity, Severity::Warning);

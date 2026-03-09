@@ -34,13 +34,7 @@ pub trait Graphics {
         scale_x: f32,
         scale_y: f32,
     );
-    fn draw_sprite_rotated(
-        &mut self,
-        texture: &Self::Texture,
-        x: f32,
-        y: f32,
-        angle: f32,
-    );
+    fn draw_sprite_rotated(&mut self, texture: &Self::Texture, x: f32, y: f32, angle: f32);
     fn draw_rect(&mut self, rect: Rect, color: Color);
     fn draw_text(&mut self, text: &str, x: f32, y: f32, size: f32);
     fn load_texture(&mut self, data: &[u8]) -> Self::Texture;

@@ -164,9 +164,7 @@ impl Function {
                 .insts
                 .iter()
                 .enumerate()
-                .filter_map(|(i, &iid)| {
-                    matches!(self.insts[iid].op, Op::Alloc(_)).then_some(i)
-                })
+                .filter_map(|(i, &iid)| matches!(self.insts[iid].op, Op::Alloc(_)).then_some(i))
                 .collect();
             // Remove in reverse to preserve indices.
             for pos in positions.into_iter().rev() {

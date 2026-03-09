@@ -85,9 +85,7 @@ fn redirect_block_target_in_op(
             remap_args(then_target, then_args);
             remap_args(else_target, else_args);
         }
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             for (_, target, args) in cases {
                 remap_args(target, args);
             }
@@ -298,9 +296,7 @@ fn get_branch_args(op: &Op, target: BlockId) -> Option<Vec<ValueId>> {
                 None
             }
         }
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             for (_, t, args) in cases {
                 if *t == target {
                     return Some(args.clone());
@@ -418,9 +414,7 @@ fn remove_branch_arg_at(op: &mut Op, target: BlockId, index: usize) {
                 else_args.remove(index);
             }
         }
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             for (_, t, args) in cases.iter_mut() {
                 if *t == target {
                     args.remove(index);
@@ -459,9 +453,7 @@ fn collect_all_branch_args(op: &Op, target: BlockId) -> Vec<&Vec<ValueId>> {
                 result.push(else_args);
             }
         }
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             for (_, t, args) in cases {
                 if *t == target {
                     result.push(args);
@@ -659,8 +651,7 @@ fn cleanup_unreachable(func: &mut Function) -> bool {
 
     for block_id in func.blocks.keys().collect::<Vec<_>>() {
         if !reachable.contains(&block_id)
-            && (!func.blocks[block_id].insts.is_empty()
-                || !func.blocks[block_id].params.is_empty())
+            && (!func.blocks[block_id].insts.is_empty() || !func.blocks[block_id].params.is_empty())
         {
             func.blocks[block_id].insts.clear();
             func.blocks[block_id].params.clear();
@@ -781,10 +772,7 @@ impl Transform for CfgSimplify {
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             changed |= simplify_cfg(&mut module.functions[func_id]);
         }
-        Ok(TransformResult {
-            module,
-            changed,
-        })
+        Ok(TransformResult { module, changed })
     }
 }
 
@@ -810,7 +798,9 @@ mod tests {
     fn empty_block_forwarded_no_params() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let block_b = fb.create_block();
@@ -849,7 +839,9 @@ mod tests {
     fn identity_forwarding() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let (block_b, b_params) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -886,13 +878,13 @@ mod tests {
     fn remapped_forwarding() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
-        let (block_b, b_params) =
-            fb.create_block_with_params(&[Type::Int(64), Type::Int(64)]);
-        let (block_c, c_params) =
-            fb.create_block_with_params(&[Type::Int(64), Type::Int(64)]);
+        let (block_b, b_params) = fb.create_block_with_params(&[Type::Int(64), Type::Int(64)]);
+        let (block_c, c_params) = fb.create_block_with_params(&[Type::Int(64), Type::Int(64)]);
 
         // entry: br B(10, 20)
         let v10 = fb.const_int(10);
@@ -925,7 +917,9 @@ mod tests {
     fn block_merging() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let block_b = fb.create_block();
@@ -961,7 +955,9 @@ mod tests {
     fn entry_block_preserved() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let block_b = fb.create_block();
@@ -986,7 +982,9 @@ mod tests {
     fn self_loop_preserved() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let loop_block = fb.create_block();
@@ -1024,7 +1022,9 @@ mod tests {
     fn multiple_predecessors_collapsed_via_same_target() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let block_a = fb.create_block();
@@ -1061,7 +1061,9 @@ mod tests {
     fn chained_forwarding() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let block_b = fb.create_block();
@@ -1109,7 +1111,9 @@ mod tests {
     fn trivial_param_eliminated() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let (merge, merge_params) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -1149,7 +1153,9 @@ mod tests {
     fn non_trivial_param_becomes_select() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let (merge, merge_params) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -1193,14 +1199,13 @@ mod tests {
     fn mixed_trivial_and_non_trivial_params() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
-        let (merge, merge_params) = fb.create_block_with_params(&[
-            Type::Int(64),
-            Type::Int(64),
-            Type::Int(64),
-        ]);
+        let (merge, merge_params) =
+            fb.create_block_with_params(&[Type::Int(64), Type::Int(64), Type::Int(64)]);
         let then_block = fb.create_block();
         let else_block = fb.create_block();
 
@@ -1246,7 +1251,9 @@ mod tests {
     fn collapse_same_target_brif_identical_args() {
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let val = fb.param(1);
@@ -1270,7 +1277,10 @@ mod tests {
             other => panic!("expected Return(Some(val)), got {:?}", other),
         }
         // No Select should be inserted since args are identical.
-        let has_select = func.insts.values().any(|i| matches!(i.op, Op::Select { .. }));
+        let has_select = func
+            .insts
+            .values()
+            .any(|i| matches!(i.op, Op::Select { .. }));
         assert!(!has_select, "identical args should not produce Select");
     }
 
@@ -1279,7 +1289,9 @@ mod tests {
     fn collapse_same_target_brif_different_args() {
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let a = fb.param(1);
@@ -1318,7 +1330,9 @@ mod tests {
     fn identity_no_change() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -1336,7 +1350,9 @@ mod tests {
         use crate::transforms::util::test_helpers::assert_idempotent;
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let block_b = fb.create_block();
         fb.br(block_b, &[]);
@@ -1350,7 +1366,9 @@ mod tests {
     fn collapse_same_target_brif_preserves_different_targets() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
@@ -1369,13 +1387,11 @@ mod tests {
 
         // Should still have a BrIf (different targets).
         let entry = func.entry;
-        let has_brif = func.blocks[entry].insts.iter().any(|&id| {
-            matches!(func.insts[id].op, Op::BrIf { .. })
-        });
-        assert!(
-            has_brif,
-            "different targets should preserve BrIf"
-        );
+        let has_brif = func.blocks[entry]
+            .insts
+            .iter()
+            .any(|&id| matches!(func.insts[id].op, Op::BrIf { .. }));
+        assert!(has_brif, "different targets should preserve BrIf");
     }
 
     // ---- Edge case tests ----
@@ -1385,7 +1401,9 @@ mod tests {
     fn empty_block_chain_collapses() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let b = fb.create_block();
         let c = fb.create_block();
@@ -1413,7 +1431,9 @@ mod tests {
     fn unreachable_block_ignored() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let dead = fb.create_block();
         fb.ret(None);
@@ -1423,7 +1443,10 @@ mod tests {
         fb.ret(Some(v));
 
         let func = apply_cfg_simplify(fb.build());
-        assert!(func.blocks[dead].insts.is_empty(), "unreachable block should be cleared");
+        assert!(
+            func.blocks[dead].insts.is_empty(),
+            "unreachable block should be cleared"
+        );
     }
 
     /// Same-constant different-ValueId: BrIf → then(Const false_1) → merge(false_1)
@@ -1584,7 +1607,9 @@ mod tests {
     fn long_empty_chain() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let mut blocks = Vec::new();
@@ -1614,7 +1639,9 @@ mod tests {
     fn diamond_asymmetric_args() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let then_b = fb.create_block();
@@ -1646,7 +1673,9 @@ mod tests {
     fn block_params_through_diamond() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let then_b = fb.create_block();

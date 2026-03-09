@@ -86,9 +86,10 @@ static JSON_ROOM: &str = include_str!("fixtures/v15_room.json");
 fn check_json_file_size(json: &str, bin: &[u8], fixture_name: &str) {
     let v: serde_json::Value = serde_json::from_str(json)
         .unwrap_or_else(|e| panic!("{fixture_name}.json is invalid JSON: {e}"));
-    let expected = v["file_size"].as_u64().unwrap_or_else(|| {
-        panic!("{fixture_name}.json missing 'file_size'")
-    }) as usize;
+    let expected = v["file_size"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("{fixture_name}.json missing 'file_size'"))
+        as usize;
     assert_eq!(
         bin.len(),
         expected,
@@ -161,11 +162,7 @@ fn minimal_strg() {
     let index = ChunkIndex::parse(MINIMAL).unwrap();
     let entry = index.find(b"STRG").unwrap();
     let strg_abs = entry.data_offset();
-    let strg = StringTable::parse(
-        &MINIMAL[strg_abs..strg_abs + entry.size],
-        strg_abs,
-    )
-    .unwrap();
+    let strg = StringTable::parse(&MINIMAL[strg_abs..strg_abs + entry.size], strg_abs).unwrap();
 
     assert_eq!(strg.len(), 4);
     assert_eq!(strg.get(0, MINIMAL).unwrap(), "");
@@ -292,7 +289,10 @@ fn variety_bytecode_decode() {
 
     assert_eq!(instructions[5].opcode, Opcode::Cmp);
     use reincarnate_datawin::bytecode::types::ComparisonKind;
-    assert!(matches!(instructions[5].operand, Operand::Comparison(ComparisonKind::Less)));
+    assert!(matches!(
+        instructions[5].operand,
+        Operand::Comparison(ComparisonKind::Less)
+    ));
 
     assert_eq!(instructions[6].opcode, Opcode::Bf);
     assert!(matches!(instructions[6].operand, Operand::Branch(8)));
@@ -303,7 +303,10 @@ fn variety_bytecode_decode() {
     assert_eq!(instructions[8].opcode, Opcode::Call);
     assert!(matches!(
         instructions[8].operand,
-        Operand::Call { function_id: 7, argc: 0 }
+        Operand::Call {
+            function_id: 7,
+            argc: 0
+        }
     ));
 
     assert_eq!(instructions[9].opcode, Opcode::Ret);
@@ -338,7 +341,10 @@ fn variety_code_name() {
         BytecodeVersion(15),
     )
     .unwrap();
-    assert_eq!(code.entries[0].name.resolve(VARIETY).unwrap(), "gml_Script_variety");
+    assert_eq!(
+        code.entries[0].name.resolve(VARIETY).unwrap(),
+        "gml_Script_variety"
+    );
 }
 
 // ── v15_break_signals ─────────────────────────────────────────────────────────
@@ -504,7 +510,10 @@ fn v14_func() {
     .unwrap();
 
     assert_eq!(func.functions.len(), 1);
-    assert_eq!(func.functions[0].name.resolve(V14_MINIMAL).unwrap(), "gml_Script_init");
+    assert_eq!(
+        func.functions[0].name.resolve(V14_MINIMAL).unwrap(),
+        "gml_Script_init"
+    );
     assert_eq!(func.functions[0].occurrences, 1);
     assert_eq!(func.functions[0].first_address, -1);
     assert!(func.code_locals.is_empty());
@@ -553,7 +562,10 @@ fn vari_func_func_v15() {
     .unwrap();
 
     assert_eq!(func.functions.len(), 1);
-    assert_eq!(func.functions[0].name.resolve(VARI_FUNC).unwrap(), "my_func");
+    assert_eq!(
+        func.functions[0].name.resolve(VARI_FUNC).unwrap(),
+        "my_func"
+    );
     assert_eq!(func.functions[0].occurrences, 1);
     assert_eq!(func.functions[0].first_address, -1);
 
@@ -700,12 +712,7 @@ fn scpt_parse() {
 
     let entry = index.find(b"SCPT").unwrap();
     let scpt_abs = entry.data_offset();
-    let scpt = Scpt::parse(
-        &SCPT[scpt_abs..scpt_abs + entry.size],
-        scpt_abs,
-        SCPT,
-    )
-    .unwrap();
+    let scpt = Scpt::parse(&SCPT[scpt_abs..scpt_abs + entry.size], scpt_abs, SCPT).unwrap();
 
     assert_eq!(scpt.scripts.len(), 1);
     assert_eq!(scpt.scripts[0].name.resolve(SCPT).unwrap(), "Script_foo");
@@ -726,7 +733,10 @@ fn scpt_code_entry_name() {
     .unwrap();
 
     assert_eq!(code.entries.len(), 1);
-    assert_eq!(code.entries[0].name.resolve(SCPT).unwrap(), "gml_Script_foo");
+    assert_eq!(
+        code.entries[0].name.resolve(SCPT).unwrap(),
+        "gml_Script_foo"
+    );
 }
 
 // ── v15_shared_blob ───────────────────────────────────────────────────────────
@@ -756,7 +766,10 @@ fn shared_blob_code_entries() {
     assert_eq!(code.entries.len(), 2);
 
     let parent = &code.entries[0];
-    assert_eq!(parent.name.resolve(SHARED_BLOB).unwrap(), "gml_Script_parent");
+    assert_eq!(
+        parent.name.resolve(SHARED_BLOB).unwrap(),
+        "gml_Script_parent"
+    );
     assert_eq!(parent.length, 8); // PushI + Ret = 8 bytes
     assert_eq!(parent.locals_count, 0);
 
@@ -815,8 +828,8 @@ fn simple_chunks_json_file_size() {
 fn simple_chunks_glob() {
     let index = ChunkIndex::parse(SIMPLE_CHUNKS).unwrap();
     let entry = index.find(b"GLOB").unwrap();
-    let glob = Glob::parse(&SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size])
-        .unwrap();
+    let glob =
+        Glob::parse(&SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size]).unwrap();
     assert_eq!(glob.script_ids.len(), 1);
     assert_eq!(glob.script_ids[0], 0);
 
@@ -829,11 +842,14 @@ fn simple_chunks_glob() {
 fn simple_chunks_lang() {
     let index = ChunkIndex::parse(SIMPLE_CHUNKS).unwrap();
     let entry = index.find(b"LANG").unwrap();
-    let lang = Lang::parse(&SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size])
-        .unwrap();
+    let lang =
+        Lang::parse(&SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size]).unwrap();
     assert_eq!(lang.entry_count, 1);
     assert_eq!(lang.entries.len(), 1);
-    assert_eq!(lang.entries[0].name.resolve(SIMPLE_CHUNKS).unwrap(), "English");
+    assert_eq!(
+        lang.entries[0].name.resolve(SIMPLE_CHUNKS).unwrap(),
+        "English"
+    );
     assert_eq!(lang.entries[0].region.resolve(SIMPLE_CHUNKS).unwrap(), "en");
 
     let v: serde_json::Value = serde_json::from_str(JSON_SIMPLE_CHUNKS).unwrap();
@@ -845,33 +861,48 @@ fn simple_chunks_lang() {
 fn simple_chunks_shdr() {
     let index = ChunkIndex::parse(SIMPLE_CHUNKS).unwrap();
     let entry = index.find(b"SHDR").unwrap();
-    let shdr =
-        Shdr::parse(&SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size], SIMPLE_CHUNKS)
-            .unwrap();
+    let shdr = Shdr::parse(
+        &SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size],
+        SIMPLE_CHUNKS,
+    )
+    .unwrap();
     assert_eq!(shdr.shaders.len(), 1);
-    assert_eq!(shdr.shaders[0].name.resolve(SIMPLE_CHUNKS).unwrap(), "shader_name");
+    assert_eq!(
+        shdr.shaders[0].name.resolve(SIMPLE_CHUNKS).unwrap(),
+        "shader_name"
+    );
 }
 
 #[test]
 fn simple_chunks_bgnd() {
     let index = ChunkIndex::parse(SIMPLE_CHUNKS).unwrap();
     let entry = index.find(b"BGND").unwrap();
-    let bgnd =
-        Bgnd::parse(&SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size], SIMPLE_CHUNKS)
-            .unwrap();
+    let bgnd = Bgnd::parse(
+        &SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size],
+        SIMPLE_CHUNKS,
+    )
+    .unwrap();
     assert_eq!(bgnd.backgrounds.len(), 1);
-    assert_eq!(bgnd.backgrounds[0].name.resolve(SIMPLE_CHUNKS).unwrap(), "bg_name");
+    assert_eq!(
+        bgnd.backgrounds[0].name.resolve(SIMPLE_CHUNKS).unwrap(),
+        "bg_name"
+    );
 }
 
 #[test]
 fn simple_chunks_seqn() {
     let index = ChunkIndex::parse(SIMPLE_CHUNKS).unwrap();
     let entry = index.find(b"SEQN").unwrap();
-    let seqn =
-        Seqn::parse(&SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size], SIMPLE_CHUNKS)
-            .unwrap();
+    let seqn = Seqn::parse(
+        &SIMPLE_CHUNKS[entry.data_offset()..entry.data_offset() + entry.size],
+        SIMPLE_CHUNKS,
+    )
+    .unwrap();
     assert_eq!(seqn.sequences.len(), 1);
-    assert_eq!(seqn.sequences[0].name.resolve(SIMPLE_CHUNKS).unwrap(), "sequence_name");
+    assert_eq!(
+        seqn.sequences[0].name.resolve(SIMPLE_CHUNKS).unwrap(),
+        "sequence_name"
+    );
 
     let v: serde_json::Value = serde_json::from_str(JSON_SIMPLE_CHUNKS).unwrap();
     assert_eq!(json_u64(&v, "/seqn/version"), 1);
@@ -881,7 +912,10 @@ fn simple_chunks_seqn() {
 fn simple_chunks_chunk_list() {
     let index = ChunkIndex::parse(SIMPLE_CHUNKS).unwrap();
     let magics: Vec<&str> = index.chunks().iter().map(|c| c.magic_str()).collect();
-    assert_eq!(magics, ["GEN8", "STRG", "GLOB", "LANG", "SHDR", "BGND", "SEQN"]);
+    assert_eq!(
+        magics,
+        ["GEN8", "STRG", "GLOB", "LANG", "SHDR", "BGND", "SEQN"]
+    );
 }
 
 // ── v15_sond_audo ─────────────────────────────────────────────────────────────
@@ -895,9 +929,11 @@ fn sond_audo_json_file_size() {
 fn sond_audo_sond() {
     let index = ChunkIndex::parse(SOND_AUDO).unwrap();
     let entry = index.find(b"SOND").unwrap();
-    let sond =
-        Sond::parse(&SOND_AUDO[entry.data_offset()..entry.data_offset() + entry.size], SOND_AUDO)
-            .unwrap();
+    let sond = Sond::parse(
+        &SOND_AUDO[entry.data_offset()..entry.data_offset() + entry.size],
+        SOND_AUDO,
+    )
+    .unwrap();
 
     assert_eq!(sond.sounds.len(), 1);
     let s = &sond.sounds[0];
@@ -922,8 +958,7 @@ fn sond_audo_audo() {
     let index = ChunkIndex::parse(SOND_AUDO).unwrap();
     let entry = index.find(b"AUDO").unwrap();
     let audo_abs = entry.data_offset();
-    let audo =
-        Audo::parse(&SOND_AUDO[audo_abs..audo_abs + entry.size], audo_abs).unwrap();
+    let audo = Audo::parse(&SOND_AUDO[audo_abs..audo_abs + entry.size], audo_abs).unwrap();
 
     assert_eq!(audo.entries.len(), 1);
     assert_eq!(audo.entries[0].length, 4);
@@ -1028,8 +1063,7 @@ fn optn_json_file_size() {
 fn optn_parse() {
     let index = ChunkIndex::parse(OPTN).unwrap();
     let entry = index.find(b"OPTN").unwrap();
-    let optn =
-        Optn::parse(&OPTN[entry.data_offset()..entry.data_offset() + entry.size]).unwrap();
+    let optn = Optn::parse(&OPTN[entry.data_offset()..entry.data_offset() + entry.size]).unwrap();
 
     assert_eq!(optn.flags, 0);
     assert_eq!(optn.constants.len(), 1);
@@ -1052,9 +1086,11 @@ fn font_json_file_size() {
 fn font_parse() {
     let index = ChunkIndex::parse(FONT_FIXTURE).unwrap();
     let entry = index.find(b"FONT").unwrap();
-    let font =
-        Font::parse(&FONT_FIXTURE[entry.data_offset()..entry.data_offset() + entry.size], FONT_FIXTURE)
-            .unwrap();
+    let font = Font::parse(
+        &FONT_FIXTURE[entry.data_offset()..entry.data_offset() + entry.size],
+        FONT_FIXTURE,
+    )
+    .unwrap();
 
     assert_eq!(font.fonts.len(), 1);
     let f = &font.fonts[0];
@@ -1140,9 +1176,11 @@ fn room_json_file_size() {
 fn room_parse() {
     let index = ChunkIndex::parse(ROOM_FIXTURE).unwrap();
     let entry = index.find(b"ROOM").unwrap();
-    let room =
-        Room::parse(&ROOM_FIXTURE[entry.data_offset()..entry.data_offset() + entry.size], ROOM_FIXTURE)
-            .unwrap();
+    let room = Room::parse(
+        &ROOM_FIXTURE[entry.data_offset()..entry.data_offset() + entry.size],
+        ROOM_FIXTURE,
+    )
+    .unwrap();
 
     assert_eq!(room.rooms.len(), 1);
     let r = &room.rooms[0];

@@ -301,7 +301,10 @@ mod tests {
         mb.add_function(caller_b.build());
 
         let result = run(mb);
-        assert!(!result.changed, "Dynamic caller should not trigger widening");
+        assert!(
+            !result.changed,
+            "Dynamic caller should not trigger widening"
+        );
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(target.sig.params[0], Type::Int(64));
     }
@@ -399,7 +402,10 @@ mod tests {
 
         let result = CallSiteTypeWiden.apply(module).unwrap();
 
-        assert!(result.changed, "should restore Dynamic for no-caller closure param");
+        assert!(
+            result.changed,
+            "should restore Dynamic for no-caller closure param"
+        );
         let target = &result.module.functions[FuncId::new(0)];
         // Entry block param and value_types should be restored to Dynamic.
         let entry = target.entry;
@@ -458,7 +464,11 @@ mod tests {
         let result = run(mb);
         assert!(result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        assert_eq!(target.sig.params[0], Type::Dynamic, "ClassRef callers should widen Int param to Dynamic");
+        assert_eq!(
+            target.sig.params[0],
+            Type::Dynamic,
+            "ClassRef callers should widen Int param to Dynamic"
+        );
     }
 
     // ---- Multiple params: widen one, keep one ----
