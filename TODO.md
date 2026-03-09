@@ -85,6 +85,20 @@ All of the following violate it and need to move to the respective frontend crat
   `crates/formats/datawin/Cargo.toml`: crate name is `datawin`. CLAUDE.md: "All crates use the
   `reincarnate-` prefix." Rename to `reincarnate-formats-datawin` (or `reincarnate-datawin`).
 
+- [ ] **`generate_data_files` in GML frontend bypasses the pipeline entirely.**
+  `crates/frontends/reincarnate-frontend-gamemaker/src/data.rs` writes TypeScript source files
+  (`data/objects.ts`, `data/asset_ids.d.ts`, `data/textures.ts`, etc.) as raw blobs into
+  `AssetCatalog` before any transform or emit phase runs. The TypeScript backend copies them
+  verbatim — never processing them. A Rust backend would get TypeScript files in its output.
+
+  The correct design: the object name→index mapping (and sprite/sound/font tables) belongs
+  in the module IR as metadata (e.g., `Module::class_registry: Vec<(String, u32)>`). The
+  TypeScript backend renders `data/objects.ts`; a Rust backend renders its own equivalent.
+
+  Immediate symptom: GML object names that are invalid TypeScript identifiers (e.g. `3platgen`)
+  cannot be sanitized by the backend — worked around by using quoted string keys in
+  `generate_objects` (2026-03-10). The correct fix requires moving generation to the backend.
+
 ---
 
 ## Developer Experience / Tooling Gaps (HIGH PRIORITY)
@@ -241,10 +255,10 @@ Functions to audit (partial list):
 - `layer_get_depth`, `layer_x`, `layer_y` — layer state queries
 
 Confirmed untracked silent stubs (found 2026-03-09 audit):
-- [ ] **`asset_get_tags` / `asset_has_tags`** — return `[]` / `false` with no comment; should throw or have an explicit no-op comment
-- [ ] **`file_find_first` / `file_find_next`** — return `""` with "no filesystem enumeration in browser" comment; but returning `""` is the GML terminator sentinel, which could cause game loops that check `file_find_first() != ""` to silently skip rather than error. Should throw.
-- [ ] **`directory_exists`** — returns `false` with no comment. Add explicit no-op comment or throw.
-- [ ] **`buffer_async_group_end`** — returns `0` (fake group handle). Callers may use the returned ID for subsequent async operations, silently acting on handle 0. Should throw.
+- [x] **`asset_get_tags` / `asset_has_tags`** — now `throw Error("... not yet implemented")` (2026-03-10).
+- [x] **`file_find_first` / `file_find_next`** — now throw (2026-03-10).
+- [x] **`directory_exists`** — now returns `false` with explicit no-op comment (2026-03-10).
+- [x] **`buffer_async_group_end`** — now throws (2026-03-10).
 
 ### Runtime type widening — last audited: (never)
 

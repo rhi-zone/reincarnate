@@ -22,6 +22,7 @@ fn is_valid_js_ident(s: &str) -> bool {
     chars.all(|c| unicode_ident::is_xid_continue(c) || c == '$')
 }
 
+
 /// Generate TypeScript data files from parsed chunks and add them to the catalog.
 pub fn generate_data_files(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]) {
     generate_textures(dw, catalog);
@@ -398,7 +399,11 @@ fn generate_objects(catalog: &mut AssetCatalog, obj_names: &[String]) {
     let mut out = String::new();
     out.push_str("export const Classes = {\n");
     for (i, name) in obj_names.iter().enumerate() {
-        let _ = writeln!(out, "  {name}: {i},");
+        // Use quoted string keys so names like "3platgen" are valid TypeScript.
+        // The runtime looks up classes by the original GML name, so the key
+        // must be the unsanitized name.
+        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+        let _ = writeln!(out, "  \"{escaped}\": {i},");
     }
     out.push_str("} as const;\n");
 
