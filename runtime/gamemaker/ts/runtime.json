@@ -2422,6 +2422,397 @@
         "boolean"
       ],
       "returns": "void"
+    },
+    "array_equals": {
+      "params": [
+        "*",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "asset_has_tags": {
+      "params": [
+        "number",
+        "*",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "audio_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "audio_is_paused": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "buffer_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "directory_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "ds_exists": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_grid_value_exists": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "ds_list_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_list_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_map_is_map": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_priority_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_queue_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_stack_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "file_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "file_text_eof": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "font_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_button_check": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_button_check_pressed": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_button_check_released": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_is_supported": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "is_debug_overlay_open": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "is_infinity": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "is_instanceof": {
+      "params": [
+        "*",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "is_method": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "is_nan": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "is_numeric": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "is_struct": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "layer_exists": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "layer_sequence_is_finished": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "part_system_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "part_type_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "path_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "room_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "shader_is_compiled": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "sprite_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_persisted": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_read_buffer": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_write": {
+      "params": [
+        "string",
+        "string",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_write_buffer": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_write_file": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_get_achievement": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_get_most_achieved_achievement_info": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "steam_initialised": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_input_get_digital_action_data": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_is_cloud_enabled_for_app": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_overlay_activated": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_overlay_enabled": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_screenshot_requested": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_subscribed": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_user_logged_on": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_lobby_is_owner": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_lobby_send_chat_message_buffer": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_music_is_enabled": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_music_is_playing": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_net_packet_receive": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_stats_ready": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_ugc_get_item_install_info": {
+      "params": [
+        "number",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "steam_user_installed_dlc": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_user_owns_dlc": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_utils_is_steam_running_on_steam_deck": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "struct_exists": {
+      "params": [
+        "*",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "texture_is_ready": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "variable_struct_exists": {
+      "params": [
+        "*",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "window_get_fullscreen": {
+      "params": [],
+      "returns": "boolean"
     }
   },
   "function_modules": [
