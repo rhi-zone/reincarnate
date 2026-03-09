@@ -54,6 +54,9 @@ pub struct FlashRewriteCtx {
     /// All known class short names (module classes + runtime type_definitions).
     /// Used to detect class coercions: `ClassName(obj)` → `asType(obj, ClassName)`.
     pub known_classes: HashSet<String>,
+    /// Static field names unique across the entire module → owning class short name.
+    /// Enables `instance.UNIQUE_STATIC_FIELD` → `OwnerClass.UNIQUE_STATIC_FIELD` rewrites.
+    pub unique_static_fields: HashMap<String, String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -931,6 +934,19 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
                             field,
                         };
                     }
+                }
+            }
+            // Rewrite anyExpr.UNIQUE_STATIC_FIELD → OwnerClass.UNIQUE_STATIC_FIELD (TS2576).
+            // `object` already covers the `this.FIELD` case above; skip if object is already
+            // a plain class-name Var (to avoid double-rewriting) or `This`.
+            if let Some(owner) = ctx.unique_static_fields.get(&field) {
+                let already_class_ref = matches!(*object, JsExpr::Var(ref n) if n == owner)
+                    || matches!(*object, JsExpr::This);
+                if !already_class_ref {
+                    return JsExpr::Field {
+                        object: Box::new(JsExpr::Var(owner.clone())),
+                        field,
+                    };
                 }
             }
             JsExpr::Field { object, field }
@@ -1933,6 +1949,7 @@ mod tests {
             bindable_methods: HashSet::new(),
             closure_bodies: HashMap::new(),
             known_classes: HashSet::new(),
+            unique_static_fields: HashMap::new(),
         }
     }
 

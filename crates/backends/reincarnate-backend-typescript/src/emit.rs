@@ -138,6 +138,7 @@ pub fn emit_module_to_string(
             engine,
             &stateful_system_aliases,
             runtime_config,
+            &class_meta.unique_static_field_map,
             debug,
             &mut out,
         )?;
@@ -194,6 +195,7 @@ pub fn emit_module_to_string(
                     &no_free_fns,
                     &no_sys_aliases,
                     runtime_config,
+                    &class_meta.unique_static_field_map,
                     debug,
                     &mut out,
                 )?;
@@ -275,6 +277,9 @@ struct ClassMeta {
     instance_field_sets: HashMap<String, HashSet<String>>,
     static_method_owner_map: HashMap<String, HashMap<String, String>>,
     static_field_owner_map: HashMap<String, HashMap<String, String>>,
+    /// Static field names that are unique across the entire module → owning class short name.
+    /// Used to rewrite `instance.FIELD` → `OwnerClass.FIELD` for static fields.
+    unique_static_field_map: HashMap<String, String>,
     /// Instance/Free method names that are bindable (excludes getters, setters, statics, constructors).
     bindable_method_sets: HashMap<String, HashSet<String>>,
 }
@@ -300,6 +305,7 @@ impl ClassMeta {
             instance_field_sets,
             static_method_owner_map,
             static_field_owner_map,
+            unique_static_field_map: build_unique_static_field_map(module),
             bindable_method_sets: build_bindable_method_sets(module, type_defs),
         }
     }
@@ -826,6 +832,59 @@ fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<Stri
     result
 }
 
+/// Build a map from static field short name → owning class short name, restricted
+/// to names that are **unique** across the entire module (appear as a static field
+/// in exactly one class, own or inherited).  Used by the Flash rewriter to rewrite
+/// `someInstance.UNIQUE_STATIC_FIELD` → `OwnerClass.UNIQUE_STATIC_FIELD`.
+fn build_unique_static_field_map(module: &Module) -> HashMap<String, String> {
+    // Count how many distinct owning classes each static field name maps to.
+    // A name is "unique" if all classes that expose it (own or inherited) agree
+    // on the same owner.
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
+
+    // field_name → set of owners seen across all classes
+    let mut owners_by_field: HashMap<String, HashSet<String>> = HashMap::new();
+    for class in &module.classes {
+        let mut current = class;
+        loop {
+            for (name, _, _) in &current.static_fields {
+                owners_by_field
+                    .entry(name.clone())
+                    .or_default()
+                    .insert(current.name.clone());
+            }
+            match current.super_class {
+                Some(ref sc) => match resolve_parent(sc, &class_by_qualified, &class_by_short) {
+                    Some(parent) => current = parent,
+                    None => break,
+                },
+                None => break,
+            }
+        }
+    }
+    // Keep only fields with a single owner.
+    owners_by_field
+        .into_iter()
+        .filter_map(|(name, owners)| {
+            if owners.len() == 1 {
+                let owner = owners.into_iter().next().unwrap();
+                Some((name, owner))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 /// Build a mapping from qualified class name → set of all instance field short
 /// names visible through the class hierarchy (own fields + all ancestor fields).
 fn build_instance_field_sets(
@@ -1129,6 +1188,7 @@ pub fn emit_module_to_dir(
             smo,
             sfo,
             &global_names,
+            &class_meta.unique_static_field_map,
             engine,
         );
         direct_value_imports.insert(sanitize_ident(&group.class_def.name), refs.value_refs);
@@ -1230,6 +1290,7 @@ pub fn emit_module_to_dir(
             static_method_owners,
             static_field_owners,
             &global_names,
+            &class_meta.unique_static_field_map,
             &mutable_global_names,
             module_exports,
             &transitive_value_imports,
@@ -1351,6 +1412,7 @@ pub fn emit_module_to_dir(
                 &HashMap::new(),
                 &HashMap::new(),
                 &global_names,
+                &HashMap::new(),
                 &module.object_names,
                 engine,
                 &mut refs,
@@ -1423,6 +1485,7 @@ pub fn emit_module_to_dir(
                     &free_func_names,
                     &no_sys_aliases,
                     runtime_config,
+                    &class_meta.unique_static_field_map,
                     debug,
                     &mut out,
                 )?;
@@ -1916,6 +1979,7 @@ fn collect_class_references(
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     global_names: &HashSet<String>,
+    unique_static_field_map: &HashMap<String, String>,
     engine: EngineKind,
 ) -> RefSets {
     let self_name = &group.class_def.name;
@@ -1968,6 +2032,7 @@ fn collect_class_references(
             static_method_owners,
             static_field_owners,
             global_names,
+            unique_static_field_map,
             &module.object_names,
             engine,
             &mut refs,
@@ -1987,6 +2052,7 @@ fn collect_type_refs_from_function(
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     global_names: &HashSet<String>,
+    unique_static_field_map: &HashMap<String, String>,
     object_names: &[String],
     engine: EngineKind,
     refs: &mut RefSets,
@@ -2131,6 +2197,17 @@ fn collect_type_refs_from_function(
                             refs.ext_value_refs.insert(field.to_string());
                         } else {
                             warn_unmapped_reference(field);
+                        }
+                    }
+                }
+                // Flash: if this field access will be rewritten to OwnerClass.FIELD by the
+                // unique_static_fields rewrite, register OwnerClass as a value import.
+                if engine == EngineKind::Flash {
+                    if let Some(owner) = unique_static_field_map.get(field) {
+                        if owner != self_name {
+                            if let Some(entry) = registry.lookup(owner) {
+                                refs.value_refs.insert(entry.short_name.clone());
+                            }
                         }
                     }
                 }
@@ -2507,6 +2584,7 @@ fn emit_intra_imports(
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     global_names: &HashSet<String>,
+    unique_static_field_map: &HashMap<String, String>,
     mutable_global_names: &HashSet<String>,
     module_exports: &BTreeMap<String, Vec<String>>,
     transitive_value_imports: &HashMap<String, HashSet<String>>,
@@ -2523,6 +2601,7 @@ fn emit_intra_imports(
         static_method_owners,
         static_field_owners,
         global_names,
+        unique_static_field_map,
         engine,
     );
 
@@ -3079,6 +3158,7 @@ fn emit_functions(
     engine: EngineKind,
     stateful_system_aliases: &BTreeMap<String, String>,
     runtime_config: Option<&RuntimeConfig>,
+    unique_static_fields: &HashMap<String, String>,
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -3107,6 +3187,7 @@ fn emit_functions(
                 &no_free_fns,
                 stateful_system_aliases,
                 runtime_config,
+                unique_static_fields,
                 debug,
                 out,
             )?;
@@ -3130,6 +3211,7 @@ fn emit_function(
     free_func_names: &HashSet<String>,
     stateful_system_aliases: &BTreeMap<String, String>,
     runtime_config: Option<&RuntimeConfig>,
+    unique_static_fields: &HashMap<String, String>,
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
@@ -3173,6 +3255,7 @@ fn emit_function(
                 bindable_methods: HashSet::new(),
                 closure_bodies: HashMap::new(),
                 known_classes: known_classes.clone(),
+                unique_static_fields: unique_static_fields.clone(),
             };
             crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx)
         }
@@ -3627,6 +3710,7 @@ fn emit_class(
             bindable_methods,
             &closure_bodies,
             known_classes,
+            &class_meta.unique_static_field_map,
             lowering_config,
             engine,
             &module.sprite_names,
@@ -3727,6 +3811,7 @@ fn emit_class_method(
     bindable_methods: &HashSet<String>,
     closure_bodies: &HashMap<String, JsFunction>,
     known_classes: &HashSet<String>,
+    unique_static_fields: &HashMap<String, String>,
     lowering_config: &LoweringConfig,
     engine: EngineKind,
     sprite_names: &[String],
@@ -3812,6 +3897,7 @@ fn emit_class_method(
                 },
                 closure_bodies: closure_bodies.clone(),
                 known_classes: known_classes.clone(),
+                unique_static_fields: unique_static_fields.clone(),
             };
             let mut jf = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
             crate::rewrites::flash::eliminate_dead_activations(&mut jf.body);
