@@ -1051,6 +1051,25 @@ fn rewrite_system_call(
         });
     }
 
+    // Flash.Memory (Alchemy domain memory) → this._shims.memory.{method}(args).
+    // Per-instance heap: each FlashShims carries its own FlashMemory instance.
+    if system == "Flash.Memory" && ctx.has_self {
+        let rewritten_args = rewrite_exprs(args.to_vec(), ctx);
+        return Some(JsExpr::Call {
+            callee: Box::new(JsExpr::Field {
+                object: Box::new(JsExpr::Field {
+                    object: Box::new(JsExpr::Field {
+                        object: Box::new(JsExpr::This),
+                        field: "_shims".to_string(),
+                    }),
+                    field: "memory".to_string(),
+                }),
+                field: method.to_string(),
+            }),
+            args: rewritten_args,
+        });
+    }
+
     // constructSuper → super(_shims, ...args) or void 0
     if system == "Flash.Class" && method == "constructSuper" {
         if ctx.suppress_super {

@@ -6,6 +6,7 @@ export { RendererShim } from "./renderer";
 export { AudioShim } from "./audio";
 export { SaveShim } from "./save";
 export { UiShim } from "./ui";
+export { FlashMemory } from "./flash/memory";
 
 import { TimingShim } from "./timing";
 import { InputShim } from "./input";
@@ -13,6 +14,7 @@ import { RendererShim } from "./renderer";
 import { AudioShim } from "./audio";
 import { SaveShim } from "./save";
 import { UiShim } from "./ui";
+import { FlashMemory } from "./flash/memory";
 
 /** Holds all Flash shim state for one game instance. */
 export class FlashShims {
@@ -23,6 +25,7 @@ export class FlashShims {
     public readonly audio: AudioShim,
     public readonly save: SaveShim,
     public readonly ui: UiShim,
+    public readonly memory: FlashMemory,
   ) {}
 
   static create(canvas: HTMLCanvasElement, savePrefix = "reincarnate:"): FlashShims {
@@ -33,6 +36,7 @@ export class FlashShims {
       new AudioShim(),
       new SaveShim(savePrefix),
       new UiShim(),
+      new FlashMemory(),
     );
   }
 }

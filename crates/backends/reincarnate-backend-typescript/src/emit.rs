@@ -980,11 +980,15 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let mut out = String::new();
         let class_funcs = || group.methods.iter().map(|&fid| &module.functions[fid]);
         let all_systems = collect_system_names_from_funcs(class_funcs());
-        // For Flash class files, generic shims are accessed via `this._shims` —
-        // strip them from the import set (no module-level singleton import needed).
+        // For Flash class files, generic shims and Flash.Memory are accessed via
+        // `this._shims` — strip them from the import set (no module-level singleton
+        // import needed).
         let known_generics: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
         let systems = if engine == EngineKind::Flash {
-            all_systems.into_iter().filter(|s| !known_generics.contains(s.as_str())).collect()
+            all_systems
+                .into_iter()
+                .filter(|s| !known_generics.contains(s.as_str()) && s != "Flash.Memory")
+                .collect()
         } else {
             all_systems
         };
@@ -1050,7 +1054,13 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     if !free_funcs.is_empty() {
         let mut out = String::new();
         let free_fn_iter = || free_funcs.iter().map(|&fid| &module.functions[fid]);
-        let systems = collect_system_names_from_funcs(free_fn_iter());
+        let all_free_systems = collect_system_names_from_funcs(free_fn_iter());
+        // Flash.Memory is per-instance (accessed via _shims) — no module-level import.
+        let systems = if engine == EngineKind::Flash {
+            all_free_systems.into_iter().filter(|s| s != "Flash.Memory").collect()
+        } else {
+            all_free_systems
+        };
         let mut _free_sys_aliases = BTreeMap::new();
         emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
         let calls = collect_call_names_from_funcs(free_fn_iter(), engine);
