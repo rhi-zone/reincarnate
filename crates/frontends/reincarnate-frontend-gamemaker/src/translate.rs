@@ -2524,9 +2524,19 @@ fn translate_push_variable(
     // The instruction pops 2 indices from the stack (dim1, dim2).
     if is_2d_array_access(var_ref, instance) {
         // Stack layout: [dim2, dim1] with dim1 on top.
-        // dim1 is the meaningful first-dimension index.
-        let dim1 = pop(stack, inst)?; // first-dimension index (top of stack)
-        let _dim2 = pop(stack, inst)?; // second-dimension (ignored for 1D)
+        // dim1 is the first-dimension array index.
+        // dim2 encodes the scope (GMS1 two-argument array encoding):
+        //   dim2 == -1  → 1D access (no second dimension, scalar element)
+        //   dim2 >= 0   → cross-object access: dim2 is the OBJT index of the
+        //                 target object (e.g., obj_stats.advantages[0] pushes
+        //                 dim2=3 for Stats's OBJT index, then dim1=0)
+        //   dim2 >= 0 and is_scalar(dim1) → cross-object scalar field access
+        //               (analogous to obj.field with no array index)
+        //
+        // Note: `instance` in the Push.v instruction is always 0 for this
+        // ref_type and is NOT the object type — dim2 carries the scope.
+        let dim1 = pop(stack, inst)?;
+        let dim2 = pop(stack, inst)?;
         // If the stack still has 2+ items after popping the indices, those are
         // the original (pre-Dup) copies left by a compound assignment pattern:
         //   push dim2, push dim1, Dup, VARI-read (← here), arithmetic, VARI-write
@@ -2567,19 +2577,50 @@ fn translate_push_variable(
                     stack.push(val);
                 }
             }
-        } else if ctx.has_self && var_ref.ref_type == 0 {
-            // ref_type==0 with instance >= 0: the instance field is the VARI
-            // table's scope owner, NOT the target object.  The actual target
-            // is always the current instance (self).
+        } else if var_ref.ref_type == 0 {
+            // In GMS1, dim2 encodes the scope for ref_type==0 array accesses:
+            //   dim2 < 0  → self-array access (dim2 == -1 for 1D arrays)
+            //   dim2 >= 0 → cross-object access; dim2 is the OBJT index of the
+            //               target object
+            let dim2_scope = fb.try_get_const(dim2).cloned();
+            let is_self_scope = matches!(&dim2_scope, Some(Constant::Int(n)) if *n < 0);
             let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
-            let self_param = fb.param(0);
-            if is_scalar {
-                let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
-                stack.push(field_val);
+            if is_self_scope {
+                // Self-array: access on the current instance.
+                let self_param = fb.param(0);
+                if is_scalar {
+                    let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
+                    stack.push(field_val);
+                } else {
+                    let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
+                    let indexed = fb.get_index(field_val, dim1, Type::Dynamic);
+                    stack.push(indexed);
+                }
+            } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
+                // Cross-object: dim2 is the OBJT index of the target object.
+                let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
+                    fb.const_string(name)
+                } else {
+                    fb.const_int(obj_idx)
+                };
+                let name_val = fb.const_string(&var_name);
+                let args: Vec<ValueId> = if is_scalar {
+                    vec![obj_id, name_val]
+                } else {
+                    vec![obj_id, name_val, dim1]
+                };
+                let val = fb.system_call("GameMaker.Instance", "getOn", &args, Type::Dynamic);
+                stack.push(val);
             } else {
-                let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
-                let indexed = fb.get_index(field_val, dim1, Type::Dynamic);
-                stack.push(indexed);
+                // Dynamic dim2: emit a runtime getOn with the dim2 value as the object.
+                let name_val = fb.const_string(&var_name);
+                let args: Vec<ValueId> = if is_scalar {
+                    vec![dim2, name_val]
+                } else {
+                    vec![dim2, name_val, dim1]
+                };
+                let val = fb.system_call("GameMaker.Instance", "getOn", &args, Type::Dynamic);
+                stack.push(val);
             }
         } else {
             // Cross-object indexed access (ref_type != 0, or script context):
@@ -2990,19 +3031,19 @@ fn translate_pop(
         // on top. The `compound_2d_pending` flag is set by translate_push_variable
         // when it detects the originals remaining after the 2D read.
         if is_2d_array_access(var_ref, *instance) {
-            let (dim1, value) = if var_ref.ref_type == 0 && *compound_2d_pending {
+            let (dim1, dim2, value) = if var_ref.ref_type == 0 && *compound_2d_pending {
                 *compound_2d_pending = false;
-                // Compound: new_value=top, dim1=next, _dim2=bottom
+                // Compound: new_value=top, dim1=next, dim2=bottom
                 let value = pop(stack, inst)?;
                 let dim1 = pop(stack, inst)?;
-                let _dim2 = pop(stack, inst)?;
-                (dim1, value)
+                let dim2 = pop(stack, inst)?;
+                (dim1, dim2, value)
             } else {
-                // Simple: dim1=top, _dim2=next, value=bottom
+                // Simple: dim1=top, dim2=next, value=bottom
                 let dim1 = pop(stack, inst)?;
-                let _dim2 = pop(stack, inst)?;
+                let dim2 = pop(stack, inst)?;
                 let value = pop(stack, inst)?;
-                (dim1, value)
+                (dim1, dim2, value)
             };
             if var_name == "argument" {
                 // argument[N] = value → store to function parameter slot (or captured slot).
@@ -3036,18 +3077,56 @@ fn translate_pop(
                         Type::Void,
                     );
                 }
-            } else if ctx.has_self && var_ref.ref_type == 0 {
-                // ref_type==0 with instance >= 0: the instance field is the
-                // VARI table's scope owner, NOT the target object.  The actual
-                // target is always self.  (See translate_push_variable.)
+            } else if var_ref.ref_type == 0 {
+                // In GMS1, dim2 encodes the scope for ref_type==0 array writes:
+                //   dim2 < 0  → self-array write
+                //   dim2 >= 0 → cross-object write; dim2 is the OBJT index of
+                //               the target object
+                let dim2_scope = fb.try_get_const(dim2).cloned();
+                let is_self_scope = matches!(&dim2_scope, Some(Constant::Int(n)) if *n < 0);
                 let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
-                let self_param = fb.param(0);
-                if is_scalar {
-                    fb.set_field(self_param, &var_name, value);
+                if is_self_scope {
+                    let self_param = fb.param(0);
+                    if is_scalar {
+                        fb.set_field(self_param, &var_name, value);
+                    } else {
+                        let field_val =
+                            fb.get_field(self_param, &var_name, Type::Dynamic);
+                        fb.set_index(field_val, dim1, value);
+                    }
+                } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
+                    // Cross-object: dim2 is the OBJT index of the target object.
+                    let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
+                        fb.const_string(name)
+                    } else {
+                        fb.const_int(obj_idx)
+                    };
+                    let name_val = fb.const_string(&var_name);
+                    let args: Vec<ValueId> = if is_scalar {
+                        vec![obj_id, name_val, value]
+                    } else {
+                        vec![obj_id, name_val, dim1, value]
+                    };
+                    fb.system_call(
+                        "GameMaker.Instance",
+                        "setOn",
+                        &args,
+                        Type::Void,
+                    );
                 } else {
-                    let field_val =
-                        fb.get_field(self_param, &var_name, Type::Dynamic);
-                    fb.set_index(field_val, dim1, value);
+                    // Dynamic dim2: emit a runtime setOn with the dim2 value as the object.
+                    let name_val = fb.const_string(&var_name);
+                    let args: Vec<ValueId> = if is_scalar {
+                        vec![dim2, name_val, value]
+                    } else {
+                        vec![dim2, name_val, dim1, value]
+                    };
+                    fb.system_call(
+                        "GameMaker.Instance",
+                        "setOn",
+                        &args,
+                        Type::Void,
+                    );
                 }
             } else {
                 // Cross-object indexed write (ref_type != 0, or script context):
@@ -3510,7 +3589,10 @@ mod tests {
         let func_ref_map: HashMap<usize, usize> = HashMap::new();
         let obj_names: Vec<String> = vec!["Obj0".into(); 4]; // 4 so index 3 is valid
         let script_names: HashSet<String> = HashSet::new();
-        let ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        let mut ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        // instance=3 in bytecode is the VARI owner (self) — set self_object_index so
+        // is_own resolves correctly with the new instance-check logic.
+        ctx.self_object_index = Some(3);
 
         let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
             .expect("translation failed");
@@ -3548,7 +3630,10 @@ mod tests {
         let func_ref_map: HashMap<usize, usize> = HashMap::new();
         let obj_names: Vec<String> = vec!["Obj0".into(); 4];
         let script_names: HashSet<String> = HashSet::new();
-        let ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        let mut ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        // instance=3 in bytecode is the VARI owner (self) — set self_object_index so
+        // is_own resolves correctly with the new instance-check logic.
+        ctx.self_object_index = Some(3);
 
         let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
             .expect("translation failed");
@@ -3616,7 +3701,7 @@ mod tests {
         // offset 28: Pop.v.v      (VARI write, compound)      → 8 bytes
         // offset 36: Exit                                      → 4 bytes
         let instructions = vec![
-            pushi(3),               // dim2 artifact
+            pushi(-1),              // dim2 = -1 (self scope; GMS1 1D self-array sentinel)
             pushi(5),               // dim1 = index
             dup_inst(1, DataType::Int16), // dup top 2 Int16 items (2 * 1 unit each)
             push_var(3, 0),         // 2D VARI read (ref_type=0, instance=3 ≥ 0)
