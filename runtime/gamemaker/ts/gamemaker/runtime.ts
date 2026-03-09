@@ -501,8 +501,10 @@ export class GameRuntime {
   _roomInstances: GMLRoom[] = [];
   _instancesByClass = new Map<Function, GMLObject[]>();
 
-  // Global variable object
-  global: Record<string, any> = { score: 0, health: 0, lives: 0, async_load: -1 };
+  // Global variable object — GML's `global` is an object instance (id=-5) that holds
+  // global variables. Typed as GMLObject so it can be used in instance contexts
+  // (with(global), instance_destroy(global), place_meeting(..., global), etc.).
+  global: GMLObject = Object.assign(new GMLObject(), { score: 0, health: 0, lives: 0, async_load: -1 });
 
   // Sprites enum (per-runtime)
   Sprites: Record<string, number> = {};
