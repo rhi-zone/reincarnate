@@ -1560,7 +1560,6 @@ const JS_RESERVED: &[&str] = &[
     "true",
     "try",
     "typeof",
-    "undefined",
     "var",
     "void",
     "while",
@@ -3244,6 +3243,7 @@ fn emit_function(
                 instance_fields: HashSet::new(),
                 has_self: false,
                 suppress_super: false,
+                parent_is_runtime: false,
                 is_cinit: false,
                 is_constructor: false,
                 is_static: false,
@@ -3683,6 +3683,20 @@ fn emit_class(
         .collect();
 
     let suppress_super = extends.is_empty();
+    // True when the class extends a Flash runtime class (e.g. MovieClip, Font) that is
+    // NOT defined in the user module.  The runtime constructor doesn't accept `_shims`,
+    // so `constructSuper` must emit `super()` without injecting it.
+    let parent_is_runtime = engine == EngineKind::Flash
+        && !extends.is_empty()
+        && !group
+            .class_def
+            .super_class
+            .as_deref()
+            .filter(|sc| *sc != "Object")
+            .is_some_and(|sc| {
+                let base = sc.rsplit("::").next().unwrap_or(sc);
+                module.classes.iter().any(|c| c.name == base)
+            });
 
     // Compile closure bodies for inlining as arrow functions.
     let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
@@ -3702,6 +3716,7 @@ fn emit_class(
             static_method_owners,
             static_field_owners,
             suppress_super,
+            parent_is_runtime,
             &const_instance_fields,
             &class_name,
             mutable_global_names,
@@ -3803,6 +3818,7 @@ fn emit_class_method(
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     suppress_super: bool,
+    parent_is_runtime: bool,
     const_instance_fields: &HashSet<String>,
     class_short_name: &str,
     mutable_global_names: &HashSet<String>,
@@ -3880,6 +3896,7 @@ fn emit_class_method(
                 instance_fields: instance_fields.clone(),
                 has_self: true,
                 suppress_super,
+                parent_is_runtime,
                 is_cinit,
                 is_constructor,
                 is_static: is_static_method,
@@ -3947,12 +3964,13 @@ fn emit_class_method(
         && !matches!(func.method_kind, MethodKind::Constructor)
         && parent_method_names.contains(&raw_name);
     // Flash constructors receive a `_shims: FlashShims` parameter so each game
-    // instance carries its own shim set.  Base classes (suppress_super = true)
-    // use `readonly` to store the value; derived classes accept a plain param
-    // and thread it to `super(_shims, ...)`.
+    // instance carries its own shim set.  Base classes (suppress_super = true) AND
+    // classes that extend runtime types (parent_is_runtime = true) use `readonly` to
+    // store the value as a field; user-defined-parent derived classes accept a plain
+    // param and thread it to `super(_shims, ...)`.
     let flash_ctor_extra_param: Option<String> =
         if engine == EngineKind::Flash && func.method_kind == MethodKind::Constructor {
-            if suppress_super {
+            if suppress_super || parent_is_runtime {
                 Some("readonly _shims: FlashShims".to_string())
             } else {
                 Some("_shims: FlashShims".to_string())
@@ -5364,6 +5382,25 @@ mod tests {
     fn construct_super_emits_super_call() {
         let mut mb = ModuleBuilder::new("test");
 
+        // Add Parent as a user-defined class so Child's super call gets _shims injected.
+        mb.add_struct(StructDef {
+            name: "Parent".into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+        mb.add_class(ClassDef {
+            name: "Parent".into(),
+            namespace: Vec::new(),
+            struct_index: 0,
+            methods: vec![],
+            super_class: None,
+            visibility: Visibility::Public,
+            static_fields: vec![],
+            is_interface: false,
+            interfaces: vec![],
+        });
+
         mb.add_struct(StructDef {
             name: "Child".into(),
             namespace: Vec::new(),
@@ -5389,7 +5426,7 @@ mod tests {
         mb.add_class(ClassDef {
             name: "Child".into(),
             namespace: Vec::new(),
-            struct_index: 0,
+            struct_index: 1, // Parent is struct 0, Child is struct 1
             methods: vec![ctor_id],
             super_class: Some("Parent".into()),
             visibility: Visibility::Public,

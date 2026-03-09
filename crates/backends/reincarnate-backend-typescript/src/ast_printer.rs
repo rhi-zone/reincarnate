@@ -401,7 +401,9 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                             // a narrow structural type (`{}` or `{ k: T; ... }`) with no
                             // index signature, causing TS7053 when the object is later
                             // accessed with a dynamic or `any`-typed key.
-                            JsExpr::ObjectInit(_) => Some("Record<string, any>"),
+                            JsExpr::ObjectInit(_) | JsExpr::Activation => {
+                                Some("Record<string, any>")
+                            }
                             _ => None,
                         };
                         if let Some(ann) = annotation {

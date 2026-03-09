@@ -31,6 +31,11 @@ pub struct FlashRewriteCtx {
     pub has_self: bool,
     /// Suppress `super()` calls (class has no real superclass).
     pub suppress_super: bool,
+    /// Parent class is a Flash runtime type (not a user-defined class).
+    /// `constructSuper` should emit `super()` without `_shims` injection — the
+    /// runtime class doesn't accept it — while the user class itself still gets
+    /// `readonly _shims: FlashShims` in its constructor.
+    pub parent_is_runtime: bool,
     /// Whether we are inside a cinit (class static initializer).
     pub is_cinit: bool,
     /// Whether we are inside a regular instance constructor (not cinit).
@@ -684,16 +689,23 @@ fn rewrite_stmt(stmt: JsStmt, ctx: &FlashRewriteCtx) -> Option<JsStmt> {
         ..
     }) = stmt
     {
-        // constructSuper → super(_shims, ...args) or skip
+        // constructSuper → super(_shims, ...args), super(...args), or skip
         if system == "Flash.Class" && method == "constructSuper" {
             if ctx.suppress_super {
                 return None;
             }
             let rewritten_args = rewrite_exprs(args.clone(), ctx);
-            // Skip first arg (this); prepend _shims so derived-class constructors
-            // thread the shims to their parent.
+            // Skip first arg (this).
+            let rest: Vec<JsExpr> = rewritten_args.into_iter().skip(1).collect();
+            if ctx.parent_is_runtime {
+                // Runtime parent (MovieClip, Font, EventDispatcher, etc.) doesn't
+                // accept _shims — emit super() with the original non-shims args only.
+                return Some(JsStmt::Expr(JsExpr::SuperCall(rest)));
+            }
+            // User-defined parent: prepend _shims so the parent constructor can
+            // thread the shims reference up to the root.
             let mut super_args = vec![JsExpr::Var("_shims".to_string())];
-            super_args.extend(rewritten_args.into_iter().skip(1));
+            super_args.extend(rest);
             return Some(JsStmt::Expr(JsExpr::SuperCall(super_args)));
         }
 
@@ -1135,15 +1147,17 @@ fn rewrite_system_call(
         });
     }
 
-    // constructSuper → super(_shims, ...args) or void 0
+    // constructSuper → super(_shims, ...args), super(...args), or void 0
     if system == "Flash.Class" && method == "constructSuper" {
         if ctx.suppress_super {
             return Some(JsExpr::Literal(Constant::Null));
         }
-        // Inject _shims as first super() arg so derived-class constructors
-        // thread the shims to their parent. Skip args[0] which is `this`.
+        let rest: Vec<JsExpr> = rewrite_exprs(args.iter().skip(1).cloned().collect(), ctx);
+        if ctx.parent_is_runtime {
+            return Some(JsExpr::SuperCall(rest));
+        }
         let mut super_args = vec![JsExpr::Var("_shims".to_string())];
-        super_args.extend(rewrite_exprs(args.iter().skip(1).cloned().collect(), ctx));
+        super_args.extend(rest);
         return Some(JsExpr::SuperCall(super_args));
     }
 
@@ -1190,9 +1204,17 @@ fn rewrite_system_call(
         if rest.is_empty() && matches!(&callee, JsExpr::Var(name) if name == "Object") {
             return Some(JsExpr::ObjectInit(Vec::new()));
         }
+        // Only inject this._shims for user-defined classes (those in the SWF module).
+        // Native JS and Flash runtime classes (Error, Array, Event, Font, etc.) don't
+        // accept _shims and will produce TS2554 if it is passed.
+        let is_user_class = if let JsExpr::Var(ref name) = callee {
+            ctx.class_names.values().any(|s| s == name)
+        } else {
+            false
+        };
         // Inject this._shims as first arg so the new instance inherits the
         // current game's shim set. Skip in static context — no this._shims available.
-        let mut new_args = if ctx.is_static {
+        let mut new_args = if !is_user_class || ctx.is_static {
             vec![]
         } else {
             vec![JsExpr::Field {
@@ -1938,6 +1960,7 @@ mod tests {
             instance_fields: HashSet::new(),
             has_self: false,
             suppress_super: false,
+            parent_is_runtime: false,
             is_cinit: false,
             is_constructor: false,
             is_static: false,
@@ -2041,7 +2064,10 @@ mod tests {
 
     #[test]
     fn construct_becomes_new() {
-        let ctx = empty_ctx();
+        let mut ctx = empty_ctx();
+        // MyClass is a user-defined class → _shims should be injected.
+        ctx.class_names
+            .insert("classes::MyClass".into(), "MyClass".into());
         let args = vec![
             JsExpr::Var("MyClass".into()),
             JsExpr::Literal(Constant::Int(1)),
