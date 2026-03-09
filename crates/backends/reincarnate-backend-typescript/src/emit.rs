@@ -283,15 +283,23 @@ impl ClassMeta {
     fn build(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> Self {
         let method_name_sets = build_method_name_sets(module, type_defs);
         let instance_field_sets = build_instance_field_sets(module, type_defs);
-        let parent_method_name_sets =
-            build_parent_member_sets(module, &method_name_sets, &instance_field_sets, type_defs);
+        let static_method_owner_map = build_static_method_owner_map(module);
+        let static_field_owner_map = build_static_field_owner_map(module);
+        let parent_method_name_sets = build_parent_member_sets(
+            module,
+            &method_name_sets,
+            &instance_field_sets,
+            &static_method_owner_map,
+            &static_field_owner_map,
+            type_defs,
+        );
         Self {
             ancestor_sets: build_ancestor_sets(module, type_defs),
             parent_method_name_sets,
             method_name_sets,
             instance_field_sets,
-            static_method_owner_map: build_static_method_owner_map(module),
-            static_field_owner_map: build_static_field_owner_map(module),
+            static_method_owner_map,
+            static_field_owner_map,
             bindable_method_sets: build_bindable_method_sets(module, type_defs),
         }
     }
@@ -602,7 +610,8 @@ fn build_method_name_sets(
 /// visible in the PARENT class.
 ///
 /// For a class X extending parent P:
-/// - If P is an in-module class: parent members = P's method_name_sets ∪ P's instance_field_sets.
+/// - If P is an in-module class: parent members = P's method_name_sets ∪ P's instance_field_sets
+///   ∪ P's static_method_owner_map keys (so static method overrides are detected).
 /// - If P is an external type (e.g. GMLObject from runtime.json): walk `type_defs` from P.
 /// - If X has no parent: empty set.
 ///
@@ -611,6 +620,8 @@ fn build_parent_member_sets(
     module: &Module,
     method_name_sets: &HashMap<String, HashSet<String>>,
     instance_field_sets: &HashMap<String, HashSet<String>>,
+    static_method_owner_map: &HashMap<String, HashMap<String, String>>,
+    static_field_owner_map: &HashMap<String, HashMap<String, String>>,
     type_defs: &BTreeMap<String, ExternalTypeDef>,
 ) -> HashMap<String, HashSet<String>> {
     let class_by_short: HashMap<&str, &ClassDef> = module
@@ -630,11 +641,18 @@ fn build_parent_member_sets(
         let parent_members = if let Some(ref sc) = class.super_class {
             match resolve_parent(sc, &class_by_qualified, &class_by_short) {
                 Some(parent) => {
-                    // In-module parent: union of their method set and field set.
+                    // In-module parent: union of instance methods, instance fields,
+                    // and static methods (for static override detection).
                     let parent_q = qualified_class_name(parent);
                     let mut names = method_name_sets.get(&parent_q).cloned().unwrap_or_default();
                     if let Some(fields) = instance_field_sets.get(&parent_q) {
                         names.extend(fields.iter().cloned());
+                    }
+                    if let Some(statics) = static_method_owner_map.get(&parent_q) {
+                        names.extend(statics.keys().cloned());
+                    }
+                    if let Some(statics) = static_field_owner_map.get(&parent_q) {
+                        names.extend(statics.keys().cloned());
                     }
                     names
                 }
@@ -3145,6 +3163,8 @@ fn emit_function(
                 has_self: false,
                 suppress_super: false,
                 is_cinit: false,
+                is_constructor: false,
+                is_static: false,
                 static_fields: HashSet::new(),
                 static_method_owners: HashMap::new(),
                 static_field_owners: HashMap::new(),
@@ -3414,7 +3434,19 @@ fn emit_class(
     let _ = writeln!(out, "{vis}{abstract_kw}class {class_name}{extends} {{");
     let qualified = qualified_class_name(&group.class_def);
     if engine == EngineKind::Flash {
-        let _ = writeln!(out, "  static [QN_KEY] = \"{qualified}\";");
+        // Add `override` when the immediate in-module parent also declares [QN_KEY].
+        // External runtime parents (Proxy, MovieClip, etc.) don't have [QN_KEY].
+        let parent_is_in_module = group
+            .class_def
+            .super_class
+            .as_deref()
+            .filter(|sc| *sc != "Object")
+            .is_some_and(|sc| {
+                let base = sc.rsplit("::").next().unwrap_or(sc);
+                module.classes.iter().any(|c| c.name == base)
+            });
+        let qn_ov = if parent_is_in_module { " override" } else { "" };
+        let _ = writeln!(out, "  static{qn_ov} [QN_KEY] = \"{qualified}\";");
     }
 
     // Hoist parent member set lookup so it's available for field override detection below.
@@ -3428,14 +3460,19 @@ fn emit_class(
     for (name, ty, default) in &group.class_def.static_fields {
         let ident = sanitize_ident(name);
         let ts = ts_type(ty);
+        let ov = if parent_method_names_early.contains(name.as_str()) {
+            "override "
+        } else {
+            ""
+        };
         if let Some(val) = default {
             let _ = writeln!(
                 out,
-                "  static readonly {ident}: {ts} = {};",
+                "  static {ov}readonly {ident}: {ts} = {};",
                 crate::ast_printer::emit_constant(val)
             );
         } else {
-            let _ = writeln!(out, "  static {ident}: {ts};");
+            let _ = writeln!(out, "  static {ov}{ident}: {ts};");
         }
     }
 
@@ -3463,8 +3500,25 @@ fn emit_class(
             let _ = writeln!(out, "  {ov}{ident}: {ts};");
         }
     }
-    let has_fields =
-        !group.struct_def.fields.is_empty() || !group.class_def.static_fields.is_empty();
+    // Index signatures for Proxy subclasses — AS3 `dynamic` objects allow arbitrary
+    // property access by string or number key.
+    let is_proxy_subclass = if engine == EngineKind::Flash {
+        class_meta
+            .ancestor_sets
+            .get(&qualified)
+            .is_some_and(|ancs| ancs.contains("Proxy"))
+            // Proxy itself doesn't need its own index signature (it's in the runtime).
+            && group.class_def.name != "Proxy"
+    } else {
+        false
+    };
+    if is_proxy_subclass {
+        let _ = writeln!(out, "  [key: string]: any;");
+        let _ = writeln!(out, "  [key: number]: any;");
+    }
+    let has_fields = !group.struct_def.fields.is_empty()
+        || !group.class_def.static_fields.is_empty()
+        || is_proxy_subclass;
     if has_fields && !group.methods.is_empty() {
         out.push('\n');
     }
@@ -3732,6 +3786,8 @@ fn emit_class_method(
             Some(&raw_name),
         ),
         EngineKind::Flash => {
+            let is_constructor = matches!(func.method_kind, MethodKind::Constructor);
+            let is_static_method = matches!(func.method_kind, MethodKind::Static) && !is_cinit;
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
                 ancestors: ancestors.clone(),
@@ -3740,6 +3796,8 @@ fn emit_class_method(
                 has_self: true,
                 suppress_super,
                 is_cinit,
+                is_constructor,
+                is_static: is_static_method,
                 static_fields: static_fields.clone(),
                 static_method_owners: static_method_owners.clone(),
                 static_field_owners: static_field_owners.clone(),
@@ -3798,11 +3856,9 @@ fn emit_class_method(
     let preamble: Option<String> = None;
     // A method needs `override` if a parent class defines a method with the same name.
     // Constructors and cinit blocks are excluded — TypeScript forbids `override` on them.
+    // Static methods ARE eligible for override when the parent class has a same-named static.
     let is_override = !is_cinit
-        && !matches!(
-            func.method_kind,
-            MethodKind::Constructor | MethodKind::Static
-        )
+        && !matches!(func.method_kind, MethodKind::Constructor)
         && parent_method_names.contains(&raw_name);
     // Flash constructors receive a `_shims: FlashShims` parameter so each game
     // instance carries its own shim set.  Base classes (suppress_super = true)

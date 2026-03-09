@@ -191,7 +191,7 @@ pub fn print_class_method(
         MethodKind::Static => {
             let _ = writeln!(
                 out,
-                "  static {star}{}({params_str}): {ret_ty} {{",
+                "  static {ov}{star}{}({params_str}): {ret_ty} {{",
                 sanitize_ident(raw_name),
             );
         }

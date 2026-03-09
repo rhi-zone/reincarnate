@@ -33,6 +33,10 @@ pub struct FlashRewriteCtx {
     pub suppress_super: bool,
     /// Whether we are inside a cinit (class static initializer).
     pub is_cinit: bool,
+    /// Whether we are inside a regular instance constructor (not cinit).
+    pub is_constructor: bool,
+    /// Whether we are inside a static method (not cinit).
+    pub is_static: bool,
     /// Static field short names declared on the current class.
     pub static_fields: HashSet<String>,
     /// Static method short name → owning class short name (across hierarchy).
@@ -916,9 +920,12 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
         JsExpr::Field { object, field } => {
             let object = Box::new(rewrite_expr(*object, ctx));
             // Rewrite this.CONST → ClassName.CONST for promoted instance Const fields.
+            // Also rewrite this.STATIC → ClassName.STATIC in constructors (TS2576).
             if matches!(*object, JsExpr::This) {
                 if let Some(ref class_name) = ctx.class_short_name {
-                    if ctx.const_instance_fields.contains(&field) {
+                    if ctx.const_instance_fields.contains(&field)
+                        || (ctx.is_constructor && ctx.static_fields.contains(&field))
+                    {
                         return JsExpr::Field {
                             object: Box::new(JsExpr::Var(class_name.clone())),
                             field,
@@ -1074,9 +1081,9 @@ fn rewrite_system_call(
     ctx: &FlashRewriteCtx,
 ) -> Option<JsExpr> {
     // Generic shim system calls → this._shims.{system}.{method}(args).
-    // Only applies in instance context (has_self); free/static functions fall
-    // through to the SystemCall fallback (they don't use generic shims).
-    if SYSTEM_NAMES.contains(&system) && ctx.has_self {
+    // Only applies in instance context (has_self) that is not a static method;
+    // static methods don't have a `this._shims` and fall through to SystemCall.
+    if SYSTEM_NAMES.contains(&system) && ctx.has_self && !ctx.is_static {
         let rewritten_args = rewrite_exprs(args.to_vec(), ctx);
         return Some(JsExpr::Call {
             callee: Box::new(JsExpr::Field {
@@ -1095,7 +1102,7 @@ fn rewrite_system_call(
 
     // Flash.Memory (Alchemy domain memory) → this._shims.memory.{method}(args).
     // Per-instance heap: each FlashShims carries its own FlashMemory instance.
-    if system == "Flash.Memory" && ctx.has_self {
+    if system == "Flash.Memory" && ctx.has_self && !ctx.is_static {
         let rewritten_args = rewrite_exprs(args.to_vec(), ctx);
         return Some(JsExpr::Call {
             callee: Box::new(JsExpr::Field {
@@ -1168,11 +1175,15 @@ fn rewrite_system_call(
             return Some(JsExpr::ObjectInit(Vec::new()));
         }
         // Inject this._shims as first arg so the new instance inherits the
-        // current game's shim set.
-        let mut new_args = vec![JsExpr::Field {
-            object: Box::new(JsExpr::This),
-            field: "_shims".to_string(),
-        }];
+        // current game's shim set. Skip in static context — no this._shims available.
+        let mut new_args = if ctx.is_static {
+            vec![]
+        } else {
+            vec![JsExpr::Field {
+                object: Box::new(JsExpr::This),
+                field: "_shims".to_string(),
+            }]
+        };
         new_args.extend(rest);
         return Some(JsExpr::New {
             callee: Box::new(callee),
@@ -1912,6 +1923,8 @@ mod tests {
             has_self: false,
             suppress_super: false,
             is_cinit: false,
+            is_constructor: false,
+            is_static: false,
             static_fields: HashSet::new(),
             static_method_owners: HashMap::new(),
             static_field_owners: HashMap::new(),
