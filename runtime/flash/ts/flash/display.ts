@@ -1036,6 +1036,8 @@ _timelineFactories.set("Bitmap", () => new Bitmap());
 // ---------------------------------------------------------------------------
 
 export class LoaderInfo extends EventDispatcher {
+  // AS3 LoaderInfo supports dynamic property access (childSandboxBridge, parentSandboxBridge, etc.)
+  [key: string]: any;
   _actionScriptVersion = 3;
   _applicationDomain: ApplicationDomain | null = null;
   _bytes: ArrayBuffer | null = null;
