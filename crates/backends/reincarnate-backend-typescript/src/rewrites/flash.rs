@@ -621,6 +621,169 @@ fn collect_stmts_vars(stmts: &[JsStmt], out: &mut HashSet<String>) {
     }
 }
 
+/// Replace every `Var(var_name)` with `This` throughout a statement list.
+///
+/// Used when inlining a closure as an arrow function: the closure was compiled
+/// with `self_param_name = None` (first param is the activation scope, not
+/// `this`), so references to the outer method's self parameter (`v0`) remain as
+/// bare `Var("v0")`.  Arrow functions inherit `this` from the enclosing scope,
+/// so `Var("v0")` → `This` is semantically correct.
+fn subst_var_to_this_stmts(stmts: &mut [JsStmt], var_name: &str) {
+    for stmt in stmts.iter_mut() {
+        subst_var_to_this_stmt(stmt, var_name);
+    }
+}
+
+fn subst_var_to_this_stmt(stmt: &mut JsStmt, var_name: &str) {
+    match stmt {
+        JsStmt::VarDecl { init, .. } => {
+            if let Some(e) = init {
+                subst_var_to_this_expr(e, var_name);
+            }
+        }
+        JsStmt::Assign { target, value } => {
+            subst_var_to_this_expr(target, var_name);
+            subst_var_to_this_expr(value, var_name);
+        }
+        JsStmt::CompoundAssign { target, value, .. } => {
+            subst_var_to_this_expr(target, var_name);
+            subst_var_to_this_expr(value, var_name);
+        }
+        JsStmt::Expr(e) => subst_var_to_this_expr(e, var_name),
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            subst_var_to_this_expr(cond, var_name);
+            subst_var_to_this_stmts(then_body, var_name);
+            subst_var_to_this_stmts(else_body, var_name);
+        }
+        JsStmt::While { cond, body } => {
+            subst_var_to_this_expr(cond, var_name);
+            subst_var_to_this_stmts(body, var_name);
+        }
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            subst_var_to_this_stmts(init, var_name);
+            subst_var_to_this_expr(cond, var_name);
+            subst_var_to_this_stmts(update, var_name);
+            subst_var_to_this_stmts(body, var_name);
+        }
+        JsStmt::Loop { body } => subst_var_to_this_stmts(body, var_name),
+        JsStmt::ForOf { iterable, body, .. } => {
+            subst_var_to_this_expr(iterable, var_name);
+            subst_var_to_this_stmts(body, var_name);
+        }
+        JsStmt::Return(Some(e)) | JsStmt::Throw(e) => subst_var_to_this_expr(e, var_name),
+        JsStmt::Dispatch { blocks, .. } => {
+            for (_, stmts) in blocks.iter_mut() {
+                subst_var_to_this_stmts(stmts, var_name);
+            }
+        }
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            subst_var_to_this_expr(value, var_name);
+            for (_, stmts) in cases.iter_mut() {
+                subst_var_to_this_stmts(stmts, var_name);
+            }
+            subst_var_to_this_stmts(default_body, var_name);
+        }
+        JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
+    }
+}
+
+fn subst_var_to_this_expr(expr: &mut JsExpr, var_name: &str) {
+    match expr {
+        JsExpr::Var(name) if name == var_name => *expr = JsExpr::This,
+        JsExpr::Var(_)
+        | JsExpr::Literal(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => {}
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs }
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
+        }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        }
+        | JsExpr::NullCoalesceAssign {
+            target: lhs,
+            value: rhs,
+        } => {
+            subst_var_to_this_expr(lhs, var_name);
+            subst_var_to_this_expr(rhs, var_name);
+        }
+        JsExpr::Unary { expr: e, .. }
+        | JsExpr::Cast { expr: e, .. }
+        | JsExpr::TypeCheck { expr: e, .. }
+        | JsExpr::Not(e)
+        | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
+        | JsExpr::TypeOf(e)
+        | JsExpr::GeneratorResume(e)
+        | JsExpr::NonNull(e) => subst_var_to_this_expr(e, var_name),
+        JsExpr::Yield(opt) => {
+            if let Some(e) = opt {
+                subst_var_to_this_expr(e, var_name);
+            }
+        }
+        JsExpr::Field { object, .. } => subst_var_to_this_expr(object, var_name),
+        JsExpr::Index { collection, index } => {
+            subst_var_to_this_expr(collection, var_name);
+            subst_var_to_this_expr(index, var_name);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            subst_var_to_this_expr(callee, var_name);
+            for a in args {
+                subst_var_to_this_expr(a, var_name);
+            }
+        }
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            subst_var_to_this_expr(cond, var_name);
+            subst_var_to_this_expr(then_val, var_name);
+            subst_var_to_this_expr(else_val, var_name);
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) | JsExpr::SuperCall(elems) => {
+            for e in elems {
+                subst_var_to_this_expr(e, var_name);
+            }
+        }
+        JsExpr::ObjectInit(pairs) => {
+            for (_, e) in pairs {
+                subst_var_to_this_expr(e, var_name);
+            }
+        }
+        JsExpr::SuperMethodCall { args, .. }
+        | JsExpr::GeneratorCreate { args, .. }
+        | JsExpr::SystemCall { args, .. } => {
+            for a in args {
+                subst_var_to_this_expr(a, var_name);
+            }
+        }
+        JsExpr::SuperSet { value, .. } => subst_var_to_this_expr(value, var_name),
+        // Arrow functions inherit outer `this` — substitute inside them too.
+        JsExpr::ArrowFunction { body, .. } => subst_var_to_this_stmts(body, var_name),
+    }
+}
+
 /// Replace `this.field` with `ClassName.prototype.field` inside a `super()` argument.
 /// AVM2 allows `this` before `super()`, but ES6 does not; method references live on
 /// the prototype and are accessible without `this`.
@@ -1366,10 +1529,19 @@ fn rewrite_system_call(
                 } else {
                     vec![]
                 };
+                let mut body = rewritten.body;
+                if ctx.has_self && !ctx.is_static {
+                    // Closures are compiled with self_param_name=None (their first
+                    // param is the activation scope, not `this`).  If the closure
+                    // body references the outer method's self parameter (`v0`) it
+                    // remains as Var("v0").  Arrow functions inherit `this` from the
+                    // enclosing scope, so Var("v0") → This is correct.
+                    subst_var_to_this_stmts(&mut body, "v0");
+                }
                 return Some(JsExpr::ArrowFunction {
                     params,
                     return_ty: rewritten.return_ty,
-                    body: rewritten.body,
+                    body,
                     has_rest_param: rewritten.has_rest_param,
                     cast_as: None,
                     infer_param_types: false,
