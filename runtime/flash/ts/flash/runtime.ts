@@ -28,6 +28,7 @@ import {
   getCanvasBounds,
 } from "./platform";
 import type { RenderRoot } from "../shared/render-root";
+import { FlashShims } from "../index";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -47,6 +48,7 @@ export class FlashRuntime {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   stage: Stage;
+  shims: FlashShims;
 
   // Timing state (per-instance).
   private _lastTime = 0;
@@ -65,6 +67,7 @@ export class FlashRuntime {
       this.canvas = canvas;
       this.ctx = ctx;
     }
+    this.shims = FlashShims.create(this.canvas);
     this.stage = new Stage();
     this.stage.stageWidth = this.canvas.width;
     this.stage.stageHeight = this.canvas.height;
@@ -78,9 +81,9 @@ export class FlashRuntime {
    * constructor — this function emulates that by setting a pending stage
    * reference that DisplayObject's constructor picks up.
    */
-  constructRoot<T extends MovieClip>(cls: new () => T): T {
+  constructRoot<T extends MovieClip>(cls: new (shims: FlashShims) => T): T {
     _setConstructingRoot(this.stage);
-    const root = new cls();
+    const root = new cls(this.shims);
     _setConstructingRoot(null);
     this.stage.addChild(root);
     root._executeFrameScript();
@@ -91,7 +94,7 @@ export class FlashRuntime {
    * Start the runtime: construct the root, bind DOM events, and run the
    * requestAnimationFrame game loop.
    */
-  start(rootClass: new () => MovieClip): void {
+  start(rootClass: new (shims: FlashShims) => MovieClip): void {
     this.constructRoot(rootClass);
     this._lastTime = performance.now() / 1000;
     this._bindEvents();

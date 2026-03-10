@@ -809,13 +809,21 @@ fn print_expr(expr: &JsExpr) -> String {
                 // Coerce + Struct/Enum → TS assertion (compiler-guaranteed).
                 // Special case: `null as Type` is TS2352 because the types don't overlap;
                 // use `null as unknown as Type` to go through a safe intermediate.
+                // Also: some type names (e.g. AS3 `Class`) map to `any` in TypeScript;
+                // use ts_type() to get the canonical form so `as Class` doesn't emit
+                // a reference to the runtime value `Class` as a type annotation (TS2749).
                 (CastKind::Coerce, Type::Struct(name) | Type::Enum(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
+                    let ts_name = if matches!(short, "Class" | "Object") {
+                        ts_type(ty)
+                    } else {
+                        sanitize_ident(short)
+                    };
                     let inner_s = print_expr_operand(inner);
                     if matches!(inner.as_ref(), JsExpr::Literal(Constant::Null)) {
-                        format!("null as unknown as {}", sanitize_ident(short))
+                        format!("null as unknown as {ts_name}")
                     } else {
-                        format!("{inner_s} as {}", sanitize_ident(short))
+                        format!("{inner_s} as {ts_name}")
                     }
                 }
                 // Coerce + Float → Number(x).

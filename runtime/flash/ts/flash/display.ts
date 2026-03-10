@@ -251,7 +251,8 @@ export class DisplayObject extends EventDispatcher {
   set scaleY(v: number) { this._scaleY = v; }
   get scaleZ() { return this._scaleZ; }
   set scaleZ(v: number) { this._scaleZ = v; }
-  get scrollRect() { return this._scrollRect; }
+  // AS3 types DisplayObject.scrollRect as Rectangle (non-nullable at the type level).
+  get scrollRect(): Rectangle { return this._scrollRect as Rectangle; }
   set scrollRect(v: Rectangle | null) { this._scrollRect = v; }
   // AS3 types DisplayObject.stage as Stage (non-nullable at the type level).
   // The backing field is Stage|null for runtime correctness, but the getter
