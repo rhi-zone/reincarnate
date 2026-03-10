@@ -23,6 +23,8 @@ pub struct ClassInfo {
     pub static_fields: Vec<(String, Type, Option<Constant>, bool)>,
     pub is_interface: bool,
     pub interfaces: Vec<String>,
+    /// Abstract member declarations for interface classes: (name, return_ty, params, kind).
+    pub abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)>,
 }
 
 /// Translate a single AVM2 class (Instance + Class pair) into IR.
@@ -88,6 +90,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     }
 
     // Instance methods from traits
+    let mut abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)> = Vec::new();
     for trait_ in &instance.traits {
         if let Some(method_idx) = trait_method_index(trait_) {
             let bare_name = resolve_trait_bare_name(pool, trait_, class_private_ns.as_deref());
@@ -108,6 +111,20 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
                 func.method_kind = method_kind;
                 func.visibility = visibility;
                 functions.push(func);
+            } else if is_interface {
+                // Interface methods have no body — extract the signature from the ABC
+                // method definition and record as an abstract member.
+                let idx = method_idx.0 as usize;
+                if idx < abc.methods.len() {
+                    let method = &abc.methods[idx];
+                    let return_ty = resolve_type(pool, &method.return_type);
+                    let params: Vec<Type> = method
+                        .params
+                        .iter()
+                        .map(|p| resolve_type(pool, &p.kind))
+                        .collect();
+                    abstract_members.push((bare_name, return_ty, params, method_kind));
+                }
             }
         }
     }
@@ -179,6 +196,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
         static_fields,
         is_interface,
         interfaces,
+        abstract_members,
     })
 }
 
@@ -521,6 +539,7 @@ pub fn translate_abc_to_module(
             static_fields: info.static_fields,
             is_interface: info.is_interface,
             interfaces: info.interfaces,
+            abstract_members: info.abstract_members,
         });
     }
 

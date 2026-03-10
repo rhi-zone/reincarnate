@@ -583,6 +583,10 @@ fn build_method_name_sets(
                     }
                 }
             }
+            // Abstract members from interface classes (no body, emitted as abstract decls).
+            for (name, _ret, _params, _kind) in &current.abstract_members {
+                names.insert(name.clone());
+            }
             match current.super_class {
                 Some(ref sc) => {
                     let short = sc.rsplit("::").next().unwrap_or(sc);
@@ -3633,9 +3637,57 @@ fn emit_class(
         let _ = writeln!(out, "  [key: string]: any;");
         let _ = writeln!(out, "  [key: number]: any;");
     }
+    // Abstract member declarations for interface classes (getters, setters, methods
+    // that have no body in the ABC and are not emitted as real methods).
+    for (name, ret_ty, params, kind) in &group.class_def.abstract_members {
+        let ident = sanitize_ident(name);
+        let ret_ts = if engine == EngineKind::Flash {
+            flash_ts_type(ret_ty)
+        } else {
+            ts_type(ret_ty)
+        };
+        match kind {
+            MethodKind::Getter => {
+                let _ = writeln!(out, "  abstract get {ident}(): {ret_ts};");
+            }
+            MethodKind::Setter => {
+                let param_ts = if let Some(p) = params.first() {
+                    if engine == EngineKind::Flash {
+                        flash_ts_type(p)
+                    } else {
+                        ts_type(p)
+                    }
+                } else {
+                    "any".to_string()
+                };
+                let _ = writeln!(out, "  abstract set {ident}(v: {param_ts}): void;");
+            }
+            MethodKind::Instance => {
+                let param_strs: Vec<String> = params
+                    .iter()
+                    .enumerate()
+                    .map(|(i, p)| {
+                        let pts = if engine == EngineKind::Flash {
+                            flash_ts_type(p)
+                        } else {
+                            ts_type(p)
+                        };
+                        format!("p{i}: {pts}")
+                    })
+                    .collect();
+                let _ = writeln!(
+                    out,
+                    "  abstract {ident}({}): {ret_ts};",
+                    param_strs.join(", ")
+                );
+            }
+            _ => {}
+        }
+    }
     let has_fields = !group.struct_def.fields.is_empty()
         || !group.class_def.static_fields.is_empty()
-        || is_proxy_subclass;
+        || is_proxy_subclass
+        || !group.class_def.abstract_members.is_empty();
     if has_fields && !group.methods.is_empty() {
         out.push('\n');
     }
@@ -5191,6 +5243,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -5267,6 +5320,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         // Free function.
@@ -5372,6 +5426,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -5456,6 +5511,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
         mb.add_class(ClassDef {
             name: "Swamp".into(),
@@ -5467,6 +5523,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -5510,6 +5567,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         mb.add_struct(StructDef {
@@ -5544,6 +5602,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -5633,6 +5692,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
         mb.add_class(ClassDef {
             name: "Widget".into(),
@@ -5644,6 +5704,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -5784,6 +5845,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -5847,6 +5909,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
         mb.add_class(ClassDef {
             name: "Child".into(),
@@ -5858,6 +5921,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -5951,6 +6015,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
         mb.add_class(ClassDef {
             name: "Villain".into(),
@@ -5962,6 +6027,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -6081,6 +6147,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -6308,6 +6375,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         // Child class with a method that calls isNaga via scope lookup.
@@ -6335,6 +6403,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -6697,6 +6766,7 @@ mod tests {
             static_fields: vec![("debugBuild".into(), Type::Bool, None, false)],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -6749,6 +6819,7 @@ mod tests {
             static_fields: vec![],
             is_interface: true,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();
@@ -6808,6 +6879,7 @@ mod tests {
             static_fields: vec![],
             is_interface: true,
             interfaces: vec![],
+            abstract_members: vec![],
         });
 
         // Implementing class.
@@ -6831,6 +6903,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec!["IClickable".into()],
+            abstract_members: vec![],
         });
 
         let mut module = mb.build();

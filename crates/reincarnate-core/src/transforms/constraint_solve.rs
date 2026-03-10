@@ -1178,6 +1178,7 @@ mod tests {
             static_fields: vec![],
             is_interface: false,
             interfaces: vec![],
+            abstract_members: vec![],
         });
         let module = mb.build();
 

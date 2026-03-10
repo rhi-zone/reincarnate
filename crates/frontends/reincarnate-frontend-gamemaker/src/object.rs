@@ -157,6 +157,7 @@ pub fn translate_objects(
             static_fields: Vec::new(),
             is_interface: false,
             interfaces: Vec::new(),
+            abstract_members: Vec::new(),
         });
     }
 

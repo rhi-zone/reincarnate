@@ -6,7 +6,7 @@ use crate::entity::PrimaryMap;
 
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
-use super::func::{FuncId, Function, Visibility};
+use super::func::{FuncId, Function, MethodKind, Visibility};
 use super::ty::Type;
 use super::value::Constant;
 
@@ -105,6 +105,13 @@ pub struct ClassDef {
     /// Interfaces implemented by this class (short names).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub interfaces: Vec<String>,
+    /// Abstract member declarations for interface classes.
+    /// Each entry is `(name, return_type, params, kind)` where `params` is
+    /// the setter parameter type(s) or method parameter types, and `kind`
+    /// is `MethodKind::Getter`, `Setter`, or `Instance`.
+    /// Emitted as `abstract get/set name(): Type;` in TypeScript.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)>,
 }
 
 /// A module — the top-level compilation unit.
