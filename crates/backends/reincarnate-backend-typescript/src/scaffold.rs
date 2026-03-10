@@ -335,7 +335,6 @@ const TSCONFIG: &str = r#"{
     "strict": true,
     "noImplicitReturns": true,
     "noImplicitOverride": true,
-    "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
