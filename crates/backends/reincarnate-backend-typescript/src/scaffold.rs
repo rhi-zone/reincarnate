@@ -9,7 +9,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::{EntryPoint, FuncId, MethodKind, Module, Visibility};
 use reincarnate_core::project::{AssetCatalog, AssetKind, PersistenceConfig, RuntimeConfig};
 
-use crate::emit::sanitize_ident;
+use crate::emit::{build_class_names, qualified_class_name, sanitize_ident};
 
 /// Write all scaffold files into `output_dir`.
 pub fn emit_scaffold(
@@ -462,9 +462,15 @@ fn generate_main(
     for module in modules {
         emit_module_imports(module, &mut out, &mut heuristic_entry);
         // Collect all public class names for the {classes} placeholder.
+        let class_name_map = build_class_names(module);
         for class in &module.classes {
             if class.visibility == Visibility::Public {
-                class_names.push(sanitize_ident(&class.name));
+                let qualified = qualified_class_name(class);
+                let ts_name = class_name_map
+                    .get(&qualified)
+                    .cloned()
+                    .unwrap_or_else(|| sanitize_ident(&class.name));
+                class_names.push(ts_name);
             }
         }
     }
@@ -553,10 +559,16 @@ fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut 
         }
     } else {
         // Class-based module — import from barrel file.
+        let class_name_map = build_class_names(module);
         let mut imports = Vec::new();
         for class in &module.classes {
             if class.visibility == Visibility::Public {
-                imports.push(sanitize_ident(&class.name));
+                let qualified = qualified_class_name(class);
+                let ts_name = class_name_map
+                    .get(&qualified)
+                    .cloned()
+                    .unwrap_or_else(|| sanitize_ident(&class.name));
+                imports.push(ts_name);
             }
         }
         // Also import free (non-class) public functions.

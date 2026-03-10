@@ -13,7 +13,7 @@ use reincarnate_core::project::{ExternalMethodSig, ExternalTypeDef, RuntimeConfi
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::runtime::SYSTEM_NAMES;
-use crate::types::{flash_ts_type, ts_type};
+use crate::types::{flash_ts_type, flash_ts_type_with_names, ts_type, ts_type_with_names};
 
 /// Which engine's rewrite pass to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,26 +223,40 @@ pub(crate) struct ClassRegistry {
 }
 
 impl ClassRegistry {
-    fn from_module(module: &Module) -> Self {
+    /// Build the registry from a module.
+    ///
+    /// `class_names` is the output of [`build_class_names`] — it maps qualified
+    /// class names to their (possibly disambiguated) TypeScript identifiers.
+    fn from_module(module: &Module, class_names: &HashMap<String, String>) -> Self {
         let mut classes = HashMap::new();
         for class in &module.classes {
-            let short = sanitize_ident(&class.name);
+            let base_short = sanitize_ident(&class.name);
+            let qualified = qualified_class_name(class);
+            // Use the disambiguated TypeScript identifier as the short_name.
+            let ts_name = class_names
+                .get(&qualified)
+                .cloned()
+                .unwrap_or_else(|| base_short.clone());
+
+            // Path segments use the BASE file-system name (not the TS identifier),
+            // since the file on disk is still named after the original short name.
             let mut segments: Vec<String> =
                 class.namespace.iter().map(|s| sanitize_ident(s)).collect();
-            segments.push(short.clone());
+            segments.push(base_short.clone());
 
             // Key by qualified name: "classes.Scenes.Areas.Swamp::CorruptedDriderScene"
-            let qualified = qualified_class_name(class);
             classes.insert(
                 qualified,
                 ClassEntry {
-                    short_name: short.clone(),
+                    short_name: ts_name.clone(),
                     path_segments: segments.clone(),
                 },
             );
-            // Also key by bare name for fallback lookup (if not already taken).
-            classes.entry(short.clone()).or_insert(ClassEntry {
-                short_name: short,
+            // Key by the TypeScript identifier for import-generation lookups.
+            // `or_insert` ensures the first class wins when two classes share the
+            // same ts_name (shouldn't happen after disambiguation, but safe).
+            classes.entry(ts_name.clone()).or_insert(ClassEntry {
+                short_name: ts_name,
                 path_segments: segments,
             });
         }
@@ -258,12 +272,36 @@ impl ClassRegistry {
     }
 }
 
-/// Build a map from qualified class names to sanitized short names.
-fn build_class_names(module: &Module) -> HashMap<String, String> {
+/// Build a map from qualified class names to TypeScript class identifiers.
+///
+/// When two classes share the same sanitized short name (e.g., two classes both
+/// named `GooArmor` in different AS3 namespaces), both are disambiguated by
+/// prepending the last namespace segment: `Armors_GooArmor` and `NPCs_GooArmor`.
+/// Unique class names are kept as-is.
+pub(crate) fn build_class_names(module: &Module) -> HashMap<String, String> {
+    // Count occurrences of each sanitized short name.
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for class in &module.classes {
+        *counts.entry(sanitize_ident(&class.name)).or_insert(0) += 1;
+    }
     module
         .classes
         .iter()
-        .map(|c| (qualified_class_name(c), sanitize_ident(&c.name)))
+        .map(|c| {
+            let short = sanitize_ident(&c.name);
+            let ts_name = if counts.get(&short).copied().unwrap_or(0) > 1 {
+                // Disambiguate: prepend the last namespace segment.
+                let ns_last = c
+                    .namespace
+                    .last()
+                    .map(|s| sanitize_ident(s))
+                    .unwrap_or_default();
+                format!("{ns_last}_{short}")
+            } else {
+                short
+            };
+            (qualified_class_name(c), ts_name)
+        })
         .collect()
 }
 
@@ -965,7 +1003,7 @@ fn resolve_sprite_constant(name: &str, val: &Constant, sprite_names: &[String]) 
     }
 }
 
-fn qualified_class_name(class: &ClassDef) -> String {
+pub(crate) fn qualified_class_name(class: &ClassDef) -> String {
     if class.namespace.is_empty() {
         class.name.clone()
     } else {
@@ -1016,8 +1054,8 @@ pub fn emit_module_to_dir(
     fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
 
     let (class_groups, free_funcs) = group_by_class(module);
-    let registry = ClassRegistry::from_module(module);
     let class_names = build_class_names(module);
+    let registry = ClassRegistry::from_module(module, &class_names);
     let empty_type_defs = BTreeMap::new();
     let type_defs = runtime_config
         .map(|c| &c.type_definitions)
@@ -1195,7 +1233,12 @@ pub fn emit_module_to_dir(
             &class_meta.unique_static_field_map,
             engine,
         );
-        direct_value_imports.insert(sanitize_ident(&group.class_def.name), refs.value_refs);
+        let qualified = qualified_class_name(&group.class_def);
+        let ts_name = class_names
+            .get(&qualified)
+            .cloned()
+            .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
+        direct_value_imports.insert(ts_name, refs.value_refs);
     }
     let transitive_value_imports = compute_transitive_value_imports(&direct_value_imports);
 
@@ -3452,8 +3495,17 @@ fn as3_type_name(ty: &Type) -> String {
 }
 
 /// Emit a `registerClassTraits(ClassName, [...instance], [...static])` call.
-fn emit_register_class_traits(group: &ClassGroup, module: &Module, out: &mut String) {
-    let class_name = sanitize_ident(&group.class_def.name);
+fn emit_register_class_traits(
+    group: &ClassGroup,
+    module: &Module,
+    class_names: &HashMap<String, String>,
+    out: &mut String,
+) {
+    let qualified = qualified_class_name(&group.class_def);
+    let class_name = class_names
+        .get(&qualified)
+        .cloned()
+        .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
 
     // Collect instance traits: fields from struct_def + instance methods/getters/setters
     let mut instance_traits = Vec::new();
@@ -3548,7 +3600,12 @@ fn emit_class(
     debug: &DebugConfig,
     out: &mut String,
 ) -> Result<(), CoreError> {
-    let class_name = sanitize_ident(&group.class_def.name);
+    let qualified = qualified_class_name(&group.class_def);
+    // Use the (possibly disambiguated) TypeScript class identifier.
+    let class_name = class_names
+        .get(&qualified)
+        .cloned()
+        .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
     let vis = visibility_prefix(group.class_def.visibility);
 
     let extends = match &group.class_def.super_class {
@@ -3558,7 +3615,12 @@ fn emit_class(
             if base == "Object" {
                 String::new()
             } else {
-                format!(" extends {}", sanitize_ident(base))
+                // Use disambiguated name for the superclass if it's a duplicate.
+                let super_ts = class_names
+                    .get(sc.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| sanitize_ident(base));
+                format!(" extends {super_ts}")
             }
         }
         None => String::new(),
@@ -3570,7 +3632,6 @@ fn emit_class(
         ""
     };
     let _ = writeln!(out, "{vis}{abstract_kw}class {class_name}{extends} {{");
-    let qualified = qualified_class_name(&group.class_def);
     if engine == EngineKind::Flash {
         // Add `override` when the immediate in-module parent also declares [QN_KEY].
         // External runtime parents (Proxy, MovieClip, etc.) don't have [QN_KEY].
@@ -3598,9 +3659,9 @@ fn emit_class(
     for (name, ty, default, _is_const) in &group.class_def.static_fields {
         let ident = sanitize_ident(name);
         let ts = if engine == EngineKind::Flash {
-            flash_ts_type(ty)
+            flash_ts_type_with_names(ty, class_names)
         } else {
-            ts_type(ty)
+            ts_type_with_names(ty, class_names)
         };
         let ov = if parent_method_names_early.contains(name.as_str()) {
             "override "
@@ -3626,9 +3687,9 @@ fn emit_class(
     for (name, ty, default) in &group.struct_def.fields {
         let ident = sanitize_ident(name);
         let ts = if engine == EngineKind::Flash {
-            flash_ts_type(ty)
+            flash_ts_type_with_names(ty, class_names)
         } else {
-            ts_type(ty)
+            ts_type_with_names(ty, class_names)
         };
         // A field that shadows a parent-class field/method needs `override`.
         let ov = if parent_method_names_early.contains(name.as_str()) {
@@ -3930,7 +3991,7 @@ fn emit_class(
         let _ = writeln!(out, "registerClass({class_name});\n");
         // Skip registerClassTraits for interfaces (they have no runtime traits).
         if !group.class_def.is_interface {
-            emit_register_class_traits(group, module, out);
+            emit_register_class_traits(group, module, class_names, out);
         }
         // Emit registerInterface for implementing classes.
         if !group.class_def.interfaces.is_empty() {

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use reincarnate_core::ir::Type;
 
 use crate::emit::sanitize_ident;
@@ -96,6 +98,40 @@ pub fn flash_ts_type(ty: &Type) -> String {
         // keys. Emit `any` to allow all indexing patterns faithfully.
         Type::Array(_) => "any".into(),
         _ => ts_type(ty),
+    }
+}
+
+/// Map an IR [`Type`] to its TypeScript representation, using `class_names` to
+/// resolve disambiguated class names when two classes share the same short name.
+///
+/// `class_names` maps qualified IR type names (e.g. `"classes.Items.Armors::GooArmor"`)
+/// to the TypeScript identifier used in the emitted file (e.g. `"Armors_GooArmor"`).
+/// Pass an empty map for contexts where no disambiguation is needed.
+pub fn ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> String {
+    match ty {
+        Type::Struct(name) | Type::Enum(name) => {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            if short == "Object" {
+                return "Record<string, any>".into();
+            }
+            if short == "Class" {
+                return "any".into();
+            }
+            class_names
+                .get(name.as_str())
+                .cloned()
+                .unwrap_or_else(|| sanitize_ident(short))
+        }
+        _ => ts_type(ty),
+    }
+}
+
+/// Like [`flash_ts_type`] but resolves disambiguated class names from `class_names`.
+pub fn flash_ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> String {
+    match ty {
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Dynamic) => "Dictionary".into(),
+        Type::Array(_) => "any".into(),
+        _ => ts_type_with_names(ty, class_names),
     }
 }
 

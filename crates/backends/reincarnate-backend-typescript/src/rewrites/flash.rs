@@ -164,7 +164,19 @@ fn resolve_field(object: &JsExpr, field: &str, ctx: &FlashRewriteCtx) -> Option<
                     object: Box::new(JsExpr::This),
                     field: effective.to_string(),
                 }
-            } else if let Some(short) = ctx.class_names.get(field) {
+            } else if let Some(short) = ctx.class_names.get(field).or_else(|| {
+                // `lower_field` strips the namespace from the field name before lowering to
+                // JsExpr, so `field` may be the bare short name (e.g. `"GooArmor"`) rather
+                // than the fully-qualified name.  The scope-lookup arg retains the full
+                // qualified name, so try that as a fallback key.
+                args.first().and_then(|a| {
+                    if let JsExpr::Literal(Constant::String(s)) = a {
+                        ctx.class_names.get(s.as_str())
+                    } else {
+                        None
+                    }
+                })
+            }) {
                 // Full-qualified class name → short import alias.
                 return Some(JsExpr::Var(short.clone()));
             } else if ctx.known_classes.contains(effective) {
@@ -1364,11 +1376,26 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             expr: inner,
             ty,
             use_instanceof,
-        } => JsExpr::TypeCheck {
-            expr: Box::new(rewrite_expr(*inner, ctx)),
-            ty,
-            use_instanceof,
-        },
+        } => {
+            // Disambiguate struct/enum type names using class_names so that
+            // `isType(x, GooArmor)` becomes `isType(x, Armors_GooArmor)` when two
+            // classes share the same short name.
+            let ty = match &ty {
+                Type::Struct(name) | Type::Enum(name) => {
+                    if let Some(ts_name) = ctx.class_names.get(name.as_str()) {
+                        Type::Struct(ts_name.clone())
+                    } else {
+                        ty
+                    }
+                }
+                _ => ty,
+            };
+            JsExpr::TypeCheck {
+                expr: Box::new(rewrite_expr(*inner, ctx)),
+                ty,
+                use_instanceof,
+            }
+        }
 
         JsExpr::ArrayInit(elems) => JsExpr::ArrayInit(rewrite_exprs(elems, ctx)),
         JsExpr::ObjectInit(pairs) => JsExpr::ObjectInit(
