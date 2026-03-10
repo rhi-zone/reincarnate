@@ -2020,6 +2020,18 @@ fn collect_class_references(
         );
     }
 
+    // Static fields — type-only (e.g. `static BEEHONY: Consumable` needs Consumable imported).
+    for (_name, ty, _) in &group.class_def.static_fields {
+        collect_type_ref(
+            ty,
+            self_name,
+            registry,
+            external_imports,
+            &mut refs.type_refs,
+            &mut refs.ext_type_refs,
+        );
+    }
+
     // Scan all method bodies for type references.
     for &fid in &group.methods {
         let func = &module.functions[fid];
@@ -3706,6 +3718,63 @@ fn emit_class(
     // Compile closure bodies for inlining as arrow functions.
     let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
 
+    // Flash: detect getter overrides without matching setter overrides.
+    // When a class overrides a getter but not the corresponding setter, and the parent has
+    // a setter for the same property, TypeScript treats the property as read-only in the
+    // subclass (TS2540). Emit a forwarding override setter that delegates to super.
+    let forwarding_setters: Vec<(String, String)> = if engine == EngineKind::Flash {
+        let own_getter_props: HashSet<String> = sorted_methods
+            .iter()
+            .filter_map(|&fid| {
+                let f = &module.functions[fid];
+                if matches!(f.method_kind, MethodKind::Getter) {
+                    let short = f.name.rsplit("::").next().unwrap_or(&f.name);
+                    short.strip_prefix("get_").map(|p| p.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let own_setter_props: HashSet<String> = sorted_methods
+            .iter()
+            .filter_map(|&fid| {
+                let f = &module.functions[fid];
+                if matches!(f.method_kind, MethodKind::Setter) {
+                    let short = f.name.rsplit("::").next().unwrap_or(&f.name);
+                    short.strip_prefix("set_").map(|p| p.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        own_getter_props
+            .into_iter()
+            .filter(|prop| {
+                !own_setter_props.contains(prop.as_str())
+                    && parent_method_names.contains(&format!("set_{prop}"))
+            })
+            .map(|prop| {
+                // Use the getter's return type as the setter parameter type.
+                let ty = sorted_methods
+                    .iter()
+                    .find_map(|&fid| {
+                        let f = &module.functions[fid];
+                        if matches!(f.method_kind, MethodKind::Getter) {
+                            let short = f.name.rsplit("::").next().unwrap_or(&f.name);
+                            if short.strip_prefix("get_") == Some(prop.as_str()) {
+                                return Some(crate::types::ts_type(&f.sig.return_ty));
+                            }
+                        }
+                        None
+                    })
+                    .unwrap_or_else(|| "any".to_string());
+                (prop, ty)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     for (i, &fid) in sorted_methods.iter().enumerate() {
         if i > 0 {
             out.push('\n');
@@ -3741,6 +3810,14 @@ fn emit_class(
             debug,
             out,
         )?;
+    }
+
+    // Emit forwarding setters for getter overrides without corresponding setter overrides.
+    for (prop, ty) in &forwarding_setters {
+        let _ = writeln!(
+            out,
+            "\n  override set {prop}(value: {ty}) {{ super.{prop} = value; }}"
+        );
     }
 
     let _ = writeln!(out, "}}\n");
