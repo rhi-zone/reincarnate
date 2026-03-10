@@ -1944,6 +1944,22 @@ impl<'a> EmitCtx<'a> {
     }
 
     /// Negate a condition: invert Cmp if lazy-inlined, else wrap in Not.
+    /// Build a condition expression, wrapping void-typed values in a dynamic
+    /// cast.  TypeScript disallows void expressions as boolean conditions
+    /// (TS1345), so `void_call()` must become `(void_call() as any)`.
+    fn build_bool_cond(&mut self, cond: ValueId) -> Expr {
+        let expr = self.build_val(cond);
+        if matches!(self.func.value_types[cond], Type::Void) {
+            Expr::Cast {
+                expr: Box::new(expr),
+                ty: Type::Dynamic,
+                kind: CastKind::NullableCoerce,
+            }
+        } else {
+            expr
+        }
+    }
+
     fn negate_cond(&mut self, cond: ValueId) -> Expr {
         if let Some(&inst_id) = self.pending_lazy.get(&cond) {
             if let Op::Cmp(kind, a, b) = &self.func.insts[inst_id].op {
@@ -2535,22 +2551,29 @@ impl<'a> EmitCtx<'a> {
             }
             (false, true) => {
                 stmts.push(Stmt::If {
-                    cond: self.build_val(cond),
+                    cond: self.build_bool_cond(cond),
                     then_body: then_stmts,
                     else_body: Vec::new(),
                 });
             }
             (true, false) => {
                 // Negate condition and use else as then — can invert CmpKind.
+                // For void conditions, negate_cond would emit !void which also
+                // triggers TS1345; use build_bool_cond + Not instead.
+                let negated = if matches!(self.func.value_types[cond], Type::Void) {
+                    Expr::Not(Box::new(self.build_bool_cond(cond)))
+                } else {
+                    self.negate_cond(cond)
+                };
                 stmts.push(Stmt::If {
-                    cond: self.negate_cond(cond),
+                    cond: negated,
                     then_body: else_stmts,
                     else_body: Vec::new(),
                 });
             }
             (false, false) => {
                 stmts.push(Stmt::If {
-                    cond: self.build_val(cond),
+                    cond: self.build_bool_cond(cond),
                     then_body: then_stmts,
                     else_body: else_stmts,
                 });
