@@ -6,6 +6,7 @@
 
 pub mod abc;
 pub mod assets;
+pub mod bool_coerce;
 pub mod class;
 pub mod multiname;
 pub mod scope;
@@ -94,7 +95,7 @@ impl Frontend for FlashFrontend {
             modules,
             assets,
             runtime_variant: None,
-            extra_passes: vec![],
+            extra_passes: vec![Box::new(bool_coerce::FlashBoolCoerce)],
         })
     }
 }

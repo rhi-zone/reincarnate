@@ -4189,37 +4189,6 @@ fn emit_class_method(
     );
     Ok(())
 }
-/// Returns true if every code path through `body` ends with an unconditional exit
-/// (return, throw, or if/else where both branches always exit).
-/// Used to decide whether a non-void function needs a trailing `throw` sentinel.
-fn js_body_always_exits(body: &[JsStmt]) -> bool {
-    match body.last() {
-        Some(JsStmt::Return(_) | JsStmt::Throw(_)) => true,
-        Some(JsStmt::If {
-            then_body,
-            else_body,
-            ..
-        }) => {
-            !else_body.is_empty()
-                && js_body_always_exits(then_body)
-                && js_body_always_exits(else_body)
-        }
-        // A switch with a non-empty default and every case/default always exiting.
-        Some(JsStmt::Switch {
-            cases,
-            default_body,
-            ..
-        }) => {
-            !default_body.is_empty()
-                && js_body_always_exits(default_body)
-                && cases
-                    .iter()
-                    .all(|(_, body)| !body.is_empty() && js_body_always_exits(body))
-        }
-        _ => false,
-    }
-}
-
 /// Append `throw new Error("unreachable")` to a non-void function body if the
 /// body does not already have a guaranteed return on all paths.  This silences
 /// TS2366 ("Function lacks ending return statement") for exhaustive switch/if
@@ -4228,7 +4197,7 @@ fn ensure_trailing_unreachable(func: &Function, js_func: &mut JsFunction) {
     if matches!(func.sig.return_ty, Type::Void) {
         return;
     }
-    if js_body_always_exits(&js_func.body) {
+    if crate::ast_printer::ends_with_terminal(&js_func.body) {
         return;
     }
     js_func.body.push(JsStmt::Throw(JsExpr::New {

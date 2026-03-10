@@ -22,7 +22,7 @@ use crate::types::ts_type;
 /// (return, throw, break, continue, or an if/else where both branches terminate).
 /// Used to decide whether to append a synthetic `return 0 as any;` to avoid
 /// TS2366 "Function lacks ending return statement".
-fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
+pub(crate) fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
     match stmts.last() {
         Some(JsStmt::Return(_)) | Some(JsStmt::Throw(_)) => true,
         Some(JsStmt::Break) | Some(JsStmt::Continue) | Some(JsStmt::LabeledBreak { .. }) => true,
@@ -811,8 +811,12 @@ fn print_expr(expr: &JsExpr) -> String {
                 }
                 // Coerce + Dynamic/other → passthrough (no-op).
                 (CastKind::Coerce, _) => print_expr(inner),
-                // NullableCoerce + Dynamic/other → passthrough (no-op).
-                (CastKind::NullableCoerce, Type::Dynamic) => print_expr(inner),
+                // NullableCoerce + Dynamic → widen to `any`.
+                // Used when a void-typed value is tested as a boolean condition (TS1345):
+                // `Cast(void_val, Dynamic, NullableCoerce)` emits `(expr as any)`.
+                (CastKind::NullableCoerce, Type::Dynamic) => {
+                    format!("{} as any", print_expr_operand(inner))
+                }
                 // NullableCoerce + ClassRef → widen to `any`. GML object class names (OBJT)
                 // are integer indices at runtime; `as any` allows usage in numeric /
                 // arithmetic contexts while still passing the class constructor at
