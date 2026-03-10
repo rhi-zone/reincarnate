@@ -1527,6 +1527,14 @@ impl<'a> EmitCtx<'a> {
         // and never produce their own statements.
         // Track sources that received names AND will be absorbed (single-use
         // values become lazy or side-effecting inlines — never standalone stmts).
+        // Block params always produce their own declarations via collect_block_param_decls
+        // and must never be treated as "absorbed" even when use_count <= 1.
+        let all_block_param_values: HashSet<ValueId> = func
+            .blocks
+            .iter()
+            .flat_map(|(_, block)| block.params.iter().map(|p| p.value))
+            .collect();
+
         let mut propagated_sources: HashSet<ValueId> = HashSet::new();
         for (_, inst) in func.insts.iter() {
             if let Some(result) = inst.result {
@@ -1540,7 +1548,9 @@ impl<'a> EmitCtx<'a> {
                         {
                             e.insert(name);
                             let src_uses = resolve.use_counts.get(&src).copied().unwrap_or(0);
-                            if src_uses <= 1 {
+                            // Block params are never absorbable: they always generate
+                            // their own `let` declaration regardless of use count.
+                            if src_uses <= 1 && !all_block_param_values.contains(&src) {
                                 propagated_sources.insert(src);
                             }
                         }
