@@ -734,6 +734,9 @@ export const _dragStateByStage = new WeakMap<Stage, DragState | null>();
 // ---------------------------------------------------------------------------
 
 export class Sprite extends DisplayObjectContainer {
+  // AS3 Sprite is a dynamic class — allows arbitrary property access.
+  [key: string]: any;
+  [key: number]: any;
   _buttonMode = false;
   _dropTarget: DisplayObject | null = null;
   _graphics: Graphics = new Graphics();
