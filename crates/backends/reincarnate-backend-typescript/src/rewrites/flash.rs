@@ -1577,9 +1577,11 @@ fn rewrite_system_call(
         let is_user_class = match &callee {
             JsExpr::Var(name) => ctx.class_names.values().any(|s| s == name),
             // Dynamic callee: constructed from an array index or `this` reference.
-            // These arise from embedded symbol arrays or singleton patterns and always
-            // refer to user-defined classes that require shims injection.
-            JsExpr::Index { .. } | JsExpr::This => !ctx.is_static,
+            // These always refer to user-defined classes — embedded frame symbols or
+            // the current class itself (singleton `getInstance()` pattern).
+            // In instance context: inject this._shims.
+            // In static context: inject null as any (placeholder — no this available).
+            JsExpr::Index { .. } | JsExpr::This => true,
             _ => false,
         };
         // Inject this._shims as first arg so the new instance inherits the
