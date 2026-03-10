@@ -3595,7 +3595,7 @@ fn emit_class(
         .unwrap_or(&empty_set_early);
 
     // Static fields from ClassDef (class-level Slot/Const + promoted instance Consts).
-    for (name, ty, default, is_const) in &group.class_def.static_fields {
+    for (name, ty, default, _is_const) in &group.class_def.static_fields {
         let ident = sanitize_ident(name);
         let ts = if engine == EngineKind::Flash {
             flash_ts_type(ty)
@@ -3607,7 +3607,10 @@ fn emit_class(
         } else {
             ""
         };
-        let ro = if *is_const { "readonly " } else { "" };
+        // AS3 `const` is not enforced as immutable at runtime — Flash Player
+        // allows reassignment of static const fields.  Emitting `readonly`
+        // causes TS2540 when game code does reassign them, so we omit it.
+        let ro = "";
         if let Some(val) = default {
             let _ = writeln!(
                 out,

@@ -1048,6 +1048,30 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
         }
     }
 
+    // AS3 XML/XMLList.length() is a method; TypeScript's Array.length is a property.
+    // Rewrite `expr.length()` (no args) → `expr.length` so TS2349 doesn't fire.
+    if let JsExpr::Call {
+        ref callee,
+        ref args,
+    } = expr
+    {
+        if args.is_empty() {
+            if let JsExpr::Field {
+                ref field,
+                ref object,
+            } = **callee
+            {
+                if field == "length" {
+                    let object = Box::new(rewrite_expr(*object.clone(), ctx));
+                    return JsExpr::Field {
+                        object,
+                        field: "length".to_string(),
+                    };
+                }
+            }
+        }
+    }
+
     // --- Recurse into children ---
     match expr {
         JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This | JsExpr::Activation => expr,
