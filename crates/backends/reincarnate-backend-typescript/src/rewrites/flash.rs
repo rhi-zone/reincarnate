@@ -1406,9 +1406,19 @@ fn rewrite_system_call(
             false
         };
         // Inject this._shims as first arg so the new instance inherits the
-        // current game's shim set. Skip in static context — no this._shims available.
-        let mut new_args = if !is_user_class || ctx.is_static {
+        // current game's shim set.
+        // In static context (no `this`), inject `null as any` as a shims placeholder.
+        // Static factory methods (e.g. ConsumableLib.mk, StatusAffects.mk) create
+        // data-class instances during cinit; those objects typically never call
+        // shim-dependent methods at runtime, so null is safe.
+        let mut new_args = if !is_user_class {
             vec![]
+        } else if ctx.is_static {
+            vec![JsExpr::Cast {
+                expr: Box::new(JsExpr::Literal(Constant::Null)),
+                ty: Type::Dynamic,
+                kind: CastKind::NullableCoerce,
+            }]
         } else {
             vec![JsExpr::Field {
                 object: Box::new(JsExpr::This),
