@@ -33,6 +33,11 @@ pub fn ts_type(ty: &Type) -> String {
             if short == "Object" {
                 return "Record<string, any>".into();
             }
+            // AS3 `Class` is the metaclass for all class objects. In TypeScript, a class
+            // constructor is a `Function`, so map `Class` type annotations to `Function`.
+            if short == "Class" {
+                return "Function".into();
+            }
             sanitize_ident(short)
         }
         Type::ClassRef(_) => {

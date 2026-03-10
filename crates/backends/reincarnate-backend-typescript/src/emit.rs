@@ -2227,6 +2227,7 @@ fn collect_type_refs_from_function(
                             &const_strings,
                             self_name,
                             registry,
+                            external_imports,
                             static_method_owners,
                             static_field_owners,
                             global_names,

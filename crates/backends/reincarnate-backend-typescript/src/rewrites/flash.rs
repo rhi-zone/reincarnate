@@ -5,9 +5,9 @@
 //! native JavaScript constructs. All Flash-specific knowledge is confined here;
 //! `lower.rs` is purely engine-agnostic.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reincarnate_core::ir::{CastKind, Constant, Type, ValueId};
+use reincarnate_core::ir::{CastKind, Constant, ExternalImport, Type, ValueId};
 
 use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
@@ -202,8 +202,10 @@ fn resolve_scope_call(
 
     let callee = match resolve_scope_lookup(scope_args, ctx) {
         ScopeResolution::Ancestor(ref class_name) => {
-            if ctx.is_cinit || ctx.method_names.contains(effective) {
-                // Instance method (or cinit scope) → this.method
+            let is_instance =
+                ctx.instance_fields.contains(effective) || ctx.method_names.contains(effective);
+            if ctx.is_cinit || is_instance {
+                // Instance method/field-as-callable (or cinit scope) → this.method
                 JsExpr::Field {
                     object: Box::new(JsExpr::This),
                     field: effective.to_string(),
@@ -223,7 +225,10 @@ fn resolve_scope_call(
                     object: Box::new(JsExpr::Var(class_name)),
                     field: effective.to_string(),
                 }
-            } else if (ctx.has_self && ctx.method_names.contains(effective)) || ctx.is_cinit {
+            } else if ctx.has_self
+                && (ctx.method_names.contains(effective) || ctx.instance_fields.contains(effective))
+                || ctx.is_cinit
+            {
                 JsExpr::Field {
                     object: Box::new(JsExpr::This),
                     field: effective.to_string(),
@@ -1922,6 +1927,7 @@ pub(crate) fn collect_flash_scope_refs(
     const_strings: &HashMap<ValueId, &str>,
     self_name: &str,
     registry: &ClassRegistry,
+    external_imports: &BTreeMap<String, ExternalImport>,
     static_method_owners: &HashMap<String, String>,
     static_field_owners: &HashMap<String, String>,
     global_names: &HashSet<String>,
@@ -1949,6 +1955,9 @@ pub(crate) fn collect_flash_scope_refs(
         if bare != self_name {
             if let Some(entry) = registry.lookup(bare) {
                 refs.value_refs.insert(entry.short_name.clone());
+            } else if external_imports.contains_key(scope_str) {
+                // External runtime class (e.g. DisplayObject from flash/display).
+                refs.ext_value_refs.insert(scope_str.to_string());
             }
         }
         // Module-level globals (package variables).
