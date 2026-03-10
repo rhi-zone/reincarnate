@@ -114,3 +114,42 @@ export function setDefaultNamespace(ns: any): void {
   // In AVM2 this sets the default XML namespace for the current scope.
   // No-op in lifted code — E4X is rarely used in practice.
 }
+
+// ---------------------------------------------------------------------------
+// AS3 XML / XMLList types
+// ---------------------------------------------------------------------------
+
+/** AS3 XML — E4X XML node. Wraps a parsed DOM or string value. */
+export class XML {
+  private _source: string;
+
+  constructor(value?: any) {
+    this._source = value == null ? "" : String(value);
+  }
+
+  toString(): string {
+    return this._source;
+  }
+
+  toXMLString(): string {
+    return this._source;
+  }
+
+  // Allow property access on any key (E4X dynamic access)
+  [key: string]: any;
+}
+
+/** AS3 XMLList — ordered collection of XML nodes (E4X). */
+export class XMLList extends Array<XML> {
+  constructor(...items: XML[]) {
+    super(...items);
+    // Restore prototype after Array subclass construction
+    Object.setPrototypeOf(this, XMLList.prototype);
+  }
+
+  toString(): string {
+    return this.map((x) => x.toString()).join("");
+  }
+
+  [key: string]: any;
+}

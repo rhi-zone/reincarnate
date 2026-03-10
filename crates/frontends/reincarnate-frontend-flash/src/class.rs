@@ -630,6 +630,15 @@ fn resolve_flash_external_import(name: &str) -> Option<ExternalImport> {
             short_name: "Date".to_string(),
             module_path: "flash/date".to_string(),
         }),
+        // AS3 E4X types — exported from the Flash XML module.
+        "XML" => Some(ExternalImport {
+            short_name: "XML".to_string(),
+            module_path: "flash/xml".to_string(),
+        }),
+        "XMLList" => Some(ExternalImport {
+            short_name: "XMLList".to_string(),
+            module_path: "flash/xml".to_string(),
+        }),
         _ => None,
     }
 }

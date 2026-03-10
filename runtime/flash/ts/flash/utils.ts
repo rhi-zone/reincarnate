@@ -112,6 +112,12 @@ export const QN_KEY = Symbol("as3:qualifiedName");
 
 const _classRegistry = new Map<string, Function>();
 
+/** AS3 registerClassAlias — registers a string alias for AMF serialization. */
+export function registerClassAlias(alias: string, ctor: Function): void {
+  const name = (ctor as any)[QN_KEY] ?? (ctor as any).name;
+  if (typeof name === "string") _classRegistry.set(alias, ctor);
+}
+
 export function registerClass(ctor: Function): void {
   const name = (ctor as any)[QN_KEY];
   if (typeof name === "string") _classRegistry.set(name, ctor);
