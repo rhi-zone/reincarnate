@@ -740,14 +740,20 @@ fn print_expr(expr: &JsExpr) -> String {
         }
 
         JsExpr::Field { object, field } => {
-            if is_valid_js_ident(field) {
-                format!("{}.{field}", print_expr_operand(object))
+            // AS3 activation objects and empty object literals have no index signature;
+            // accessing dynamic properties on them causes TS2339. Cast to
+            // Record<string, any> so the access type-checks. Activation prints as `({})`.
+            let is_bare_obj = matches!(object.as_ref(), JsExpr::Activation)
+                || matches!(object.as_ref(), JsExpr::ObjectInit(p) if p.is_empty());
+            let obj_str = if is_bare_obj {
+                "({} as Record<string, any>)".to_string()
             } else {
-                format!(
-                    "{}[\"{}\"]",
-                    print_expr_operand(object),
-                    escape_js_string(field),
-                )
+                print_expr_operand(object)
+            };
+            if is_valid_js_ident(field) {
+                format!("{obj_str}.{field}")
+            } else {
+                format!("{obj_str}[\"{}\"]", escape_js_string(field))
             }
         }
 

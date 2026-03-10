@@ -150,8 +150,11 @@ export class Event {
   _type: string;
   _bubbles: boolean;
   _cancelable: boolean;
-  _target: EventDispatcher | null = null;
-  _currentTarget: EventDispatcher | null = null;
+  // AS3 Event.target and currentTarget are typed as `Object` (fully dynamic).
+  // We use `any` here to allow arbitrary property access on the event target
+  // (e.g. LoaderInfo properties in load-complete handlers) without TS2339/TS2531.
+  _target: any = null;
+  _currentTarget: any = null;
   _eventPhase: number = 0;
 
   get type() { return this._type; }
@@ -160,10 +163,10 @@ export class Event {
   set bubbles(v: boolean) { this._bubbles = v; }
   get cancelable() { return this._cancelable; }
   set cancelable(v: boolean) { this._cancelable = v; }
-  get target() { return this._target; }
-  set target(v: EventDispatcher | null) { this._target = v; }
-  get currentTarget() { return this._currentTarget; }
-  set currentTarget(v: EventDispatcher | null) { this._currentTarget = v; }
+  get target(): any { return this._target; }
+  set target(v: any) { this._target = v; }
+  get currentTarget(): any { return this._currentTarget; }
+  set currentTarget(v: any) { this._currentTarget = v; }
   get eventPhase() { return this._eventPhase; }
   set eventPhase(v: number) { this._eventPhase = v; }
 
