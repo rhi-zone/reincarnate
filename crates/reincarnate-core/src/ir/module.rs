@@ -98,7 +98,7 @@ pub struct ClassDef {
     pub visibility: Visibility,
     /// Static (class-level) fields from Slot/Const traits on the Class object.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub static_fields: Vec<(String, Type, Option<Constant>)>,
+    pub static_fields: Vec<(String, Type, Option<Constant>, bool)>,
     /// Whether this class is an interface (emitted as `abstract class`).
     #[serde(default)]
     pub is_interface: bool,

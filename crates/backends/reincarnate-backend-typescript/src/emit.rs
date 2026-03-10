@@ -814,7 +814,7 @@ fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<Stri
         let mut owners: HashMap<String, String> = HashMap::new();
         let mut current = class;
         loop {
-            for (name, _, _) in &current.static_fields {
+            for (name, _, _, _) in &current.static_fields {
                 owners
                     .entry(name.clone())
                     .or_insert_with(|| current.name.clone());
@@ -856,7 +856,7 @@ fn build_unique_static_field_map(module: &Module) -> HashMap<String, String> {
     for class in &module.classes {
         let mut current = class;
         loop {
-            for (name, _, _) in &current.static_fields {
+            for (name, _, _, _) in &current.static_fields {
                 owners_by_field
                     .entry(name.clone())
                     .or_default()
@@ -2021,7 +2021,7 @@ fn collect_class_references(
     }
 
     // Static fields — type-only (e.g. `static BEEHONY: Consumable` needs Consumable imported).
-    for (_name, ty, _) in &group.class_def.static_fields {
+    for (_name, ty, _, _) in &group.class_def.static_fields {
         collect_type_ref(
             ty,
             self_name,
@@ -3424,7 +3424,7 @@ fn emit_register_class_traits(group: &ClassGroup, module: &Module, out: &mut Str
 
     // Collect static traits: fields from class_def + static methods
     let mut static_traits = Vec::new();
-    for (name, ty, _) in &group.class_def.static_fields {
+    for (name, ty, _, _) in &group.class_def.static_fields {
         let type_name = as3_type_name(ty);
         static_traits.push(format!(
             "{{ name: \"{name}\", kind: \"variable\", type: \"{type_name}\" }}"
@@ -3553,7 +3553,7 @@ fn emit_class(
         .unwrap_or(&empty_set_early);
 
     // Static fields from ClassDef (class-level Slot/Const + promoted instance Consts).
-    for (name, ty, default) in &group.class_def.static_fields {
+    for (name, ty, default, is_const) in &group.class_def.static_fields {
         let ident = sanitize_ident(name);
         let ts = ts_type(ty);
         let ov = if parent_method_names_early.contains(name.as_str()) {
@@ -3561,10 +3561,11 @@ fn emit_class(
         } else {
             ""
         };
+        let ro = if *is_const { "readonly " } else { "" };
         if let Some(val) = default {
             let _ = writeln!(
                 out,
-                "  static {ov}readonly {ident}: {ts} = {};",
+                "  static {ov}{ro}{ident}: {ts} = {};",
                 crate::ast_printer::emit_constant(val)
             );
         } else {
@@ -3688,15 +3689,15 @@ fn emit_class(
         .class_def
         .static_fields
         .iter()
-        .map(|(name, _, _)| name.clone())
+        .map(|(name, _, _, _)| name.clone())
         .collect();
-    // Const instance fields promoted to static — entries with a value.
+    // Const instance fields promoted to static — entries marked is_const.
     let const_instance_fields: HashSet<String> = group
         .class_def
         .static_fields
         .iter()
-        .filter(|(_, _, val)| val.is_some())
-        .map(|(name, _, _)| name.clone())
+        .filter(|(_, _, _, is_const)| *is_const)
+        .map(|(name, _, _, _)| name.clone())
         .collect();
 
     let suppress_super = extends.is_empty();
@@ -6677,7 +6678,7 @@ mod tests {
             methods: vec![cinit_id],
             super_class: None,
             visibility: Visibility::Public,
-            static_fields: vec![("debugBuild".into(), Type::Bool, None)],
+            static_fields: vec![("debugBuild".into(), Type::Bool, None, false)],
             is_interface: false,
             interfaces: vec![],
         });

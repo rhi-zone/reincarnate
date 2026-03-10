@@ -20,7 +20,7 @@ pub struct ClassInfo {
     pub struct_def: StructDef,
     pub functions: Vec<Function>,
     pub super_class: Option<String>,
-    pub static_fields: Vec<(String, Type, Option<Constant>)>,
+    pub static_fields: Vec<(String, Type, Option<Constant>, bool)>,
     pub is_interface: bool,
     pub interfaces: Vec<String>,
 }
@@ -182,7 +182,8 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     })
 }
 
-type FieldVec = Vec<(String, Type, Option<Constant>)>;
+type StructFieldVec = Vec<(String, Type, Option<Constant>)>;
+type StaticFieldVec = Vec<(String, Type, Option<Constant>, bool)>;
 
 /// Extract instance traits, splitting Slot (mutable fields) from Const (static readonly).
 ///
@@ -192,7 +193,7 @@ fn extract_instance_fields(
     pool: &ConstantPool,
     traits: &[Trait],
     class_private_ns: Option<&str>,
-) -> (FieldVec, FieldVec) {
+) -> (StructFieldVec, StaticFieldVec) {
     let mut slots = Vec::new();
     let mut consts = Vec::new();
     for trait_ in traits {
@@ -215,7 +216,7 @@ fn extract_instance_fields(
                 let default = value
                     .as_ref()
                     .and_then(|dv| convert_default_value(pool, dv));
-                consts.push((name, ty, default));
+                consts.push((name, ty, default, true));
             }
             _ => {}
         }
@@ -228,14 +229,11 @@ fn extract_fields(
     pool: &ConstantPool,
     traits: &[Trait],
     class_private_ns: Option<&str>,
-) -> Vec<(String, Type, Option<Constant>)> {
+) -> StaticFieldVec {
     let mut fields = Vec::new();
     for trait_ in traits {
         match &trait_.kind {
             TraitKind::Slot {
-                type_name, value, ..
-            }
-            | TraitKind::Const {
                 type_name, value, ..
             } => {
                 let name = resolve_trait_bare_name(pool, trait_, class_private_ns);
@@ -243,7 +241,17 @@ fn extract_fields(
                 let default = value
                     .as_ref()
                     .and_then(|dv| convert_default_value(pool, dv));
-                fields.push((name, ty, default));
+                fields.push((name, ty, default, false));
+            }
+            TraitKind::Const {
+                type_name, value, ..
+            } => {
+                let name = resolve_trait_bare_name(pool, trait_, class_private_ns);
+                let ty = resolve_type(pool, type_name);
+                let default = value
+                    .as_ref()
+                    .and_then(|dv| convert_default_value(pool, dv));
+                fields.push((name, ty, default, true));
             }
             _ => {}
         }
@@ -729,7 +737,7 @@ fn populate_external_imports(module: &mut Module) {
     let static_field_types: Vec<Type> = module
         .classes
         .iter()
-        .flat_map(|c| c.static_fields.iter().map(|(_, ty, _)| ty.clone()))
+        .flat_map(|c| c.static_fields.iter().map(|(_, ty, _, _)| ty.clone()))
         .collect();
     for ty in &static_field_types {
         collect_type_names(ty, module);
