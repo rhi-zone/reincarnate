@@ -560,18 +560,21 @@ improve output fidelity:
 
 ### Flash CC TypeScript Error Tracking
 
-Progress: 21,557 → 7,784 (2026-03-10: 5 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114, unique_static_fields rewrite −1,178 total).
+Progress: 21,557 → 7,784 (2026-03-10: 5 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114, unique_static_fields rewrite −1,178 total) → 387 → 275 → 201 → **176** (2026-03-10 session: TS18047 scrollRect non-nullable, TS1345 void conditions 7/8, TS2554 IIFE scope arg 4, TS2749 Class coerce cast, TS2345 FlashRuntime shims wiring, TS2417 QN_KEY string annotation + Event constants, DOM.AsyncIterable lib, ArrayBufferLike casts, Array.sortOn declaration).
 
-Remaining top issues (7,784 total):
+Remaining issues (176 total):
 | Count | Code | Root cause |
 |-------|------|-----------|
-| 3,105 | TS7053 | Non-Proxy classes with string/QN_KEY indexing (remaining after Proxy index sig fix) |
-| 1,487 | TS2339 | Various property-not-exist: `{}` typed closures, `_shims` on CoC subclasses, `saveFile`/`i`/`text` |
-| 740 | TS2345 | Mixed: 617 `null` passed as Function arg (pre-existing game-author bug) + 123 property-doesn't-exist |
-| 539 | TS2352 | 511 `null`-to-Function cast (pre-existing game-author bug) + 28 others |
-| 459 | TS7015 | String indexing on string/array typed values (bracket AS3 method calls like `name["toLowerCase"]()`) |
-| 31 | TS4114 | Remaining missing `override` (multi-level hierarchy gaps?) |
-| 24 | TS2576 | Remaining `instance.STATIC_FIELD` where field name is ambiguous (shared across multiple classes) |
+| 73 | TS2322 | Null AS3 semantics — all reference types can be null; bare `return;` in typed functions |
+| 38 | TS2345 | XML→string implicit coercion, null→string, argtype mismatches (game-author bugs) |
+| 11 | TS7053 | Dynamic property access on non-dynamic typed classes (game-author bugs) |
+| 9 | TS2304 | Structurizer vN undefined — SSA values escape let-declaration scope |
+| 8 | TS2367 | Unintentional comparisons (game-author bugs) |
+| 6 | TS2538 | Object keys used as Dictionary index types |
+| 6 | TS2531 | Object possibly null (null-unsafe patterns from game code) |
+| 5 | TS2554 | Static constructors without _shims (static methods creating instances) |
+| 3 | TS2300/2308 | Duplicate GooArmor identifier in two packages |
+| remaining | misc | Individual game-author bugs |
 
 ### Correctness
 
