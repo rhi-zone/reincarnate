@@ -2118,26 +2118,39 @@ impl<'a> EmitCtx<'a> {
             stmts.push(Stmt::Expr(expr));
         } else {
             // count >= 2: materialize into a named variable.
-            // Add to or_inline_declared so build_val skips inserting into
-            // referenced_block_params — prevents collect_block_param_decls from
-            // emitting a duplicate `let name;` alongside our declaration here.
-            self.or_inline_declared.insert(v);
             let name = self.value_name(v);
-            // If name is in shared_names, a hoisted `let name;` exists from
-            // collect_block_param_decls. Otherwise emit a VarDecl — this is
-            // the sole definition point for this non-block-param value.
-            if self.shared_names.contains(&name) {
+            if self.all_block_params.contains(&v) {
+                // Block params are used across scope boundaries: hoist a `let`
+                // declaration to function scope and emit an Assign here.
+                // Mirrors the flush_side_effecting_inlines block-param path.
+                // Do NOT add to or_inline_declared — build_val must still be
+                // able to insert into referenced_block_params on later uses.
+                self.referenced_block_params.insert(v);
                 stmts.push(Stmt::Assign {
                     target: Expr::Var(name),
                     value: expr,
                 });
             } else {
-                stmts.push(Stmt::VarDecl {
-                    name,
-                    ty: None,
-                    init: Some(expr),
-                    mutable: false,
-                });
+                // Non-block-param: materialize into a named variable.
+                // Add to or_inline_declared so build_val skips inserting into
+                // referenced_block_params — prevents collect_block_param_decls
+                // from emitting a duplicate `let name;`.
+                self.or_inline_declared.insert(v);
+                // If name is in shared_names, a hoisted `let name;` exists.
+                // Otherwise emit a VarDecl — sole definition for this value.
+                if self.shared_names.contains(&name) {
+                    stmts.push(Stmt::Assign {
+                        target: Expr::Var(name),
+                        value: expr,
+                    });
+                } else {
+                    stmts.push(Stmt::VarDecl {
+                        name,
+                        ty: None,
+                        init: Some(expr),
+                        mutable: false,
+                    });
+                }
             }
         }
     }
