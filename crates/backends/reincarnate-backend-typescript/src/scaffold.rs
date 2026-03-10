@@ -338,7 +338,7 @@ const TSCONFIG: &str = r#"{
     "noImplicitReturns": false,
     "noImplicitOverride": true,
     "allowUnusedLabels": false,
-    "allowUnreachableCode": false,
+    "allowUnreachableCode": true,
     "esModuleInterop": true,
     "outDir": "dist",
     "rootDir": ".",
