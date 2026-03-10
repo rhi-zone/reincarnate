@@ -949,12 +949,23 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
                 }
             }
             // Rewrite anyExpr.UNIQUE_STATIC_FIELD → OwnerClass.UNIQUE_STATIC_FIELD (TS2576).
-            // `object` already covers the `this.FIELD` case above; skip if object is already
-            // a plain class-name Var (to avoid double-rewriting) or `This`.
+            //
+            // Skip when the object is already an appropriate class reference:
+            // - Var(owner) — already the right class
+            // - Var(name) where name is a known AS3 class or external type (e.g. another game
+            //   class that happens to have the same field name, or an external type like Sprite)
+            // - Var(name) starting with uppercase — JS globals like Math, Object, String, etc.
+            //
+            // DO apply when object is `This` — AS3 allows `this.STATIC_FIELD` in instance
+            // methods but TypeScript doesn't (TS2576); rewrite to OwnerClass.STATIC_FIELD.
             if let Some(owner) = ctx.unique_static_fields.get(&field) {
-                let already_class_ref = matches!(*object, JsExpr::Var(ref n) if n == owner)
-                    || matches!(*object, JsExpr::This);
-                if !already_class_ref {
+                let skip = match &*object {
+                    JsExpr::Var(n) if n == owner => true,
+                    JsExpr::Var(n) if ctx.known_classes.contains(n.as_str()) => true,
+                    JsExpr::Var(n) if n.starts_with(|c: char| c.is_uppercase()) => true,
+                    _ => false,
+                };
+                if !skip {
                     return JsExpr::Field {
                         object: Box::new(JsExpr::Var(owner.clone())),
                         field,
