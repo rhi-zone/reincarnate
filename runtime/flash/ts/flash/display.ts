@@ -218,7 +218,8 @@ export class DisplayObject extends EventDispatcher {
   set filters(v: BitmapFilter[]) { this._filters = v; }
   get height() { return this._height; }
   set height(v: number) { this._height = v; }
-  get loaderInfo() { return this._loaderInfo; }
+  // AS3 types DisplayObject.loaderInfo as LoaderInfo (non-nullable at the type level).
+  get loaderInfo(): LoaderInfo { return this._loaderInfo as LoaderInfo; }
   set loaderInfo(v: LoaderInfo | null) { this._loaderInfo = v; }
   get mask() { return this._mask; }
   set mask(v: DisplayObject | null) { this._mask = v; }

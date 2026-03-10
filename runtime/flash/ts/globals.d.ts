@@ -17,6 +17,10 @@ interface Error {
   // AS3 Error.getStackTrace() — returns the call stack as a string.
   getStackTrace(): string;
 }
+interface ErrorConstructor {
+  // AS3 Error.throwError(type, id, ...args) — throws a new error of the given type.
+  throwError(type: new(...args: any[]) => Error, id: number, ...args: any[]): void;
+}
 
 // AS3 Array sort flag constants (not present in TypeScript's ArrayConstructor).
 interface ArrayConstructor {
