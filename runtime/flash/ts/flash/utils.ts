@@ -14,8 +14,13 @@ import { scheduleInterval, cancelScheduledInterval } from "./platform";
 
 const _bindCache = new WeakMap<Function, WeakMap<object, Function>>();
 
-/** Cache-backed method bind — identity-stable so removeEventListener works. */
-export function as3Bind<T extends (...args: any[]) => any>(thisArg: any, fn: T): T {
+/** Cache-backed method bind — identity-stable so removeEventListener works.
+ *  Returns a variadic function so callers may pass extra arguments (AS3
+ *  silently ignores surplus arguments; TypeScript would otherwise TS2554). */
+export function as3Bind<T extends (...args: any[]) => any>(
+  thisArg: any,
+  fn: T,
+): (...args: any[]) => ReturnType<T> {
     let fnCache = _bindCache.get(fn);
     if (!fnCache) {
         fnCache = new WeakMap();
@@ -77,7 +82,10 @@ export function registerInterface(ctor: Function, ...ifaces: Function[]): void {
  * Identifies registered class constructors by the presence of QN_KEY.
  * (QN_KEY is defined later in this file but only accessed at call time.)
  */
-export function Class(): never { throw new Error("Class is not constructible"); }
+// AS3 `Class(x)` is a cast — returns its argument as a class reference.
+// Called with no args it's not a meaningful construct; return undefined rather
+// than throwing so Class-as-type-assert call sites don't crash at runtime.
+export function Class(v?: any): any { return v; }
 Object.defineProperty(Class, Symbol.hasInstance, {
   value: (instance: unknown) => typeof instance === "function" && QN_KEY in (instance as object),
 });
