@@ -27,7 +27,7 @@ import {
   addDocumentEventListener,
   getCanvasBounds,
 } from "./platform";
-import type { RenderRoot } from "../../../shared/ts/render-root";
+import type { RenderRoot } from "../shared/render-root";
 
 // ---------------------------------------------------------------------------
 // Constants

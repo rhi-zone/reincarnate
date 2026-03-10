@@ -1,6 +1,6 @@
 /** Browser graphics — canvas creation and 2D context. */
 
-import type { DocumentFactory } from "../../../../shared/ts/render-root";
+import type { DocumentFactory } from "../../shared/render-root";
 
 export function initCanvas(id: string, doc: DocumentFactory = document): {
   canvas: HTMLCanvasElement;

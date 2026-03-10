@@ -2036,6 +2036,30 @@ fn collect_class_references(
         );
     }
 
+    // Abstract member signatures — type-only.
+    // Interfaces may declare abstract getters/setters/methods with types like
+    // `InteractiveObject` that have no method body to scan.
+    for (_name, ret_ty, params, _kind) in &group.class_def.abstract_members {
+        collect_type_ref(
+            ret_ty,
+            self_name,
+            registry,
+            external_imports,
+            &mut refs.type_refs,
+            &mut refs.ext_type_refs,
+        );
+        for param_ty in params {
+            collect_type_ref(
+                param_ty,
+                self_name,
+                registry,
+                external_imports,
+                &mut refs.type_refs,
+                &mut refs.ext_type_refs,
+            );
+        }
+    }
+
     // Scan all method bodies for type references.
     for &fid in &group.methods {
         let func = &module.functions[fid];
@@ -2217,8 +2241,11 @@ fn collect_type_refs_from_function(
                 }
                 // Flash: if this field access will be rewritten to OwnerClass.FIELD by the
                 // unique_static_fields rewrite, register OwnerClass as a value import.
+                // Field names may be qualified (e.g. "classes.Parser:Parser::haltOnErrors"),
+                // but the map is keyed by short name — strip the namespace prefix first.
                 if engine == EngineKind::Flash {
-                    if let Some(owner) = unique_static_field_map.get(field) {
+                    let short_field = field.rsplit("::").next().unwrap_or(field.as_str());
+                    if let Some(owner) = unique_static_field_map.get(short_field) {
                         if owner != self_name {
                             if let Some(entry) = registry.lookup(owner) {
                                 refs.value_refs.insert(entry.short_name.clone());
