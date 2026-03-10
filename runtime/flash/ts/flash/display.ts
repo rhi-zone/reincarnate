@@ -1111,8 +1111,12 @@ export class LoaderInfo extends EventDispatcher {
 // ---------------------------------------------------------------------------
 
 export class Loader extends DisplayObjectContainer {
+  // Dynamic property access for proprietary/AIR APIs (loadFilePromise, etc.)
+  [key: string]: any;
   _content: DisplayObject | null = null;
   _contentLoaderInfo: LoaderInfo = new LoaderInfo();
+  // Flash Player 11+ uncaughtErrorEvents property.
+  uncaughtErrorEvents: EventDispatcher = new EventDispatcher();
   private _abortController: AbortController | null = null;
 
   get content() { return this._content; }
