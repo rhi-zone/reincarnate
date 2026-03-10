@@ -628,7 +628,11 @@ fn resolve_flash_external_import(name: &str) -> Option<ExternalImport> {
     }
     // Special runtime values (not namespaced in IR).
     match name {
-        "stage" | "flashTick" => Some(ExternalImport {
+        // `stage` is accessed as `this.stage` (a DisplayObject property), never as a
+        // standalone import.  It appears as a GetField field name because AS3 `stage`
+        // inside a DisplayObject method compiles to `getproperty stage` on `this`, which
+        // the frontend lowers to `GetField { field: "stage" }`.  Do NOT import it.
+        "flashTick" => Some(ExternalImport {
             short_name: name.to_string(),
             module_path: "flash/runtime".to_string(),
         }),
@@ -758,6 +762,9 @@ fn populate_external_imports(module: &mut Module) {
         }
 
         // Instructions: TypeCheck, Alloc, Cast types and GetField names.
+        // GetField field names are scanned because scope lookups (AS3 `getlex ClassName`)
+        // are lowered to `GetField { object: scope, field: "ClassName" }` in the IR before
+        // the Flash backend rewrites them. Those class names need to generate imports.
         let inst_refs: Vec<Either> = {
             let func = &module.functions[fid];
             func.insts
