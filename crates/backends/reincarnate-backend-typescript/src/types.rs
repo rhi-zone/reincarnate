@@ -91,6 +91,10 @@ pub fn flash_ts_type(ty: &Type) -> String {
         // as `Dictionary` (the runtime class with index signatures) so that bracket
         // access `dict[key]` type-checks without TS7052.
         Type::Map(k, _) if matches!(k.as_ref(), Type::Dynamic) => "Dictionary".into(),
+        // AS3 Array allows both numeric and string indexing (it's a hash-array hybrid).
+        // TypeScript's `any[]` only allows numeric indexing, causing TS7015 on string
+        // keys. Emit `any` to allow all indexing patterns faithfully.
+        Type::Array(_) => "any".into(),
         _ => ts_type(ty),
     }
 }
