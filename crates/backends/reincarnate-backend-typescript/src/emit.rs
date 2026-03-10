@@ -3964,9 +3964,21 @@ fn emit_class_method(
     // A method needs `override` if a parent class defines a method with the same name.
     // Constructors and cinit blocks are excluded — TypeScript forbids `override` on them.
     // Static methods ARE eligible for override when the parent class has a same-named static.
+    //
+    // For getters/setters, also check the bare property name — a parent may expose only a
+    // getter (recorded as "timeQ") while the child adds a setter ("set_timeQ").  TypeScript
+    // requires `override` on the setter because the getter is inherited, so we must check
+    // both the prefixed name and the un-prefixed property name.
+    let bare_prop_name = raw_name
+        .strip_prefix("get_")
+        .or_else(|| raw_name.strip_prefix("set_"))
+        .map(str::to_string);
     let is_override = !is_cinit
         && !matches!(func.method_kind, MethodKind::Constructor)
-        && parent_method_names.contains(&raw_name);
+        && (parent_method_names.contains(&raw_name)
+            || bare_prop_name
+                .as_deref()
+                .is_some_and(|p| parent_method_names.contains(p)));
     // Flash constructors receive a `_shims: FlashShims` parameter so each game
     // instance carries its own shim set.  Base classes (suppress_super = true) AND
     // classes that extend runtime types (parent_is_runtime = true) use `readonly` to

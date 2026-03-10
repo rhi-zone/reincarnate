@@ -1636,10 +1636,14 @@ impl<'a> EmitCtx<'a> {
 
     /// Check if a value has Dictionary type (flash.utils::Dictionary).
     fn is_dictionary(&self, v: ValueId) -> bool {
-        matches!(
-            self.func.value_types.get(v),
-            Some(Type::Struct(name)) if name.rsplit("::").next() == Some("Dictionary")
-        )
+        match self.func.value_types.get(v) {
+            Some(Type::Struct(name)) => name.rsplit("::").next() == Some("Dictionary"),
+            // AS3 Dictionary fields are often typed as Map<k, v> after type inference.
+            // Map<K,V> doesn't have an index signature in TypeScript, so bracket access
+            // produces TS7052. Treat any Map-typed value as a dictionary to emit .get()/.set().
+            Some(Type::Map(_, _)) => true,
+            _ => false,
+        }
     }
 
     /// Build an expression for a value reference.
