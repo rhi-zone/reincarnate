@@ -1119,10 +1119,29 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             index: Box::new(rewrite_expr(*index, ctx)),
         },
 
-        JsExpr::Call { callee, args } => JsExpr::Call {
-            callee: Box::new(rewrite_expr(*callee, ctx)),
-            args: rewrite_exprs(args, ctx),
-        },
+        JsExpr::Call { callee, args } => {
+            let callee = rewrite_expr(*callee, ctx);
+            let mut args = rewrite_exprs(args, ctx);
+            // AS3 `Op::Call` passes the activation scope (outer `this`) as the
+            // first argument.  When the callee was a `newFunction` closure and is
+            // now an arrow function, the scope is already captured lexically —
+            // the extra `this` arg no longer matches any parameter.  Strip it so
+            // the IIFE call `})(this, actual_arg)` becomes `})(actual_arg)`.
+            if let JsExpr::ArrowFunction { ref params, .. } = callee {
+                if args.len() == params.len() + 1
+                    && matches!(
+                        args.first(),
+                        Some(JsExpr::This) | Some(JsExpr::Field { .. })
+                    )
+                {
+                    args.remove(0);
+                }
+            }
+            JsExpr::Call {
+                callee: Box::new(callee),
+                args,
+            }
+        }
 
         JsExpr::Ternary {
             cond,
