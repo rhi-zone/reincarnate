@@ -156,22 +156,20 @@ fn resolve_field(object: &JsExpr, field: &str, ctx: &FlashRewriteCtx) -> Option<
             }
         }
         ScopeResolution::ScopeLookup => {
-            // Check if the full field (pre-namespace-strip) is a known class name.
-            if let Some(short) = ctx.class_names.get(field) {
-                return Some(JsExpr::Var(short.clone()));
-            }
-            // Also check the short (post-strip) name against known classes so
-            // class-constructor lookups like `findpropstrict("PerkClass")` →
-            // `getproperty("PerkClass")` resolve to `Var("PerkClass")` rather
-            // than incorrectly getting the activation-scope prefix.
-            if ctx.known_classes.contains(effective) {
-                return Some(JsExpr::Var(effective.to_string()));
-            }
+            // cinit static-field assignments take priority over class-name lookups:
+            // `Edryn` may be both a known class AND a static field on the current
+            // class — in cinit context the field wins (→ `this.Edryn`).
             if ctx.is_cinit && ctx.static_fields.contains(effective) {
                 JsExpr::Field {
                     object: Box::new(JsExpr::This),
                     field: effective.to_string(),
                 }
+            } else if let Some(short) = ctx.class_names.get(field) {
+                // Full-qualified class name → short import alias.
+                return Some(JsExpr::Var(short.clone()));
+            } else if ctx.known_classes.contains(effective) {
+                // Short class name (e.g. `PerkClass`) → bare Var, not activation-prefixed.
+                return Some(JsExpr::Var(effective.to_string()));
             } else if let Some(ref class_name) = ctx.class_short_name {
                 if ctx.const_instance_fields.contains(effective) {
                     JsExpr::Field {
