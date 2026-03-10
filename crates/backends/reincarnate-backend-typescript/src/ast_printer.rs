@@ -778,9 +778,16 @@ fn print_expr(expr: &JsExpr) -> String {
                     format!("asType({}, {})", print_expr(inner), sanitize_ident(short))
                 }
                 // Coerce + Struct/Enum → TS assertion (compiler-guaranteed).
+                // Special case: `null as Type` is TS2352 because the types don't overlap;
+                // use `null as unknown as Type` to go through a safe intermediate.
                 (CastKind::Coerce, Type::Struct(name) | Type::Enum(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
-                    format!("{} as {}", print_expr_operand(inner), sanitize_ident(short))
+                    let inner_s = print_expr_operand(inner);
+                    if matches!(inner.as_ref(), JsExpr::Literal(Constant::Null)) {
+                        format!("null as unknown as {}", sanitize_ident(short))
+                    } else {
+                        format!("{inner_s} as {}", sanitize_ident(short))
+                    }
                 }
                 // Coerce + Float → Number(x).
                 (CastKind::Coerce, Type::Float(_)) => {
