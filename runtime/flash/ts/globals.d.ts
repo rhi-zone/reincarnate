@@ -18,6 +18,15 @@ interface Error {
   getStackTrace(): string;
 }
 
+// AS3 Array sort flag constants (not present in TypeScript's ArrayConstructor).
+interface ArrayConstructor {
+  readonly CASEINSENSITIVE: number;
+  readonly DESCENDING: number;
+  readonly UNIQUESORT: number;
+  readonly RETURNINDEXEDARRAY: number;
+  readonly NUMERIC: number;
+}
+
 /** AS3 `ArgumentError` — thrown when a function receives an invalid argument. */
 declare class ArgumentError extends Error {
   constructor(message?: string, id?: number);
