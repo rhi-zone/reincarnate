@@ -45,7 +45,7 @@ export async function loadImageUrl(state: ImageState, url: string): Promise<Imag
 
 export async function loadImageBytes(state: ImageState, data: Uint8Array, format: string | null): Promise<ImageHandle> {
   const mime = format ?? "image/png";
-  const blob = new Blob([data], { type: mime });
+  const blob = new Blob([data as unknown as BlobPart], { type: mime });
   const bitmap = await createImageBitmap(blob);
   return state.allocate({ bitmap, x: 0, y: 0, w: bitmap.width, h: bitmap.height, refCount: 0 });
 }
@@ -88,7 +88,7 @@ export function writePixels(state: ImageState, handle: ImageHandle, x: number, y
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("writePixels: unsupported");
   ctx.drawImage(entry.bitmap, 0, 0);
-  const imageData = new ImageData(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), w, h);
+  const imageData = new ImageData(new Uint8ClampedArray(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength), w, h);
   ctx.putImageData(imageData, x, y);
   const newBitmap = canvas.transferToImageBitmap();
   if (!newBitmap) throw new Error("writePixels: unsupported");

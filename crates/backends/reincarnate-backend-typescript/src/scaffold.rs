@@ -341,7 +341,7 @@ const TSCONFIG: &str = r#"{
     "esModuleInterop": true,
     "outDir": "dist",
     "rootDir": ".",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"]
+    "lib": ["ES2020", "DOM", "DOM.Iterable", "DOM.AsyncIterable"]
   },
   "include": ["**/*.ts"]
 }

@@ -3584,7 +3584,7 @@ fn emit_class(
                 module.classes.iter().any(|c| c.name == base)
             });
         let qn_ov = if parent_is_in_module { " override" } else { "" };
-        let _ = writeln!(out, "  static{qn_ov} [QN_KEY] = \"{qualified}\";");
+        let _ = writeln!(out, "  static{qn_ov} [QN_KEY]: string = \"{qualified}\";");
     }
 
     // Hoist parent member set lookup so it's available for field override detection below.

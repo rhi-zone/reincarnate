@@ -95,7 +95,7 @@ export function store(state: PersistenceState, key: string, data: Uint8Array): v
     // Write-to-temp-then-rename for atomicity.
     dir.getFileHandle(tmpFilename, { create: true })
       .then(fh => fh.createWritable())
-      .then(w => w.write(data).then(() => w.close()))
+      .then(w => w.write(data as unknown as ArrayBuffer).then(() => w.close()))
       .then(() => dir.getFileHandle(tmpFilename).then(fh =>
         // Rename by moving: read back and write to final name, then remove tmp.
         // The Web FileSystem Access API has no rename(); approximate with copy+delete.

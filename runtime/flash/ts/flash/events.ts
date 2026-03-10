@@ -137,8 +137,8 @@ export class Event {
   static readonly REMOVED = "removed";
   static readonly REMOVED_FROM_STAGE = "removedFromStage";
   static readonly RENDER = "render";
-  static readonly RESIZE = "resize";
-  static readonly SCROLL = "scroll";
+  static readonly RESIZE: string = "resize";
+  static readonly SCROLL: string = "scroll";
   static readonly SELECT = "select";
   static readonly SELECT_ALL = "selectAll";
   static readonly SOUND_COMPLETE = "soundComplete";
