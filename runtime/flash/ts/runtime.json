@@ -27,7 +27,8 @@
         "removeEventListener": { "params": ["string", "*", "boolean"], "returns": "void" },
         "dispatchEvent": { "params": ["Event"], "returns": "boolean" },
         "hasEventListener": { "params": ["string"], "returns": "boolean" },
-        "willTrigger": { "params": ["string"], "returns": "boolean" }
+        "willTrigger": { "params": ["string"], "returns": "boolean" },
+        "toString": { "params": [], "returns": "string" }
       }
     },
     "IEventDispatcher": {
@@ -70,7 +71,12 @@
         "width": "number",
         "x": "number",
         "y": "number",
-        "z": "number"
+        "z": "number",
+        "_stage": "Stage",
+        "_width": "number",
+        "_height": "number",
+        "_x": "number",
+        "_y": "number"
       },
       "methods": {
         "getBounds": { "params": ["DisplayObject"], "returns": "Rectangle" },
@@ -272,7 +278,41 @@
         "cancelable": "boolean",
         "target": "*",
         "currentTarget": "*",
-        "eventPhase": "int"
+        "eventPhase": "int",
+        "ACTIVATE": "string",
+        "ADDED": "string",
+        "ADDED_TO_STAGE": "string",
+        "CANCEL": "string",
+        "CHANGE": "string",
+        "CLEAR": "string",
+        "CLOSE": "string",
+        "COMPLETE": "string",
+        "CONNECT": "string",
+        "COPY": "string",
+        "CUT": "string",
+        "DEACTIVATE": "string",
+        "ENTER_FRAME": "string",
+        "EXIT_FRAME": "string",
+        "FRAME_CONSTRUCTED": "string",
+        "FRAME_LABEL": "string",
+        "FULLSCREEN": "string",
+        "ID3": "string",
+        "INIT": "string",
+        "MOUSE_LEAVE": "string",
+        "OPEN": "string",
+        "PASTE": "string",
+        "REMOVED": "string",
+        "REMOVED_FROM_STAGE": "string",
+        "RENDER": "string",
+        "RESIZE": "string",
+        "SCROLL": "string",
+        "SELECT": "string",
+        "SELECT_ALL": "string",
+        "SOUND_COMPLETE": "string",
+        "TAB_CHILDREN_CHANGE": "string",
+        "TAB_ENABLED_CHANGE": "string",
+        "TAB_INDEX_CHANGE": "string",
+        "UNLOAD": "string"
       },
       "methods": {
         "clone": { "params": [], "returns": "Event" },

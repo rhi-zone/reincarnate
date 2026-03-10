@@ -147,7 +147,7 @@ export class XMLList extends Array<XML> {
     Object.setPrototypeOf(this, XMLList.prototype);
   }
 
-  toString(): string {
+  override toString(): string {
     return this.map((x) => x.toString()).join("");
   }
 

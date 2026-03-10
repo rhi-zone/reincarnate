@@ -744,6 +744,10 @@ export class Timer extends EventDispatcher {
  * to be Dictionary; the Proxy covers dynamic/untyped fallback cases.
  */
 export class Dictionary extends Map<unknown, any> {
+  /** Bracket-notation access for string keys (`dict[key]`) via the Proxy wrapper. */
+  [key: string]: any;
+  /** Bracket-notation access for number keys (`dict[i]`) via the Proxy wrapper. */
+  [key: number]: any;
   constructor(_weakKeys?: boolean) {
     super();
     return new globalThis.Proxy(this, {
