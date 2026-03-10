@@ -341,6 +341,8 @@ const BIG_ENDIAN = "bigEndian";
 const LITTLE_ENDIAN = "littleEndian";
 
 export class ByteArray {
+  /** AS3 ByteArray supports numeric byte indexing: `ba[i]` returns the byte at position i. */
+  [index: number]: number;
   private _buffer: ArrayBuffer;
   private _view: DataView;
   private _length: number;
