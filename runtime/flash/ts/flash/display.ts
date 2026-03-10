@@ -801,6 +801,9 @@ export class Scene {
 // ---------------------------------------------------------------------------
 
 export class MovieClip extends Sprite {
+  // AS3 MovieClip is a dynamic class — allows arbitrary property access.
+  [key: string]: any;
+  [key: number]: any;
   _currentFrame = 1;
   _currentFrameLabel: string | null = null;
   _currentLabel: string | null = null;
