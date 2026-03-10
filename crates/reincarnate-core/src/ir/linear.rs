@@ -1124,6 +1124,24 @@ fn classify_defs(
 // Alloc+Store merging
 // -----------------------------------------------------------------------
 
+/// Return true if `init_ty` is assignment-compatible with `decl_ty` for
+/// TypeScript purposes. Used to decide whether to emit a type annotation on
+/// an Alloc VarDecl when the alloc and its first stored value disagree.
+///
+/// Permissive rules: Dynamic is compatible with anything; Optional(T) is
+/// compatible with T (null-or-T narrowing); identical types are compatible.
+/// Everything else is treated as incompatible → annotation suppressed.
+fn types_coalesce_compatible(decl_ty: &Type, init_ty: &Type) -> bool {
+    if decl_ty == init_ty {
+        return true;
+    }
+    match (decl_ty, init_ty) {
+        (Type::Dynamic, _) | (_, Type::Dynamic) => true,
+        (Type::Option(inner), ty) | (ty, Type::Option(inner)) => inner.as_ref() == ty,
+        _ => false,
+    }
+}
+
 /// Find adjacent Alloc+Store pairs where the Store immediately initializes
 /// the Alloc result. Returns the mapping and the set of merged Store InstIds.
 fn find_alloc_store_merges(
@@ -1331,6 +1349,11 @@ struct EmitCtx<'a> {
     entry_params: HashSet<ValueId>,
     /// Names shared by 2+ ValueIds (out-of-SSA coalesced variables).
     shared_names: HashSet<String>,
+    /// Widened declaration type for coalesced block-param names.
+    /// When multiple non-entry block params share a name but have different
+    /// IR types (e.g. `TimeModel` in one branch, `DefaultDict` in another),
+    /// the declaration must use `Dynamic` to avoid TS2739/TS2322.
+    coalesced_decl_types: HashMap<String, Type>,
     /// Types for names hoisted from cross-scope SE inlines (used by
     /// collect_block_param_decls to emit `let name!: ty;` with the definite
     /// assignment assertion so TypeScript doesn't flag TS2454).
@@ -1596,6 +1619,33 @@ impl<'a> EmitCtx<'a> {
             .map(|(name, _)| name.to_string())
             .collect();
 
+        // Compute widened declaration types for all coalesced (shared) names.
+        // When multiple values share a name but have different IR types, widen
+        // the declared type to Dynamic so TypeScript doesn't flag TS2739/TS2322
+        // on assignments from a branch with a different type.  Covers both
+        // block params AND instruction results that end up sharing a name.
+        let coalesced_decl_types: HashMap<String, Type> = {
+            let mut name_types: HashMap<String, Type> = HashMap::new();
+            for (vid, name) in &value_names {
+                if !shared_names.contains(name.as_str()) {
+                    continue;
+                }
+                if propagated_sources.contains(vid) {
+                    continue; // absorbed side-effecting inlines — never standalone stmts
+                }
+                let ty = func.value_types[*vid].clone();
+                name_types
+                    .entry(name.clone())
+                    .and_modify(|existing| {
+                        if *existing != ty {
+                            *existing = Type::Dynamic;
+                        }
+                    })
+                    .or_insert(ty);
+            }
+            name_types
+        };
+
         let all_block_params: HashSet<ValueId> = func
             .blocks
             .iter()
@@ -1610,6 +1660,7 @@ impl<'a> EmitCtx<'a> {
             value_names,
             entry_params,
             shared_names,
+            coalesced_decl_types,
             cross_scope_hoisted_types: HashMap::new(),
             pending_lazy: HashMap::new(),
             always_inline_map: HashMap::new(),
@@ -2173,11 +2224,17 @@ impl<'a> EmitCtx<'a> {
                 if self.referenced_block_params.contains(&param.value)
                     && declared.insert(name.clone())
                 {
+                    // Use coalesced_decl_types: if multiple block params share
+                    // this name with different types, the map holds Dynamic.
+                    // Fall back to value_types for names with a single type.
+                    let ty = self
+                        .coalesced_decl_types
+                        .get(&name)
+                        .cloned()
+                        .unwrap_or_else(|| self.func.value_types[param.value].clone());
                     decls.push(Stmt::VarDecl {
                         name,
-                        // Use value_types (post-transform authoritative type), NOT
-                        // param.ty (set at creation, not updated by TypeInference).
-                        ty: Some(self.func.value_types[param.value].clone()),
+                        ty: Some(ty),
                         init: None,
                         mutable: true,
                     });
@@ -2193,12 +2250,15 @@ impl<'a> EmitCtx<'a> {
         sorted_shared.sort();
         for name in sorted_shared {
             if declared.insert(name.clone()) {
-                // Use stored type (if any) so the printer emits `let name!: ty;`
-                // with the definite-assignment assertion. Without a type, the
-                // printer emits `let name;` which TypeScript then flags as
-                // TS2454 ("used before assigned") when the assignment is
-                // conditional.
-                let ty = self.cross_scope_hoisted_types.get(name).cloned();
+                // Use coalesced_decl_types if available — this holds the widened
+                // type (Dynamic) when multiple values share the name with different
+                // types.  Fall back to cross_scope_hoisted_types for closure-lifted
+                // variables, then None (no annotation) as last resort.
+                let ty = self
+                    .coalesced_decl_types
+                    .get(name)
+                    .cloned()
+                    .or_else(|| self.cross_scope_hoisted_types.get(name).cloned());
                 decls.push(Stmt::VarDecl {
                     name: name.clone(),
                     ty,
@@ -2420,9 +2480,23 @@ impl<'a> EmitCtx<'a> {
             let alloc_ty = ty.clone();
             let alloc_init_v = self.resolve.alloc_inits.get(&result).copied();
             let init = alloc_init_v.map(|iv| self.build_val(iv));
+            // Suppress the type annotation when the init value's IR type is
+            // incompatible with the alloc type (e.g. DefaultDict stored into an
+            // Optional(Float) alloc due to type inference picking the wrong path).
+            // TypeScript will infer the correct type from the init expression.
+            let ty_ann = if let Some(init_v) = alloc_init_v {
+                let init_ty = &self.func.value_types[init_v];
+                if types_coalesce_compatible(&alloc_ty, init_ty) {
+                    Some(alloc_ty)
+                } else {
+                    None
+                }
+            } else {
+                Some(alloc_ty)
+            };
             stmts.push(Stmt::VarDecl {
                 name: self.value_name(result),
-                ty: Some(alloc_ty),
+                ty: ty_ann,
                 init,
                 mutable: true,
             });

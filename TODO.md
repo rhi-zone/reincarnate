@@ -560,21 +560,27 @@ improve output fidelity:
 
 ### Flash CC TypeScript Error Tracking
 
-Progress: 21,557 → 7,784 (2026-03-10: 5 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114, unique_static_fields rewrite −1,178 total) → 387 → 275 → 201 → **176** (2026-03-10 session: TS18047 scrollRect non-nullable, TS1345 void conditions 7/8, TS2554 IIFE scope arg 4, TS2749 Class coerce cast, TS2345 FlashRuntime shims wiring, TS2417 QN_KEY string annotation + Event constants, DOM.AsyncIterable lib, ArrayBufferLike casts, Array.sortOn declaration).
+Progress: 21,557 → 7,784 (2026-03-10: 5 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114, unique_static_fields rewrite −1,178 total) → 387 → 275 → 201 → 176 (2026-03-10 session: TS18047 scrollRect non-nullable, TS1345 void conditions 7/8, TS2554 IIFE scope arg 4, TS2749 Class coerce cast, TS2345 FlashRuntime shims wiring, TS2417 QN_KEY string annotation + Event constants, DOM.AsyncIterable lib, ArrayBufferLike casts, Array.sortOn declaration) → 46 (multiple sessions: null removal −73 TS2322, structurizer vN −9 TS2304, null patterns −6 TS2531, static _shims −5 TS2554, misc) → **40** (class name disambiguation: GooArmor Armors_/NPCs_ prefix, lower_field stripped-ns scope-arg fallback, TypeCheck/registerClassTraits/scaffold disambiguation).
 
-Remaining issues (176 total):
+Remaining issues (**40** total — as of 2026-03-10):
 | Count | Code | Root cause |
 |-------|------|-----------|
-| 73 | TS2322 | Null AS3 semantics — all reference types can be null; bare `return;` in typed functions |
-| 38 | TS2345 | XML→string implicit coercion, null→string, argtype mismatches (game-author bugs) |
-| 11 | TS7053 | Dynamic property access on non-dynamic typed classes (game-author bugs) |
-| 9 | TS2304 | Structurizer vN undefined — SSA values escape let-declaration scope |
 | 8 | TS2367 | Unintentional comparisons (game-author bugs) |
-| 6 | TS2538 | Object keys used as Dictionary index types |
-| 6 | TS2531 | Object possibly null (null-unsafe patterns from game code) |
-| 5 | TS2554 | Static constructors without _shims (static methods creating instances) |
-| 3 | TS2300/2308 | Duplicate GooArmor identifier in two packages |
-| remaining | misc | Individual game-author bugs |
+| 7 | TS2322 | Type mismatches (XML→string, dynamic assignment, string→never narrowing) |
+| 6 | TS2538 | Object/boolean/XML as Dictionary index — game-author AS3 patterns |
+| 5 | TS7053 | Dynamic property access (Player[stat], TimeModel[n]) — coalescing + game-author |
+| 4 | TS2345 | Arg type mismatches (game-author: .apply, varargs) |
+| 2 | TS2348 | CockTypesEnum callable (game-author: Enum extends design) |
+| 2 | TS2739 | DefaultDict where TimeModel expected — coalescing (CoC.ts) |
+| 2 | TS2769 | StatsView Player[stat] overload — game-author dynamic access |
+| 1 | TS1345 | Void in truthiness — game-author bug |
+| 1 | TS2339 | .len on any[] — game-author bug (should be .length) |
+| 1 | TS2417 | CockTypesEnum static extends — game-author design |
+| 1 | TS2536 | `this` can't index Dictionary — game-author pattern |
+
+**Coalescing type conflicts (~11 errors)**: Parser.ts, List.ts, CoC.ts, StyleManager.ts have AS3 variables reused with incompatible types across code paths. Out-of-SSA coalescer should widen to `any` when coalesced types are incompatible. Tracked here for future fix.
+
+**Game-author bugs (~29 errors)**: Keep per behavioral equivalence — these reflect real AS3 dynamic typing patterns that TS flags as errors.
 
 ### Correctness
 
