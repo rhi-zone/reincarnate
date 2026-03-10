@@ -12,10 +12,13 @@ import type { URLRequestHeader } from "./net";
 
 /** AS3 `flash.events.IEventDispatcher` — event-dispatching capability. */
 export abstract class IEventDispatcher {
-  abstract addEventListener(type: string, listener: (event: Event) => void, useCapture?: boolean, priority?: number, useWeakReference?: boolean): void;
+  // AS3 event handlers are covariant on the event parameter (e.g. MouseEvent, FocusEvent).
+  // TypeScript's strict function-type checking requires contravariance, so we use `any`
+  // to allow the full range of AS3-style typed event listeners without TS2345 errors.
+  abstract addEventListener(type: string, listener: (event: any) => void, useCapture?: boolean, priority?: number, useWeakReference?: boolean): void;
   abstract dispatchEvent(event: Event): boolean;
   abstract hasEventListener(type: string): boolean;
-  abstract removeEventListener(type: string, listener: (event: Event) => void, useCapture?: boolean): void;
+  abstract removeEventListener(type: string, listener: (event: any) => void, useCapture?: boolean): void;
   abstract willTrigger(type: string): boolean;
 }
 
@@ -24,7 +27,7 @@ export abstract class IEventDispatcher {
 // ---------------------------------------------------------------------------
 
 interface ListenerEntry {
-  listener: (event: Event) => void;
+  listener: (event: any) => void;
   useCapture: boolean;
   priority: number;
 }
@@ -34,7 +37,7 @@ export class EventDispatcher {
 
   addEventListener(
     type: string,
-    listener: (event: Event) => void,
+    listener: (event: any) => void,
     useCapture = false,
     priority = 0,
     _useWeakReference = false,
@@ -55,7 +58,7 @@ export class EventDispatcher {
 
   removeEventListener(
     type: string,
-    listener: (event: Event) => void,
+    listener: (event: any) => void,
     useCapture = false,
   ): void {
     const list = this._listeners.get(type);
