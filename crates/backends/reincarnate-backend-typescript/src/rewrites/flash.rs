@@ -1400,10 +1400,15 @@ fn rewrite_system_call(
         // Only inject this._shims for user-defined classes (those in the SWF module).
         // Native JS and Flash runtime classes (Error, Array, Event, Font, etc.) don't
         // accept _shims and will produce TS2554 if it is passed.
-        let is_user_class = if let JsExpr::Var(ref name) = callee {
-            ctx.class_names.values().any(|s| s == name)
-        } else {
-            false
+        // Dynamic callees (computed index, `new this()`) are treated as user classes —
+        // they always refer to SWF-defined symbols (e.g. embedded frame classes, singletons).
+        let is_user_class = match &callee {
+            JsExpr::Var(name) => ctx.class_names.values().any(|s| s == name),
+            // Dynamic callee: constructed from an array index or `this` reference.
+            // These arise from embedded symbol arrays or singleton patterns and always
+            // refer to user-defined classes that require shims injection.
+            JsExpr::Index { .. } | JsExpr::This => !ctx.is_static,
+            _ => false,
         };
         // Inject this._shims as first arg so the new instance inherits the
         // current game's shim set.
