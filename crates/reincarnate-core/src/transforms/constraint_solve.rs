@@ -1179,6 +1179,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
         let module = mb.build();
 

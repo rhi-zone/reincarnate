@@ -3654,19 +3654,20 @@ fn emit_class(
             let _ = writeln!(out, "  {ov}{ident}{bang}: {ts};");
         }
     }
-    // Index signatures for Proxy subclasses — AS3 `dynamic` objects allow arbitrary
-    // property access by string or number key.
-    let is_proxy_subclass = if engine == EngineKind::Flash {
-        class_meta
+    // Index signatures for AS3 `dynamic` classes and Proxy subclasses — these allow
+    // arbitrary property access by string or number key.
+    let needs_index_sig = if engine == EngineKind::Flash {
+        // `dynamic` classes declared as such in AS3 (not sealed).
+        group.class_def.is_dynamic
+        // Also Proxy subclasses that aren't already marked dynamic.
+        || class_meta
             .ancestor_sets
             .get(&qualified)
             .is_some_and(|ancs| ancs.contains("Proxy"))
-            // Proxy itself doesn't need its own index signature (it's in the runtime).
-            && group.class_def.name != "Proxy"
     } else {
         false
     };
-    if is_proxy_subclass {
+    if needs_index_sig && group.class_def.name != "Proxy" {
         let _ = writeln!(out, "  [key: string]: any;");
         let _ = writeln!(out, "  [key: number]: any;");
     }
@@ -3720,7 +3721,7 @@ fn emit_class(
     }
     let has_fields = !group.struct_def.fields.is_empty()
         || !group.class_def.static_fields.is_empty()
-        || is_proxy_subclass
+        || needs_index_sig
         || !group.class_def.abstract_members.is_empty();
     if has_fields && !group.methods.is_empty() {
         out.push('\n');
@@ -5301,6 +5302,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -5378,6 +5380,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         // Free function.
@@ -5484,6 +5487,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -5569,6 +5573,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
         mb.add_class(ClassDef {
             name: "Swamp".into(),
@@ -5581,6 +5586,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -5625,6 +5631,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         mb.add_struct(StructDef {
@@ -5660,6 +5667,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -5750,6 +5758,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
         mb.add_class(ClassDef {
             name: "Widget".into(),
@@ -5762,6 +5771,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -5903,6 +5913,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -5967,6 +5978,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
         mb.add_class(ClassDef {
             name: "Child".into(),
@@ -5979,6 +5991,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -6073,6 +6086,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
         mb.add_class(ClassDef {
             name: "Villain".into(),
@@ -6085,6 +6099,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -6205,6 +6220,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -6433,6 +6449,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         // Child class with a method that calls isNaga via scope lookup.
@@ -6461,6 +6478,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -6824,6 +6842,7 @@ mod tests {
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -6877,6 +6896,7 @@ mod tests {
             is_interface: true,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();
@@ -6937,6 +6957,7 @@ mod tests {
             is_interface: true,
             interfaces: vec![],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         // Implementing class.
@@ -6961,6 +6982,7 @@ mod tests {
             is_interface: false,
             interfaces: vec!["IClickable".into()],
             abstract_members: vec![],
+            is_dynamic: false,
         });
 
         let mut module = mb.build();

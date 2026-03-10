@@ -112,6 +112,10 @@ pub struct ClassDef {
     /// Emitted as `abstract get/set name(): Type;` in TypeScript.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)>,
+    /// AS3 `dynamic` class — allows arbitrary property access via `[]`.
+    /// When true the TypeScript backend emits index signatures.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_dynamic: bool,
 }
 
 /// A module — the top-level compilation unit.

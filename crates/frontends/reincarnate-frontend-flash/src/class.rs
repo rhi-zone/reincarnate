@@ -25,6 +25,8 @@ pub struct ClassInfo {
     pub interfaces: Vec<String>,
     /// Abstract member declarations for interface classes: (name, return_ty, params, kind).
     pub abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)>,
+    /// AS3 `dynamic` class — not sealed, allows arbitrary property access.
+    pub is_dynamic: bool,
 }
 
 /// Translate a single AVM2 class (Instance + Class pair) into IR.
@@ -197,6 +199,9 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
         is_interface,
         interfaces,
         abstract_members,
+        // AS3: a class is "dynamic" when it is NOT sealed (allows arbitrary property access).
+        // Interfaces are never dynamic.
+        is_dynamic: !instance.is_sealed && !is_interface,
     })
 }
 
@@ -540,6 +545,7 @@ pub fn translate_abc_to_module(
             is_interface: info.is_interface,
             interfaces: info.interfaces,
             abstract_members: info.abstract_members,
+            is_dynamic: info.is_dynamic,
         });
     }
 
