@@ -302,6 +302,11 @@ fn print_params(
 fn print_stmts(stmts: &[JsStmt], out: &mut String, indent: &str) {
     for stmt in stmts {
         print_stmt(stmt, out, indent);
+        // Stop after a terminal statement — anything that follows is unreachable
+        // and would trigger TS7027. Throw and Return are always unconditional exits.
+        if matches!(stmt, JsStmt::Throw(_) | JsStmt::Return(_)) {
+            break;
+        }
     }
 }
 
