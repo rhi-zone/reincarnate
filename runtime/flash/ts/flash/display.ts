@@ -1051,7 +1051,7 @@ export class LoaderInfo extends EventDispatcher {
   [key: string]: any;
   _actionScriptVersion = 3;
   _applicationDomain: ApplicationDomain | null = null;
-  _bytes: ArrayBuffer | null = null;
+  _bytes: ByteArray | null = null;
   _bytesLoaded = 0;
   _bytesTotal = 0;
   _childAllowsParent = true;
@@ -1073,7 +1073,7 @@ export class LoaderInfo extends EventDispatcher {
   get applicationDomain() { return this._applicationDomain; }
   set applicationDomain(v: ApplicationDomain | null) { this._applicationDomain = v; }
   get bytes() { return this._bytes; }
-  set bytes(v: ArrayBuffer | null) { this._bytes = v; }
+  set bytes(v: ByteArray | null) { this._bytes = v; }
   get bytesLoaded() { return this._bytesLoaded; }
   set bytesLoaded(v: number) { this._bytesLoaded = v; }
   get bytesTotal() { return this._bytesTotal; }
