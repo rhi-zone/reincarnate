@@ -624,6 +624,12 @@ fn resolve_flash_external_import(name: &str) -> Option<ExternalImport> {
             short_name: name.to_string(),
             module_path: "flash/runtime".to_string(),
         }),
+        // AS3's Date type wraps JS's Date with AS3-compatible property names
+        // (fullYear, month, date, etc.) that map to JS getter methods.
+        "Date" => Some(ExternalImport {
+            short_name: "Date".to_string(),
+            module_path: "flash/date".to_string(),
+        }),
         _ => None,
     }
 }

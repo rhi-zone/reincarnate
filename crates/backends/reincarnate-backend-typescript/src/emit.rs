@@ -3580,7 +3580,11 @@ fn emit_class(
                 );
             }
         } else {
-            let _ = writeln!(out, "  {ov}{ident}: {ts};");
+            // AS3 instance fields with no initializer are semantically zero-initialized,
+            // but TypeScript's strictPropertyInitialization doesn't know that. Use `!`
+            // (definite assignment assertion) to suppress TS2564 for Flash-compiled code.
+            let bang = if engine == EngineKind::Flash { "!" } else { "" };
+            let _ = writeln!(out, "  {ov}{ident}{bang}: {ts};");
         }
     }
     // Index signatures for Proxy subclasses — AS3 `dynamic` objects allow arbitrary

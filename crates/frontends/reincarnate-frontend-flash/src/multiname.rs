@@ -257,7 +257,7 @@ pub fn type_from_name(name: &str) -> reincarnate_core::ir::Type {
         "Boolean" => Type::Bool,
         "String" => Type::String,
         "void" => Type::Void,
-        "*" | "Object" => Type::Dynamic,
+        "*" | "Object" | "Function" => Type::Dynamic,
         "Array" => Type::Array(Box::new(Type::Dynamic)),
         "flash.utils::Dictionary" | "Dictionary" => {
             Type::Map(Box::new(Type::Dynamic), Box::new(Type::Dynamic))
