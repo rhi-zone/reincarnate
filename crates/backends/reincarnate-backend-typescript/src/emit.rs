@@ -3281,6 +3281,8 @@ fn emit_function(
                 closure_bodies: HashMap::new(),
                 known_classes: known_classes.clone(),
                 unique_static_fields: unique_static_fields.clone(),
+                activation_var: None,
+                activation_slots: std::collections::HashSet::new(),
             };
             crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx)
         }
@@ -3660,7 +3662,8 @@ fn emit_class(
                 } else {
                     "any".to_string()
                 };
-                let _ = writeln!(out, "  abstract set {ident}(v: {param_ts}): void;");
+                // TypeScript disallows return type annotation on set accessors (TS1095).
+                let _ = writeln!(out, "  abstract set {ident}(v: {param_ts});");
             }
             MethodKind::Instance => {
                 let param_strs: Vec<String> = params
@@ -4066,6 +4069,8 @@ fn emit_class_method(
                 closure_bodies: closure_bodies.clone(),
                 known_classes: known_classes.clone(),
                 unique_static_fields: unique_static_fields.clone(),
+                activation_var: None,
+                activation_slots: std::collections::HashSet::new(),
             };
             let mut jf = crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx);
             crate::rewrites::flash::eliminate_dead_activations(&mut jf.body);

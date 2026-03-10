@@ -62,6 +62,16 @@ pub struct FlashRewriteCtx {
     /// Static field names unique across the entire module → owning class short name.
     /// Enables `instance.UNIQUE_STATIC_FIELD` → `OwnerClass.UNIQUE_STATIC_FIELD` rewrites.
     pub unique_static_fields: HashMap<String, String>,
+    /// Name of the activation-scope variable in the current context, if any.
+    /// Set when rewriting a closure body: scope-chain lookups (`findPropStrict`)
+    /// that don't resolve to a class, instance field, or static fall back to
+    /// `activation_var.fieldname` instead of a bare `fieldname` Var.
+    pub activation_var: Option<String>,
+    /// Field names assigned to the activation-scope object.
+    /// Only scope-chain lookups for names in this set are prefixed with
+    /// `activation_var`; other lookups (global JS objects like `Math`, class
+    /// constructors) pass through unchanged.
+    pub activation_slots: HashSet<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +160,13 @@ fn resolve_field(object: &JsExpr, field: &str, ctx: &FlashRewriteCtx) -> Option<
             if let Some(short) = ctx.class_names.get(field) {
                 return Some(JsExpr::Var(short.clone()));
             }
+            // Also check the short (post-strip) name against known classes so
+            // class-constructor lookups like `findpropstrict("PerkClass")` →
+            // `getproperty("PerkClass")` resolve to `Var("PerkClass")` rather
+            // than incorrectly getting the activation-scope prefix.
+            if ctx.known_classes.contains(effective) {
+                return Some(JsExpr::Var(effective.to_string()));
+            }
             if ctx.is_cinit && ctx.static_fields.contains(effective) {
                 JsExpr::Field {
                     object: Box::new(JsExpr::This),
@@ -174,6 +191,15 @@ fn resolve_field(object: &JsExpr, field: &str, ctx: &FlashRewriteCtx) -> Option<
                         object: Box::new(JsExpr::This),
                         field: effective.to_string(),
                     }
+                } else if let Some(ref av) = ctx.activation_var {
+                    if ctx.activation_slots.contains(effective) {
+                        JsExpr::Field {
+                            object: Box::new(JsExpr::Var(av.clone())),
+                            field: effective.to_string(),
+                        }
+                    } else {
+                        JsExpr::Var(effective.to_string())
+                    }
                 } else {
                     JsExpr::Var(effective.to_string())
                 }
@@ -183,6 +209,15 @@ fn resolve_field(object: &JsExpr, field: &str, ctx: &FlashRewriteCtx) -> Option<
                 JsExpr::Field {
                     object: Box::new(JsExpr::This),
                     field: effective.to_string(),
+                }
+            } else if let Some(ref av) = ctx.activation_var {
+                if ctx.activation_slots.contains(effective) {
+                    JsExpr::Field {
+                        object: Box::new(JsExpr::Var(av.clone())),
+                        field: effective.to_string(),
+                    }
+                } else {
+                    JsExpr::Var(effective.to_string())
                 }
             } else {
                 JsExpr::Var(effective.to_string())
@@ -270,9 +305,100 @@ fn resolve_scope_call(
 // Top-level rewrite entry point
 // ---------------------------------------------------------------------------
 
+/// Scan a statement list (top-level only) for the first `VarDecl` whose init
+/// is either `JsExpr::Activation` (post-rewrite) or a `Flash.Scope.newActivation`
+/// SystemCall (pre-rewrite).  Returns the variable name, or `None`.
+fn find_activation_var(stmts: &[JsStmt]) -> Option<String> {
+    for stmt in stmts {
+        if let JsStmt::VarDecl {
+            name,
+            init: Some(init_expr),
+            ..
+        } = stmt
+        {
+            match init_expr {
+                JsExpr::Activation => return Some(name.clone()),
+                JsExpr::SystemCall {
+                    system,
+                    method,
+                    args,
+                } if system == "Flash.Scope" && method == "newActivation" && args.is_empty() => {
+                    return Some(name.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+/// Collect all field names assigned to the activation-scope object.
+///
+/// Scans the top-level statements for `activation_var.field = ...` assignments
+/// and returns the set of field names.  Only these names should receive the
+/// activation-scope prefix inside closure bodies.
+fn collect_activation_slots(stmts: &[JsStmt], activation_var: &str) -> HashSet<String> {
+    let mut slots = HashSet::new();
+    for stmt in stmts {
+        if let JsStmt::Assign {
+            target: JsExpr::Field { object, field },
+            ..
+        } = stmt
+        {
+            if matches!(object.as_ref(), JsExpr::Var(v) if v == activation_var) {
+                slots.insert(field.clone());
+            }
+        }
+    }
+    slots
+}
+
 /// Rewrite a lowered JS function, resolving all Flash SystemCalls and
 /// scope-lookup patterns.
 pub fn rewrite_flash_function(mut func: JsFunction, ctx: &FlashRewriteCtx) -> JsFunction {
+    // If the function body contains an activation-scope declaration and the
+    // ctx doesn't already have one set, auto-detect it so that
+    // scope-chain lookups inside inlined closures resolve to the right var.
+    if ctx.activation_var.is_none() {
+        if let Some(av) = find_activation_var(&func.body) {
+            let slots = collect_activation_slots(&func.body, &av);
+            let ctx2 = FlashRewriteCtx {
+                activation_var: Some(av),
+                activation_slots: slots,
+                // Shallow-clone the cheap scalar fields; share the rest via
+                // cheap clone (HashMap/HashSet clone is O(n) but only triggered
+                // for functions that actually have an activation scope).
+                class_names: ctx.class_names.clone(),
+                ancestors: ctx.ancestors.clone(),
+                method_names: ctx.method_names.clone(),
+                instance_fields: ctx.instance_fields.clone(),
+                has_self: ctx.has_self,
+                suppress_super: ctx.suppress_super,
+                parent_is_runtime: ctx.parent_is_runtime,
+                is_cinit: ctx.is_cinit,
+                is_constructor: ctx.is_constructor,
+                is_static: ctx.is_static,
+                static_fields: ctx.static_fields.clone(),
+                static_method_owners: ctx.static_method_owners.clone(),
+                static_field_owners: ctx.static_field_owners.clone(),
+                const_instance_fields: ctx.const_instance_fields.clone(),
+                class_short_name: ctx.class_short_name.clone(),
+                bindable_methods: ctx.bindable_methods.clone(),
+                closure_bodies: ctx.closure_bodies.clone(),
+                known_classes: ctx.known_classes.clone(),
+                unique_static_fields: ctx.unique_static_fields.clone(),
+            };
+            // Don't let activation_var bleed into non-closure context: the
+            // parent function's own body should still use the activation var
+            // for its own accesses, but this is correct — scope lookups in the
+            // parent that fall through to activation are also valid.
+            func.body = rewrite_stmts(func.body, &ctx2);
+            if ctx2.has_self && !ctx2.bindable_methods.is_empty() {
+                bind_method_refs_stmts(&mut func.body, &ctx2.bindable_methods);
+            }
+            return func;
+        }
+    }
     func.body = rewrite_stmts(func.body, ctx);
     if ctx.has_self && !ctx.bindable_methods.is_empty() {
         bind_method_refs_stmts(&mut func.body, &ctx.bindable_methods);
@@ -1993,6 +2119,8 @@ mod tests {
             closure_bodies: HashMap::new(),
             known_classes: HashSet::new(),
             unique_static_fields: HashMap::new(),
+            activation_var: None,
+            activation_slots: HashSet::new(),
         }
     }
 
