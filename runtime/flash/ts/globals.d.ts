@@ -31,6 +31,11 @@ interface ArrayConstructor {
   readonly NUMERIC: number;
 }
 
+// AS3 Array.sortOn() — sort array of objects by field name(s).
+interface Array<T> {
+  sortOn(fieldNames: string | string[], options?: number | number[]): T[];
+}
+
 /** AS3 `ArgumentError` — thrown when a function receives an invalid argument. */
 declare class ArgumentError extends Error {
   constructor(message?: string, id?: number);
