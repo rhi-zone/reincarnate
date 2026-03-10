@@ -272,6 +272,16 @@ fn resolve_scope_call(
                     object: Box::new(JsExpr::Var(owner.clone())),
                     field: effective.to_string(),
                 }
+            } else if let Some(ref av) = ctx.activation_var {
+                if ctx.activation_slots.contains(effective) {
+                    // Activation-scope callable (local function/closure stored on activation obj).
+                    JsExpr::Field {
+                        object: Box::new(JsExpr::Var(av.clone())),
+                        field: effective.to_string(),
+                    }
+                } else {
+                    JsExpr::Var(effective.to_string())
+                }
             } else {
                 JsExpr::Var(effective.to_string())
             }

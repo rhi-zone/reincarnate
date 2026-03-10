@@ -3378,6 +3378,7 @@ fn emit_function(
     } else {
         None
     };
+    ensure_trailing_unreachable(func, &mut js_func);
     crate::ast_printer::print_function(&js_func, preamble.as_deref(), out);
     Ok(())
 }
@@ -4173,6 +4174,10 @@ fn emit_class_method(
         } else {
             None
         };
+    // Add `throw new Error("unreachable")` when the function has a non-void return type
+    // but TypeScript cannot prove all paths return (e.g. exhaustive switch without default).
+    // Silences TS2366 without changing observable behaviour.
+    ensure_trailing_unreachable(func, &mut js_func);
     crate::ast_printer::print_class_method(
         &js_func,
         &raw_name,
@@ -4184,6 +4189,54 @@ fn emit_class_method(
     );
     Ok(())
 }
+/// Returns true if every code path through `body` ends with an unconditional exit
+/// (return, throw, or if/else where both branches always exit).
+/// Used to decide whether a non-void function needs a trailing `throw` sentinel.
+fn js_body_always_exits(body: &[JsStmt]) -> bool {
+    match body.last() {
+        Some(JsStmt::Return(_) | JsStmt::Throw(_)) => true,
+        Some(JsStmt::If {
+            then_body,
+            else_body,
+            ..
+        }) => {
+            !else_body.is_empty()
+                && js_body_always_exits(then_body)
+                && js_body_always_exits(else_body)
+        }
+        // A switch with a non-empty default and every case/default always exiting.
+        Some(JsStmt::Switch {
+            cases,
+            default_body,
+            ..
+        }) => {
+            !default_body.is_empty()
+                && js_body_always_exits(default_body)
+                && cases
+                    .iter()
+                    .all(|(_, body)| !body.is_empty() && js_body_always_exits(body))
+        }
+        _ => false,
+    }
+}
+
+/// Append `throw new Error("unreachable")` to a non-void function body if the
+/// body does not already have a guaranteed return on all paths.  This silences
+/// TS2366 ("Function lacks ending return statement") for exhaustive switch/if
+/// trees that TypeScript cannot prove are complete.
+fn ensure_trailing_unreachable(func: &Function, js_func: &mut JsFunction) {
+    if matches!(func.sig.return_ty, Type::Void) {
+        return;
+    }
+    if js_body_always_exits(&js_func.body) {
+        return;
+    }
+    js_func.body.push(JsStmt::Throw(JsExpr::New {
+        callee: Box::new(JsExpr::Var("Error".into())),
+        args: vec![JsExpr::Literal(Constant::String("unreachable".into()))],
+    }));
+}
+
 /// Rewrite bare stateful runtime calls to qualified `_rt.foo(args)` form.
 ///
 /// Walks the statement tree and replaces every `JsExpr::Call { callee: JsExpr::Var(name), ... }`
