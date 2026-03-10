@@ -13,7 +13,7 @@ use reincarnate_core::project::{ExternalMethodSig, ExternalTypeDef, RuntimeConfi
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::runtime::SYSTEM_NAMES;
-use crate::types::ts_type;
+use crate::types::{flash_ts_type, ts_type};
 
 /// Which engine's rewrite pass to use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2348,8 +2348,16 @@ fn collect_type_ref(
             collect_type_ref(inner, self_name, registry, external_imports, refs, ext_refs);
         }
         Type::Map(k, v) => {
-            collect_type_ref(k, self_name, registry, external_imports, refs, ext_refs);
-            collect_type_ref(v, self_name, registry, external_imports, refs, ext_refs);
+            // AS3 Dictionary (Map<Dynamic, _>) → Flash-specific `Dictionary` class.
+            // Register the import so flash_ts_type()'s "Dictionary" emission resolves.
+            if matches!(k.as_ref(), Type::Dynamic)
+                && external_imports.contains_key("flash.utils::Dictionary")
+            {
+                ext_refs.insert("flash.utils::Dictionary".to_string());
+            } else {
+                collect_type_ref(k, self_name, registry, external_imports, refs, ext_refs);
+                collect_type_ref(v, self_name, registry, external_imports, refs, ext_refs);
+            }
         }
         Type::Tuple(elems) => {
             for elem in elems {
@@ -3555,7 +3563,11 @@ fn emit_class(
     // Static fields from ClassDef (class-level Slot/Const + promoted instance Consts).
     for (name, ty, default, is_const) in &group.class_def.static_fields {
         let ident = sanitize_ident(name);
-        let ts = ts_type(ty);
+        let ts = if engine == EngineKind::Flash {
+            flash_ts_type(ty)
+        } else {
+            ts_type(ty)
+        };
         let ov = if parent_method_names_early.contains(name.as_str()) {
             "override "
         } else {
@@ -3576,7 +3588,11 @@ fn emit_class(
     // Instance fields from struct def.
     for (name, ty, default) in &group.struct_def.fields {
         let ident = sanitize_ident(name);
-        let ts = ts_type(ty);
+        let ts = if engine == EngineKind::Flash {
+            flash_ts_type(ty)
+        } else {
+            ts_type(ty)
+        };
         // A field that shadows a parent-class field/method needs `override`.
         let ov = if parent_method_names_early.contains(name.as_str()) {
             "override "

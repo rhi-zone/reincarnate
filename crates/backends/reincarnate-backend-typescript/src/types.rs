@@ -80,6 +80,21 @@ pub fn ts_type(ty: &Type) -> String {
     }
 }
 
+/// Map an IR [`Type`] to its TypeScript representation in a Flash-specific context.
+///
+/// Differs from [`ts_type`] in one way: `Map<Dynamic, _>` → `"Dictionary"` (the
+/// Flash runtime class that wraps `Map<unknown, any>` with a Proxy that supports
+/// bracket-notation access).  Callers must ensure `Dictionary` is imported.
+pub fn flash_ts_type(ty: &Type) -> String {
+    match ty {
+        // AS3 Dictionary is Map(Dynamic, Dynamic) in the IR but should be emitted
+        // as `Dictionary` (the runtime class with index signatures) so that bracket
+        // access `dict[key]` type-checks without TS7052.
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Dynamic) => "Dictionary".into(),
+        _ => ts_type(ty),
+    }
+}
+
 /// Wrap compound types in parens when used in contexts like `T[]`.
 fn ts_type_paren(ty: &Type) -> String {
     match ty {
