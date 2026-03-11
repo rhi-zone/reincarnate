@@ -762,9 +762,13 @@ fn collect_def_use_depths(
 }
 
 /// Compute the set of values that are defined in a nested scope but used in
-/// an outer scope and have exactly one use (i.e., would normally become SE
-/// inlines).  The SE-inline flush mechanism would prematurely declare them
-/// inside the branch; instead they need a hoisted `let name!` declaration.
+/// an outer scope.  These need a hoisted `let name!` declaration at function
+/// scope rather than a `const` or SE-inline at the definition point.
+///
+/// Covers two cases:
+/// - count==1 SE inlines that would be flushed inside a branch/loop body
+/// - count>=2 values that get VarDecl inside a loop but are referenced
+///   after the loop break (e.g. structurizer recovering post-loop code)
 fn compute_cross_scope_defs(
     func: &Function,
     stmts: &[LinearStmt],
@@ -777,13 +781,14 @@ fn compute_cross_scope_defs(
 
     defs.iter()
         .filter(|(&v, &(def_d, inst_id))| {
-            // Only SE-inline candidates (count == 1, side-effecting) can
-            // trigger the scoping bug.  Pure values (lazy/always inline)
-            // are rebuilt at the use site so scope doesn't matter.
-            if use_counts.get(&v).copied().unwrap_or(0) != 1 {
+            let count = use_counts.get(&v).copied().unwrap_or(0);
+            // Pure values (lazy/always inline) are rebuilt at the use site
+            // so scope doesn't matter.  Only materialized values can trigger
+            // the scoping bug.
+            if count == 1 && !is_side_effecting_op(&func.insts[inst_id].op) {
                 return false;
             }
-            if !is_side_effecting_op(&func.insts[inst_id].op) {
+            if count == 0 {
                 return false;
             }
             // Cross-scope: the value is used at a shallower depth than where
@@ -2576,6 +2581,17 @@ impl<'a> EmitCtx<'a> {
         } else {
             let name = self.value_name(result);
             if self.shared_names.contains(&name) {
+                stmts.push(Stmt::Assign {
+                    target: Expr::Var(name),
+                    value: expr,
+                });
+            } else if self.resolve.cross_scope_defs.contains(&result) {
+                // Multi-use value defined in a nested scope (e.g. loop body)
+                // but used in an outer scope (e.g. after loop break).
+                // Hoist the declaration to function scope via shared_names.
+                self.shared_names.insert(name.clone());
+                let ty = self.func.value_types[result].clone();
+                self.cross_scope_hoisted_types.insert(name.clone(), ty);
                 stmts.push(Stmt::Assign {
                     target: Expr::Var(name),
                     value: expr,

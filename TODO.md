@@ -162,20 +162,11 @@ All of the following violate it and need to move to the respective frontend crat
   rewrite pipeline — closures need the scope-chain object until `MakeClosure.captures`
   is implemented.
 
-- [ ] **`emit.rs` Flash contamination — remaining `EngineKind::Flash` branches.**
-  Found in 2026-03-11 audit. **8/9 items addressed (2026-03-11)**:
-  - ✅ `emit_register_class_traits` + `as3_type_name` → `emit_flash_traits.rs`
-  - ✅ `QN_KEY` static field injection → `emit_flash_traits::emit_flash_class_header()`
-  - ✅ `registerClass`/`registerClassTraits` → `emit_flash_traits::emit_class_registration()`
-  - ✅ `flash_ctor_extra_param` → `emit_flash_traits::flash_ctor_shims_param()`
-  - ✅ `bang = if Flash` → `ClassDef.zero_initialized` IR field
-  - ✅ Index signatures → `ClassDef.needs_index_signature` IR field
-  - ✅ `warn_unmapped_reference` → `rewrites::flash::is_known_flash_namespace()`
-  - ✅ `cinit` name match → `MethodKind::StaticInit` IR variant
-  - [x] `forwarding_setters` detection (50-line block) → moved to `emit_flash_traits::flash_forwarding_setters()` (2026-03-11)
-  **Root cause:** no `FlashClassEmitter` hook point exists; remaining class-level Flash
-  concerns are inline `if engine == Flash` checks. The `forwarding_setters` logic was the
-  last large block — now extracted. Only the 3-line call site + guard remains in emit.rs.
+- [x] **`emit.rs` Flash contamination — remaining `EngineKind::Flash` branches.** (2026-03-11)
+  All 9/9 items addressed: traits→`emit_flash_traits.rs`, QN_KEY/registerClass/ctor shim/
+  forwarding_setters→`emit_flash_traits`, bang→`ClassDef.zero_initialized`, index sigs→
+  `ClassDef.needs_index_signature`, warn_unmapped→`rewrites::flash`, cinit→`MethodKind::StaticInit`.
+  Only 3-line call site + guard remains in emit.rs.
 
 - [ ] **`coalesced_decl_types` widening to `Dynamic` is a suppression, not a fix (Law 4).**
   When two branch arms produce different types for the same out-of-SSA variable, widening to
