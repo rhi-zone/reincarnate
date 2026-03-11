@@ -86,7 +86,7 @@ impl ModuleContext {
                 let fields: HashMap<String, Type> = class
                     .static_fields
                     .iter()
-                    .map(|(n, t, _, _)| (n.clone(), t.clone()))
+                    .map(|f| (f.name.clone(), f.ty.clone()))
                     .collect();
                 static_fields_map.insert(class.name.clone(), fields);
             }

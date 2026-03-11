@@ -54,10 +54,11 @@ pub(crate) fn emit_class_registration(
 
     // Collect static traits: fields from class_def + static methods
     let mut static_traits: Vec<String> = Vec::new();
-    for (name, ty, _, _) in &group.class_def.static_fields {
-        let type_name = as3_type_name(ty);
+    for f in &group.class_def.static_fields {
+        let type_name = as3_type_name(&f.ty);
         static_traits.push(format!(
-            "  {{ name: \"{name}\", kind: \"variable\", type: \"{type_name}\" }}"
+            "  {{ name: \"{}\", kind: \"variable\", type: \"{type_name}\" }}",
+            f.name
         ));
     }
 

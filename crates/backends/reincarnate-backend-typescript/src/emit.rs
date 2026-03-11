@@ -915,9 +915,9 @@ fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<Stri
         let mut owners: HashMap<String, String> = HashMap::new();
         let mut current = class;
         loop {
-            for (name, _, _, _) in &current.static_fields {
+            for f in &current.static_fields {
                 owners
-                    .entry(name.clone())
+                    .entry(f.name.clone())
                     .or_insert_with(|| current.name.clone());
             }
             match current.super_class {
@@ -957,9 +957,9 @@ fn build_unique_static_field_map(module: &Module) -> HashMap<String, String> {
     for class in &module.classes {
         let mut current = class;
         loop {
-            for (name, _, _, _) in &current.static_fields {
+            for f in &current.static_fields {
                 owners_by_field
-                    .entry(name.clone())
+                    .entry(f.name.clone())
                     .or_default()
                     .insert(current.name.clone());
             }
@@ -2440,9 +2440,9 @@ fn collect_class_references(
     }
 
     // Static fields — type-only (e.g. `static BEEHONY: Consumable` needs Consumable imported).
-    for (_name, ty, _, _) in &group.class_def.static_fields {
+    for f in &group.class_def.static_fields {
         collect_type_ref(
-            ty,
+            &f.ty,
             self_name,
             registry,
             external_imports,
@@ -4054,14 +4054,14 @@ fn emit_class(
         .unwrap_or(&empty_set_early);
 
     // Static fields from ClassDef (class-level Slot/Const + promoted instance Consts).
-    for (name, ty, default, _is_const) in &group.class_def.static_fields {
-        let ident = sanitize_ident(name);
+    for f in &group.class_def.static_fields {
+        let ident = sanitize_ident(&f.name);
         let ts = if engine == EngineKind::Flash {
-            flash_ts_type_with_names(ty, class_names)
+            flash_ts_type_with_names(&f.ty, class_names)
         } else {
-            ts_type_with_names(ty, class_names)
+            ts_type_with_names(&f.ty, class_names)
         };
-        let ov = if parent_method_names_early.contains(name.as_str()) {
+        let ov = if parent_method_names_early.contains(f.name.as_str()) {
             "override "
         } else {
             ""
@@ -4070,7 +4070,7 @@ fn emit_class(
         // allows reassignment of static const fields.  Emitting `readonly`
         // causes TS2540 when game code does reassign them, so we omit it.
         let ro = "";
-        if let Some(val) = default {
+        if let Some(val) = &f.default {
             let _ = writeln!(
                 out,
                 "  static {ov}{ro}{ident}: {ts} = {};",
@@ -4253,7 +4253,7 @@ fn emit_class(
         .class_def
         .static_fields
         .iter()
-        .map(|(name, _, _, _)| name.clone())
+        .map(|f| f.name.clone())
         .collect();
     // Const instance fields promoted to static — entries marked is_const.
     // Const static fields with scalar defaults: their cinit assignments are redundant
@@ -4265,8 +4265,8 @@ fn emit_class(
         .class_def
         .static_fields
         .iter()
-        .filter(|(_, _, _, is_const)| *is_const)
-        .map(|(name, _, _, _)| name.clone())
+        .filter(|f| f.is_const)
+        .map(|f| f.name.clone())
         .collect();
 
     let suppress_super = extends.is_empty();
@@ -5116,7 +5116,7 @@ mod tests {
     use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
     use reincarnate_core::ir::{
         ClassDef, CmpKind, EnumDef, EnumVariant, FunctionSig, Global, Import, MethodKind,
-        StructDef, Visibility,
+        StaticField, StructDef, Visibility,
     };
 
     fn build_and_emit(build: impl FnOnce(&mut ModuleBuilder)) -> String {
@@ -7336,7 +7336,12 @@ mod tests {
             methods: vec![cinit_id],
             super_class: None,
             visibility: Visibility::Public,
-            static_fields: vec![("debugBuild".into(), Type::Bool, None, false)],
+            static_fields: vec![StaticField {
+                name: "debugBuild".into(),
+                ty: Type::Bool,
+                default: None,
+                is_const: false,
+            }],
             is_interface: false,
             interfaces: vec![],
             abstract_members: vec![],

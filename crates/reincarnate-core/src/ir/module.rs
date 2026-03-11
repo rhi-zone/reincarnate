@@ -82,6 +82,15 @@ pub struct ExternalImport {
     pub module_path: String,
 }
 
+/// A static (class-level) field from a Slot/Const trait.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StaticField {
+    pub name: String,
+    pub ty: Type,
+    pub default: Option<Constant>,
+    pub is_const: bool,
+}
+
 /// Groups a struct (fields) with its methods into a class.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassDef {
@@ -98,7 +107,7 @@ pub struct ClassDef {
     pub visibility: Visibility,
     /// Static (class-level) fields from Slot/Const traits on the Class object.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub static_fields: Vec<(String, Type, Option<Constant>, bool)>,
+    pub static_fields: Vec<StaticField>,
     /// Whether this class is an interface (emitted as `abstract class`).
     #[serde(default)]
     pub is_interface: bool,
