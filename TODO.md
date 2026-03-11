@@ -108,9 +108,8 @@ All of the following violate it and need to move to the respective frontend crat
   Rust backends and non-JS frontends have no concept of loose vs strict equality. Move to a
   JS-backend-specific annotation or a frontend IR extension.
 
-- [ ] **`datawin` crate missing `reincarnate-` prefix.**
-  `crates/formats/datawin/Cargo.toml`: crate name is `datawin`. CLAUDE.md: "All crates use the
-  `reincarnate-` prefix." Rename to `reincarnate-formats-datawin` (or `reincarnate-datawin`).
+- [x] **`datawin` crate missing `reincarnate-` prefix.** (2026-03-11)
+  Already named `reincarnate-datawin` in Cargo.toml — the `reincarnate-` prefix is present.
 
 - [ ] **IR lacks aggregate constants — root cause of all "data file" pipeline bypasses.**
 

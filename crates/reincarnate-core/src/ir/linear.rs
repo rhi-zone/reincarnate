@@ -1329,12 +1329,14 @@ pub fn lower_function_linear(
     // (not inside if/loop bodies) to avoid making calls conditional.
     ast_passes::inline_ordered_single_use(&mut full_body);
 
-    ast_passes::rewrite_foreach_loops(&mut full_body);
-    // Clean up dead variables left by the foreach rewrite
-    // (e.g., the index register decl, single-use collection var).
-    ast_passes::narrow_var_scope(&mut full_body);
-    ast_passes::merge_decl_init(&mut full_body);
-    ast_passes::fold_single_use_consts(&mut full_body);
+    if config.foreach_rewrite {
+        ast_passes::rewrite_foreach_loops(&mut full_body);
+        // Clean up dead variables left by the foreach rewrite
+        // (e.g., the index register decl, single-use collection var).
+        ast_passes::narrow_var_scope(&mut full_body);
+        ast_passes::merge_decl_init(&mut full_body);
+        ast_passes::fold_single_use_consts(&mut full_body);
+    }
 
     ast_passes::rewrite_compound_assign(&mut full_body);
     ast_passes::rewrite_post_increment(&mut full_body);

@@ -191,6 +191,13 @@ pub struct LoweringConfig {
     ///
     /// GML sets this to `true`; Flash and other engines leave it `false`.
     pub wrap_class_refs_as_any: bool,
+    /// Rewrite `while(true) { hasNext2 ... }` loops to `for (const x of ...)`.
+    ///
+    /// This pattern is specific to Flash's `HasNext2` opcode. Other engines
+    /// never produce it, so the rewrite is skipped by default.
+    ///
+    /// Flash sets this to `true`; all other engines leave it `false`.
+    pub foreach_rewrite: bool,
 }
 
 impl Default for LoweringConfig {
@@ -209,6 +216,7 @@ impl LoweringConfig {
             while_condition_hoisting: true,
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
+            foreach_rewrite: false,
         }
     }
 
@@ -220,6 +228,7 @@ impl LoweringConfig {
             while_condition_hoisting: true,
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
+            foreach_rewrite: false,
         }
     }
 }

@@ -48,18 +48,21 @@ fn detect_engine(runtime_config: Option<&RuntimeConfig>) -> EngineKind {
 ///
 /// - Flash: sets `scope_lookup_systems = ["Flash.Scope"]` so that scope-lookup
 ///   SystemCalls are always-inlined for chain resolution in flash.rs.
+///   Also enables `foreach_rewrite` (Flash's HasNext2 for-of pattern).
 /// - GML: sets `wrap_class_refs_as_any = true` so that `ClassRef`-typed GlobalRef
 ///   values get `as any` at each use site (GML object names double as integer indices).
 fn lowering_config_for_engine(
     config: &LoweringConfig,
     engine: EngineKind,
 ) -> std::borrow::Cow<'_, LoweringConfig> {
-    let needs_flash = engine == EngineKind::Flash && config.scope_lookup_systems.is_empty();
+    let needs_flash = engine == EngineKind::Flash
+        && (config.scope_lookup_systems.is_empty() || !config.foreach_rewrite);
     let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
     if needs_flash || needs_gml {
         let mut c = config.clone();
         if needs_flash {
             c.scope_lookup_systems = vec!["Flash.Scope".to_string()];
+            c.foreach_rewrite = true;
         }
         if needs_gml {
             c.wrap_class_refs_as_any = true;
