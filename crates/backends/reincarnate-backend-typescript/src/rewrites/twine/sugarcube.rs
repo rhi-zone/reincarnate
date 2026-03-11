@@ -71,12 +71,12 @@ pub(super) fn try_rewrite(
                     // Cap params are `any`-typed: Harlowe/SugarCube variables are
                     // dynamically typed and captured initial values may differ from
                     // the inferred type used inside the closure body.
-                    let cap_params: Vec<(String, reincarnate_core::ir::Type)> =
-                        all_params.split_off(n_reg)
-                            .into_iter()
-                            .map(|(name, _)| (name, reincarnate_core::ir::Type::Dynamic))
-                            .collect();
-                    let reg_params = all_params;                   // regular params
+                    let cap_params: Vec<(String, reincarnate_core::ir::Type)> = all_params
+                        .split_off(n_reg)
+                        .into_iter()
+                        .map(|(name, _)| (name, reincarnate_core::ir::Type::Dynamic))
+                        .collect();
+                    let reg_params = all_params; // regular params
 
                     // Inner arrow: takes regular params, body unchanged.
                     let inner = JsExpr::ArrowFunction {
@@ -546,9 +546,18 @@ mod tests {
     fn introduced_calls_sugarcube() {
         assert_eq!(rewrite_introduced_calls("clone"), &["clone"]);
         assert_eq!(rewrite_introduced_calls("iterate"), &["iterate"]);
-        assert_eq!(rewrite_introduced_calls("iterator_has_next"), &["iterator_has_next"]);
-        assert_eq!(rewrite_introduced_calls("iterator_next_value"), &["iterator_next_value"]);
-        assert_eq!(rewrite_introduced_calls("iterator_next_key"), &["iterator_next_key"]);
+        assert_eq!(
+            rewrite_introduced_calls("iterator_has_next"),
+            &["iterator_has_next"]
+        );
+        assert_eq!(
+            rewrite_introduced_calls("iterator_next_value"),
+            &["iterator_next_value"]
+        );
+        assert_eq!(
+            rewrite_introduced_calls("iterator_next_key"),
+            &["iterator_next_key"]
+        );
         assert_eq!(rewrite_introduced_calls("ushr"), &["ushr"]);
         assert_eq!(rewrite_introduced_calls("instanceof"), &["instanceof_"]);
         assert!(rewrite_introduced_calls("eval").is_empty());

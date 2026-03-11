@@ -82,7 +82,10 @@ fn pool_namespace<'a>(pool: &'a ConstantPool, index: &Index<Namespace>) -> Optio
 }
 
 /// Look up a multiname from the constant pool by index.
-pub fn pool_multiname<'a>(pool: &'a ConstantPool, index: &Index<Multiname>) -> Option<&'a Multiname> {
+pub fn pool_multiname<'a>(
+    pool: &'a ConstantPool,
+    index: &Index<Multiname>,
+) -> Option<&'a Multiname> {
     let i = index.0 as usize;
     if i == 0 || i > pool.multinames.len() {
         return None;
@@ -201,16 +204,12 @@ pub fn classify_multiname(pool: &ConstantPool, index: &Index<Multiname>) -> Mult
         | Multiname::QNameA { .. }
         | Multiname::Multiname { .. }
         | Multiname::MultinameA { .. }
-        | Multiname::TypeName { .. } => {
-            MultinameKind::Named(resolve_multiname_index(pool, index))
-        }
+        | Multiname::TypeName { .. } => MultinameKind::Named(resolve_multiname_index(pool, index)),
         Multiname::RTQName { name } | Multiname::RTQNameA { name } => {
             MultinameKind::RuntimeNs(pool_string(pool, name))
         }
         Multiname::RTQNameL | Multiname::RTQNameLA => MultinameKind::RuntimeBoth,
-        Multiname::MultinameL { .. } | Multiname::MultinameLA { .. } => {
-            MultinameKind::RuntimeName
-        }
+        Multiname::MultinameL { .. } | Multiname::MultinameLA { .. } => MultinameKind::RuntimeName,
     }
 }
 
@@ -318,8 +317,7 @@ mod tests {
         let mut pool = empty_pool();
         pool.strings.push(b"".to_vec()); // index 1: empty namespace
         pool.strings.push(b"myFunc".to_vec()); // index 2
-        pool.namespaces
-            .push(Namespace::Package(Index::new(1))); // index 1
+        pool.namespaces.push(Namespace::Package(Index::new(1))); // index 1
 
         let mn = Multiname::QName {
             namespace: Index::new(1),
@@ -337,8 +335,7 @@ mod tests {
         let mut pool = empty_pool();
         pool.strings.push(b"flash.display".to_vec()); // index 1
         pool.strings.push(b"Sprite".to_vec()); // index 2
-        pool.namespaces
-            .push(Namespace::Package(Index::new(1))); // index 1
+        pool.namespaces.push(Namespace::Package(Index::new(1))); // index 1
 
         let mn = Multiname::QName {
             namespace: Index::new(1),
@@ -379,8 +376,7 @@ mod tests {
         pool.strings.push(b"MyClass".to_vec()); // 6
 
         // QNames with empty namespace (public)
-        pool.namespaces
-            .push(Namespace::Package(Index::new(0))); // ns 1 with empty string
+        pool.namespaces.push(Namespace::Package(Index::new(0))); // ns 1 with empty string
 
         pool.multinames.push(Multiname::QName {
             namespace: Index::new(1),

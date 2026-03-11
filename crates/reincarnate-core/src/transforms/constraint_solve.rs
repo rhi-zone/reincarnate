@@ -80,7 +80,10 @@ impl UnionFind {
         }
 
         // Merge resolved types.
-        let merged = match (self.resolved[ra as usize].take(), self.resolved[rb as usize].take()) {
+        let merged = match (
+            self.resolved[ra as usize].take(),
+            self.resolved[rb as usize].take(),
+        ) {
             (Some(ta), Some(tb)) => {
                 if ta == tb {
                     Some(ta)
@@ -199,7 +202,11 @@ impl ConstraintModuleContext {
     fn from_module(module: &Module) -> Self {
         let mut struct_fields = HashMap::new();
         for s in &module.structs {
-            let fields: HashMap<String, Type> = s.fields.iter().map(|(n, t, _)| (n.clone(), t.clone())).collect();
+            let fields: HashMap<String, Type> = s
+                .fields
+                .iter()
+                .map(|(n, t, _)| (n.clone(), t.clone()))
+                .collect();
             struct_fields.insert(s.name.clone(), fields);
         }
 
@@ -211,15 +218,17 @@ impl ConstraintModuleContext {
 
         // Extend with external function signatures from runtime.
         for (name, ext_sig) in &module.external_function_sigs {
-            func_sigs.entry(name.clone()).or_insert_with(|| FunctionSig {
-                params: ext_sig
-                    .params
-                    .iter()
-                    .map(|p| parse_type_notation(p))
-                    .collect(),
-                return_ty: parse_type_notation(&ext_sig.returns),
-                ..Default::default()
-            });
+            func_sigs
+                .entry(name.clone())
+                .or_insert_with(|| FunctionSig {
+                    params: ext_sig
+                        .params
+                        .iter()
+                        .map(|p| parse_type_notation(p))
+                        .collect(),
+                    return_ty: parse_type_notation(&ext_sig.returns),
+                    ..Default::default()
+                });
         }
 
         let mut method_sigs = HashMap::new();
@@ -227,8 +236,7 @@ impl ConstraintModuleContext {
             if f.class.is_some() {
                 if let Some(bare) = f.name.rsplit("::").next() {
                     if let Some(class) = &f.class {
-                        method_sigs
-                            .insert((class.clone(), bare.to_string()), f.sig.clone());
+                        method_sigs.insert((class.clone(), bare.to_string()), f.sig.clone());
                     }
                 }
             }
@@ -256,7 +264,10 @@ impl ConstraintModuleContext {
                     .iter()
                     .map(|(f, t)| (f.clone(), parse_type_notation(t)))
                     .collect();
-                struct_fields.entry(name.clone()).or_default().extend(fields);
+                struct_fields
+                    .entry(name.clone())
+                    .or_default()
+                    .extend(fields);
             }
             // method_sigs: build FunctionSig from external method signatures
             for (method, ext_sig) in &ext.methods {
@@ -337,9 +348,7 @@ impl ConstraintModuleContext {
         let max_depth = self.class_hierarchy.len();
         for _ in 0..=max_depth {
             let Some(cls) = current else { break };
-            if let Some(sig) =
-                self.method_sigs.get(&(cls.clone(), method.to_string()))
-            {
+            if let Some(sig) = self.method_sigs.get(&(cls.clone(), method.to_string())) {
                 return Some(sig.clone());
             }
             current = self.class_hierarchy.get(&cls).and_then(|s| s.clone());
@@ -398,11 +407,7 @@ fn generate_constraints(
 
             match &inst.op {
                 // Arithmetic: a = b, a = r
-                Op::Add(a, b)
-                | Op::Sub(a, b)
-                | Op::Mul(a, b)
-                | Op::Div(a, b)
-                | Op::Rem(a, b) => {
+                Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
                     solver.constrain_equal_values(*a, *b);
                     if let Some(r) = result {
                         solver.constrain_equal_values(*a, r);
@@ -471,9 +476,7 @@ fn generate_constraints(
 
                 // Call: arg[i] = sig.params[i], r = sig.return_ty
                 Op::Call { func: name, args } => {
-                    let first_arg_ty = args
-                        .first()
-                        .map(|v| &func.value_types[*v]);
+                    let first_arg_ty = args.first().map(|v| &func.value_types[*v]);
                     if let Some(sig) = ctx.resolve_func_sig(name, first_arg_ty, &func.sig) {
                         for (arg, param_ty) in args.iter().zip(sig.params.iter()) {
                             solver.constrain_value_to_type(*arg, param_ty);
@@ -508,9 +511,7 @@ fn generate_constraints(
                 }
 
                 // Switch: branch args = target block params
-                Op::Switch {
-                    cases, default, ..
-                } => {
+                Op::Switch { cases, default, .. } => {
                     for (_, target, args) in cases {
                         constrain_branch_args(solver, func, *target, args);
                     }
@@ -753,7 +754,9 @@ mod tests {
     fn identity_no_change() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -770,14 +773,18 @@ mod tests {
     fn idempotent_after_transform() {
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut callee_fb = FunctionBuilder::new("foo", callee_sig, Visibility::Private);
         callee_fb.ret(None);
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let arg = caller_fb.param(0);
         caller_fb.call("foo", &[arg], Type::Void);
@@ -847,17 +854,19 @@ mod tests {
         // foo(x: Int(32)) → Void. Caller passes Dynamic arg → should refine.
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void, ..Default::default() };
-        let mut callee_fb =
-            FunctionBuilder::new("foo", callee_sig, Visibility::Private);
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut callee_fb = FunctionBuilder::new("foo", callee_sig, Visibility::Private);
         callee_fb.ret(None);
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
-        let mut caller_fb =
-            FunctionBuilder::new("caller", caller_sig, Visibility::Private);
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let arg = caller_fb.param(0);
         caller_fb.call("foo", &[arg], Type::Void);
         caller_fb.ret(None);
@@ -880,7 +889,9 @@ mod tests {
         // fn returning Int(32), returns a Dynamic param → param should refine.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(32), ..Default::default() };
+            return_ty: Type::Int(32),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -902,7 +913,9 @@ mod tests {
         // Add(v_dynamic, v_int64) → v_dynamic should become Int(64).
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.param(0); // Dynamic
         let b = fb.const_int(42); // Int(64)
@@ -926,7 +939,9 @@ mod tests {
         // BrIf on a Dynamic cond → should become Bool.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0); // Dynamic
         let then_b = fb.create_block();
@@ -956,17 +971,19 @@ mod tests {
         // expects Int(32) → both v1 and v2 should become Int(32).
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void, ..Default::default() };
-        let mut callee_fb =
-            FunctionBuilder::new("foo", callee_sig, Visibility::Private);
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut callee_fb = FunctionBuilder::new("foo", callee_sig, Visibility::Private);
         callee_fb.ret(None);
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
-        let mut caller_fb =
-            FunctionBuilder::new("caller", caller_sig, Visibility::Private);
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let v1 = caller_fb.param(0);
         let v2 = caller_fb.copy(v1);
         caller_fb.call("foo", &[v2], Type::Void);
@@ -991,17 +1008,19 @@ mod tests {
         // Value constrained to both Int(32) (by call) and String (by return) → stays Dynamic.
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void, ..Default::default() };
-        let mut callee_fb =
-            FunctionBuilder::new("foo", callee_sig, Visibility::Private);
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut callee_fb = FunctionBuilder::new("foo", callee_sig, Visibility::Private);
         callee_fb.ret(None);
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::String, ..Default::default() };
-        let mut caller_fb =
-            FunctionBuilder::new("caller", caller_sig, Visibility::Private);
+            return_ty: Type::String,
+            ..Default::default()
+        };
+        let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let p = caller_fb.param(0);
         caller_fb.call("foo", &[p], Type::Void);
         caller_fb.ret(Some(p));
@@ -1025,7 +1044,9 @@ mod tests {
         // Already-typed values should remain unchanged.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0); // Int(64)
         let c = fb.const_int(42); // Int(64)
@@ -1052,7 +1073,9 @@ mod tests {
         // Branch with concrete arg → target block param should be refined.
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
@@ -1090,7 +1113,9 @@ mod tests {
         // Module with no Dynamic values → changed = false.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -1113,7 +1138,9 @@ mod tests {
         //   result should become Bool via unique method sig fallback.
         let method_sig = FunctionSig {
             params: vec![Type::Struct("Creature".to_string())],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut method_fb =
             FunctionBuilder::new("Creature::isAlive", method_sig, Visibility::Public);
         let self_param = method_fb.param(0);
@@ -1123,9 +1150,10 @@ mod tests {
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic, ..Default::default() };
-        let mut caller_fb =
-            FunctionBuilder::new("caller", caller_sig, Visibility::Public);
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
         let result = caller_fb.call("isAlive", &[recv], Type::Dynamic);
         caller_fb.ret(Some(result));
@@ -1173,7 +1201,9 @@ mod tests {
     fn no_type_vars_noop() {
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         let c = fb.const_int(42);
@@ -1192,14 +1222,18 @@ mod tests {
     fn conflicting_constraints_fallback() {
         let callee_int = FunctionSig {
             params: vec![Type::Int(32)],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb1 = FunctionBuilder::new("want_int", callee_int, Visibility::Private);
         fb1.ret(None);
         let callee1 = fb1.build();
 
         let caller_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::String, ..Default::default() };
+            return_ty: Type::String,
+            ..Default::default()
+        };
         let mut fb2 = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let p = fb2.param(0);
         fb2.call("want_int", &[p], Type::Void);
@@ -1212,7 +1246,11 @@ mod tests {
         let module = mb.build();
         let result = ConstraintSolve.apply(module).unwrap();
         let func = &result.module.functions[FuncId::new(1)];
-        assert_eq!(func.value_types[p], Type::Dynamic, "conflicting constraints → Dynamic");
+        assert_eq!(
+            func.value_types[p],
+            Type::Dynamic,
+            "conflicting constraints → Dynamic"
+        );
     }
 
     // ---- Adversarial tests ----
@@ -1223,7 +1261,9 @@ mod tests {
         // Three Copy instructions forming a chain, one with a concrete type.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.param(0);
         let b = fb.copy(a);
@@ -1247,7 +1287,9 @@ mod tests {
     fn many_chained_variables() {
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let mut v = fb.param(0);
         for _ in 0..50 {
@@ -1269,7 +1311,9 @@ mod tests {
         // SetField on a known struct constrains the value to the field type.
         let sig = FunctionSig {
             params: vec![Type::Struct("Point".to_string()), Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let obj = fb.param(0);
         let val = fb.param(1); // Dynamic

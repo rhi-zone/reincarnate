@@ -239,7 +239,11 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
             rhs: Box::new(lower_expr(rhs, ctx)),
         },
 
-        Expr::Cast { expr: inner, ty, kind } => JsExpr::Cast {
+        Expr::Cast {
+            expr: inner,
+            ty,
+            kind,
+        } => JsExpr::Cast {
             expr: Box::new(lower_expr(inner, ctx)),
             ty: ty.clone(),
             kind: *kind,
@@ -262,7 +266,9 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
                     // Spread entries are never deduplicated
                     pairs.push((name.clone(), lowered));
                 } else if let Some(&idx) = seen.get(name) {
-                    eprintln!("warning: duplicate key '{name}' in object literal (last value wins)");
+                    eprintln!(
+                        "warning: duplicate key '{name}' in object literal (last value wins)"
+                    );
                     pairs[idx].1 = lowered;
                 } else {
                     seen.insert(name.clone(), pairs.len());
@@ -297,9 +303,9 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
             // rewrite pass converts this to an IIFE when captures are present,
             // or a plain ArrowFunction when there are none.
             let mut args = Vec::with_capacity(captures.len() + 1);
-            args.push(JsExpr::Literal(reincarnate_core::ir::value::Constant::String(
-                func.clone(),
-            )));
+            args.push(JsExpr::Literal(
+                reincarnate_core::ir::value::Constant::String(func.clone()),
+            ));
             args.extend(lower_exprs(captures, ctx));
             JsExpr::SystemCall {
                 system: "SugarCube.Engine".to_string(),

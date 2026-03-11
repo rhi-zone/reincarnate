@@ -78,7 +78,11 @@ impl DataWin {
     }
 
     /// Get or parse a chunk, caching the result.
-    fn get_or_parse<T: 'static>(&self, magic: &[u8; 4], parse: impl FnOnce() -> Result<T>) -> Result<()> {
+    fn get_or_parse<T: 'static>(
+        &self,
+        magic: &[u8; 4],
+        parse: impl FnOnce() -> Result<T>,
+    ) -> Result<()> {
         let cache = self.cache.borrow();
         if cache.contains_key(magic) {
             return Ok(());

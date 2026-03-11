@@ -6,9 +6,9 @@ use crate::entity::PrimaryMap;
 
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
-use super::value::Constant;
 use super::func::{FuncId, Function, Visibility};
 use super::ty::Type;
+use super::value::Constant;
 
 /// Describes how the application is started.
 ///

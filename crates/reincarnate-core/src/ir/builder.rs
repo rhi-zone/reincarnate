@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use crate::entity::PrimaryMap;
 
 use super::block::{Block, BlockId, BlockParam};
+use super::func::MethodKind;
 use super::func::{CaptureMode, CaptureParam, FuncId, Function, Visibility};
 use super::inst::{CastKind, CmpKind, Inst, Op};
-use super::func::MethodKind;
-use super::module::{ClassDef, EnumDef, EntryPoint, ExternalImport, Global, Import, Module, StructDef};
+use super::module::{
+    ClassDef, EntryPoint, EnumDef, ExternalImport, Global, Import, Module, StructDef,
+};
 use super::ty::{FunctionSig, Type};
 use super::value::{Constant, ValueId};
 
@@ -152,7 +154,9 @@ impl FunctionBuilder {
                 ty: ty.clone(),
             });
             self.func.value_names.insert(value, name.clone());
-            self.func.capture_params.push(CaptureParam { name, ty, mode });
+            self.func
+                .capture_params
+                .push(CaptureParam { name, ty, mode });
             values.push(value);
         }
         values
@@ -432,7 +436,9 @@ impl FunctionBuilder {
             eprintln!(
                 "[reincarnate] WARN: br to {:?} with {} args but block has {} params \
                  (compute_block_stack_depths depth mismatch — see TODO.md)",
-                target, args.len(), self.func.blocks[target].params.len()
+                target,
+                args.len(),
+                self.func.blocks[target].params.len()
             );
         }
         self.emit_void(Op::Br {
@@ -796,7 +802,9 @@ impl ModuleBuilder {
     }
 
     pub fn add_passage_storylet(&mut self, display_name: String, cond_func_name: String) {
-        self.module.passage_storylets.insert(display_name, cond_func_name);
+        self.module
+            .passage_storylets
+            .insert(display_name, cond_func_name);
     }
 
     pub fn build(self) -> Module {
@@ -813,7 +821,9 @@ mod tests {
         // Build: fn add(a: Int(64), b: Int(64)) -> Int(64) { return a + b }
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
 
         let a = fb.param(0);
@@ -854,17 +864,17 @@ mod tests {
         //   else(v): return v
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("choose", sig, Visibility::Public);
 
         let cond = fb.param(0);
         let x = fb.param(1);
         let y = fb.param(2);
 
-        let (then_block, then_vals) =
-            fb.create_block_with_params(&[Type::Int(64)]);
-        let (else_block, else_vals) =
-            fb.create_block_with_params(&[Type::Int(64)]);
+        let (then_block, then_vals) = fb.create_block_with_params(&[Type::Int(64)]);
+        let (else_block, else_vals) = fb.create_block_with_params(&[Type::Int(64)]);
 
         fb.br_if(cond, then_block, &[x], else_block, &[y]);
 
@@ -887,7 +897,9 @@ mod tests {
     fn build_module() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("main", sig, Visibility::Public);
         fb.ret(None);
         let func = fb.build();

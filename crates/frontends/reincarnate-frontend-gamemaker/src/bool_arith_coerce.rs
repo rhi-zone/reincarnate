@@ -87,7 +87,12 @@ fn result_inst_map(func: &Function) -> HashMap<ValueId, InstId> {
 
 /// Insert `Cast(v, to_type, Coerce)` before `before_inst_id` in the block
 /// that contains it, and return the new ValueId.
-fn insert_cast_before(func: &mut Function, v: ValueId, before_inst_id: InstId, to_type: Type) -> ValueId {
+fn insert_cast_before(
+    func: &mut Function,
+    v: ValueId,
+    before_inst_id: InstId,
+    to_type: Type,
+) -> ValueId {
     let cast_vid = func.value_types.push(to_type.clone());
     let cast_inst_id = func.insts.push(Inst {
         op: Op::Cast(v, to_type, CastKind::Coerce),
@@ -125,7 +130,10 @@ fn needs_arith_coerce(
     // Fix A: value_types[v] was widened by ConstraintSolve, but the callee
     // sig still says Bool — the emitter will emit a boolean-typed expression.
     if let Some(&inst_id) = result_map.get(&v) {
-        if let Op::Call { func: callee_name, .. } = &func.insts[inst_id].op {
+        if let Op::Call {
+            func: callee_name, ..
+        } = &func.insts[inst_id].op
+        {
             return bool_returning.contains(callee_name);
         }
     }
@@ -141,7 +149,9 @@ fn coerce_bool_arithmetic(func: &mut Function, bool_returning: &HashSet<String>)
         .iter()
         .filter_map(|(id, inst)| {
             let (a, b) = match &inst.op {
-                Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => (*a, *b),
+                Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
+                    (*a, *b)
+                }
                 _ => return None,
             };
             let a_coerce = needs_arith_coerce(func, a, &result_map, bool_returning);
@@ -210,7 +220,13 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
                     }
                 }
             }
-            Op::BrIf { then_target, then_args, else_target, else_args, .. } => {
+            Op::BrIf {
+                then_target,
+                then_args,
+                else_target,
+                else_args,
+                ..
+            } => {
                 if let Some(param_tys) = block_param_tys.get(then_target) {
                     for (i, &v) in then_args.iter().enumerate() {
                         if let Some(pty) = param_tys.get(i) {

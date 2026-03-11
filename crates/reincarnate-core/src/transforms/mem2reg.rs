@@ -241,7 +241,10 @@ fn promote_single_store(func: &mut Function) -> bool {
             // (`_x = _x[0].toUpperCase() + _x.substring(1)`).
             let sv = store_value[ptr];
             if let Some(loads) = load_results_for.get(ptr) {
-                if loads.iter().any(|&load_r| depends_on(sv, load_r, &result_operands)) {
+                if loads
+                    .iter()
+                    .any(|&load_r| depends_on(sv, load_r, &result_operands))
+                {
                     return false;
                 }
             }
@@ -499,7 +502,10 @@ fn promote_multi_store(func: &mut Function) -> bool {
             let mut current_def = if block == func.entry {
                 initial_value
             } else if let Some(&idom_block) = idom.get(&block) {
-                reaching_at_exit.get(&idom_block).copied().unwrap_or(initial_value)
+                reaching_at_exit
+                    .get(&idom_block)
+                    .copied()
+                    .unwrap_or(initial_value)
             } else {
                 initial_value
             };
@@ -663,7 +669,9 @@ mod tests {
     fn single_store_alloc_promoted() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("identity", sig, Visibility::Private);
         let param = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
@@ -687,7 +695,9 @@ mod tests {
         // Two stores in the same block — load should get the last stored value.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("multi_same", sig, Visibility::Private);
         let param = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
@@ -724,7 +734,9 @@ mod tests {
         //   merge: load(ptr), return
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("diamond", sig, Visibility::Private);
         let cond = fb.param(0);
         let _param = fb.param(1);
@@ -802,7 +814,9 @@ mod tests {
         //   exit: return loaded
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("loop_phi", sig, Visibility::Private);
         let cond = fb.param(0);
 
@@ -863,13 +877,15 @@ mod tests {
         // v_result directly depends on v_load (same alloc).
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
-        let v_load = fb.load(ptr, Type::Int(64));  // load before store
+        let v_load = fb.load(ptr, Type::Int(64)); // load before store
         let one = fb.const_int(1);
-        let v_result = fb.add(v_load, one);   // computed from load result
-        fb.store(ptr, v_result);               // 1 store
+        let v_result = fb.add(v_load, one); // computed from load result
+        fb.store(ptr, v_result); // 1 store
         let v_ret = fb.load(ptr, Type::Int(64)); // load after store
         fb.ret(Some(v_ret));
 
@@ -892,7 +908,9 @@ mod tests {
         // Alloc whose pointer is passed to a Call — should not be promoted.
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("escaped", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
         let one = fb.const_int(1);
@@ -919,7 +937,9 @@ mod tests {
         // Alloc with loads but no stores — should not crash.
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("no_store", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
         let loaded = fb.load(ptr, Type::Int(64));
@@ -933,7 +953,9 @@ mod tests {
     fn copy_eliminated() {
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("add_copy", sig, Visibility::Private);
         let a = fb.param(0);
         let b = fb.param(1);
@@ -956,7 +978,9 @@ mod tests {
     fn transitive_chain() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("chain", sig, Visibility::Private);
         let param = fb.param(0);
         let c1 = fb.copy(param);
@@ -986,7 +1010,9 @@ mod tests {
         // Test with alloc/store/load — the full promotion path.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
@@ -1012,7 +1038,9 @@ mod tests {
     fn unchanged_returns_false() {
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Private);
         let a = fb.param(0);
         let b = fb.param(1);
@@ -1033,7 +1061,9 @@ mod tests {
     fn alloc_no_store_load_remains() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
         let loaded = fb.load(ptr, Type::Int(64));
@@ -1043,7 +1073,9 @@ mod tests {
         // Single-store promotion requires exactly 1 store — 0 stores means
         // neither sub-pass handles it. Load should remain or get a null init.
         let entry = func.entry;
-        let has_return = func.blocks[entry].insts.iter()
+        let has_return = func.blocks[entry]
+            .insts
+            .iter()
             .any(|&id| matches!(func.insts[id].op, Op::Return(Some(_))));
         assert!(has_return, "function should still return a value");
     }
@@ -1053,7 +1085,9 @@ mod tests {
     fn alloc_multiple_stores_same_block_last_wins() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
         let a = fb.const_int(10);
@@ -1067,7 +1101,9 @@ mod tests {
 
         let func = apply_mem2reg(fb.build());
         let entry = func.entry;
-        let ret = func.blocks[entry].insts.iter()
+        let ret = func.blocks[entry]
+            .insts
+            .iter()
             .find(|&&id| matches!(func.insts[id].op, Op::Return(_)))
             .unwrap();
         if let Op::Return(Some(v)) = &func.insts[*ret].op {
@@ -1082,7 +1118,9 @@ mod tests {
     fn alloc_escapes_via_call() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
         let one = fb.const_int(1);
@@ -1093,7 +1131,9 @@ mod tests {
 
         let func = apply_mem2reg(fb.build());
         let entry = func.entry;
-        let has_load = func.blocks[entry].insts.iter()
+        let has_load = func.blocks[entry]
+            .insts
+            .iter()
             .any(|&id| matches!(func.insts[id].op, Op::Load(_)));
         assert!(has_load, "escaped alloc should keep Load");
     }
@@ -1103,7 +1143,9 @@ mod tests {
     fn diamond_store_merge() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
@@ -1160,7 +1202,9 @@ mod tests {
         //   exit: load(ptr), return              ← load not dominated by body
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
@@ -1211,7 +1255,9 @@ mod tests {
     fn alloc_store_in_loop_phi() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));

@@ -1,8 +1,8 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
-use reincarnate_datawin::DataWin;
 use reincarnate_core::project::{Asset, AssetCatalog, AssetKind};
+use reincarnate_datawin::DataWin;
 
 use crate::assets::detect_audio_extension;
 use crate::naming;
@@ -21,7 +21,6 @@ fn is_valid_js_ident(s: &str) -> bool {
     }
     chars.all(|c| unicode_ident::is_xid_continue(c) || c == '$')
 }
-
 
 /// Generate TypeScript data files from parsed chunks and add them to the catalog.
 pub fn generate_data_files(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]) {
@@ -51,7 +50,8 @@ fn generate_textures(dw: &DataWin, catalog: &mut AssetCatalog) {
     out.push_str("export const textures: Texture[] = [\n");
 
     for item in &tpag.items {
-        let _ = writeln!(
+        let _ =
+            writeln!(
             out,
             "  {{ src: {{ x: {}, y: {}, w: {}, h: {} }}, dest: {{ w: {}, h: {} }}, sheetId: {} }},",
             item.source_x, item.source_y, item.source_width, item.source_height,
@@ -94,16 +94,22 @@ fn generate_sprites(dw: &DataWin, catalog: &mut AssetCatalog) {
     out.push_str("export const sprites: Sprite[] = [\n");
 
     for sprite in &sprt.sprites {
-        let name = dw.resolve_string(sprite.name).unwrap_or_else(|_| "???".into());
+        let name = dw
+            .resolve_string(sprite.name)
+            .unwrap_or_else(|_| "???".into());
         // Convert each raw pointer to a 0-based TPAG index.
         // If the map is missing (no TPAG chunk, unlikely) fall back to the raw value.
-        let tpag_str: Vec<String> = sprite.tpag_indices.iter().map(|ptr| {
-            let idx = tpag_ptr_map
-                .and_then(|m| m.get(ptr))
-                .copied()
-                .unwrap_or(*ptr);
-            idx.to_string()
-        }).collect();
+        let tpag_str: Vec<String> = sprite
+            .tpag_indices
+            .iter()
+            .map(|ptr| {
+                let idx = tpag_ptr_map
+                    .and_then(|m| m.get(ptr))
+                    .copied()
+                    .unwrap_or(*ptr);
+                idx.to_string()
+            })
+            .collect();
         let _ = writeln!(
             out,
             "  {{ name: {:?}, size: {{ width: {}, height: {} }}, origin: {{ x: {}, y: {} }}, bbox: {{ left: {}, right: {}, top: {}, bottom: {} }}, textures: [{}] }},",
@@ -122,7 +128,9 @@ fn generate_sprites(dw: &DataWin, catalog: &mut AssetCatalog) {
     // type (e.g. `322`) rather than `number | undefined` under noUncheckedIndexedAccess.
     out.push_str("export const Sprites = {\n");
     for (i, sprite) in sprt.sprites.iter().enumerate() {
-        let raw = dw.resolve_string(sprite.name).unwrap_or_else(|_| format!("spr_{i}"));
+        let raw = dw
+            .resolve_string(sprite.name)
+            .unwrap_or_else(|_| format!("spr_{i}"));
         let key = naming::sprite_name_to_pascal(&raw);
         // Emit as a plain identifier when valid, otherwise as a quoted string key.
         // A valid JS identifier starts with [a-zA-Z_$] and continues with [a-zA-Z0-9_$].
@@ -164,7 +172,9 @@ pub fn extract_sprite_names(dw: &DataWin) -> Vec<String> {
         .iter()
         .enumerate()
         .map(|(i, sprite)| {
-            let raw = dw.resolve_string(sprite.name).unwrap_or_else(|_| format!("spr_{i}"));
+            let raw = dw
+                .resolve_string(sprite.name)
+                .unwrap_or_else(|_| format!("spr_{i}"));
             naming::sprite_name_to_pascal(&raw)
         })
         .collect()
@@ -197,7 +207,9 @@ fn generate_fonts(dw: &DataWin, catalog: &mut AssetCatalog) {
     out.push_str("export const fonts: Font[] = [\n");
 
     for entry in &font.fonts {
-        let name = dw.resolve_string(entry.name).unwrap_or_else(|_| "???".into());
+        let name = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| "???".into());
         // The font's tpag_index is a raw absolute file pointer to a TPAG entry (GMS1).
         // Resolve it to a 0-based index via the pointer_to_index map.
         let texture_idx = tpag
@@ -206,7 +218,11 @@ fn generate_fonts(dw: &DataWin, catalog: &mut AssetCatalog) {
             .copied()
             .unwrap_or(entry.tpag_index);
 
-        let _ = writeln!(out, "  {{ name: {:?}, size: {}, texture: {texture_idx}, chars: [", name, entry.size);
+        let _ = writeln!(
+            out,
+            "  {{ name: {:?}, size: {}, texture: {texture_idx}, chars: [",
+            name, entry.size
+        );
         for glyph in &entry.glyphs {
             // Font glyphs have their own x,y on the texture — offset from the font's TPAG region.
             // The reference uses the TPAG src as a base offset for the font texture.
@@ -245,34 +261,52 @@ fn generate_sounds(dw: &DataWin, catalog: &mut AssetCatalog) {
     };
 
     let mut out = String::new();
-    out.push_str("export interface Sound {
-");
-    out.push_str("  name: string;
-");
-    out.push_str("  url: string;
-");
-    out.push_str("}
+    out.push_str(
+        "export interface Sound {
+",
+    );
+    out.push_str(
+        "  name: string;
+",
+    );
+    out.push_str(
+        "  url: string;
+",
+    );
+    out.push_str(
+        "}
 
-");
-    out.push_str("export const sounds: Sound[] = [
-");
+",
+    );
+    out.push_str(
+        "export const sounds: Sound[] = [
+",
+    );
 
     for entry in &sond.sounds {
-        let name = dw.resolve_string(entry.name).unwrap_or_else(|_| "???".into());
+        let name = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| "???".into());
         if entry.audio_id >= 0 {
             let idx = entry.audio_id as usize;
             let data = audo.audio_data(idx, dw.data()).unwrap_or(&[]);
             let ext = detect_audio_extension(data);
-            let _ = writeln!(out, "  {{ name: {:?}, url: {:?} }},",
-                name, format!("assets/audio/{name}.{ext}"));
+            let _ = writeln!(
+                out,
+                "  {{ name: {:?}, url: {:?} }},",
+                name,
+                format!("assets/audio/{name}.{ext}")
+            );
         } else {
             // External audio (not embedded in data.win) — no URL available.
             let _ = writeln!(out, "  {{ name: {:?}, url: \"\" }},", name);
         }
     }
 
-    out.push_str("];
-");
+    out.push_str(
+        "];
+",
+    );
 
     catalog.add(Asset {
         id: "data_sounds".into(),
@@ -293,11 +327,15 @@ fn generate_shaders(dw: &DataWin, catalog: &mut AssetCatalog) {
 
     let mut out = String::new();
     out.push_str("// GML shader data — auto-generated, do not edit.\n");
-    out.push_str("export interface GmlShader { name: string; vertex: string; fragment: string; }\n");
+    out.push_str(
+        "export interface GmlShader { name: string; vertex: string; fragment: string; }\n",
+    );
     out.push_str("export const shaders: GmlShader[] = [\n");
 
     for entry in &shdr.shaders {
-        let name = dw.resolve_string(entry.name).unwrap_or_else(|_| "???".into());
+        let name = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| "???".into());
         let vertex = dw.resolve_string(entry.vertex).unwrap_or_default();
         let fragment = dw.resolve_string(entry.fragment).unwrap_or_default();
         let _ = writeln!(
@@ -314,7 +352,9 @@ fn generate_shaders(dw: &DataWin, catalog: &mut AssetCatalog) {
     // Also emit `Shaders` as-const enum for named access by index.
     out.push_str("\nexport const Shaders: Record<string, number> = {\n");
     for (i, entry) in shdr.shaders.iter().enumerate() {
-        let name = dw.resolve_string(entry.name).unwrap_or_else(|_| format!("shader_{i}"));
+        let name = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| format!("shader_{i}"));
         if is_valid_js_ident(&name) {
             let _ = writeln!(out, "  {name}: {i},");
         }
@@ -352,7 +392,9 @@ fn generate_rooms(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]
     out.push_str("export const rooms: Room[] = [\n");
 
     for entry in &room.rooms {
-        let name = dw.resolve_string(entry.name).unwrap_or_else(|_| "???".into());
+        let name = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| "???".into());
         let _ = writeln!(
             out,
             "  {{ name: {:?}, size: {{ width: {}, height: {} }}, speed: {}, objs: [",
@@ -375,7 +417,9 @@ fn generate_rooms(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]
     // Rooms enum: PascalCase name → index (as const for exact literal types).
     out.push_str("export const Rooms = {\n");
     for (i, entry) in room.rooms.iter().enumerate() {
-        let raw = dw.resolve_string(entry.name).unwrap_or_else(|_| format!("room_{i}"));
+        let raw = dw
+            .resolve_string(entry.name)
+            .unwrap_or_else(|_| format!("room_{i}"));
         let key = naming::room_name_to_pascal(&raw);
         let _ = writeln!(out, "  {key}: {i},");
     }
@@ -448,51 +492,75 @@ fn generate_asset_ids(dw: &DataWin, catalog: &mut AssetCatalog) {
     // break the generic instance_create_* and withInstances APIs.
 
     // Sprites.
-    let sprite_names: Vec<String> = dw.sprt()
+    let sprite_names: Vec<String> = dw
+        .sprt()
         .map(|sprt| {
-            sprt.sprites.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+            sprt.sprites
+                .iter()
+                .filter_map(|e| dw.resolve_string(e.name).ok())
+                .collect()
         })
         .unwrap_or_default();
     emit_group("Sprites", sprite_names);
 
     // Sounds.
-    let sound_names: Vec<String> = dw.sond()
+    let sound_names: Vec<String> = dw
+        .sond()
         .map(|sond| {
-            sond.sounds.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+            sond.sounds
+                .iter()
+                .filter_map(|e| dw.resolve_string(e.name).ok())
+                .collect()
         })
         .unwrap_or_default();
     emit_group("Sounds", sound_names);
 
     // Rooms (type=3 in pushref encoding).
-    let room_names: Vec<String> = dw.room()
+    let room_names: Vec<String> = dw
+        .room()
         .map(|room| {
-            room.rooms.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+            room.rooms
+                .iter()
+                .filter_map(|e| dw.resolve_string(e.name).ok())
+                .collect()
         })
         .unwrap_or_default();
     emit_group("Rooms", room_names);
 
     // Fonts (type=6).
-    let font_names: Vec<String> = dw.font()
+    let font_names: Vec<String> = dw
+        .font()
         .map(|font| {
-            font.fonts.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+            font.fonts
+                .iter()
+                .filter_map(|e| dw.resolve_string(e.name).ok())
+                .collect()
         })
         .unwrap_or_default();
     emit_group("Fonts", font_names);
 
     // Shaders (type=8 in pushref encoding).
-    let shdr_names: Vec<String> = dw.shdr()
+    let shdr_names: Vec<String> = dw
+        .shdr()
         .map(|shdr| {
-            shdr.shaders.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+            shdr.shaders
+                .iter()
+                .filter_map(|e| dw.resolve_string(e.name).ok())
+                .collect()
         })
         .unwrap_or_default();
     emit_group("Shaders", shdr_names);
 
     // Sequences (type=9; SEQN chunk; GMS2.3+ only).
-    let seqn_names: Vec<String> = dw.seqn()
+    let seqn_names: Vec<String> = dw
+        .seqn()
         .ok()
         .flatten()
         .map(|seqn| {
-            seqn.sequences.iter().filter_map(|e| dw.resolve_string(e.name).ok()).collect()
+            seqn.sequences
+                .iter()
+                .filter_map(|e| dw.resolve_string(e.name).ok())
+                .collect()
         })
         .unwrap_or_default();
     emit_group("Sequences", seqn_names);

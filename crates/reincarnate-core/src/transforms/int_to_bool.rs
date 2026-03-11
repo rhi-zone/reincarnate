@@ -33,7 +33,10 @@ fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
             continue;
         }
 
-        let inst_id = func.insts.keys().find(|&id| func.insts[id].result == Some(v));
+        let inst_id = func
+            .insts
+            .keys()
+            .find(|&id| func.insts[id].result == Some(v));
 
         if let Some(inst_id) = inst_id {
             match &func.insts[inst_id].op {
@@ -61,10 +64,8 @@ fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
                     if param.value == v {
                         for src_block_id in func.blocks.keys() {
                             for &src_inst_id in &func.blocks[src_block_id].insts {
-                                let args_for_block = branch_args_for_target(
-                                    &func.insts[src_inst_id].op,
-                                    block_id,
-                                );
+                                let args_for_block =
+                                    branch_args_for_target(&func.insts[src_inst_id].op, block_id);
                                 for args in args_for_block {
                                     if param_idx < args.len() {
                                         worklist.push(args[param_idx]);
@@ -114,9 +115,7 @@ fn branch_args_for_target(op: &Op, target: crate::ir::BlockId) -> Vec<&[ValueId]
                 result.push(else_args.as_slice());
             }
         }
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             for (_, block, args) in cases {
                 if *block == target {
                     result.push(args.as_slice());
@@ -164,7 +163,10 @@ fn set_chain_types(func: &mut Function, start: ValueId) {
         }
         func.value_types[v] = Type::Bool;
 
-        let inst_id = func.insts.keys().find(|&id| func.insts[id].result == Some(v));
+        let inst_id = func
+            .insts
+            .keys()
+            .find(|&id| func.insts[id].result == Some(v));
 
         if let Some(inst_id) = inst_id {
             match &func.insts[inst_id].op {
@@ -188,10 +190,8 @@ fn set_chain_types(func: &mut Function, start: ValueId) {
                     if param.value == v {
                         for src_block_id in func.blocks.keys() {
                             for &src_inst_id in &func.blocks[src_block_id].insts {
-                                let args_for_block = branch_args_for_target(
-                                    &func.insts[src_inst_id].op,
-                                    block_id,
-                                );
+                                let args_for_block =
+                                    branch_args_for_target(&func.insts[src_inst_id].op, block_id);
                                 for args in args_for_block {
                                     if param_idx < args.len() {
                                         worklist.push(args[param_idx]);
@@ -255,9 +255,8 @@ fn collect_bool_demands(
                 value,
             } => {
                 if let Type::Struct(name) = &func.value_types[*object] {
-                    if let Some(field_ty) = struct_fields
-                        .get(name)
-                        .and_then(|fields| fields.get(field))
+                    if let Some(field_ty) =
+                        struct_fields.get(name).and_then(|fields| fields.get(field))
                     {
                         if *field_ty == Type::Bool {
                             demands.push(*value);
@@ -903,7 +902,12 @@ mod tests {
         let mut fb = FunctionBuilder::new("getNearestScreenType", sig, Visibility::Public);
         let self_param = fb.param(0);
         // Simulate: withInstances(obj, callback)
-        fb.system_call("GameMaker.Instance", "withInstances", &[self_param], Type::Void);
+        fb.system_call(
+            "GameMaker.Instance",
+            "withInstances",
+            &[self_param],
+            Type::Void,
+        );
         // Fallback: return false (0)
         let zero = fb.const_int(0);
         fb.ret(Some(zero));

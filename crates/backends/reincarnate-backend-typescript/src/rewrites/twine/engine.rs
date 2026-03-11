@@ -86,10 +86,8 @@ fn try_rewrite_math(args: &mut Vec<JsExpr>) -> Option<JsExpr> {
 
     match name.as_str() {
         // Single-arg Math methods
-        "round" | "floor" | "ceil" | "abs" | "sqrt" | "sin" | "cos" | "tan"
-        | "log" | "log10" | "log2" | "exp" | "sign" | "trunc" => {
-            Some(math_call(&name, remaining))
-        }
+        "round" | "floor" | "ceil" | "abs" | "sqrt" | "sin" | "cos" | "tan" | "log" | "log10"
+        | "log2" | "exp" | "sign" | "trunc" => Some(math_call(&name, remaining)),
         // Two-arg: Math.pow(a, b)
         "pow" => Some(math_call("pow", remaining)),
         // Variadic: Math.min(...) / Math.max(...)
@@ -168,7 +166,10 @@ fn try_rewrite_collection_op(
         if let Some(arrow) = try_inline_closure(&remaining[0], closures) {
             remaining[0] = arrow;
         }
-        if let JsExpr::ArrowFunction { infer_param_types, .. } = &mut remaining[0] {
+        if let JsExpr::ArrowFunction {
+            infer_param_types, ..
+        } = &mut remaining[0]
+        {
             // Arrow (inlined or pre-inlined): enable contextual type inference so
             // TypeScript omits `: any` on params.
             *infer_param_types = true;
@@ -254,10 +255,7 @@ fn is_function_like(expr: &JsExpr) -> bool {
 
 /// If `expr` is a `Var` referencing a closure in `closures`, return an
 /// inlined `ArrowFunction` with `infer_param_types: true`.
-fn try_inline_closure(
-    expr: &JsExpr,
-    closures: &HashMap<String, JsFunction>,
-) -> Option<JsExpr> {
+fn try_inline_closure(expr: &JsExpr, closures: &HashMap<String, JsFunction>) -> Option<JsExpr> {
     let name = match expr {
         JsExpr::Var(n) => n,
         _ => return None,
@@ -411,16 +409,11 @@ mod tests {
 
     #[test]
     fn rewrite_math_lerp_passthrough() {
-        let expr = engine_call(
-            "math",
-            vec![str_lit("lerp"), var("a"), var("b"), var("t")],
-        );
+        let expr = engine_call("math", vec![str_lit("lerp"), var("a"), var("b"), var("t")]);
         let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
         // lerp should NOT be rewritten — stays as SystemCall
         match extract_expr(&func) {
-            JsExpr::SystemCall {
-                system, method, ..
-            } => {
+            JsExpr::SystemCall { system, method, .. } => {
                 assert_eq!(system, "Harlowe.Engine");
                 assert_eq!(method, "math");
             }
@@ -434,9 +427,7 @@ mod tests {
         let func = super::super::rewrite_twine_function(func_with_expr(expr), &no_closures());
         // Unknown math function should NOT be rewritten
         match extract_expr(&func) {
-            JsExpr::SystemCall {
-                system, method, ..
-            } => {
+            JsExpr::SystemCall { system, method, .. } => {
                 assert_eq!(system, "Harlowe.Engine");
                 assert_eq!(method, "math");
             }
@@ -478,9 +469,7 @@ mod tests {
             JsExpr::Call { callee, args } => {
                 match callee.as_ref() {
                     JsExpr::Field { object, field } => {
-                        assert!(
-                            matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections")
-                        );
+                        assert!(matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections"));
                         assert_eq!(field, "sorted");
                     }
                     other => panic!("expected Field, got {other:?}"),
@@ -511,9 +500,7 @@ mod tests {
             JsExpr::Call { callee, args } => {
                 match callee.as_ref() {
                     JsExpr::Field { object, field } => {
-                        assert!(
-                            matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections")
-                        );
+                        assert!(matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections"));
                         // Must route to sortedBy, not sorted, when a lambda is present.
                         assert_eq!(field, "sortedBy");
                     }
@@ -537,9 +524,7 @@ mod tests {
             JsExpr::Call { callee, args } => {
                 match callee.as_ref() {
                     JsExpr::Field { object, field } => {
-                        assert!(
-                            matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections")
-                        );
+                        assert!(matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections"));
                         // Must NOT route to sortedBy when no lambda.
                         assert_eq!(field, "sorted");
                     }
@@ -562,9 +547,7 @@ mod tests {
             JsExpr::Call { callee, args } => {
                 match callee.as_ref() {
                     JsExpr::Field { object, field } => {
-                        assert!(
-                            matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections")
-                        );
+                        assert!(matches!(object.as_ref(), JsExpr::Var(n) if n == "Collections"));
                         assert_eq!(field, "somePass");
                     }
                     other => panic!("expected Field, got {other:?}"),
@@ -601,8 +584,10 @@ mod tests {
             JsExpr::Call { callee, args } => {
                 match callee.as_ref() {
                     JsExpr::Field { object, field } => {
-                        assert!(matches!(object.as_ref(), JsExpr::Var(n) if n == "StringOps"),
-                            "expected StringOps, got {object:?}");
+                        assert!(
+                            matches!(object.as_ref(), JsExpr::Var(n) if n == "StringOps"),
+                            "expected StringOps, got {object:?}"
+                        );
                         assert_eq!(field, expected_method);
                     }
                     other => panic!("expected Field, got {other:?}"),

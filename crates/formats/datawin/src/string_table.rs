@@ -72,7 +72,11 @@ impl StringTable {
     pub fn get(&self, index: usize, data: &[u8]) -> Result<String> {
         let offset = self.offsets.get(index).ok_or(Error::Parse {
             context: "STRG",
-            message: format!("string index {} out of range (count={})", index, self.offsets.len()),
+            message: format!(
+                "string index {} out of range (count={})",
+                index,
+                self.offsets.len()
+            ),
         })?;
         let offset = *offset as usize;
         if offset + 4 > data.len() {

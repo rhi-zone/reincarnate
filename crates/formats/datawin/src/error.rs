@@ -31,7 +31,10 @@ pub enum Error {
     UnsupportedVersion { version: u8 },
 
     #[error("{context}: {message}")]
-    Parse { context: &'static str, message: String },
+    Parse {
+        context: &'static str,
+        message: String,
+    },
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

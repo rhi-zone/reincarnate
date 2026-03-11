@@ -25,8 +25,8 @@ pub struct HtmlTagInfo {
 
 /// HTML5 void elements (self-closing by spec).
 const VOID_ELEMENTS: &[&str] = &[
-    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param",
-    "source", "track", "wbr",
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source",
+    "track", "wbr",
 ];
 
 /// Tokenize a raw HTML tag string (e.g. `<div class="foo">` or `</div>`)

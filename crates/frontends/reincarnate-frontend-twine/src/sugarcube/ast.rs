@@ -87,10 +87,7 @@ pub enum NodeKind {
         dynamic_attrs: Vec<(String, String)>,
     },
     /// An `[img[src]]` or `[img[src][link]]` inline image.
-    Image {
-        src: String,
-        link: Option<String>,
-    },
+    Image { src: String, link: Option<String> },
     /// A `/* ... */` or `<!-- ... -->` comment.
     Comment(String),
     /// A line break (`<br>` or literal newline that SugarCube preserves).

@@ -37,10 +37,7 @@ pub enum Operand {
     /// String reference (index into STRG).
     StringIndex(u32),
     /// Variable reference.
-    Variable {
-        var_ref: VariableRef,
-        instance: i16,
-    },
+    Variable { var_ref: VariableRef, instance: i16 },
     /// Branch target (byte offset from current instruction).
     Branch(i32),
     /// Comparison kind.
@@ -90,7 +87,10 @@ pub fn decode(bytecode: &[u8]) -> Result<Vec<Instruction>> {
 
         let opcode = Opcode::from_u8(opcode_byte).ok_or_else(|| Error::Parse {
             context: "bytecode",
-            message: format!("unknown opcode {:#04x} at offset {:#x}", opcode_byte, inst_offset),
+            message: format!(
+                "unknown opcode {:#04x} at offset {:#x}",
+                opcode_byte, inst_offset
+            ),
         })?;
 
         let type1 = DataType::from_u8(type1_raw);
@@ -267,7 +267,10 @@ fn decode_operand(
             } else {
                 None
             };
-            Ok(Operand::Break { signal: val16, extra })
+            Ok(Operand::Break {
+                signal: val16,
+                extra,
+            })
         }
 
         // All others: no operand

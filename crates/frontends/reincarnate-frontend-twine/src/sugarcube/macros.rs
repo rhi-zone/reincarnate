@@ -72,8 +72,7 @@ pub fn macro_kind(name: &str) -> Option<MacroKind> {
         "copy" => MacroKind::SelfClosing,
         "remove" => MacroKind::SelfClosing,
         "playlist" => MacroKind::SelfClosing,
-        "radiobutton" | "checkbox" | "textbox" | "numberbox" | "textarea"
-            => MacroKind::SelfClosing,
+        "radiobutton" | "checkbox" | "textbox" | "numberbox" | "textarea" => MacroKind::SelfClosing,
         "option" | "optionsfrom" => MacroKind::SelfClosing,
 
         // ── Raw body (block with unparsed content) ────────────────
@@ -93,30 +92,86 @@ mod tests {
     #[test]
     fn all_known_macros_classified() {
         let block = &[
-            "if", "switch", "for", "link", "linkappend", "linkprepend",
-            "linkreplace", "button", "replace", "append", "prepend",
-            "repeat", "timed", "type", "nobr", "silently", "capture",
-            "createplaylist", "createaudiogroup", "widget", "done",
-            "listbox", "cycle",
+            "if",
+            "switch",
+            "for",
+            "link",
+            "linkappend",
+            "linkprepend",
+            "linkreplace",
+            "button",
+            "replace",
+            "append",
+            "prepend",
+            "repeat",
+            "timed",
+            "type",
+            "nobr",
+            "silently",
+            "capture",
+            "createplaylist",
+            "createaudiogroup",
+            "widget",
+            "done",
+            "listbox",
+            "cycle",
         ];
         let self_closing = &[
-            "set", "unset", "run", "print", "=", "-", "include", "goto",
-            "back", "return", "break", "continue", "stop", "audio",
-            "masteraudio", "cacheaudio", "waitforaudio", "removeaudiogroup",
-            "removeplaylist", "addclass", "removeclass", "toggleclass",
-            "copy", "remove", "playlist", "radiobutton", "checkbox",
-            "textbox", "numberbox", "textarea", "option", "optionsfrom",
+            "set",
+            "unset",
+            "run",
+            "print",
+            "=",
+            "-",
+            "include",
+            "goto",
+            "back",
+            "return",
+            "break",
+            "continue",
+            "stop",
+            "audio",
+            "masteraudio",
+            "cacheaudio",
+            "waitforaudio",
+            "removeaudiogroup",
+            "removeplaylist",
+            "addclass",
+            "removeclass",
+            "toggleclass",
+            "copy",
+            "remove",
+            "playlist",
+            "radiobutton",
+            "checkbox",
+            "textbox",
+            "numberbox",
+            "textarea",
+            "option",
+            "optionsfrom",
         ];
         let raw = &["script"];
 
         for &name in block {
-            assert_eq!(macro_kind(name), Some(MacroKind::Block), "{name} should be Block");
+            assert_eq!(
+                macro_kind(name),
+                Some(MacroKind::Block),
+                "{name} should be Block"
+            );
         }
         for &name in self_closing {
-            assert_eq!(macro_kind(name), Some(MacroKind::SelfClosing), "{name} should be SelfClosing");
+            assert_eq!(
+                macro_kind(name),
+                Some(MacroKind::SelfClosing),
+                "{name} should be SelfClosing"
+            );
         }
         for &name in raw {
-            assert_eq!(macro_kind(name), Some(MacroKind::Raw), "{name} should be Raw");
+            assert_eq!(
+                macro_kind(name),
+                Some(MacroKind::Raw),
+                "{name} should be Raw"
+            );
         }
     }
 

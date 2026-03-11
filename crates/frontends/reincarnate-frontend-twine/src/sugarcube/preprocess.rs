@@ -104,11 +104,25 @@ pub fn preprocess(src: &str) -> Preprocessed {
                     let mut depth = 1u32;
                     while i < len && depth > 0 {
                         match bytes[i] {
-                            b'{' => { depth += 1; i += 1; }
-                            b'}' => { depth -= 1; if depth > 0 { i += 1; } }
-                            b'"' | b'\'' => { i = skip_string_in_preprocess(bytes, i); }
-                            b'`' => { i = skip_template_in_preprocess(bytes, i); }
-                            _ => { i += 1; }
+                            b'{' => {
+                                depth += 1;
+                                i += 1;
+                            }
+                            b'}' => {
+                                depth -= 1;
+                                if depth > 0 {
+                                    i += 1;
+                                }
+                            }
+                            b'"' | b'\'' => {
+                                i = skip_string_in_preprocess(bytes, i);
+                            }
+                            b'`' => {
+                                i = skip_template_in_preprocess(bytes, i);
+                            }
+                            _ => {
+                                i += 1;
+                            }
                         }
                     }
                     let expr_text = &src[expr_start..i];
@@ -116,9 +130,15 @@ pub fn preprocess(src: &str) -> Preprocessed {
                     out.push_str(&pp.js);
                     // Track def/ndef/clone positions with offset
                     let offset = out.len() - pp.js.len();
-                    for p in pp.def_positions { def_positions.push(offset + p); }
-                    for p in pp.ndef_positions { ndef_positions.push(offset + p); }
-                    for p in pp.clone_positions { clone_positions.push(offset + p); }
+                    for p in pp.def_positions {
+                        def_positions.push(offset + p);
+                    }
+                    for p in pp.ndef_positions {
+                        ndef_positions.push(offset + p);
+                    }
+                    for p in pp.clone_positions {
+                        clone_positions.push(offset + p);
+                    }
                     if i < len && bytes[i] == b'}' {
                         out.push('}');
                         i += 1;
@@ -201,7 +221,9 @@ pub fn preprocess(src: &str) -> Preprocessed {
             }
 
             // Not a keyword — copy the identifier
-            while i < len && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'$') {
+            while i < len
+                && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' || bytes[i] == b'$')
+            {
                 out.push(bytes[i] as char); // identifier chars are ASCII
                 i += 1;
             }
@@ -256,9 +278,18 @@ fn skip_template_in_preprocess(bytes: &[u8], start: usize) -> usize {
     while i < bytes.len() {
         match bytes[i] {
             b'`' if depth == 0 => return i + 1,
-            b'\\' => { i += 2; continue; }
-            b'$' if i + 1 < bytes.len() && bytes[i + 1] == b'{' => { i += 2; depth += 1; continue; }
-            b'}' if depth > 0 => { depth -= 1; }
+            b'\\' => {
+                i += 2;
+                continue;
+            }
+            b'$' if i + 1 < bytes.len() && bytes[i + 1] == b'{' => {
+                i += 2;
+                depth += 1;
+                continue;
+            }
+            b'}' if depth > 0 => {
+                depth -= 1;
+            }
             _ => {}
         }
         i += 1;
@@ -266,7 +297,11 @@ fn skip_template_in_preprocess(bytes: &[u8], start: usize) -> usize {
     i
 }
 
-fn try_match_keyword(bytes: &[u8], i: usize, len: usize) -> Option<(&'static str, usize, KeywordKind)> {
+fn try_match_keyword(
+    bytes: &[u8],
+    i: usize,
+    len: usize,
+) -> Option<(&'static str, usize, KeywordKind)> {
     // Match longer keywords first to avoid prefix conflicts (e.g. `isnot` before `is`)
     let candidates: &[(&[u8], &str, KeywordKind)] = &[
         (b"isnot", "!==", KeywordKind::Normal),
@@ -291,7 +326,9 @@ fn try_match_keyword(bytes: &[u8], i: usize, len: usize) -> Option<(&'static str
         if i + kw_len <= len && &bytes[i..i + kw_len] == kw {
             // Check word boundary: next char must not be ident-continue
             let at_boundary = i + kw_len >= len
-                || !(bytes[i + kw_len].is_ascii_alphanumeric() || bytes[i + kw_len] == b'_' || bytes[i + kw_len] == b'$');
+                || !(bytes[i + kw_len].is_ascii_alphanumeric()
+                    || bytes[i + kw_len] == b'_'
+                    || bytes[i + kw_len] == b'$');
             if at_boundary {
                 return Some((replacement, kw_len, kind));
             }
@@ -375,14 +412,8 @@ mod tests {
     #[test]
     fn template_expression_preprocessed() {
         // Keywords inside ${...} ARE preprocessed
-        assert_eq!(
-            pp("`${$x is 1 ? 'a' : 'b'}`"),
-            "`${$x === 1 ? 'a' : 'b'}`"
-        );
-        assert_eq!(
-            pp("`count: ${_n gt 0}`"),
-            "`count: ${_n > 0}`"
-        );
+        assert_eq!(pp("`${$x is 1 ? 'a' : 'b'}`"), "`${$x === 1 ? 'a' : 'b'}`");
+        assert_eq!(pp("`count: ${_n gt 0}`"), "`count: ${_n > 0}`");
     }
 
     #[test]
@@ -411,10 +442,7 @@ mod tests {
 
     #[test]
     fn mixed_js_and_sugar() {
-        assert_eq!(
-            pp("$x is 1 && $y isnot 2"),
-            "$x === 1 && $y !== 2"
-        );
+        assert_eq!(pp("$x is 1 && $y isnot 2"), "$x === 1 && $y !== 2");
     }
 
     #[test]

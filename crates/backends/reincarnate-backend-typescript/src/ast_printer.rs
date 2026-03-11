@@ -26,10 +26,12 @@ fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
     match stmts.last() {
         Some(JsStmt::Return(_)) | Some(JsStmt::Throw(_)) => true,
         Some(JsStmt::Break) | Some(JsStmt::Continue) | Some(JsStmt::LabeledBreak { .. }) => true,
-        Some(JsStmt::If { then_body, else_body, .. }) => {
-            !else_body.is_empty()
-                && ends_with_terminal(then_body)
-                && ends_with_terminal(else_body)
+        Some(JsStmt::If {
+            then_body,
+            else_body,
+            ..
+        }) => {
+            !else_body.is_empty() && ends_with_terminal(then_body) && ends_with_terminal(else_body)
         }
         // A switch is terminal if it has a default case and every case body (including
         // default) ends with a terminal.  Without a default, some input value could fall
@@ -45,7 +47,9 @@ fn ends_with_terminal(stmts: &[JsStmt]) -> bool {
         }) => {
             !default_body.is_empty()
                 && ends_with_terminal(default_body)
-                && cases.iter().all(|(_, body)| body.is_empty() || ends_with_terminal(body))
+                && cases
+                    .iter()
+                    .all(|(_, body)| body.is_empty() || ends_with_terminal(body))
         }
         // An infinite loop (`while (true)`) is terminal if its body contains no top-level
         // `break` — i.e. there is no way to fall through to the code below it.
@@ -150,10 +154,7 @@ pub fn print_class_method(
 ) {
     let (params, param_defaults) = if skip_self && !js.params.is_empty() {
         let defaults_offset = js.param_defaults.len().min(1);
-        (
-            &js.params[1..],
-            &js.param_defaults[defaults_offset..],
-        )
+        (&js.params[1..], &js.param_defaults[defaults_offset..])
     } else {
         (&js.params[..], &js.param_defaults[..])
     };
@@ -216,8 +217,10 @@ pub fn print_class_method(
     // GML methods implicitly return 0 when no explicit return is reached.
     // Emit a synthetic return to suppress TS2366 for concrete return types.
     if let Some(implicit) = implicit_gml_return(&js.return_ty) {
-        if !matches!(js.method_kind, MethodKind::Constructor | MethodKind::Setter | MethodKind::Getter)
-            && !ends_with_terminal(&js.body)
+        if !matches!(
+            js.method_kind,
+            MethodKind::Constructor | MethodKind::Setter | MethodKind::Getter
+        ) && !ends_with_terminal(&js.body)
         {
             let _ = writeln!(out, "{indent}return {implicit};");
         }
@@ -273,7 +276,11 @@ fn print_params(
                     )
                 })
                 .unwrap_or(false);
-            let effective_ty = if default_mismatches_type { &Type::Dynamic } else { ty };
+            let effective_ty = if default_mismatches_type {
+                &Type::Dynamic
+            } else {
+                ty
+            };
             if infer_dynamic && matches!(ty, Type::Dynamic) {
                 format!("{prefix}{}{default_suffix}", sanitize_ident(name))
             } else {
@@ -312,10 +319,19 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                 (Some(ty), Some(init)) => {
                     // Cast to the same type: strip TS assertion forms and use type
                     // annotation. Keep function-call forms (asType, Number, int, etc.).
-                    if let JsExpr::Cast { expr, ty: cast_ty, kind } = init {
+                    if let JsExpr::Cast {
+                        expr,
+                        ty: cast_ty,
+                        kind,
+                    } = init
+                    {
                         let is_ts_assertion = match kind {
-                            CastKind::NullableCoerce => !matches!(ty, Type::Struct(_) | Type::Enum(_)),
-                            CastKind::Coerce => matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic),
+                            CastKind::NullableCoerce => {
+                                !matches!(ty, Type::Struct(_) | Type::Enum(_))
+                            }
+                            CastKind::Coerce => {
+                                matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic)
+                            }
                         };
                         if cast_ty == ty && is_ts_assertion {
                             let _ = writeln!(
@@ -349,8 +365,12 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // to type annotation) or a runtime call (must keep in expr).
                     if let JsExpr::Cast { expr, ty, kind } = init {
                         let is_ts_assertion = match kind {
-                            CastKind::NullableCoerce => !matches!(ty, Type::Struct(_) | Type::Enum(_)),
-                            CastKind::Coerce => matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic),
+                            CastKind::NullableCoerce => {
+                                !matches!(ty, Type::Struct(_) | Type::Enum(_))
+                            }
+                            CastKind::Coerce => {
+                                matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic)
+                            }
                         };
                         if is_ts_assertion {
                             // Strip TS assertion, use type annotation + inner expr.
@@ -375,9 +395,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // `{}` with no index signature (TS7053 when string-indexed later).
                         // Annotate conservatively so the types are explicit.
                         let annotation = match init {
-                            JsExpr::ArrayInit(elems) if elems.is_empty() => {
-                                Some("any[]")
-                            }
+                            JsExpr::ArrayInit(elems) if elems.is_empty() => Some("any[]"),
                             // Any object literal without an explicit type annotation is
                             // treated as a dynamic map. TypeScript would otherwise infer
                             // a narrow structural type (`{}` or `{ k: T; ... }`) with no
@@ -393,11 +411,8 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                                 print_expr(init),
                             );
                         } else {
-                            let _ = writeln!(
-                                out,
-                                "{indent}{kw} {name_str} = {};",
-                                print_expr(init),
-                            );
+                            let _ =
+                                writeln!(out, "{indent}{kw} {name_str} = {};", print_expr(init),);
                         }
                     }
                 }
@@ -580,11 +595,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
             let _ = writeln!(out, "{indent}switch ({} as any) {{", print_expr(value));
             let case_indent = format!("{indent}  ");
             for (constant, case_stmts) in cases {
-                let _ = writeln!(
-                    out,
-                    "{indent}  case {}:",
-                    emit_constant(constant)
-                );
+                let _ = writeln!(out, "{indent}  case {}:", emit_constant(constant));
                 if case_stmts.is_empty() {
                     // Fall-through: no body, no break.
                 } else {
@@ -624,7 +635,11 @@ fn print_for_init(stmt: &JsStmt) -> Option<String> {
             let kw = if *mutable { "let" } else { "const" };
             let name_str = sanitize_ident(name);
             match ty {
-                Some(ty) => Some(format!("{kw} {name_str}: {} = {}", ts_type(ty), print_expr(init))),
+                Some(ty) => Some(format!(
+                    "{kw} {name_str}: {} = {}",
+                    ts_type(ty),
+                    print_expr(init)
+                )),
                 None => Some(format!("{kw} {name_str} = {}", print_expr(init))),
             }
         }
@@ -725,11 +740,7 @@ fn print_expr(expr: &JsExpr) -> String {
 
         JsExpr::Call { callee, args } => {
             let args_str: Vec<_> = args.iter().map(print_expr).collect();
-            format!(
-                "{}({})",
-                print_expr_operand(callee),
-                args_str.join(", "),
-            )
+            format!("{}({})", print_expr_operand(callee), args_str.join(", "),)
         }
 
         JsExpr::Ternary {
@@ -746,22 +757,18 @@ fn print_expr(expr: &JsExpr) -> String {
         }
 
         JsExpr::LogicalOr { lhs, rhs } => {
-            format!(
-                "{} || {}",
-                print_expr_operand(lhs),
-                print_expr_operand(rhs),
-            )
+            format!("{} || {}", print_expr_operand(lhs), print_expr_operand(rhs),)
         }
 
         JsExpr::LogicalAnd { lhs, rhs } => {
-            format!(
-                "{} && {}",
-                print_expr_operand(lhs),
-                print_expr_operand(rhs),
-            )
+            format!("{} && {}", print_expr_operand(lhs), print_expr_operand(rhs),)
         }
 
-        JsExpr::Cast { expr: inner, ty, kind } => {
+        JsExpr::Cast {
+            expr: inner,
+            ty,
+            kind,
+        } => {
             match (kind, ty) {
                 // NullableCoerce + Struct/Enum → asType(x, Foo) (runtime null-on-failure).
                 (CastKind::NullableCoerce, Type::Struct(name) | Type::Enum(name)) => {
@@ -811,9 +818,11 @@ fn print_expr(expr: &JsExpr) -> String {
             }
         }
 
-        JsExpr::TypeCheck { expr: inner, ty, use_instanceof } => {
-            print_type_check(inner, ty, *use_instanceof)
-        }
+        JsExpr::TypeCheck {
+            expr: inner,
+            ty,
+            use_instanceof,
+        } => print_type_check(inner, ty, *use_instanceof),
 
         JsExpr::ArrayInit(elems) => {
             let elems_str: Vec<_> = elems.iter().map(print_expr).collect();
@@ -919,11 +928,7 @@ fn print_expr(expr: &JsExpr) -> String {
         }
 
         JsExpr::SuperSet { prop, value } => {
-            format!(
-                "(super.{} = {})",
-                sanitize_ident(prop),
-                print_expr(value),
-            )
+            format!("(super.{} = {})", sanitize_ident(prop), print_expr(value),)
         }
 
         JsExpr::NonNull(inner) => format!("{}!", print_expr(inner)),
@@ -989,11 +994,14 @@ fn needs_parens(expr: &JsExpr) -> bool {
         // Only `x as T` forms need them.
         JsExpr::Cast { ty, kind, .. } => match (kind, ty) {
             (CastKind::NullableCoerce, Type::Struct(_) | Type::Enum(_)) => false,
-            (CastKind::Coerce, Type::Struct(_) | Type::Enum(_)) => true,  // `x as Foo`
-            (CastKind::Coerce, Type::Float(_) | Type::Int(32) | Type::UInt(32) | Type::String | Type::Bool) => false,
-            (CastKind::Coerce, _) => false,  // passthrough
-            (CastKind::NullableCoerce, Type::Dynamic) => false,  // passthrough
-            (CastKind::NullableCoerce, _) => true,  // `x as T`
+            (CastKind::Coerce, Type::Struct(_) | Type::Enum(_)) => true, // `x as Foo`
+            (
+                CastKind::Coerce,
+                Type::Float(_) | Type::Int(32) | Type::UInt(32) | Type::String | Type::Bool,
+            ) => false,
+            (CastKind::Coerce, _) => false, // passthrough
+            (CastKind::NullableCoerce, Type::Dynamic) => false, // passthrough
+            (CastKind::NullableCoerce, _) => true, // `x as T`
         },
         // Negative numeric literals need parens to allow member access:
         //   (-4).length  not  -4.length  (TS1351: identifier after numeric literal)
@@ -1001,17 +1009,20 @@ fn needs_parens(expr: &JsExpr) -> bool {
         JsExpr::Literal(Constant::Float(f)) if *f < 0.0 => true,
         // `x instanceof T` is a binary expression — needs parens in unary context,
         // e.g. `!(x instanceof T)` not `!x instanceof T` (wrong precedence).
-        JsExpr::TypeCheck { use_instanceof: true, .. } => true,
+        JsExpr::TypeCheck {
+            use_instanceof: true,
+            ..
+        } => true,
         JsExpr::Binary { .. }
-            | JsExpr::Cmp { .. }
-            | JsExpr::Ternary { .. }
-            | JsExpr::LogicalOr { .. }
-            | JsExpr::LogicalAnd { .. }
-            | JsExpr::Unary { .. }
-            | JsExpr::Not(_)
-            | JsExpr::In { .. }
-            | JsExpr::SuperSet { .. }
-            | JsExpr::ArrowFunction { .. } => true,
+        | JsExpr::Cmp { .. }
+        | JsExpr::Ternary { .. }
+        | JsExpr::LogicalOr { .. }
+        | JsExpr::LogicalAnd { .. }
+        | JsExpr::Unary { .. }
+        | JsExpr::Not(_)
+        | JsExpr::In { .. }
+        | JsExpr::SuperSet { .. }
+        | JsExpr::ArrowFunction { .. } => true,
         _ => false,
     }
 }
@@ -1034,7 +1045,11 @@ fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
                 // GML: all objects are class instances, `instanceof` is correct.
                 // Use `(expr as any)` to prevent TypeScript control-flow narrowing
                 // (`this instanceof Wall` in a Wall method narrows else-branch to `never`).
-                format!("({} as any) instanceof {}", print_expr(expr), sanitize_ident(short))
+                format!(
+                    "({} as any) instanceof {}",
+                    print_expr(expr),
+                    sanitize_ident(short)
+                )
             } else {
                 // Flash: use isType() — handles both classes and AS3 interfaces.
                 format!("isType({}, {})", print_expr(expr), sanitize_ident(short))
@@ -1179,7 +1194,10 @@ mod tests {
     fn type_check_struct_is_type_for_flash() {
         let expr = JsExpr::Var("v0".into());
         let result = print_type_check(&expr, &Type::Struct("Monster".into()), false);
-        assert_eq!(result, "isType(v0, Monster)", "Flash TypeCheck should use isType()");
+        assert_eq!(
+            result, "isType(v0, Monster)",
+            "Flash TypeCheck should use isType()"
+        );
     }
 
     #[test]
@@ -1188,7 +1206,10 @@ mod tests {
         let result = print_type_check(&expr, &Type::Struct("OEnemy".into()), true);
         // Uses `(expr as any) instanceof T` to prevent TypeScript control-flow narrowing
         // (`this instanceof Wall` in a Wall method would narrow else-branch to `never`).
-        assert_eq!(result, "(v0 as any) instanceof OEnemy", "GML TypeCheck should use (as any) instanceof");
+        assert_eq!(
+            result, "(v0 as any) instanceof OEnemy",
+            "GML TypeCheck should use (as any) instanceof"
+        );
     }
 
     #[test]
@@ -1200,9 +1221,15 @@ mod tests {
             ty: Type::Struct("OEnemy".into()),
             use_instanceof: true,
         };
-        assert!(needs_parens(&tc), "instanceof TypeCheck needs parens as operand");
+        assert!(
+            needs_parens(&tc),
+            "instanceof TypeCheck needs parens as operand"
+        );
         let not_tc = JsExpr::Not(Box::new(tc));
         let result = print_expr(&not_tc);
-        assert_eq!(result, "!((v0 as any) instanceof OEnemy)", "Not(TypeCheck) must add parens");
+        assert_eq!(
+            result, "!((v0 as any) instanceof OEnemy)",
+            "Not(TypeCheck) must add parens"
+        );
     }
 }

@@ -26,10 +26,7 @@ pub enum Expr {
         rhs: Box<Expr>,
     },
     /// Unary operation: `op expr`.
-    Unary {
-        op: UnaryOp,
-        expr: Box<Expr>,
-    },
+    Unary { op: UnaryOp, expr: Box<Expr> },
     /// Comparison: `lhs cmp rhs`.
     Cmp {
         kind: CmpKind,
@@ -37,25 +34,16 @@ pub enum Expr {
         rhs: Box<Expr>,
     },
     /// Field access: `object.field`.
-    Field {
-        object: Box<Expr>,
-        field: String,
-    },
+    Field { object: Box<Expr>, field: String },
     /// Index access: `collection[index]`.
     Index {
         collection: Box<Expr>,
         index: Box<Expr>,
     },
     /// Direct function/method call: `func(args...)`.
-    Call {
-        func: String,
-        args: Vec<Expr>,
-    },
+    Call { func: String, args: Vec<Expr> },
     /// Indirect call: `callee(args...)`.
-    CallIndirect {
-        callee: Box<Expr>,
-        args: Vec<Expr>,
-    },
+    CallIndirect { callee: Box<Expr>, args: Vec<Expr> },
     /// System call: `system.method(args...)`.
     SystemCall {
         system: String,
@@ -75,15 +63,9 @@ pub enum Expr {
         else_val: Box<Expr>,
     },
     /// Short-circuit OR: `lhs || rhs`.
-    LogicalOr {
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
+    LogicalOr { lhs: Box<Expr>, rhs: Box<Expr> },
     /// Short-circuit AND: `lhs && rhs`.
-    LogicalAnd {
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
+    LogicalAnd { lhs: Box<Expr>, rhs: Box<Expr> },
     /// Type cast.
     Cast {
         expr: Box<Expr>,
@@ -91,10 +73,7 @@ pub enum Expr {
         kind: CastKind,
     },
     /// Runtime type check (returns bool).
-    TypeCheck {
-        expr: Box<Expr>,
-        ty: Type,
-    },
+    TypeCheck { expr: Box<Expr>, ty: Type },
     /// Array literal: `[elements...]`.
     ArrayInit(Vec<Expr>),
     /// Struct/object literal: `{ field: value, ... }`.
@@ -107,10 +86,7 @@ pub enum Expr {
     /// Global variable reference.
     GlobalRef(String),
     /// Coroutine create.
-    CoroutineCreate {
-        func: String,
-        args: Vec<Expr>,
-    },
+    CoroutineCreate { func: String, args: Vec<Expr> },
     /// Coroutine resume.
     CoroutineResume(Box<Expr>),
     /// Yield expression.
@@ -123,10 +99,7 @@ pub enum Expr {
     Spread(Box<Expr>),
     /// Closure value: a function packaged with its captured outer-scope values.
     /// `captures` are bound to the function's capture params in declaration order.
-    MakeClosure {
-        func: String,
-        captures: Vec<Expr>,
-    },
+    MakeClosure { func: String, captures: Vec<Expr> },
 }
 
 /// Binary arithmetic/bitwise operators.
@@ -169,10 +142,7 @@ pub enum Stmt {
         mutable: bool,
     },
     /// Assignment: `target = value;`
-    Assign {
-        target: Expr,
-        value: Expr,
-    },
+    Assign { target: Expr, value: Expr },
     /// Compound assignment: `target op= value;`
     CompoundAssign {
         target: Expr,
@@ -188,10 +158,7 @@ pub enum Stmt {
         else_body: Vec<Stmt>,
     },
     /// While loop with condition.
-    While {
-        cond: Expr,
-        body: Vec<Stmt>,
-    },
+    While { cond: Expr, body: Vec<Stmt> },
     /// For loop: `for (init; cond; update) { body }`.
     For {
         init: Vec<Stmt>,
@@ -200,9 +167,7 @@ pub enum Stmt {
         body: Vec<Stmt>,
     },
     /// Infinite loop (`while (true) { ... }`).
-    Loop {
-        body: Vec<Stmt>,
-    },
+    Loop { body: Vec<Stmt> },
     /// For-of loop: `for (const/let binding of iterable) { body }`.
     ForOf {
         binding: String,
@@ -218,9 +183,7 @@ pub enum Stmt {
     /// Continue.
     Continue,
     /// Labeled break to an outer loop.
-    LabeledBreak {
-        depth: usize,
-    },
+    LabeledBreak { depth: usize },
     /// Switch statement: `switch (value) { case X: ...; default: ...; }`
     Switch {
         value: Expr,

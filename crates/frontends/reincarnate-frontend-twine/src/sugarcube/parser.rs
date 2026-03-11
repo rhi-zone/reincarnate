@@ -167,8 +167,7 @@ impl<'a> Parser<'a> {
         // Inline HTML tag
         if remaining.starts_with('<')
             && remaining.len() > 1
-            && (remaining.as_bytes()[1].is_ascii_alphabetic()
-                || remaining.as_bytes()[1] == b'/')
+            && (remaining.as_bytes()[1].is_ascii_alphabetic() || remaining.as_bytes()[1] == b'/')
         {
             return Some(self.parse_html_tag());
         }
@@ -264,9 +263,7 @@ impl<'a> Parser<'a> {
         // Determine macro kind: built-in table first, then custom registry.
         let builtin_kind = macros::macro_kind(&name);
         // Custom registry may override built-in entries (e.g. game redefines "button").
-        let custom_def = self
-            .custom_macros
-            .and_then(|r| r.get(name.as_str()));
+        let custom_def = self.custom_macros.and_then(|r| r.get(name.as_str()));
 
         // Effective kind: custom registry shadows built-ins.
         let effective_kind = match custom_def {
@@ -423,12 +420,10 @@ impl<'a> Parser<'a> {
                                 inner.trim()
                             };
                             let base = self.pos - args_src.len();
-                            if passage_str.starts_with('$')
-                                || passage_str.starts_with('_')
-                            {
+                            if passage_str.starts_with('$') || passage_str.starts_with('_') {
                                 // Variable reference — store as expression
-                                let offset = base + (passage_str.as_ptr() as usize
-                                    - args_src.as_ptr() as usize);
+                                let offset = base
+                                    + (passage_str.as_ptr() as usize - args_src.as_ptr() as usize);
                                 return MacroArgs::Expr(Expr::new(
                                     offset,
                                     offset + passage_str.len(),
@@ -465,9 +460,8 @@ impl<'a> Parser<'a> {
             }
             // Macros whose arguments are CSS selectors, durations, or other
             // non-expression tokens — store as Raw.
-            "replace" | "append" | "prepend" | "timed" | "repeat" | "type"
-            | "addclass" | "removeclass" | "toggleclass"
-            | "copy" | "remove" | "done" | "listbox" | "cycle" => {
+            "replace" | "append" | "prepend" | "timed" | "repeat" | "type" | "addclass"
+            | "removeclass" | "toggleclass" | "copy" | "remove" | "done" | "listbox" | "cycle" => {
                 let args_src = self.capture_args_src();
                 let trimmed = args_src.trim();
                 if trimmed.is_empty() {
@@ -525,9 +519,7 @@ impl<'a> Parser<'a> {
         while !self.at_end() {
             let ch = self.ch();
             match ch {
-                b'[' if self.pos + 1 < self.bytes.len()
-                    && self.bytes[self.pos + 1] == b'[' =>
-                {
+                b'[' if self.pos + 1 < self.bytes.len() && self.bytes[self.pos + 1] == b'[' => {
                     // [[...]] link — scan to ]] without interpreting quotes
                     // (passage names like "Valentine's Day" contain apostrophes)
                     self.pos += 2;
@@ -882,9 +874,10 @@ impl<'a> Parser<'a> {
                 let parts: Vec<&str> = before.splitn(2, ',').collect();
                 let value_var = parts[0].trim().to_string();
                 let key_var = Some(parts[1].trim().to_string());
-                let after_offset = trimmed_offset + range_idx + 7
-                    + (after.as_ptr() as usize
-                        - trimmed[range_idx + 7..].as_ptr() as usize);
+                let after_offset = trimmed_offset
+                    + range_idx
+                    + 7
+                    + (after.as_ptr() as usize - trimmed[range_idx + 7..].as_ptr() as usize);
                 let collection = Box::new(Expr::new(after_offset, after_offset + after.len()));
                 MacroArgs::ForIn {
                     value_var,
@@ -894,9 +887,10 @@ impl<'a> Parser<'a> {
             } else {
                 // Range for: _var range expr
                 let var = before.to_string();
-                let after_offset = trimmed_offset + range_idx + 7
-                    + (after.as_ptr() as usize
-                        - trimmed[range_idx + 7..].as_ptr() as usize);
+                let after_offset = trimmed_offset
+                    + range_idx
+                    + 7
+                    + (after.as_ptr() as usize - trimmed[range_idx + 7..].as_ptr() as usize);
                 let collection = Box::new(Expr::new(after_offset, after_offset + after.len()));
                 MacroArgs::ForIn {
                     value_var: var,
@@ -933,8 +927,8 @@ impl<'a> Parser<'a> {
                         passage: passage.map(|p| {
                             if p.starts_with('$') || p.starts_with('_') {
                                 let base = self.pos - args_src.len();
-                                let offset = base
-                                    + (p.as_ptr() as usize - args_src.as_ptr() as usize);
+                                let offset =
+                                    base + (p.as_ptr() as usize - args_src.as_ptr() as usize);
                                 LinkTarget::Expr(Box::new(Expr::new(offset, offset + p.len())))
                             } else {
                                 LinkTarget::Name(p.to_string())
@@ -1113,8 +1107,8 @@ impl<'a> Parser<'a> {
 
         // Determine target kind: if it starts with $ or _, it's an expression
         let link_target = if target.starts_with('$') || target.starts_with('_') {
-            let target_offset = content_start
-                + (target.as_ptr() as usize - content.as_ptr() as usize);
+            let target_offset =
+                content_start + (target.as_ptr() as usize - content.as_ptr() as usize);
             LinkTarget::Expr(Box::new(Expr::new(
                 target_offset,
                 target_offset + target.len(),
@@ -1168,8 +1162,7 @@ impl<'a> Parser<'a> {
             if pos >= bytes.len() {
                 break;
             }
-            if bytes[pos] == b'.' && pos + 1 < bytes.len() && bytes[pos + 1].is_ascii_alphabetic()
-            {
+            if bytes[pos] == b'.' && pos + 1 < bytes.len() && bytes[pos + 1].is_ascii_alphabetic() {
                 pos += 1;
                 while pos < bytes.len()
                     && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_')
@@ -1331,9 +1324,8 @@ impl<'a> Parser<'a> {
                 {
                     break;
                 }
-                b'_'
-                    if self.pos + 1 < self.bytes.len()
-                        && self.bytes[self.pos + 1].is_ascii_alphabetic() =>
+                b'_' if self.pos + 1 < self.bytes.len()
+                    && self.bytes[self.pos + 1].is_ascii_alphabetic() =>
                 {
                     break;
                 }
@@ -1387,8 +1379,7 @@ fn split_assignment_list(src: &str, base: usize) -> Vec<Expr> {
             b',' if depth == 0 => {
                 let piece = src[start..i].trim();
                 if !piece.is_empty() {
-                    let offset =
-                        base + (piece.as_ptr() as usize - src.as_ptr() as usize);
+                    let offset = base + (piece.as_ptr() as usize - src.as_ptr() as usize);
                     result.push(Expr::new(offset, offset + piece.len()));
                 }
                 start = i + 1;
@@ -1475,10 +1466,7 @@ fn classify_case_token(token: &str, start: usize, end: usize) -> CaseArg {
     }
     let b = token.as_bytes();
     // Variable reference: $name or _name
-    if (b[0] == b'$' || b[0] == b'_')
-        && token.len() > 1
-        && b[1].is_ascii_alphanumeric()
-    {
+    if (b[0] == b'$' || b[0] == b'_') && token.len() > 1 && b[1].is_ascii_alphanumeric() {
         return CaseArg::Variable(Expr::new(start, end));
     }
     // Backtick expression: `expr`
@@ -1486,9 +1474,7 @@ fn classify_case_token(token: &str, start: usize, end: usize) -> CaseArg {
         return CaseArg::BacktickExpr(Expr::new(start + 1, end - 1));
     }
     // Quoted string: "text" or 'text'
-    if (b[0] == b'"' && b[b.len() - 1] == b'"')
-        || (b[0] == b'\'' && b[b.len() - 1] == b'\'')
-    {
+    if (b[0] == b'"' && b[b.len() - 1] == b'"') || (b[0] == b'\'' && b[b.len() - 1] == b'\'') {
         return CaseArg::StringLit(Expr::new(start, end));
     }
     // Keyword literals
@@ -1501,8 +1487,10 @@ fn classify_case_token(token: &str, start: usize, end: usize) -> CaseArg {
         _ => {}
     }
     // settings.x / setup.x property access → evalTwineScript (not a string constant)
-    if token.starts_with("settings.") || token.starts_with("settings[")
-        || token.starts_with("setup.") || token.starts_with("setup[")
+    if token.starts_with("settings.")
+        || token.starts_with("settings[")
+        || token.starts_with("setup.")
+        || token.starts_with("setup[")
     {
         return CaseArg::Variable(Expr::new(start, end));
     }
@@ -1537,10 +1525,20 @@ fn split_link_args(src: &str, base: usize) -> Vec<Expr> {
         let mut depth = 0i32;
         while i < bytes.len() {
             match bytes[i] {
-                b'(' | b'[' | b'{' => { depth += 1; i += 1; }
-                b')' | b']' | b'}' => { depth -= 1; i += 1; }
-                b'"' | b'\'' => { i = skip_string_in(bytes, i); }
-                b'`' => { i = skip_template_in(bytes, i); }
+                b'(' | b'[' | b'{' => {
+                    depth += 1;
+                    i += 1;
+                }
+                b')' | b']' | b'}' => {
+                    depth -= 1;
+                    i += 1;
+                }
+                b'"' | b'\'' => {
+                    i = skip_string_in(bytes, i);
+                }
+                b'`' => {
+                    i = skip_template_in(bytes, i);
+                }
                 b' ' | b'\t' | b'\n' if depth == 0 => break,
                 _ => i += 1,
             }
@@ -1685,7 +1683,10 @@ mod tests {
 
     fn first_node(src: &str) -> Node {
         let ast = parse_str(src);
-        ast.body.into_iter().next().expect("expected at least one node")
+        ast.body
+            .into_iter()
+            .next()
+            .expect("expected at least one node")
     }
 
     // ── Plain text ──────────────────────────────────────────────────
@@ -1815,7 +1816,12 @@ mod tests {
         if let NodeKind::Link(link) = &node.kind {
             assert!(matches!(&link.text, LinkText::Plain(s) if s == "text"));
             assert!(matches!(&link.target, LinkTarget::Name(s) if s == "passage"));
-            assert_eq!(link.setters.len(), 1, "expected 1 setter, got {:?}", link.setters);
+            assert_eq!(
+                link.setters.len(),
+                1,
+                "expected 1 setter, got {:?}",
+                link.setters
+            );
         } else {
             panic!("expected Link");
         }
@@ -1827,7 +1833,12 @@ mod tests {
         if let NodeKind::Link(link) = &node.kind {
             assert!(matches!(&link.text, LinkText::Plain(s) if s == "Go"));
             assert!(matches!(&link.target, LinkTarget::Name(s) if s == "Room"));
-            assert_eq!(link.setters.len(), 2, "expected 2 setters, got {:?}", link.setters);
+            assert_eq!(
+                link.setters.len(),
+                2,
+                "expected 2 setters, got {:?}",
+                link.setters
+            );
         } else {
             panic!("expected Link");
         }
@@ -2106,7 +2117,9 @@ mod tests {
             assert_eq!(m.clauses.len(), 1);
             // Inner should contain a nested if macro
             let inner_nodes = &m.clauses[0].body;
-            assert!(inner_nodes.iter().any(|n| matches!(&n.kind, NodeKind::Macro(m) if m.name == "if")));
+            assert!(inner_nodes
+                .iter()
+                .any(|n| matches!(&n.kind, NodeKind::Macro(m) if m.name == "if")));
         } else {
             panic!("expected Macro");
         }
@@ -2132,7 +2145,9 @@ mod tests {
         if let NodeKind::Macro(m) = &node.kind {
             assert_eq!(m.name, "link");
             let body = &m.clauses[0].body;
-            assert!(body.iter().any(|n| matches!(&n.kind, NodeKind::Macro(inner) if inner.name == "set")));
+            assert!(body
+                .iter()
+                .any(|n| matches!(&n.kind, NodeKind::Macro(inner) if inner.name == "set")));
         } else {
             panic!("expected Macro");
         }
@@ -2297,8 +2312,16 @@ mod tests {
         let ast = parse_str(src);
         assert!(ast.errors.is_empty(), "errors: {:?}", ast.errors);
         // Should parse without errors
-        let macro_count = ast.body.iter().filter(|n| matches!(n.kind, NodeKind::Macro(_))).count();
-        assert!(macro_count >= 3, "expected at least 3 macros, got {}", macro_count);
+        let macro_count = ast
+            .body
+            .iter()
+            .filter(|n| matches!(n.kind, NodeKind::Macro(_)))
+            .count();
+        assert!(
+            macro_count >= 3,
+            "expected at least 3 macros, got {}",
+            macro_count
+        );
     }
 
     // ── Navigation macro [[...]] link syntax ─────────────────────────
