@@ -46,6 +46,10 @@ pub enum MethodKind {
     Constructor,
     Instance,
     Static,
+    /// AS3 class static initializer (`cinit`) — runs once when the class is
+    /// first referenced.  Distinct from `Static` so the backend can identify
+    /// it without falling back to a name-based "cinit" string check.
+    StaticInit,
     Getter,
     Setter,
     Closure,

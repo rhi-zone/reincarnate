@@ -846,6 +846,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let module = mb.build();
@@ -898,6 +900,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         mb.set_entry_point(EntryPoint::ConstructClass("MyApp".into()));
@@ -981,6 +985,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         mb.set_entry_point(EntryPoint::ConstructClass("App".into()));

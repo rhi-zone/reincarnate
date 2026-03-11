@@ -1385,6 +1385,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         (mb.build(), result)
     }
@@ -1455,6 +1457,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         mb.add_class(ClassDef {
             name: "Naga".into(),
@@ -1468,6 +1472,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         let module = mb.build();
 
@@ -1527,6 +1533,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         let module = mb.build();
 
@@ -1676,6 +1684,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         mb.add_class(ClassDef {
             name: "ClassB".into(),
@@ -1689,6 +1699,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         let module = mb.build();
 

@@ -144,7 +144,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     )? {
         func.namespace = class_ns.clone();
         func.class = Some(class_short_name.clone());
-        func.method_kind = MethodKind::Static;
+        func.method_kind = MethodKind::StaticInit;
         func.visibility = Visibility::Private;
         functions.push(func);
     }
@@ -546,6 +546,12 @@ pub fn translate_abc_to_module(
             interfaces: info.interfaces,
             abstract_members: info.abstract_members,
             is_dynamic: info.is_dynamic,
+            // AS3 instance fields are zero-initialized before the constructor runs.
+            zero_initialized: true,
+            // needs_index_signature is computed in a post-processing pass below
+            // after all classes are known (Proxy ancestor detection requires the
+            // full class list).
+            needs_index_signature: false,
         });
     }
 
@@ -607,6 +613,45 @@ pub fn translate_abc_to_module(
 
     let mut module = mb.build();
     populate_external_imports(&mut module);
+
+    // Post-processing pass: set needs_index_signature on each class.
+    //
+    // A class needs an index signature when:
+    // (a) it is marked `dynamic` (AS3 non-sealed class), or
+    // (b) any ancestor in the super_class chain is named "Proxy"
+    //     (flash.utils::Proxy — models dynamic dispatch via interceptor methods).
+    //
+    // Proxy ancestor detection requires the full class list, so we can't do
+    // this at class-construction time — hence the post-processing pass here.
+    {
+        // Build a short-name → super_class map for internal classes only.
+        let short_to_super: std::collections::HashMap<String, Option<String>> = module
+            .classes
+            .iter()
+            .map(|c| (c.name.clone(), c.super_class.clone()))
+            .collect();
+
+        for class in &mut module.classes {
+            if class.is_dynamic {
+                class.needs_index_signature = true;
+            } else {
+                // Walk the super_class chain looking for a "Proxy" ancestor.
+                let mut has_proxy = false;
+                let mut cur = class.super_class.clone();
+                while let Some(ref sc) = cur {
+                    let short = sc.rsplit("::").next().unwrap_or(sc);
+                    if short == "Proxy" {
+                        has_proxy = true;
+                        break;
+                    }
+                    // Continue up the chain through internal classes only.
+                    cur = short_to_super.get(short).and_then(|opt| opt.clone());
+                }
+                class.needs_index_signature = has_proxy;
+            }
+        }
+    }
+
     Ok(module)
 }
 

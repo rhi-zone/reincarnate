@@ -1180,6 +1180,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         let module = mb.build();
 

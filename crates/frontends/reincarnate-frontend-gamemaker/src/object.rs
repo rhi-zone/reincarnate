@@ -159,6 +159,8 @@ pub fn translate_objects(
             interfaces: Vec::new(),
             abstract_members: Vec::new(),
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
     }
 

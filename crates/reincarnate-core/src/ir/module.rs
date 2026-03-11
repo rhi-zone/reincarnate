@@ -116,6 +116,18 @@ pub struct ClassDef {
     /// When true the TypeScript backend emits index signatures.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub is_dynamic: bool,
+    /// All instance fields are zero-initialized before the constructor runs
+    /// (true for AS3, false for GML/Twine).  When true the TypeScript backend
+    /// emits `!` (definite-assignment assertion) on un-initialized fields.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub zero_initialized: bool,
+    /// Emit TypeScript index signatures (`[key: string]: any`).
+    ///
+    /// True for AS3 `dynamic` classes and Proxy subclasses — these allow
+    /// arbitrary property access by string or number key.  Set by the Flash
+    /// frontend; read by the TypeScript backend.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub needs_index_signature: bool,
 }
 
 /// A module — the top-level compilation unit.

@@ -1867,6 +1867,19 @@ impl<'a> EmitCtx<'a> {
                         }),
                         args: vec![self.build_val(*index)],
                     }
+                } else if let Some(Constant::String(s)) = self.resolve.constant_inlines.get(index) {
+                    if is_js_ident(s) {
+                        let field = s.clone();
+                        Expr::Field {
+                            object: Box::new(self.build_val(*collection)),
+                            field,
+                        }
+                    } else {
+                        Expr::Index {
+                            collection: Box::new(self.build_val(*collection)),
+                            index: Box::new(self.build_val(*index)),
+                        }
+                    }
                 } else {
                     Expr::Index {
                         collection: Box::new(self.build_val(*collection)),
@@ -2606,6 +2619,21 @@ impl<'a> EmitCtx<'a> {
                         }),
                         args: vec![key, val],
                     }));
+                } else if let Some(Constant::String(s)) = self.resolve.constant_inlines.get(index) {
+                    let target = if is_js_ident(s) {
+                        let field = s.clone();
+                        Expr::Field {
+                            object: Box::new(self.build_val(*collection)),
+                            field,
+                        }
+                    } else {
+                        Expr::Index {
+                            collection: Box::new(self.build_val(*collection)),
+                            index: Box::new(self.build_val(*index)),
+                        }
+                    };
+                    let val = self.build_val(*value);
+                    stmts.push(Stmt::Assign { target, value: val });
                 } else {
                     let target = Expr::Index {
                         collection: Box::new(self.build_val(*collection)),
@@ -2901,6 +2929,16 @@ fn is_memory_write(op: &Op) -> bool {
         op,
         Op::SetField { .. } | Op::SetIndex { .. } | Op::Store { .. }
     )
+}
+
+fn is_js_ident(s: &str) -> bool {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => return false,
+        Some(c) if c == '_' || c == '$' || unicode_ident::is_xid_start(c) => {}
+        Some(_) => return false,
+    }
+    chars.all(|c| c == '_' || c == '$' || unicode_ident::is_xid_continue(c))
 }
 
 // -----------------------------------------------------------------------

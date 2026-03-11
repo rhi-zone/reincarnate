@@ -10,3 +10,4 @@ description = "Core types and traits for the Reincarnate legacy software lifting
 thiserror.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
+unicode-ident = { workspace = true }

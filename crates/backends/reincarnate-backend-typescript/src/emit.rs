@@ -596,7 +596,10 @@ fn build_method_name_sets(
         loop {
             for &fid in &current.methods {
                 if let Some(f) = module.functions.get(fid) {
-                    if !matches!(f.method_kind, MethodKind::Static | MethodKind::Closure) {
+                    if !matches!(
+                        f.method_kind,
+                        MethodKind::Static | MethodKind::StaticInit | MethodKind::Closure
+                    ) {
                         if let Some(short) = f.name.rsplit("::").next() {
                             names.insert(short.to_string());
                             // Getters/setters use get_/set_ prefix in their function
@@ -3430,10 +3433,10 @@ fn emit_function(
 // Class grouping and emission
 // ---------------------------------------------------------------------------
 
-struct ClassGroup {
-    class_def: ClassDef,
-    struct_def: StructDef,
-    methods: Vec<FuncId>,
+pub(crate) struct ClassGroup {
+    pub(crate) class_def: ClassDef,
+    pub(crate) struct_def: StructDef,
+    pub(crate) methods: Vec<FuncId>,
 }
 
 /// Partition module contents into class groups and free functions.
@@ -3474,111 +3477,6 @@ fn group_by_class(module: &Module) -> (Vec<ClassGroup>, Vec<FuncId>) {
         .collect();
 
     (groups, free)
-}
-
-/// Map an IR `Type` to the AS3-style type name used in describeType output.
-fn as3_type_name(ty: &Type) -> String {
-    match ty {
-        Type::Void => "void".into(),
-        Type::Bool => "Boolean".into(),
-        Type::Int(_) => "int".into(),
-        Type::UInt(_) => "uint".into(),
-        Type::Float(_) => "Number".into(),
-        Type::String => "String".into(),
-        Type::Array(_) => "Array".into(),
-        Type::Map(_, _) => "Object".into(),
-        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
-            name.rsplit("::").next().unwrap_or(name).into()
-        }
-        _ => "*".into(),
-    }
-}
-
-/// Emit a `registerClassTraits(ClassName, [...instance], [...static])` call.
-fn emit_register_class_traits(
-    group: &ClassGroup,
-    module: &Module,
-    class_names: &HashMap<String, String>,
-    out: &mut String,
-) {
-    let qualified = qualified_class_name(&group.class_def);
-    let class_name = class_names
-        .get(&qualified)
-        .cloned()
-        .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
-
-    // Collect instance traits: fields from struct_def + instance methods/getters/setters
-    let mut instance_traits = Vec::new();
-    for (name, ty, _) in &group.struct_def.fields {
-        let type_name = as3_type_name(ty);
-        instance_traits.push(format!(
-            "{{ name: \"{name}\", kind: \"variable\", type: \"{type_name}\" }}"
-        ));
-    }
-
-    // Collect static traits: fields from class_def + static methods
-    let mut static_traits = Vec::new();
-    for (name, ty, _, _) in &group.class_def.static_fields {
-        let type_name = as3_type_name(ty);
-        static_traits.push(format!(
-            "{{ name: \"{name}\", kind: \"variable\", type: \"{type_name}\" }}"
-        ));
-    }
-    // Track getter/setter pairs to coalesce into accessors
-    let mut instance_accessors: BTreeMap<String, (bool, bool)> = BTreeMap::new();
-    for &fid in &group.methods {
-        let func = &module.functions[fid];
-        // Strip class prefix: "Enum::toString" → "toString"
-        let short = func.name.rsplit("::").next().unwrap_or(&func.name);
-        match func.method_kind {
-            MethodKind::Constructor | MethodKind::Free | MethodKind::Closure => {}
-            MethodKind::Instance => {
-                instance_traits.push(format!("{{ name: \"{short}\", kind: \"method\" }}"));
-            }
-            MethodKind::Static => {
-                // Skip class initializer
-                if short == "cinit" || short == "$cinit" {
-                    continue;
-                }
-                static_traits.push(format!("{{ name: \"{short}\", kind: \"method\" }}"));
-            }
-            MethodKind::Getter => {
-                // Strip get_ prefix to match AS3 accessor names
-                let acc_name = short.strip_prefix("get_").unwrap_or(short);
-                let entry = instance_accessors
-                    .entry(acc_name.to_string())
-                    .or_insert((false, false));
-                entry.0 = true;
-            }
-            MethodKind::Setter => {
-                let acc_name = short.strip_prefix("set_").unwrap_or(short);
-                let entry = instance_accessors
-                    .entry(acc_name.to_string())
-                    .or_insert((false, false));
-                entry.1 = true;
-            }
-        }
-    }
-
-    // Emit coalesced accessors
-    for (name, (has_get, has_set)) in &instance_accessors {
-        let access = match (has_get, has_set) {
-            (true, true) => "readwrite",
-            (true, false) => "readonly",
-            (false, true) => "writeonly",
-            _ => "readwrite",
-        };
-        instance_traits.push(format!(
-            "{{ name: \"{name}\", kind: \"accessor\", access: \"{access}\" }}"
-        ));
-    }
-
-    let instance_arr = instance_traits.join(", ");
-    let static_arr = static_traits.join(", ");
-    let _ = writeln!(
-        out,
-        "registerClassTraits({class_name}, [{instance_arr}], [{static_arr}]);\n"
-    );
 }
 
 /// Emit a TypeScript class from a `ClassGroup`.
@@ -3710,25 +3608,21 @@ fn emit_class(
         } else {
             // AS3 instance fields with no initializer are semantically zero-initialized,
             // but TypeScript's strictPropertyInitialization doesn't know that. Use `!`
-            // (definite assignment assertion) to suppress TS2564 for Flash-compiled code.
-            let bang = if engine == EngineKind::Flash { "!" } else { "" };
+            // (definite assignment assertion) to suppress TS2564 for AS3-compiled code.
+            let bang = if group.class_def.zero_initialized {
+                "!"
+            } else {
+                ""
+            };
             let _ = writeln!(out, "  {ov}{ident}{bang}: {ts};");
         }
     }
     // Index signatures for AS3 `dynamic` classes and Proxy subclasses — these allow
     // arbitrary property access by string or number key.
-    let needs_index_sig = if engine == EngineKind::Flash {
-        // `dynamic` classes declared as such in AS3 (not sealed).
-        group.class_def.is_dynamic
-        // Also Proxy subclasses that aren't already marked dynamic.
-        || class_meta
-            .ancestor_sets
-            .get(&qualified)
-            .is_some_and(|ancs| ancs.contains("Proxy"))
-    } else {
-        false
-    };
-    if needs_index_sig && group.class_def.name != "Proxy" {
+    // The Flash frontend sets needs_index_signature on ClassDef; the Proxy class itself
+    // is excluded because it declares the virtual methods, not the index interface.
+    let needs_index_sig = group.class_def.needs_index_signature && group.class_def.name != "Proxy";
+    if needs_index_sig {
         let _ = writeln!(out, "  [key: string]: any;");
         let _ = writeln!(out, "  [key: number]: any;");
     }
@@ -3814,7 +3708,7 @@ fn emit_class(
         MethodKind::Instance => 1,
         MethodKind::Getter => 2,
         MethodKind::Setter => 3,
-        MethodKind::Static => 4,
+        MethodKind::Static | MethodKind::StaticInit => 4,
         MethodKind::Free => 5,
         MethodKind::Closure => 6,
     });
@@ -3991,7 +3885,7 @@ fn emit_class(
         let _ = writeln!(out, "registerClass({class_name});\n");
         // Skip registerClassTraits for interfaces (they have no runtime traits).
         if !group.class_def.is_interface {
-            emit_register_class_traits(group, module, class_names, out);
+            crate::emit_flash_traits::emit_class_registration(group, module, class_names, out);
         }
         // Emit registerInterface for implementing classes.
         if !group.class_def.interfaces.is_empty() {
@@ -4102,6 +3996,7 @@ fn emit_class_method(
             | MethodKind::Getter
             | MethodKind::Setter
             | MethodKind::Static
+            | MethodKind::StaticInit
             | MethodKind::Closure
     );
 
@@ -4114,7 +4009,7 @@ fn emit_class_method(
     let ast = linear::lower_function_linear(func, &shape, lowering_config, debug);
 
     // Determine self_param_name for `this` substitution.
-    let is_cinit = raw_name == "cinit" && matches!(func.method_kind, MethodKind::Static);
+    let is_cinit = matches!(func.method_kind, MethodKind::StaticInit);
     let self_param_name = if is_cinit {
         ast.params.first().map(|(n, _)| n.clone())
     } else if skip_self && !ast.params.is_empty() {
@@ -4135,7 +4030,7 @@ fn emit_class_method(
         ),
         EngineKind::Flash => {
             let is_constructor = matches!(func.method_kind, MethodKind::Constructor);
-            let is_static_method = matches!(func.method_kind, MethodKind::Static) && !is_cinit;
+            let is_static_method = matches!(func.method_kind, MethodKind::Static);
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
                 ancestors: ancestors.clone(),
@@ -4202,7 +4097,13 @@ fn emit_class_method(
         prepend_rt_arg_to_free_calls(&mut js_func.body, free_func_names, true);
     }
     // Rewrite stateful runtime calls: `foo(args)` → `this._rt.foo(args)`.
-    if !stateful_names.is_empty() && !is_cinit && !matches!(func.method_kind, MethodKind::Static) {
+    if !stateful_names.is_empty()
+        && !is_cinit
+        && !matches!(
+            func.method_kind,
+            MethodKind::Static | MethodKind::StaticInit
+        )
+    {
         rewrite_stateful_calls(&mut js_func.body, stateful_names, true);
     }
     let preamble: Option<String> = None;
@@ -5364,6 +5265,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -5442,6 +5345,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         // Free function.
@@ -5549,6 +5454,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -5635,6 +5542,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         mb.add_class(ClassDef {
             name: "Swamp".into(),
@@ -5648,6 +5557,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -5693,6 +5604,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         mb.add_struct(StructDef {
@@ -5729,6 +5642,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -5820,6 +5735,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         mb.add_class(ClassDef {
             name: "Widget".into(),
@@ -5833,6 +5750,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -5975,6 +5894,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -6040,6 +5961,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         mb.add_class(ClassDef {
             name: "Child".into(),
@@ -6053,6 +5976,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -6148,6 +6073,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
         mb.add_class(ClassDef {
             name: "Villain".into(),
@@ -6161,6 +6088,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -6282,6 +6211,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -6511,6 +6442,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         // Child class with a method that calls isNaga via scope lookup.
@@ -6540,6 +6473,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -6882,7 +6817,7 @@ mod tests {
         fb.set_class(
             vec!["classes".into()],
             "Settings".into(),
-            MethodKind::Static,
+            MethodKind::StaticInit,
         );
         let _scope_param = fb.param(0);
         let name = fb.const_string("debugBuild");
@@ -6904,6 +6839,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -6958,6 +6895,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
@@ -7019,6 +6958,8 @@ mod tests {
             interfaces: vec![],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         // Implementing class.
@@ -7044,6 +6985,8 @@ mod tests {
             interfaces: vec!["IClickable".into()],
             abstract_members: vec![],
             is_dynamic: false,
+            zero_initialized: false,
+            needs_index_signature: false,
         });
 
         let mut module = mb.build();
