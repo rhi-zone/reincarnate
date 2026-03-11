@@ -140,7 +140,7 @@ fn validate_imports(modules: &[Module], table: &SymbolTable) -> Vec<CoreError> {
 mod tests {
     use super::*;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
-    use crate::ir::{FunctionSig, Global, Import, StructDef, Type, Visibility};
+    use crate::ir::{FieldDef, FunctionSig, Global, Import, StructDef, Type, Visibility};
 
     #[test]
     fn link_valid_import() {
@@ -237,8 +237,16 @@ mod tests {
             name: "Point".into(),
             namespace: Vec::new(),
             fields: vec![
-                ("x".into(), Type::Float(64), None),
-                ("y".into(), Type::Float(64), None),
+                FieldDef {
+                    name: "x".into(),
+                    ty: Type::Float(64),
+                    default: None,
+                },
+                FieldDef {
+                    name: "y".into(),
+                    ty: Type::Float(64),
+                    default: None,
+                },
             ],
             visibility: Visibility::Public,
         });

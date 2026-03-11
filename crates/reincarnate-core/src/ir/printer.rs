@@ -558,9 +558,9 @@ impl fmt::Display for Module {
         for s in &self.structs {
             writeln!(f)?;
             writeln!(f, "struct {} {{", s.name)?;
-            for (field_name, field_ty, _) in &s.fields {
-                write!(f, "    {field_name}: ")?;
-                fmt_type(field_ty, f)?;
+            for field in &s.fields {
+                write!(f, "    {}: ", field.name)?;
+                fmt_type(&field.ty, f)?;
                 writeln!(f, ",")?;
             }
             writeln!(f, "}}")?;
@@ -633,7 +633,7 @@ impl fmt::Display for Module {
 mod tests {
     use super::super::builder::{FunctionBuilder, ModuleBuilder};
     use super::super::func::Visibility;
-    use super::super::module::{EnumDef, EnumVariant, Global, Import, StructDef};
+    use super::super::module::{EnumDef, EnumVariant, FieldDef, Global, Import, StructDef};
     use super::super::ty::{FunctionSig, Type};
 
     #[test]
@@ -723,8 +723,16 @@ fn choose(v0: bool, v1: i64, v2: i64) -> i64 {
             name: "Point".into(),
             namespace: Vec::new(),
             fields: vec![
-                ("x".into(), Type::Float(64), None),
-                ("y".into(), Type::Float(64), None),
+                FieldDef {
+                    name: "x".into(),
+                    ty: Type::Float(64),
+                    default: None,
+                },
+                FieldDef {
+                    name: "y".into(),
+                    ty: Type::Float(64),
+                    default: None,
+                },
             ],
             visibility: Visibility::Public,
         });

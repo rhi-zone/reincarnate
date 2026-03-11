@@ -3,8 +3,9 @@
 use std::collections::HashSet;
 
 use reincarnate_core::ir::{
-    ClassDef, Constant, EntryPoint, ExternalImport, Function, FunctionSig, Global, MethodKind,
-    Module, ModuleBuilder, Op, StaticField, StructDef, SystemCallTypeRule, Type, Visibility,
+    AbstractMember, ClassDef, Constant, EntryPoint, ExternalImport, FieldDef, Function,
+    FunctionSig, Global, MethodKind, Module, ModuleBuilder, Op, StaticField, StructDef,
+    SystemCallTypeRule, Type, Visibility,
 };
 use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, MethodFlags, Trait, TraitKind};
 
@@ -24,7 +25,7 @@ pub struct ClassInfo {
     pub is_interface: bool,
     pub interfaces: Vec<String>,
     /// Abstract member declarations for interface classes: (name, return_ty, params, kind).
-    pub abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)>,
+    pub abstract_members: Vec<AbstractMember>,
     /// AS3 `dynamic` class — not sealed, allows arbitrary property access.
     pub is_dynamic: bool,
 }
@@ -92,7 +93,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     }
 
     // Instance methods from traits
-    let mut abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)> = Vec::new();
+    let mut abstract_members: Vec<AbstractMember> = Vec::new();
     for trait_ in &instance.traits {
         if let Some(method_idx) = trait_method_index(trait_) {
             let bare_name = resolve_trait_bare_name(pool, trait_, class_private_ns.as_deref());
@@ -125,7 +126,12 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
                         .iter()
                         .map(|p| resolve_type(pool, &p.kind))
                         .collect();
-                    abstract_members.push((bare_name, return_ty, params, method_kind));
+                    abstract_members.push(AbstractMember {
+                        name: bare_name,
+                        return_ty,
+                        params,
+                        kind: method_kind,
+                    });
                 }
             }
         }
@@ -205,7 +211,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
     })
 }
 
-type StructFieldVec = Vec<(String, Type, Option<Constant>)>;
+type StructFieldVec = Vec<FieldDef>;
 
 /// Extract instance traits, splitting Slot (mutable fields) from Const (static readonly).
 ///
@@ -228,7 +234,7 @@ fn extract_instance_fields(
                 let default = value
                     .as_ref()
                     .and_then(|dv| convert_default_value(pool, dv));
-                slots.push((name, ty, default));
+                slots.push(FieldDef { name, ty, default });
             }
             TraitKind::Const {
                 type_name, value, ..
@@ -825,7 +831,7 @@ fn populate_external_imports(module: &mut Module) {
     let field_types: Vec<Type> = module
         .structs
         .iter()
-        .flat_map(|s| s.fields.iter().map(|(_, ty, _)| ty.clone()))
+        .flat_map(|s| s.fields.iter().map(|f| f.ty.clone()))
         .collect();
     for ty in &field_types {
         collect_type_names(ty, module);

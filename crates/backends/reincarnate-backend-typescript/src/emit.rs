@@ -681,8 +681,8 @@ fn build_method_name_sets(
                 }
             }
             // Abstract members from interface classes (no body, emitted as abstract decls).
-            for (name, _ret, _params, _kind) in &current.abstract_members {
-                names.insert(name.clone());
+            for m in &current.abstract_members {
+                names.insert(m.name.clone());
             }
             match current.super_class {
                 Some(ref sc) => {
@@ -1010,8 +1010,8 @@ fn build_instance_field_sets(
         let mut external_parent: Option<&str> = None;
         loop {
             let struct_def = &module.structs[current.struct_index];
-            for (name, _ty, _) in &struct_def.fields {
-                fields.insert(name.clone());
+            for field in &struct_def.fields {
+                fields.insert(field.name.clone());
             }
             match current.super_class {
                 Some(ref sc) => {
@@ -2428,9 +2428,9 @@ fn collect_class_references(
     }
 
     // Struct fields (class instance fields) — type-only.
-    for (_name, ty, _) in &group.struct_def.fields {
+    for field in &group.struct_def.fields {
         collect_type_ref(
-            ty,
+            &field.ty,
             self_name,
             registry,
             external_imports,
@@ -2454,16 +2454,16 @@ fn collect_class_references(
     // Abstract member signatures — type-only.
     // Interfaces may declare abstract getters/setters/methods with types like
     // `InteractiveObject` that have no method body to scan.
-    for (_name, ret_ty, params, _kind) in &group.class_def.abstract_members {
+    for m in &group.class_def.abstract_members {
         collect_type_ref(
-            ret_ty,
+            &m.return_ty,
             self_name,
             registry,
             external_imports,
             &mut refs.type_refs,
             &mut refs.ext_type_refs,
         );
-        for param_ty in params {
+        for param_ty in &m.params {
             collect_type_ref(
                 param_ty,
                 self_name,
@@ -3562,8 +3562,13 @@ fn emit_structs(module: &Module, out: &mut String) {
 fn emit_struct(def: &StructDef, out: &mut String) {
     let vis = visibility_prefix(def.visibility);
     let _ = writeln!(out, "{vis}interface {} {{", sanitize_ident(&def.name));
-    for (name, ty, _) in &def.fields {
-        let _ = writeln!(out, "  {}: {};", sanitize_ident(name), ts_type(ty));
+    for field in &def.fields {
+        let _ = writeln!(
+            out,
+            "  {}: {};",
+            sanitize_ident(&field.name),
+            ts_type(&field.ty)
+        );
     }
     let _ = writeln!(out, "}}\n");
 }
@@ -4082,21 +4087,22 @@ fn emit_class(
     }
 
     // Instance fields from struct def.
-    for (name, ty, default) in &group.struct_def.fields {
-        let ident = sanitize_ident(name);
+    for field in &group.struct_def.fields {
+        let ident = sanitize_ident(&field.name);
         let ts = if engine == EngineKind::Flash {
-            flash_ts_type_with_names(ty, class_names)
+            flash_ts_type_with_names(&field.ty, class_names)
         } else {
-            ts_type_with_names(ty, class_names)
+            ts_type_with_names(&field.ty, class_names)
         };
         // A field that shadows a parent-class field/method needs `override`.
-        let ov = if parent_method_names_early.contains(name.as_str()) {
+        let ov = if parent_method_names_early.contains(field.name.as_str()) {
             "override "
         } else {
             ""
         };
-        if let Some(val) = default {
-            if let Some(resolved) = resolve_sprite_constant(name, val, &module.sprite_names) {
+        if let Some(val) = &field.default {
+            if let Some(resolved) = resolve_sprite_constant(&field.name, val, &module.sprite_names)
+            {
                 let _ = writeln!(out, "  {ov}{ident}: {ts} = {resolved};");
             } else {
                 let _ = writeln!(
@@ -4128,19 +4134,19 @@ fn emit_class(
     }
     // Abstract member declarations for interface classes (getters, setters, methods
     // that have no body in the ABC and are not emitted as real methods).
-    for (name, ret_ty, params, kind) in &group.class_def.abstract_members {
-        let ident = sanitize_ident(name);
+    for m in &group.class_def.abstract_members {
+        let ident = sanitize_ident(&m.name);
         let ret_ts = if engine == EngineKind::Flash {
-            flash_ts_type(ret_ty)
+            flash_ts_type(&m.return_ty)
         } else {
-            ts_type(ret_ty)
+            ts_type(&m.return_ty)
         };
-        match kind {
+        match m.kind {
             MethodKind::Getter => {
                 let _ = writeln!(out, "  abstract get {ident}(): {ret_ts};");
             }
             MethodKind::Setter => {
-                let param_ts = if let Some(p) = params.first() {
+                let param_ts = if let Some(p) = m.params.first() {
                     if engine == EngineKind::Flash {
                         flash_ts_type(p)
                     } else {
@@ -4153,7 +4159,8 @@ fn emit_class(
                 let _ = writeln!(out, "  abstract set {ident}(v: {param_ts});");
             }
             MethodKind::Instance => {
-                let param_strs: Vec<String> = params
+                let param_strs: Vec<String> = m
+                    .params
                     .iter()
                     .enumerate()
                     .map(|(i, p)| {
@@ -5113,7 +5120,7 @@ mod tests {
     use super::*;
     use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
     use reincarnate_core::ir::{
-        ClassDef, CmpKind, EnumDef, EnumVariant, FunctionSig, Global, Import, MethodKind,
+        ClassDef, CmpKind, EnumDef, EnumVariant, FieldDef, FunctionSig, Global, Import, MethodKind,
         StaticField, StructDef, Visibility,
     };
 
@@ -5213,8 +5220,16 @@ mod tests {
                 name: "Point".into(),
                 namespace: Vec::new(),
                 fields: vec![
-                    ("x".into(), Type::Float(64), None),
-                    ("y".into(), Type::Float(64), None),
+                    FieldDef {
+                        name: "x".into(),
+                        ty: Type::Float(64),
+                        default: None,
+                    },
+                    FieldDef {
+                        name: "y".into(),
+                        ty: Type::Float(64),
+                        default: None,
+                    },
                 ],
                 visibility: Visibility::Public,
             });
@@ -5659,7 +5674,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Fighter".into(),
             namespace: vec!["classes".into(), "Scenes".into()],
-            fields: vec![("hp".into(), Type::Int(32), None)],
+            fields: vec![FieldDef {
+                name: "hp".into(),
+                ty: Type::Int(32),
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
 
@@ -5905,7 +5924,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Swamp".into(),
             namespace: vec!["classes".into(), "Scenes".into()],
-            fields: vec![("hp".into(), Type::Int(32), None)],
+            fields: vec![FieldDef {
+                name: "hp".into(),
+                ty: Type::Int(32),
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
 
@@ -5987,7 +6010,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Swamp".into(),
             namespace: vec!["classes".into(), "Scenes".into()],
-            fields: vec![("boss".into(), Type::Struct("classes::Monster".into()), None)],
+            fields: vec![FieldDef {
+                name: "boss".into(),
+                ty: Type::Struct("classes::Monster".into()),
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
 
@@ -6353,7 +6380,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Hero".into(),
             namespace: vec!["classes".into()],
-            fields: vec![("hp".into(), Type::Int(32), None)],
+            fields: vec![FieldDef {
+                name: "hp".into(),
+                ty: Type::Int(32),
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
 
@@ -6416,7 +6447,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Base".into(),
             namespace: vec!["classes".into()],
-            fields: vec![("player".into(), Type::Dynamic, None)],
+            fields: vec![FieldDef {
+                name: "player".into(),
+                ty: Type::Dynamic,
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
         mb.add_struct(StructDef {
@@ -6536,7 +6571,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Villain".into(),
             namespace: vec!["classes".into()],
-            fields: vec![("power".into(), Type::Int(32), None)],
+            fields: vec![FieldDef {
+                name: "power".into(),
+                ty: Type::Int(32),
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
 
@@ -6676,7 +6715,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Base".into(),
             namespace: vec!["classes".into()],
-            fields: vec![("temp".into(), Type::Dynamic, None)],
+            fields: vec![FieldDef {
+                name: "temp".into(),
+                ty: Type::Dynamic,
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
 

@@ -4,35 +4,25 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
-## Full Architecture Audit (CRITICAL)
+## Full Architecture Audit — COMPLETED 2026-03-12
 
-The pipeline has grown organically. Before adding more engines or features, audit the entire
-architecture end-to-end and fix structural problems while the codebase is still tractable.
+Full report: [`docs/architecture-audit-2026-03-12.md`](docs/architecture-audit-2026-03-12.md)
 
-**Scope:** Everything. Not just IR, not just classes — the whole system.
+**Verdict:** Architecture is fundamentally sound. Clean crate boundaries, proper stage
+isolation, no circular dependencies. Ready for a second backend without major restructuring.
 
-- Pipeline design: are the stages right? Is the ordering correct? What information gets lost
-  between stages that shouldn't? What work happens in the wrong stage?
-- Crate boundaries: do the current crate splits match the actual dependency graph? Are
-  frontends truly independent of backends? Is core truly engine-agnostic?
-- IR completeness: does the IR carry everything backends need, or do backends reconstruct
-  information that frontends had? (e.g. cinit initializers, switch discriminants, loop
-  structure)
-- Type system: is the IR type system expressive enough? Where does it force backends into
-  `any`/`Dynamic` because it can't represent the real type?
-- Pass ordering and interactions: do passes compose cleanly, or do they depend on running in
-  a specific order with implicit contracts? (e.g. CallSiteTypeFlow before ConstraintSolve,
-  DCE before BoolArithCoerce)
-- Abstractions: do `ClassDef`, `StructDef`, `Function`, `Module` serve the project, or are
-  they artifacts of early decisions that no longer fit?
-- Law compliance: systematic check of all five Fundamental Laws across every crate. Not
-  spot-checks — exhaustive.
-
-**Forcing function: second backend.** Adding a non-TypeScript backend (Rust, GDScript, C#,
-Lua — TBD) will immediately expose every place where the pipeline assumes TypeScript. The
-audit should happen first so the second backend doesn't inherit the current debt. But the
-second backend is the real test — if adding it requires touching core or other backends,
-those are architecture bugs.
+**Key findings:**
+- ✅ Pipeline stages: correct, well-ordered. Pass ordering has implicit contracts (passes 2-4)
+  that should be documented in code.
+- ✅ Crate boundaries: clean. No cross-frontend/backend deps. All public API usage only.
+- ⚠️ IR completeness: aggregate constants missing (tracked below). Data files bypass IR.
+- ⚠️ Type system: no generics, no flow-sensitive narrowing, Dynamic conflation. Sufficient
+  for current engines but will need expansion.
+- ⚠️ Law compliance: Law 1 (aggregate constant bypass), Law 2 (3 remaining violations —
+  Harlowe.H in core, Flash Dictionary in core, Flash.Iterator gated). Laws 3-5 clean.
+- ⚠️ Module struct: 8 engine-specific fields (kitchen sink). Fix via aggregate constants.
+- ⚠️ Abstraction gaps: `abstract_members` tuple, `StructDef.fields` tuple (tracked in
+  IR Class Representation section below).
 
 ## IR-Based Modding Framework (Investigation)
 
@@ -125,8 +115,11 @@ All of the following violate it and need to move to the respective frontend crat
   Gated behind `LoweringConfig::foreach_rewrite` (Flash backend sets `true`; other engines skip).
   Code stays in shared `ast_passes.rs` but is inert unless opted in — Law 2 satisfied.
 
-- [x] **`ast_passes.rs` line ~170: Harlowe-specific dispatch in `lower_output_nodes`.** (2026-03-11)
-  No longer present — `lower_output_nodes` and `Harlowe.H` dispatch removed from ast_passes.rs.
+- [ ] **`control_flow.rs` line 164: Harlowe-specific `Harlowe.H` → `h.method()` rewrite in core.**
+  Previously marked as removed (2026-03-11) but still present in `ast_passes/control_flow.rs:164`.
+  `SystemCall("Harlowe.H", method, args)` is rewritten to `MethodCall(h, method, args)` inside the
+  shared `rewrite_output_nodes` pass. Should be either gated behind a `LoweringConfig` flag
+  (like `foreach_rewrite`) or moved to a Twine frontend extra_pass.
 
 - [x] **`CastKind::AsType` in core IR is AS3-specific.** (2026-03-11)
   Already renamed to `CastKind::NullableCoerce` with language-agnostic doc: "Nullable cast —

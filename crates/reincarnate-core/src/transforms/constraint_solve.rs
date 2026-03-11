@@ -205,7 +205,7 @@ impl ConstraintModuleContext {
             let fields: HashMap<String, Type> = s
                 .fields
                 .iter()
-                .map(|(n, t, _)| (n.clone(), t.clone()))
+                .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect();
             struct_fields.insert(s.name.clone(), fields);
         }
@@ -745,7 +745,7 @@ mod tests {
     use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
     use crate::ir::ty::FunctionSig;
-    use crate::ir::{ClassDef, FuncId, StructDef, Visibility};
+    use crate::ir::{ClassDef, FieldDef, FuncId, StructDef, Visibility};
 
     // ---- Identity & idempotency tests ----
 
@@ -1330,8 +1330,16 @@ mod tests {
             name: "Point".into(),
             namespace: Vec::new(),
             fields: vec![
-                ("x".into(), Type::Int(64), None),
-                ("y".into(), Type::Int(64), None),
+                FieldDef {
+                    name: "x".into(),
+                    ty: Type::Int(64),
+                    default: None,
+                },
+                FieldDef {
+                    name: "y".into(),
+                    ty: Type::Int(64),
+                    default: None,
+                },
             ],
             visibility: Visibility::Public,
         });

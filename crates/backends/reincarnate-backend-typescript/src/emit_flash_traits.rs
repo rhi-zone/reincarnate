@@ -45,10 +45,11 @@ pub(crate) fn emit_class_registration(
 
     // Collect instance traits: fields from struct_def + instance methods/getters/setters
     let mut instance_traits: Vec<String> = Vec::new();
-    for (name, ty, _) in &group.struct_def.fields {
-        let type_name = as3_type_name(ty);
+    for field in &group.struct_def.fields {
+        let type_name = as3_type_name(&field.ty);
         instance_traits.push(format!(
-            "  {{ name: \"{name}\", kind: \"variable\", type: \"{type_name}\" }}"
+            "  {{ name: \"{}\", kind: \"variable\", type: \"{type_name}\" }}",
+            field.name
         ));
     }
 

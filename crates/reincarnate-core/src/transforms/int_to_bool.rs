@@ -429,7 +429,7 @@ impl Transform for IntToBoolPromotion {
             let fields: HashMap<String, Type> = s
                 .fields
                 .iter()
-                .map(|(n, t, _)| (n.clone(), t.clone()))
+                .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect();
             struct_fields.insert(s.name.clone(), fields);
         }
@@ -979,7 +979,7 @@ mod tests {
 
     #[test]
     fn promotes_int_at_bool_struct_field() {
-        use crate::ir::module::StructDef;
+        use crate::ir::module::{FieldDef, StructDef};
         // Setting a Bool-typed field with Int(1) should promote to Bool(true).
         let sig = FunctionSig {
             params: vec![Type::Struct("Obj".into())],
@@ -997,7 +997,11 @@ mod tests {
         mb.add_struct(StructDef {
             name: "Obj".into(),
             namespace: vec![],
-            fields: vec![("persistent".into(), Type::Bool, None)],
+            fields: vec![FieldDef {
+                name: "persistent".into(),
+                ty: Type::Bool,
+                default: None,
+            }],
             visibility: Visibility::Public,
         });
         let module = mb.build();

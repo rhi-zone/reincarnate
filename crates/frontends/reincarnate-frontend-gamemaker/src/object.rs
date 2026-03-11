@@ -4,7 +4,7 @@ use datawin::chunks::objt::{event_type, ObjectEntry};
 use datawin::DataWin;
 use reincarnate_core::ir::builder::ModuleBuilder;
 use reincarnate_core::ir::func::{MethodKind, Visibility};
-use reincarnate_core::ir::module::{ClassDef, StructDef};
+use reincarnate_core::ir::module::{ClassDef, FieldDef, StructDef};
 use reincarnate_core::ir::{Constant, Type};
 
 use crate::translate::{self, TranslateCtx};
@@ -36,24 +36,32 @@ pub fn translate_objects(
         // Build instance field defaults from OBJT properties.
         let mut fields = Vec::new();
         if obj.sprite_index >= 0 {
-            fields.push((
-                "sprite_index".into(),
-                Type::Int(32),
-                Some(Constant::Int(obj.sprite_index as i64)),
-            ));
+            fields.push(FieldDef {
+                name: "sprite_index".into(),
+                ty: Type::Int(32),
+                default: Some(Constant::Int(obj.sprite_index as i64)),
+            });
         }
         if obj.depth != 0 {
-            fields.push((
-                "depth".into(),
-                Type::Int(32),
-                Some(Constant::Int(obj.depth as i64)),
-            ));
+            fields.push(FieldDef {
+                name: "depth".into(),
+                ty: Type::Int(32),
+                default: Some(Constant::Int(obj.depth as i64)),
+            });
         }
         if obj.persistent {
-            fields.push(("persistent".into(), Type::Bool, Some(Constant::Bool(true))));
+            fields.push(FieldDef {
+                name: "persistent".into(),
+                ty: Type::Bool,
+                default: Some(Constant::Bool(true)),
+            });
         }
         if !obj.visible {
-            fields.push(("visible".into(), Type::Bool, Some(Constant::Bool(false))));
+            fields.push(FieldDef {
+                name: "visible".into(),
+                ty: Type::Bool,
+                default: Some(Constant::Bool(false)),
+            });
         }
 
         let ns = vec!["objects".into()];

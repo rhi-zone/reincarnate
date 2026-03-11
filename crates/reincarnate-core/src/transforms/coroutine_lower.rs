@@ -4,7 +4,7 @@ use crate::entity::{EntityRef, PrimaryMap};
 use crate::error::CoreError;
 use crate::ir::block::{Block, BlockParam};
 use crate::ir::inst::Inst;
-use crate::ir::module::StructDef;
+use crate::ir::module::{FieldDef, StructDef};
 use crate::ir::ty::FunctionSig;
 use crate::ir::{
     BlockId, Constant, FuncId, Function, InstId, Module, Op, Type, ValueId, Visibility,
@@ -204,21 +204,37 @@ fn generate_state_struct(
     func: &Function,
     live_values: &[ValueId],
     struct_name: &str,
-) -> (StructDef, Vec<(String, Type, Option<crate::ir::Constant>)>) {
+) -> (StructDef, Vec<FieldDef>) {
     let mut fields = Vec::new();
 
     // Internal state fields.
-    fields.push(("__state".to_string(), Type::UInt(32), None));
-    fields.push(("__done".to_string(), Type::Bool, None));
+    fields.push(FieldDef {
+        name: "__state".to_string(),
+        ty: Type::UInt(32),
+        default: None,
+    });
+    fields.push(FieldDef {
+        name: "__done".to_string(),
+        ty: Type::Bool,
+        default: None,
+    });
 
     // Original function parameters.
     for (i, param) in func.blocks[func.entry].params.iter().enumerate() {
-        fields.push((format!("__p{i}"), param.ty.clone(), None));
+        fields.push(FieldDef {
+            name: format!("__p{i}"),
+            ty: param.ty.clone(),
+            default: None,
+        });
     }
 
     // Cross-yield live values.
     for (i, &val) in live_values.iter().enumerate() {
-        fields.push((format!("__v{i}"), func.value_types[val].clone(), None));
+        fields.push(FieldDef {
+            name: format!("__v{i}"),
+            ty: func.value_types[val].clone(),
+            default: None,
+        });
     }
 
     let struct_def = StructDef {
@@ -1015,7 +1031,7 @@ mod tests {
         let field_names: Vec<&str> = module.structs[0]
             .fields
             .iter()
-            .map(|(name, _, _)| name.as_str())
+            .map(|f| f.name.as_str())
             .collect();
         assert!(field_names.contains(&"__state"));
         assert!(field_names.contains(&"__done"));
@@ -1120,11 +1136,7 @@ mod tests {
 
         // State struct should have saved values (__v0, etc.) or at least __p0.
         let struct_def = &module.structs[0];
-        let field_names: Vec<&str> = struct_def
-            .fields
-            .iter()
-            .map(|(name, _, _)| name.as_str())
-            .collect();
+        let field_names: Vec<&str> = struct_def.fields.iter().map(|f| f.name.as_str()).collect();
         assert!(
             field_names.contains(&"__p0"),
             "should save function param: {:?}",
@@ -1445,11 +1457,7 @@ mod tests {
 
         // The state struct should have __v0 for the cross-yield value.
         let struct_def = &module.structs[0];
-        let field_names: Vec<&str> = struct_def
-            .fields
-            .iter()
-            .map(|(name, _, _)| name.as_str())
-            .collect();
+        let field_names: Vec<&str> = struct_def.fields.iter().map(|f| f.name.as_str()).collect();
         assert!(
             field_names.iter().any(|n| n.starts_with("__v")),
             "struct should have saved value fields: {:?}",

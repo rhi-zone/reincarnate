@@ -24,13 +24,21 @@ pub enum EntryPoint {
     CallFunction(FuncId),
 }
 
+/// An instance field in a struct or class.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldDef {
+    pub name: String,
+    pub ty: Type,
+    pub default: Option<Constant>,
+}
+
 /// A struct definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructDef {
     pub name: String,
     #[serde(default)]
     pub namespace: Vec<String>,
-    pub fields: Vec<(String, Type, Option<Constant>)>,
+    pub fields: Vec<FieldDef>,
     pub visibility: Visibility,
 }
 
@@ -91,6 +99,15 @@ pub struct StaticField {
     pub is_const: bool,
 }
 
+/// An abstract member declaration on an interface class.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AbstractMember {
+    pub name: String,
+    pub return_ty: Type,
+    pub params: Vec<Type>,
+    pub kind: MethodKind,
+}
+
 /// Groups a struct (fields) with its methods into a class.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClassDef {
@@ -115,12 +132,9 @@ pub struct ClassDef {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub interfaces: Vec<String>,
     /// Abstract member declarations for interface classes.
-    /// Each entry is `(name, return_type, params, kind)` where `params` is
-    /// the setter parameter type(s) or method parameter types, and `kind`
-    /// is `MethodKind::Getter`, `Setter`, or `Instance`.
     /// Emitted as `abstract get/set name(): Type;` in TypeScript.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)>,
+    pub abstract_members: Vec<AbstractMember>,
     /// AS3 `dynamic` class — allows arbitrary property access via `[]`.
     /// When true the TypeScript backend emits index signatures.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
