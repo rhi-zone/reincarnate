@@ -251,32 +251,30 @@ New findings from this audit:
 
 ### Structural — Dead Code & Config Bugs (CRITICAL/HIGH)
 
-- [ ] **System traits in `reincarnate-core::system/` are 100% dead code (~350 lines).**
+- [x] **System traits in `reincarnate-core::system/` are 100% dead code (~350 lines).** (2026-03-11)
   12 traits (`Audio`, `Graphics`, `Input`, `Timing`, `Persistence`, `Dialog`, `Files`,
   `Images`, `Layout`, `Network`, `SaveUi`, `SettingsUi`) — zero implementations, zero
   consumers. These were aspirational API surface that was superseded by the platform
   interface design. Delete or move to `docs/` as design reference.
 
-- [ ] **`VALID_PASS_NAMES` missing `call-site-arity-widen`.**
+- [x] **`VALID_PASS_NAMES` missing `call-site-arity-widen`.** (2026-03-11)
   `transform.rs:48-60` — pass exists in pipeline and `PassConfig` but absent from
   `--dump-ir-after` validation list. Users can't dump IR after this pass.
 
-- [ ] **`--skip-pass int-to-bool-promotion` silently does nothing.**
+- [x] **`--skip-pass int-to-bool-promotion` silently does nothing.** (2026-03-11)
   `config.rs:144` — docstring lists it as valid, but no `PassConfig` field exists and
   the match arm falls through to `_ => {}`. The pass comes via `extra_passes` from the
   GML frontend, so the skip mechanism can't reach it. Either add a field or remove from docs.
 
-- [ ] **Duplicated `--skip-pass` match logic in `config.rs`.**
+- [x] **Duplicated `--skip-pass` match logic in `config.rs`.** (2026-03-11)
   `PassConfig::from_skip_list` (line 144) and `Preset::resolve` (line 281) have identical
   copy-pasted match blocks. Adding a new pass requires updating both. Extract shared method.
 
 ### Panics on Malformed Input (HIGH)
 
-- [ ] **53 `args.pop().unwrap()` in system call rewriters** — `rewrites/gamemaker.rs` (37),
-  `rewrites/twine/sugarcube.rs` (12), `rewrites/twine/engine.rs` (4). All assume exact
-  arity from the IR. A translator bug producing wrong arg count causes a panic with no
-  context. Extract a `take_arg(args, "call_name")` helper that panics with a descriptive
-  message (system call name + expected vs actual count).
+- [x] **53 `args.pop().unwrap()` in system call rewriters** (2026-03-11)
+  Extracted `take_arg(args, "call_name")` helper in `rewrites/mod.rs`. All 53 call sites
+  in gamemaker.rs, sugarcube.rs, and engine.rs now use it with descriptive call names.
 
 - [ ] **Flash translator stack underflow panics** — `translate.rs:576,583`:
   `unwrap_or_else(|| panic!("stack underflow for RuntimeName"))`. Malformed AVM2 bytecode
@@ -305,11 +303,9 @@ Also: `ast_passes.rs` (6163 lines, 20+ independent passes in one file), `linear.
 - `CoreError` variants are inconsistent: `Parse` has structured fields; `Type`/`Codegen`/
   `Project` are just `String`. CLI wraps in `anyhow!("{e}")`, discarding typed info.
 
-### Code Quality — `sanitize_ident` Violates CLAUDE.md Rule (MEDIUM)
+### ~~Code Quality — `sanitize_ident` Violates CLAUDE.md Rule~~ (FIXED 2026-03-11)
 
-`emit.rs:1737-1756` — `sanitize_ident` uses `is_ascii_alphanumeric` instead of
-`unicode_ident::is_xid_start`/`is_xid_continue` as prescribed by CLAUDE.md. Rejects
-valid Unicode identifiers (e.g. Japanese class names).
+Now uses `unicode_ident::is_xid_start`/`is_xid_continue` per CLAUDE.md rule.
 
 ### Code Quality — Silent `_ => {}` Catch-Alls (MEDIUM)
 
@@ -319,13 +315,14 @@ emitted TypeScript — a silent compile error. Also: `call_site_flow.rs:77`,
 `mem2reg.rs:118,379,543`. New IR op variants will be silently ignored.
 Consider `#[non_exhaustive]` on IR enums or explicit exhaustive matches.
 
-### Visibility — Overly Broad `pub` (LOW)
+### Visibility — Overly Broad `pub` (LOW, partially fixed 2026-03-11)
 
-- `reincarnate-core/src/lib.rs` exports all 7 modules as `pub mod`. Internal helpers
+- [x] Flash frontend `lib.rs` — internal modules changed to `pub(crate)` (2026-03-11)
+- [x] GML frontend `naming` module — changed to `pub(crate)` (2026-03-11)
+- [x] Twine frontend internal modules — changed to `pub(crate)` (2026-03-11)
+- [ ] `reincarnate-core/src/lib.rs` exports all 7 modules as `pub mod`. Internal helpers
   like `ir::structurize::compute_dominators_lt`, `ir::ast_passes::*` (20+ functions)
   are public despite being used only within the crate.
-- Flash frontend `lib.rs` exposes `pub mod abc`, `pub mod scope`, `pub mod multiname` —
-  internal implementation types leaked to downstream crates.
 
 ### Duplicated Platform Directories (LOW, already tracked in MEMORY.md)
 
