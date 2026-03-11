@@ -173,20 +173,19 @@ All of the following violate it and need to move to the respective frontend crat
   **Impact:** This is the single change that would most improve Flash output readability.
   `StyleManager.registerInstance` goes from 40 impenetrable lines to ~15 natural ones.
 
-- [ ] **`emit.rs` Flash contamination — 22+ `EngineKind::Flash` branches in 7,266 lines.**
-  Found in 2026-03-11 audit. Specific items to move to `rewrites/flash.rs` or the Flash frontend:
-  - `emit_register_class_traits` + `as3_type_name` (lines 3479–3582) — pure AVM2 reflection metadata
-  - `QN_KEY` static field injection (lines 3635–3649) → Flash rewrite class hook
-  - `registerClass` / `registerInterface` / `registerClassTraits` emission (lines 3989–4013) → Flash rewrite class hook
-  - `forwarding_setters` for getter-without-setter TS2540 fix (lines 3886–3941) → Flash rewrite pass
-  - `flash_ctor_extra_param` string injection (lines 4232–4241) → Flash rewrite inserts synthetic `JsFunction.params` entry
-  - `bang = if Flash { "!" }` definite-assignment assertion (line 3714) → IR field `ClassDef.zero_initialized: bool` set by Flash frontend
-  - Index signatures (`is_dynamic || Proxy ancestry`, lines 3720–3734) → IR field `ClassDef.needs_index_signature: bool`
-  - `warn_unmapped_reference` Flash namespace filtering (lines 1982–1990) → `rewrites::flash::is_known_flash_ref()`
-  - `cinit` name-string matching without engine guard (lines 4117, 4186) → add `MethodKind::StaticInit` variant; Flash frontend marks cinit methods with it
-  **Root cause:** no `FlashClassEmitter` hook point exists; all class-level Flash concerns are
-  inline `if engine == Flash` checks because the architecture provides no injection site for
-  engine-specific class-level output.
+- [ ] **`emit.rs` Flash contamination — remaining `EngineKind::Flash` branches.**
+  Found in 2026-03-11 audit. **7/9 items addressed (2026-03-11)**:
+  - ✅ `emit_register_class_traits` + `as3_type_name` → `emit_flash_traits.rs`
+  - ✅ `QN_KEY` static field injection → `emit_flash_traits::emit_flash_class_header()`
+  - ✅ `registerClass`/`registerClassTraits` → `emit_flash_traits::emit_class_registration()`
+  - ✅ `flash_ctor_extra_param` → `emit_flash_traits::flash_ctor_shims_param()`
+  - ✅ `bang = if Flash` → `ClassDef.zero_initialized` IR field
+  - ✅ Index signatures → `ClassDef.needs_index_signature` IR field
+  - ✅ `warn_unmapped_reference` → `rewrites::flash::is_known_flash_namespace()`
+  - ✅ `cinit` name match → `MethodKind::StaticInit` IR variant
+  - [ ] `forwarding_setters` detection (50-line block) → needs `FlashClassEmitter` hook point
+  **Root cause:** no `FlashClassEmitter` hook point exists; all remaining class-level Flash
+  concerns are inline `if engine == Flash` checks with no injection site.
 
 - [ ] **`coalesced_decl_types` widening to `Dynamic` is a suppression, not a fix (Law 4).**
   When two branch arms produce different types for the same out-of-SSA variable, widening to
