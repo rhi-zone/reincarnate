@@ -206,6 +206,24 @@ Audit of generated `.ts` files for human maintainability (see `~/reincarnate/fla
 Game-logic files (CoC.ts, ConsumableLib.ts) are excellent — <1% artifact names, readable methods.
 Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, activation record objects.
 
+- [ ] **`GetIndex`/`SetIndex` with `Constant::String` key → emit dot notation.**
+  When `Op::GetIndex(obj, Constant::String(s))` and `s` is a valid JS identifier
+  (`unicode_ident::is_xid_start`/`is_xid_continue` + `$`, first char must be xid_start or `$` or `_`),
+  emit `obj.s` instead of `obj["s"]`. 127 instances in Flash CC output are incorrectly using
+  bracket notation for static property names (ProLoaderInfo, ProLoader, context objects, etc.).
+  Invalid identifiers (e.g. `"with spaces"`, `"123abc"`) must stay as `obj["key"]`.
+
+- [ ] **IR fields to replace `EngineKind::Flash` branches in class emission (medium).**
+  Three IR additions that eliminate inline engine checks in `emit.rs`:
+  - `ClassDef.zero_initialized: bool` — Flash frontend sets `true` for all AS3 instance fields
+    (AS3 zero-initializes before constructor runs); emitter emits `!` iff true. Replaces
+    `bang = if engine == Flash { "!" } else { "" }` (emit.rs line 3714).
+  - `ClassDef.needs_index_signature: bool` — Flash frontend sets `true` for `dynamic` classes
+    and Proxy subclasses; emitter emits `[key: string]: any; [key: number]: any;` iff true.
+    Replaces the `is_dynamic || ancestor == "Proxy"` check (emit.rs lines 3720–3734).
+  - `MethodKind::StaticInit` — new variant; Flash frontend marks `cinit` methods with it.
+    Replaces the `method_name == "cinit"` string match in the backend (emit.rs lines 4117, 4186).
+
 - [ ] **Recover switch discriminant from chained ternary chains.**
   Emitter produces `switch ((A !== x) ? ((B !== x) ? 0 : 1) : 2)` when a switch table was
   compiled via a chain of comparisons. The original `switch(x) { case A: case B: }` is
