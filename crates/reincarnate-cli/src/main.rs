@@ -888,7 +888,7 @@ fn run_checks(
     // Helper: does a diagnostic match all active filters?
     let matches_filters = |d: &Diagnostic| -> bool {
         if let Some(fc) = &filter_code {
-            if d.code.to_ascii_lowercase() != *fc {
+            if d.code.to_string().to_ascii_lowercase() != *fc {
                 return false;
             }
         }
@@ -1127,27 +1127,32 @@ fn compute_baseline_diff(old: &[CheckSummary], new: &[CheckSummary]) -> Baseline
     let new_total: usize = new.iter().map(|s| s.total_errors).sum();
 
     // Aggregate by_code across all summaries.
-    let mut old_codes: HashMap<&str, usize> = HashMap::new();
-    let mut new_codes: HashMap<&str, usize> = HashMap::new();
+    let mut old_codes: HashMap<String, usize> = HashMap::new();
+    let mut new_codes: HashMap<String, usize> = HashMap::new();
     for s in old {
         for (code, count) in &s.by_code {
-            *old_codes.entry(code.as_str()).or_default() += count;
+            *old_codes.entry(code.to_string()).or_default() += count;
         }
     }
     for s in new {
         for (code, count) in &s.by_code {
-            *new_codes.entry(code.as_str()).or_default() += count;
+            *new_codes.entry(code.to_string()).or_default() += count;
         }
     }
 
-    let mut all_codes: Vec<&str> = old_codes.keys().chain(new_codes.keys()).copied().collect();
+    let mut all_codes: Vec<&str> = old_codes
+        .keys()
+        .chain(new_codes.keys())
+        .map(|s| s.as_str())
+        .collect();
     all_codes.sort();
     all_codes.dedup();
 
     let mut by_code: Vec<(String, usize, usize, isize)> = Vec::new();
     for code in &all_codes {
-        let o = old_codes.get(code).copied().unwrap_or(0);
-        let n = new_codes.get(code).copied().unwrap_or(0);
+        let key = code.to_string();
+        let o = old_codes.get(&key).copied().unwrap_or(0);
+        let n = new_codes.get(&key).copied().unwrap_or(0);
         if o != n {
             by_code.push((code.to_string(), o, n, n as isize - o as isize));
         }
@@ -1155,27 +1160,32 @@ fn compute_baseline_diff(old: &[CheckSummary], new: &[CheckSummary]) -> Baseline
     by_code.sort_by(|a, b| b.3.unsigned_abs().cmp(&a.3.unsigned_abs()));
 
     // Aggregate by_message across all summaries.
-    let mut old_msgs: HashMap<(&str, &str), usize> = HashMap::new();
-    let mut new_msgs: HashMap<(&str, &str), usize> = HashMap::new();
+    let mut old_msgs: HashMap<(String, String), usize> = HashMap::new();
+    let mut new_msgs: HashMap<(String, String), usize> = HashMap::new();
     for s in old {
         for (msg, code, count) in &s.by_message {
-            *old_msgs.entry((msg.as_str(), code.as_str())).or_default() += count;
+            *old_msgs.entry((msg.clone(), code.to_string())).or_default() += count;
         }
     }
     for s in new {
         for (msg, code, count) in &s.by_message {
-            *new_msgs.entry((msg.as_str(), code.as_str())).or_default() += count;
+            *new_msgs.entry((msg.clone(), code.to_string())).or_default() += count;
         }
     }
 
-    let mut all_msgs: Vec<(&str, &str)> = old_msgs.keys().chain(new_msgs.keys()).copied().collect();
+    let mut all_msgs: Vec<(&str, &str)> = old_msgs
+        .keys()
+        .chain(new_msgs.keys())
+        .map(|(m, c)| (m.as_str(), c.as_str()))
+        .collect();
     all_msgs.sort();
     all_msgs.dedup();
 
     let mut by_message: Vec<(String, String, usize, usize, isize)> = Vec::new();
     for (msg, code) in &all_msgs {
-        let o = old_msgs.get(&(*msg, *code)).copied().unwrap_or(0);
-        let n = new_msgs.get(&(*msg, *code)).copied().unwrap_or(0);
+        let key = (msg.to_string(), code.to_string());
+        let o = old_msgs.get(&key).copied().unwrap_or(0);
+        let n = new_msgs.get(&key).copied().unwrap_or(0);
         if o != n {
             by_message.push((
                 msg.to_string(),

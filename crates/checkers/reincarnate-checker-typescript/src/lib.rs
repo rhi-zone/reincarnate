@@ -3,7 +3,7 @@ use std::process::Command;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::pipeline::{
-    CheckSummary, Checker, CheckerInput, CheckerOutput, Diagnostic, Severity,
+    CheckSummary, Checker, CheckerInput, CheckerOutput, Diagnostic, DiagnosticCode, Severity,
 };
 
 pub struct TsChecker;
@@ -90,7 +90,7 @@ fn parse_diagnostic(line: &str) -> Option<Diagnostic> {
         file: file.to_string(),
         line: line_num,
         col,
-        code: code.to_string(),
+        code: DiagnosticCode::External(code.to_string()),
         severity,
         message: message.to_string(),
     })
@@ -99,8 +99,8 @@ fn parse_diagnostic(line: &str) -> Option<Diagnostic> {
 fn build_summary(output_dir: &str, diagnostics: &[Diagnostic]) -> CheckSummary {
     let mut total_errors = 0usize;
     let mut total_warnings = 0usize;
-    let mut by_code: HashMap<String, usize> = HashMap::new();
-    let mut by_message: HashMap<(String, String), usize> = HashMap::new();
+    let mut by_code: HashMap<DiagnosticCode, usize> = HashMap::new();
+    let mut by_message: HashMap<(String, DiagnosticCode), usize> = HashMap::new();
 
     for d in diagnostics {
         match d.severity {
@@ -113,16 +113,19 @@ fn build_summary(output_dir: &str, diagnostics: &[Diagnostic]) -> CheckSummary {
             .or_default() += 1;
     }
 
-    let mut by_code: Vec<(String, usize)> = by_code.into_iter().collect();
-    by_code.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    let mut by_code: Vec<(DiagnosticCode, usize)> = by_code.into_iter().collect();
+    by_code.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then_with(|| a.0.to_string().cmp(&b.0.to_string()))
+    });
 
-    let mut by_message: Vec<(String, String, usize)> = by_message
+    let mut by_message: Vec<(String, DiagnosticCode, usize)> = by_message
         .into_iter()
         .map(|((msg, code), count)| (msg, code, count))
         .collect();
     by_message.sort_by(|a, b| {
         b.2.cmp(&a.2)
-            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.1.to_string().cmp(&b.1.to_string()))
             .then_with(|| a.0.cmp(&b.0))
     });
 
@@ -146,7 +149,7 @@ mod tests {
         assert_eq!(d.file, "src/obj_player.ts");
         assert_eq!(d.line, 42);
         assert_eq!(d.col, 5);
-        assert_eq!(d.code, "TS2304");
+        assert_eq!(d.code, DiagnosticCode::External("TS2304".into()));
         assert_eq!(d.severity, Severity::Error);
         assert_eq!(d.message, "Cannot find name 'foo'.");
     }
@@ -158,7 +161,7 @@ mod tests {
         let d = parse_diagnostic(line).expect("should parse");
         assert_eq!(d.file, "lib/util.ts");
         assert_eq!(d.severity, Severity::Warning);
-        assert_eq!(d.code, "TS6133");
+        assert_eq!(d.code, DiagnosticCode::External("TS6133".into()));
     }
 
     #[test]
@@ -169,12 +172,14 @@ mod tests {
 
     #[test]
     fn summary_aggregation() {
+        let ts2304 = DiagnosticCode::External("TS2304".into());
+        let ts2339 = DiagnosticCode::External("TS2339".into());
         let diagnostics = vec![
             Diagnostic {
                 file: "a.ts".into(),
                 line: 1,
                 col: 1,
-                code: "TS2304".into(),
+                code: ts2304.clone(),
                 severity: Severity::Error,
                 message: "x".into(),
             },
@@ -182,7 +187,7 @@ mod tests {
                 file: "a.ts".into(),
                 line: 2,
                 col: 1,
-                code: "TS2304".into(),
+                code: ts2304.clone(),
                 severity: Severity::Error,
                 message: "y".into(),
             },
@@ -190,7 +195,7 @@ mod tests {
                 file: "b.ts".into(),
                 line: 1,
                 col: 1,
-                code: "TS2339".into(),
+                code: ts2339.clone(),
                 severity: Severity::Error,
                 message: "z".into(),
             },
@@ -198,14 +203,14 @@ mod tests {
         let summary = build_summary("/out", &diagnostics);
         assert_eq!(summary.total_errors, 3);
         assert_eq!(summary.total_warnings, 0);
-        assert_eq!(summary.by_code[0], ("TS2304".into(), 2));
-        assert_eq!(summary.by_code[1], ("TS2339".into(), 1));
+        assert_eq!(summary.by_code[0], (ts2304.clone(), 2));
+        assert_eq!(summary.by_code[1], (ts2339.clone(), 1));
         // Each message is unique in this test, so by_message has 3 entries sorted by count.
         assert_eq!(summary.by_message.len(), 3);
         // Messages "x" and "y" each appear once under TS2304; "z" appears once under TS2339.
         // All have count 1, so order is by code then message: TS2304/"x", TS2304/"y", TS2339/"z".
-        assert_eq!(summary.by_message[0], ("x".into(), "TS2304".into(), 1));
-        assert_eq!(summary.by_message[1], ("y".into(), "TS2304".into(), 1));
-        assert_eq!(summary.by_message[2], ("z".into(), "TS2339".into(), 1));
+        assert_eq!(summary.by_message[0], ("x".into(), ts2304.clone(), 1));
+        assert_eq!(summary.by_message[1], ("y".into(), ts2304.clone(), 1));
+        assert_eq!(summary.by_message[2], ("z".into(), ts2339.clone(), 1));
     }
 }

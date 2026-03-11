@@ -1667,26 +1667,19 @@ fn rewrite_system_call(
     }
 
     // newObject(k1, v1, k2, v2, ...) → { k1: v1, k2: v2, ... }
+    // Duplicate keys are left in place — the `dedup_object_keys` AST pass
+    // handles deduplication with proper diagnostic warnings.
     if system == "Flash.Object" && method == "newObject" {
         if args.is_empty() {
             return Some(JsExpr::ObjectInit(Vec::new()));
         }
         if args.len().is_multiple_of(2) {
-            let mut keys: Vec<String> = Vec::new();
-            let mut values: HashMap<String, JsExpr> = HashMap::new();
-            for pair in args.chunks_exact(2) {
-                let key = extract_object_key(&pair[0]);
-                let val = rewrite_expr(pair[1].clone(), ctx);
-                if !values.contains_key(&key) {
-                    keys.push(key.clone());
-                }
-                values.insert(key, val);
-            }
-            let pairs: Vec<_> = keys
-                .into_iter()
-                .map(|k| {
-                    let v = values.remove(&k).unwrap();
-                    (k, v)
+            let pairs: Vec<_> = args
+                .chunks_exact(2)
+                .map(|pair| {
+                    let key = extract_object_key(&pair[0]);
+                    let val = rewrite_expr(pair[1].clone(), ctx);
+                    (key, val)
                 })
                 .collect();
             return Some(JsExpr::ObjectInit(pairs));
@@ -2889,7 +2882,9 @@ mod tests {
     }
 
     #[test]
-    fn new_object_duplicate_keys_last_wins() {
+    fn new_object_duplicate_keys_preserved() {
+        // newObject rewrite preserves duplicate keys — dedup_object_keys AST pass
+        // handles deduplication with diagnostic warnings.
         let ctx = empty_ctx();
         let args = vec![
             JsExpr::Literal(Constant::String("x".into())),
@@ -2900,14 +2895,11 @@ mod tests {
         let result = rewrite_system_call("Flash.Object", "newObject", &args, &ctx);
         assert!(result.is_some());
         if let Some(JsExpr::ObjectInit(pairs)) = result {
-            // Duplicate key "x" — should keep only one entry, with the last value.
-            assert_eq!(pairs.len(), 1, "duplicate key should deduplicate");
+            assert_eq!(pairs.len(), 2, "duplicate keys should be preserved");
             assert_eq!(pairs[0].0, "x");
-            assert!(
-                matches!(&pairs[0].1, JsExpr::Literal(Constant::Int(2))),
-                "last value should win, got {:?}",
-                pairs[0].1
-            );
+            assert_eq!(pairs[1].0, "x");
+            assert!(matches!(&pairs[0].1, JsExpr::Literal(Constant::Int(1))));
+            assert!(matches!(&pairs[1].1, JsExpr::Literal(Constant::Int(2))));
         } else {
             panic!("expected ObjectInit");
         }

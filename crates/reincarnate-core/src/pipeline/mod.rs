@@ -6,7 +6,10 @@ pub mod linker;
 pub mod transform;
 
 pub use backend::{Backend, BackendInput, BackendOutput, RuntimePackage};
-pub use checker::{CheckSummary, Checker, CheckerInput, CheckerOutput, Diagnostic, Severity};
+pub use checker::{
+    CheckSummary, Checker, CheckerInput, CheckerOutput, Diagnostic, DiagnosticCode, RcDiagnostic,
+    Severity,
+};
 pub use config::{resolve_preset, DebugConfig, LoweringConfig, PassConfig};
 pub use frontend::{Frontend, FrontendInput, FrontendOutput};
 pub use linker::{link_modules, SymbolTable};

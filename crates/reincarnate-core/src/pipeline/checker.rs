@@ -8,10 +8,46 @@ pub struct Diagnostic {
     pub file: String,
     pub line: u32,
     pub col: u32,
-    /// Error code, e.g. "TS2304".
-    pub code: String,
+    pub code: DiagnosticCode,
     pub severity: Severity,
     pub message: String,
+}
+
+/// Diagnostic code — either a pipeline-internal code or an external checker code.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum DiagnosticCode {
+    /// Reincarnate pipeline diagnostic.
+    Rc(RcDiagnostic),
+    /// External checker code (e.g. "TS2304" from tsc).
+    External(String),
+}
+
+impl std::fmt::Display for DiagnosticCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DiagnosticCode::Rc(rc) => write!(f, "{rc}"),
+            DiagnosticCode::External(s) => write!(f, "{s}"),
+        }
+    }
+}
+
+/// Pipeline-internal diagnostic codes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum RcDiagnostic {
+    /// Duplicate case value in switch or sequential if-chain.
+    DuplicateCase,
+    /// Duplicate key in object literal.
+    DuplicateObjectKey,
+}
+
+impl std::fmt::Display for RcDiagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let code = match self {
+            RcDiagnostic::DuplicateCase => "RC0001",
+            RcDiagnostic::DuplicateObjectKey => "RC0002",
+        };
+        write!(f, "{code}")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -38,10 +74,10 @@ pub struct CheckSummary {
     pub total_errors: usize,
     pub total_warnings: usize,
     /// Error codes sorted by count descending.
-    pub by_code: Vec<(String, usize)>,
+    pub by_code: Vec<(DiagnosticCode, usize)>,
     /// Unique messages sorted by count descending: (message, code, count).
     #[serde(default)]
-    pub by_message: Vec<(String, String, usize)>,
+    pub by_message: Vec<(String, DiagnosticCode, usize)>,
 }
 
 /// Checker trait — validates emitted code using an external type checker.

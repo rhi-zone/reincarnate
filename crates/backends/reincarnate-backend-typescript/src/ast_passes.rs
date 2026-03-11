@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{CastKind, Type};
-use reincarnate_core::pipeline::{Diagnostic, Severity};
+use reincarnate_core::pipeline::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::types::ts_type;
@@ -50,6 +50,10 @@ pub fn recover_switch_statements(
     for stmt in body.iter_mut() {
         try_recover_switch_discriminant(stmt);
     }
+
+    // Check for duplicate case labels in ALL switches (including those just
+    // created or modified by the recovery passes above).
+    check_switch_duplicate_cases(body, func_name, diagnostics);
 }
 
 /// Recurse into all sub-bodies of a statement.
@@ -325,7 +329,7 @@ fn try_recover_sequential_ifs(
                     file: func_name.to_string(),
                     line: 0,
                     col: 0,
-                    code: "RC0001".to_string(),
+                    code: DiagnosticCode::Rc(RcDiagnostic::DuplicateCase),
                     severity: Severity::Warning,
                     message: format!(
                         "duplicate case value {dupe} in sequential if-chain \
@@ -637,6 +641,71 @@ fn format_case_label(expr: &JsExpr) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Duplicate switch case check
+// ---------------------------------------------------------------------------
+
+/// Walk all switch statements and emit RC0001 for any duplicate case labels.
+/// Runs after all recovery passes so it sees the final case labels.
+fn check_switch_duplicate_cases(
+    body: &[JsStmt],
+    func_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for stmt in body {
+        match stmt {
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                let dupes = find_duplicate_case_labels(cases);
+                for dupe in dupes {
+                    diagnostics.push(Diagnostic {
+                        file: func_name.to_string(),
+                        line: 0,
+                        col: 0,
+                        code: DiagnosticCode::Rc(RcDiagnostic::DuplicateCase),
+                        severity: Severity::Warning,
+                        message: format!(
+                            "duplicate case value {dupe} in switch statement \
+                             (game-author bug: unreachable case)"
+                        ),
+                    });
+                }
+                for (_, case_body) in cases {
+                    check_switch_duplicate_cases(case_body, func_name, diagnostics);
+                }
+                check_switch_duplicate_cases(default_body, func_name, diagnostics);
+            }
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                check_switch_duplicate_cases(then_body, func_name, diagnostics);
+                check_switch_duplicate_cases(else_body, func_name, diagnostics);
+            }
+            JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
+                check_switch_duplicate_cases(body, func_name, diagnostics);
+            }
+            JsStmt::For {
+                init, body, update, ..
+            } => {
+                check_switch_duplicate_cases(init, func_name, diagnostics);
+                check_switch_duplicate_cases(body, func_name, diagnostics);
+                check_switch_duplicate_cases(update, func_name, diagnostics);
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    check_switch_duplicate_cases(block_body, func_name, diagnostics);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Duplicate object key deduplication
 // ---------------------------------------------------------------------------
 
@@ -746,7 +815,7 @@ fn dedup_object_keys_in_expr(
                         file: func_name.to_string(),
                         line: 0,
                         col: 0,
-                        code: "RC0002".to_string(),
+                        code: DiagnosticCode::Rc(RcDiagnostic::DuplicateObjectKey),
                         severity: Severity::Warning,
                         message: format!(
                             "duplicate key '{name}' in object literal (last value wins)"
@@ -1795,8 +1864,49 @@ mod tests {
 
         // Should have emitted a duplicate-case warning.
         assert_eq!(diags.len(), 1);
-        assert_eq!(diags[0].code, "RC0001");
+        assert_eq!(
+            diags[0].code,
+            DiagnosticCode::Rc(RcDiagnostic::DuplicateCase)
+        );
         assert_eq!(diags[0].file, "TestFunc");
+        assert!(
+            diags[0].message.contains("duplicate case value 1"),
+            "message: {}",
+            diags[0].message
+        );
+    }
+
+    #[test]
+    fn native_switch_duplicate_case_emits_warning() {
+        // A pre-existing switch (not recovered from ifs) with duplicate case labels
+        // should emit a diagnostic.
+        let mut body = vec![JsStmt::Switch {
+            value: var("x"),
+            cases: vec![
+                (
+                    JsExpr::Literal(Constant::Int(1)),
+                    vec![JsStmt::Expr(var("A"))],
+                ),
+                (
+                    JsExpr::Literal(Constant::Int(2)),
+                    vec![JsStmt::Expr(var("B"))],
+                ),
+                (
+                    JsExpr::Literal(Constant::Int(1)),
+                    vec![JsStmt::Expr(var("C"))],
+                ),
+            ],
+            default_body: vec![],
+        }];
+
+        let mut diags = Vec::new();
+        recover_switch_statements(&mut body, "TestFunc", &mut diags);
+
+        assert_eq!(diags.len(), 1, "Expected 1 diagnostic, got: {diags:?}");
+        assert_eq!(
+            diags[0].code,
+            DiagnosticCode::Rc(RcDiagnostic::DuplicateCase)
+        );
         assert!(
             diags[0].message.contains("duplicate case value 1"),
             "message: {}",

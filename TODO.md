@@ -379,9 +379,16 @@ remains if edited independently; consider symlink or build-time copy if it recur
 
 - [x] **Diagnostic infrastructure** — `Diagnostic` type (level: Warning/Info, source location,
   message) threaded through pipeline stages and reported in `check` output. Implemented.
-- [ ] **Emit diagnostics from more passes** — Currently only `try_recover_sequential_ifs`
-  (duplicate case values) emits warnings. Existing passes should audit for similar
+- [x] **`dedup_object_keys` AST pass** — RC0002 diagnostic for duplicate keys in object literals.
+  Flash `newObject` rewrite preserves duplicates; AST pass deduplicates with warning.
+- [x] **Duplicate-case check on all switch statements** — `check_switch_duplicate_cases` runs
+  as the final step of `recover_switch_statements`, catching duplicates in native switches
+  AND those introduced by `try_recover_switch_discriminant`. Verified on TelAdre.ts (CC).
+- [ ] **Emit diagnostics from more passes** — Audit existing passes for similar
   opportunities (dead code, type mismatches that are game-author bugs not inference failures).
+- [ ] **Switch recovery passes belong in core, not TS backend** — `try_recover_switch_discriminant`,
+  `try_recover_nested_if_else`, `try_recover_sequential_ifs` operate on the AST without
+  TypeScript knowledge. They should be core `ast_passes`, not TS-backend-specific.
 
 ---
 
@@ -477,6 +484,15 @@ Measured after TypeInference + ConstraintSolve + Alloc refinement.
 | Field `: any` | 80 | Struct fields without type info (empty class defs, external supers) |
 | `let` locals | 11 | Block params where incoming args don't all agree |
 | `const` locals | 9 | Genuinely untyped values from calls/block params |
+
+- [ ] **Enum constants not initialized (CockTypesEnum)** — AS3 enum constants like
+  `static HUMAN: CockTypesEnum = new CockTypesEnum(0, "HUMAN")` have constructor-call
+  default values. `convert_default_value()` in `class.rs` only handles scalars → returns
+  `None` → emitted as uninitialized declarations. `initEnum(this)` at runtime fails with
+  "Can't have an enum without any constants". Root cause is the scalar-only IR `Constant`
+  (see "IR lacks aggregate constants" above) — but this specific case doesn't need aggregate
+  constants, it needs **static field initializer expressions** (constructor calls) in the IR.
+  Game code references `CockTypesEnum.HUMAN`, `CockTypesEnum.ANEMONE`, etc.
 
 ### Known Issues
 
