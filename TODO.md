@@ -309,7 +309,7 @@ New findings from this audit:
 
 Also done: ~~`ast_passes.rs`~~ (2026-03-11 — `ast_passes/` with `AstPass` trait),
 ~~`linear.rs`~~ (2026-03-11 — `linear/{mod,linearize,resolve,emit,tests}`).
-Remaining: `runtime.ts` GML (4463 lines, TypeScript not Rust).
+Also done: ~~`runtime.ts` GML~~ (2026-03-11 — split into `object.ts`, `room.ts`, `particles.ts`; 4463→4115 lines).
 
 ### Code Quality — Inconsistent Error Handling (MEDIUM, partially fixed 2026-03-11)
 
@@ -344,11 +344,11 @@ and mem2reg.rs. New Op/Type variants now trigger compiler errors.
   `dominates`, `Cfg`, `Shape`, `BlockArgAssign` (all internal-only). Only
   `structurize()` remains re-exported.
 
-### Duplicated Platform Directories (LOW, already tracked in MEMORY.md)
+### ~~Duplicated Platform Directories~~ (FIXED 2026-03-11)
 
-`runtime/gamemaker/ts/shared/platform/` and `runtime/flash/ts/shared/platform/` are
-near-copies (7 files each, 4 identical, 3 diverging). Intentional for path depth but
-drift is a maintenance burden.
+Unified 3 diverging files (audio.ts, images.ts, persistence.ts) — GML copies updated
+to match Flash's stricter types. All 7 platform files now byte-identical. Drift risk
+remains if edited independently; consider symlink or build-time copy if it recurs.
 
 ### Test Coverage Gaps (LOW — already partially tracked)
 
