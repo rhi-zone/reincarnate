@@ -4,6 +4,36 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## Full Architecture Audit (CRITICAL)
+
+The pipeline has grown organically. Before adding more engines or features, audit the entire
+architecture end-to-end and fix structural problems while the codebase is still tractable.
+
+**Scope:** Everything. Not just IR, not just classes — the whole system.
+
+- Pipeline design: are the stages right? Is the ordering correct? What information gets lost
+  between stages that shouldn't? What work happens in the wrong stage?
+- Crate boundaries: do the current crate splits match the actual dependency graph? Are
+  frontends truly independent of backends? Is core truly engine-agnostic?
+- IR completeness: does the IR carry everything backends need, or do backends reconstruct
+  information that frontends had? (e.g. cinit initializers, switch discriminants, loop
+  structure)
+- Type system: is the IR type system expressive enough? Where does it force backends into
+  `any`/`Dynamic` because it can't represent the real type?
+- Pass ordering and interactions: do passes compose cleanly, or do they depend on running in
+  a specific order with implicit contracts? (e.g. CallSiteTypeFlow before ConstraintSolve,
+  DCE before BoolArithCoerce)
+- Abstractions: do `ClassDef`, `StructDef`, `Function`, `Module` serve the project, or are
+  they artifacts of early decisions that no longer fit?
+- Law compliance: systematic check of all five Fundamental Laws across every crate. Not
+  spot-checks — exhaustive.
+
+**Forcing function: second backend.** Adding a non-TypeScript backend (Rust, GDScript, C#,
+Lua — TBD) will immediately expose every place where the pipeline assumes TypeScript. The
+audit should happen first so the second backend doesn't inherit the current debt. But the
+second backend is the real test — if adding it requires touching core or other backends,
+those are architecture bugs.
+
 ## IR-Based Modding Framework (Investigation)
 
 **Status: Investigated. Mod is logic-heavy — full IR mutation API required.**
