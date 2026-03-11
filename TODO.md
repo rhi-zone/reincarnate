@@ -289,9 +289,13 @@ class coercion rewrite and type inference for qualified field names).
   folding bug; needs IR investigation.
 
 **Remaining audit items:**
-- [ ] **Audit emitted code readability** — Spot-check 10+ files for: unnecessary casts,
-  unresolved `vN` names, dead code after return/break, missing const promotion, verbose
-  patterns that could be simplified.
+- [x] **Audit emitted code readability** — DONE 2026-03-12. Key findings:
+  - [ ] Boolean return chains: `if (x) return true; else return false;` → `return x;` (93+ files)
+  - [ ] Double `String()` wrapping: `String(String(x))` → `String(x)` (5 files)
+  - [ ] Redundant else after return: `if (x) { ...; return; } else { return; }` simplification
+  - Items correctly kept as-is: `== null` (AS3 loose equality, Law 3), `as any` on shims
+    (structural), concatenated string arrays (faithful to bytecode), `vN` names (from hasNext2
+    tuple unpacking — structural to AVM2 iteration model)
 
 ---
 

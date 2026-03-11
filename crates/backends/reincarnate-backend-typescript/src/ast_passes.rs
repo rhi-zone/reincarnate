@@ -1453,6 +1453,116 @@ fn merge_adjacent_strings(items: &mut Vec<JsExpr>) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Boolean return simplification
+// ---------------------------------------------------------------------------
+
+/// Simplify `if (cond) { return true; } else { return false; }` → `return cond;`
+/// and `if (cond) { return false; } else { return true; }` → `return !cond;`.
+///
+/// Also collapses redundant else-return: when then_body ends with `return` and
+/// else_body is a single bare `return;`, the else is removed (the code after
+/// the if is already unreachable after the then return).
+pub fn simplify_boolean_returns(body: &mut [JsStmt]) {
+    // Recurse into nested bodies first.
+    for stmt in body.iter_mut() {
+        match stmt {
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                simplify_boolean_returns(then_body);
+                simplify_boolean_returns(else_body);
+            }
+            JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
+                simplify_boolean_returns(body);
+            }
+            JsStmt::For {
+                init, body, update, ..
+            } => {
+                simplify_boolean_returns(init);
+                simplify_boolean_returns(body);
+                simplify_boolean_returns(update);
+            }
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    simplify_boolean_returns(case_body);
+                }
+                simplify_boolean_returns(default_body);
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    simplify_boolean_returns(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Now simplify at this level.
+    let mut i = 0;
+    while i < body.len() {
+        let replaced = if let JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } = &body[i]
+        {
+            match (
+                returns_bool_literal(then_body),
+                returns_bool_literal(else_body),
+            ) {
+                // if (cond) { return true; } else { return false; } → return cond;
+                // Only when cond is known-boolean to avoid returning non-boolean values.
+                (Some(true), Some(false)) if is_boolean_expr(cond) => {
+                    Some(JsStmt::Return(Some(cond.clone())))
+                }
+                // if (cond) { return false; } else { return true; } → return !cond;
+                (Some(false), Some(true)) if is_boolean_expr(cond) => {
+                    Some(JsStmt::Return(Some(JsExpr::Not(Box::new(cond.clone())))))
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        if let Some(replacement) = replaced {
+            body[i] = replacement;
+        }
+        i += 1;
+    }
+}
+
+/// If `body` is exactly `[Return(Literal(Bool(b)))]`, return `Some(b)`.
+fn returns_bool_literal(body: &[JsStmt]) -> Option<bool> {
+    if body.len() == 1 {
+        if let JsStmt::Return(Some(JsExpr::Literal(Constant::Bool(b)))) = &body[0] {
+            return Some(*b);
+        }
+    }
+    None
+}
+
+/// Check if an expression is known to produce a boolean result.
+/// Conservative: only matches comparison ops, logical ops, and boolean literals.
+fn is_boolean_expr(expr: &JsExpr) -> bool {
+    matches!(
+        expr,
+        JsExpr::Cmp { .. }
+            | JsExpr::Not(_)
+            | JsExpr::LogicalAnd { .. }
+            | JsExpr::LogicalOr { .. }
+            | JsExpr::Literal(Constant::Bool(_))
+            | JsExpr::In { .. }
+    )
+}
+
 /// Extract the system namespace and string literal from a text call statement.
 fn extract_text_call(stmt: &JsStmt) -> Option<(String, String)> {
     if let JsStmt::Expr(JsExpr::SystemCall {
