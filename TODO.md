@@ -779,6 +779,25 @@ generic unknown-call spam.
   entire default pipeline. Frontends should be able to specify where their passes run (e.g.
   "after constraint-solve but before mem2reg"). Current approach works for IntToBoolPromotion
   and GmlLogicalOpNormalize which are fine running last, but won't scale.
+- [ ] **LÖVE/love2d backend** (emit Lua files targeting LÖVE 2D framework) — HIGH priority after
+  getting CC gameplay working. LÖVE provides game loop, graphics, audio, input — maps well to
+  GameMaker's runtime model. Lua is dynamically typed so many IR→TS pain points (union types,
+  `any` widening) vanish. Good forcing function for second-backend readiness. Would need:
+  `reincarnate-backend-lua` crate, Lua AST types, LÖVE-specific scaffold (`main.lua`, `conf.lua`),
+  runtime package in `runtime/gamemaker/lua/` (or shared). Key design question: does the runtime
+  port as Lua modules, or do we emit self-contained Lua with inlined runtime?
+
+- [ ] **Twine multi-backend rendering strategy** — Twine output is HTML-centric (DOM nodes, CSS
+  styling, `<tw-link>` elements). Web backend (TypeScript) handles this natively. Non-web backends
+  (LÖVE, native) need a different approach. Options:
+  1. IR captures passage structure semantically (text, link, styled-span, conditional) — each
+     backend decides rendering. Harlowe already works this way (hooks are IR nodes). SugarCube's
+     wikifier mode processes HTML at runtime — inherently needs an HTML engine.
+  2. For non-web: strip HTML, emit plain text + structured menu choices. Loses visual formatting
+     but preserves interactivity and story logic.
+  3. Embed lightweight markup renderer per platform (e.g., LÖVE text layout).
+  Design work needed before implementing a non-web Twine backend.
+
 - [ ] Rust codegen backend (emit `.rs` files from typed IR — **blocked on multi-typed locals**)
 - [ ] wgpu + winit renderer system implementation
 - [ ] Web Audio system implementation
