@@ -485,14 +485,17 @@ Measured after TypeInference + ConstraintSolve + Alloc refinement.
 | `let` locals | 11 | Block params where incoming args don't all agree |
 | `const` locals | 9 | Genuinely untyped values from calls/block params |
 
-- [ ] **Enum constants not initialized (CockTypesEnum)** — AS3 enum constants like
-  `static HUMAN: CockTypesEnum = new CockTypesEnum(0, "HUMAN")` have constructor-call
-  default values. `convert_default_value()` in `class.rs` only handles scalars → returns
-  `None` → emitted as uninitialized declarations. `initEnum(this)` at runtime fails with
-  "Can't have an enum without any constants". Root cause is the scalar-only IR `Constant`
-  (see "IR lacks aggregate constants" above) — but this specific case doesn't need aggregate
-  constants, it needs **static field initializer expressions** (constructor calls) in the IR.
-  Game code references `CockTypesEnum.HUMAN`, `CockTypesEnum.ANEMONE`, etc.
+- [ ] **Enum constants not initialized (CockTypesEnum)** — Two-part bug:
+  1. `is_redundant_static_assign` strips cinit assignments to const fields even when the
+     field declaration has no initializer (`default == None`). Fix: only strip when
+     `default.is_some()`. One-line change in `emit.rs:4263`.
+  2. But unmasking the cinit body produces `new this(this._shims, "human")` in a static
+     block — `this._shims` doesn't exist on the class constructor. The Flash `construct`
+     rewrite (`Flash.Object.construct → new ...`) always injects `this._shims` as the first
+     arg, but static init context has no instance. Need: detect static init context in the
+     rewrite and either skip `_shims` injection or use a different mechanism.
+  Game code references `CockTypesEnum.HUMAN`, `CockTypesEnum.ANEMONE`, etc. Runtime error:
+  "Can't have an enum without any constants".
 
 ### Known Issues
 
