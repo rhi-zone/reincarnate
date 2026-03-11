@@ -3,10 +3,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::entity::EntityRef;
 use crate::error::CoreError;
 use crate::ir::block::BlockParam;
+use crate::ir::structurize::{build_cfg, compute_dominators_lt};
 use crate::ir::value::Constant;
-use crate::ir::{
-    build_cfg, compute_dominators_lt, BlockId, Function, InstId, Module, Op, Type, ValueId,
-};
+use crate::ir::{BlockId, Function, InstId, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
 use super::util::{

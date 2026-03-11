@@ -16,32 +16,32 @@
 //!
 //! See `src/bin/gen_fixtures.rs` for the generation workflow.
 
-use reincarnate_datawin::bytecode::decode::{self, Operand};
-use reincarnate_datawin::bytecode::opcode::Opcode;
-use reincarnate_datawin::bytecode::types::DataType;
-use reincarnate_datawin::chunks::audo::Audo;
-use reincarnate_datawin::chunks::bgnd::Bgnd;
-use reincarnate_datawin::chunks::code::Code;
-use reincarnate_datawin::chunks::font::Font;
-use reincarnate_datawin::chunks::func::Func;
-use reincarnate_datawin::chunks::gen8::Gen8;
-use reincarnate_datawin::chunks::glob::Glob;
-use reincarnate_datawin::chunks::lang::Lang;
-use reincarnate_datawin::chunks::objt::Objt;
-use reincarnate_datawin::chunks::optn::Optn;
-use reincarnate_datawin::chunks::room::Room;
-use reincarnate_datawin::chunks::scpt::Scpt;
-use reincarnate_datawin::chunks::seqn::Seqn;
-use reincarnate_datawin::chunks::shdr::Shdr;
-use reincarnate_datawin::chunks::sond::Sond;
-use reincarnate_datawin::chunks::sprt::Sprt;
-use reincarnate_datawin::chunks::tpag::Tpag;
-use reincarnate_datawin::chunks::txtr::Txtr;
-use reincarnate_datawin::chunks::vari::Vari;
-use reincarnate_datawin::reader::ChunkIndex;
-use reincarnate_datawin::string_table::StringTable;
-use reincarnate_datawin::version::BytecodeVersion;
-use reincarnate_datawin::writer::{assemble_form, extract_chunks};
+use datawin::bytecode::decode::{self, Operand};
+use datawin::bytecode::opcode::Opcode;
+use datawin::bytecode::types::DataType;
+use datawin::chunks::audo::Audo;
+use datawin::chunks::bgnd::Bgnd;
+use datawin::chunks::code::Code;
+use datawin::chunks::font::Font;
+use datawin::chunks::func::Func;
+use datawin::chunks::gen8::Gen8;
+use datawin::chunks::glob::Glob;
+use datawin::chunks::lang::Lang;
+use datawin::chunks::objt::Objt;
+use datawin::chunks::optn::Optn;
+use datawin::chunks::room::Room;
+use datawin::chunks::scpt::Scpt;
+use datawin::chunks::seqn::Seqn;
+use datawin::chunks::shdr::Shdr;
+use datawin::chunks::sond::Sond;
+use datawin::chunks::sprt::Sprt;
+use datawin::chunks::tpag::Tpag;
+use datawin::chunks::txtr::Txtr;
+use datawin::chunks::vari::Vari;
+use datawin::reader::ChunkIndex;
+use datawin::string_table::StringTable;
+use datawin::version::BytecodeVersion;
+use datawin::writer::{assemble_form, extract_chunks};
 
 // ── Fixture bytes ─────────────────────────────────────────────────────────────
 
@@ -227,7 +227,7 @@ fn minimal_bytecode_round_trip() {
 
     let bc = code.entry_bytecode(0, MINIMAL).unwrap();
     let instructions = decode::decode(bc).unwrap();
-    let reencoded = reincarnate_datawin::bytecode::encode::encode(&instructions);
+    let reencoded = datawin::bytecode::encode::encode(&instructions);
     assert_eq!(bc, reencoded.as_slice());
 }
 
@@ -288,7 +288,7 @@ fn variety_bytecode_decode() {
     assert_eq!(*instance, -1);
 
     assert_eq!(instructions[5].opcode, Opcode::Cmp);
-    use reincarnate_datawin::bytecode::types::ComparisonKind;
+    use datawin::bytecode::types::ComparisonKind;
     assert!(matches!(
         instructions[5].operand,
         Operand::Comparison(ComparisonKind::Less)
@@ -326,7 +326,7 @@ fn variety_bytecode_round_trip() {
 
     let bc = code.entry_bytecode(0, VARIETY).unwrap();
     let instructions = decode::decode(bc).unwrap();
-    let reencoded = reincarnate_datawin::bytecode::encode::encode(&instructions);
+    let reencoded = datawin::bytecode::encode::encode(&instructions);
     assert_eq!(bc, reencoded.as_slice());
 }
 
@@ -411,7 +411,7 @@ fn break_signals_round_trip() {
 
     let bc = code.entry_bytecode(0, BREAK_SIGNALS).unwrap();
     let instructions = decode::decode(bc).unwrap();
-    let reencoded = reincarnate_datawin::bytecode::encode::encode(&instructions);
+    let reencoded = datawin::bytecode::encode::encode(&instructions);
     assert_eq!(bc, reencoded.as_slice());
 }
 
@@ -691,7 +691,7 @@ fn more_opcodes_round_trip() {
 
     let bc = code.entry_bytecode(0, MORE_OPCODES).unwrap();
     let instructions = decode::decode(bc).unwrap();
-    let reencoded = reincarnate_datawin::bytecode::encode::encode(&instructions);
+    let reencoded = datawin::bytecode::encode::encode(&instructions);
     assert_eq!(bc, reencoded.as_slice());
 }
 
@@ -811,9 +811,9 @@ fn shared_blob_bytecode_decode() {
     assert_eq!(child_instrs[0].opcode, Opcode::Ret);
 
     // Round-trips
-    let re_parent = reincarnate_datawin::bytecode::encode::encode(&parent_instrs);
+    let re_parent = datawin::bytecode::encode::encode(&parent_instrs);
     assert_eq!(parent_bc, re_parent.as_slice());
-    let re_child = reincarnate_datawin::bytecode::encode::encode(&child_instrs);
+    let re_child = datawin::bytecode::encode::encode(&child_instrs);
     assert_eq!(child_bc, re_child.as_slice());
 }
 

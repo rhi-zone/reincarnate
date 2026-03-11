@@ -1,5 +1,8 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+use datawin::bytecode::decode::{self, Instruction, Operand};
+use datawin::bytecode::opcode::Opcode;
+use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableRef};
 use reincarnate_core::entity::EntityRef;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::builder::FunctionBuilder;
@@ -7,9 +10,6 @@ use reincarnate_core::ir::func::{CaptureMode, Function, MethodKind, Visibility};
 use reincarnate_core::ir::inst::{CmpKind, Op};
 use reincarnate_core::ir::ty::{FunctionSig, Type};
 use reincarnate_core::ir::value::{Constant, ValueId};
-use reincarnate_datawin::bytecode::decode::{self, Instruction, Operand};
-use reincarnate_datawin::bytecode::opcode::Opcode;
-use reincarnate_datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableRef};
 
 /// Context for translating a single code entry.
 pub struct TranslateCtx<'a> {
@@ -66,7 +66,7 @@ pub struct TranslateCtx<'a> {
     pub with_body_has_return: bool,
     /// Bytecode version from GEN8. Used to guard version-specific behaviours
     /// (GMS2.3+ Break signals, Dup swap-mode encoding, etc.).
-    pub bytecode_version: reincarnate_datawin::BytecodeVersion,
+    pub bytecode_version: datawin::BytecodeVersion,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
@@ -1725,7 +1725,7 @@ fn get_branch_args(stack: &[ValueId], target_depth: usize) -> Vec<ValueId> {
     stack.iter().take(target_depth).copied().collect()
 }
 
-/// Translate a single instruction.
+/// Translate a single instruction — thin dispatcher to themed helpers.
 #[allow(clippy::too_many_arguments)]
 fn translate_instruction(
     inst: &Instruction,
@@ -1746,14 +1746,62 @@ fn translate_instruction(
     obj_ref_values: &mut HashMap<ValueId, String>,
 ) -> Result<(), String> {
     match inst.opcode {
-        // ============================================================
-        // Constants
-        // ============================================================
+        // Constants (push)
         Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn => {
-            let depth_before = stack.len();
-            translate_push(
+            translate_push_instruction(
                 inst,
-                &instructions[inst_idx + 1..],
+                instructions,
+                inst_idx,
+                fb,
+                stack,
+                locals,
+                ctx,
+                gml_sizes,
+                compound_2d_pending,
+                global_arg_count,
+            )?;
+        }
+
+        // Arithmetic & unary
+        Opcode::Add
+        | Opcode::Sub
+        | Opcode::Mul
+        | Opcode::Div
+        | Opcode::Rem
+        | Opcode::Mod
+        | Opcode::Neg
+        | Opcode::Not => {
+            translate_arithmetic_op(inst, fb, stack, gml_sizes)?;
+        }
+
+        // Bitwise, boolean, comparison
+        Opcode::And | Opcode::Or | Opcode::Xor | Opcode::Shl | Opcode::Shr | Opcode::Cmp => {
+            translate_bitwise_cmp_op(inst, fb, stack, gml_sizes)?;
+        }
+
+        // Control flow (branches, return, exit)
+        Opcode::B | Opcode::Bt | Opcode::Bf | Opcode::Ret | Opcode::Exit => {
+            translate_control_flow_op(
+                inst,
+                instructions,
+                inst_idx,
+                fb,
+                stack,
+                block_map,
+                terminated,
+                block_entry_depths,
+            )?;
+        }
+
+        // Stack management
+        Opcode::Popz | Opcode::Dup => {
+            translate_stack_op(inst, fb, stack, gml_sizes, compound_popaf_pending)?;
+        }
+
+        // Pop (variable store)
+        Opcode::Pop => {
+            translate_pop(
+                inst,
                 fb,
                 stack,
                 locals,
@@ -1761,21 +1809,105 @@ fn translate_instruction(
                 compound_2d_pending,
                 global_arg_count,
             )?;
-            // Annotate newly pushed value with its GML type size.
-            if stack.len() > depth_before {
-                if let Some(&val) = stack.last() {
-                    let units = match &inst.operand {
-                        Operand::Variable { .. } => 4, // Variable reads → RValue (16 bytes)
-                        _ => gml_slot_units(inst.type1),
-                    };
-                    gml_sizes.insert(val, units);
-                }
-            }
         }
 
-        // ============================================================
-        // Arithmetic (binary)
-        // ============================================================
+        // Function calls
+        Opcode::Call | Opcode::CallV => {
+            translate_call_op(inst, fb, stack, ctx, gml_sizes)?;
+        }
+
+        // Type conversion
+        Opcode::Conv => {
+            translate_conv_op(inst, fb, stack, gml_sizes)?;
+        }
+
+        // PushEnv / PopEnv (with-blocks)
+        Opcode::PushEnv | Opcode::PopEnv => {
+            translate_env_op(
+                inst,
+                instructions,
+                inst_idx,
+                fb,
+                stack,
+                block_map,
+                ctx,
+                terminated,
+                block_entry_depths,
+            )?;
+        }
+
+        // Break (special signals)
+        Opcode::Break => {
+            translate_break_op(
+                inst,
+                fb,
+                stack,
+                ctx,
+                gml_sizes,
+                pushac_array,
+                compound_popaf_pending,
+                obj_ref_values,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+// ============================================================
+// Push constants
+// ============================================================
+
+/// Handle Push* opcodes — delegates to `translate_push` and annotates GML type size.
+#[allow(clippy::too_many_arguments)]
+fn translate_push_instruction(
+    inst: &Instruction,
+    instructions: &[Instruction],
+    inst_idx: usize,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    locals: &mut HashMap<String, ValueId>,
+    ctx: &TranslateCtx,
+    gml_sizes: &mut HashMap<ValueId, u8>,
+    compound_2d_pending: &mut bool,
+    global_arg_count: u16,
+) -> Result<(), String> {
+    let depth_before = stack.len();
+    translate_push(
+        inst,
+        &instructions[inst_idx + 1..],
+        fb,
+        stack,
+        locals,
+        ctx,
+        compound_2d_pending,
+        global_arg_count,
+    )?;
+    // Annotate newly pushed value with its GML type size.
+    if stack.len() > depth_before {
+        if let Some(&val) = stack.last() {
+            let units = match &inst.operand {
+                Operand::Variable { .. } => 4, // Variable reads → RValue (16 bytes)
+                _ => gml_slot_units(inst.type1),
+            };
+            gml_sizes.insert(val, units);
+        }
+    }
+    Ok(())
+}
+
+// ============================================================
+// Arithmetic & unary
+// ============================================================
+
+/// Handle Add, Sub, Mul, Div, Rem/Mod, Neg, Not.
+fn translate_arithmetic_op(
+    inst: &Instruction,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    gml_sizes: &mut HashMap<ValueId, u8>,
+) -> Result<(), String> {
+    match inst.opcode {
         Opcode::Add => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
@@ -1811,10 +1943,6 @@ fn translate_instruction(
             gml_sizes.insert(r, gml_slot_units(inst.type1));
             stack.push(r);
         }
-
-        // ============================================================
-        // Unary
-        // ============================================================
         Opcode::Neg => {
             let a = pop(stack, inst)?;
             let r = fb.neg(a);
@@ -1827,10 +1955,23 @@ fn translate_instruction(
             gml_sizes.insert(r, gml_slot_units(inst.type1));
             stack.push(r);
         }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
 
-        // ============================================================
-        // Bitwise / Boolean
-        // ============================================================
+// ============================================================
+// Bitwise, boolean, comparison
+// ============================================================
+
+/// Handle And, Or, Xor, Shl, Shr, Cmp.
+fn translate_bitwise_cmp_op(
+    inst: &Instruction,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    gml_sizes: &mut HashMap<ValueId, u8>,
+) -> Result<(), String> {
+    match inst.opcode {
         Opcode::And => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
@@ -1876,10 +2017,6 @@ fn translate_instruction(
             gml_sizes.insert(r, gml_slot_units(inst.type1));
             stack.push(r);
         }
-
-        // ============================================================
-        // Comparison
-        // ============================================================
         Opcode::Cmp => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
@@ -1895,10 +2032,28 @@ fn translate_instruction(
                 ));
             }
         }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
 
-        // ============================================================
-        // Control flow
-        // ============================================================
+// ============================================================
+// Control flow
+// ============================================================
+
+/// Handle B, Bt, Bf, Ret, Exit.
+#[allow(clippy::too_many_arguments)]
+fn translate_control_flow_op(
+    inst: &Instruction,
+    instructions: &[Instruction],
+    inst_idx: usize,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    block_map: &HashMap<usize, BlockId>,
+    terminated: &mut bool,
+    block_entry_depths: &HashMap<usize, usize>,
+) -> Result<(), String> {
+    match inst.opcode {
         Opcode::B => {
             if let Operand::Branch(offset) = inst.operand {
                 let (target_off, target) = resolve_branch_target(inst, offset, block_map)?;
@@ -1909,121 +2064,31 @@ fn translate_instruction(
             }
         }
         Opcode::Bt => {
-            if let Operand::Branch(offset) = inst.operand {
-                let cond = pop(stack, inst)?;
-                let branch_target = resolve_branch_target(inst, offset, block_map).ok();
-                let fall_target = resolve_fallthrough(instructions, inst_idx, block_map).ok();
-                match (branch_target, fall_target) {
-                    (Some((then_off, then_blk)), Some((else_off, else_blk))) => {
-                        let then_args = get_branch_args(
-                            stack,
-                            block_entry_depths.get(&then_off).copied().unwrap_or(0),
-                        );
-                        let else_args = get_branch_args(
-                            stack,
-                            block_entry_depths.get(&else_off).copied().unwrap_or(0),
-                        );
-                        fb.br_if(cond, then_blk, &then_args, else_blk, &else_args);
-                    }
-                    (Some((off, blk)), None) => {
-                        // Fall-through past end → branch or implicit return.
-                        let ret_blk = fb.create_block();
-                        fb.br_if(
-                            cond,
-                            blk,
-                            &get_branch_args(
-                                stack,
-                                block_entry_depths.get(&off).copied().unwrap_or(0),
-                            ),
-                            ret_blk,
-                            &[],
-                        );
-                        fb.switch_to_block(ret_blk);
-                        fb.ret(None);
-                    }
-                    (None, Some((off, blk))) => {
-                        // Branch target past end → fall-through or implicit return.
-                        let ret_blk = fb.create_block();
-                        fb.br_if(
-                            cond,
-                            ret_blk,
-                            &[],
-                            blk,
-                            &get_branch_args(
-                                stack,
-                                block_entry_depths.get(&off).copied().unwrap_or(0),
-                            ),
-                        );
-                        fb.switch_to_block(ret_blk);
-                        fb.ret(None);
-                    }
-                    (None, None) => {
-                        // Both targets past end → pop condition and implicit return.
-                        fb.ret(None);
-                    }
-                }
-                *terminated = true;
-            }
+            translate_conditional_branch(
+                inst,
+                instructions,
+                inst_idx,
+                fb,
+                stack,
+                block_map,
+                terminated,
+                block_entry_depths,
+                true, // branch_on_true
+            )?;
         }
         Opcode::Bf => {
-            if let Operand::Branch(offset) = inst.operand {
-                let cond = pop(stack, inst)?;
-                let branch_target = resolve_branch_target(inst, offset, block_map).ok();
-                let fall_target = resolve_fallthrough(instructions, inst_idx, block_map).ok();
-                // Bf branches when false, so: then=fallthrough, else=branch
-                match (fall_target, branch_target) {
-                    (Some((then_off, then_blk)), Some((else_off, else_blk))) => {
-                        let then_args = get_branch_args(
-                            stack,
-                            block_entry_depths.get(&then_off).copied().unwrap_or(0),
-                        );
-                        let else_args = get_branch_args(
-                            stack,
-                            block_entry_depths.get(&else_off).copied().unwrap_or(0),
-                        );
-                        fb.br_if(cond, then_blk, &then_args, else_blk, &else_args);
-                    }
-                    (Some((off, blk)), None) => {
-                        let ret_blk = fb.create_block();
-                        fb.br_if(
-                            cond,
-                            blk,
-                            &get_branch_args(
-                                stack,
-                                block_entry_depths.get(&off).copied().unwrap_or(0),
-                            ),
-                            ret_blk,
-                            &[],
-                        );
-                        fb.switch_to_block(ret_blk);
-                        fb.ret(None);
-                    }
-                    (None, Some((off, blk))) => {
-                        let ret_blk = fb.create_block();
-                        fb.br_if(
-                            cond,
-                            ret_blk,
-                            &[],
-                            blk,
-                            &get_branch_args(
-                                stack,
-                                block_entry_depths.get(&off).copied().unwrap_or(0),
-                            ),
-                        );
-                        fb.switch_to_block(ret_blk);
-                        fb.ret(None);
-                    }
-                    (None, None) => {
-                        fb.ret(None);
-                    }
-                }
-                *terminated = true;
-            }
+            translate_conditional_branch(
+                inst,
+                instructions,
+                inst_idx,
+                fb,
+                stack,
+                block_map,
+                terminated,
+                block_entry_depths,
+                false, // branch_on_false
+            )?;
         }
-
-        // ============================================================
-        // Return / Exit
-        // ============================================================
         Opcode::Ret => {
             let val = pop(stack, inst)?;
             fb.ret(Some(val));
@@ -2033,10 +2098,96 @@ fn translate_instruction(
             fb.ret(None);
             *terminated = true;
         }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
 
-        // ============================================================
-        // Stack management
-        // ============================================================
+/// Shared logic for Bt and Bf conditional branches.
+///
+/// When `branch_on_true` is true, the branch target is the "then" arm (Bt semantics).
+/// When false, the fall-through is the "then" arm (Bf semantics).
+#[allow(clippy::too_many_arguments)]
+fn translate_conditional_branch(
+    inst: &Instruction,
+    instructions: &[Instruction],
+    inst_idx: usize,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    block_map: &HashMap<usize, BlockId>,
+    terminated: &mut bool,
+    block_entry_depths: &HashMap<usize, usize>,
+    branch_on_true: bool,
+) -> Result<(), String> {
+    if let Operand::Branch(offset) = inst.operand {
+        let cond = pop(stack, inst)?;
+        let branch_target = resolve_branch_target(inst, offset, block_map).ok();
+        let fall_target = resolve_fallthrough(instructions, inst_idx, block_map).ok();
+        // For Bt: then=branch, else=fall-through.
+        // For Bf: then=fall-through, else=branch.
+        let (then_target, else_target) = if branch_on_true {
+            (branch_target, fall_target)
+        } else {
+            (fall_target, branch_target)
+        };
+        match (then_target, else_target) {
+            (Some((then_off, then_blk)), Some((else_off, else_blk))) => {
+                let then_args = get_branch_args(
+                    stack,
+                    block_entry_depths.get(&then_off).copied().unwrap_or(0),
+                );
+                let else_args = get_branch_args(
+                    stack,
+                    block_entry_depths.get(&else_off).copied().unwrap_or(0),
+                );
+                fb.br_if(cond, then_blk, &then_args, else_blk, &else_args);
+            }
+            (Some((off, blk)), None) => {
+                let ret_blk = fb.create_block();
+                fb.br_if(
+                    cond,
+                    blk,
+                    &get_branch_args(stack, block_entry_depths.get(&off).copied().unwrap_or(0)),
+                    ret_blk,
+                    &[],
+                );
+                fb.switch_to_block(ret_blk);
+                fb.ret(None);
+            }
+            (None, Some((off, blk))) => {
+                let ret_blk = fb.create_block();
+                fb.br_if(
+                    cond,
+                    ret_blk,
+                    &[],
+                    blk,
+                    &get_branch_args(stack, block_entry_depths.get(&off).copied().unwrap_or(0)),
+                );
+                fb.switch_to_block(ret_blk);
+                fb.ret(None);
+            }
+            (None, None) => {
+                fb.ret(None);
+            }
+        }
+        *terminated = true;
+    }
+    Ok(())
+}
+
+// ============================================================
+// Stack management
+// ============================================================
+
+/// Handle Popz, Dup.
+fn translate_stack_op(
+    inst: &Instruction,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    gml_sizes: &mut HashMap<ValueId, u8>,
+    compound_popaf_pending: &mut bool,
+) -> Result<(), String> {
+    match inst.opcode {
         Opcode::Popz => {
             let _ = pop(stack, inst)?;
         }
@@ -2120,25 +2271,24 @@ fn translate_instruction(
                 stack.push(copied);
             }
         }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
 
-        // ============================================================
-        // Pop (variable store)
-        // ============================================================
-        Opcode::Pop => {
-            translate_pop(
-                inst,
-                fb,
-                stack,
-                locals,
-                ctx,
-                compound_2d_pending,
-                global_arg_count,
-            )?;
-        }
+// ============================================================
+// Function calls
+// ============================================================
 
-        // ============================================================
-        // Function calls
-        // ============================================================
+/// Handle Call, CallV.
+fn translate_call_op(
+    inst: &Instruction,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    ctx: &TranslateCtx,
+    gml_sizes: &mut HashMap<ValueId, u8>,
+) -> Result<(), String> {
+    match inst.opcode {
         Opcode::Call => {
             if let Operand::Call { function_id, argc } = inst.operand {
                 // first_address points to the Call instruction word.
@@ -2211,21 +2361,48 @@ fn translate_instruction(
                 stack.push(result);
             }
         }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
 
-        // ============================================================
-        // Type conversion
-        // ============================================================
-        Opcode::Conv => {
-            let val = pop(stack, inst)?;
-            let target_ty = datatype_to_ir_type(inst.type2);
-            let coerced = fb.coerce(val, target_ty);
-            gml_sizes.insert(coerced, gml_slot_units(inst.type2));
-            stack.push(coerced);
-        }
+// ============================================================
+// Type conversion
+// ============================================================
 
-        // ============================================================
-        // PushEnv / PopEnv (with-blocks)
-        // ============================================================
+/// Handle Conv (type coercion).
+fn translate_conv_op(
+    inst: &Instruction,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    gml_sizes: &mut HashMap<ValueId, u8>,
+) -> Result<(), String> {
+    let val = pop(stack, inst)?;
+    let target_ty = datatype_to_ir_type(inst.type2);
+    let coerced = fb.coerce(val, target_ty);
+    gml_sizes.insert(coerced, gml_slot_units(inst.type2));
+    stack.push(coerced);
+    Ok(())
+}
+
+// ============================================================
+// PushEnv / PopEnv (with-blocks)
+// ============================================================
+
+/// Handle PushEnv, PopEnv.
+#[allow(clippy::too_many_arguments)]
+fn translate_env_op(
+    inst: &Instruction,
+    instructions: &[Instruction],
+    inst_idx: usize,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    block_map: &HashMap<usize, BlockId>,
+    ctx: &TranslateCtx,
+    terminated: &mut bool,
+    block_entry_depths: &HashMap<usize, usize>,
+) -> Result<(), String> {
+    match inst.opcode {
         Opcode::PushEnv => {
             if let Operand::Branch(_offset) = inst.operand {
                 // Unmatched PushEnv: the matching PopEnv is in a sibling code entry
@@ -2288,173 +2465,186 @@ fn translate_instruction(
                 *terminated = true;
             }
         }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
 
-        // ============================================================
-        // Break (special signals)
-        // ============================================================
-        Opcode::Break => {
-            if let Operand::Break { signal, .. } = inst.operand {
-                match signal {
-                    0xFFFF => {} // chkindex — nop for decompilation
-                    0xFFFE => {
-                        // pushaf — array element get.
-                        // Stack: [..., ARRAY, INDEX] with INDEX on top.
-                        // Strip Conv.v.i32 from the index (VM artifact).
-                        let index = pop(stack, inst)?;
-                        let index = fb.try_peel_int_coerce(index);
-                        let array = pop(stack, inst)?;
-                        let val = fb.get_index(array, index, Type::Dynamic);
-                        gml_sizes.insert(val, 4); // Variable (16 bytes)
-                        stack.push(val);
-                    }
-                    0xFFFD => {
-                        // popaf — array element set.
-                        //
-                        // Three stack layouts depending on context:
-                        //
-                        // Simple write [..., INDEX, ARRAY, VALUE] (VALUE on top):
-                        //   pop VALUE, pop ARRAY (2nd), pop INDEX (3rd)
-                        //   → ARRAY[INDEX] = VALUE
-                        //
-                        // Compound write [..., ARRAY, INDEX, VALUE] (after
-                        //   Dup(normal)+pushaf+arithmetic+Dup(swap)):
-                        //   pop VALUE, pop INDEX (2nd), pop ARRAY (3rd)
-                        //   → ARRAY[INDEX] = VALUE
-                        //   compound_popaf_pending flag (set by Dup(swap)) signals this.
-                        //
-                        // pushac case [..., ARRAY, VALUE] (VALUE on top;
-                        //   INDEX saved by pushac):
-                        //   pop VALUE, pop ARRAY (2nd), use saved INDEX
-                        //   → ARRAY[INDEX] = VALUE
-                        let value = pop(stack, inst)?;
-                        let (array, index) = if let Some(idx) = pushac_array.take() {
-                            let arr = pop(stack, inst)?;
-                            (arr, idx)
-                        } else if *compound_popaf_pending {
-                            *compound_popaf_pending = false;
-                            let idx = pop(stack, inst)?;
-                            let arr = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
-                            (arr, idx)
-                        } else {
-                            let arr = pop(stack, inst)?;
-                            let idx = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
-                            (arr, idx)
-                        };
-                        fb.set_index(array, index, value);
-                    }
-                    0xFFFC => {
-                        // pushac — capture the array INDEX for the upcoming popaf.
-                        // GMS2.3+ uses this to save the index before the array
-                        // reference and value are pushed onto the stack.  popaf
-                        // then pops VALUE (top) and ARRAY (second), using the
-                        // saved index: ARRAY[INDEX] = VALUE.
-                        //
-                        // The GML VM often emits Conv.v.i32 before pushac to
-                        // ensure the index is an integer.  Strip the coerce so
-                        // the index stays Dynamic (JS arrays accept any key).
-                        let idx = pop(stack, inst)?;
-                        let idx = fb.try_peel_int_coerce(idx);
-                        *pushac_array = Some(idx);
-                    }
-                    0xFFFB => {
-                        // setowner — pops the owner instance ID from the stack.
-                        let owner = pop(stack, inst)?;
-                        let _ = owner;
-                    }
-                    0xFFFA => {
-                        // isstaticok — static init guard. Pushes true if statics
-                        // are already initialized; used with Bt to skip init code.
-                        // For decompilation we push false so the init code is emitted.
-                        let r = fb.const_bool(false);
-                        gml_sizes.insert(r, 1); // Boolean (4 bytes)
-                        stack.push(r);
-                    }
-                    0xFFF9 => {} // setstatic — set static scope, nop for decompilation
-                    0xFFF8 => {} // savearef — save array ref to temp, nop for decompilation
-                    0xFFF7 => {} // restorearef — restore array ref from temp, nop for decompilation
-                    0xFFF6 => {
-                        // chknullish — GMS2.3+ only. Check if top of stack is nullish.
-                        // Pushes boolean; original value stays on stack below.
-                        // Used for ?? (nullish coalescing) and ?. (optional chaining).
-                        if !ctx.bytecode_version.is_gms23_plus() {
-                            eprintln!(
-                                "[warn] chknullish (Break -10) seen in bytecode_version={}, expected GMS2.3+",
-                                ctx.bytecode_version.0
-                            );
-                        }
-                        let val = *stack.last().ok_or_else(|| {
-                            format!("{:#x}: stack underflow on chknullish", inst.offset)
-                        })?;
-                        let null_val = fb.const_null();
-                        let is_null = fb.cmp(CmpKind::Eq, val, null_val);
-                        gml_sizes.insert(is_null, 1); // Boolean (4 bytes)
-                        stack.push(is_null);
-                    }
-                    0xFFF5 => {
-                        // pushref — GMS2.3+ only. Push asset reference onto stack.
-                        // The extra Int32 operand encodes (type_tag << 24) | asset_index.
-                        if !ctx.bytecode_version.is_gms23_plus() {
-                            eprintln!(
-                                "[warn] pushref (Break -11) seen in bytecode_version={}, expected GMS2.3+",
-                                ctx.bytecode_version.0
-                            );
-                        }
-                        // Type 0 = OBJT (object), 1 = SPRT, 2 = SOND, 3 = ROOM, etc.
-                        // All types are resolved via asset_ref_names. Fall back to
-                        // func_ref_map (for GMS1 compatibility) and then to a placeholder.
-                        let is_objt = if let Operand::Break {
-                            extra: Some(idx), ..
-                        } = inst.operand
-                        {
-                            (idx as u32) >> 24 == 0
-                        } else {
-                            false
-                        };
-                        let func_name = if let Operand::Break {
-                            extra: Some(idx), ..
-                        } = inst.operand
-                        {
-                            let key = idx as u32;
-                            ctx.asset_ref_names.get(&key).cloned()
-                        } else {
-                            None
-                        }
-                        .or_else(|| {
-                            let abs_addr = ctx.bytecode_offset + inst.offset;
-                            ctx.func_ref_map
-                                .get(&abs_addr)
-                                .and_then(|&i| ctx.function_names.get(&(i as u32)))
-                                .cloned()
-                        })
-                        .unwrap_or_else(|| {
-                            let abs_addr = ctx.bytecode_offset + inst.offset;
-                            format!("func_ref_unknown_{:#x}", abs_addr)
-                        });
-                        // OBJT references are class constructors; everything else
-                        // (SPRT, SOND, ROOM, SCPT, etc.) is a plain asset index.
-                        let ref_ty = if is_objt {
-                            Type::ClassRef(func_name.clone())
-                        } else {
-                            Type::Dynamic
-                        };
-                        let val = fb.global_ref(&func_name, ref_ty);
-                        gml_sizes.insert(val, 4); // Variable (16 bytes)
-                        stack.push(val);
-                        // Track OBJT references so with-body closures can be typed.
-                        if is_objt {
-                            obj_ref_values.insert(val, func_name);
-                        }
-                    }
-                    _ => {
-                        // Unknown break signal, emit as system call.
-                        let sig_val = fb.const_int(signal as i64);
-                        fb.system_call("GameMaker.Debug", "break", &[sig_val], Type::Void);
-                    }
+// ============================================================
+// Break (special signals)
+// ============================================================
+
+/// Handle Break signal opcodes (pushaf, popaf, pushac, setowner, isstaticok, pushref, etc.).
+#[allow(clippy::too_many_arguments)]
+fn translate_break_op(
+    inst: &Instruction,
+    fb: &mut FunctionBuilder,
+    stack: &mut Vec<ValueId>,
+    ctx: &TranslateCtx,
+    gml_sizes: &mut HashMap<ValueId, u8>,
+    pushac_array: &mut Option<ValueId>,
+    compound_popaf_pending: &mut bool,
+    obj_ref_values: &mut HashMap<ValueId, String>,
+) -> Result<(), String> {
+    if let Operand::Break { signal, .. } = inst.operand {
+        match signal {
+            0xFFFF => {} // chkindex — nop for decompilation
+            0xFFFE => {
+                // pushaf — array element get.
+                // Stack: [..., ARRAY, INDEX] with INDEX on top.
+                // Strip Conv.v.i32 from the index (VM artifact).
+                let index = pop(stack, inst)?;
+                let index = fb.try_peel_int_coerce(index);
+                let array = pop(stack, inst)?;
+                let val = fb.get_index(array, index, Type::Dynamic);
+                gml_sizes.insert(val, 4); // Variable (16 bytes)
+                stack.push(val);
+            }
+            0xFFFD => {
+                // popaf — array element set.
+                //
+                // Three stack layouts depending on context:
+                //
+                // Simple write [..., INDEX, ARRAY, VALUE] (VALUE on top):
+                //   pop VALUE, pop ARRAY (2nd), pop INDEX (3rd)
+                //   → ARRAY[INDEX] = VALUE
+                //
+                // Compound write [..., ARRAY, INDEX, VALUE] (after
+                //   Dup(normal)+pushaf+arithmetic+Dup(swap)):
+                //   pop VALUE, pop INDEX (2nd), pop ARRAY (3rd)
+                //   → ARRAY[INDEX] = VALUE
+                //   compound_popaf_pending flag (set by Dup(swap)) signals this.
+                //
+                // pushac case [..., ARRAY, VALUE] (VALUE on top;
+                //   INDEX saved by pushac):
+                //   pop VALUE, pop ARRAY (2nd), use saved INDEX
+                //   → ARRAY[INDEX] = VALUE
+                let value = pop(stack, inst)?;
+                let (array, index) = if let Some(idx) = pushac_array.take() {
+                    let arr = pop(stack, inst)?;
+                    (arr, idx)
+                } else if *compound_popaf_pending {
+                    *compound_popaf_pending = false;
+                    let idx = pop(stack, inst)?;
+                    let arr = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
+                    (arr, idx)
+                } else {
+                    let arr = pop(stack, inst)?;
+                    let idx = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
+                    (arr, idx)
+                };
+                fb.set_index(array, index, value);
+            }
+            0xFFFC => {
+                // pushac — capture the array INDEX for the upcoming popaf.
+                // GMS2.3+ uses this to save the index before the array
+                // reference and value are pushed onto the stack.  popaf
+                // then pops VALUE (top) and ARRAY (second), using the
+                // saved index: ARRAY[INDEX] = VALUE.
+                //
+                // The GML VM often emits Conv.v.i32 before pushac to
+                // ensure the index is an integer.  Strip the coerce so
+                // the index stays Dynamic (JS arrays accept any key).
+                let idx = pop(stack, inst)?;
+                let idx = fb.try_peel_int_coerce(idx);
+                *pushac_array = Some(idx);
+            }
+            0xFFFB => {
+                // setowner — pops the owner instance ID from the stack.
+                let owner = pop(stack, inst)?;
+                let _ = owner;
+            }
+            0xFFFA => {
+                // isstaticok — static init guard. Pushes true if statics
+                // are already initialized; used with Bt to skip init code.
+                // For decompilation we push false so the init code is emitted.
+                let r = fb.const_bool(false);
+                gml_sizes.insert(r, 1); // Boolean (4 bytes)
+                stack.push(r);
+            }
+            0xFFF9 => {} // setstatic — set static scope, nop for decompilation
+            0xFFF8 => {} // savearef — save array ref to temp, nop for decompilation
+            0xFFF7 => {} // restorearef — restore array ref from temp, nop for decompilation
+            0xFFF6 => {
+                // chknullish — GMS2.3+ only. Check if top of stack is nullish.
+                // Pushes boolean; original value stays on stack below.
+                // Used for ?? (nullish coalescing) and ?. (optional chaining).
+                if !ctx.bytecode_version.is_gms23_plus() {
+                    eprintln!(
+                        "[warn] chknullish (Break -10) seen in bytecode_version={}, expected GMS2.3+",
+                        ctx.bytecode_version.0
+                    );
                 }
+                let val = *stack
+                    .last()
+                    .ok_or_else(|| format!("{:#x}: stack underflow on chknullish", inst.offset))?;
+                let null_val = fb.const_null();
+                let is_null = fb.cmp(CmpKind::Eq, val, null_val);
+                gml_sizes.insert(is_null, 1); // Boolean (4 bytes)
+                stack.push(is_null);
+            }
+            0xFFF5 => {
+                // pushref — GMS2.3+ only. Push asset reference onto stack.
+                // The extra Int32 operand encodes (type_tag << 24) | asset_index.
+                if !ctx.bytecode_version.is_gms23_plus() {
+                    eprintln!(
+                        "[warn] pushref (Break -11) seen in bytecode_version={}, expected GMS2.3+",
+                        ctx.bytecode_version.0
+                    );
+                }
+                // Type 0 = OBJT (object), 1 = SPRT, 2 = SOND, 3 = ROOM, etc.
+                // All types are resolved via asset_ref_names. Fall back to
+                // func_ref_map (for GMS1 compatibility) and then to a placeholder.
+                let is_objt = if let Operand::Break {
+                    extra: Some(idx), ..
+                } = inst.operand
+                {
+                    (idx as u32) >> 24 == 0
+                } else {
+                    false
+                };
+                let func_name = if let Operand::Break {
+                    extra: Some(idx), ..
+                } = inst.operand
+                {
+                    let key = idx as u32;
+                    ctx.asset_ref_names.get(&key).cloned()
+                } else {
+                    None
+                }
+                .or_else(|| {
+                    let abs_addr = ctx.bytecode_offset + inst.offset;
+                    ctx.func_ref_map
+                        .get(&abs_addr)
+                        .and_then(|&i| ctx.function_names.get(&(i as u32)))
+                        .cloned()
+                })
+                .unwrap_or_else(|| {
+                    let abs_addr = ctx.bytecode_offset + inst.offset;
+                    format!("func_ref_unknown_{:#x}", abs_addr)
+                });
+                // OBJT references are class constructors; everything else
+                // (SPRT, SOND, ROOM, SCPT, etc.) is a plain asset index.
+                let ref_ty = if is_objt {
+                    Type::ClassRef(func_name.clone())
+                } else {
+                    Type::Dynamic
+                };
+                let val = fb.global_ref(&func_name, ref_ty);
+                gml_sizes.insert(val, 4); // Variable (16 bytes)
+                stack.push(val);
+                // Track OBJT references so with-body closures can be typed.
+                if is_objt {
+                    obj_ref_values.insert(val, func_name);
+                }
+            }
+            _ => {
+                // Unknown break signal, emit as system call.
+                let sig_val = fb.const_int(signal as i64);
+                fb.system_call("GameMaker.Debug", "break", &[sig_val], Type::Void);
             }
         }
     }
-
     Ok(())
 }
 
@@ -3465,11 +3655,11 @@ fn resolve_fallthrough(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datawin::bytecode::decode::Instruction;
+    use datawin::bytecode::encode::encode;
+    use datawin::bytecode::opcode::Opcode;
+    use datawin::bytecode::types::{DataType, VariableRef};
     use reincarnate_core::ir::inst::Op;
-    use reincarnate_datawin::bytecode::decode::Instruction;
-    use reincarnate_datawin::bytecode::encode::encode;
-    use reincarnate_datawin::bytecode::opcode::Opcode;
-    use reincarnate_datawin::bytecode::types::{DataType, VariableRef};
 
     static EMPTY_ASSET_REF_NAMES: std::sync::LazyLock<HashMap<u32, String>> =
         std::sync::LazyLock::new(HashMap::new);
@@ -3508,7 +3698,7 @@ mod tests {
             is_with_body: false,
             with_body_has_return: false,
             // Tests exercise GMS2.3+ bytecode by default (shared blobs, Break signals, etc.).
-            bytecode_version: reincarnate_datawin::BytecodeVersion(17),
+            bytecode_version: datawin::BytecodeVersion(17),
         }
     }
 

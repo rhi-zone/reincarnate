@@ -1,8 +1,8 @@
 use std::fmt::Write;
 use std::path::PathBuf;
 
+use datawin::DataWin;
 use reincarnate_core::project::{Asset, AssetCatalog, AssetKind};
-use reincarnate_datawin::DataWin;
 
 use crate::assets::detect_audio_extension;
 use crate::naming;

@@ -42,7 +42,8 @@ pub use variables::{
 /// Implementors transform a function body in place. The trait is object-safe so
 /// backends can register engine-specific passes alongside the core ones and run
 /// them through a uniform pipeline.
-pub trait AstPass {
+#[allow(dead_code)]
+pub(crate) trait AstPass {
     /// Human-readable name (for `--dump-ast-after` and diagnostics).
     fn name(&self) -> &str;
 
@@ -51,7 +52,8 @@ pub trait AstPass {
 }
 
 /// Wrap a bare `fn(&mut Vec<Stmt>)` as an [`AstPass`].
-pub struct FnPass {
+#[allow(dead_code)]
+pub(crate) struct FnPass {
     pub name: &'static str,
     pub func: fn(&mut Vec<Stmt>),
 }

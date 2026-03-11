@@ -8,6 +8,6 @@ description = "GameMaker frontend for the Reincarnate legacy software lifting fr
 
 [dependencies]
 reincarnate-core = { path = "../../reincarnate-core" }
-reincarnate-datawin = { path = "../../formats/datawin" }
+datawin = { path = "../../formats/datawin" }
 serde_json = { workspace = true }
 unicode-ident = { workspace = true }

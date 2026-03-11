@@ -1,5 +1,5 @@
 pub mod ast;
-pub mod ast_passes;
+pub(crate) mod ast_passes;
 pub mod block;
 pub mod builder;
 pub mod coroutine;
@@ -23,8 +23,6 @@ pub use module::{
     ClassDef, EntryPoint, EnumDef, EnumVariant, ExternalImport, Global, Import, Module, StructDef,
     SystemCallTypeRule,
 };
-pub use structurize::{
-    build_cfg, compute_dominators_lt, dominates, structurize, BlockArgAssign, Cfg, Shape,
-};
+pub use structurize::structurize;
 pub use ty::{parse_type_notation, FunctionSig, Type, TypeConstraint, TypeVarId};
 pub use value::{Constant, ValueId};

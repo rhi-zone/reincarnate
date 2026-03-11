@@ -1088,6 +1088,645 @@ fn relative_import_path(from: &[String], to: &[String]) -> String {
     parts.join("/")
 }
 
+/// Rename free functions whose sanitized name collides with a class name or
+/// global variable name, avoiding TS2308/TS2440 duplicate-export errors.
+/// Renames both `func.name` and all `Op::Call` references throughout the module.
+fn rename_colliding_free_funcs(
+    module: &mut Module,
+    free_funcs: &[FuncId],
+    known_classes: &HashSet<String>,
+) {
+    let sanitized_global_names: HashSet<String> = module
+        .globals
+        .iter()
+        .map(|g| sanitize_ident(&g.name))
+        .collect();
+    // Build (old_name → new_name) pairs for colliding free functions.
+    let renames: HashMap<String, String> = free_funcs
+        .iter()
+        .filter_map(|&fid| {
+            let raw = sanitize_ident(&module.functions[fid].name);
+            if known_classes.contains(&raw) || sanitized_global_names.contains(&raw) {
+                Some((module.functions[fid].name.clone(), format!("{raw}__fn")))
+            } else {
+                None
+            }
+        })
+        .collect();
+    if !renames.is_empty() {
+        // Rename the function definitions.
+        for fid in free_funcs {
+            let name = &module.functions[*fid].name;
+            if let Some(new_name) = renames.get(name) {
+                module.functions[*fid].name = new_name.clone();
+            }
+        }
+        // Update all Op::Call references throughout the module.
+        let all_fids: Vec<FuncId> = module.functions.keys().collect();
+        for fid in all_fids {
+            for inst in module.functions[fid].insts.values_mut() {
+                if let Op::Call { func, .. } = &mut inst.op {
+                    if let Some(new_name) = renames.get(func.as_str()) {
+                        func.clone_from(new_name);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Emit `_globals.ts` — module-level global variable declarations.
+/// Returns `true` if the file was written (so the caller can add a barrel export).
+fn emit_globals_file(
+    module: &Module,
+    module_dir: &Path,
+    registry: &ClassRegistry,
+    runtime_config: Option<&RuntimeConfig>,
+) -> Result<bool, CoreError> {
+    if module.globals.is_empty() {
+        return Ok(false);
+    }
+    let mut out = String::new();
+
+    // Collect type imports for Struct-typed globals.
+    let mut type_imports: BTreeSet<String> = BTreeSet::new();
+    // All struct/enum names used in globals (includes runtime types not in registry).
+    let mut all_struct_names: BTreeSet<String> = BTreeSet::new();
+    for global in &module.globals {
+        collect_global_type_imports(&global.ty, registry, &mut type_imports);
+        collect_all_struct_names(&global.ty, &mut all_struct_names);
+    }
+    let mut any_import = false;
+    // Import runtime/preamble types (e.g. GMLObject) that are used as global types
+    // but are not emitted classes. _globals.ts is one level below the output root.
+    if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+        let preamble_needed: Vec<&str> = preamble
+            .names
+            .iter()
+            .filter(|n| all_struct_names.contains(n.as_str()))
+            .map(|n| n.as_str())
+            .collect();
+        if !preamble_needed.is_empty() {
+            let _ = writeln!(
+                out,
+                "import {{ {} }} from \"../runtime/{}\";",
+                preamble_needed.join(", "),
+                preamble.path,
+            );
+            any_import = true;
+        }
+    }
+    for short_name in &type_imports {
+        if let Some(entry) = registry.classes.get(short_name) {
+            let rel = format!("./{}", entry.path_segments.join("/"));
+            let _ = writeln!(out, "import type {{ {short_name} }} from \"{rel}\";");
+            any_import = true;
+        }
+    }
+    if any_import {
+        out.push('\n');
+    }
+
+    for global in &module.globals {
+        // const without initializer is invalid JS — demote to let.
+        let kw = if global.mutable || global.init.is_none() {
+            "let"
+        } else {
+            "const"
+        };
+        let ident = sanitize_ident(&global.name);
+        let ts = ts_type(&global.ty);
+        if let Some(val) = &global.init {
+            let _ = writeln!(
+                out,
+                "export {kw} {ident}: {ts} = {};",
+                crate::ast_printer::emit_constant(val)
+            );
+        } else {
+            let _ = writeln!(out, "export {kw} {ident}: {ts};");
+        }
+        // ESM setter for mutable globals — imports are read-only bindings.
+        if global.mutable {
+            let _ = writeln!(
+                out,
+                "export function $set_{ident}(v: {ts}) {{ {ident} = v; }}"
+            );
+        }
+    }
+    let path = module_dir.join("_globals.ts");
+    fs::write(&path, &out).map_err(CoreError::Io)?;
+    Ok(true)
+}
+
+/// Pre-collect all classes' direct value imports for cycle detection, then
+/// compute the transitive closure.
+fn collect_transitive_imports(
+    class_groups: &[ClassGroup],
+    module: &Module,
+    registry: &ClassRegistry,
+    class_meta: &ClassMeta,
+    class_names: &HashMap<String, String>,
+    global_names: &HashSet<String>,
+    engine: EngineKind,
+) -> HashMap<String, HashSet<String>> {
+    let mut direct_value_imports: HashMap<String, BTreeSet<String>> = HashMap::new();
+    for group in class_groups {
+        let qualified = qualified_class_name(&group.class_def);
+        let empty_smo = HashMap::new();
+        let smo = class_meta
+            .static_method_owner_map
+            .get(&qualified)
+            .unwrap_or(&empty_smo);
+        let sfo = class_meta
+            .static_field_owner_map
+            .get(&qualified)
+            .unwrap_or(&empty_smo);
+        let refs = collect_class_references(
+            group,
+            module,
+            registry,
+            &module.external_imports,
+            smo,
+            sfo,
+            global_names,
+            &class_meta.unique_static_field_map,
+            engine,
+        );
+        let qualified = qualified_class_name(&group.class_def);
+        let ts_name = class_names
+            .get(&qualified)
+            .cloned()
+            .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
+        direct_value_imports.insert(ts_name, refs.value_refs);
+    }
+    compute_transitive_value_imports(&direct_value_imports)
+}
+
+/// Emit a single class file (and optional companion `_traits.ts` file).
+/// Returns the barrel export paths added by this class.
+#[allow(clippy::too_many_arguments)]
+fn emit_class_file(
+    group: &ClassGroup,
+    module: &mut Module,
+    module_dir: &Path,
+    class_names: &HashMap<String, String>,
+    class_meta: &ClassMeta,
+    registry: &ClassRegistry,
+    global_names: &HashSet<String>,
+    mutable_global_names: &HashSet<String>,
+    free_func_names: &HashSet<String>,
+    known_classes: &HashSet<String>,
+    short_to_qualified: &HashMap<String, String>,
+    module_exports: &BTreeMap<String, Vec<String>>,
+    transitive_value_imports: &HashMap<String, HashSet<String>>,
+    type_defs: &BTreeMap<String, ExternalTypeDef>,
+    func_sigs: &BTreeMap<String, ExternalMethodSig>,
+    lowering_config: &LoweringConfig,
+    runtime_config: Option<&RuntimeConfig>,
+    engine: EngineKind,
+    debug: &DebugConfig,
+    barrel_exports: &mut Vec<String>,
+) -> Result<(), CoreError> {
+    let class_def = &group.class_def;
+    let short_name = sanitize_ident(&class_def.name);
+
+    // Path segments for this class: namespace segments + class name.
+    let mut segments: Vec<String> = class_def
+        .namespace
+        .iter()
+        .map(|s| sanitize_ident(s))
+        .collect();
+    segments.push(short_name.clone());
+
+    // Depth = number of namespace segments (directories below module_dir).
+    let depth = class_def.namespace.len();
+
+    // Create nested directory.
+    let mut file_dir = module_dir.to_path_buf();
+    for seg in &class_def.namespace {
+        file_dir = file_dir.join(sanitize_ident(seg));
+    }
+    fs::create_dir_all(&file_dir).map_err(CoreError::Io)?;
+
+    let mut out = String::new();
+    let class_funcs = || group.methods.iter().map(|&fid| &module.functions[fid]);
+    let all_systems = collect_system_names_from_funcs(class_funcs());
+    // For Flash class files, generic shims and Flash.Memory are accessed via
+    // `this._shims` — strip them from the import set (no module-level singleton
+    // import needed).
+    let known_generics: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
+    let systems = if engine == EngineKind::Flash {
+        all_systems
+            .into_iter()
+            .filter(|s| !known_generics.contains(s.as_str()) && s != "Flash.Memory")
+            .collect()
+    } else {
+        all_systems
+    };
+    let mut _class_sys_aliases = BTreeMap::new();
+    emit_runtime_imports_for(
+        systems,
+        &mut out,
+        depth,
+        runtime_config,
+        &mut _class_sys_aliases,
+    );
+    // Flash class files need the FlashShims type for constructor parameter annotations.
+    if engine == EngineKind::Flash && !group.class_def.is_interface {
+        let pref = "../".repeat(depth + 1);
+        let pref = pref.trim_end_matches('/');
+        let _ = writeln!(out, "import type {{ FlashShims }} from \"{pref}/runtime\";");
+        out.push('\n');
+    }
+    let calls = collect_call_names_from_funcs(class_funcs(), engine);
+    let func_prefix = "../".repeat(depth + 1);
+    let func_prefix = func_prefix.trim_end_matches('/');
+    let mut stateful_names = BTreeSet::new();
+    emit_function_imports_with_prefix(
+        &calls,
+        &mut out,
+        func_prefix,
+        runtime_config,
+        &mut stateful_names,
+    );
+    // Game-defined scripts shadow runtime functions with the same name.
+    stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
+    emit_free_function_imports(&calls, free_func_names, depth, &mut out);
+    if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+        let prefix = "../".repeat(depth + 1);
+        let prefix = prefix.trim_end_matches('/');
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"{prefix}/runtime/{}\";",
+            preamble.names.join(", "),
+            preamble.path,
+        );
+        out.push('\n');
+    }
+    let qualified = qualified_class_name(&group.class_def);
+    let empty_smo = HashMap::new();
+    let static_method_owners = class_meta
+        .static_method_owner_map
+        .get(&qualified)
+        .unwrap_or(&empty_smo);
+    let static_field_owners = class_meta
+        .static_field_owner_map
+        .get(&qualified)
+        .unwrap_or(&empty_smo);
+    let late_bound = emit_intra_imports(
+        group,
+        module,
+        &segments,
+        registry,
+        static_method_owners,
+        static_field_owners,
+        global_names,
+        &class_meta.unique_static_field_map,
+        mutable_global_names,
+        module_exports,
+        transitive_value_imports,
+        short_to_qualified,
+        depth,
+        engine,
+        &mut out,
+    );
+
+    // Always emit the Sprites import; strip_unused_namespace_imports removes
+    // it when no `Sprites.` reference appears in the output.
+    if !module.sprite_names.is_empty() {
+        let prefix = "../".repeat(depth + 1);
+        let prefix = prefix.trim_end_matches('/');
+        let _ = writeln!(out, "import {{ Sprites }} from \"{prefix}/data/sprites\";");
+    }
+
+    // Validate member accesses before emitting (warnings only).
+    for &fid in &group.methods {
+        validate_member_accesses(
+            &module.functions[fid],
+            Some(&qualified),
+            class_meta,
+            registry,
+            short_to_qualified,
+            type_defs,
+        );
+    }
+
+    let mut traits_buf = String::new();
+    emit_class(
+        group,
+        module,
+        class_names,
+        class_meta,
+        mutable_global_names,
+        &late_bound,
+        short_to_qualified,
+        known_classes,
+        lowering_config,
+        engine,
+        &stateful_names,
+        free_func_names,
+        func_sigs,
+        debug,
+        &mut out,
+        &mut traits_buf,
+    )?;
+
+    strip_unused_namespace_imports(&mut out);
+    let path = file_dir.join(format!("{short_name}.ts"));
+    fs::write(&path, &out).map_err(CoreError::Io)?;
+
+    // Write companion _traits.ts file for Flash registration calls.
+    if !traits_buf.is_empty() {
+        write_traits_file(
+            group,
+            &traits_buf,
+            &segments,
+            &short_name,
+            class_names,
+            registry,
+            module,
+            runtime_config,
+            depth,
+            &file_dir,
+        )?;
+    }
+
+    // Barrel export path: relative from module_dir.
+    let export_path = segments.join("/");
+    barrel_exports.push(export_path);
+    if !traits_buf.is_empty() {
+        let mut traits_segments = segments.clone();
+        if let Some(last) = traits_segments.last_mut() {
+            *last = format!("{last}_traits");
+        }
+        barrel_exports.push(traits_segments.join("/"));
+    }
+    Ok(())
+}
+
+/// Write the companion `_traits.ts` file for Flash class registration calls.
+#[allow(clippy::too_many_arguments)]
+fn write_traits_file(
+    group: &ClassGroup,
+    traits_buf: &str,
+    segments: &[String],
+    short_name: &str,
+    class_names: &HashMap<String, String>,
+    registry: &ClassRegistry,
+    module: &Module,
+    runtime_config: Option<&RuntimeConfig>,
+    depth: usize,
+    file_dir: &Path,
+) -> Result<(), CoreError> {
+    let prefix = "../".repeat(depth + 1);
+    let prefix = prefix.trim_end_matches('/');
+    let mut traits_file = String::new();
+    // Import only the registration functions actually used.
+    let mut reg_names = Vec::new();
+    if traits_buf.contains("registerClass(") {
+        reg_names.push("registerClass");
+    }
+    if traits_buf.contains("registerClassTraits(") {
+        reg_names.push("registerClassTraits");
+    }
+    if traits_buf.contains("registerInterface(") {
+        reg_names.push("registerInterface");
+    }
+    if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+        let _ = writeln!(
+            traits_file,
+            "import {{ {} }} from \"{prefix}/runtime/{}\";",
+            reg_names.join(", "),
+            preamble.path,
+        );
+    }
+    // Import the class itself (use disambiguated TS identifier, not filesystem name).
+    let qualified = qualified_class_name(&group.class_def);
+    let ts_name = class_names
+        .get(&qualified)
+        .cloned()
+        .unwrap_or_else(|| short_name.to_string());
+    let _ = writeln!(
+        traits_file,
+        "import {{ {ts_name} }} from \"./{short_name}\";"
+    );
+    // Import interface classes referenced by registerInterface.
+    let mut traits_segments = segments.to_vec();
+    if let Some(last) = traits_segments.last_mut() {
+        *last = format!("{last}_traits");
+    }
+    for iface_qualified in &group.class_def.interfaces {
+        let iface_ts = class_names
+            .get(iface_qualified.as_str())
+            .cloned()
+            .unwrap_or_else(|| {
+                let short = iface_qualified
+                    .rsplit("::")
+                    .next()
+                    .unwrap_or(iface_qualified);
+                sanitize_ident(short)
+            });
+        if let Some(entry) = registry.lookup(iface_qualified) {
+            // In-module interface — relative path.
+            let rel = relative_import_path(&traits_segments, &entry.path_segments);
+            let _ = writeln!(traits_file, "import {{ {iface_ts} }} from \"{rel}\";");
+        } else if let Some(ext) = module.external_imports.get(iface_qualified) {
+            // External runtime interface — import from runtime path.
+            let _ = writeln!(
+                traits_file,
+                "import {{ {} }} from \"{prefix}/runtime/{}\";",
+                ext.short_name, ext.module_path,
+            );
+        }
+    }
+    traits_file.push('\n');
+    traits_file.push_str(traits_buf);
+    let traits_path = file_dir.join(format!("{short_name}_traits.ts"));
+    fs::write(&traits_path, &traits_file).map_err(CoreError::Io)?;
+    Ok(())
+}
+
+/// Emit `_init.ts` — free (non-class) function definitions.
+/// Returns `true` if the file was written (so the caller can add a barrel export).
+#[allow(clippy::too_many_arguments)]
+fn emit_free_functions_file(
+    module: &mut Module,
+    module_dir: &Path,
+    free_funcs: &[FuncId],
+    free_func_names: &HashSet<String>,
+    class_names: &HashMap<String, String>,
+    class_meta: &ClassMeta,
+    registry: &ClassRegistry,
+    global_names: &HashSet<String>,
+    mutable_global_names: &HashSet<String>,
+    known_classes: &HashSet<String>,
+    module_exports: &BTreeMap<String, Vec<String>>,
+    lowering_config: &LoweringConfig,
+    runtime_config: Option<&RuntimeConfig>,
+    engine: EngineKind,
+    debug: &DebugConfig,
+) -> Result<bool, CoreError> {
+    if free_funcs.is_empty() {
+        return Ok(false);
+    }
+    let mut out = String::new();
+    let free_fn_iter = || free_funcs.iter().map(|&fid| &module.functions[fid]);
+    let all_free_systems = collect_system_names_from_funcs(free_fn_iter());
+    // Flash.Memory is per-instance (accessed via _shims) — no module-level import.
+    let systems = if engine == EngineKind::Flash {
+        all_free_systems
+            .into_iter()
+            .filter(|s| s != "Flash.Memory")
+            .collect()
+    } else {
+        all_free_systems
+    };
+    let mut _free_sys_aliases = BTreeMap::new();
+    emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
+    let calls = collect_call_names_from_funcs(free_fn_iter(), engine);
+    let mut free_stateful_names = BTreeSet::new();
+    emit_function_imports_with_prefix(
+        &calls,
+        &mut out,
+        "..",
+        runtime_config,
+        &mut free_stateful_names,
+    );
+    // Game-defined free functions shadow runtime functions with the same name.
+    // Remove any runtime stateful entry that the game overrides — inside each
+    // function body the `const { name } = _rt` destructuring would shadow the
+    // game's version and break call sites that pass `(_rt, self, ...)`.
+    free_stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
+    // If free functions use stateful runtime functions, import the runtime type
+    // for the `_rt` parameter annotation.
+    if !free_stateful_names.is_empty() {
+        if let Some(preamble_cfg) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+            let _ = writeln!(
+                out,
+                "import type {{ GameRuntime }} from \"../runtime/{}\";",
+                preamble_cfg.path
+            );
+        }
+    }
+    if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+        let prefix = "../";
+        let prefix = prefix.trim_end_matches('/');
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"{prefix}/runtime/{}\";",
+            preamble.names.join(", "),
+            preamble.path,
+        );
+        out.push('\n');
+    }
+
+    // Scan free functions for external class references.
+    let mut refs = RefSets::default();
+    for &fid in free_funcs {
+        let func = &module.functions[fid];
+        collect_type_refs_from_function(
+            func,
+            "",
+            registry,
+            &module.external_imports,
+            &HashMap::new(),
+            &HashMap::new(),
+            global_names,
+            &HashMap::new(),
+            &module.object_names,
+            engine,
+            &mut refs,
+        );
+    }
+    emit_external_imports(
+        &refs.ext_value_refs,
+        &refs.ext_type_refs,
+        &module.external_imports,
+        module_exports,
+        "..",
+        &mut out,
+    );
+
+    // Intra-module class imports for free functions.
+    let init_segments = vec!["_init".to_string()];
+    for short_name in &refs.value_refs {
+        if let Some(entry) = registry.classes.get(short_name) {
+            let rel = relative_import_path(&init_segments, &entry.path_segments);
+            let _ = writeln!(out, "import {{ {short_name} }} from \"{rel}\";");
+        }
+    }
+    for short_name in &refs.type_refs {
+        if refs.value_refs.contains(short_name) {
+            continue;
+        }
+        if let Some(entry) = registry.classes.get(short_name) {
+            let rel = relative_import_path(&init_segments, &entry.path_segments);
+            let _ = writeln!(out, "import type {{ {short_name} }} from \"{rel}\";");
+        }
+    }
+
+    // Globals imports for free functions.
+    if !refs.globals_used.is_empty() {
+        let mut import_names: Vec<String> = Vec::new();
+        for name in &refs.globals_used {
+            import_names.push(sanitize_ident(name));
+            if mutable_global_names.contains(name.as_str()) {
+                import_names.push(format!("$set_{}", sanitize_ident(name)));
+            }
+        }
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"./_globals\";",
+            import_names.join(", ")
+        );
+    }
+
+    emit_imports(module, &mut out);
+    let closure_fids: Vec<FuncId> = free_funcs
+        .iter()
+        .copied()
+        .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
+        .collect();
+    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
+    let no_sys_aliases = BTreeMap::new();
+    for &fid in free_funcs {
+        if module.functions[fid].method_kind != MethodKind::Closure {
+            emit_function(
+                &mut module.functions[fid],
+                class_names,
+                known_classes,
+                mutable_global_names,
+                lowering_config,
+                engine,
+                &module.sprite_names,
+                &module.object_names,
+                &closure_bodies,
+                &free_stateful_names,
+                free_func_names,
+                &no_sys_aliases,
+                runtime_config,
+                &class_meta.unique_static_field_map,
+                debug,
+                &mut out,
+            )?;
+        }
+    }
+    strip_unused_namespace_imports(&mut out);
+    let path = module_dir.join("_init.ts");
+    fs::write(&path, &out).map_err(CoreError::Io)?;
+    Ok(true)
+}
+
+/// Write the barrel `index.ts` that re-exports all emitted files.
+fn write_barrel_file(module_dir: &Path, barrel_exports: &[String]) -> Result<(), CoreError> {
+    let mut barrel = String::new();
+    for export_path in barrel_exports {
+        let _ = writeln!(barrel, "export * from \"./{export_path}\";");
+    }
+    fs::write(module_dir.join("index.ts"), &barrel).map_err(CoreError::Io)?;
+    Ok(())
+}
+
 /// Emit a module as a directory with one `.ts` file per class in nested dirs.
 pub fn emit_module_to_dir(
     module: &mut Module,
@@ -1132,48 +1771,10 @@ pub fn emit_module_to_dir(
         known_classes.extend(rc.type_definitions.keys().cloned());
     }
     let engine = detect_engine(runtime_config);
-    // Detect name collisions: a free function whose sanitized name matches a class name
-    // or a global variable name. Rename colliding functions in the IR (both `func.name`
-    // and all `Op::Call` references) to resolve TS2308/TS2440 duplicate-export errors.
-    {
-        let sanitized_global_names: HashSet<String> = module
-            .globals
-            .iter()
-            .map(|g| sanitize_ident(&g.name))
-            .collect();
-        // Build (old_name → new_name) pairs for colliding free functions.
-        let renames: HashMap<String, String> = free_funcs
-            .iter()
-            .filter_map(|&fid| {
-                let raw = sanitize_ident(&module.functions[fid].name);
-                if known_classes.contains(&raw) || sanitized_global_names.contains(&raw) {
-                    Some((module.functions[fid].name.clone(), format!("{raw}__fn")))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        if !renames.is_empty() {
-            // Rename the function definitions.
-            for fid in &free_funcs {
-                let name = &module.functions[*fid].name;
-                if let Some(new_name) = renames.get(name) {
-                    module.functions[*fid].name = new_name.clone();
-                }
-            }
-            // Update all Op::Call references throughout the module.
-            let all_fids: Vec<FuncId> = module.functions.keys().collect();
-            for fid in all_fids {
-                for inst in module.functions[fid].insts.values_mut() {
-                    if let Op::Call { func, .. } = &mut inst.op {
-                        if let Some(new_name) = renames.get(func.as_str()) {
-                            func.clone_from(new_name);
-                        }
-                    }
-                }
-            }
-        }
-    }
+
+    // Rename colliding free functions before emission.
+    rename_colliding_free_funcs(module, &free_funcs, &known_classes);
+
     // Rebuild free_func_names after potential renames.
     let free_func_names: HashSet<String> = free_funcs
         .iter()
@@ -1181,500 +1782,71 @@ pub fn emit_module_to_dir(
         .collect();
     let mut barrel_exports: Vec<String> = Vec::new();
 
-    // Globals → _globals.ts (at module root).
-    if !module.globals.is_empty() {
-        let mut out = String::new();
-
-        // Collect type imports for Struct-typed globals.
-        let mut type_imports: BTreeSet<String> = BTreeSet::new();
-        // All struct/enum names used in globals (includes runtime types not in registry).
-        let mut all_struct_names: BTreeSet<String> = BTreeSet::new();
-        for global in &module.globals {
-            collect_global_type_imports(&global.ty, &registry, &mut type_imports);
-            collect_all_struct_names(&global.ty, &mut all_struct_names);
-        }
-        let mut any_import = false;
-        // Import runtime/preamble types (e.g. GMLObject) that are used as global types
-        // but are not emitted classes. _globals.ts is one level below the output root.
-        if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
-            let preamble_needed: Vec<&str> = preamble
-                .names
-                .iter()
-                .filter(|n| all_struct_names.contains(n.as_str()))
-                .map(|n| n.as_str())
-                .collect();
-            if !preamble_needed.is_empty() {
-                let _ = writeln!(
-                    out,
-                    "import {{ {} }} from \"../runtime/{}\";",
-                    preamble_needed.join(", "),
-                    preamble.path,
-                );
-                any_import = true;
-            }
-        }
-        for short_name in &type_imports {
-            if let Some(entry) = registry.classes.get(short_name) {
-                let rel = format!("./{}", entry.path_segments.join("/"));
-                let _ = writeln!(out, "import type {{ {short_name} }} from \"{rel}\";");
-                any_import = true;
-            }
-        }
-        if any_import {
-            out.push('\n');
-        }
-
-        for global in &module.globals {
-            // const without initializer is invalid JS — demote to let.
-            let kw = if global.mutable || global.init.is_none() {
-                "let"
-            } else {
-                "const"
-            };
-            let ident = sanitize_ident(&global.name);
-            let ts = ts_type(&global.ty);
-            if let Some(val) = &global.init {
-                let _ = writeln!(
-                    out,
-                    "export {kw} {ident}: {ts} = {};",
-                    crate::ast_printer::emit_constant(val)
-                );
-            } else {
-                let _ = writeln!(out, "export {kw} {ident}: {ts};");
-            }
-            // ESM setter for mutable globals — imports are read-only bindings.
-            if global.mutable {
-                let _ = writeln!(
-                    out,
-                    "export function $set_{ident}(v: {ts}) {{ {ident} = v; }}"
-                );
-            }
-        }
-        let path = module_dir.join("_globals.ts");
-        fs::write(&path, &out).map_err(CoreError::Io)?;
+    // Globals → _globals.ts
+    if emit_globals_file(module, &module_dir, &registry, runtime_config)? {
         barrel_exports.push("_globals".to_string());
     }
 
-    // Pre-collect all classes' direct value imports for cycle detection.
-    let mut direct_value_imports: HashMap<String, BTreeSet<String>> = HashMap::new();
+    // Pre-collect transitive value imports for cycle detection.
+    let transitive_value_imports = collect_transitive_imports(
+        &class_groups,
+        module,
+        &registry,
+        &class_meta,
+        &class_names,
+        &global_names,
+        engine,
+    );
+
+    // Emit one .ts file per class.
     for group in &class_groups {
-        let qualified = qualified_class_name(&group.class_def);
-        let empty_smo = HashMap::new();
-        let smo = class_meta
-            .static_method_owner_map
-            .get(&qualified)
-            .unwrap_or(&empty_smo);
-        let sfo = class_meta
-            .static_field_owner_map
-            .get(&qualified)
-            .unwrap_or(&empty_smo);
-        let refs = collect_class_references(
+        emit_class_file(
             group,
             module,
-            &registry,
-            &module.external_imports,
-            smo,
-            sfo,
-            &global_names,
-            &class_meta.unique_static_field_map,
-            engine,
-        );
-        let qualified = qualified_class_name(&group.class_def);
-        let ts_name = class_names
-            .get(&qualified)
-            .cloned()
-            .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
-        direct_value_imports.insert(ts_name, refs.value_refs);
-    }
-    let transitive_value_imports = compute_transitive_value_imports(&direct_value_imports);
-
-    for group in &class_groups {
-        let class_def = &group.class_def;
-        let short_name = sanitize_ident(&class_def.name);
-
-        // Path segments for this class: namespace segments + class name.
-        let mut segments: Vec<String> = class_def
-            .namespace
-            .iter()
-            .map(|s| sanitize_ident(s))
-            .collect();
-        segments.push(short_name.clone());
-
-        // Depth = number of namespace segments (directories below module_dir).
-        let depth = class_def.namespace.len();
-
-        // Create nested directory.
-        let mut file_dir = module_dir.clone();
-        for seg in &class_def.namespace {
-            file_dir = file_dir.join(sanitize_ident(seg));
-        }
-        fs::create_dir_all(&file_dir).map_err(CoreError::Io)?;
-
-        let mut out = String::new();
-        let class_funcs = || group.methods.iter().map(|&fid| &module.functions[fid]);
-        let all_systems = collect_system_names_from_funcs(class_funcs());
-        // For Flash class files, generic shims and Flash.Memory are accessed via
-        // `this._shims` — strip them from the import set (no module-level singleton
-        // import needed).
-        let known_generics: BTreeSet<&str> = SYSTEM_NAMES.iter().copied().collect();
-        let systems = if engine == EngineKind::Flash {
-            all_systems
-                .into_iter()
-                .filter(|s| !known_generics.contains(s.as_str()) && s != "Flash.Memory")
-                .collect()
-        } else {
-            all_systems
-        };
-        let mut _class_sys_aliases = BTreeMap::new();
-        emit_runtime_imports_for(
-            systems,
-            &mut out,
-            depth,
-            runtime_config,
-            &mut _class_sys_aliases,
-        );
-        // Flash class files need the FlashShims type for constructor parameter annotations.
-        if engine == EngineKind::Flash && !group.class_def.is_interface {
-            let pref = "../".repeat(depth + 1);
-            let pref = pref.trim_end_matches('/');
-            let _ = writeln!(out, "import type {{ FlashShims }} from \"{pref}/runtime\";");
-            out.push('\n');
-        }
-        let calls = collect_call_names_from_funcs(class_funcs(), engine);
-        let func_prefix = "../".repeat(depth + 1);
-        let func_prefix = func_prefix.trim_end_matches('/');
-        let mut stateful_names = BTreeSet::new();
-        emit_function_imports_with_prefix(
-            &calls,
-            &mut out,
-            func_prefix,
-            runtime_config,
-            &mut stateful_names,
-        );
-        // Game-defined scripts shadow runtime functions with the same name.
-        stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
-        emit_free_function_imports(&calls, &free_func_names, depth, &mut out);
-        if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
-            let prefix = "../".repeat(depth + 1);
-            let prefix = prefix.trim_end_matches('/');
-            let _ = writeln!(
-                out,
-                "import {{ {} }} from \"{prefix}/runtime/{}\";",
-                preamble.names.join(", "),
-                preamble.path,
-            );
-            out.push('\n');
-        }
-        let qualified = qualified_class_name(&group.class_def);
-        let empty_smo = HashMap::new();
-        let static_method_owners = class_meta
-            .static_method_owner_map
-            .get(&qualified)
-            .unwrap_or(&empty_smo);
-        let static_field_owners = class_meta
-            .static_field_owner_map
-            .get(&qualified)
-            .unwrap_or(&empty_smo);
-        let late_bound = emit_intra_imports(
-            group,
-            module,
-            &segments,
-            &registry,
-            static_method_owners,
-            static_field_owners,
-            &global_names,
-            &class_meta.unique_static_field_map,
-            &mutable_global_names,
-            module_exports,
-            &transitive_value_imports,
-            &short_to_qualified,
-            depth,
-            engine,
-            &mut out,
-        );
-
-        // Always emit the Sprites import; strip_unused_namespace_imports removes
-        // it when no `Sprites.` reference appears in the output.
-        if !module.sprite_names.is_empty() {
-            let prefix = "../".repeat(depth + 1);
-            let prefix = prefix.trim_end_matches('/');
-            let _ = writeln!(out, "import {{ Sprites }} from \"{prefix}/data/sprites\";");
-        }
-
-        // Validate member accesses before emitting (warnings only).
-        for &fid in &group.methods {
-            validate_member_accesses(
-                &module.functions[fid],
-                Some(&qualified),
-                &class_meta,
-                &registry,
-                &short_to_qualified,
-                type_defs,
-            );
-        }
-
-        let mut traits_buf = String::new();
-        emit_class(
-            group,
-            module,
+            &module_dir,
             &class_names,
             &class_meta,
+            &registry,
+            &global_names,
             &mutable_global_names,
-            &late_bound,
-            &short_to_qualified,
-            &known_classes,
-            lowering_config,
-            engine,
-            &stateful_names,
             &free_func_names,
+            &known_classes,
+            &short_to_qualified,
+            module_exports,
+            &transitive_value_imports,
+            type_defs,
             func_sigs,
+            lowering_config,
+            runtime_config,
+            engine,
             debug,
-            &mut out,
-            &mut traits_buf,
+            &mut barrel_exports,
         )?;
-
-        strip_unused_namespace_imports(&mut out);
-        let path = file_dir.join(format!("{short_name}.ts"));
-        fs::write(&path, &out).map_err(CoreError::Io)?;
-
-        // Write companion _traits.ts file for Flash registration calls.
-        if !traits_buf.is_empty() {
-            let prefix = "../".repeat(depth + 1);
-            let prefix = prefix.trim_end_matches('/');
-            let mut traits_file = String::new();
-            // Import only the registration functions actually used.
-            let mut reg_names = Vec::new();
-            if traits_buf.contains("registerClass(") {
-                reg_names.push("registerClass");
-            }
-            if traits_buf.contains("registerClassTraits(") {
-                reg_names.push("registerClassTraits");
-            }
-            if traits_buf.contains("registerInterface(") {
-                reg_names.push("registerInterface");
-            }
-            if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
-                let _ = writeln!(
-                    traits_file,
-                    "import {{ {} }} from \"{prefix}/runtime/{}\";",
-                    reg_names.join(", "),
-                    preamble.path,
-                );
-            }
-            // Import the class itself (use disambiguated TS identifier, not filesystem name).
-            let qualified = qualified_class_name(&group.class_def);
-            let ts_name = class_names
-                .get(&qualified)
-                .cloned()
-                .unwrap_or_else(|| short_name.clone());
-            let _ = writeln!(
-                traits_file,
-                "import {{ {ts_name} }} from \"./{short_name}\";"
-            );
-            // Import interface classes referenced by registerInterface.
-            let mut traits_segments = segments.clone();
-            if let Some(last) = traits_segments.last_mut() {
-                *last = format!("{last}_traits");
-            }
-            for iface_qualified in &group.class_def.interfaces {
-                let iface_ts = class_names
-                    .get(iface_qualified.as_str())
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        let short = iface_qualified
-                            .rsplit("::")
-                            .next()
-                            .unwrap_or(iface_qualified);
-                        sanitize_ident(short)
-                    });
-                if let Some(entry) = registry.lookup(iface_qualified) {
-                    // In-module interface — relative path.
-                    let rel = relative_import_path(&traits_segments, &entry.path_segments);
-                    let _ = writeln!(traits_file, "import {{ {iface_ts} }} from \"{rel}\";");
-                } else if let Some(ext) = module.external_imports.get(iface_qualified) {
-                    // External runtime interface — import from runtime path.
-                    let _ = writeln!(
-                        traits_file,
-                        "import {{ {} }} from \"{prefix}/runtime/{}\";",
-                        ext.short_name, ext.module_path,
-                    );
-                }
-            }
-            traits_file.push('\n');
-            traits_file.push_str(&traits_buf);
-            let traits_path = file_dir.join(format!("{short_name}_traits.ts"));
-            fs::write(&traits_path, &traits_file).map_err(CoreError::Io)?;
-        }
-
-        // Barrel export path: relative from module_dir.
-        let export_path = segments.join("/");
-        barrel_exports.push(export_path);
-        if !traits_buf.is_empty() {
-            let mut traits_segments = segments.clone();
-            if let Some(last) = traits_segments.last_mut() {
-                *last = format!("{last}_traits");
-            }
-            barrel_exports.push(traits_segments.join("/"));
-        }
     }
 
-    // Free functions → _init.ts (at module root, depth 0).
-    if !free_funcs.is_empty() {
-        let mut out = String::new();
-        let free_fn_iter = || free_funcs.iter().map(|&fid| &module.functions[fid]);
-        let all_free_systems = collect_system_names_from_funcs(free_fn_iter());
-        // Flash.Memory is per-instance (accessed via _shims) — no module-level import.
-        let systems = if engine == EngineKind::Flash {
-            all_free_systems
-                .into_iter()
-                .filter(|s| s != "Flash.Memory")
-                .collect()
-        } else {
-            all_free_systems
-        };
-        let mut _free_sys_aliases = BTreeMap::new();
-        emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
-        let calls = collect_call_names_from_funcs(free_fn_iter(), engine);
-        let mut free_stateful_names = BTreeSet::new();
-        emit_function_imports_with_prefix(
-            &calls,
-            &mut out,
-            "..",
-            runtime_config,
-            &mut free_stateful_names,
-        );
-        // Game-defined free functions shadow runtime functions with the same name.
-        // Remove any runtime stateful entry that the game overrides — inside each
-        // function body the `const { name } = _rt` destructuring would shadow the
-        // game's version and break call sites that pass `(_rt, self, ...)`.
-        free_stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
-        // If free functions use stateful runtime functions, import the runtime type
-        // for the `_rt` parameter annotation.
-        if !free_stateful_names.is_empty() {
-            if let Some(preamble_cfg) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
-                let _ = writeln!(
-                    out,
-                    "import type {{ GameRuntime }} from \"../runtime/{}\";",
-                    preamble_cfg.path
-                );
-            }
-        }
-        if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
-            let prefix = "../";
-            let prefix = prefix.trim_end_matches('/');
-            let _ = writeln!(
-                out,
-                "import {{ {} }} from \"{prefix}/runtime/{}\";",
-                preamble.names.join(", "),
-                preamble.path,
-            );
-            out.push('\n');
-        }
-
-        // Scan free functions for external class references.
-        let mut refs = RefSets::default();
-        for &fid in &free_funcs {
-            let func = &module.functions[fid];
-            collect_type_refs_from_function(
-                func,
-                "",
-                &registry,
-                &module.external_imports,
-                &HashMap::new(),
-                &HashMap::new(),
-                &global_names,
-                &HashMap::new(),
-                &module.object_names,
-                engine,
-                &mut refs,
-            );
-        }
-        emit_external_imports(
-            &refs.ext_value_refs,
-            &refs.ext_type_refs,
-            &module.external_imports,
-            module_exports,
-            "..",
-            &mut out,
-        );
-
-        // Intra-module class imports for free functions.
-        let init_segments = vec!["_init".to_string()];
-        for short_name in &refs.value_refs {
-            if let Some(entry) = registry.classes.get(short_name) {
-                let rel = relative_import_path(&init_segments, &entry.path_segments);
-                let _ = writeln!(out, "import {{ {short_name} }} from \"{rel}\";");
-            }
-        }
-        for short_name in &refs.type_refs {
-            if refs.value_refs.contains(short_name) {
-                continue;
-            }
-            if let Some(entry) = registry.classes.get(short_name) {
-                let rel = relative_import_path(&init_segments, &entry.path_segments);
-                let _ = writeln!(out, "import type {{ {short_name} }} from \"{rel}\";");
-            }
-        }
-
-        // Globals imports for free functions.
-        if !refs.globals_used.is_empty() {
-            let mut import_names: Vec<String> = Vec::new();
-            for name in &refs.globals_used {
-                import_names.push(sanitize_ident(name));
-                if mutable_global_names.contains(name.as_str()) {
-                    import_names.push(format!("$set_{}", sanitize_ident(name)));
-                }
-            }
-            let _ = writeln!(
-                out,
-                "import {{ {} }} from \"./_globals\";",
-                import_names.join(", ")
-            );
-        }
-
-        emit_imports(module, &mut out);
-        let closure_fids: Vec<FuncId> = free_funcs
-            .iter()
-            .copied()
-            .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
-            .collect();
-        let closure_bodies =
-            compile_closures(&closure_fids, module, lowering_config, engine, debug);
-        let no_sys_aliases = BTreeMap::new();
-        for &fid in &free_funcs {
-            if module.functions[fid].method_kind != MethodKind::Closure {
-                emit_function(
-                    &mut module.functions[fid],
-                    &class_names,
-                    &known_classes,
-                    &mutable_global_names,
-                    lowering_config,
-                    engine,
-                    &module.sprite_names,
-                    &module.object_names,
-                    &closure_bodies,
-                    &free_stateful_names,
-                    &free_func_names,
-                    &no_sys_aliases,
-                    runtime_config,
-                    &class_meta.unique_static_field_map,
-                    debug,
-                    &mut out,
-                )?;
-            }
-        }
-        strip_unused_namespace_imports(&mut out);
-        let path = module_dir.join("_init.ts");
-        fs::write(&path, &out).map_err(CoreError::Io)?;
+    // Free functions → _init.ts
+    if emit_free_functions_file(
+        module,
+        &module_dir,
+        &free_funcs,
+        &free_func_names,
+        &class_names,
+        &class_meta,
+        &registry,
+        &global_names,
+        &mutable_global_names,
+        &known_classes,
+        module_exports,
+        lowering_config,
+        runtime_config,
+        engine,
+        debug,
+    )? {
         barrel_exports.push("_init".to_string());
     }
 
     // Barrel file: index.ts
-    let mut barrel = String::new();
-    for export_path in &barrel_exports {
-        let _ = writeln!(barrel, "export * from \"./{export_path}\";");
-    }
-    fs::write(module_dir.join("index.ts"), &barrel).map_err(CoreError::Io)?;
+    write_barrel_file(&module_dir, &barrel_exports)?;
 
     Ok(())
 }

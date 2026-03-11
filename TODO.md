@@ -222,9 +222,30 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
   `compute_cross_scope_defs` to handle multi-use values, not just SE inlines.
   Also still open: `Parser.ts:603–610` dead assignments in switch arms.
 
-## Architecture & Adversarial Audit (2026-03-11)
+## Next Session: Remaining Audit Fixes
 
-Ran 3 parallel Opus subagents. Findings below, deduplicated and prioritized.
+Monster function splits — launch 2-3 parallel agents:
+
+1. **`translate_op` (1464 lines)** — `crates/frontends/reincarnate-frontend-gamemaker/src/translate.rs`.
+   Single match on GML opcodes. Split by category (arithmetic, stack, comparison, control flow,
+   variable access, type ops) as methods on `TranslateCtx` or free functions in sub-modules.
+
+2. **`emit_module_to_dir` (589 lines)** — `crates/backends/reincarnate-backend-typescript/src/emit.rs`.
+   God function: file I/O, import collection, module splitting, class grouping, barrel exports.
+   Extract `collect_imports()`, `split_modules()`, `write_barrel_exports()`, `write_scaffold()`.
+
+3. **`linear.rs` (4434 lines)** — `crates/reincarnate-core/src/ir/linear.rs`.
+   Linearizer, resolver, expression building. Split into `linear/mod.rs`, `linear/resolve.rs`,
+   `linear/expr_builder.rs`.
+
+Also: core `pub` → `pub(crate)` visibility tightening, error handling consistency redesign
+(save for dedicated session), minor items listed below.
+
+---
+
+## Architecture & Adversarial Audit (2026-03-11) — mostly complete
+
+Ran 3 parallel Opus subagents. 15/18 findings fixed. Remaining items below.
 
 ### Law 2 Violations — Engine-Specific Logic in Core (HIGH)
 
@@ -334,10 +355,11 @@ drift is a maintenance burden.
 
 ### Minor
 
-- `datawin` crate doesn't use workspace package metadata (`version.workspace = true` etc.)
-- `unicode-ident` dep in core but only used in backend `ast_printer.rs` — dep may belong in backend
-- `Preset` is a unit struct used only for namespacing `resolve()` — could be a free function
-- `Linker` is a unit struct with no state — could be a free function
+- [x] `datawin` crate: workspace package metadata (`version.workspace = true` etc.) (2026-03-11)
+- [x] `datawin` crate: renamed from `reincarnate-datawin` to `datawin` (2026-03-11)
+- [x] `unicode-ident` dep in backend: now uses `workspace = true` (was hardcoded `"1"`) (2026-03-11)
+- [x] `Preset` unit struct → `resolve_preset()` free function (2026-03-11)
+- [x] `Linker` unit struct → `link_modules()` free function (2026-03-11)
 - `eprintln!` used for diagnostics in `builder.rs:436-498` — should use a proper diagnostic channel
 - `Module` and `Function` derive `Clone` but are potentially huge — invites accidental deep copies
 - Bool-coercion passes in Flash (`bool_coerce.rs`) and GML (`bool_arith_coerce.rs`) share

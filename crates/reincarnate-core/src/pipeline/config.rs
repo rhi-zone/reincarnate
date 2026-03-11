@@ -254,8 +254,9 @@ impl LoweringConfig {
     }
 }
 
-/// A named preset that configures the entire pipeline: both transform passes
-/// and AST lowering optimizations.
+/// Resolve a named preset into `(PassConfig, LoweringConfig)`.
+///
+/// Available presets:
 ///
 /// - **`literal`**: Faithful 1:1 translation. Skips optimization passes
 ///   (constant folding, DCE, cfg-simplify, redundant cast elimination) and
@@ -265,45 +266,40 @@ impl LoweringConfig {
 ///
 /// - **`optimized`** (default): All transform passes and AST-level
 ///   optimizations enabled.
-pub struct Preset;
+///
+/// `skip_passes` are applied on top of the preset's base `PassConfig`,
+/// allowing fine-grained overrides.
+pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, LoweringConfig)> {
+    let (mut pass, lowering) = match name {
+        "literal" => (
+            PassConfig {
+                // Structural passes — needed for correct output.
+                type_inference: true,
+                call_site_flow: true,
+                constraint_solve: true,
+                call_site_widen: true,
+                call_site_arity_widen: true,
+                coroutine_lowering: true,
+                mem2reg: true,
+                // Optimization passes — disabled for literal.
+                constant_folding: false,
+                cfg_simplify: false,
+                redundant_cast_elimination: true,
+                dead_code_elimination: false,
+                fixpoint: false,
+            },
+            LoweringConfig::literal(),
+        ),
+        "optimized" => (PassConfig::default(), LoweringConfig::optimized()),
+        _ => return None,
+    };
 
-impl Preset {
-    /// Resolve a preset name into `(PassConfig, LoweringConfig)`.
-    ///
-    /// `skip_passes` are applied on top of the preset's base `PassConfig`,
-    /// allowing fine-grained overrides.
-    pub fn resolve(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, LoweringConfig)> {
-        let (mut pass, lowering) = match name {
-            "literal" => (
-                PassConfig {
-                    // Structural passes — needed for correct output.
-                    type_inference: true,
-                    call_site_flow: true,
-                    constraint_solve: true,
-                    call_site_widen: true,
-                    call_site_arity_widen: true,
-                    coroutine_lowering: true,
-                    mem2reg: true,
-                    // Optimization passes — disabled for literal.
-                    constant_folding: false,
-                    cfg_simplify: false,
-                    redundant_cast_elimination: true,
-                    dead_code_elimination: false,
-                    fixpoint: false,
-                },
-                LoweringConfig::literal(),
-            ),
-            "optimized" => (PassConfig::default(), LoweringConfig::optimized()),
-            _ => return None,
-        };
-
-        // Apply --skip-pass overrides on top of the preset.
-        for name in skip_passes {
-            pass.set_skip(name);
-        }
-
-        Some((pass, lowering))
+    // Apply --skip-pass overrides on top of the preset.
+    for name in skip_passes {
+        pass.set_skip(name);
     }
+
+    Some((pass, lowering))
 }
 
 #[cfg(test)]
@@ -372,7 +368,7 @@ mod tests {
 
     #[test]
     fn preset_optimized() {
-        let (pass, lowering) = Preset::resolve("optimized", &[]).unwrap();
+        let (pass, lowering) = resolve_preset("optimized", &[]).unwrap();
         assert!(pass.constant_folding);
         assert!(pass.cfg_simplify);
         assert!(pass.dead_code_elimination);
@@ -383,7 +379,7 @@ mod tests {
 
     #[test]
     fn preset_literal() {
-        let (pass, lowering) = Preset::resolve("literal", &[]).unwrap();
+        let (pass, lowering) = resolve_preset("literal", &[]).unwrap();
         // Structural passes still on.
         assert!(pass.type_inference);
         assert!(pass.mem2reg);
@@ -402,14 +398,14 @@ mod tests {
 
     #[test]
     fn preset_with_skip_overrides() {
-        let (pass, _) = Preset::resolve("optimized", &["mem2reg"]).unwrap();
+        let (pass, _) = resolve_preset("optimized", &["mem2reg"]).unwrap();
         assert!(!pass.mem2reg);
         assert!(pass.constant_folding);
     }
 
     #[test]
     fn preset_unknown_returns_none() {
-        assert!(Preset::resolve("unknown", &[]).is_none());
+        assert!(resolve_preset("unknown", &[]).is_none());
     }
 
     fn debug_with_filter(filter: &str) -> DebugConfig {

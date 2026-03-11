@@ -6,21 +6,21 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use datawin::bytecode::decode;
+use datawin::bytecode::decode::{Instruction, Operand};
+use datawin::bytecode::opcode::Opcode;
+use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType};
+use datawin::DataWin;
 #[cfg(feature = "checker-typescript")]
 use reincarnate_checker_typescript::TsChecker;
 use reincarnate_core::ir::Module;
 use reincarnate_core::pipeline::{
-    Backend, BackendInput, CheckSummary, Checker, CheckerInput, CheckerOutput, DebugConfig,
-    Diagnostic, Frontend, FrontendInput, Linker, PassConfig, PipelineOutput, Preset,
+    link_modules, resolve_preset, Backend, BackendInput, CheckSummary, Checker, CheckerInput,
+    CheckerOutput, DebugConfig, Diagnostic, Frontend, FrontendInput, PassConfig, PipelineOutput,
     RuntimePackage, VALID_PASS_NAMES,
 };
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 use reincarnate_core::transforms::default_pipeline;
-use reincarnate_datawin::bytecode::decode;
-use reincarnate_datawin::bytecode::decode::{Instruction, Operand};
-use reincarnate_datawin::bytecode::opcode::Opcode;
-use reincarnate_datawin::bytecode::types::{ComparisonKind, DataType, InstanceType};
-use reincarnate_datawin::DataWin;
 use std::collections::HashMap;
 
 mod registry;
@@ -587,7 +587,7 @@ fn cmd_emit(
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let (mut pass_config, lowering_config) =
-        Preset::resolve(preset, &skip_refs).ok_or_else(|| {
+        resolve_preset(preset, &skip_refs).ok_or_else(|| {
             anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")")
         })?;
     if fixpoint {
@@ -623,7 +623,7 @@ fn cmd_emit(
 
     eprintln!("[emit] transforms done, linking...");
 
-    Linker::link(&modules).map_err(|errors| {
+    link_modules(&modules).map_err(|errors| {
         let msgs: Vec<String> = errors.iter().map(|e| e.to_string()).collect();
         anyhow::anyhow!("linking failed:\n  {}", msgs.join("\n  "))
     })?;
@@ -1398,7 +1398,7 @@ fn format_instruction(
         Operand::Bool(v) => format!("{v}"),
         Operand::StringIndex(idx) => {
             let s = dw
-                .resolve_string(reincarnate_datawin::StringRef(*idx))
+                .resolve_string(datawin::StringRef(*idx))
                 .unwrap_or_else(|_| format!("<string#{idx}>"));
             // Truncate at 40 chars
             if s.chars().count() > 40 {
@@ -1689,7 +1689,7 @@ fn cmd_stress(
     };
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
-    let (pass_config, _lowering_config) = Preset::resolve(preset, &skip_refs).ok_or_else(|| {
+    let (pass_config, _lowering_config) = resolve_preset(preset, &skip_refs).ok_or_else(|| {
         anyhow::anyhow!("unknown preset: {preset:?} (valid: \"literal\", \"optimized\")")
     })?;
 

@@ -40,105 +40,100 @@ impl SymbolTable {
     }
 }
 
-/// Cross-module linker: builds a global symbol table and validates imports.
-pub struct Linker;
-
-impl Linker {
-    /// Build a symbol table from all modules and validate that every import
-    /// resolves to a public symbol. Returns the symbol table on success.
-    pub fn link(modules: &[Module]) -> Result<SymbolTable, Vec<CoreError>> {
-        let table = Self::build_symbol_table(modules);
-        let errors = Self::validate_imports(modules, &table);
-        if errors.is_empty() {
-            Ok(table)
-        } else {
-            Err(errors)
-        }
+/// Build a symbol table from all modules and validate that every import
+/// resolves to a public symbol. Returns the symbol table on success.
+pub fn link_modules(modules: &[Module]) -> Result<SymbolTable, Vec<CoreError>> {
+    let table = build_symbol_table(modules);
+    let errors = validate_imports(modules, &table);
+    if errors.is_empty() {
+        Ok(table)
+    } else {
+        Err(errors)
     }
+}
 
-    /// Build the global symbol table from all module exports.
-    fn build_symbol_table(modules: &[Module]) -> SymbolTable {
-        let mut exports: HashMap<String, HashMap<String, Symbol>> = HashMap::new();
+/// Build the global symbol table from all module exports.
+fn build_symbol_table(modules: &[Module]) -> SymbolTable {
+    let mut exports: HashMap<String, HashMap<String, Symbol>> = HashMap::new();
 
-        for module in modules {
-            let mod_exports = exports.entry(module.name.clone()).or_default();
+    for module in modules {
+        let mod_exports = exports.entry(module.name.clone()).or_default();
 
-            for (_id, func) in module.functions.iter() {
-                if func.visibility == Visibility::Public {
-                    mod_exports.insert(
-                        func.name.clone(),
-                        Symbol {
-                            name: func.name.clone(),
-                            module: module.name.clone(),
-                            kind: SymbolKind::Function,
-                        },
-                    );
-                }
-            }
-
-            for def in &module.structs {
-                if def.visibility == Visibility::Public {
-                    mod_exports.insert(
-                        def.name.clone(),
-                        Symbol {
-                            name: def.name.clone(),
-                            module: module.name.clone(),
-                            kind: SymbolKind::Struct,
-                        },
-                    );
-                }
-            }
-
-            for def in &module.enums {
-                if def.visibility == Visibility::Public {
-                    mod_exports.insert(
-                        def.name.clone(),
-                        Symbol {
-                            name: def.name.clone(),
-                            module: module.name.clone(),
-                            kind: SymbolKind::Enum,
-                        },
-                    );
-                }
-            }
-
-            for global in &module.globals {
-                if global.visibility == Visibility::Public {
-                    mod_exports.insert(
-                        global.name.clone(),
-                        Symbol {
-                            name: global.name.clone(),
-                            module: module.name.clone(),
-                            kind: SymbolKind::Global,
-                        },
-                    );
-                }
+        for (_id, func) in module.functions.iter() {
+            if func.visibility == Visibility::Public {
+                mod_exports.insert(
+                    func.name.clone(),
+                    Symbol {
+                        name: func.name.clone(),
+                        module: module.name.clone(),
+                        kind: SymbolKind::Function,
+                    },
+                );
             }
         }
 
-        SymbolTable { exports }
-    }
-
-    /// Validate that every import in every module resolves to a public symbol.
-    fn validate_imports(modules: &[Module], table: &SymbolTable) -> Vec<CoreError> {
-        let module_names: HashSet<&str> = modules.iter().map(|m| m.name.as_str()).collect();
-        let mut errors = Vec::new();
-
-        for module in modules {
-            for import in &module.imports {
-                let resolved = module_names.contains(import.module.as_str())
-                    && table.resolve(&import.module, &import.name).is_some();
-                if !resolved {
-                    errors.push(CoreError::UnresolvedImport {
-                        module: import.module.clone(),
-                        name: import.name.clone(),
-                    });
-                }
+        for def in &module.structs {
+            if def.visibility == Visibility::Public {
+                mod_exports.insert(
+                    def.name.clone(),
+                    Symbol {
+                        name: def.name.clone(),
+                        module: module.name.clone(),
+                        kind: SymbolKind::Struct,
+                    },
+                );
             }
         }
 
-        errors
+        for def in &module.enums {
+            if def.visibility == Visibility::Public {
+                mod_exports.insert(
+                    def.name.clone(),
+                    Symbol {
+                        name: def.name.clone(),
+                        module: module.name.clone(),
+                        kind: SymbolKind::Enum,
+                    },
+                );
+            }
+        }
+
+        for global in &module.globals {
+            if global.visibility == Visibility::Public {
+                mod_exports.insert(
+                    global.name.clone(),
+                    Symbol {
+                        name: global.name.clone(),
+                        module: module.name.clone(),
+                        kind: SymbolKind::Global,
+                    },
+                );
+            }
+        }
     }
+
+    SymbolTable { exports }
+}
+
+/// Validate that every import in every module resolves to a public symbol.
+fn validate_imports(modules: &[Module], table: &SymbolTable) -> Vec<CoreError> {
+    let module_names: HashSet<&str> = modules.iter().map(|m| m.name.as_str()).collect();
+    let mut errors = Vec::new();
+
+    for module in modules {
+        for import in &module.imports {
+            let resolved = module_names.contains(import.module.as_str())
+                && table.resolve(&import.module, &import.name).is_some();
+            if !resolved {
+                errors.push(CoreError::UnresolvedImport {
+                    module: import.module.clone(),
+                    name: import.name.clone(),
+                });
+            }
+        }
+    }
+
+    errors
 }
 
 #[cfg(test)]
@@ -168,7 +163,7 @@ mod tests {
         });
         let mod_b = mb_b.build();
 
-        let result = Linker::link(&[mod_a, mod_b]);
+        let result = link_modules(&[mod_a, mod_b]);
         assert!(result.is_ok());
         let table = result.unwrap();
         let sym = table.resolve("mod_a", "helper").unwrap();
@@ -188,7 +183,7 @@ mod tests {
         });
         let mod_b = mb_b.build();
 
-        let result = Linker::link(&[mod_a, mod_b]);
+        let result = link_modules(&[mod_a, mod_b]);
         assert!(result.is_err());
         let errors = result.unwrap_err();
         assert_eq!(errors.len(), 1);
@@ -205,7 +200,7 @@ mod tests {
         });
         let mod_b = mb.build();
 
-        let result = Linker::link(&[mod_b]);
+        let result = link_modules(&[mod_b]);
         assert!(result.is_err());
         assert!(result.unwrap_err()[0].to_string().contains("ghost"));
     }
@@ -231,7 +226,7 @@ mod tests {
         });
         let mod_b = mb_b.build();
 
-        let result = Linker::link(&[mod_a, mod_b]);
+        let result = link_modules(&[mod_a, mod_b]);
         assert!(result.is_err());
     }
 
@@ -269,7 +264,7 @@ mod tests {
         });
         let mod_b = mb_b.build();
 
-        let result = Linker::link(&[mod_a, mod_b]);
+        let result = link_modules(&[mod_a, mod_b]);
         assert!(result.is_ok());
         let table = result.unwrap();
         assert_eq!(
@@ -284,7 +279,7 @@ mod tests {
 
     #[test]
     fn link_no_modules() {
-        let result = Linker::link(&[]);
+        let result = link_modules(&[]);
         assert!(result.is_ok());
     }
 
@@ -301,7 +296,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = Linker::link(&[module]);
+        let result = link_modules(&[module]);
         assert!(result.is_ok());
     }
 
@@ -321,7 +316,7 @@ mod tests {
         mb.add_function(fb2.build());
         let mod_a = mb.build();
 
-        let table = Linker::link(&[mod_a]).unwrap();
+        let table = link_modules(&[mod_a]).unwrap();
         let names: HashSet<&str> = table.all_symbols().map(|s| s.name.as_str()).collect();
         assert!(names.contains("f1"));
         assert!(names.contains("f2"));
