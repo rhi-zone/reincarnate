@@ -55,6 +55,7 @@ pub struct PassageAst {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub kind: NodeKind,
+    #[allow(dead_code)]
     pub span: Span,
 }
 
@@ -65,6 +66,7 @@ pub enum NodeKind {
     /// A Harlowe macro invocation: `(name: args)`.
     Macro(MacroNode),
     /// An optional `[hook]` content block attached to a macro or changer.
+    #[allow(dead_code)]
     Hook(Vec<Node>),
     /// A `[[link]]` or `[[text->passage]]` navigation link.
     Link(LinkNode),
@@ -222,6 +224,7 @@ pub enum ExprKind {
     /// `two_way` = true for `2bind` (initializes input from current variable value).
     Bind { two_way: bool, target: Box<Expr> },
     /// Error placeholder for malformed expressions.
+    #[allow(dead_code)]
     Error(String),
 }
 
@@ -257,6 +260,7 @@ pub enum BinaryOp {
     IsNotA,
 
     // String/changer composition
+    #[allow(dead_code)]
     Plus, // `+` on changers composes them (reuses Add for arithmetic)
 }
 

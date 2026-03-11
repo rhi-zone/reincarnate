@@ -1161,11 +1161,14 @@ fn cmp_str(kind: CmpKind) -> &'static str {
 }
 
 pub fn is_valid_js_ident(name: &str) -> bool {
-    !name.is_empty()
-        && !name.starts_with(|c: char| c.is_ascii_digit())
-        && name
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+    let mut chars = name.chars();
+    match chars.next() {
+        None => false,
+        Some(first) => {
+            (unicode_ident::is_xid_start(first) || first == '_' || first == '$')
+                && chars.all(|c| unicode_ident::is_xid_continue(c) || c == '$')
+        }
+    }
 }
 
 pub(crate) fn emit_constant(c: &Constant) -> String {

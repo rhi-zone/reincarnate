@@ -28,6 +28,7 @@ pub fn snake_to_pascal(s: &str) -> String {
 /// "button_click" → "buttonClick"
 /// "dice"         → "dice"
 /// ```
+#[allow(dead_code)]
 pub fn snake_to_camel(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut capitalize_next = false;

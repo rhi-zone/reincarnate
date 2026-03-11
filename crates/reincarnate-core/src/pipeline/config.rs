@@ -134,30 +134,40 @@ impl PassConfig {
     /// - `"cfg-simplify"`
     /// - `"coroutine-lowering"`
     /// - `"redundant-cast-elimination"`
-    /// - `"int-to-bool-promotion"`
     /// - `"mem2reg"`
     /// - `"dead-code-elimination"`
     /// - `"fixpoint"` — toggles pipeline fixpoint iteration
+    ///
+    /// Note: `"int-to-bool-promotion"` is an engine-specific extra pass injected
+    /// by frontends (e.g. GameMaker) via `extra_passes` and cannot be skipped
+    /// through `PassConfig`.
     pub fn from_skip_list(skip: &[&str]) -> Self {
         let mut config = Self::default();
         for name in skip {
-            match *name {
-                "type-inference" => config.type_inference = false,
-                "call-site-type-flow" => config.call_site_flow = false,
-                "constraint-solve" => config.constraint_solve = false,
-                "call-site-type-widen" => config.call_site_widen = false,
-                "call-site-arity-widen" => config.call_site_arity_widen = false,
-                "constant-folding" => config.constant_folding = false,
-                "cfg-simplify" => config.cfg_simplify = false,
-                "coroutine-lowering" => config.coroutine_lowering = false,
-                "redundant-cast-elimination" => config.redundant_cast_elimination = false,
-                "mem2reg" => config.mem2reg = false,
-                "dead-code-elimination" => config.dead_code_elimination = false,
-                "fixpoint" => config.fixpoint = false,
-                _ => {}
-            }
+            config.set_skip(name);
         }
         config
+    }
+
+    /// Disable the pass identified by `name`. Returns `true` if the name was
+    /// recognized, `false` otherwise (unknown names are silently ignored).
+    pub fn set_skip(&mut self, name: &str) -> bool {
+        match name {
+            "type-inference" => self.type_inference = false,
+            "call-site-type-flow" => self.call_site_flow = false,
+            "constraint-solve" => self.constraint_solve = false,
+            "call-site-type-widen" => self.call_site_widen = false,
+            "call-site-arity-widen" => self.call_site_arity_widen = false,
+            "constant-folding" => self.constant_folding = false,
+            "cfg-simplify" => self.cfg_simplify = false,
+            "coroutine-lowering" => self.coroutine_lowering = false,
+            "redundant-cast-elimination" => self.redundant_cast_elimination = false,
+            "mem2reg" => self.mem2reg = false,
+            "dead-code-elimination" => self.dead_code_elimination = false,
+            "fixpoint" => self.fixpoint = false,
+            _ => return false,
+        }
+        true
     }
 }
 
@@ -278,21 +288,7 @@ impl Preset {
 
         // Apply --skip-pass overrides on top of the preset.
         for name in skip_passes {
-            match *name {
-                "type-inference" => pass.type_inference = false,
-                "call-site-type-flow" => pass.call_site_flow = false,
-                "constraint-solve" => pass.constraint_solve = false,
-                "call-site-type-widen" => pass.call_site_widen = false,
-                "call-site-arity-widen" => pass.call_site_arity_widen = false,
-                "constant-folding" => pass.constant_folding = false,
-                "cfg-simplify" => pass.cfg_simplify = false,
-                "coroutine-lowering" => pass.coroutine_lowering = false,
-                "redundant-cast-elimination" => pass.redundant_cast_elimination = false,
-                "mem2reg" => pass.mem2reg = false,
-                "dead-code-elimination" => pass.dead_code_elimination = false,
-                "fixpoint" => pass.fixpoint = false,
-                _ => {}
-            }
+            pass.set_skip(name);
         }
 
         Some((pass, lowering))

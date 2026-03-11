@@ -12,6 +12,7 @@
 use std::collections::HashMap;
 
 use crate::js_ast::{JsExpr, JsFunction};
+use crate::rewrites::take_arg;
 use reincarnate_core::ir::value::Constant;
 
 /// Returns the bare function/namespace names that a `Harlowe.Engine` rewrite
@@ -46,7 +47,7 @@ pub(super) fn try_rewrite(
 /// `not(x)` → `!x`
 fn try_rewrite_not(args: &mut Vec<JsExpr>) -> Option<JsExpr> {
     if args.len() == 1 {
-        Some(JsExpr::Not(Box::new(args.pop().unwrap())))
+        Some(JsExpr::Not(Box::new(take_arg(args, "Harlowe.Engine.not"))))
     } else {
         None
     }

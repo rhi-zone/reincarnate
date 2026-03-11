@@ -1736,8 +1736,19 @@ const JS_RESERVED: &[&str] = &[
 /// name starts with a digit or is a reserved word.
 pub(crate) fn sanitize_ident(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' || ch == '$' {
+    for (i, ch) in name.chars().enumerate() {
+        if i == 0 {
+            // Allow digits at start — handled by the digit-start prepend below.
+            if unicode_ident::is_xid_start(ch)
+                || unicode_ident::is_xid_continue(ch)
+                || ch == '_'
+                || ch == '$'
+            {
+                out.push(ch);
+            } else {
+                out.push('_');
+            }
+        } else if unicode_ident::is_xid_continue(ch) || ch == '$' {
             out.push(ch);
         } else {
             out.push('_');

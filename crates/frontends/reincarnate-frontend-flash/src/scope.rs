@@ -29,14 +29,17 @@ impl ScopeStack {
         self.values.get(index).copied()
     }
 
+    #[allow(dead_code)]
     pub fn depth(&self) -> usize {
         self.values.len()
     }
 
+    #[allow(dead_code)]
     pub fn values(&self) -> &[ValueId] {
         &self.values
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.values.clear();
     }

@@ -51,6 +51,7 @@ pub const VALID_PASS_NAMES: &[&str] = &[
     "call-site-type-flow",
     "constraint-solve",
     "call-site-type-widen",
+    "call-site-arity-widen",
     "constant-folding",
     "cfg-simplify",
     "coroutine-lowering",

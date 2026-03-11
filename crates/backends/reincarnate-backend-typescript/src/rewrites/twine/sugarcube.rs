@@ -12,6 +12,7 @@ use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::CmpKind;
 
 use crate::js_ast::{JsExpr, JsFunction};
+use crate::rewrites::take_arg;
 
 /// Returns the bare function names that a `SugarCube.Engine.*` rewrite
 /// will introduce, if any. Used by import generation to emit correct imports.
@@ -120,13 +121,13 @@ pub(super) fn try_rewrite(
 
         // typeof(v) → typeof v
         "typeof" if args.len() == 1 => {
-            let v = args.pop().unwrap();
+            let v = take_arg(args, "SugarCube.Engine.typeof");
             Some(JsExpr::TypeOf(Box::new(v)))
         }
 
         // delete(expr) → delete expr
         "delete" if args.len() == 1 => {
-            let v = args.pop().unwrap();
+            let v = take_arg(args, "SugarCube.Engine.delete");
             match v {
                 JsExpr::Field { object, field } => Some(JsExpr::Delete {
                     object,
@@ -145,8 +146,8 @@ pub(super) fn try_rewrite(
 
         // in(key, obj) → key in obj
         "in" if args.len() == 2 => {
-            let obj = args.pop().unwrap();
-            let key = args.pop().unwrap();
+            let obj = take_arg(args, "SugarCube.Engine.in");
+            let key = take_arg(args, "SugarCube.Engine.in");
             Some(JsExpr::In {
                 key: Box::new(key),
                 object: Box::new(obj),
@@ -155,8 +156,8 @@ pub(super) fn try_rewrite(
 
         // pow(a, b) → Math.pow(a, b)
         "pow" if args.len() == 2 => {
-            let b = args.pop().unwrap();
-            let a = args.pop().unwrap();
+            let b = take_arg(args, "SugarCube.Engine.pow");
+            let a = take_arg(args, "SugarCube.Engine.pow");
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Field {
                     object: Box::new(JsExpr::Var("Math".into())),
@@ -168,7 +169,7 @@ pub(super) fn try_rewrite(
 
         // def(v) → v != null (loose inequality)
         "def" if args.len() == 1 => {
-            let v = args.pop().unwrap();
+            let v = take_arg(args, "SugarCube.Engine.def");
             Some(JsExpr::Cmp {
                 kind: CmpKind::Ne,
                 lhs: Box::new(v),
@@ -178,7 +179,7 @@ pub(super) fn try_rewrite(
 
         // ndef(v) → v == null (loose equality)
         "ndef" if args.len() == 1 => {
-            let v = args.pop().unwrap();
+            let v = take_arg(args, "SugarCube.Engine.ndef");
             Some(JsExpr::Cmp {
                 kind: CmpKind::Eq,
                 lhs: Box::new(v),
@@ -188,7 +189,7 @@ pub(super) fn try_rewrite(
 
         // is_nullish(v) → v == null (loose equality, matches null and undefined)
         "is_nullish" if args.len() == 1 => {
-            let v = args.pop().unwrap();
+            let v = take_arg(args, "SugarCube.Engine.is_nullish");
             Some(JsExpr::Cmp {
                 kind: CmpKind::Eq,
                 lhs: Box::new(v),
@@ -198,7 +199,7 @@ pub(super) fn try_rewrite(
 
         // to_string(v) → String(v)
         "to_string" if args.len() == 1 => {
-            let v = args.pop().unwrap();
+            let v = take_arg(args, "SugarCube.Engine.to_string");
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("String".into())),
                 args: vec![v],

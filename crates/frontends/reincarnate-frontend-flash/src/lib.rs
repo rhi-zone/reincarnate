@@ -4,13 +4,13 @@
 //! and translates the stack-based AVM2 instruction set into register-based
 //! reincarnate IR.
 
-pub mod abc;
-pub mod assets;
-pub mod bool_coerce;
-pub mod class;
-pub mod multiname;
-pub mod scope;
-pub mod translate;
+pub(crate) mod abc;
+pub(crate) mod assets;
+pub(crate) mod bool_coerce;
+pub(crate) mod class;
+pub(crate) mod multiname;
+pub(crate) mod scope;
+pub(crate) mod translate;
 
 use std::fs;
 

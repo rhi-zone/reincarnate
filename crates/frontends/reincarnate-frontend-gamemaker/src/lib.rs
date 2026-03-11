@@ -5,7 +5,7 @@ mod data;
 mod default_arg;
 mod instance_type_flow;
 mod logical_op;
-pub mod naming;
+pub(crate) mod naming;
 mod object;
 mod translate;
 

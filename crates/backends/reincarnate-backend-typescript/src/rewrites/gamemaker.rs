@@ -11,6 +11,7 @@ use reincarnate_core::project::ExternalMethodSig;
 
 use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
+use crate::rewrites::take_arg;
 
 /// Strip coerce wrappers from an instance-field target expression.
 ///
@@ -232,8 +233,8 @@ fn rewrite_stmt(
                     && matches!(&args[0], JsExpr::Literal(Constant::String(_)))
                 {
                     let mut args = std::mem::take(args);
-                    let mut val = args.pop().unwrap();
-                    let name_expr = args.pop().unwrap();
+                    let mut val = take_arg(&mut args, "GameMaker.Global.set");
+                    let name_expr = take_arg(&mut args, "GameMaker.Global.set");
                     let JsExpr::Literal(Constant::String(field_name)) = name_expr else {
                         unreachable!()
                     };
@@ -270,9 +271,9 @@ fn rewrite_stmt(
                         // setOn(obj, field, value) → Obj.instances[0].field = value
                         3 => {
                             let mut args = std::mem::take(args);
-                            let val = args.pop().unwrap();
-                            let field = args.pop().unwrap();
-                            let obj_name_expr = args.pop().unwrap();
+                            let val = take_arg(&mut args, "GameMaker.Instance.setOn");
+                            let field = take_arg(&mut args, "GameMaker.Instance.setOn");
+                            let obj_name_expr = take_arg(&mut args, "GameMaker.Instance.setOn");
                             let JsExpr::Literal(Constant::String(obj_name)) = obj_name_expr else {
                                 unreachable!()
                             };
@@ -297,10 +298,10 @@ fn rewrite_stmt(
                         // setOn(obj, field, index, value) → Obj.instances[0]!.field[index] = value
                         4 => {
                             let mut args = std::mem::take(args);
-                            let val = args.pop().unwrap();
-                            let mut index_expr = args.pop().unwrap();
-                            let field = args.pop().unwrap();
-                            let obj_name_expr = args.pop().unwrap();
+                            let val = take_arg(&mut args, "GameMaker.Instance.setOn");
+                            let mut index_expr = take_arg(&mut args, "GameMaker.Instance.setOn");
+                            let field = take_arg(&mut args, "GameMaker.Instance.setOn");
+                            let obj_name_expr = take_arg(&mut args, "GameMaker.Instance.setOn");
                             let JsExpr::Literal(Constant::String(obj_name)) = obj_name_expr else {
                                 unreachable!()
                             };
@@ -972,8 +973,8 @@ fn try_rewrite_system_call(
         // At this point the closure arg has already been rewritten (children-first)
         // from SugarCube.Engine.closure(...) → ArrowFunction.
         ("GameMaker.Instance", "withInstances") if args.len() == 2 => {
-            let callback = args.pop().unwrap();
-            let target = args.pop().unwrap();
+            let callback = take_arg(args, "GameMaker.Instance.withInstances");
+            let target = take_arg(args, "GameMaker.Instance.withInstances");
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("withInstances".into())),
                 args: vec![target, callback],
@@ -983,8 +984,8 @@ fn try_rewrite_system_call(
         // Constant-key sets are intercepted at statement level (→ global.name = val).
         // This handles the expression-position fallback and dynamic keys.
         ("GameMaker.Global", "set") if args.len() == 2 => {
-            let val = args.pop().unwrap();
-            let name = args.pop().unwrap();
+            let val = take_arg(args, "GameMaker.Global.set");
+            let name = take_arg(args, "GameMaker.Global.set");
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("variable_global_set".into())),
                 args: vec![name, val],
@@ -993,7 +994,7 @@ fn try_rewrite_system_call(
         // GameMaker.Global.get(name) → global.name (constant key)
         // or variable_global_get(name) (dynamic key fallback)
         ("GameMaker.Global", "get") if args.len() == 1 => {
-            let name = args.pop().unwrap();
+            let name = take_arg(args, "GameMaker.Global.get");
             if let JsExpr::Literal(Constant::String(field_name)) = name {
                 Some(JsExpr::Field {
                     object: Box::new(JsExpr::Var("global".into())),
@@ -1010,8 +1011,8 @@ fn try_rewrite_system_call(
         // GameMaker.Instance.getOn(objIdx,  field) → ObjName.instances[0]!.field  (resolved)
         // GameMaker.Instance.getOn(objId,   field) → getInstanceField(objId, field)
         ("GameMaker.Instance", "getOn") if args.len() == 2 => {
-            let field = args.pop().unwrap();
-            let obj_id = strip_int_coerce(args.pop().unwrap());
+            let field = take_arg(args, "GameMaker.Instance.getOn");
+            let obj_id = strip_int_coerce(take_arg(args, "GameMaker.Instance.getOn"));
             // Resolve the object: string literal name or constant integer class index.
             let instances0 = get_instances_0(&obj_id, object_names);
             if let Some(base) = instances0 {
@@ -1038,9 +1039,9 @@ fn try_rewrite_system_call(
         // GameMaker.Instance.getOn(objIdx,  field, index) → ObjName.instances[0]!.field[index] (resolved)
         // GameMaker.Instance.getOn(objId,   field, index) → getInstanceField(objId, field)[index]
         ("GameMaker.Instance", "getOn") if args.len() == 3 => {
-            let index = args.pop().unwrap();
-            let field = args.pop().unwrap();
-            let obj_id = strip_int_coerce(args.pop().unwrap());
+            let index = take_arg(args, "GameMaker.Instance.getOn");
+            let field = take_arg(args, "GameMaker.Instance.getOn");
+            let obj_id = strip_int_coerce(take_arg(args, "GameMaker.Instance.getOn"));
             let instances0 = get_instances_0(&obj_id, object_names);
             let base = if let Some(base) = instances0 {
                 if let JsExpr::Literal(Constant::String(ref field_name)) = field {
@@ -1069,10 +1070,12 @@ fn try_rewrite_system_call(
         // GameMaker.Instance.setOn(objId, field, val) → setInstanceField(objId, field, val)
         // Named object+field case is handled at statement level (→ assignment).
         ("GameMaker.Instance", "setOn") if args.len() == 3 => {
-            let val = args.pop().unwrap();
-            let field = args.pop().unwrap();
-            let obj_id =
-                resolve_instance_target(strip_int_coerce(args.pop().unwrap()), object_names);
+            let val = take_arg(args, "GameMaker.Instance.setOn");
+            let field = take_arg(args, "GameMaker.Instance.setOn");
+            let obj_id = resolve_instance_target(
+                strip_int_coerce(take_arg(args, "GameMaker.Instance.setOn")),
+                object_names,
+            );
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("setInstanceField".into())),
                 args: vec![obj_id, field, val],
@@ -1081,11 +1084,13 @@ fn try_rewrite_system_call(
         // GameMaker.Instance.setOn(objId, field, index, val) → setInstanceFieldIndex(objId, field, index, val)
         // Named object+field case is handled at statement level (→ indexed assignment).
         ("GameMaker.Instance", "setOn") if args.len() == 4 => {
-            let val = args.pop().unwrap();
-            let index = args.pop().unwrap();
-            let field = args.pop().unwrap();
-            let obj_id =
-                resolve_instance_target(strip_int_coerce(args.pop().unwrap()), object_names);
+            let val = take_arg(args, "GameMaker.Instance.setOn");
+            let index = take_arg(args, "GameMaker.Instance.setOn");
+            let field = take_arg(args, "GameMaker.Instance.setOn");
+            let obj_id = resolve_instance_target(
+                strip_int_coerce(take_arg(args, "GameMaker.Instance.setOn")),
+                object_names,
+            );
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("setInstanceFieldIndex".into())),
                 args: vec![obj_id, field, index, val],
@@ -1093,7 +1098,7 @@ fn try_rewrite_system_call(
         }
         // GameMaker.Instance.getOther(field) → other[field]
         ("GameMaker.Instance", "getOther") if args.len() == 1 => {
-            let field = args.pop().unwrap();
+            let field = take_arg(args, "GameMaker.Instance.getOther");
             Some(JsExpr::Index {
                 collection: Box::new(JsExpr::Var("other".into())),
                 index: Box::new(field),
@@ -1101,8 +1106,8 @@ fn try_rewrite_system_call(
         }
         // GameMaker.Instance.setOther(field, val) → setOtherField(other, field, val)
         ("GameMaker.Instance", "setOther") if args.len() == 2 => {
-            let val = args.pop().unwrap();
-            let field = args.pop().unwrap();
+            let val = take_arg(args, "GameMaker.Instance.setOther");
+            let field = take_arg(args, "GameMaker.Instance.setOther");
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("setOtherField".into())),
                 args: vec![JsExpr::Var("other".into()), field, val],
@@ -1110,7 +1115,7 @@ fn try_rewrite_system_call(
         }
         // GameMaker.Instance.getAll(field) → getAllField(field)
         ("GameMaker.Instance", "getAll") if args.len() == 1 => {
-            let field = args.pop().unwrap();
+            let field = take_arg(args, "GameMaker.Instance.getAll");
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("getAllField".into())),
                 args: vec![field],
@@ -1118,8 +1123,8 @@ fn try_rewrite_system_call(
         }
         // GameMaker.Instance.setAll(field, val) → setAllField(field, val)
         ("GameMaker.Instance", "setAll") if args.len() == 2 => {
-            let val = args.pop().unwrap();
-            let field = args.pop().unwrap();
+            let val = take_arg(args, "GameMaker.Instance.setAll");
+            let field = take_arg(args, "GameMaker.Instance.setAll");
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("setAllField".into())),
                 args: vec![field, val],
@@ -1129,8 +1134,8 @@ fn try_rewrite_system_call(
         //   If target is a const int (object index), resolve to ObjName.instances[0]!.field
         //   Otherwise → target[field]
         ("GameMaker.Instance", "getField") if args.len() == 2 => {
-            let field = args.pop().unwrap();
-            let target = strip_int_coerce(args.pop().unwrap());
+            let field = take_arg(args, "GameMaker.Instance.getField");
+            let target = strip_int_coerce(take_arg(args, "GameMaker.Instance.getField"));
             if let JsExpr::Literal(Constant::Int(idx)) = &target {
                 let idx = *idx;
                 if idx >= 0 {
@@ -1171,10 +1176,12 @@ fn try_rewrite_system_call(
         }
         // GameMaker.Instance.setField(target, field, val) → setInstanceField(target, field, val)
         ("GameMaker.Instance", "setField") if args.len() == 3 => {
-            let val = args.pop().unwrap();
-            let field = args.pop().unwrap();
-            let target =
-                resolve_instance_target(strip_int_coerce(args.pop().unwrap()), object_names);
+            let val = take_arg(args, "GameMaker.Instance.setField");
+            let field = take_arg(args, "GameMaker.Instance.setField");
+            let target = resolve_instance_target(
+                strip_int_coerce(take_arg(args, "GameMaker.Instance.setField")),
+                object_names,
+            );
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::Var("setInstanceField".into())),
                 args: vec![target, field, val],
