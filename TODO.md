@@ -288,8 +288,9 @@ New findings from this audit:
 | `translate.rs` (GML) | `translate_pop` | 423 | GML variable store |
 | `emit.rs` | `emit_class` | 389 | Class emission + field layout + methods + traits |
 
-Also: `ast_passes.rs` (6163 lines, 20+ independent passes in one file), `linear.rs`
-(4434 lines), `runtime.ts` GML (4463 lines). These should be split into sub-modules.
+Also: ~~`ast_passes.rs`~~ (DONE 2026-03-11 — split into `ast_passes/` with `AstPass` trait,
+`cleanup.rs`, `control_flow.rs`, `variables.rs`), `linear.rs` (4434 lines), `runtime.ts`
+GML (4463 lines). These should be split into sub-modules.
 
 ### Code Quality — Inconsistent Error Handling (MEDIUM)
 
