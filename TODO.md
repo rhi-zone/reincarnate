@@ -231,19 +231,16 @@ Ran 3 parallel Opus subagents. Findings below, deduplicated and prioritized.
 Items already tracked and fixed above (type_infer.rs, linear.rs, ast_passes.rs) are marked [x].
 New findings from this audit:
 
-- [ ] **`type_infer.rs:590` — `build_global_types` hardcodes `"GameMaker.Global"/"set"`.**
-  The write-side global type collection only fires for GML. The read side is correctly
-  data-driven via `SystemCallTypeRule::ResolveGlobalType`. Fix: add a `SystemCallTypeRule`
-  variant for "global store" calls so all engines can register their global-write patterns.
+- [x] **`type_infer.rs:590` — `build_global_types` hardcodes `"GameMaker.Global"/"set"`.** (2026-03-11)
+  Added `SystemCallTypeRule::GlobalStore { name_arg, value_arg }`. GML frontend registers it.
+  `build_global_types` reads from `store_rules` map — no hardcoded strings in core.
 
-- [ ] **`int_to_bool.rs:319` — `function_has_with_instances` hardcodes `"GameMaker.Instance"/"withInstances"`.**
-  Narrow guard: "if function calls this GML API, skip Bool-return inference." A more
-  general approach: mark functions whose return path is hidden by callback side-channel,
-  or check whether all return paths are actually reachable.
+- [x] **`int_to_bool.rs:319` — `function_has_with_instances` hardcodes `"GameMaker.Instance"/"withInstances"`.** (2026-03-11)
+  Added `Module::callback_return_calls: BTreeMap<(String, String), ()>`. GML frontend
+  registers `("GameMaker.Instance", "withInstances")`. `int_to_bool` reads the map.
 
-- [ ] **`linear.rs:2456` — `xml_construct_string_coerce()` inserts `.toString()` for Flash XML.**
-  Flash-specific backend rewrite that leaked into the core linearizer. Should move to
-  `rewrites/flash.rs` or be gated behind a `LoweringConfig` flag.
+- [x] **`linear.rs:2456` — `xml_construct_string_coerce()` inserts `.toString()` for Flash XML.** (2026-03-11)
+  Gated behind `LoweringConfig::construct_string_coerce` (default false, Flash backend sets true).
 
 - [ ] **`call_site_flow.rs:97` — ClassRef narrowing guard motivated by GML semantics.**
   The logic (blocking narrowing for ClassRef args) is arguably engine-agnostic, but the
@@ -276,9 +273,9 @@ New findings from this audit:
   Extracted `take_arg(args, "call_name")` helper in `rewrites/mod.rs`. All 53 call sites
   in gamemaker.rs, sugarcube.rs, and engine.rs now use it with descriptive call names.
 
-- [ ] **Flash translator stack underflow panics** — `translate.rs:576,583`:
-  `unwrap_or_else(|| panic!("stack underflow for RuntimeName"))`. Malformed AVM2 bytecode
-  crashes the decompiler. Should return `Err(...)`.
+- [x] **Flash translator stack underflow panics** (2026-03-11)
+  `resolve_property` and `translate_op` now return `Result<_, String>`. Errors propagate
+  to `translate_method_body` which already returned `Result`.
 
 ### Code Quality — Monster Functions (MEDIUM)
 
@@ -307,13 +304,10 @@ Also: `ast_passes.rs` (6163 lines, 20+ independent passes in one file), `linear.
 
 Now uses `unicode_ident::is_xid_start`/`is_xid_continue` per CLAUDE.md rule.
 
-### Code Quality — Silent `_ => {}` Catch-Alls (MEDIUM)
+### ~~Code Quality — Silent `_ => {}` Catch-Alls~~ (FIXED 2026-03-11)
 
-9 catch-all arms in `emit.rs` type/import collection (lines 1984, 2482, 2497, 2596,
-2626, 2654, 2991, 3352, 3791). Missing a type reference means a missing `import` in
-emitted TypeScript — a silent compile error. Also: `call_site_flow.rs:77`,
-`mem2reg.rs:118,379,543`. New IR op variants will be silently ignored.
-Consider `#[non_exhaustive]` on IR enums or explicit exhaustive matches.
+Replaced with explicit variant lists in emit.rs type/import collection, call_site_flow.rs,
+and mem2reg.rs. New Op/Type variants now trigger compiler errors.
 
 ### Visibility — Overly Broad `pub` (LOW, partially fixed 2026-03-11)
 
