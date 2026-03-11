@@ -222,6 +222,31 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
   `compute_cross_scope_defs` to handle multi-use values, not just SE inlines.
   Also still open: `Parser.ts:603–610` dead assignments in switch arms.
 
+## Flash Output Quality Audit (HIGH PRIORITY)
+
+Systematic audit of all 30 remaining TS errors and emitted code quality. The CC project
+is the primary Flash test game. Current baseline: **30 TS errors** (12 game-author bugs,
+7 Dictionary-with-object-key, 3 CockTypesEnum static inheritance, 8 AS3 coercion/type gaps).
+
+- [ ] **Categorize all 30 remaining TS errors** — For each error: is it (a) game-author bug
+  (leave it, emit diagnostic), (b) inference bug (fix the inference), (c) emitter bug (fix
+  the emitter), or (d) missing language feature? Currently lumped by TS error code; needs
+  per-error analysis with fix/accept decisions.
+- [ ] **CockTypesEnum TS2348** — `ParseConstant`/`ParseConstantByIndex` emit `this(this, ...)`
+  instead of `new this(...)`. Likely a `callpropvoid`/`callstatic` → wrong system call mapping.
+- [ ] **Dictionary with object keys (TS2538/TS2536)** — 7 errors. Flash `Dictionary` allows
+  object keys; TS `Record<K,V>` requires `K extends string | number | symbol`. Need either
+  a `Dictionary<K,V>` runtime class wrapping `Map<K,V>` or `as any` casts.
+- [ ] **Static inheritance TS2417** — `typeof CockTypesEnum` incorrectly extends `typeof Enum`.
+  Static side of enum subclasses doesn't match base. May need `declare` or override annotations.
+- [ ] **Audit emitted code readability** — Spot-check 10+ files for: unnecessary casts,
+  unresolved `vN` names, dead code after return/break, missing const promotion, verbose
+  patterns that could be simplified.
+- [ ] **Audit AS3 coercion gaps** — 8 errors from implicit AS3 coercions that TypeScript
+  doesn't allow. Determine which need explicit casts in emitted code vs type widening.
+
+---
+
 ## Next Session: Remaining Audit Fixes
 
 Monster function splits — launch 2-3 parallel agents:
@@ -386,9 +411,10 @@ remains if edited independently; consider symlink or build-time copy if it recur
   AND those introduced by `try_recover_switch_discriminant`. Verified on TelAdre.ts (CC).
 - [ ] **Emit diagnostics from more passes** — Audit existing passes for similar
   opportunities (dead code, type mismatches that are game-author bugs not inference failures).
-- [ ] **Switch recovery passes belong in core, not TS backend** — `try_recover_switch_discriminant`,
-  `try_recover_nested_if_else`, `try_recover_sequential_ifs` operate on the AST without
-  TypeScript knowledge. They should be core `ast_passes`, not TS-backend-specific.
+- [x] **Switch recovery passes placement** — Investigated 2026-03-12. These passes correctly
+  belong in the TS backend: they operate on `JsExpr` case labels (arbitrary expressions like
+  `Keyboard.UP`, enum values) which core `Stmt::Switch` cannot represent (uses `Constant` only).
+  The engine-agnostic vs engine-specific distinction is correct here.
 
 ---
 
@@ -485,17 +511,11 @@ Measured after TypeInference + ConstraintSolve + Alloc refinement.
 | `let` locals | 11 | Block params where incoming args don't all agree |
 | `const` locals | 9 | Genuinely untyped values from calls/block params |
 
-- [ ] **Enum constants not initialized (CockTypesEnum)** — Two-part bug:
-  1. `is_redundant_static_assign` strips cinit assignments to const fields even when the
-     field declaration has no initializer (`default == None`). Fix: only strip when
-     `default.is_some()`. One-line change in `emit.rs:4263`.
-  2. But unmasking the cinit body produces `new this(this._shims, "human")` in a static
-     block — `this._shims` doesn't exist on the class constructor. The Flash `construct`
-     rewrite (`Flash.Object.construct → new ...`) always injects `this._shims` as the first
-     arg, but static init context has no instance. Need: detect static init context in the
-     rewrite and either skip `_shims` injection or use a different mechanism.
-  Game code references `CockTypesEnum.HUMAN`, `CockTypesEnum.ANEMONE`, etc. Runtime error:
-  "Can't have an enum without any constants".
+- [x] **Enum constants not initialized (CockTypesEnum)** — Fixed 2026-03-12. Two-part fix:
+  (1) `is_redundant_static_assign` now only strips cinit assignments for const fields with
+  `default.is_some()`. (2) Flash construct rewrite treats `is_cinit` as static context,
+  injecting `null as any` instead of `this._shims`. Remaining: 2 TS2348 errors from
+  `ParseConstant`/`ParseConstantByIndex` emitting `this(this, ...)` instead of `new this(...)`.
 
 ### Known Issues
 
