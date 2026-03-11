@@ -83,11 +83,11 @@ interface PlayingVoice {
 
 export class AudioState {
   ctx: AudioContext | null = null;
-  /** Decoded buffers indexed by sound index (SOND order). BufferId = index. */
+  /** Decoded buffers. BufferHandle = index. */
   buffers: (AudioBuffer | null)[] = [];
-  /** Node graph. NodeId 0 = master output (always valid after first loadAudio call). */
+  /** Node graph. NodeHandle 0 = master output (always valid after first loadAudio call). */
   nodes = new Map<NodeHandle, GraphNode>();
-  /** Playing voices. VoiceId 0 = invalid. */
+  /** Playing voices. VoiceHandle 0 = invalid. */
   voices = new Map<VoiceHandle, PlayingVoice>();
   nextNode = 1;
   nextVoice = 1;
@@ -104,7 +104,7 @@ export class AudioState {
  */
 export async function loadAudio(
   state: AudioState,
-  name: string,
+  _name: string,
   url: string,
 ): Promise<BufferHandle> {
   if (!state.ctx) {

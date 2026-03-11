@@ -19,7 +19,7 @@
  */
 
 export class PersistenceState {
-  cache = new Map<string, Uint8Array<ArrayBuffer>>();
+  cache = new Map<string, Uint8Array>();
   opfsDir: FileSystemDirectoryHandle | null = null;
 }
 
@@ -30,13 +30,13 @@ function filenameToKey(name: string): string {
   try { return decodeURIComponent(name); } catch { return name; }
 }
 
-function bytesToBase64(data: Uint8Array<ArrayBuffer>): string {
+function bytesToBase64(data: Uint8Array): string {
   let binary = "";
-  for (let i = 0; i < data.length; i++) binary += String.fromCharCode(data[i]!);
+  for (let i = 0; i < data.length; i++) binary += String.fromCharCode(data[i]);
   return btoa(binary);
 }
 
-function base64ToBytes(b64: string): Uint8Array<ArrayBuffer> {
+function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -84,7 +84,7 @@ export async function init(state: PersistenceState): Promise<void> {
  * Throws if localStorage write fails (quota exceeded, permission denied, etc.).
  * OPFS write uses write-to-temp-then-rename for atomicity.
  */
-export function store(state: PersistenceState, key: string, data: Uint8Array<ArrayBuffer>): void {
+export function store(state: PersistenceState, key: string, data: Uint8Array): void {
   state.cache.set(key, data);
   // localStorage is string-based; encode as base64.
   localStorage.setItem(key, bytesToBase64(data));
@@ -95,7 +95,7 @@ export function store(state: PersistenceState, key: string, data: Uint8Array<Arr
     // Write-to-temp-then-rename for atomicity.
     dir.getFileHandle(tmpFilename, { create: true })
       .then(fh => fh.createWritable())
-      .then(w => w.write(data).then(() => w.close()))
+      .then(w => w.write(data as unknown as ArrayBuffer).then(() => w.close()))
       .then(() => dir.getFileHandle(tmpFilename).then(fh =>
         // Rename by moving: read back and write to final name, then remove tmp.
         // The Web FileSystem Access API has no rename(); approximate with copy+delete.
@@ -115,7 +115,7 @@ export function store(state: PersistenceState, key: string, data: Uint8Array<Arr
  * Read bytes by key. Returns null if not found.
  * All reads are sync after init() has resolved.
  */
-export function fetch(state: PersistenceState, key: string): Uint8Array<ArrayBuffer> | null {
+export function fetch(state: PersistenceState, key: string): Uint8Array | null {
   const cached = state.cache.get(key);
   if (cached !== undefined) return cached;
   // Cache miss: fall back to localStorage (handles data written before OPFS init).

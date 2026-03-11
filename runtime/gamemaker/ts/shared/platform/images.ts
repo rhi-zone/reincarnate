@@ -43,9 +43,9 @@ export async function loadImageUrl(state: ImageState, url: string): Promise<Imag
   return state.allocate({ bitmap, x: 0, y: 0, w: bitmap.width, h: bitmap.height, refCount: 0 });
 }
 
-export async function loadImageBytes(state: ImageState, data: Uint8Array<ArrayBuffer>, format: string | null): Promise<ImageHandle> {
+export async function loadImageBytes(state: ImageState, data: Uint8Array, format: string | null): Promise<ImageHandle> {
   const mime = format ?? "image/png";
-  const blob = new Blob([data], { type: mime });
+  const blob = new Blob([data as unknown as BlobPart], { type: mime });
   const bitmap = await createImageBitmap(blob);
   return state.allocate({ bitmap, x: 0, y: 0, w: bitmap.width, h: bitmap.height, refCount: 0 });
 }
@@ -80,7 +80,7 @@ export function readPixels(state: ImageState, handle: ImageHandle, x: number, y:
   return new Uint8Array(imageData.data.buffer);
 }
 
-export function writePixels(state: ImageState, handle: ImageHandle, x: number, y: number, w: number, h: number, data: Uint8Array<ArrayBuffer>): void {
+export function writePixels(state: ImageState, handle: ImageHandle, x: number, y: number, w: number, h: number, data: Uint8Array): void {
   const entry = state.get(handle);
   if (!entry) throw new Error(`writePixels: invalid handle ${handle}`);
   if (entry.parent !== undefined) throw new Error("writePixels: cannot write to sub-image view");
@@ -88,7 +88,7 @@ export function writePixels(state: ImageState, handle: ImageHandle, x: number, y
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("writePixels: unsupported");
   ctx.drawImage(entry.bitmap, 0, 0);
-  const imageData = new ImageData(new Uint8ClampedArray(data.buffer, data.byteOffset, data.byteLength), w, h);
+  const imageData = new ImageData(new Uint8ClampedArray(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength), w, h);
   ctx.putImageData(imageData, x, y);
   const newBitmap = canvas.transferToImageBitmap();
   if (!newBitmap) throw new Error("writePixels: unsupported");
