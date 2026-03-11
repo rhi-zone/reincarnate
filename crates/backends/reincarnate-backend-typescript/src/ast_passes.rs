@@ -291,7 +291,10 @@ fn try_recover_sequential_ifs(body: &mut Vec<JsStmt>) {
             break;
         }
 
-        if cases.len() >= 2 {
+        // Only convert to switch when all case values are unique.
+        // Duplicate case values change semantics: sequential ifs execute ALL
+        // matching branches; a switch only executes the first.
+        if cases.len() >= 2 && all_case_labels_distinct(&cases) {
             let disc = discriminant.unwrap().clone();
             let switch_stmt = JsStmt::Switch {
                 value: disc,
