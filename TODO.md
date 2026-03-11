@@ -222,24 +222,134 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
   `compute_cross_scope_defs` to handle multi-use values, not just SE inlines.
   Also still open: `Parser.ts:603–610` dead assignments in switch arms.
 
-## Next Session: Architecture & Adversarial Audit
+## Architecture & Adversarial Audit (2026-03-11)
 
-Run parallel Opus subagents to audit the entire codebase for:
+Ran 3 parallel Opus subagents. Findings below, deduplicated and prioritized.
 
-1. **Architecture drift audit** — Scan all crates for ad hoc patterns that accumulated
-   over time: special-case guards that should be general logic, copy-paste between
-   frontends/backends, Law violations (engine knowledge in core, side channels around
-   IR, mutable module-level state). Check `git blame` for accumulated guards.
+### Law 2 Violations — Engine-Specific Logic in Core (HIGH)
 
-2. **Adversarial audit** — Look for: silent failures (stubs returning defaults instead
-   of throwing), suppressed diagnostics (type widening to silence errors instead of
-   fixing inference), dead code paths, unreachable branches, panics that should be
-   Results, TODO comments not tracked in TODO.md.
+Items already tracked and fixed above (type_infer.rs, linear.rs, ast_passes.rs) are marked [x].
+New findings from this audit:
 
-3. **Cross-crate API surface audit** — Check pub visibility: are internal helpers
-   accidentally public? Are crate boundaries clean? Could any crate be split further?
+- [ ] **`type_infer.rs:590` — `build_global_types` hardcodes `"GameMaker.Global"/"set"`.**
+  The write-side global type collection only fires for GML. The read side is correctly
+  data-driven via `SystemCallTypeRule::ResolveGlobalType`. Fix: add a `SystemCallTypeRule`
+  variant for "global store" calls so all engines can register their global-write patterns.
 
-Each agent writes findings to a scratch file; synthesize into TODO.md entries.
+- [ ] **`int_to_bool.rs:319` — `function_has_with_instances` hardcodes `"GameMaker.Instance"/"withInstances"`.**
+  Narrow guard: "if function calls this GML API, skip Bool-return inference." A more
+  general approach: mark functions whose return path is hidden by callback side-channel,
+  or check whether all return paths are actually reachable.
+
+- [ ] **`linear.rs:2456` — `xml_construct_string_coerce()` inserts `.toString()` for Flash XML.**
+  Flash-specific backend rewrite that leaked into the core linearizer. Should move to
+  `rewrites/flash.rs` or be gated behind a `LoweringConfig` flag.
+
+- [ ] **`call_site_flow.rs:97` — ClassRef narrowing guard motivated by GML semantics.**
+  The logic (blocking narrowing for ClassRef args) is arguably engine-agnostic, but the
+  comment and motivation are GML-specific. Low priority — behavior is correct for all engines.
+
+### Structural — Dead Code & Config Bugs (CRITICAL/HIGH)
+
+- [ ] **System traits in `reincarnate-core::system/` are 100% dead code (~350 lines).**
+  12 traits (`Audio`, `Graphics`, `Input`, `Timing`, `Persistence`, `Dialog`, `Files`,
+  `Images`, `Layout`, `Network`, `SaveUi`, `SettingsUi`) — zero implementations, zero
+  consumers. These were aspirational API surface that was superseded by the platform
+  interface design. Delete or move to `docs/` as design reference.
+
+- [ ] **`VALID_PASS_NAMES` missing `call-site-arity-widen`.**
+  `transform.rs:48-60` — pass exists in pipeline and `PassConfig` but absent from
+  `--dump-ir-after` validation list. Users can't dump IR after this pass.
+
+- [ ] **`--skip-pass int-to-bool-promotion` silently does nothing.**
+  `config.rs:144` — docstring lists it as valid, but no `PassConfig` field exists and
+  the match arm falls through to `_ => {}`. The pass comes via `extra_passes` from the
+  GML frontend, so the skip mechanism can't reach it. Either add a field or remove from docs.
+
+- [ ] **Duplicated `--skip-pass` match logic in `config.rs`.**
+  `PassConfig::from_skip_list` (line 144) and `Preset::resolve` (line 281) have identical
+  copy-pasted match blocks. Adding a new pass requires updating both. Extract shared method.
+
+### Panics on Malformed Input (HIGH)
+
+- [ ] **53 `args.pop().unwrap()` in system call rewriters** — `rewrites/gamemaker.rs` (37),
+  `rewrites/twine/sugarcube.rs` (12), `rewrites/twine/engine.rs` (4). All assume exact
+  arity from the IR. A translator bug producing wrong arg count causes a panic with no
+  context. Extract a `take_arg(args, "call_name")` helper that panics with a descriptive
+  message (system call name + expected vs actual count).
+
+- [ ] **Flash translator stack underflow panics** — `translate.rs:576,583`:
+  `unwrap_or_else(|| panic!("stack underflow for RuntimeName"))`. Malformed AVM2 bytecode
+  crashes the decompiler. Should return `Err(...)`.
+
+### Code Quality — Monster Functions (MEDIUM)
+
+| File | Function | Lines | Issue |
+|------|----------|-------|-------|
+| `translate.rs` (GML) | `translate_op` | 1464 | Monolith opcode match — split by opcode category |
+| `emit.rs` | `emit_module_to_dir` | 589 | God function: file I/O, imports, module splitting, class grouping |
+| `structurize.rs` | `structurize_region_inner` | 494 | Recursive CFG recovery |
+| `translate.rs` (GML) | `translate_push_variable` | 498 | GML variable access |
+| `translate.rs` (GML) | `translate_pop` | 423 | GML variable store |
+| `emit.rs` | `emit_class` | 389 | Class emission + field layout + methods + traits |
+
+Also: `ast_passes.rs` (6163 lines, 20+ independent passes in one file), `linear.rs`
+(4434 lines), `runtime.ts` GML (4463 lines). These should be split into sub-modules.
+
+### Code Quality — Inconsistent Error Handling (MEDIUM)
+
+- Frontends use `Result<_, String>` internally, converting to `CoreError` at boundaries.
+  Loses error categorization, source context, and backtraces.
+- Transforms and emitter never return Results — they panic on any inconsistency.
+  Pipeline is crash-or-succeed with no graceful degradation.
+- `CoreError` variants are inconsistent: `Parse` has structured fields; `Type`/`Codegen`/
+  `Project` are just `String`. CLI wraps in `anyhow!("{e}")`, discarding typed info.
+
+### Code Quality — `sanitize_ident` Violates CLAUDE.md Rule (MEDIUM)
+
+`emit.rs:1737-1756` — `sanitize_ident` uses `is_ascii_alphanumeric` instead of
+`unicode_ident::is_xid_start`/`is_xid_continue` as prescribed by CLAUDE.md. Rejects
+valid Unicode identifiers (e.g. Japanese class names).
+
+### Code Quality — Silent `_ => {}` Catch-Alls (MEDIUM)
+
+9 catch-all arms in `emit.rs` type/import collection (lines 1984, 2482, 2497, 2596,
+2626, 2654, 2991, 3352, 3791). Missing a type reference means a missing `import` in
+emitted TypeScript — a silent compile error. Also: `call_site_flow.rs:77`,
+`mem2reg.rs:118,379,543`. New IR op variants will be silently ignored.
+Consider `#[non_exhaustive]` on IR enums or explicit exhaustive matches.
+
+### Visibility — Overly Broad `pub` (LOW)
+
+- `reincarnate-core/src/lib.rs` exports all 7 modules as `pub mod`. Internal helpers
+  like `ir::structurize::compute_dominators_lt`, `ir::ast_passes::*` (20+ functions)
+  are public despite being used only within the crate.
+- Flash frontend `lib.rs` exposes `pub mod abc`, `pub mod scope`, `pub mod multiname` —
+  internal implementation types leaked to downstream crates.
+
+### Duplicated Platform Directories (LOW, already tracked in MEMORY.md)
+
+`runtime/gamemaker/ts/shared/platform/` and `runtime/flash/ts/shared/platform/` are
+near-copies (7 files each, 4 identical, 3 diverging). Intentional for path depth but
+drift is a maintenance burden.
+
+### Test Coverage Gaps (LOW — already partially tracked)
+
+- GML translator: 5 tests for 4021 lines (critical code path, minimal coverage)
+- Flash translator: 4 tests for 2302 lines
+- GML rewrites: 4 tests for 1482 lines
+- No end-to-end snapshot tests (tracked at "Snapshot tests for both frontends" above)
+
+### Minor
+
+- `datawin` crate doesn't use workspace package metadata (`version.workspace = true` etc.)
+- `unicode-ident` dep in core but only used in backend `ast_printer.rs` — dep may belong in backend
+- `Preset` is a unit struct used only for namespacing `resolve()` — could be a free function
+- `Linker` is a unit struct with no state — could be a free function
+- `eprintln!` used for diagnostics in `builder.rs:436-498` — should use a proper diagnostic channel
+- `Module` and `Function` derive `Clone` but are potentially huge — invites accidental deep copies
+- Bool-coercion passes in Flash (`bool_coerce.rs`) and GML (`bool_arith_coerce.rs`) share
+  structural similarity — core pattern could be extracted to a shared configurable pass
 
 ---
 
