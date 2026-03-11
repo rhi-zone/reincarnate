@@ -163,7 +163,7 @@ pub fn print_class_method(
     let star = if js.is_generator { "*" } else { "" };
 
     // cinit → static initializer block
-    if raw_name == "cinit" && matches!(js.method_kind, MethodKind::Static) {
+    if raw_name == "cinit" && matches!(js.method_kind, MethodKind::StaticInit) {
         let _ = writeln!(out, "  static {{");
         print_stmts(&js.body, out, "    ");
         let _ = writeln!(out, "  }}\n");
