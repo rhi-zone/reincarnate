@@ -218,8 +218,8 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
   2. `loop_exit_shape` consumed multi-predecessor exit blocks (convergence points for
      multiple break paths). Fix: require exactly 1 predecessor for the first block in
      the exit chain.
-  Remaining: 3 new TS2304 (`v54` scoping) — variable defined inside while(true) loop
-  but used after loop break. Separate linearizer/emitter issue.
+  Follow-up: 3 TS2304 (`v54` scoping) fixed in same session — extended
+  `compute_cross_scope_defs` to handle multi-use values, not just SE inlines.
   Also still open: `Parser.ts:603–610` dead assignments in switch arms.
 
 ## Developer Experience / Tooling Gaps (HIGH PRIORITY)
