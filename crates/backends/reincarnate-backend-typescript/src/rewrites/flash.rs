@@ -166,8 +166,7 @@ fn resolve_field(object: &JsExpr, field: &str, ctx: &FlashRewriteCtx) -> Option<
                     JsExpr::Var(effective.to_string())
                 }
             } else if ctx.has_self
-                && (ctx.instance_fields.contains(effective)
-                    || ctx.method_names.contains(effective))
+                && (ctx.instance_fields.contains(effective) || ctx.method_names.contains(effective))
             {
                 JsExpr::Field {
                     object: Box::new(JsExpr::This),
@@ -212,9 +211,7 @@ fn resolve_scope_call(
                     object: Box::new(JsExpr::Var(class_name)),
                     field: effective.to_string(),
                 }
-            } else if (ctx.has_self && ctx.method_names.contains(effective))
-                || ctx.is_cinit
-            {
+            } else if (ctx.has_self && ctx.method_names.contains(effective)) || ctx.is_cinit {
                 JsExpr::Field {
                     object: Box::new(JsExpr::This),
                     field: effective.to_string(),
@@ -409,14 +406,21 @@ fn collect_expr_vars(expr: &JsExpr, out: &mut HashSet<String>) {
 fn collect_stmts_vars(stmts: &[JsStmt], out: &mut HashSet<String>) {
     for stmt in stmts {
         match stmt {
-            JsStmt::VarDecl { init: Some(e), .. } | JsStmt::Expr(e) | JsStmt::Return(Some(e)) | JsStmt::Throw(e) => {
+            JsStmt::VarDecl { init: Some(e), .. }
+            | JsStmt::Expr(e)
+            | JsStmt::Return(Some(e))
+            | JsStmt::Throw(e) => {
                 collect_expr_vars(e, out);
             }
             JsStmt::Assign { target, value } | JsStmt::CompoundAssign { target, value, .. } => {
                 collect_expr_vars(target, out);
                 collect_expr_vars(value, out);
             }
-            JsStmt::If { cond, then_body, else_body } => {
+            JsStmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
                 collect_expr_vars(cond, out);
                 collect_stmts_vars(then_body, out);
                 collect_stmts_vars(else_body, out);
@@ -425,7 +429,12 @@ fn collect_stmts_vars(stmts: &[JsStmt], out: &mut HashSet<String>) {
                 collect_expr_vars(cond, out);
                 collect_stmts_vars(body, out);
             }
-            JsStmt::For { init, cond, update, body } => {
+            JsStmt::For {
+                init,
+                cond,
+                update,
+                body,
+            } => {
                 collect_stmts_vars(init, out);
                 collect_expr_vars(cond, out);
                 collect_stmts_vars(update, out);
@@ -441,14 +450,22 @@ fn collect_stmts_vars(stmts: &[JsStmt], out: &mut HashSet<String>) {
                     collect_stmts_vars(stmts, out);
                 }
             }
-            JsStmt::Switch { value, cases, default_body } => {
+            JsStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
                 collect_expr_vars(value, out);
                 for (_, stmts) in cases {
                     collect_stmts_vars(stmts, out);
                 }
                 collect_stmts_vars(default_body, out);
             }
-            JsStmt::VarDecl { init: None, .. } | JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
+            JsStmt::VarDecl { init: None, .. }
+            | JsStmt::Return(None)
+            | JsStmt::Break
+            | JsStmt::Continue
+            | JsStmt::LabeledBreak { .. } => {}
         }
     }
 }
@@ -591,7 +608,6 @@ fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
     }
 }
 
-
 /// Check whether a statement declares or assigns any variable in `vars`.
 /// Recurses into nested bodies (if/else, loops) to find assignments.
 fn stmt_writes_any(stmt: &JsStmt, vars: &HashSet<String>) -> bool {
@@ -613,14 +629,11 @@ fn stmt_writes_any(stmt: &JsStmt, vars: &HashSet<String>) -> bool {
             then_body.iter().any(|s| stmt_writes_any(s, vars))
                 || else_body.iter().any(|s| stmt_writes_any(s, vars))
         }
-        JsStmt::While { body, .. }
-        | JsStmt::Loop { body }
-        | JsStmt::ForOf { body, .. } => body.iter().any(|s| stmt_writes_any(s, vars)),
+        JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
+            body.iter().any(|s| stmt_writes_any(s, vars))
+        }
         JsStmt::For {
-            init,
-            body,
-            update,
-            ..
+            init, body, update, ..
         } => {
             init.iter().any(|s| stmt_writes_any(s, vars))
                 || body.iter().any(|s| stmt_writes_any(s, vars))
@@ -629,8 +642,14 @@ fn stmt_writes_any(stmt: &JsStmt, vars: &HashSet<String>) -> bool {
         JsStmt::Dispatch { blocks, .. } => blocks
             .iter()
             .any(|(_, stmts)| stmts.iter().any(|s| stmt_writes_any(s, vars))),
-        JsStmt::Switch { cases, default_body, .. } => {
-            cases.iter().any(|(_, stmts)| stmts.iter().any(|s| stmt_writes_any(s, vars)))
+        JsStmt::Switch {
+            cases,
+            default_body,
+            ..
+        } => {
+            cases
+                .iter()
+                .any(|(_, stmts)| stmts.iter().any(|s| stmt_writes_any(s, vars)))
                 || default_body.iter().any(|s| stmt_writes_any(s, vars))
         }
         _ => false,
@@ -690,9 +709,7 @@ fn rewrite_stmt(stmt: JsStmt, ctx: &FlashRewriteCtx) -> Option<JsStmt> {
         }
 
         // findPropStrict/findProperty as standalone statement → skip
-        if system == "Flash.Scope"
-            && (method == "findPropStrict" || method == "findProperty")
-        {
+        if system == "Flash.Scope" && (method == "findPropStrict" || method == "findProperty") {
             return None;
         }
     }
@@ -787,7 +804,11 @@ fn rewrite_stmt(stmt: JsStmt, ctx: &FlashRewriteCtx) -> Option<JsStmt> {
             entry,
         },
 
-        JsStmt::Switch { value, cases, default_body } => JsStmt::Switch {
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => JsStmt::Switch {
             value: rewrite_expr(value, ctx),
             cases: cases
                 .into_iter()
@@ -938,13 +959,21 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             rhs: Box::new(rewrite_expr(*rhs, ctx)),
         },
 
-        JsExpr::Cast { expr: inner, ty, kind } => JsExpr::Cast {
+        JsExpr::Cast {
+            expr: inner,
+            ty,
+            kind,
+        } => JsExpr::Cast {
             expr: Box::new(rewrite_expr(*inner, ctx)),
             ty,
             kind,
         },
 
-        JsExpr::TypeCheck { expr: inner, ty, use_instanceof } => JsExpr::TypeCheck {
+        JsExpr::TypeCheck {
+            expr: inner,
+            ty,
+            use_instanceof,
+        } => JsExpr::TypeCheck {
             expr: Box::new(rewrite_expr(*inner, ctx)),
             ty,
             use_instanceof,
@@ -960,9 +989,7 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
         JsExpr::TupleInit(elems) => JsExpr::TupleInit(rewrite_exprs(elems, ctx)),
 
         JsExpr::Not(inner) => JsExpr::Not(Box::new(rewrite_expr(*inner, ctx))),
-        JsExpr::PostIncrement(inner) => {
-            JsExpr::PostIncrement(Box::new(rewrite_expr(*inner, ctx)))
-        }
+        JsExpr::PostIncrement(inner) => JsExpr::PostIncrement(Box::new(rewrite_expr(*inner, ctx))),
         JsExpr::Spread(inner) => JsExpr::Spread(Box::new(rewrite_expr(*inner, ctx))),
 
         JsExpr::GeneratorCreate { func, args } => JsExpr::GeneratorCreate {
@@ -1320,9 +1347,7 @@ fn bind_method_refs_stmt(stmt: &mut JsStmt, bindable: &HashSet<String>) {
         JsStmt::Loop { body } => {
             bind_method_refs_stmts(body, bindable);
         }
-        JsStmt::ForOf {
-            iterable, body, ..
-        } => {
+        JsStmt::ForOf { iterable, body, .. } => {
             bind_method_refs_expr(iterable, bindable, false);
             bind_method_refs_stmts(body, bindable);
         }
@@ -1334,15 +1359,18 @@ fn bind_method_refs_stmt(stmt: &mut JsStmt, bindable: &HashSet<String>) {
                 bind_method_refs_stmts(stmts, bindable);
             }
         }
-        JsStmt::Switch { value, cases, default_body } => {
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
             bind_method_refs_expr(value, bindable, false);
             for (_, stmts) in cases.iter_mut() {
                 bind_method_refs_stmts(stmts, bindable);
             }
             bind_method_refs_stmts(default_body, bindable);
         }
-        JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {
-        }
+        JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
     }
 }
 
@@ -1472,10 +1500,14 @@ fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
-        | JsExpr::In { key: lhs, object: rhs }
-        | JsExpr::Delete { object: lhs, key: rhs } => {
-            expr_references_var(lhs, name) || expr_references_var(rhs, name)
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
         }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        } => expr_references_var(lhs, name) || expr_references_var(rhs, name),
         JsExpr::Unary { expr: e, .. }
         | JsExpr::Cast { expr: e, .. }
         | JsExpr::TypeCheck { expr: e, .. }
@@ -1492,7 +1524,11 @@ fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
         JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
             expr_references_var(callee, name) || args.iter().any(|a| expr_references_var(a, name))
         }
-        JsExpr::Ternary { cond, then_val, else_val } => {
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
             expr_references_var(cond, name)
                 || expr_references_var(then_val, name)
                 || expr_references_var(else_val, name)
@@ -1530,7 +1566,11 @@ fn stmt_references_var(stmt: &JsStmt, name: &str) -> bool {
         JsStmt::Expr(e) | JsStmt::Return(Some(e)) | JsStmt::Throw(e) => {
             expr_references_var(e, name)
         }
-        JsStmt::If { cond, then_body, else_body } => {
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
             expr_references_var(cond, name)
                 || stmts_reference_var(then_body, name)
                 || stmts_reference_var(else_body, name)
@@ -1538,7 +1578,12 @@ fn stmt_references_var(stmt: &JsStmt, name: &str) -> bool {
         JsStmt::While { cond, body } => {
             expr_references_var(cond, name) || stmts_reference_var(body, name)
         }
-        JsStmt::For { init, cond, update, body } => {
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
             stmts_reference_var(init, name)
                 || expr_references_var(cond, name)
                 || stmts_reference_var(update, name)
@@ -1548,12 +1593,18 @@ fn stmt_references_var(stmt: &JsStmt, name: &str) -> bool {
         JsStmt::ForOf { iterable, body, .. } => {
             expr_references_var(iterable, name) || stmts_reference_var(body, name)
         }
-        JsStmt::Dispatch { blocks, .. } => {
-            blocks.iter().any(|(_, stmts)| stmts_reference_var(stmts, name))
-        }
-        JsStmt::Switch { value, cases, default_body } => {
+        JsStmt::Dispatch { blocks, .. } => blocks
+            .iter()
+            .any(|(_, stmts)| stmts_reference_var(stmts, name)),
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
             expr_references_var(value, name)
-                || cases.iter().any(|(_, stmts)| stmts_reference_var(stmts, name))
+                || cases
+                    .iter()
+                    .any(|(_, stmts)| stmts_reference_var(stmts, name))
                 || stmts_reference_var(default_body, name)
         }
         JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {
@@ -1651,14 +1702,21 @@ pub fn eliminate_dead_activations(body: &mut Vec<JsStmt>) {
 /// Recurse into statement bodies to eliminate dead activations in nested scopes.
 fn eliminate_dead_activations_in_stmt(stmt: &mut JsStmt) {
     match stmt {
-        JsStmt::VarDecl { init: Some(e), .. } | JsStmt::Expr(e) | JsStmt::Return(Some(e)) | JsStmt::Throw(e) => {
+        JsStmt::VarDecl { init: Some(e), .. }
+        | JsStmt::Expr(e)
+        | JsStmt::Return(Some(e))
+        | JsStmt::Throw(e) => {
             eliminate_dead_activations_in_expr(e);
         }
         JsStmt::Assign { target, value } | JsStmt::CompoundAssign { target, value, .. } => {
             eliminate_dead_activations_in_expr(target);
             eliminate_dead_activations_in_expr(value);
         }
-        JsStmt::If { cond, then_body, else_body } => {
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
             eliminate_dead_activations_in_expr(cond);
             eliminate_dead_activations(then_body);
             eliminate_dead_activations(else_body);
@@ -1667,7 +1725,12 @@ fn eliminate_dead_activations_in_stmt(stmt: &mut JsStmt) {
             eliminate_dead_activations_in_expr(cond);
             eliminate_dead_activations(body);
         }
-        JsStmt::For { init, cond, update, body } => {
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
             eliminate_dead_activations(init);
             eliminate_dead_activations_in_expr(cond);
             eliminate_dead_activations(update);
@@ -1683,14 +1746,22 @@ fn eliminate_dead_activations_in_stmt(stmt: &mut JsStmt) {
                 eliminate_dead_activations(stmts);
             }
         }
-        JsStmt::Switch { value, cases, default_body } => {
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
             eliminate_dead_activations_in_expr(value);
             for (_, stmts) in cases {
                 eliminate_dead_activations(stmts);
             }
             eliminate_dead_activations(default_body);
         }
-        JsStmt::VarDecl { init: None, .. } | JsStmt::Return(None) | JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
+        JsStmt::VarDecl { init: None, .. }
+        | JsStmt::Return(None)
+        | JsStmt::Break
+        | JsStmt::Continue
+        | JsStmt::LabeledBreak { .. } => {}
     }
 }
 
@@ -1704,8 +1775,14 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
-        | JsExpr::In { key: lhs, object: rhs }
-        | JsExpr::Delete { object: lhs, key: rhs } => {
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
+        }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        } => {
             eliminate_dead_activations_in_expr(lhs);
             eliminate_dead_activations_in_expr(rhs);
         }
@@ -1725,23 +1802,35 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
         }
         JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
             eliminate_dead_activations_in_expr(callee);
-            for a in args { eliminate_dead_activations_in_expr(a); }
+            for a in args {
+                eliminate_dead_activations_in_expr(a);
+            }
         }
-        JsExpr::Ternary { cond, then_val, else_val } => {
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
             eliminate_dead_activations_in_expr(cond);
             eliminate_dead_activations_in_expr(then_val);
             eliminate_dead_activations_in_expr(else_val);
         }
         JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) | JsExpr::SuperCall(elems) => {
-            for e in elems { eliminate_dead_activations_in_expr(e); }
+            for e in elems {
+                eliminate_dead_activations_in_expr(e);
+            }
         }
         JsExpr::ObjectInit(pairs) => {
-            for (_, e) in pairs { eliminate_dead_activations_in_expr(e); }
+            for (_, e) in pairs {
+                eliminate_dead_activations_in_expr(e);
+            }
         }
         JsExpr::SuperMethodCall { args, .. }
         | JsExpr::GeneratorCreate { args, .. }
         | JsExpr::SystemCall { args, .. } => {
-            for a in args { eliminate_dead_activations_in_expr(a); }
+            for a in args {
+                eliminate_dead_activations_in_expr(a);
+            }
         }
         JsExpr::SuperSet { value, .. } => eliminate_dead_activations_in_expr(value),
         JsExpr::Yield(Some(e)) => eliminate_dead_activations_in_expr(e),
@@ -1749,8 +1838,12 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
             eliminate_dead_activations_in_expr(target);
             eliminate_dead_activations_in_expr(value);
         }
-        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This | JsExpr::Activation
-        | JsExpr::SuperGet(_) | JsExpr::Yield(None) => {}
+        JsExpr::Literal(_)
+        | JsExpr::Var(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_)
+        | JsExpr::Yield(None) => {}
     }
 }
 
@@ -1948,23 +2041,33 @@ mod tests {
     fn generic_shim_rewrites_to_this_shims_in_instance_context() {
         let mut ctx = empty_ctx();
         ctx.has_self = true;
-        let args = vec![JsExpr::Literal(Constant::Int(0)), JsExpr::Literal(Constant::Int(0))];
+        let args = vec![
+            JsExpr::Literal(Constant::Int(0)),
+            JsExpr::Literal(Constant::Int(0)),
+        ];
         let result = rewrite_system_call("renderer", "clear", &args, &ctx);
         assert!(result.is_some(), "should rewrite generic shim system call");
         // Result should be a Call expression whose callee accesses this._shims.renderer.clear
-        if let Some(JsExpr::Call { callee, args: call_args }) = result {
+        if let Some(JsExpr::Call {
+            callee,
+            args: call_args,
+        }) = result
+        {
             assert_eq!(call_args.len(), 2);
             // callee = this._shims.renderer.clear
-            assert!(matches!(callee.as_ref(),
-                JsExpr::Field { object, field }
-                if field == "clear" && matches!(object.as_ref(),
-                    JsExpr::Field { object: o2, field: f2 }
-                    if f2 == "renderer" && matches!(o2.as_ref(),
-                        JsExpr::Field { object: o3, field: f3 }
-                        if f3 == "_shims" && matches!(o3.as_ref(), JsExpr::This)
+            assert!(
+                matches!(callee.as_ref(),
+                    JsExpr::Field { object, field }
+                    if field == "clear" && matches!(object.as_ref(),
+                        JsExpr::Field { object: o2, field: f2 }
+                        if f2 == "renderer" && matches!(o2.as_ref(),
+                            JsExpr::Field { object: o3, field: f3 }
+                            if f3 == "_shims" && matches!(o3.as_ref(), JsExpr::This)
+                        )
                     )
-                )
-            ), "callee should be this._shims.renderer.clear");
+                ),
+                "callee should be this._shims.renderer.clear"
+            );
         } else {
             panic!("expected Call expression");
         }
@@ -1976,7 +2079,10 @@ mod tests {
         let args = vec![];
         let result = rewrite_system_call("renderer", "clear", &args, &ctx);
         // Should fall through (None) when not in instance context
-        assert!(result.is_none(), "should not rewrite shim call without self");
+        assert!(
+            result.is_none(),
+            "should not rewrite shim call without self"
+        );
     }
 
     #[test]
@@ -2078,7 +2184,13 @@ mod tests {
             vec![JsExpr::Var("obj".into())],
             &ctx,
         );
-        assert!(matches!(&rewritten, JsExpr::Cast { kind: CastKind::NullableCoerce, .. }));
+        assert!(matches!(
+            &rewritten,
+            JsExpr::Cast {
+                kind: CastKind::NullableCoerce,
+                ..
+            }
+        ));
     }
 
     // --- hoist_super_call ---
@@ -2304,11 +2416,7 @@ mod tests {
         let mut ctx = empty_ctx();
         ctx.has_self = true;
         ctx.instance_fields.insert("myField".into());
-        let result = resolve_field(
-            &scope_lookup("global::myField"),
-            "ns::myField",
-            &ctx,
-        );
+        let result = resolve_field(&scope_lookup("global::myField"), "ns::myField", &ctx);
         assert!(result.is_some());
         let expr = result.unwrap();
         assert!(
@@ -2350,10 +2458,7 @@ mod tests {
         let rewritten = resolve_scope_call(
             "Sprite",
             &[JsExpr::Literal(Constant::String("Sprite".into()))],
-            vec![
-                JsExpr::Var("a".into()),
-                JsExpr::Var("b".into()),
-            ],
+            vec![JsExpr::Var("a".into()), JsExpr::Var("b".into())],
             &ctx,
         );
         // Two args → regular call, NOT a Cast.
@@ -2421,7 +2526,10 @@ mod tests {
         ];
         let result = rewrite_system_call("Flash.Object", "newObject", &args, &ctx);
         // Odd count → no rewrite (falls through to None).
-        assert!(result.is_none(), "odd arg count should not produce ObjectInit");
+        assert!(
+            result.is_none(),
+            "odd arg count should not produce ObjectInit"
+        );
     }
 
     #[test]
@@ -2433,7 +2541,10 @@ mod tests {
         assert!(result.is_some());
         if let Some(JsExpr::SuperCall(a)) = result {
             assert_eq!(a.len(), 1, "super() should have exactly _shims arg");
-            assert!(matches!(&a[0], JsExpr::Var(n) if n == "_shims"), "first arg should be _shims");
+            assert!(
+                matches!(&a[0], JsExpr::Var(n) if n == "_shims"),
+                "first arg should be _shims"
+            );
         } else {
             panic!("expected SuperCall");
         }

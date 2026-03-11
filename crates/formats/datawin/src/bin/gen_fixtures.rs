@@ -263,7 +263,7 @@ fn build_code_v15_shared_blob(
     w.write_u32(total_blob_len); // blob_length = total (both entries share it)
     w.write_u16(0); // locals_count
     w.write_u16(0); // args_count
-    // bc_rel_addr field is at entry0 + 12; blob is at entry0 + 20 → rel = 8.
+                    // bc_rel_addr field is at entry0 + 12; blob is at entry0 + 20 → rel = 8.
     w.write_i32(8);
     w.write_u32(0); // offset_in_blob = 0 (parent starts at blob[0])
 
@@ -280,7 +280,7 @@ fn build_code_v15_shared_blob(
     w.write_u32(total_blob_len); // same blob_length
     w.write_u16(0); // locals_count
     w.write_u16(0); // args_count
-    // bc_rel_addr field is at entry1 + 12; it must point back to blob_abs.
+                    // bc_rel_addr field is at entry1 + 12; it must point back to blob_abs.
     let bc_rel_addr_abs = code_data_abs + entry1_pos + 12;
     let rel1 = blob_abs as i64 - bc_rel_addr_abs as i64;
     w.write_i32(rel1 as i32);
@@ -363,10 +363,7 @@ fn build_func_v14(functions: &[(u32, u32, i32)]) -> Vec<u8> {
 /// Format: func_count(u32) + functions + locals_count(u32) + code_locals.
 ///
 /// `code_locals`: list of (entry_name_ref, locals: &[(index, var_name_ref)]).
-fn build_func_v15(
-    functions: &[(u32, u32, i32)],
-    code_locals: &[(u32, &[(u32, u32)])],
-) -> Vec<u8> {
+fn build_func_v15(functions: &[(u32, u32, i32)], code_locals: &[(u32, &[(u32, u32)])]) -> Vec<u8> {
     let mut w = Writer::new();
 
     w.write_u32(functions.len() as u32);
@@ -439,8 +436,20 @@ pub fn build_v15_minimal() -> (Vec<u8>, String) {
     );
 
     let bytecode = encode_instructions(&[
-        instr(0, Opcode::PushI, DataType::Int16, DataType::Double, Operand::Int16(42)),
-        instr(4, Opcode::Ret, DataType::Double, DataType::Double, Operand::None),
+        instr(
+            0,
+            Opcode::PushI,
+            DataType::Int16,
+            DataType::Double,
+            Operand::Int16(42),
+        ),
+        instr(
+            4,
+            Opcode::Ret,
+            DataType::Double,
+            DataType::Double,
+            Operand::None,
+        ),
     ]);
 
     let code_data = build_code_v15(
@@ -450,9 +459,18 @@ pub fn build_v15_minimal() -> (Vec<u8>, String) {
     let code_size = code_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
     ]);
 
     let json = format!(
@@ -532,17 +550,44 @@ pub fn build_v15_bytecode_variety() -> (Vec<u8>, String) {
     );
 
     let bytecode = encode_instructions(&[
-        instr(0, Opcode::Push, DataType::Double, DataType::Double, Operand::Double(1.5_f64)),
-        instr(12, Opcode::Push, DataType::Int32, DataType::Double, Operand::Int32(100)),
-        instr(20, Opcode::PushI, DataType::Int16, DataType::Double, Operand::Int16(-1)),
-        instr(24, Opcode::Push, DataType::String, DataType::Double, Operand::StringIndex(0)),
+        instr(
+            0,
+            Opcode::Push,
+            DataType::Double,
+            DataType::Double,
+            Operand::Double(1.5_f64),
+        ),
+        instr(
+            12,
+            Opcode::Push,
+            DataType::Int32,
+            DataType::Double,
+            Operand::Int32(100),
+        ),
+        instr(
+            20,
+            Opcode::PushI,
+            DataType::Int16,
+            DataType::Double,
+            Operand::Int16(-1),
+        ),
+        instr(
+            24,
+            Opcode::Push,
+            DataType::String,
+            DataType::Double,
+            Operand::StringIndex(0),
+        ),
         instr(
             32,
             Opcode::Push,
             DataType::Variable,
             DataType::Double,
             Operand::Variable {
-                var_ref: VariableRef { variable_id: 0, ref_type: 0 },
+                var_ref: VariableRef {
+                    variable_id: 0,
+                    ref_type: 0,
+                },
                 instance: -1,
             },
         ),
@@ -553,10 +598,37 @@ pub fn build_v15_bytecode_variety() -> (Vec<u8>, String) {
             DataType::Double,
             Operand::Comparison(ComparisonKind::Less),
         ),
-        instr(44, Opcode::Bf, DataType::Double, DataType::Double, Operand::Branch(8)),
-        instr(48, Opcode::Dup, DataType::Variable, DataType::Double, Operand::Dup(0)),
-        instr(52, Opcode::Call, DataType::Int32, DataType::Double, Operand::Call { function_id: 7, argc: 0 }),
-        instr(60, Opcode::Ret, DataType::Double, DataType::Double, Operand::None),
+        instr(
+            44,
+            Opcode::Bf,
+            DataType::Double,
+            DataType::Double,
+            Operand::Branch(8),
+        ),
+        instr(
+            48,
+            Opcode::Dup,
+            DataType::Variable,
+            DataType::Double,
+            Operand::Dup(0),
+        ),
+        instr(
+            52,
+            Opcode::Call,
+            DataType::Int32,
+            DataType::Double,
+            Operand::Call {
+                function_id: 7,
+                argc: 0,
+            },
+        ),
+        instr(
+            60,
+            Opcode::Ret,
+            DataType::Double,
+            DataType::Double,
+            Operand::None,
+        ),
     ]);
 
     let code_data = build_code_v15(
@@ -566,9 +638,18 @@ pub fn build_v15_bytecode_variety() -> (Vec<u8>, String) {
     let code_size = code_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
     ]);
 
     let json = format!(
@@ -653,10 +734,43 @@ pub fn build_v15_break_signals() -> (Vec<u8>, String) {
     );
 
     let bytecode = encode_instructions(&[
-        instr(0, Opcode::Break, DataType::Double, DataType::Double, Operand::Break { signal: 0xFFF6, extra: None }),
-        instr(4, Opcode::Break, DataType::Double, DataType::Double, Operand::Break { signal: 0xFFFA, extra: None }),
-        instr(8, Opcode::Break, DataType::Int32, DataType::Double, Operand::Break { signal: 0xFFF5, extra: Some(5) }),
-        instr(16, Opcode::Ret, DataType::Double, DataType::Double, Operand::None),
+        instr(
+            0,
+            Opcode::Break,
+            DataType::Double,
+            DataType::Double,
+            Operand::Break {
+                signal: 0xFFF6,
+                extra: None,
+            },
+        ),
+        instr(
+            4,
+            Opcode::Break,
+            DataType::Double,
+            DataType::Double,
+            Operand::Break {
+                signal: 0xFFFA,
+                extra: None,
+            },
+        ),
+        instr(
+            8,
+            Opcode::Break,
+            DataType::Int32,
+            DataType::Double,
+            Operand::Break {
+                signal: 0xFFF5,
+                extra: Some(5),
+            },
+        ),
+        instr(
+            16,
+            Opcode::Ret,
+            DataType::Double,
+            DataType::Double,
+            Operand::None,
+        ),
     ]);
 
     let code_data = build_code_v15(
@@ -666,9 +780,18 @@ pub fn build_v15_break_signals() -> (Vec<u8>, String) {
     let code_size = code_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
     ]);
 
     let json = format!(
@@ -780,11 +903,26 @@ pub fn build_v14_minimal() -> (Vec<u8>, String) {
     let func_size = func_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
-        OutputChunk { magic: *b"VARI", data: vari_data },
-        OutputChunk { magic: *b"FUNC", data: func_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
+        OutputChunk {
+            magic: *b"VARI",
+            data: vari_data,
+        },
+        OutputChunk {
+            magic: *b"FUNC",
+            data: func_data,
+        },
     ]);
 
     let json = format!(
@@ -881,8 +1019,20 @@ pub fn build_v15_vari_func() -> (Vec<u8>, String) {
 
     // CODE: 1 entry with locals_count=1.
     let bytecode = encode_instructions(&[
-        instr(0, Opcode::PushI, DataType::Int16, DataType::Double, Operand::Int16(0)),
-        instr(4, Opcode::Ret, DataType::Double, DataType::Double, Operand::None),
+        instr(
+            0,
+            Opcode::PushI,
+            DataType::Int16,
+            DataType::Double,
+            Operand::Int16(0),
+        ),
+        instr(
+            4,
+            Opcode::Ret,
+            DataType::Double,
+            DataType::Double,
+            Operand::None,
+        ),
     ]);
     let code_data = build_code_v15_with_meta(
         str_ref(2, strings, strg_data_abs),
@@ -905,8 +1055,7 @@ pub fn build_v15_vari_func() -> (Vec<u8>, String) {
 
     // FUNC: 1 function "my_func" + 1 code_locals entry for "gml_Script_vf"
     //       with 1 local "i" at index 0.
-    let code_locals_entry: &[(u32, u32)] =
-        &[(0, str_ref(5, strings, strg_data_abs))]; // index=0, name="i"
+    let code_locals_entry: &[(u32, u32)] = &[(0, str_ref(5, strings, strg_data_abs))]; // index=0, name="i"
     let func_data = build_func_v15(
         &[(str_ref(4, strings, strg_data_abs), 1, -1)],
         &[(str_ref(2, strings, strg_data_abs), code_locals_entry)],
@@ -914,11 +1063,26 @@ pub fn build_v15_vari_func() -> (Vec<u8>, String) {
     let func_size = func_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
-        OutputChunk { magic: *b"VARI", data: vari_data },
-        OutputChunk { magic: *b"FUNC", data: func_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
+        OutputChunk {
+            magic: *b"VARI",
+            data: vari_data,
+        },
+        OutputChunk {
+            magic: *b"FUNC",
+            data: func_data,
+        },
     ]);
 
     let json = format!(
@@ -1042,16 +1206,37 @@ pub fn build_v15_more_opcodes() -> (Vec<u8>, String) {
     // Total: 68 bytes
 
     let bytecode = encode_instructions(&[
-        instr(0, Opcode::Push, DataType::Float, DataType::Double, Operand::Float(2.5_f32)),
-        instr(8, Opcode::Push, DataType::Int64, DataType::Double, Operand::Int64(999)),
-        instr(20, Opcode::Push, DataType::Bool, DataType::Double, Operand::Bool(true)),
+        instr(
+            0,
+            Opcode::Push,
+            DataType::Float,
+            DataType::Double,
+            Operand::Float(2.5_f32),
+        ),
+        instr(
+            8,
+            Opcode::Push,
+            DataType::Int64,
+            DataType::Double,
+            Operand::Int64(999),
+        ),
+        instr(
+            20,
+            Opcode::Push,
+            DataType::Bool,
+            DataType::Double,
+            Operand::Bool(true),
+        ),
         instr(
             28,
             Opcode::PushLoc,
             DataType::Variable,
             DataType::Double,
             Operand::Variable {
-                var_ref: VariableRef { variable_id: 0, ref_type: 0 },
+                var_ref: VariableRef {
+                    variable_id: 0,
+                    ref_type: 0,
+                },
                 instance: -1, // Own
             },
         ),
@@ -1061,7 +1246,10 @@ pub fn build_v15_more_opcodes() -> (Vec<u8>, String) {
             DataType::Variable,
             DataType::Double,
             Operand::Variable {
-                var_ref: VariableRef { variable_id: 0, ref_type: 0 },
+                var_ref: VariableRef {
+                    variable_id: 0,
+                    ref_type: 0,
+                },
                 instance: -5, // Global
             },
         ),
@@ -1071,7 +1259,10 @@ pub fn build_v15_more_opcodes() -> (Vec<u8>, String) {
             DataType::Variable,
             DataType::Double,
             Operand::Variable {
-                var_ref: VariableRef { variable_id: 0, ref_type: 0 },
+                var_ref: VariableRef {
+                    variable_id: 0,
+                    ref_type: 0,
+                },
                 instance: -6, // Builtin
             },
         ),
@@ -1081,14 +1272,23 @@ pub fn build_v15_more_opcodes() -> (Vec<u8>, String) {
             DataType::Variable,
             DataType::Double,
             Operand::Variable {
-                var_ref: VariableRef { variable_id: 1, ref_type: 0 },
+                var_ref: VariableRef {
+                    variable_id: 1,
+                    ref_type: 0,
+                },
                 instance: -1, // Own
             },
         ),
         // Backward branch: Bf at offset 60 jumping to offset 0 = byte_offset -60.
         // -60 / 4 = -15 words; encoded as 23-bit two's complement → type1=Int16, type2=Raw(7).
         backward_branch_instr(60, Opcode::Bf, -60),
-        instr(64, Opcode::Ret, DataType::Double, DataType::Double, Operand::None),
+        instr(
+            64,
+            Opcode::Ret,
+            DataType::Double,
+            DataType::Double,
+            Operand::None,
+        ),
     ]);
 
     let code_data = build_code_v15(
@@ -1098,9 +1298,18 @@ pub fn build_v15_more_opcodes() -> (Vec<u8>, String) {
     let code_size = code_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
     ]);
 
     let json = format!(
@@ -1189,8 +1398,20 @@ pub fn build_v15_scpt() -> (Vec<u8>, String) {
     );
 
     let bytecode = encode_instructions(&[
-        instr(0, Opcode::PushI, DataType::Int16, DataType::Double, Operand::Int16(0)),
-        instr(4, Opcode::Ret, DataType::Double, DataType::Double, Operand::None),
+        instr(
+            0,
+            Opcode::PushI,
+            DataType::Int16,
+            DataType::Double,
+            Operand::Int16(0),
+        ),
+        instr(
+            4,
+            Opcode::Ret,
+            DataType::Double,
+            DataType::Double,
+            Operand::None,
+        ),
     ]);
 
     let code_data = build_code_v15(
@@ -1201,17 +1422,26 @@ pub fn build_v15_scpt() -> (Vec<u8>, String) {
     let scpt_data_abs = code_data_abs + code_size + CHUNK_HDR;
 
     // SCPT: 1 script "Script_foo" mapping to code entry 0.
-    let scpt_data = build_scpt(
-        &[(str_ref(3, strings, strg_data_abs), 0)],
-        scpt_data_abs,
-    );
+    let scpt_data = build_scpt(&[(str_ref(3, strings, strg_data_abs), 0)], scpt_data_abs);
     let scpt_size = scpt_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
-        OutputChunk { magic: *b"SCPT", data: scpt_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
+        OutputChunk {
+            magic: *b"SCPT",
+            data: scpt_data,
+        },
     ]);
 
     let json = format!(
@@ -1274,8 +1504,7 @@ pub fn build_v15_shared_blob() -> (Vec<u8>, String) {
     const CHUNK_HDR: usize = 8;
     const GEN8_SIZE: usize = 132;
 
-    let strings: &[&str] =
-        &["", "shared_game", "gml_Script_parent", "gml_Script_child"];
+    let strings: &[&str] = &["", "shared_game", "gml_Script_parent", "gml_Script_child"];
 
     let gen8_data_abs = FORM_HDR + CHUNK_HDR;
     let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
@@ -1293,8 +1522,20 @@ pub fn build_v15_shared_blob() -> (Vec<u8>, String) {
 
     // Parent: PushI Int16(1) + Ret = 8 bytes.
     let parent_bc = encode_instructions(&[
-        instr(0, Opcode::PushI, DataType::Int16, DataType::Double, Operand::Int16(1)),
-        instr(4, Opcode::Ret, DataType::Double, DataType::Double, Operand::None),
+        instr(
+            0,
+            Opcode::PushI,
+            DataType::Int16,
+            DataType::Double,
+            Operand::Int16(1),
+        ),
+        instr(
+            4,
+            Opcode::Ret,
+            DataType::Double,
+            DataType::Double,
+            Operand::None,
+        ),
     ]);
     // Child: Ret = 4 bytes.
     let child_bc = encode_instructions(&[instr(
@@ -1318,9 +1559,18 @@ pub fn build_v15_shared_blob() -> (Vec<u8>, String) {
     let code_size = code_data.len();
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"CODE", data: code_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"CODE",
+            data: code_data,
+        },
     ]);
 
     let json = format!(
@@ -1442,7 +1692,7 @@ pub fn build_v15_simple_chunks() -> (Vec<u8>, String) {
     const FORM_HDR: usize = 8;
     const CHUNK_HDR: usize = 8;
     const GEN8_SIZE: usize = 132;
-    const GLOB_SIZE: usize = 8;  // count(4) + 1 × script_id(4)
+    const GLOB_SIZE: usize = 8; // count(4) + 1 × script_id(4)
     const LANG_SIZE: usize = 16; // entry_count(4) + count2(4) + 1 × (name+region)(8)
     const SHDR_SIZE: usize = 12; // count(4) + ptr(4) + entry(4)
     const BGND_SIZE: usize = 12;
@@ -1450,7 +1700,14 @@ pub fn build_v15_simple_chunks() -> (Vec<u8>, String) {
 
     // strings[0]=""  [1]="bg_name"  [2]="shader_name"  [3]="sequence_name"
     //          [4]="English"  [5]="en"
-    let strings: &[&str] = &["", "bg_name", "shader_name", "sequence_name", "English", "en"];
+    let strings: &[&str] = &[
+        "",
+        "bg_name",
+        "shader_name",
+        "sequence_name",
+        "English",
+        "en",
+    ];
 
     let gen8_data_abs = FORM_HDR + CHUNK_HDR;
     let strg_data_abs = gen8_data_abs + GEN8_SIZE + CHUNK_HDR;
@@ -1509,13 +1766,34 @@ pub fn build_v15_simple_chunks() -> (Vec<u8>, String) {
     assert_eq!(seqn_data.len(), SEQN_SIZE);
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"GLOB", data: glob_data },
-        OutputChunk { magic: *b"LANG", data: lang_data },
-        OutputChunk { magic: *b"SHDR", data: shdr_data },
-        OutputChunk { magic: *b"BGND", data: bgnd_data },
-        OutputChunk { magic: *b"SEQN", data: seqn_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"GLOB",
+            data: glob_data,
+        },
+        OutputChunk {
+            magic: *b"LANG",
+            data: lang_data,
+        },
+        OutputChunk {
+            magic: *b"SHDR",
+            data: shdr_data,
+        },
+        OutputChunk {
+            magic: *b"BGND",
+            data: bgnd_data,
+        },
+        OutputChunk {
+            magic: *b"SEQN",
+            data: seqn_data,
+        },
     ]);
 
     let json = format!(
@@ -1617,35 +1895,47 @@ pub fn build_v15_sond_audo() -> (Vec<u8>, String) {
     // SOND: count(4) + ptr[0](4) + entry(36 bytes = 9 fields × 4).
     let sond_entry_abs = (sond_data_abs + 8) as u32;
     let mut w = Writer::new();
-    w.write_u32(1);                                          // count
-    w.write_u32(sond_entry_abs);                             // ptr[0]
-    w.write_u32(str_ref(1, strings, strg_data_abs));         // name = "explosion"
-    w.write_u32(0);                                          // flags = 0
-    w.write_u32(str_ref(2, strings, strg_data_abs));         // type_name = ".wav"
-    w.write_u32(str_ref(3, strings, strg_data_abs));         // file_name = "explosion.wav"
-    w.write_u32(0);                                          // effects = 0
-    w.write_f32(1.0_f32);                                    // volume = 1.0
-    w.write_f32(1.0_f32);                                    // pitch = 1.0
-    w.write_i32(-1);                                         // group_id = -1
-    w.write_i32(0);                                          // audio_id = 0
+    w.write_u32(1); // count
+    w.write_u32(sond_entry_abs); // ptr[0]
+    w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "explosion"
+    w.write_u32(0); // flags = 0
+    w.write_u32(str_ref(2, strings, strg_data_abs)); // type_name = ".wav"
+    w.write_u32(str_ref(3, strings, strg_data_abs)); // file_name = "explosion.wav"
+    w.write_u32(0); // effects = 0
+    w.write_f32(1.0_f32); // volume = 1.0
+    w.write_f32(1.0_f32); // pitch = 1.0
+    w.write_i32(-1); // group_id = -1
+    w.write_i32(0); // audio_id = 0
     let sond_data = w.into_bytes();
     assert_eq!(sond_data.len(), SOND_SIZE);
 
     // AUDO: count(4) + ptr[0](4) + length(4) + stub data[4].
     let audo_entry_abs = (audo_data_abs + 8) as u32;
     let mut w = Writer::new();
-    w.write_u32(1);              // count
+    w.write_u32(1); // count
     w.write_u32(audo_entry_abs); // ptr[0]
-    w.write_u32(4);              // length = 4 bytes
-    w.write_bytes(&[0u8; 4]);    // stub audio data
+    w.write_u32(4); // length = 4 bytes
+    w.write_bytes(&[0u8; 4]); // stub audio data
     let audo_data = w.into_bytes();
     assert_eq!(audo_data.len(), AUDO_SIZE);
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"SOND", data: sond_data },
-        OutputChunk { magic: *b"AUDO", data: audo_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"SOND",
+            data: sond_data,
+        },
+        OutputChunk {
+            magic: *b"AUDO",
+            data: audo_data,
+        },
     ]);
 
     let json = format!(
@@ -1754,8 +2044,10 @@ pub fn build_v15_sprt_tpag_txtr() -> (Vec<u8>, String) {
     w.write_u32(2);
     w.write_u32(txtr_entry0_abs);
     w.write_u32(txtr_entry1_abs);
-    w.write_u32(0); w.write_u32(0xDEAD); // entry0: unknown=0, data_offset=0xDEAD
-    w.write_u32(0); w.write_u32(0xBEEF); // entry1: unknown=0, data_offset=0xBEEF
+    w.write_u32(0);
+    w.write_u32(0xDEAD); // entry0: unknown=0, data_offset=0xDEAD
+    w.write_u32(0);
+    w.write_u32(0xBEEF); // entry1: unknown=0, data_offset=0xBEEF
     let txtr_data = w.into_bytes();
     assert_eq!(txtr_data.len(), TXTR_SIZE);
 
@@ -1765,17 +2057,17 @@ pub fn build_v15_sprt_tpag_txtr() -> (Vec<u8>, String) {
     w.write_u32(1);
     w.write_u32(tpag_entry0_abs);
     // TexturePageItem (11 × u16):
-    w.write_u16(0);  // source_x
-    w.write_u16(0);  // source_y
+    w.write_u16(0); // source_x
+    w.write_u16(0); // source_y
     w.write_u16(16); // source_width
     w.write_u16(16); // source_height
-    w.write_u16(0);  // target_x
-    w.write_u16(0);  // target_y
+    w.write_u16(0); // target_x
+    w.write_u16(0); // target_y
     w.write_u16(16); // target_width
     w.write_u16(16); // target_height
     w.write_u16(16); // render_width
     w.write_u16(16); // render_height
-    w.write_u16(0);  // texture_page_id = 0 (refers to TXTR[0])
+    w.write_u16(0); // texture_page_id = 0 (refers to TXTR[0])
     let tpag_data = w.into_bytes();
     assert_eq!(tpag_data.len(), TPAG_SIZE);
 
@@ -1787,28 +2079,43 @@ pub fn build_v15_sprt_tpag_txtr() -> (Vec<u8>, String) {
     w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "spr_player"
     w.write_u32(16); // width
     w.write_u32(16); // height
-    w.write_i32(0);  // bbox_left
+    w.write_i32(0); // bbox_left
     w.write_i32(16); // bbox_right
     w.write_i32(16); // bbox_bottom
-    w.write_i32(0);  // bbox_top
-    w.write_u32(0);  // transparent
-    w.write_u32(0);  // smooth
-    w.write_u32(0);  // preload
-    w.write_u32(0);  // bbox_mode
-    w.write_u32(0);  // sep_masks
-    w.write_i32(8);  // origin_x
-    w.write_i32(8);  // origin_y
-    w.write_i32(1);  // tpag_count = 1
+    w.write_i32(0); // bbox_top
+    w.write_u32(0); // transparent
+    w.write_u32(0); // smooth
+    w.write_u32(0); // preload
+    w.write_u32(0); // bbox_mode
+    w.write_u32(0); // sep_masks
+    w.write_i32(8); // origin_x
+    w.write_i32(8); // origin_y
+    w.write_i32(1); // tpag_count = 1
     w.write_u32(tpag_entry0_abs); // tpag_indices[0] = abs offset of TPAG entry
     let sprt_data = w.into_bytes();
     assert_eq!(sprt_data.len(), SPRT_SIZE);
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"TXTR", data: txtr_data },
-        OutputChunk { magic: *b"TPAG", data: tpag_data },
-        OutputChunk { magic: *b"SPRT", data: sprt_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"TXTR",
+            data: txtr_data,
+        },
+        OutputChunk {
+            magic: *b"TPAG",
+            data: tpag_data,
+        },
+        OutputChunk {
+            magic: *b"SPRT",
+            data: sprt_data,
+        },
     ]);
 
     let json = format!(
@@ -1914,18 +2221,27 @@ pub fn build_v15_optn() -> (Vec<u8>, String) {
     // OPTN: flags(4) + reserved[56] + constant_count(4) + constants[1](8 bytes).
     // CONSTANTS_OFFSET = 60: flags(4) + reserved(56) = 60 bytes before the count field.
     let mut w = Writer::new();
-    w.write_u32(0);             // flags = 0
-    w.write_bytes(&[0u8; 56]);  // reserved (includes colors and other option fields)
-    w.write_u32(1);             // constant_count = 1
+    w.write_u32(0); // flags = 0
+    w.write_bytes(&[0u8; 56]); // reserved (includes colors and other option fields)
+    w.write_u32(1); // constant_count = 1
     w.write_u32(str_ref(1, strings, strg_data_abs)); // constants[0].name = "my_const"
     w.write_u32(str_ref(2, strings, strg_data_abs)); // constants[0].value = "42"
     let optn_data = w.into_bytes();
     assert_eq!(optn_data.len(), OPTN_SIZE);
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"OPTN", data: optn_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"OPTN",
+            data: optn_data,
+        },
     ]);
 
     let json = format!(
@@ -2006,45 +2322,54 @@ pub fn build_v15_font() -> (Vec<u8>, String) {
     //   [font_data_abs + 8]: font header (40 bytes)
     //   [font_data_abs + 48]: glyph pointer list: count=1, ptr[0] → glyph_entry_abs
     //   [font_data_abs + 56]: glyph entry (14 bytes)
-    let font_entry_abs  = (font_data_abs + 8) as u32;
-    let glyph_list_abs  = font_entry_abs + 40; // after 40-byte header
-    let glyph_entry_abs = glyph_list_abs + 8;  // after glyph count(4)+ptr(4)
+    let font_entry_abs = (font_data_abs + 8) as u32;
+    let glyph_list_abs = font_entry_abs + 40; // after 40-byte header
+    let glyph_entry_abs = glyph_list_abs + 8; // after glyph count(4)+ptr(4)
 
     let mut w = Writer::new();
     // FONT pointer list
-    w.write_u32(1);              // count = 1
+    w.write_u32(1); // count = 1
     w.write_u32(font_entry_abs); // ptr[0]
-    // FontEntry header (40 bytes)
+                                 // FontEntry header (40 bytes)
     w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "fnt_main"
     w.write_u32(str_ref(2, strings, strg_data_abs)); // display_name = "Arial"
-    w.write_u32(12);       // size = 12 pt
-    w.write_u32(0);        // bold = false
-    w.write_u32(0);        // italic = false
-    w.write_u16(32);       // range_start = 32 (' ')
-    w.write_u8(0);         // charset = 0
-    w.write_u8(2);         // antialias = 2
-    w.write_u32(127);      // range_end = 127
-    w.write_u32(0);        // tpag_index = 0
-    w.write_f32(1.0_f32);  // scale_x
-    w.write_f32(1.0_f32);  // scale_y
-    // Glyph pointer list (inline after header)
-    w.write_u32(1);               // glyph count = 1
+    w.write_u32(12); // size = 12 pt
+    w.write_u32(0); // bold = false
+    w.write_u32(0); // italic = false
+    w.write_u16(32); // range_start = 32 (' ')
+    w.write_u8(0); // charset = 0
+    w.write_u8(2); // antialias = 2
+    w.write_u32(127); // range_end = 127
+    w.write_u32(0); // tpag_index = 0
+    w.write_f32(1.0_f32); // scale_x
+    w.write_f32(1.0_f32); // scale_y
+                          // Glyph pointer list (inline after header)
+    w.write_u32(1); // glyph count = 1
     w.write_u32(glyph_entry_abs); // glyph ptr[0]
-    // Glyph entry (14 bytes: 7 × u16/i16)
+                                  // Glyph entry (14 bytes: 7 × u16/i16)
     w.write_u16(65); // character = 'A'
     w.write_u16(10); // x = 10
-    w.write_u16(0);  // y = 0
-    w.write_u16(8);  // width = 8
+    w.write_u16(0); // y = 0
+    w.write_u16(8); // width = 8
     w.write_u16(12); // height = 12
-    w.write_u16(9);  // shift = 9 (positive i16, safe as u16)
-    w.write_u16(0);  // offset = 0
+    w.write_u16(9); // shift = 9 (positive i16, safe as u16)
+    w.write_u16(0); // offset = 0
     let font_data = w.into_bytes();
     assert_eq!(font_data.len(), FONT_SIZE);
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"FONT", data: font_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"FONT",
+            data: font_data,
+        },
     ]);
 
     let json = format!(
@@ -2142,39 +2467,48 @@ pub fn build_v15_objt() -> (Vec<u8>, String) {
 
     let objt_entry_abs = (objt_data_abs + 8) as u32; // after count(4)+ptr(4)
     let mut w = Writer::new();
-    w.write_u32(1);               // count
-    w.write_u32(objt_entry_abs);  // ptr[0]
-    // Basic fields (32 bytes)
+    w.write_u32(1); // count
+    w.write_u32(objt_entry_abs); // ptr[0]
+                                 // Basic fields (32 bytes)
     w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "obj_player"
-    w.write_i32(0);  // sprite_index = 0
-    w.write_u32(1);  // visible = true
-    w.write_u32(0);  // solid = false  [no _managed: BC < 17]
-    w.write_i32(0);  // depth = 0
-    w.write_u32(0);  // persistent = false
+    w.write_i32(0); // sprite_index = 0
+    w.write_u32(1); // visible = true
+    w.write_u32(0); // solid = false  [no _managed: BC < 17]
+    w.write_i32(0); // depth = 0
+    w.write_u32(0); // persistent = false
     w.write_i32(-1); // parent_index = -1 (none)
     w.write_i32(-1); // mask_index = -1 (use own sprite)
-    // Physics fields (48 bytes)
-    w.write_u32(0);        // physics_enabled = false
-    w.write_u32(0);        // physics_sensor = false
-    w.write_u32(1);        // physics_shape = Box (1)
-    w.write_f32(0.5_f32);  // physics_density
-    w.write_f32(0.1_f32);  // physics_restitution
-    w.write_u32(0);        // physics_group
-    w.write_f32(0.1_f32);  // physics_linear_damping
-    w.write_f32(0.1_f32);  // physics_angular_damping
-    w.write_u32(0);        // vert_count = 0 (no physics vertices)
-    w.write_f32(0.2_f32);  // physics_friction
-    w.write_u32(1);        // physics_awake = true
-    w.write_u32(0);        // physics_kinematic = false
-    // No physics vertices (vert_count = 0)
+                     // Physics fields (48 bytes)
+    w.write_u32(0); // physics_enabled = false
+    w.write_u32(0); // physics_sensor = false
+    w.write_u32(1); // physics_shape = Box (1)
+    w.write_f32(0.5_f32); // physics_density
+    w.write_f32(0.1_f32); // physics_restitution
+    w.write_u32(0); // physics_group
+    w.write_f32(0.1_f32); // physics_linear_damping
+    w.write_f32(0.1_f32); // physics_angular_damping
+    w.write_u32(0); // vert_count = 0 (no physics vertices)
+    w.write_f32(0.2_f32); // physics_friction
+    w.write_u32(1); // physics_awake = true
+    w.write_u32(0); // physics_kinematic = false
+                    // No physics vertices (vert_count = 0)
     w.write_u32(0); // event_type_count = 0 (no events)
     let objt_data = w.into_bytes();
     assert_eq!(objt_data.len(), OBJT_SIZE);
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"OBJT", data: objt_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"OBJT",
+            data: objt_data,
+        },
     ]);
 
     let json = format!(
@@ -2272,46 +2606,55 @@ pub fn build_v15_room() -> (Vec<u8>, String) {
     );
 
     // Empty object list follows the 88-byte room entry.
-    let room_entry_abs = (room_data_abs + 8) as u32;    // after count(4)+ptr(4)
-    let empty_objs_abs = (room_data_abs + 96) as u32;   // after count(4)+ptr(4)+entry(88)
+    let room_entry_abs = (room_data_abs + 8) as u32; // after count(4)+ptr(4)
+    let empty_objs_abs = (room_data_abs + 96) as u32; // after count(4)+ptr(4)+entry(88)
 
     let mut w = Writer::new();
-    w.write_u32(1);              // count
+    w.write_u32(1); // count
     w.write_u32(room_entry_abs); // ptr[0]
-    // RoomEntry (88 bytes)
+                                 // RoomEntry (88 bytes)
     w.write_u32(str_ref(1, strings, strg_data_abs)); // name = "rm_main"
     w.write_u32(str_ref(0, strings, strg_data_abs)); // caption = ""
-    w.write_u32(640);   // width
-    w.write_u32(480);   // height
-    w.write_u32(60);    // speed = 60 fps
-    w.write_u32(0);     // persistent = false
-    w.write_u32(0);     // background_color = black
-    w.write_u32(1);     // draw_background_color = true
-    w.write_i32(-1);    // creation_code_id = -1 (none)
-    w.write_u32(0);     // flags = 0
-    // Sub-list pointers (bg/views/tiles not parsed → 0; objs must be valid)
-    w.write_u32(0);             // bg_ptr (not followed by Rust parser)
-    w.write_u32(0);             // views_ptr (not followed)
+    w.write_u32(640); // width
+    w.write_u32(480); // height
+    w.write_u32(60); // speed = 60 fps
+    w.write_u32(0); // persistent = false
+    w.write_u32(0); // background_color = black
+    w.write_u32(1); // draw_background_color = true
+    w.write_i32(-1); // creation_code_id = -1 (none)
+    w.write_u32(0); // flags = 0
+                    // Sub-list pointers (bg/views/tiles not parsed → 0; objs must be valid)
+    w.write_u32(0); // bg_ptr (not followed by Rust parser)
+    w.write_u32(0); // views_ptr (not followed)
     w.write_u32(empty_objs_abs); // objs_ptr → count=0 list below
-    w.write_u32(0);             // tiles_ptr (not followed)
-    // Physics (8 × 4 bytes = 32)
-    w.write_u32(0);        // physics_world = false
-    w.write_u32(0);        // _physics_top
-    w.write_u32(0);        // _physics_left
-    w.write_u32(0);        // _physics_right
-    w.write_u32(0);        // _physics_bottom
-    w.write_f32(0.0_f32);  // gravity_x = 0.0
+    w.write_u32(0); // tiles_ptr (not followed)
+                    // Physics (8 × 4 bytes = 32)
+    w.write_u32(0); // physics_world = false
+    w.write_u32(0); // _physics_top
+    w.write_u32(0); // _physics_left
+    w.write_u32(0); // _physics_right
+    w.write_u32(0); // _physics_bottom
+    w.write_f32(0.0_f32); // gravity_x = 0.0
     w.write_f32(10.0_f32); // gravity_y = 10.0
-    w.write_f32(0.1_f32);  // pixels_to_meters = 0.1
-    // Empty object pointer list (count=0, no object entries)
+    w.write_f32(0.1_f32); // pixels_to_meters = 0.1
+                          // Empty object pointer list (count=0, no object entries)
     w.write_u32(0); // count = 0
     let room_data = w.into_bytes();
     assert_eq!(room_data.len(), ROOM_SIZE);
 
     let bin = assemble_form(&[
-        OutputChunk { magic: *b"GEN8", data: gen8_data },
-        OutputChunk { magic: *b"STRG", data: strg_data },
-        OutputChunk { magic: *b"ROOM", data: room_data },
+        OutputChunk {
+            magic: *b"GEN8",
+            data: gen8_data,
+        },
+        OutputChunk {
+            magic: *b"STRG",
+            data: strg_data,
+        },
+        OutputChunk {
+            magic: *b"ROOM",
+            data: room_data,
+        },
     ]);
 
     let json = format!(
@@ -2378,7 +2721,13 @@ fn instr(
     type2: DataType,
     operand: Operand,
 ) -> Instruction {
-    Instruction { offset, opcode, type1, type2, operand }
+    Instruction {
+        offset,
+        opcode,
+        type1,
+        type2,
+        operand,
+    }
 }
 
 /// Build a branch instruction with the correct type1/type2 nibbles for the
@@ -2389,13 +2738,23 @@ fn backward_branch_instr(offset: usize, opcode: Opcode, byte_offset: i32) -> Ins
     let raw23 = (offset_words as u32) & 0x007F_FFFF;
     let type1 = DataType::from_u8(((raw23 >> 16) & 0xF) as u8);
     let type2 = DataType::from_u8(((raw23 >> 20) & 0xF) as u8);
-    Instruction { offset, opcode, type1, type2, operand: Operand::Branch(byte_offset) }
+    Instruction {
+        offset,
+        opcode,
+        type1,
+        type2,
+        operand: Operand::Branch(byte_offset),
+    }
 }
 
 fn encode_instructions(instructions: &[Instruction]) -> Vec<u8> {
     let encoded = encode::encode(instructions);
     let decoded = decode::decode(&encoded).expect("fixture bytecode failed to decode");
-    assert_eq!(decoded.len(), instructions.len(), "round-trip instruction count mismatch");
+    assert_eq!(
+        decoded.len(),
+        instructions.len(),
+        "round-trip instruction count mismatch"
+    );
     for (i, (orig, rt)) in instructions.iter().zip(decoded.iter()).enumerate() {
         assert_eq!(
             orig.opcode, rt.opcode,

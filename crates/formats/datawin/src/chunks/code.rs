@@ -39,7 +39,9 @@ impl Code {
     ) -> Result<Self> {
         // A 0-size CODE chunk means the game was compiled with YYC (no bytecode); return empty.
         if chunk_data.is_empty() {
-            return Ok(Self { entries: Vec::new() });
+            return Ok(Self {
+                entries: Vec::new(),
+            });
         }
 
         let mut c = Cursor::new(chunk_data);

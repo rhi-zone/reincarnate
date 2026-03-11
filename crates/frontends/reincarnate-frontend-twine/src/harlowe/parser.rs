@@ -29,7 +29,10 @@ fn scan_macro_param_names(args_text: &str, base_offset: usize) -> Vec<Expr> {
             if j > name_start {
                 let name = args_text[name_start..j].to_string();
                 let span = Span::new(base_offset + i, base_offset + j);
-                params.push(Expr { kind: ExprKind::TempVar(name), span });
+                params.push(Expr {
+                    kind: ExprKind::TempVar(name),
+                    span,
+                });
                 i = j;
                 continue;
             }
@@ -86,7 +89,7 @@ impl<'a> Parser<'a> {
     /// Returns false for prose like `(obviously)`.
     fn looks_like_macro(&self) -> bool {
         let mut i = self.pos + 1; // skip `(`
-        // Scan past name chars
+                                  // Scan past name chars
         while i < self.bytes.len()
             && (self.bytes[i].is_ascii_alphanumeric()
                 || self.bytes[i] == b'-'
@@ -151,7 +154,10 @@ impl<'a> Parser<'a> {
             b'<' => {
                 if self.remaining().starts_with("<!--") {
                     self.parse_comment()
-                } else if self.peek_at(1).is_some_and(|c| c.is_ascii_alphabetic() || c == b'/') {
+                } else if self
+                    .peek_at(1)
+                    .is_some_and(|c| c.is_ascii_alphabetic() || c == b'/')
+                {
                     self.parse_html()
                 } else {
                     self.parse_text(in_hook)
@@ -176,18 +182,10 @@ impl<'a> Parser<'a> {
             b'*' if !in_hook || self.peek_at(1).is_some_and(|c| c != b']') => {
                 self.parse_markup("*", "em", in_hook)
             }
-            b'\'' if self.peek_at(1) == Some(b'\'') => {
-                self.parse_markup("''", "strong", in_hook)
-            }
-            b'/' if self.peek_at(1) == Some(b'/') => {
-                self.parse_markup("//", "em", in_hook)
-            }
-            b'~' if self.peek_at(1) == Some(b'~') => {
-                self.parse_markup("~~", "del", in_hook)
-            }
-            b'^' if self.peek_at(1) == Some(b'^') => {
-                self.parse_markup("^^", "sup", in_hook)
-            }
+            b'\'' if self.peek_at(1) == Some(b'\'') => self.parse_markup("''", "strong", in_hook),
+            b'/' if self.peek_at(1) == Some(b'/') => self.parse_markup("//", "em", in_hook),
+            b'~' if self.peek_at(1) == Some(b'~') => self.parse_markup("~~", "del", in_hook),
+            b'^' if self.peek_at(1) == Some(b'^') => self.parse_markup("^^", "sup", in_hook),
             b'`' => self.parse_verbatim(),
             b'|' if self.looks_like_named_hook() => self.parse_named_hook(),
             _ => self.parse_text(in_hook),
@@ -383,7 +381,8 @@ impl<'a> Parser<'a> {
                     // an identifier character (e.g. `'stop'`). A bare `'s ` / `'s(` / `'s,`
                     // is the possessive operator, not a string.
                     let is_possessive = self.bytes.get(self.pos + 1) == Some(&b's')
-                        && !self.bytes
+                        && !self
+                            .bytes
                             .get(self.pos + 2)
                             .is_some_and(|c| c.is_ascii_alphanumeric() || *c == b'_');
                     if is_possessive {
@@ -1210,7 +1209,11 @@ mod tests {
         // (else:) on a new line must still be collected as a clause, not emitted standalone
         let ast = parse("(if: $x is 1)[yes]\n(else:)[no]");
         assert_eq!(ast.errors.len(), 0);
-        assert_eq!(ast.body.len(), 1, "else should be a clause, not a sibling node");
+        assert_eq!(
+            ast.body.len(),
+            1,
+            "else should be a clause, not a sibling node"
+        );
         if let NodeKind::Macro(m) = &ast.body[0].kind {
             assert_eq!(m.name, "if");
             assert_eq!(m.clauses.len(), 1);
@@ -1241,7 +1244,11 @@ mod tests {
         // (elseif:) is an alias for (else-if:) and must be collected as a clause
         let ast = parse("(if: $x < 4)[(A)](elseif: $x < 8)[(B)](elseif: $x < 12)[(C)](else:)[(D)]");
         assert_eq!(ast.errors.len(), 0);
-        assert_eq!(ast.body.len(), 1, "elseif/else should be clauses, not siblings");
+        assert_eq!(
+            ast.body.len(),
+            1,
+            "elseif/else should be clauses, not siblings"
+        );
         if let NodeKind::Macro(m) = &ast.body[0].kind {
             assert_eq!(m.name, "if");
             assert_eq!(m.clauses.len(), 3);
@@ -1257,7 +1264,9 @@ mod tests {
     fn test_inline_macro_in_args_then_else() {
         // (if: (passage:)'s tags contains "x")[(set: $t to (passage:)'s tags)](else:)[(set: $t to "")]
         // The nested (passage:) macro in the expression must not confuse else-clause collection.
-        let ast = parse(r#"(if: (passage:)'s tags contains "x")[(set: $t to (passage:)'s tags)](else:)[(set: $t to "")]"#);
+        let ast = parse(
+            r#"(if: (passage:)'s tags contains "x")[(set: $t to (passage:)'s tags)](else:)[(set: $t to "")]"#,
+        );
         assert_eq!(ast.errors.len(), 0);
         assert_eq!(ast.body.len(), 1, "(else:) must be a clause, not a sibling");
         if let NodeKind::Macro(m) = &ast.body[0].kind {
@@ -1295,12 +1304,19 @@ mod tests {
         assert_eq!(ast.errors.len(), 0);
         // Should have 3 top-level nodes: changer-apply, var-interp, and if
         // (The exact structure depends on changer lowering, but if-node must have 3 clauses)
-        let if_node = ast.body.iter().find(|n| matches!(&n.kind, NodeKind::Macro(m) if m.name == "if"));
+        let if_node = ast
+            .body
+            .iter()
+            .find(|n| matches!(&n.kind, NodeKind::Macro(m) if m.name == "if"));
         let m = match if_node.map(|n| &n.kind) {
             Some(NodeKind::Macro(m)) => m,
             _ => panic!("expected if macro in AST"),
         };
-        assert_eq!(m.clauses.len(), 3, "elseif/else must be clauses of if, not siblings");
+        assert_eq!(
+            m.clauses.len(),
+            3,
+            "elseif/else must be clauses of if, not siblings"
+        );
         assert_eq!(m.clauses[0].kind, "elseif");
         assert_eq!(m.clauses[1].kind, "elseif");
         assert_eq!(m.clauses[2].kind, "else");
@@ -1324,11 +1340,15 @@ mod tests {
             if let NodeKind::Macro(mac) = &node.kind {
                 assert!(
                     mac.name != "elseif" && mac.name != "else",
-                    "standalone clause macro '{}' found in top-level body", mac.name
+                    "standalone clause macro '{}' found in top-level body",
+                    mac.name
                 );
             }
         }
-        let if_node = ast.body.iter().find(|n| matches!(&n.kind, NodeKind::Macro(m) if m.name == "if"));
+        let if_node = ast
+            .body
+            .iter()
+            .find(|n| matches!(&n.kind, NodeKind::Macro(m) if m.name == "if"));
         let m = match if_node.map(|n| &n.kind) {
             Some(NodeKind::Macro(m)) => m,
             _ => panic!("expected if macro"),
@@ -1416,9 +1436,7 @@ mod tests {
         if let NodeKind::Macro(m) = &ast.body[0].kind {
             assert_eq!(m.name, "color");
             assert_eq!(m.args.len(), 1);
-            assert!(
-                matches!(&m.args[0].kind, ExprKind::ColorLiteral(s) if s == "magenta+white")
-            );
+            assert!(matches!(&m.args[0].kind, ExprKind::ColorLiteral(s) if s == "magenta+white"));
         } else {
             panic!("expected macro");
         }
@@ -1539,8 +1557,7 @@ You're at the **plaza**
     #[test]
     fn test_right_sided_hook_does_not_close_outer() {
         // [label]<name| inside an if-hook must NOT close the if-hook early
-        let ast =
-            parse("(if: $x is 1)[\\ \n    [Sneak]<sneak|\n](else:)[no]");
+        let ast = parse("(if: $x is 1)[\\ \n    [Sneak]<sneak|\n](else:)[no]");
         assert_eq!(ast.errors.len(), 0);
         assert_eq!(ast.body.len(), 1, "else should be a clause, not a sibling");
         if let NodeKind::Macro(m) = &ast.body[0].kind {
@@ -1561,7 +1578,11 @@ You're at the **plaza**
         let ast = parse(
             r#"(link: "Go")[(set: $x to (prompt: [It doesn't matter.], "", ""))(goto: "next")]"#,
         );
-        assert_eq!(ast.errors.len(), 0, "apostrophe in hook arg should not break macro parsing");
+        assert_eq!(
+            ast.errors.len(),
+            0,
+            "apostrophe in hook arg should not break macro parsing"
+        );
     }
 
     #[test]
@@ -1579,7 +1600,10 @@ You're at the **plaza**
             .iter()
             .filter(|n| matches!(n.kind, NodeKind::Text(_)))
             .collect();
-        assert!(!text_nodes.is_empty(), "text before verbatim should be present");
+        assert!(
+            !text_nodes.is_empty(),
+            "text before verbatim should be present"
+        );
     }
 
     #[test]

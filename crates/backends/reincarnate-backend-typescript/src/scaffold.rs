@@ -12,7 +12,14 @@ use reincarnate_core::project::{AssetCatalog, AssetKind, PersistenceConfig, Runt
 use crate::emit::sanitize_ident;
 
 /// Write all scaffold files into `output_dir`.
-pub fn emit_scaffold(modules: &[Module], output_dir: &Path, runtime_config: Option<&RuntimeConfig>, assets: &AssetCatalog, persistence: Option<&PersistenceConfig>, favicon: Option<&str>) -> Result<(), CoreError> {
+pub fn emit_scaffold(
+    modules: &[Module],
+    output_dir: &Path,
+    runtime_config: Option<&RuntimeConfig>,
+    assets: &AssetCatalog,
+    persistence: Option<&PersistenceConfig>,
+    favicon: Option<&str>,
+) -> Result<(), CoreError> {
     let html = if is_twine(modules) {
         generate_twine_index_html(modules, assets, favicon)
     } else {
@@ -20,8 +27,14 @@ pub fn emit_scaffold(modules: &[Module], output_dir: &Path, runtime_config: Opti
     };
     fs::write(output_dir.join("index.html"), html)?;
     fs::write(output_dir.join("tsconfig.json"), TSCONFIG)?;
-    fs::write(output_dir.join("main.ts"), generate_main(modules, runtime_config, persistence))?;
-    fs::write(output_dir.join("package.json"), generate_package_json(runtime_config))?;
+    fs::write(
+        output_dir.join("main.ts"),
+        generate_main(modules, runtime_config, persistence),
+    )?;
+    fs::write(
+        output_dir.join("package.json"),
+        generate_package_json(runtime_config),
+    )?;
     Ok(())
 }
 
@@ -70,7 +83,11 @@ fn generate_index_html(modules: &[Module], favicon: Option<&str>) -> String {
     )
 }
 
-fn generate_twine_index_html(modules: &[Module], assets: &AssetCatalog, favicon: Option<&str>) -> String {
+fn generate_twine_index_html(
+    modules: &[Module],
+    assets: &AssetCatalog,
+    favicon: Option<&str>,
+) -> String {
     let title = modules
         .first()
         .map(|m| m.name.as_str())
@@ -243,7 +260,10 @@ fn build_storylet_conditions(modules: &[Module]) -> String {
     for module in modules {
         for (display_name, cond_func_name) in &module.passage_storylets {
             let escaped = display_name.replace('\\', "\\\\").replace('"', "\\\"");
-            entries.push(format!("  \"{escaped}\": {}", sanitize_ident(cond_func_name)));
+            entries.push(format!(
+                "  \"{escaped}\": {}",
+                sanitize_ident(cond_func_name)
+            ));
         }
     }
     if entries.is_empty() {
@@ -293,7 +313,10 @@ fn find_start_passage(modules: &[Module]) -> String {
                 // Reverse-lookup: find passage name whose func_name matches
                 for (display_name, func_name) in &module.passage_names {
                     if *func_name == func.name {
-                        return format!("\"{}\"", display_name.replace('\\', "\\\\").replace('"', "\\\""));
+                        return format!(
+                            "\"{}\"",
+                            display_name.replace('\\', "\\\\").replace('"', "\\\"")
+                        );
                     }
                 }
             }
@@ -407,7 +430,11 @@ fn generate_package_json(runtime_config: Option<&RuntimeConfig>) -> String {
 
 /// Generate `main.ts` — imports all modules and calls the entry point in a
 /// requestAnimationFrame game loop.
-fn generate_main(modules: &[Module], runtime_config: Option<&RuntimeConfig>, persistence: Option<&PersistenceConfig>) -> String {
+fn generate_main(
+    modules: &[Module],
+    runtime_config: Option<&RuntimeConfig>,
+    persistence: Option<&PersistenceConfig>,
+) -> String {
     let mut out = String::new();
 
     if let Some(cfg) = runtime_config {
@@ -458,7 +485,8 @@ fn generate_main(modules: &[Module], runtime_config: Option<&RuntimeConfig>, per
             .map(|p| serde_json::to_string(p).unwrap_or_else(|_| "{}".into()))
             .unwrap_or_else(|| "undefined".into());
         let storylet_conditions = build_storylet_conditions(modules);
-        let initial_room = modules.iter()
+        let initial_room = modules
+            .iter()
             .find_map(|m| m.initial_room_name.as_deref())
             .unwrap_or("Init")
             .to_string();
@@ -538,7 +566,10 @@ fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut 
             .flat_map(|c| c.methods.iter().copied())
             .collect();
         for (fid, func) in module.functions.iter() {
-            if !class_methods.contains(&fid) && func.visibility == Visibility::Public && func.method_kind != MethodKind::Closure {
+            if !class_methods.contains(&fid)
+                && func.visibility == Visibility::Public
+                && func.method_kind != MethodKind::Closure
+            {
                 imports.push(sanitize_ident(&func.name));
                 if heuristic_entry.is_none() && is_entry_candidate(&func.name) {
                     *heuristic_entry = Some(sanitize_ident(&func.name));
@@ -564,9 +595,8 @@ fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut 
                             )
                         {
                             let class_name = sanitize_ident(&class.name);
-                            let method_name = sanitize_ident(
-                                func.name.rsplit("::").next().unwrap_or(&func.name),
-                            );
+                            let method_name =
+                                sanitize_ident(func.name.rsplit("::").next().unwrap_or(&func.name));
                             *heuristic_entry = Some(format!("{class_name}.{method_name}"));
                             break;
                         }
@@ -582,7 +612,10 @@ fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut 
 
 /// Build entry-point code from module metadata (entry_point).
 /// Returns `None` if no module has metadata, falling back to heuristic.
-fn metadata_entry_code(modules: &[Module], runtime_config: Option<&RuntimeConfig>) -> Option<String> {
+fn metadata_entry_code(
+    modules: &[Module],
+    runtime_config: Option<&RuntimeConfig>,
+) -> Option<String> {
     // Find the first module with entry point metadata.
     let module = modules.iter().find(|m| m.entry_point.is_some())?;
 
@@ -592,12 +625,16 @@ fn metadata_entry_code(modules: &[Module], runtime_config: Option<&RuntimeConfig
     match module.entry_point.as_ref()? {
         EntryPoint::ConstructClass(fqn) => {
             let ident = resolve_class_short_name(modules, fqn);
-            if let Some(func) = runtime_config.and_then(|c| c.scaffold.construct_class_fn.as_deref()) {
+            if let Some(func) =
+                runtime_config.and_then(|c| c.scaffold.construct_class_fn.as_deref())
+            {
                 let _ = writeln!(code, "const app = {func}({ident});");
             } else {
                 let _ = writeln!(code, "const app = new {ident}();");
             }
-            if let Some(init) = runtime_config.and_then(|c| c.scaffold.construct_class_init.as_deref()) {
+            if let Some(init) =
+                runtime_config.and_then(|c| c.scaffold.construct_class_init.as_deref())
+            {
                 let _ = writeln!(code, "{init}");
             }
         }
@@ -720,7 +757,9 @@ mod tests {
         let mut mb = ModuleBuilder::new("game");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("update", sig.clone(), Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -742,7 +781,9 @@ mod tests {
         let mut mb = ModuleBuilder::new("utils");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("compute", sig, Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -768,7 +809,9 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("App::init", sig.clone(), Visibility::Public);
         fb.set_class(Vec::new(), "App".into(), MethodKind::Static);
         fb.ret(None);
@@ -821,7 +864,9 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("MyApp::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "MyApp".into(), MethodKind::Constructor);
         fb.ret(None);
@@ -864,7 +909,9 @@ mod tests {
         let mut mb = ModuleBuilder::new("game");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("start_game", sig, Visibility::Public);
         fb.ret(None);
         let fid = mb.add_function(fb.build());
@@ -897,7 +944,9 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
 
         let mut fb_ctor = FunctionBuilder::new("App::new", sig, Visibility::Public);
         fb_ctor.set_class(Vec::new(), "App".into(), MethodKind::Constructor);

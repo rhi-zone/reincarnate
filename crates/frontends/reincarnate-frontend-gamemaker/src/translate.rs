@@ -1,15 +1,15 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use reincarnate_datawin::bytecode::decode::{self, Instruction, Operand};
-use reincarnate_datawin::bytecode::opcode::Opcode;
-use reincarnate_datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableRef};
 use reincarnate_core::entity::EntityRef;
-use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::block::BlockId;
+use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{CaptureMode, Function, MethodKind, Visibility};
 use reincarnate_core::ir::inst::{CmpKind, Op};
 use reincarnate_core::ir::ty::{FunctionSig, Type};
 use reincarnate_core::ir::value::{Constant, ValueId};
+use reincarnate_datawin::bytecode::decode::{self, Instruction, Operand};
+use reincarnate_datawin::bytecode::opcode::Opcode;
+use reincarnate_datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableRef};
 
 /// Context for translating a single code entry.
 pub struct TranslateCtx<'a> {
@@ -291,13 +291,13 @@ fn extract_switch_chain(func: &Function, block_id: BlockId) -> Option<SwitchChai
 
 /// A single case match result from a switch chain block.
 type SwitchBlockMatch = (
-    ValueId,                                   // switch_value
-    Constant,                                  // case_constant
-    BlockId,                                   // case_target
-    Vec<ValueId>,                              // case_args
-    BlockId,                                   // else_target
-    Vec<ValueId>,                              // else_args
-    Vec<reincarnate_core::ir::inst::InstId>,   // insts_to_remove
+    ValueId,                                 // switch_value
+    Constant,                                // case_constant
+    BlockId,                                 // case_target
+    Vec<ValueId>,                            // case_args
+    BlockId,                                 // else_target
+    Vec<ValueId>,                            // else_args
+    Vec<reincarnate_core::ir::inst::InstId>, // insts_to_remove
 );
 
 /// Match a single block in the switch chain.
@@ -321,7 +321,13 @@ fn match_switch_block(
             then_args,
             else_target,
             else_args,
-        } => (*cond, *then_target, then_args.clone(), *else_target, else_args.clone()),
+        } => (
+            *cond,
+            *then_target,
+            then_args.clone(),
+            *else_target,
+            else_args.clone(),
+        ),
         _ => return None,
     };
 
@@ -393,10 +399,7 @@ fn match_switch_block(
 }
 
 /// Match a default block (just a Br terminator, possibly with block-arg assigns).
-fn match_default_block(
-    func: &Function,
-    block_id: BlockId,
-) -> Option<(BlockId, Vec<ValueId>)> {
+fn match_default_block(func: &Function, block_id: BlockId) -> Option<(BlockId, Vec<ValueId>)> {
     let block = &func.blocks[block_id];
     // The block should have only a terminator (Br).
     let term_id = *block.insts.last()?;
@@ -535,7 +538,10 @@ fn find_block_starts(instructions: &[Instruction]) -> BTreeSet<usize> {
                     starts.insert(target);
                 }
                 // Fall-through for conditional branches.
-                if matches!(inst.opcode, Opcode::Bt | Opcode::Bf | Opcode::PushEnv | Opcode::PopEnv) {
+                if matches!(
+                    inst.opcode,
+                    Opcode::Bt | Opcode::Bf | Opcode::PushEnv | Opcode::PopEnv
+                ) {
                     if let Some(next) = instructions.get(i + 1) {
                         starts.insert(next.offset);
                     }
@@ -597,7 +603,8 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
 
 /// Parse `argumentN` variable names and return the index N, if any.
 fn parse_argument_index(name: &str) -> Option<usize> {
-    name.strip_prefix("argument").and_then(|s| s.parse::<usize>().ok())
+    name.strip_prefix("argument")
+        .and_then(|s| s.parse::<usize>().ok())
 }
 
 /// Result of scanning for implicit argument references in a GML script.
@@ -643,10 +650,7 @@ fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> Impli
                     // Script reads how many arguments were passed — must be variadic.
                     uses_dynamic_args = true;
                 }
-            } else if matches!(
-                it,
-                Some(InstanceType::Global) | Some(InstanceType::Static)
-            ) {
+            } else if matches!(it, Some(InstanceType::Global) | Some(InstanceType::Static)) {
                 // GMS2.3+ pattern: arguments are passed via global/static variables.
                 // The VM copies call-stack args into global.argument0..N before
                 // entering the function.  Static (-15) is used in GMS2.3+ for
@@ -655,8 +659,7 @@ fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> Impli
                 // the translation loop.
                 let name = resolve_variable_name(inst, ctx);
                 if let Some(idx) = parse_argument_index(&name) {
-                    global_max_idx =
-                        Some(global_max_idx.map_or(idx, |m: usize| m.max(idx)));
+                    global_max_idx = Some(global_max_idx.map_or(idx, |m: usize| m.max(idx)));
                 } else if name == "argument_count" {
                     uses_dynamic_args = true;
                 }
@@ -719,10 +722,7 @@ fn arg_name(ctx: &TranslateCtx, i: u16) -> Option<String> {
 }
 
 /// Allocate local variable slots in the entry block.
-fn allocate_locals(
-    fb: &mut FunctionBuilder,
-    ctx: &TranslateCtx,
-) -> HashMap<String, ValueId> {
+fn allocate_locals(fb: &mut FunctionBuilder, ctx: &TranslateCtx) -> HashMap<String, ValueId> {
     let mut locals = HashMap::new();
     for (_, name) in ctx.local_names {
         let slot = fb.alloc(Type::Dynamic);
@@ -954,9 +954,7 @@ fn setup_blocks(
     // Blocks at these offsets are owned by extracted closures, not the outer function.
     let body_offsets: HashSet<usize> = with_ranges
         .iter()
-        .flat_map(|(&pi, &popi)| {
-            instructions[pi + 1..=popi].iter().map(|i| i.offset)
-        })
+        .flat_map(|(&pi, &popi)| instructions[pi + 1..=popi].iter().map(|i| i.offset))
         .collect();
 
     let mut block_map: HashMap<usize, BlockId> = HashMap::new();
@@ -1225,8 +1223,7 @@ fn run_translation_loop(
                 let scanned_names = scan_body_local_names(body_insts, ctx, locals);
                 // If the outer context has a self and the body accesses `other`, capture
                 // the outer self as _other (prepended so it becomes the first capture param).
-                let has_outer_self =
-                    ctx.has_self && scan_body_uses_other(body_insts, ctx);
+                let has_outer_self = ctx.has_self && scan_body_uses_other(body_insts, ctx);
                 let mut captured_names: Vec<String> = Vec::new();
                 let mut capture_vals: Vec<ValueId> = Vec::new();
                 if has_outer_self {
@@ -1238,8 +1235,8 @@ fn run_translation_loop(
                 // Capture any argument[N] variables the with-body reads from the outer
                 // function.  The inner closure has no argument params of its own, so
                 // each outer argument[N] must be passed in as a named capture.
-                let outer_arg_offset = if ctx.has_self { 1 } else { 0 }
-                    + if ctx.has_other { 1 } else { 0 };
+                let outer_arg_offset =
+                    if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                 for n in scan_body_argument_indices(body_insts, ctx) {
                     let captured_key = format!("_argument{n}");
                     // In a nested with-body, the outer argument is already in
@@ -1292,8 +1289,7 @@ fn run_translation_loop(
                 // Emit: withInstances(target, closure).
                 // When the closure uses "return X inside with", type the call as Dynamic
                 // so the outer function can propagate the return value.
-                let closure_val =
-                    fb.make_closure(&inner_name, &capture_vals, Type::Dynamic);
+                let closure_val = fb.make_closure(&inner_name, &capture_vals, Type::Dynamic);
                 let with_return_ty = if has_return_in_with {
                     Type::Dynamic
                 } else {
@@ -1320,8 +1316,7 @@ fn run_translation_loop(
                                     "{func_name}: no block at post-with offset {post_with_off:#x}"
                                 )
                             })?;
-                        let depth =
-                            block_entry_depths.get(&post_with_off).copied().unwrap_or(0);
+                        let depth = block_entry_depths.get(&post_with_off).copied().unwrap_or(0);
                         let args = get_branch_args(&stack, depth);
                         fb.br(fall_block, &args);
                     } else {
@@ -1453,8 +1448,14 @@ fn is_2d_array_access(var_ref: &VariableRef, instance: i16) -> bool {
 fn lookahead_next_af_is_pushaf(rest: &[Instruction]) -> bool {
     for inst in rest {
         match inst.opcode {
-            Opcode::B | Opcode::Bt | Opcode::Bf | Opcode::Ret | Opcode::Exit
-            | Opcode::PushEnv | Opcode::PopEnv | Opcode::Dup => return false,
+            Opcode::B
+            | Opcode::Bt
+            | Opcode::Bf
+            | Opcode::Ret
+            | Opcode::Exit
+            | Opcode::PushEnv
+            | Opcode::PopEnv
+            | Opcode::Dup => return false,
             Opcode::Break => {
                 if let Operand::Break { signal, .. } = inst.operand {
                     match signal {
@@ -1524,8 +1525,10 @@ fn stack_effect(inst: &Instruction, rest: &[Instruction]) -> (usize, usize) {
     match inst.opcode {
         Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn => {
             if let Operand::Variable { var_ref, instance } = &inst.operand {
-                if matches!(InstanceType::from_i16(*instance), Some(InstanceType::Stacktop))
-                    || is_stacktop_ref(var_ref, *instance)
+                if matches!(
+                    InstanceType::from_i16(*instance),
+                    Some(InstanceType::Stacktop)
+                ) || is_stacktop_ref(var_ref, *instance)
                 {
                     (1, 1) // pops instance from stack, pushes field value
                 } else if is_2d_array_access(var_ref, *instance)
@@ -1539,8 +1542,7 @@ fn stack_effect(inst: &Instruction, rest: &[Instruction]) -> (usize, usize) {
                 (0, 1)
             }
         }
-        Opcode::Add | Opcode::Sub | Opcode::Mul | Opcode::Div
-        | Opcode::Rem | Opcode::Mod => (2, 1),
+        Opcode::Add | Opcode::Sub | Opcode::Mul | Opcode::Div | Opcode::Rem | Opcode::Mod => (2, 1),
         Opcode::Neg | Opcode::Not => (1, 1),
         Opcode::And | Opcode::Or | Opcode::Xor | Opcode::Shl | Opcode::Shr => (2, 1),
         Opcode::Cmp => (2, 1),
@@ -1564,8 +1566,10 @@ fn stack_effect(inst: &Instruction, rest: &[Instruction]) -> (usize, usize) {
         Opcode::Popz => (1, 0),
         Opcode::Pop => {
             if let Operand::Variable { var_ref, instance } = &inst.operand {
-                if matches!(InstanceType::from_i16(*instance), Some(InstanceType::Stacktop))
-                    || is_stacktop_ref(var_ref, *instance)
+                if matches!(
+                    InstanceType::from_i16(*instance),
+                    Some(InstanceType::Stacktop)
+                ) || is_stacktop_ref(var_ref, *instance)
                 {
                     (2, 0) // pops value + instance from stack
                 } else if is_2d_array_access(var_ref, *instance) {
@@ -1601,16 +1605,16 @@ fn stack_effect(inst: &Instruction, rest: &[Instruction]) -> (usize, usize) {
         Opcode::Break => {
             if let Operand::Break { signal, .. } = inst.operand {
                 match signal {
-                    0xFFFF => (0, 0),                     // chkindex
-                    0xFFFC => (1, 0),                     // pushac — captures array ref (pops 1)
-                    0xFFFB => (1, 0),                     // setowner — pops owner ID
-                    0xFFFE => (2, 1),                     // pushaf
-                    0xFFFD => (2, 0),                     // popaf — pops value + index (array from pushac)
-                    0xFFF6 => (0, 1),                     // chknullish — pushes boolean
-                    0xFFF5 => (0, 1),                     // pushref — pushes function ref
-                    0xFFFA => (0, 1),                     // isstaticok — pushes boolean
-                    0xFFF9 => (0, 0),                     // setstatic — nop
-                    0xFFF8 | 0xFFF7 => (0, 0),            // savearef, restorearef — nop
+                    0xFFFF => (0, 0),          // chkindex
+                    0xFFFC => (1, 0),          // pushac — captures array ref (pops 1)
+                    0xFFFB => (1, 0),          // setowner — pops owner ID
+                    0xFFFE => (2, 1),          // pushaf
+                    0xFFFD => (2, 0),          // popaf — pops value + index (array from pushac)
+                    0xFFF6 => (0, 1),          // chknullish — pushes boolean
+                    0xFFF5 => (0, 1),          // pushref — pushes function ref
+                    0xFFFA => (0, 1),          // isstaticok — pushes boolean
+                    0xFFF9 => (0, 0),          // setstatic — nop
+                    0xFFF8 | 0xFFF7 => (0, 0), // savearef, restorearef — nop
                     _ => (0, 0),
                 }
             } else {
@@ -1747,7 +1751,16 @@ fn translate_instruction(
         // ============================================================
         Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn => {
             let depth_before = stack.len();
-            translate_push(inst, &instructions[inst_idx + 1..], fb, stack, locals, ctx, compound_2d_pending, global_arg_count)?;
+            translate_push(
+                inst,
+                &instructions[inst_idx + 1..],
+                fb,
+                stack,
+                locals,
+                ctx,
+                compound_2d_pending,
+                global_arg_count,
+            )?;
             // Annotate newly pushed value with its GML type size.
             if stack.len() > depth_before {
                 if let Some(&val) = stack.last() {
@@ -1902,21 +1915,45 @@ fn translate_instruction(
                 let fall_target = resolve_fallthrough(instructions, inst_idx, block_map).ok();
                 match (branch_target, fall_target) {
                     (Some((then_off, then_blk)), Some((else_off, else_blk))) => {
-                        let then_args = get_branch_args(stack, block_entry_depths.get(&then_off).copied().unwrap_or(0));
-                        let else_args = get_branch_args(stack, block_entry_depths.get(&else_off).copied().unwrap_or(0));
+                        let then_args = get_branch_args(
+                            stack,
+                            block_entry_depths.get(&then_off).copied().unwrap_or(0),
+                        );
+                        let else_args = get_branch_args(
+                            stack,
+                            block_entry_depths.get(&else_off).copied().unwrap_or(0),
+                        );
                         fb.br_if(cond, then_blk, &then_args, else_blk, &else_args);
                     }
                     (Some((off, blk)), None) => {
                         // Fall-through past end → branch or implicit return.
                         let ret_blk = fb.create_block();
-                        fb.br_if(cond, blk, &get_branch_args(stack, block_entry_depths.get(&off).copied().unwrap_or(0)), ret_blk, &[]);
+                        fb.br_if(
+                            cond,
+                            blk,
+                            &get_branch_args(
+                                stack,
+                                block_entry_depths.get(&off).copied().unwrap_or(0),
+                            ),
+                            ret_blk,
+                            &[],
+                        );
                         fb.switch_to_block(ret_blk);
                         fb.ret(None);
                     }
                     (None, Some((off, blk))) => {
                         // Branch target past end → fall-through or implicit return.
                         let ret_blk = fb.create_block();
-                        fb.br_if(cond, ret_blk, &[], blk, &get_branch_args(stack, block_entry_depths.get(&off).copied().unwrap_or(0)));
+                        fb.br_if(
+                            cond,
+                            ret_blk,
+                            &[],
+                            blk,
+                            &get_branch_args(
+                                stack,
+                                block_entry_depths.get(&off).copied().unwrap_or(0),
+                            ),
+                        );
                         fb.switch_to_block(ret_blk);
                         fb.ret(None);
                     }
@@ -1936,19 +1973,43 @@ fn translate_instruction(
                 // Bf branches when false, so: then=fallthrough, else=branch
                 match (fall_target, branch_target) {
                     (Some((then_off, then_blk)), Some((else_off, else_blk))) => {
-                        let then_args = get_branch_args(stack, block_entry_depths.get(&then_off).copied().unwrap_or(0));
-                        let else_args = get_branch_args(stack, block_entry_depths.get(&else_off).copied().unwrap_or(0));
+                        let then_args = get_branch_args(
+                            stack,
+                            block_entry_depths.get(&then_off).copied().unwrap_or(0),
+                        );
+                        let else_args = get_branch_args(
+                            stack,
+                            block_entry_depths.get(&else_off).copied().unwrap_or(0),
+                        );
                         fb.br_if(cond, then_blk, &then_args, else_blk, &else_args);
                     }
                     (Some((off, blk)), None) => {
                         let ret_blk = fb.create_block();
-                        fb.br_if(cond, blk, &get_branch_args(stack, block_entry_depths.get(&off).copied().unwrap_or(0)), ret_blk, &[]);
+                        fb.br_if(
+                            cond,
+                            blk,
+                            &get_branch_args(
+                                stack,
+                                block_entry_depths.get(&off).copied().unwrap_or(0),
+                            ),
+                            ret_blk,
+                            &[],
+                        );
                         fb.switch_to_block(ret_blk);
                         fb.ret(None);
                     }
                     (None, Some((off, blk))) => {
                         let ret_blk = fb.create_block();
-                        fb.br_if(cond, ret_blk, &[], blk, &get_branch_args(stack, block_entry_depths.get(&off).copied().unwrap_or(0)));
+                        fb.br_if(
+                            cond,
+                            ret_blk,
+                            &[],
+                            blk,
+                            &get_branch_args(
+                                stack,
+                                block_entry_depths.get(&off).copied().unwrap_or(0),
+                            ),
+                        );
                         fb.switch_to_block(ret_blk);
                         fb.ret(None);
                     }
@@ -2034,7 +2095,11 @@ fn translate_instruction(
                     if stack.len() < item_count {
                         return Err(format!(
                             "{:#x}: Dup({}) on stack of depth {} (need {} items for {} units)",
-                            inst.offset, dup_size, stack.len(), item_count, total_units
+                            inst.offset,
+                            dup_size,
+                            stack.len(),
+                            item_count,
+                            total_units
                         ));
                     }
                     let start = stack.len() - item_count;
@@ -2060,7 +2125,15 @@ fn translate_instruction(
         // Pop (variable store)
         // ============================================================
         Opcode::Pop => {
-            translate_pop(inst, fb, stack, locals, ctx, compound_2d_pending, global_arg_count)?;
+            translate_pop(
+                inst,
+                fb,
+                stack,
+                locals,
+                ctx,
+                compound_2d_pending,
+                global_arg_count,
+            )?;
         }
 
         // ============================================================
@@ -2070,7 +2143,9 @@ fn translate_instruction(
             if let Operand::Call { function_id, argc } = inst.operand {
                 // first_address points to the Call instruction word.
                 let abs_addr = ctx.bytecode_offset + inst.offset;
-                let func_name = ctx.func_ref_map.get(&abs_addr)
+                let func_name = ctx
+                    .func_ref_map
+                    .get(&abs_addr)
                     .and_then(|&idx| ctx.function_names.get(&(idx as u32)))
                     .cloned()
                     .unwrap_or_else(|| format!("func_unknown_{function_id}"));
@@ -2080,7 +2155,11 @@ fn translate_instruction(
                 // self parameter avoids emitting a `this` expression in free functions
                 // (which have no implicit `this` binding).
                 if func_name == "@@This@@" && argc == 0 {
-                    let val = if ctx.has_self { fb.param(0) } else { fb.const_null() };
+                    let val = if ctx.has_self {
+                        fb.param(0)
+                    } else {
+                        fb.const_null()
+                    };
                     gml_sizes.insert(val, 4);
                     stack.push(val);
                     return Ok(());
@@ -2155,8 +2234,12 @@ fn translate_instruction(
                 // through to the body block — this executes the body for `self` only,
                 // which is semantically incomplete but produces valid TypeScript.
                 let _target_obj = pop(stack, inst)?;
-                let (body_off, body_block) = resolve_fallthrough(instructions, inst_idx, block_map)?;
-                let args = get_branch_args(stack, block_entry_depths.get(&body_off).copied().unwrap_or(0));
+                let (body_off, body_block) =
+                    resolve_fallthrough(instructions, inst_idx, block_map)?;
+                let args = get_branch_args(
+                    stack,
+                    block_entry_depths.get(&body_off).copied().unwrap_or(0),
+                );
                 fb.br(body_block, &args);
                 *terminated = true;
             }
@@ -2196,8 +2279,10 @@ fn translate_instruction(
                     // function, or the loop-back PopEnv of a GMS2.3+ cross-code-entry
                     // with-block).  Fall through to the continuation block.
                     let (fall_off, fall) = resolve_fallthrough(instructions, inst_idx, block_map)?;
-                    let args =
-                        get_branch_args(stack, block_entry_depths.get(&fall_off).copied().unwrap_or(0));
+                    let args = get_branch_args(
+                        stack,
+                        block_entry_depths.get(&fall_off).copied().unwrap_or(0),
+                    );
                     fb.br(fall, &args);
                 }
                 *terminated = true;
@@ -2248,13 +2333,11 @@ fn translate_instruction(
                         } else if *compound_popaf_pending {
                             *compound_popaf_pending = false;
                             let idx = pop(stack, inst)?;
-                            let arr = pop(stack, inst)
-                                .unwrap_or_else(|_| fb.const_int(-6));
+                            let arr = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
                             (arr, idx)
                         } else {
                             let arr = pop(stack, inst)?;
-                            let idx = pop(stack, inst)
-                                .unwrap_or_else(|_| fb.const_int(-6));
+                            let idx = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
                             (arr, idx)
                         };
                         fb.set_index(array, index, value);
@@ -2319,12 +2402,18 @@ fn translate_instruction(
                         // Type 0 = OBJT (object), 1 = SPRT, 2 = SOND, 3 = ROOM, etc.
                         // All types are resolved via asset_ref_names. Fall back to
                         // func_ref_map (for GMS1 compatibility) and then to a placeholder.
-                        let is_objt = if let Operand::Break { extra: Some(idx), .. } = inst.operand {
+                        let is_objt = if let Operand::Break {
+                            extra: Some(idx), ..
+                        } = inst.operand
+                        {
                             (idx as u32) >> 24 == 0
                         } else {
                             false
                         };
-                        let func_name = if let Operand::Break { extra: Some(idx), .. } = inst.operand {
+                        let func_name = if let Operand::Break {
+                            extra: Some(idx), ..
+                        } = inst.operand
+                        {
                             let key = idx as u32;
                             ctx.asset_ref_names.get(&key).cloned()
                         } else {
@@ -2332,7 +2421,8 @@ fn translate_instruction(
                         }
                         .or_else(|| {
                             let abs_addr = ctx.bytecode_offset + inst.offset;
-                            ctx.func_ref_map.get(&abs_addr)
+                            ctx.func_ref_map
+                                .get(&abs_addr)
                                 .and_then(|&i| ctx.function_names.get(&(i as u32)))
                                 .cloned()
                         })
@@ -2358,12 +2448,7 @@ fn translate_instruction(
                     _ => {
                         // Unknown break signal, emit as system call.
                         let sig_val = fb.const_int(signal as i64);
-                        fb.system_call(
-                            "GameMaker.Debug",
-                            "break",
-                            &[sig_val],
-                            Type::Void,
-                        );
+                        fb.system_call("GameMaker.Debug", "break", &[sig_val], Type::Void);
                     }
                 }
             }
@@ -2394,12 +2479,27 @@ fn translate_push(
         Operand::Bool(v) => stack.push(fb.const_bool(*v)), // Push.Bool: valid per spec, not emitted by real GML compilers
         Operand::StringIndex(idx) => {
             let s = ctx.string_table.get(*idx as usize).ok_or_else(|| {
-                format!("string index {} out of range (table size={})", idx, ctx.string_table.len())
+                format!(
+                    "string index {} out of range (table size={})",
+                    idx,
+                    ctx.string_table.len()
+                )
             })?;
             stack.push(fb.const_string(s));
         }
         Operand::Variable { var_ref, instance } => {
-            translate_push_variable(inst, rest, fb, stack, locals, ctx, var_ref, *instance, compound_2d_pending, global_arg_count)?;
+            translate_push_variable(
+                inst,
+                rest,
+                fb,
+                stack,
+                locals,
+                ctx,
+                var_ref,
+                *instance,
+                compound_2d_pending,
+                global_arg_count,
+            )?;
         }
         _ => {
             return Err(format!(
@@ -2510,12 +2610,7 @@ fn translate_push_variable(
         } else {
             vec![obj_id, name_val, dim1]
         };
-        let val = fb.system_call(
-            "GameMaker.Instance",
-            "getOn",
-            &args,
-            Type::Dynamic,
-        );
+        let val = fb.system_call("GameMaker.Instance", "getOn", &args, Type::Dynamic);
         stack.push(val);
         return Ok(());
     }
@@ -2555,8 +2650,8 @@ fn translate_push_variable(
                     // Inside a with-body: argument was captured as a local slot.
                     stack.push(fb.load(slot, Type::Dynamic));
                 } else {
-                    let param_offset = if ctx.has_self { 1 } else { 0 }
-                        + if ctx.has_other { 1 } else { 0 };
+                    let param_offset =
+                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     let param = fb.param(param_offset + n);
                     stack.push(param);
                 }
@@ -2639,12 +2734,7 @@ fn translate_push_variable(
             } else {
                 vec![obj_id, name_val, dim1]
             };
-            let val = fb.system_call(
-                "GameMaker.Instance",
-                "getOn",
-                &args,
-                Type::Dynamic,
-            );
+            let val = fb.system_call("GameMaker.Instance", "getOn", &args, Type::Dynamic);
             stack.push(val);
         }
         return Ok(());
@@ -2684,8 +2774,8 @@ fn translate_push_variable(
                 if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
                     stack.push(fb.load(slot, Type::Dynamic));
                 } else {
-                    let param_offset = if ctx.has_self { 1 } else { 0 }
-                        + if ctx.has_other { 1 } else { 0 };
+                    let param_offset =
+                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     let param = fb.param(param_offset + arg_idx);
                     stack.push(param);
                 }
@@ -2704,12 +2794,7 @@ fn translate_push_variable(
                     stack.push(val);
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    let val = fb.system_call(
-                        "GameMaker.Global",
-                        "get",
-                        &[name_val],
-                        Type::Dynamic,
-                    );
+                    let val = fb.system_call("GameMaker.Global", "get", &[name_val], Type::Dynamic);
                     stack.push(val);
                 }
             } else if ctx.has_self {
@@ -2719,12 +2804,7 @@ fn translate_push_variable(
             } else {
                 // Script context without self: variable is a global.
                 let name_val = fb.const_string(&var_name);
-                let val = fb.system_call(
-                    "GameMaker.Global",
-                    "get",
-                    &[name_val],
-                    Type::Dynamic,
-                );
+                let val = fb.system_call("GameMaker.Global", "get", &[name_val], Type::Dynamic);
                 stack.push(val);
             }
         }
@@ -2739,8 +2819,8 @@ fn translate_push_variable(
                     if let Some(&slot) = locals.get(&local_key) {
                         stack.push(fb.load(slot, Type::Dynamic));
                     } else {
-                        let param_offset = if ctx.has_self { 1 } else { 0 }
-                            + if ctx.has_other { 1 } else { 0 };
+                        let param_offset =
+                            if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                         let param = fb.param(param_offset + arg_idx);
                         stack.push(param);
                     }
@@ -2756,12 +2836,7 @@ fn translate_push_variable(
                 }
             }
             let name_val = fb.const_string(&var_name);
-            let val = fb.system_call(
-                "GameMaker.Global",
-                "get",
-                &[name_val],
-                Type::Dynamic,
-            );
+            let val = fb.system_call("GameMaker.Global", "get", &[name_val], Type::Dynamic);
             stack.push(val);
         }
         Some(InstanceType::Other) => {
@@ -2772,23 +2847,14 @@ fn translate_push_variable(
                 stack.push(val);
             } else {
                 let name_val = fb.const_string(&var_name);
-                let val = fb.system_call(
-                    "GameMaker.Instance",
-                    "getOther",
-                    &[name_val],
-                    Type::Dynamic,
-                );
+                let val =
+                    fb.system_call("GameMaker.Instance", "getOther", &[name_val], Type::Dynamic);
                 stack.push(val);
             }
         }
         Some(InstanceType::All) => {
             let name_val = fb.const_string(&var_name);
-            let val = fb.system_call(
-                "GameMaker.Instance",
-                "getAll",
-                &[name_val],
-                Type::Dynamic,
-            );
+            let val = fb.system_call("GameMaker.Instance", "getAll", &[name_val], Type::Dynamic);
             stack.push(val);
         }
         Some(InstanceType::Stacktop) => {
@@ -2808,8 +2874,8 @@ fn translate_push_variable(
             if var_name == "argument" {
                 // argument[N] → function parameter access
                 if let Some(Constant::Int(idx)) = fb.try_get_const(target) {
-                    let param_offset = if ctx.has_self { 1 } else { 0 }
-                        + if ctx.has_other { 1 } else { 0 };
+                    let param_offset =
+                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     let param = fb.param(param_offset + *idx as usize);
                     stack.push(param);
                 } else if let Some(&rest_id) = locals.get("_args") {
@@ -2832,7 +2898,6 @@ fn translate_push_variable(
                 let val = fb.get_field(target, &var_name, Type::Dynamic);
                 stack.push(val);
             } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
-    
                 if obj_idx >= 0 {
                     let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                         fb.const_string(name)
@@ -2872,13 +2937,12 @@ fn translate_push_variable(
             // Argument variable: map to function parameter (or captured slot).
             // variable_id is the VARI table index, not the argument index —
             // extract the actual index from the variable name ("argument3" → 3).
-            let arg_idx = parse_argument_index(&var_name)
-                .unwrap_or(var_ref.variable_id as usize);
+            let arg_idx = parse_argument_index(&var_name).unwrap_or(var_ref.variable_id as usize);
             if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
                 stack.push(fb.load(slot, Type::Dynamic));
             } else {
-                let param_offset = if ctx.has_self { 1 } else { 0 }
-                    + if ctx.has_other { 1 } else { 0 };
+                let param_offset =
+                    if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                 let idx = param_offset + arg_idx;
                 if idx < fb.param_count() {
                     let param = fb.param(idx);
@@ -2886,12 +2950,8 @@ fn translate_push_variable(
                 } else {
                     // Out-of-range argument access — emit as dynamic lookup.
                     let name_val = fb.const_string(format!("argument{arg_idx}"));
-                    let val = fb.system_call(
-                        "GameMaker.Argument",
-                        "get",
-                        &[name_val],
-                        Type::Dynamic,
-                    );
+                    let val =
+                        fb.system_call("GameMaker.Argument", "get", &[name_val], Type::Dynamic);
                     stack.push(val);
                 }
             }
@@ -2938,12 +2998,7 @@ fn translate_push_variable(
                 }
                 // Treat as global.
                 let name_val = fb.const_string(&var_name);
-                let val = fb.system_call(
-                    "GameMaker.Global",
-                    "get",
-                    &[name_val],
-                    Type::Dynamic,
-                );
+                let val = fb.system_call("GameMaker.Global", "get", &[name_val], Type::Dynamic);
                 stack.push(val);
             }
         }
@@ -2985,7 +3040,7 @@ fn translate_pop(
             } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
                 // Constant integer target = object index pushed before stacktop access.
                 // Resolve to setOn(objName, field, value) for clean class-based access.
-    
+
                 if obj_idx >= 0 {
                     let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                         fb.const_string(name)
@@ -3090,8 +3145,7 @@ fn translate_pop(
                     if is_scalar {
                         fb.set_field(self_param, &var_name, value);
                     } else {
-                        let field_val =
-                            fb.get_field(self_param, &var_name, Type::Dynamic);
+                        let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
                         fb.set_index(field_val, dim1, value);
                     }
                 } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
@@ -3107,12 +3161,7 @@ fn translate_pop(
                     } else {
                         vec![obj_id, name_val, dim1, value]
                     };
-                    fb.system_call(
-                        "GameMaker.Instance",
-                        "setOn",
-                        &args,
-                        Type::Void,
-                    );
+                    fb.system_call("GameMaker.Instance", "setOn", &args, Type::Void);
                 } else {
                     // Dynamic dim2: emit a runtime setOn with the dim2 value as the object.
                     let name_val = fb.const_string(&var_name);
@@ -3121,35 +3170,24 @@ fn translate_pop(
                     } else {
                         vec![dim2, name_val, dim1, value]
                     };
-                    fb.system_call(
-                        "GameMaker.Instance",
-                        "setOn",
-                        &args,
-                        Type::Void,
-                    );
+                    fb.system_call("GameMaker.Instance", "setOn", &args, Type::Void);
                 }
             } else {
                 // Cross-object indexed write (ref_type != 0, or script context):
                 // instance identifies the actual target object.
                 let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
-                let obj_id =
-                    if let Some(name) = ctx.obj_names.get(*instance as usize) {
-                        fb.const_string(name)
-                    } else {
-                        fb.const_int(*instance as i64)
-                    };
+                let obj_id = if let Some(name) = ctx.obj_names.get(*instance as usize) {
+                    fb.const_string(name)
+                } else {
+                    fb.const_int(*instance as i64)
+                };
                 let name_val = fb.const_string(&var_name);
                 let args: Vec<ValueId> = if is_scalar {
                     vec![obj_id, name_val, value]
                 } else {
                     vec![obj_id, name_val, dim1, value]
                 };
-                fb.system_call(
-                    "GameMaker.Instance",
-                    "setOn",
-                    &args,
-                    Type::Void,
-                );
+                fb.system_call("GameMaker.Instance", "setOn", &args, Type::Void);
             }
             return Ok(());
         }
@@ -3183,8 +3221,8 @@ fn translate_pop(
             Some(InstanceType::Own) | Some(InstanceType::Builtin) => {
                 if let Some(arg_idx) = parse_argument_index(&var_name) {
                     // Implicit argument variable → store via local slot.
-                    let param_offset = if ctx.has_self { 1 } else { 0 }
-                        + if ctx.has_other { 1 } else { 0 };
+                    let param_offset =
+                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                     if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
                         // Inside a with-body: update the captured argument slot.
                         fb.store(slot, value);
@@ -3205,12 +3243,7 @@ fn translate_pop(
                     fb.set_field(self_param, &var_name, value);
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    fb.system_call(
-                        "GameMaker.Global",
-                        "set",
-                        &[name_val, value],
-                        Type::Void,
-                    );
+                    fb.system_call("GameMaker.Global", "set", &[name_val, value], Type::Void);
                 }
             }
             Some(InstanceType::Global) => {
@@ -3219,8 +3252,8 @@ fn translate_pop(
                 // subsequent reads see the updated value.
                 if global_arg_count > 0 {
                     if let Some(arg_idx) = parse_argument_index(&var_name) {
-                        let param_offset = if ctx.has_self { 1 } else { 0 }
-                            + if ctx.has_other { 1 } else { 0 };
+                        let param_offset =
+                            if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
                         let abs_idx = param_offset + arg_idx;
                         if abs_idx < fb.param_count() {
                             let param = fb.param(abs_idx);
@@ -3235,12 +3268,7 @@ fn translate_pop(
                     }
                 }
                 let name_val = fb.const_string(&var_name);
-                fb.system_call(
-                    "GameMaker.Global",
-                    "set",
-                    &[name_val, value],
-                    Type::Void,
-                );
+                fb.system_call("GameMaker.Global", "set", &[name_val, value], Type::Void);
             }
             Some(InstanceType::Other) => {
                 if ctx.has_other {
@@ -3314,7 +3342,6 @@ fn translate_pop(
                     // Self-field write in struct method — use set_field for clean output.
                     fb.set_field(target, &var_name, value);
                 } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
-        
                     if obj_idx >= 0 {
                         let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                             fb.const_string(name)
@@ -3389,12 +3416,7 @@ fn translate_pop(
                         }
                     }
                     let name_val = fb.const_string(&var_name);
-                    fb.system_call(
-                        "GameMaker.Global",
-                        "set",
-                        &[name_val, value],
-                        Type::Void,
-                    );
+                    fb.system_call("GameMaker.Global", "set", &[name_val, value], Type::Void);
                 }
             }
         }
@@ -3407,12 +3429,9 @@ fn translate_pop(
 
 /// Pop a value from the operand stack.
 fn pop(stack: &mut Vec<ValueId>, inst: &Instruction) -> Result<ValueId, String> {
-    stack.pop().ok_or_else(|| {
-        format!(
-            "{:#x}: stack underflow on {:?}",
-            inst.offset, inst.opcode
-        )
-    })
+    stack
+        .pop()
+        .ok_or_else(|| format!("{:#x}: stack underflow on {:?}", inst.offset, inst.opcode))
 }
 
 /// Resolve the fall-through target to (target_offset, BlockId).
@@ -3421,12 +3440,9 @@ fn resolve_fallthrough(
     inst_idx: usize,
     block_map: &HashMap<usize, BlockId>,
 ) -> Result<(usize, BlockId), String> {
-    let next = instructions.get(inst_idx + 1).ok_or_else(|| {
-        format!(
-            "no fall-through instruction after index {}",
-            inst_idx
-        )
-    })?;
+    let next = instructions
+        .get(inst_idx + 1)
+        .ok_or_else(|| format!("no fall-through instruction after index {}", inst_idx))?;
     let block = block_map.get(&next.offset).copied().ok_or_else(|| {
         format!(
             "fall-through offset {:#x} is not a block start",
@@ -3439,11 +3455,11 @@ fn resolve_fallthrough(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reincarnate_core::ir::inst::Op;
     use reincarnate_datawin::bytecode::decode::Instruction;
     use reincarnate_datawin::bytecode::encode::encode;
     use reincarnate_datawin::bytecode::opcode::Opcode;
     use reincarnate_datawin::bytecode::types::{DataType, VariableRef};
-    use reincarnate_core::ir::inst::Op;
 
     static EMPTY_ASSET_REF_NAMES: std::sync::LazyLock<HashMap<u32, String>> =
         std::sync::LazyLock::new(HashMap::new);
@@ -3510,7 +3526,10 @@ mod tests {
             type1: DataType::Variable,
             type2: DataType::Variable,
             operand: Operand::Variable {
-                var_ref: VariableRef { variable_id: 0, ref_type },
+                var_ref: VariableRef {
+                    variable_id: 0,
+                    ref_type,
+                },
                 instance,
             },
         }
@@ -3524,7 +3543,10 @@ mod tests {
             type1: DataType::Variable,
             type2: DataType::Variable,
             operand: Operand::Variable {
-                var_ref: VariableRef { variable_id: 0, ref_type },
+                var_ref: VariableRef {
+                    variable_id: 0,
+                    ref_type,
+                },
                 instance,
             },
         }
@@ -3576,7 +3598,7 @@ mod tests {
         let instructions = vec![
             pushi(42),
             pushi(-1),
-            pushi(0), // dim1 = 0, non-negative → non-scalar
+            pushi(0),      // dim1 = 0, non-negative → non-scalar
             pop_var(3, 0), // ref_type=0, instance>=0 → 2D array
             exit_inst(),
         ];
@@ -3589,19 +3611,34 @@ mod tests {
         let func_ref_map: HashMap<usize, usize> = HashMap::new();
         let obj_names: Vec<String> = vec!["Obj0".into(); 4]; // 4 so index 3 is valid
         let script_names: HashSet<String> = HashSet::new();
-        let mut ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        let mut ctx = make_ctx(
+            true,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
         // instance=3 in bytecode is the VARI owner (self) — set self_object_index so
         // is_own resolves correctly with the new instance-check logic.
         ctx.self_object_index = Some(3);
 
-        let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
-            .expect("translation failed");
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_fn", &ctx).expect("translation failed");
         let ops = collect_ops(&func);
 
         let has_set_index = ops.iter().any(|op| matches!(op, Op::SetIndex { .. }));
         let has_set_field = ops.iter().any(|op| matches!(op, Op::SetField { .. }));
-        assert!(has_set_index, "expected SetIndex for non-scalar 2D array write; ops: {ops:?}");
-        assert!(!has_set_field, "unexpected SetField for non-scalar 2D array write; ops: {ops:?}");
+        assert!(
+            has_set_index,
+            "expected SetIndex for non-scalar 2D array write; ops: {ops:?}"
+        );
+        assert!(
+            !has_set_field,
+            "unexpected SetField for non-scalar 2D array write; ops: {ops:?}"
+        );
     }
 
     /// Scalar 2D array write: `myfield[# -1, -1] = 42` (dim1 = -1 → scalar access).
@@ -3630,19 +3667,36 @@ mod tests {
         let func_ref_map: HashMap<usize, usize> = HashMap::new();
         let obj_names: Vec<String> = vec!["Obj0".into(); 4];
         let script_names: HashSet<String> = HashSet::new();
-        let mut ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        let mut ctx = make_ctx(
+            true,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
         // instance=3 in bytecode is the VARI owner (self) — set self_object_index so
         // is_own resolves correctly with the new instance-check logic.
         ctx.self_object_index = Some(3);
 
-        let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
-            .expect("translation failed");
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_fn", &ctx).expect("translation failed");
         let ops = collect_ops(&func);
 
-        let has_set_field = ops.iter().any(|op| matches!(op, Op::SetField { field, .. } if field == "myfield"));
+        let has_set_field = ops
+            .iter()
+            .any(|op| matches!(op, Op::SetField { field, .. } if field == "myfield"));
         let has_set_index = ops.iter().any(|op| matches!(op, Op::SetIndex { .. }));
-        assert!(has_set_field, "expected SetField for scalar 2D array write; ops: {ops:?}");
-        assert!(!has_set_index, "unexpected SetIndex for scalar 2D array write; ops: {ops:?}");
+        assert!(
+            has_set_field,
+            "expected SetField for scalar 2D array write; ops: {ops:?}"
+        );
+        assert!(
+            !has_set_index,
+            "unexpected SetIndex for scalar 2D array write; ops: {ops:?}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -3701,53 +3755,69 @@ mod tests {
         // offset 28: Pop.v.v      (VARI write, compound)      → 8 bytes
         // offset 36: Exit                                      → 4 bytes
         let instructions = vec![
-            pushi(-1),              // dim2 = -1 (self scope; GMS1 1D self-array sentinel)
-            pushi(5),               // dim1 = index
+            pushi(-1),                    // dim2 = -1 (self scope; GMS1 1D self-array sentinel)
+            pushi(5),                     // dim1 = index
             dup_inst(1, DataType::Int16), // dup top 2 Int16 items (2 * 1 unit each)
-            push_var(3, 0),         // 2D VARI read (ref_type=0, instance=3 ≥ 0)
-            pushi(10),              // value to add
-            add_inst(DataType::Int16), // sum
-            pop_var(3, 0),          // 2D VARI write (same variable)
+            push_var(3, 0),               // 2D VARI read (ref_type=0, instance=3 ≥ 0)
+            pushi(10),                    // value to add
+            add_inst(DataType::Int16),    // sum
+            pop_var(3, 0),                // 2D VARI write (same variable)
             exit_inst(),
         ];
         let bytecode = encode(&instructions);
 
         let vars: Vec<(String, i32)> = vec![("myarray".into(), -1)];
         // Push.v.v is at offset 12, Pop.v.v is at offset 28.
-        let vari_ref_map: HashMap<usize, usize> =
-            [(12, 0), (28, 0)].into_iter().collect();
+        let vari_ref_map: HashMap<usize, usize> = [(12, 0), (28, 0)].into_iter().collect();
         let fn_names: HashMap<u32, String> = HashMap::new();
         let func_ref_map: HashMap<usize, usize> = HashMap::new();
         let obj_names: Vec<String> = vec!["Obj0".into(); 4]; // index 3 valid
         let script_names: HashSet<String> = HashSet::new();
-        let ctx = make_ctx(true, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        let ctx = make_ctx(
+            true,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
 
-        let (func, _) = translate_code_entry(&bytecode, "test_compound_2d", &ctx)
-            .expect("translation failed");
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_compound_2d", &ctx).expect("translation failed");
 
         // Collect (op, result_value_id) pairs to trace operand relationships.
         let insts: Vec<_> = func.insts.values().collect();
 
         // Find the SetIndex instruction.
         let set_index = insts.iter().find(|i| matches!(i.op, Op::SetIndex { .. }));
-        assert!(set_index.is_some(), "expected SetIndex for compound 2D write; ops: {:?}",
-            insts.iter().map(|i| &i.op).collect::<Vec<_>>());
+        assert!(
+            set_index.is_some(),
+            "expected SetIndex for compound 2D write; ops: {:?}",
+            insts.iter().map(|i| &i.op).collect::<Vec<_>>()
+        );
 
-        let Op::SetIndex { index, value, .. } = &set_index.unwrap().op else { unreachable!() };
+        let Op::SetIndex { index, value, .. } = &set_index.unwrap().op else {
+            unreachable!()
+        };
 
         // The index must be the constant 5 (original dim1), NOT the Add result.
         let index_is_const_5 = insts.iter().any(|i| {
-            i.result == Some(*index) && matches!(i.op, Op::Const(reincarnate_core::ir::Constant::Int(5)))
+            i.result == Some(*index)
+                && matches!(i.op, Op::Const(reincarnate_core::ir::Constant::Int(5)))
         });
         assert!(index_is_const_5,
             "SetIndex index should be dim1=const(5), not the Add result; index={index:?}, ops={insts:?}");
 
         // The value must NOT be the constant 10 or 3 — it should be the Add result.
-        let value_is_plain_const = insts.iter().any(|i| {
-            i.result == Some(*value) && matches!(i.op, Op::Const(_))
-        });
-        assert!(!value_is_plain_const,
-            "SetIndex value should be the Add result (sum), not a plain constant; value={value:?}");
+        let value_is_plain_const = insts
+            .iter()
+            .any(|i| i.result == Some(*value) && matches!(i.op, Op::Const(_)));
+        assert!(
+            !value_is_plain_const,
+            "SetIndex value should be the Add result (sum), not a plain constant; value={value:?}"
+        );
     }
 
     // -----------------------------------------------------------------------
@@ -3801,7 +3871,8 @@ mod tests {
             branch_inst(Opcode::PopEnv, -8),  // offset 16: loop-back to offset 8
             pushi(99),                        // offset 20: post-with sentinel
             popz_inst(),                      // offset 24: pop sentinel
-            Instruction {                     // offset 28: Exit (void return)
+            Instruction {
+                // offset 28: Exit (void return)
                 offset: 0,
                 opcode: Opcode::Exit,
                 type1: DataType::Double,
@@ -3817,7 +3888,16 @@ mod tests {
         let func_ref_map: HashMap<usize, usize> = HashMap::new();
         let obj_names: Vec<String> = vec![];
         let script_names: HashSet<String> = HashSet::new();
-        let ctx = make_ctx(false, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        let ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
 
         let (func, extra_funcs) = translate_code_entry(&bytecode, "test_with_continuation", &ctx)
             .expect("translation failed");
@@ -3825,26 +3905,45 @@ mod tests {
 
         // MakeClosure must appear (PushEnv → closure extraction).
         let has_make_closure = ops.iter().any(|op| matches!(op, Op::MakeClosure { .. }));
-        assert!(has_make_closure, "MakeClosure must appear for with-block; ops: {ops:?}");
+        assert!(
+            has_make_closure,
+            "MakeClosure must appear for with-block; ops: {ops:?}"
+        );
 
         // withInstances syscall must appear.
         let has_with_instances = ops.iter().any(|op| {
             matches!(op, Op::SystemCall { system, method, .. }
                 if system == "GameMaker.Instance" && method == "withInstances")
         });
-        assert!(has_with_instances, "withInstances syscall must appear; ops: {ops:?}");
+        assert!(
+            has_with_instances,
+            "withInstances syscall must appear; ops: {ops:?}"
+        );
 
         // An extra closure function must have been extracted.
-        assert_eq!(extra_funcs.len(), 1, "expected 1 closure function; got {}", extra_funcs.len());
-        assert_eq!(extra_funcs[0].method_kind, reincarnate_core::ir::func::MethodKind::Closure,
-            "extra function must be MethodKind::Closure");
+        assert_eq!(
+            extra_funcs.len(),
+            1,
+            "expected 1 closure function; got {}",
+            extra_funcs.len()
+        );
+        assert_eq!(
+            extra_funcs[0].method_kind,
+            reincarnate_core::ir::func::MethodKind::Closure,
+            "extra function must be MethodKind::Closure"
+        );
 
         // Post-with sentinel (Const 99) must be reachable in the outer function.
         let has_post_with_sentinel = ops.iter().any(|op| {
-            matches!(op, Op::Const(reincarnate_core::ir::value::Constant::Int(99)))
+            matches!(
+                op,
+                Op::Const(reincarnate_core::ir::value::Constant::Int(99))
+            )
         });
-        assert!(has_post_with_sentinel,
-            "post-with code (Const(99) sentinel) must be reachable; ops: {ops:?}");
+        assert!(
+            has_post_with_sentinel,
+            "post-with code (Const(99) sentinel) must be reachable; ops: {ops:?}"
+        );
     }
 
     /// `argument[1]` push with 2D array encoding maps to `fb.param(1)`, not a
@@ -3862,24 +3961,33 @@ mod tests {
         // offset 16: Ret                                  4 bytes
         let instructions = vec![
             pushi(-1),
-            pushi(1), // dim1 = 1 → argument index 1
+            pushi(1),       // dim1 = 1 → argument index 1
             push_var(0, 0), // ref_type=0, instance=0 → 2D array
             ret_inst(),
         ];
         let bytecode = encode(&instructions);
 
         let vars: Vec<(String, i32)> = vec![("argument".into(), -2)]; // -2 = Builtin
-        // Push.v.v is at decoded offset 8.
+                                                                      // Push.v.v is at decoded offset 8.
         let vari_ref_map: HashMap<usize, usize> = [(8, 0)].into_iter().collect();
         let fn_names: HashMap<u32, String> = HashMap::new();
         let func_ref_map: HashMap<usize, usize> = HashMap::new();
         let obj_names: Vec<String> = vec!["Obj0".into()];
         let script_names: HashSet<String> = HashSet::new();
         // No has_self; arg_count=0 (scan_implicit_args will detect argument[1]).
-        let ctx = make_ctx(false, 0, &vars, &vari_ref_map, &func_ref_map, &obj_names, &fn_names, &script_names);
+        let ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
 
-        let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx)
-            .expect("translation failed");
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_fn", &ctx).expect("translation failed");
         let ops = collect_ops(&func);
 
         // Must NOT fall back to a SystemCall (getField / getOn).
@@ -3887,10 +3995,17 @@ mod tests {
             matches!(op, Op::SystemCall { system, method, .. }
                 if system == "GameMaker.Instance" && (method == "getField" || method == "getOn"))
         });
-        assert!(!has_syscall, "argument[N] must map to param, not syscall; ops: {ops:?}");
+        assert!(
+            !has_syscall,
+            "argument[N] must map to param, not syscall; ops: {ops:?}"
+        );
 
         // The function must have been given 2 params (argument0, argument1)
         // because scan_implicit_args detected argument[1].
-        assert_eq!(func.sig.params.len(), 2, "expected 2 params for implicit argument[1]");
+        assert_eq!(
+            func.sig.params.len(),
+            2,
+            "expected 2 params for implicit argument[1]"
+        );
     }
 }

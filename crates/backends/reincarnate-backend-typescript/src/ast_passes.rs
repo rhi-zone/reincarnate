@@ -51,16 +51,11 @@ fn recurse_into_stmt(stmt: &mut JsStmt) {
             recover_switch_statements(then_body);
             recover_switch_statements(else_body);
         }
-        JsStmt::While { body, .. }
-        | JsStmt::Loop { body }
-        | JsStmt::ForOf { body, .. } => {
+        JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
             recover_switch_statements(body);
         }
         JsStmt::For {
-            init,
-            body,
-            update,
-            ..
+            init, body, update, ..
         } => {
             recover_switch_statements(init);
             recover_switch_statements(body);
@@ -332,9 +327,7 @@ fn is_stable_expr(expr: &JsExpr) -> bool {
     match expr {
         JsExpr::Var(_) | JsExpr::This | JsExpr::Literal(_) => true,
         JsExpr::Field { object, .. } => is_stable_expr(object),
-        JsExpr::Index { collection, index } => {
-            is_stable_expr(collection) && is_stable_expr(index)
-        }
+        JsExpr::Index { collection, index } => is_stable_expr(collection) && is_stable_expr(index),
         _ => false,
     }
 }
@@ -392,10 +385,9 @@ fn exprs_structurally_equal(a: &JsExpr, b: &JsExpr) -> bool {
                 rhs: r2,
             },
         ) => o1 == o2 && exprs_structurally_equal(l1, l2) && exprs_structurally_equal(r1, r2),
-        (
-            JsExpr::Unary { op: o1, expr: e1 },
-            JsExpr::Unary { op: o2, expr: e2 },
-        ) => o1 == o2 && exprs_structurally_equal(e1, e2),
+        (JsExpr::Unary { op: o1, expr: e1 }, JsExpr::Unary { op: o2, expr: e2 }) => {
+            o1 == o2 && exprs_structurally_equal(e1, e2)
+        }
         (JsExpr::Not(e1), JsExpr::Not(e2)) => exprs_structurally_equal(e1, e2),
         _ => false,
     }
@@ -440,9 +432,7 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
     for stmt in body {
         match stmt {
             JsStmt::VarDecl {
-                name,
-                ty: Some(ty),
-                ..
+                name, ty: Some(ty), ..
             } if *ty != Type::Dynamic => {
                 var_types.insert(name.clone(), ty.clone());
             }
@@ -471,16 +461,11 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
                 collect_var_types(then_body, var_types);
                 collect_var_types(else_body, var_types);
             }
-            JsStmt::While { body, .. }
-            | JsStmt::Loop { body }
-            | JsStmt::ForOf { body, .. } => {
+            JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
                 collect_var_types(body, var_types);
             }
             JsStmt::For {
-                init,
-                body,
-                update,
-                ..
+                init, body, update, ..
             } => {
                 collect_var_types(init, var_types);
                 collect_var_types(body, var_types);
@@ -694,11 +679,7 @@ fn strip_casts_in_expr(expr: &mut JsExpr, var_types: &HashMap<String, Type>) {
 
 /// Check if a Cast is redundant because the inner expression's type already
 /// matches the cast target.
-fn is_cast_redundant(
-    inner: &JsExpr,
-    cast_ty: &Type,
-    var_types: &HashMap<String, Type>,
-) -> bool {
+fn is_cast_redundant(inner: &JsExpr, cast_ty: &Type, var_types: &HashMap<String, Type>) -> bool {
     // Only strip TS assertion forms (not runtime calls like asType, Number).
     if matches!(cast_ty, Type::Struct(_) | Type::Enum(_)) {
         return false;
@@ -715,9 +696,7 @@ fn infer_expr_type(expr: &JsExpr, var_types: &HashMap<String, Type>) -> Option<T
     match expr {
         JsExpr::Var(name) => var_types.get(name).cloned(),
         JsExpr::Literal(c) => match c {
-            Constant::Int(_) | Constant::UInt(_) | Constant::Float(_) => {
-                Some(Type::Float(64))
-            }
+            Constant::Int(_) | Constant::UInt(_) | Constant::Float(_) => Some(Type::Float(64)),
             Constant::String(_) => Some(Type::String),
             Constant::Bool(_) => Some(Type::Bool),
             Constant::Null => None,
@@ -781,16 +760,11 @@ fn coalesce_text_in_stmt(stmt: &mut JsStmt) {
             coalesce_text_calls(then_body);
             coalesce_text_calls(else_body);
         }
-        JsStmt::While { body, .. }
-        | JsStmt::Loop { body }
-        | JsStmt::ForOf { body, .. } => {
+        JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
             coalesce_text_calls(body);
         }
         JsStmt::For {
-            init,
-            body,
-            update,
-            ..
+            init, body, update, ..
         } => {
             coalesce_text_calls(init);
             coalesce_text_calls(body);
@@ -1101,7 +1075,9 @@ mod tests {
             panic!("expected text call");
         }
         // Second: barrier (void_element)
-        assert!(matches!(&body[1], JsStmt::Expr(JsExpr::SystemCall { method, .. }) if method == "void_element"));
+        assert!(
+            matches!(&body[1], JsStmt::Expr(JsExpr::SystemCall { method, .. }) if method == "void_element")
+        );
         // Third: merged "foobarbaz"
         if let JsStmt::Expr(JsExpr::SystemCall { args, .. }) = &body[2] {
             assert!(matches!(&args[0], JsExpr::Literal(Constant::String(s)) if s == "foobarbaz"));
@@ -1127,8 +1103,14 @@ mod tests {
         coalesce_array_strings(&mut body);
 
         if let JsStmt::Return(Some(JsExpr::ArrayInit(items))) = &body[0] {
-            assert_eq!(items.len(), 3, "expected 3 items after coalescing, got: {items:?}");
-            assert!(matches!(&items[0], JsExpr::Literal(Constant::String(s)) if s == "Hello world"));
+            assert_eq!(
+                items.len(),
+                3,
+                "expected 3 items after coalescing, got: {items:?}"
+            );
+            assert!(
+                matches!(&items[0], JsExpr::Literal(Constant::String(s)) if s == "Hello world")
+            );
             assert!(matches!(&items[1], JsExpr::Call { .. }));
             assert!(matches!(&items[2], JsExpr::Literal(Constant::String(s)) if s == "foobar"));
         } else {

@@ -26,14 +26,48 @@ pub(crate) enum EngineKind {
 /// Detect engine from runtime config system_modules keys.
 fn detect_engine(runtime_config: Option<&RuntimeConfig>) -> EngineKind {
     if let Some(cfg) = runtime_config {
-        if cfg.system_modules.keys().any(|k| k.starts_with("SugarCube.") || k.starts_with("Harlowe.")) {
+        if cfg
+            .system_modules
+            .keys()
+            .any(|k| k.starts_with("SugarCube.") || k.starts_with("Harlowe."))
+        {
             return EngineKind::Twine;
         }
-        if cfg.system_modules.keys().any(|k| k.starts_with("GameMaker.")) {
+        if cfg
+            .system_modules
+            .keys()
+            .any(|k| k.starts_with("GameMaker."))
+        {
             return EngineKind::GameMaker;
         }
     }
     EngineKind::Flash
+}
+
+/// Build a `LoweringConfig` augmented with engine-specific settings.
+///
+/// - Flash: sets `scope_lookup_systems = ["Flash.Scope"]` so that scope-lookup
+///   SystemCalls are always-inlined for chain resolution in flash.rs.
+/// - GML: sets `wrap_class_refs_as_any = true` so that `ClassRef`-typed GlobalRef
+///   values get `as any` at each use site (GML object names double as integer indices).
+fn lowering_config_for_engine(
+    config: &LoweringConfig,
+    engine: EngineKind,
+) -> std::borrow::Cow<'_, LoweringConfig> {
+    let needs_flash = engine == EngineKind::Flash && config.scope_lookup_systems.is_empty();
+    let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
+    if needs_flash || needs_gml {
+        let mut c = config.clone();
+        if needs_flash {
+            c.scope_lookup_systems = vec!["Flash.Scope".to_string()];
+        }
+        if needs_gml {
+            c.wrap_class_refs_as_any = true;
+        }
+        std::borrow::Cow::Owned(c)
+    } else {
+        std::borrow::Cow::Borrowed(config)
+    }
 }
 
 /// Emit a single module into `output_dir`.
@@ -58,11 +92,18 @@ pub fn emit_module(
 }
 
 /// Emit a module to a string (flat output — for testing or class-free modules).
-pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConfig, runtime_config: Option<&RuntimeConfig>, debug: &DebugConfig) -> Result<String, CoreError> {
+pub fn emit_module_to_string(
+    module: &mut Module,
+    lowering_config: &LoweringConfig,
+    runtime_config: Option<&RuntimeConfig>,
+    debug: &DebugConfig,
+) -> Result<String, CoreError> {
     let mut out = String::new();
     let class_names = build_class_names(module);
     let empty_type_defs = BTreeMap::new();
-    let type_defs = runtime_config.map(|c| &c.type_definitions).unwrap_or(&empty_type_defs);
+    let type_defs = runtime_config
+        .map(|c| &c.type_definitions)
+        .unwrap_or(&empty_type_defs);
     let class_meta = ClassMeta::build(module, type_defs);
     let mut known_classes: HashSet<String> = class_names.values().cloned().collect();
     if let Some(rc) = runtime_config {
@@ -71,7 +112,13 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
 
     let engine = detect_engine(runtime_config);
     let mut stateful_system_aliases = BTreeMap::new();
-    emit_runtime_imports(module, &mut out, runtime_config, engine, &mut stateful_system_aliases);
+    emit_runtime_imports(
+        module,
+        &mut out,
+        runtime_config,
+        engine,
+        &mut stateful_system_aliases,
+    );
     // If any system modules are stateful, import the runtime type for `_rt` parameter.
     if !stateful_system_aliases.is_empty() {
         if let Some(rt_type) = runtime_config.and_then(|c| c.runtime_type.as_ref()) {
@@ -108,7 +155,18 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
     // Single-file mode — globals are in the same scope, no ESM setter rewrite needed.
     let no_mutable_globals = HashSet::new();
     if module.classes.is_empty() {
-        emit_functions(module, &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &stateful_system_aliases, runtime_config, debug, &mut out)?;
+        emit_functions(
+            module,
+            &class_names,
+            &known_classes,
+            &no_mutable_globals,
+            lowering_config,
+            engine,
+            &stateful_system_aliases,
+            runtime_config,
+            debug,
+            &mut out,
+        )?;
     } else {
         // Single-file mode: no circular imports (all classes in one scope).
         let no_late_bound = HashSet::new();
@@ -118,18 +176,54 @@ pub fn emit_module_to_string(module: &mut Module, lowering_config: &LoweringConf
         let no_free_fns = HashSet::new();
         let no_sys_aliases = BTreeMap::new();
         let empty_func_sigs = BTreeMap::new();
-        let func_sigs = runtime_config.map(|c| &c.function_signatures).unwrap_or(&empty_func_sigs);
+        let func_sigs = runtime_config
+            .map(|c| &c.function_signatures)
+            .unwrap_or(&empty_func_sigs);
         for group in &class_groups {
-            emit_class(group, module, &class_names, &class_meta, &no_mutable_globals, &no_late_bound, &no_short_to_qualified, &known_classes, lowering_config, engine, &no_stateful, &no_free_fns, func_sigs, debug, &mut out)?;
+            emit_class(
+                group,
+                module,
+                &class_names,
+                &class_meta,
+                &no_mutable_globals,
+                &no_late_bound,
+                &no_short_to_qualified,
+                &known_classes,
+                lowering_config,
+                engine,
+                &no_stateful,
+                &no_free_fns,
+                func_sigs,
+                debug,
+                &mut out,
+            )?;
         }
-        let closure_fids: Vec<FuncId> = free_funcs.iter()
+        let closure_fids: Vec<FuncId> = free_funcs
+            .iter()
             .copied()
             .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
             .collect();
-        let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+        let closure_bodies =
+            compile_closures(&closure_fids, module, lowering_config, engine, debug);
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
-                emit_function(&mut module.functions[fid], &class_names, &known_classes, &no_mutable_globals, lowering_config, engine, &module.sprite_names, &module.object_names, &closure_bodies, &no_stateful, &no_free_fns, &no_sys_aliases, runtime_config, debug, &mut out)?;
+                emit_function(
+                    &mut module.functions[fid],
+                    &class_names,
+                    &known_classes,
+                    &no_mutable_globals,
+                    lowering_config,
+                    engine,
+                    &module.sprite_names,
+                    &module.object_names,
+                    &closure_bodies,
+                    &no_stateful,
+                    &no_free_fns,
+                    &no_sys_aliases,
+                    runtime_config,
+                    debug,
+                    &mut out,
+                )?;
             }
         }
     }
@@ -216,7 +310,8 @@ impl ClassMeta {
     fn build(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> Self {
         let method_name_sets = build_method_name_sets(module, type_defs);
         let instance_field_sets = build_instance_field_sets(module, type_defs);
-        let parent_method_name_sets = build_parent_member_sets(module, &method_name_sets, &instance_field_sets, type_defs);
+        let parent_method_name_sets =
+            build_parent_member_sets(module, &method_name_sets, &instance_field_sets, type_defs);
         Self {
             ancestor_sets: build_ancestor_sets(module, type_defs),
             parent_method_name_sets,
@@ -313,9 +408,7 @@ fn validate_member_accesses(
                 match short_to_qualified.get(short) {
                     Some(qn) => qn.as_str(),
                     None => {
-                        if type_defs.contains_key(short)
-                            && !is_open_type(short, type_defs)
-                        {
+                        if type_defs.contains_key(short) && !is_open_type(short, type_defs) {
                             let ext_members = collect_external_members(short, type_defs);
                             if !ext_members.contains(bare) {
                                 eprintln!(
@@ -333,15 +426,10 @@ fn validate_member_accesses(
                 Some(qn) => qn.as_str(),
                 None => {
                     // Pure-external type — validate against type_defs.
-                    if type_defs.contains_key(short)
-                        && !is_open_type(short, type_defs)
-                    {
+                    if type_defs.contains_key(short) && !is_open_type(short, type_defs) {
                         let ext_members = collect_external_members(short, type_defs);
                         if !ext_members.contains(bare) {
-                            eprintln!(
-                                "warning: {short} has no member '{bare}' (in {})",
-                                func.name
-                            );
+                            eprintln!("warning: {short} has no member '{bare}' (in {})", func.name);
                         }
                     }
                     continue;
@@ -352,14 +440,11 @@ fn validate_member_accesses(
             .instance_field_sets
             .get(qualified)
             .is_some_and(|f| f.contains(bare));
-        let has_method = class_meta
-            .method_name_sets
-            .get(qualified)
-            .is_some_and(|m| {
-                m.contains(bare)
-                    || m.contains(&format!("get_{bare}"))
-                    || m.contains(&format!("set_{bare}"))
-            });
+        let has_method = class_meta.method_name_sets.get(qualified).is_some_and(|m| {
+            m.contains(bare)
+                || m.contains(&format!("get_{bare}"))
+                || m.contains(&format!("set_{bare}"))
+        });
         let has_static_field = class_meta
             .static_field_owner_map
             .get(qualified)
@@ -387,10 +472,7 @@ fn validate_member_accesses(
                     continue;
                 }
             }
-            eprintln!(
-                "warning: {short} has no member '{bare}' (in {})",
-                func.name
-            );
+            eprintln!("warning: {short} has no member '{bare}' (in {})", func.name);
         }
     }
 }
@@ -415,11 +497,20 @@ fn resolve_parent<'a>(
 ///
 /// For each class, the set includes the class's own short name and the short
 /// names of all superclasses reachable via `super_class` links within the module.
-fn build_ancestor_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
-    let class_by_short: HashMap<&str, &ClassDef> =
-        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
-    let class_by_qualified: HashMap<String, &ClassDef> =
-        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+fn build_ancestor_sets(
+    module: &Module,
+    type_defs: &BTreeMap<String, ExternalTypeDef>,
+) -> HashMap<String, HashSet<String>> {
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
 
     let mut result = HashMap::new();
     for class in &module.classes {
@@ -457,11 +548,20 @@ fn build_ancestor_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTyp
 
 /// Build a mapping from qualified class name → set of all method short names
 /// visible through the class hierarchy (own methods + all ancestor methods).
-fn build_method_name_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
-    let class_by_short: HashMap<&str, &ClassDef> =
-        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
-    let class_by_qualified: HashMap<String, &ClassDef> =
-        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+fn build_method_name_sets(
+    module: &Module,
+    type_defs: &BTreeMap<String, ExternalTypeDef>,
+) -> HashMap<String, HashSet<String>> {
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
 
     let mut result = HashMap::new();
     for class in &module.classes {
@@ -540,10 +640,16 @@ fn build_parent_member_sets(
     instance_field_sets: &HashMap<String, HashSet<String>>,
     type_defs: &BTreeMap<String, ExternalTypeDef>,
 ) -> HashMap<String, HashSet<String>> {
-    let class_by_short: HashMap<&str, &ClassDef> =
-        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
-    let class_by_qualified: HashMap<String, &ClassDef> =
-        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
 
     let mut result = HashMap::new();
     for class in &module.classes {
@@ -587,11 +693,20 @@ fn build_parent_member_sets(
 /// Build a mapping from qualified class name → set of bindable method short names.
 /// Only includes Instance and Free methods — excludes Getter, Setter, Static,
 /// and Constructor.  Does NOT include bare getter/setter property names.
-fn build_bindable_method_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
-    let class_by_short: HashMap<&str, &ClassDef> =
-        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
-    let class_by_qualified: HashMap<String, &ClassDef> =
-        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+fn build_bindable_method_sets(
+    module: &Module,
+    type_defs: &BTreeMap<String, ExternalTypeDef>,
+) -> HashMap<String, HashSet<String>> {
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
 
     let mut result = HashMap::new();
     for class in &module.classes {
@@ -641,10 +756,16 @@ fn build_bindable_method_sets(module: &Module, type_defs: &BTreeMap<String, Exte
 /// to the owning class short name, across the full ancestor chain.  Most-derived
 /// class wins when multiple ancestors define the same static method.
 fn build_static_method_owner_map(module: &Module) -> HashMap<String, HashMap<String, String>> {
-    let class_by_short: HashMap<&str, &ClassDef> =
-        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
-    let class_by_qualified: HashMap<String, &ClassDef> =
-        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
 
     let mut result = HashMap::new();
     for class in &module.classes {
@@ -663,12 +784,10 @@ fn build_static_method_owner_map(module: &Module) -> HashMap<String, HashMap<Str
                 }
             }
             match current.super_class {
-                Some(ref sc) => {
-                    match resolve_parent(sc, &class_by_qualified, &class_by_short) {
-                        Some(parent) => current = parent,
-                        None => break,
-                    }
-                }
+                Some(ref sc) => match resolve_parent(sc, &class_by_qualified, &class_by_short) {
+                    Some(parent) => current = parent,
+                    None => break,
+                },
                 None => break,
             }
         }
@@ -682,10 +801,16 @@ fn build_static_method_owner_map(module: &Module) -> HashMap<String, HashMap<Str
 /// `build_static_method_owner_map` but for static fields (both `readonly` with
 /// values and mutable ones assigned in cinit).
 fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<String, String>> {
-    let class_by_short: HashMap<&str, &ClassDef> =
-        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
-    let class_by_qualified: HashMap<String, &ClassDef> =
-        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
 
     let mut result = HashMap::new();
     for class in &module.classes {
@@ -698,12 +823,10 @@ fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<Stri
                     .or_insert_with(|| current.name.clone());
             }
             match current.super_class {
-                Some(ref sc) => {
-                    match resolve_parent(sc, &class_by_qualified, &class_by_short) {
-                        Some(parent) => current = parent,
-                        None => break,
-                    }
-                }
+                Some(ref sc) => match resolve_parent(sc, &class_by_qualified, &class_by_short) {
+                    Some(parent) => current = parent,
+                    None => break,
+                },
                 None => break,
             }
         }
@@ -714,11 +837,20 @@ fn build_static_field_owner_map(module: &Module) -> HashMap<String, HashMap<Stri
 
 /// Build a mapping from qualified class name → set of all instance field short
 /// names visible through the class hierarchy (own fields + all ancestor fields).
-fn build_instance_field_sets(module: &Module, type_defs: &BTreeMap<String, ExternalTypeDef>) -> HashMap<String, HashSet<String>> {
-    let class_by_short: HashMap<&str, &ClassDef> =
-        module.classes.iter().map(|c| (c.name.as_str(), c)).collect();
-    let class_by_qualified: HashMap<String, &ClassDef> =
-        module.classes.iter().map(|c| (qualified_class_name(c), c)).collect();
+fn build_instance_field_sets(
+    module: &Module,
+    type_defs: &BTreeMap<String, ExternalTypeDef>,
+) -> HashMap<String, HashSet<String>> {
+    let class_by_short: HashMap<&str, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (c.name.as_str(), c))
+        .collect();
+    let class_by_qualified: HashMap<String, &ClassDef> = module
+        .classes
+        .iter()
+        .map(|c| (qualified_class_name(c), c))
+        .collect();
 
     let mut result = HashMap::new();
     for class in &module.classes {
@@ -819,7 +951,13 @@ fn relative_import_path(from: &[String], to: &[String]) -> String {
 }
 
 /// Emit a module as a directory with one `.ts` file per class in nested dirs.
-pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_config: &LoweringConfig, runtime_config: Option<&RuntimeConfig>, debug: &DebugConfig) -> Result<(), CoreError> {
+pub fn emit_module_to_dir(
+    module: &mut Module,
+    output_dir: &Path,
+    lowering_config: &LoweringConfig,
+    runtime_config: Option<&RuntimeConfig>,
+    debug: &DebugConfig,
+) -> Result<(), CoreError> {
     let module_dir = output_dir.join(&module.name);
     fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
 
@@ -827,14 +965,22 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     let registry = ClassRegistry::from_module(module);
     let class_names = build_class_names(module);
     let empty_type_defs = BTreeMap::new();
-    let type_defs = runtime_config.map(|c| &c.type_definitions).unwrap_or(&empty_type_defs);
+    let type_defs = runtime_config
+        .map(|c| &c.type_definitions)
+        .unwrap_or(&empty_type_defs);
     let empty_mod_exports = BTreeMap::new();
-    let module_exports = runtime_config.map(|c| &c.module_exports).unwrap_or(&empty_mod_exports);
+    let module_exports = runtime_config
+        .map(|c| &c.module_exports)
+        .unwrap_or(&empty_mod_exports);
     let empty_func_sigs = BTreeMap::new();
-    let func_sigs = runtime_config.map(|c| &c.function_signatures).unwrap_or(&empty_func_sigs);
+    let func_sigs = runtime_config
+        .map(|c| &c.function_signatures)
+        .unwrap_or(&empty_func_sigs);
     let class_meta = ClassMeta::build(module, type_defs);
     let global_names: HashSet<String> = module.globals.iter().map(|g| g.name.clone()).collect();
-    let mutable_global_names: HashSet<String> = module.globals.iter()
+    let mutable_global_names: HashSet<String> = module
+        .globals
+        .iter()
         .filter(|g| g.mutable)
         .map(|g| g.name.clone())
         .collect();
@@ -942,7 +1088,11 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
 
         for global in &module.globals {
             // const without initializer is invalid JS — demote to let.
-            let kw = if global.mutable || global.init.is_none() { "let" } else { "const" };
+            let kw = if global.mutable || global.init.is_none() {
+                "let"
+            } else {
+                "const"
+            };
             let ident = sanitize_ident(&global.name);
             let ts = ts_type(&global.ty);
             if let Some(val) = &global.init {
@@ -972,13 +1122,25 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
     for group in &class_groups {
         let qualified = qualified_class_name(&group.class_def);
         let empty_smo = HashMap::new();
-        let smo = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        let sfo = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        let refs = collect_class_references(group, module, &registry, &module.external_imports, smo, sfo, &global_names, engine);
-        direct_value_imports.insert(
-            sanitize_ident(&group.class_def.name),
-            refs.value_refs,
+        let smo = class_meta
+            .static_method_owner_map
+            .get(&qualified)
+            .unwrap_or(&empty_smo);
+        let sfo = class_meta
+            .static_field_owner_map
+            .get(&qualified)
+            .unwrap_or(&empty_smo);
+        let refs = collect_class_references(
+            group,
+            module,
+            &registry,
+            &module.external_imports,
+            smo,
+            sfo,
+            &global_names,
+            engine,
         );
+        direct_value_imports.insert(sanitize_ident(&group.class_def.name), refs.value_refs);
     }
     let transitive_value_imports = compute_transitive_value_imports(&direct_value_imports);
 
@@ -987,8 +1149,11 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let short_name = sanitize_ident(&class_def.name);
 
         // Path segments for this class: namespace segments + class name.
-        let mut segments: Vec<String> =
-            class_def.namespace.iter().map(|s| sanitize_ident(s)).collect();
+        let mut segments: Vec<String> = class_def
+            .namespace
+            .iter()
+            .map(|s| sanitize_ident(s))
+            .collect();
         segments.push(short_name.clone());
 
         // Depth = number of namespace segments (directories below module_dir).
@@ -1017,7 +1182,13 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
             all_systems
         };
         let mut _class_sys_aliases = BTreeMap::new();
-        emit_runtime_imports_for(systems, &mut out, depth, runtime_config, &mut _class_sys_aliases);
+        emit_runtime_imports_for(
+            systems,
+            &mut out,
+            depth,
+            runtime_config,
+            &mut _class_sys_aliases,
+        );
         // Flash class files need the FlashShims type for constructor parameter annotations.
         if engine == EngineKind::Flash && !group.class_def.is_interface {
             let pref = "../".repeat(depth + 1);
@@ -1029,7 +1200,13 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let func_prefix = "../".repeat(depth + 1);
         let func_prefix = func_prefix.trim_end_matches('/');
         let mut stateful_names = BTreeSet::new();
-        emit_function_imports_with_prefix(&calls, &mut out, func_prefix, runtime_config, &mut stateful_names);
+        emit_function_imports_with_prefix(
+            &calls,
+            &mut out,
+            func_prefix,
+            runtime_config,
+            &mut stateful_names,
+        );
         // Game-defined scripts shadow runtime functions with the same name.
         stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
         emit_free_function_imports(&calls, &free_func_names, depth, &mut out);
@@ -1046,9 +1223,30 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         }
         let qualified = qualified_class_name(&group.class_def);
         let empty_smo = HashMap::new();
-        let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_smo);
-        let late_bound = emit_intra_imports(group, module, &segments, &registry, static_method_owners, static_field_owners, &global_names, &mutable_global_names, module_exports, &transitive_value_imports, &short_to_qualified, depth, engine, &mut out);
+        let static_method_owners = class_meta
+            .static_method_owner_map
+            .get(&qualified)
+            .unwrap_or(&empty_smo);
+        let static_field_owners = class_meta
+            .static_field_owner_map
+            .get(&qualified)
+            .unwrap_or(&empty_smo);
+        let late_bound = emit_intra_imports(
+            group,
+            module,
+            &segments,
+            &registry,
+            static_method_owners,
+            static_field_owners,
+            &global_names,
+            &mutable_global_names,
+            module_exports,
+            &transitive_value_imports,
+            &short_to_qualified,
+            depth,
+            engine,
+            &mut out,
+        );
 
         // Always emit the Sprites import; strip_unused_namespace_imports removes
         // it when no `Sprites.` reference appears in the output.
@@ -1060,10 +1258,33 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
 
         // Validate member accesses before emitting (warnings only).
         for &fid in &group.methods {
-            validate_member_accesses(&module.functions[fid], Some(&qualified), &class_meta, &registry, &short_to_qualified, type_defs);
+            validate_member_accesses(
+                &module.functions[fid],
+                Some(&qualified),
+                &class_meta,
+                &registry,
+                &short_to_qualified,
+                type_defs,
+            );
         }
 
-        emit_class(group, module, &class_names, &class_meta, &mutable_global_names, &late_bound, &short_to_qualified, &known_classes, lowering_config, engine, &stateful_names, &free_func_names, func_sigs, debug, &mut out)?;
+        emit_class(
+            group,
+            module,
+            &class_names,
+            &class_meta,
+            &mutable_global_names,
+            &late_bound,
+            &short_to_qualified,
+            &known_classes,
+            lowering_config,
+            engine,
+            &stateful_names,
+            &free_func_names,
+            func_sigs,
+            debug,
+            &mut out,
+        )?;
 
         strip_unused_namespace_imports(&mut out);
         let path = file_dir.join(format!("{short_name}.ts"));
@@ -1081,7 +1302,10 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         let all_free_systems = collect_system_names_from_funcs(free_fn_iter());
         // Flash.Memory is per-instance (accessed via _shims) — no module-level import.
         let systems = if engine == EngineKind::Flash {
-            all_free_systems.into_iter().filter(|s| s != "Flash.Memory").collect()
+            all_free_systems
+                .into_iter()
+                .filter(|s| s != "Flash.Memory")
+                .collect()
         } else {
             all_free_systems
         };
@@ -1089,7 +1313,13 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
         let calls = collect_call_names_from_funcs(free_fn_iter(), engine);
         let mut free_stateful_names = BTreeSet::new();
-        emit_function_imports_with_prefix(&calls, &mut out, "..", runtime_config, &mut free_stateful_names);
+        emit_function_imports_with_prefix(
+            &calls,
+            &mut out,
+            "..",
+            runtime_config,
+            &mut free_stateful_names,
+        );
         // Game-defined free functions shadow runtime functions with the same name.
         // Remove any runtime stateful entry that the game overrides — inside each
         // function body the `const { name } = _rt` destructuring would shadow the
@@ -1099,7 +1329,11 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         // for the `_rt` parameter annotation.
         if !free_stateful_names.is_empty() {
             if let Some(preamble_cfg) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
-                let _ = writeln!(out, "import type {{ GameRuntime }} from \"../runtime/{}\";", preamble_cfg.path);
+                let _ = writeln!(
+                    out,
+                    "import type {{ GameRuntime }} from \"../runtime/{}\";",
+                    preamble_cfg.path
+                );
             }
         }
         if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
@@ -1119,11 +1353,26 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
         for &fid in &free_funcs {
             let func = &module.functions[fid];
             collect_type_refs_from_function(
-                func, "", &registry, &module.external_imports,
-                &HashMap::new(), &HashMap::new(), &global_names, &module.object_names, engine, &mut refs,
+                func,
+                "",
+                &registry,
+                &module.external_imports,
+                &HashMap::new(),
+                &HashMap::new(),
+                &global_names,
+                &module.object_names,
+                engine,
+                &mut refs,
             );
         }
-        emit_external_imports(&refs.ext_value_refs, &refs.ext_type_refs, &module.external_imports, module_exports, "..", &mut out);
+        emit_external_imports(
+            &refs.ext_value_refs,
+            &refs.ext_type_refs,
+            &module.external_imports,
+            module_exports,
+            "..",
+            &mut out,
+        );
 
         // Intra-module class imports for free functions.
         let init_segments = vec!["_init".to_string()];
@@ -1152,19 +1401,41 @@ pub fn emit_module_to_dir(module: &mut Module, output_dir: &Path, lowering_confi
                     import_names.push(format!("$set_{}", sanitize_ident(name)));
                 }
             }
-            let _ = writeln!(out, "import {{ {} }} from \"./_globals\";", import_names.join(", "));
+            let _ = writeln!(
+                out,
+                "import {{ {} }} from \"./_globals\";",
+                import_names.join(", ")
+            );
         }
 
         emit_imports(module, &mut out);
-        let closure_fids: Vec<FuncId> = free_funcs.iter()
+        let closure_fids: Vec<FuncId> = free_funcs
+            .iter()
             .copied()
             .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
             .collect();
-        let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+        let closure_bodies =
+            compile_closures(&closure_fids, module, lowering_config, engine, debug);
         let no_sys_aliases = BTreeMap::new();
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
-                emit_function(&mut module.functions[fid], &class_names, &known_classes, &mutable_global_names, lowering_config, engine, &module.sprite_names, &module.object_names, &closure_bodies, &free_stateful_names, &free_func_names, &no_sys_aliases, runtime_config, debug, &mut out)?;
+                emit_function(
+                    &mut module.functions[fid],
+                    &class_names,
+                    &known_classes,
+                    &mutable_global_names,
+                    lowering_config,
+                    engine,
+                    &module.sprite_names,
+                    &module.object_names,
+                    &closure_bodies,
+                    &free_stateful_names,
+                    &free_func_names,
+                    &no_sys_aliases,
+                    runtime_config,
+                    debug,
+                    &mut out,
+                )?;
             }
         }
         strip_unused_namespace_imports(&mut out);
@@ -1287,7 +1558,13 @@ fn collect_system_names_from_funcs<'a>(
 }
 
 /// Emit runtime imports for flat modules (files directly in `output_dir`).
-fn emit_runtime_imports(module: &Module, out: &mut String, runtime_config: Option<&RuntimeConfig>, engine: EngineKind, stateful_system_aliases: &mut BTreeMap<String, String>) {
+fn emit_runtime_imports(
+    module: &Module,
+    out: &mut String,
+    runtime_config: Option<&RuntimeConfig>,
+    engine: EngineKind,
+    stateful_system_aliases: &mut BTreeMap<String, String>,
+) {
     let all_funcs = || module.functions.iter().map(|(_id, f)| f);
     let systems = collect_system_names_from_funcs(all_funcs());
     emit_runtime_imports_with_prefix(systems, out, ".", runtime_config, stateful_system_aliases);
@@ -1301,10 +1578,22 @@ fn emit_runtime_imports(module: &Module, out: &mut String, runtime_config: Optio
 /// `depth` is the number of namespace directories below the module dir. The
 /// module dir itself is one level inside `output_dir`, so the prefix traverses
 /// `depth + 1` parent directories.
-fn emit_runtime_imports_for(systems: BTreeSet<String>, out: &mut String, depth: usize, runtime_config: Option<&RuntimeConfig>, stateful_system_aliases: &mut BTreeMap<String, String>) {
+fn emit_runtime_imports_for(
+    systems: BTreeSet<String>,
+    out: &mut String,
+    depth: usize,
+    runtime_config: Option<&RuntimeConfig>,
+    stateful_system_aliases: &mut BTreeMap<String, String>,
+) {
     let prefix = "../".repeat(depth + 1);
     let prefix = prefix.trim_end_matches('/');
-    emit_runtime_imports_with_prefix(systems, out, prefix, runtime_config, stateful_system_aliases);
+    emit_runtime_imports_with_prefix(
+        systems,
+        out,
+        prefix,
+        runtime_config,
+        stateful_system_aliases,
+    );
 }
 
 fn emit_runtime_imports_with_prefix(
@@ -1345,10 +1634,7 @@ fn emit_runtime_imports_with_prefix(
                 .next_back()
                 .unwrap_or(sys)
                 .to_ascii_lowercase();
-            by_mod
-                .entry(module)
-                .or_default()
-                .push(sanitize_ident(sys));
+            by_mod.entry(module).or_default().push(sanitize_ident(sys));
         }
     }
     if !generic.is_empty() {
@@ -1379,18 +1665,13 @@ fn emit_runtime_imports_with_prefix(
 fn strip_unused_namespace_imports(out: &mut String) {
     // Collect (line_start, line_end, alias) for every namespace import.
     let mut removals: Vec<(usize, usize)> = Vec::new();
-    for (start, line) in out
-        .match_indices("import * as ")
-        .collect::<Vec<_>>()
-    {
+    for (start, line) in out.match_indices("import * as ").collect::<Vec<_>>() {
         // `line` is always the literal "import * as " prefix.
         let _ = line;
         let after_prefix = start + "import * as ".len();
         let rest = &out[after_prefix..];
         // Extract the alias (up to the next space or ' from').
-        let alias_end = rest
-            .find([' ', '\n'])
-            .unwrap_or(rest.len());
+        let alias_end = rest.find([' ', '\n']).unwrap_or(rest.len());
         let alias = &rest[..alias_end];
         if alias.is_empty() {
             continue;
@@ -1409,10 +1690,7 @@ fn strip_unused_namespace_imports(out: &mut String) {
     }
 
     // Also strip `import { Sprites } from "..."` when `Sprites.` never appears.
-    for (start, _) in out
-        .match_indices("import { Sprites }")
-        .collect::<Vec<_>>()
-    {
+    for (start, _) in out.match_indices("import { Sprites }").collect::<Vec<_>>() {
         let line_end = out[start..]
             .find('\n')
             .map(|i| start + i + 1)
@@ -1449,13 +1727,16 @@ fn collect_call_names_from_funcs<'a>(
                     // so it matches the sanitized names stored in runtime.json.
                     used.insert(sanitize_ident(name));
                     if engine == EngineKind::GameMaker {
-                        for introduced in crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name) {
+                        for introduced in
+                            crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name)
+                        {
                             used.insert((*introduced).to_string());
                         }
                     }
                 }
                 Op::SystemCall { system, method, .. } if engine == EngineKind::GameMaker => {
-                    for name in crate::rewrites::gamemaker::rewrite_introduced_calls(system, method) {
+                    for name in crate::rewrites::gamemaker::rewrite_introduced_calls(system, method)
+                    {
                         used.insert((*name).to_string());
                     }
                 }
@@ -1471,7 +1752,9 @@ fn collect_call_names_from_funcs<'a>(
                 Op::GlobalRef(name) => {
                     used.insert(sanitize_ident(name));
                     if engine == EngineKind::GameMaker {
-                        for introduced in crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name) {
+                        for introduced in
+                            crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name)
+                        {
                             used.insert((*introduced).to_string());
                         }
                     }
@@ -1561,10 +1844,7 @@ fn emit_free_function_imports(
     }
     // Sanitize identifier names (e.g. `anon@1155@...` → `anon_1155_...`) to match
     // what `sanitize_ident` produces for the exported function name.
-    let mut names: Vec<String> = needed
-        .into_iter()
-        .map(sanitize_ident)
-        .collect();
+    let mut names: Vec<String> = needed.into_iter().map(sanitize_ident).collect();
     names.sort();
     names.dedup();
     // _init.ts lives in module_dir, so we go up `depth` levels (one per
@@ -1574,7 +1854,11 @@ fn emit_free_function_imports(
     } else {
         "../".repeat(depth).trim_end_matches('/').to_string()
     };
-    let _ = writeln!(out, "import {{ {} }} from \"{prefix}/_init\";", names.join(", "));
+    let _ = writeln!(
+        out,
+        "import {{ {} }} from \"{prefix}/_init\";",
+        names.join(", ")
+    );
     out.push('\n');
 }
 
@@ -1673,13 +1957,31 @@ fn collect_class_references(
 
     // Struct fields (class instance fields) — type-only.
     for (_name, ty, _) in &group.struct_def.fields {
-        collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+        collect_type_ref(
+            ty,
+            self_name,
+            registry,
+            external_imports,
+            &mut refs.type_refs,
+            &mut refs.ext_type_refs,
+        );
     }
 
     // Scan all method bodies for type references.
     for &fid in &group.methods {
         let func = &module.functions[fid];
-        collect_type_refs_from_function(func, self_name, registry, external_imports, static_method_owners, static_field_owners, global_names, &module.object_names, engine, &mut refs);
+        collect_type_refs_from_function(
+            func,
+            self_name,
+            registry,
+            external_imports,
+            static_method_owners,
+            static_field_owners,
+            global_names,
+            &module.object_names,
+            engine,
+            &mut refs,
+        );
     }
 
     refs
@@ -1702,9 +2004,23 @@ fn collect_type_refs_from_function(
     use reincarnate_core::ir::Constant;
 
     // Return type and param types — type-only.
-    collect_type_ref(&func.sig.return_ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+    collect_type_ref(
+        &func.sig.return_ty,
+        self_name,
+        registry,
+        external_imports,
+        &mut refs.type_refs,
+        &mut refs.ext_type_refs,
+    );
     for ty in &func.sig.params {
-        collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+        collect_type_ref(
+            ty,
+            self_name,
+            registry,
+            external_imports,
+            &mut refs.type_refs,
+            &mut refs.ext_type_refs,
+        );
     }
 
     // Build ValueId → &str map for const strings (to resolve SystemCall args).
@@ -1753,23 +2069,58 @@ fn collect_type_refs_from_function(
             Op::TypeCheck(_, ty) => {
                 let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
                 if is_struct_or_enum {
-                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.typecheck_value_refs, &mut refs.ext_value_refs);
+                    collect_type_ref(
+                        ty,
+                        self_name,
+                        registry,
+                        external_imports,
+                        &mut refs.typecheck_value_refs,
+                        &mut refs.ext_value_refs,
+                    );
                 } else {
-                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.value_refs, &mut refs.ext_value_refs);
+                    collect_type_ref(
+                        ty,
+                        self_name,
+                        registry,
+                        external_imports,
+                        &mut refs.value_refs,
+                        &mut refs.ext_value_refs,
+                    );
                 }
             }
             // Alloc is type-only. Cast with Struct/Enum: NullableCoerce needs runtime value, Coerce is type-only.
             Op::Alloc(ty) => {
-                collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+                collect_type_ref(
+                    ty,
+                    self_name,
+                    registry,
+                    external_imports,
+                    &mut refs.type_refs,
+                    &mut refs.ext_type_refs,
+                );
             }
             Op::Cast(_, ty, kind) => {
                 let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
                 if is_struct_or_enum && *kind == CastKind::NullableCoerce {
                     // NullableCoerce needs runtime constructor — collected separately
                     // so circular imports can be detected and late-bound.
-                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.typecheck_value_refs, &mut refs.ext_value_refs);
+                    collect_type_ref(
+                        ty,
+                        self_name,
+                        registry,
+                        external_imports,
+                        &mut refs.typecheck_value_refs,
+                        &mut refs.ext_value_refs,
+                    );
                 } else {
-                    collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+                    collect_type_ref(
+                        ty,
+                        self_name,
+                        registry,
+                        external_imports,
+                        &mut refs.type_refs,
+                        &mut refs.ext_type_refs,
+                    );
                 }
             }
             // GetField with a class name → runtime value reference (used with `new`).
@@ -1795,14 +2146,25 @@ fn collect_type_refs_from_function(
                 }
             }
             // Engine-specific SystemCall import extraction — delegated to rewrite modules.
-            Op::SystemCall { system, method, args } => {
+            Op::SystemCall {
+                system,
+                method,
+                args,
+            } => {
                 match engine {
-                    EngineKind::Flash if system == "Flash.Scope"
-                        && (method == "findPropStrict" || method == "findProperty") =>
+                    EngineKind::Flash
+                        if system == "Flash.Scope"
+                            && (method == "findPropStrict" || method == "findProperty") =>
                     {
                         crate::rewrites::flash::collect_flash_scope_refs(
-                            args, &const_strings, self_name, registry,
-                            static_method_owners, static_field_owners, global_names, refs,
+                            args,
+                            &const_strings,
+                            self_name,
+                            registry,
+                            static_method_owners,
+                            static_field_owners,
+                            global_names,
+                            refs,
                         );
                     }
                     // getField / setField / getOn / setOn with a const-int first arg:
@@ -1812,10 +2174,13 @@ fn collect_type_refs_from_function(
                     // Also handles dyn-coerced integers (tracked in the extended const_ints).
                     //
                     // For getOn/setOn also handle the string-name case (→ instances[0]!).
-                    EngineKind::GameMaker if system == "GameMaker.Instance"
-                        && (method == "getField" || method == "setField"
-                            || method == "getOn" || method == "setOn")
-                        && !args.is_empty() =>
+                    EngineKind::GameMaker
+                        if system == "GameMaker.Instance"
+                            && (method == "getField"
+                                || method == "setField"
+                                || method == "getOn"
+                                || method == "setOn")
+                            && !args.is_empty() =>
                     {
                         // Integer class-index case: first arg is a const int
                         // (possibly dyn-coerced — covered by the extended const_ints).
@@ -1836,7 +2201,12 @@ fn collect_type_refs_from_function(
                         // is a const string naming the class → instances[0]!.
                         if method == "getOn" || method == "setOn" {
                             crate::rewrites::gamemaker::collect_gamemaker_instance_refs(
-                                args, &const_strings, self_name, registry, external_imports, refs,
+                                args,
+                                &const_strings,
+                                self_name,
+                                registry,
+                                external_imports,
+                                refs,
                             );
                         }
                     }
@@ -1861,7 +2231,14 @@ fn collect_type_refs_from_function(
 
     // value_types — type-only.
     for (_vid, ty) in func.value_types.iter() {
-        collect_type_ref(ty, self_name, registry, external_imports, &mut refs.type_refs, &mut refs.ext_type_refs);
+        collect_type_ref(
+            ty,
+            self_name,
+            registry,
+            external_imports,
+            &mut refs.type_refs,
+            &mut refs.ext_type_refs,
+        );
     }
 }
 
@@ -1901,7 +2278,14 @@ fn collect_type_ref(
             }
         }
         Type::Function(sig) => {
-            collect_type_ref(&sig.return_ty, self_name, registry, external_imports, refs, ext_refs);
+            collect_type_ref(
+                &sig.return_ty,
+                self_name,
+                registry,
+                external_imports,
+                refs,
+                ext_refs,
+            );
             for p in &sig.params {
                 collect_type_ref(p, self_name, registry, external_imports, refs, ext_refs);
             }
@@ -1910,8 +2294,22 @@ fn collect_type_ref(
             yield_ty,
             return_ty,
         } => {
-            collect_type_ref(yield_ty, self_name, registry, external_imports, refs, ext_refs);
-            collect_type_ref(return_ty, self_name, registry, external_imports, refs, ext_refs);
+            collect_type_ref(
+                yield_ty,
+                self_name,
+                registry,
+                external_imports,
+                refs,
+                ext_refs,
+            );
+            collect_type_ref(
+                return_ty,
+                self_name,
+                registry,
+                external_imports,
+                refs,
+                ext_refs,
+            );
         }
         Type::Union(types) => {
             for t in types {
@@ -2017,7 +2415,11 @@ fn emit_external_imports(
     // Collect resolved short names from value refs for dedup.
     let val_short_names: HashSet<&str> = ext_value_refs
         .iter()
-        .filter_map(|n| external_imports.get(n.as_str()).map(|i| i.short_name.as_str()))
+        .filter_map(|n| {
+            external_imports
+                .get(n.as_str())
+                .map(|i| i.short_name.as_str())
+        })
         .collect();
     // Type-only imports (not already covered by value imports).
     let mut type_by_mod: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
@@ -2123,7 +2525,16 @@ fn emit_intra_imports(
     engine: EngineKind,
     out: &mut String,
 ) -> HashSet<String> {
-    let refs = collect_class_references(group, module, registry, &module.external_imports, static_method_owners, static_field_owners, global_names, engine);
+    let refs = collect_class_references(
+        group,
+        module,
+        registry,
+        &module.external_imports,
+        static_method_owners,
+        static_field_owners,
+        global_names,
+        engine,
+    );
 
     // Compute late-bound set: typecheck refs whose targets transitively import
     // this class (i.e. adding a static import would create a cycle), and that
@@ -2164,7 +2575,14 @@ fn emit_intra_imports(
     if has_ext {
         let prefix = "../".repeat(depth + 1);
         let prefix = prefix.trim_end_matches('/');
-        emit_external_imports(&refs.ext_value_refs, &refs.ext_type_refs, &module.external_imports, module_exports, prefix, out);
+        emit_external_imports(
+            &refs.ext_value_refs,
+            &refs.ext_type_refs,
+            &module.external_imports,
+            module_exports,
+            prefix,
+            out,
+        );
     }
 
     // Intra-module value imports.
@@ -2200,7 +2618,11 @@ fn emit_intra_imports(
                 import_names.push(format!("$set_{}", sanitize_ident(name)));
             }
         }
-        let _ = writeln!(out, "import {{ {} }} from \"{globals_path}\";", import_names.join(", "));
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"{globals_path}\";",
+            import_names.join(", ")
+        );
     }
     out.push('\n');
     late_bound
@@ -2232,7 +2654,9 @@ fn rewrite_late_bound_stmt(
     short_to_qualified: &HashMap<String, String>,
 ) {
     match stmt {
-        JsStmt::VarDecl { init: Some(expr), .. } => {
+        JsStmt::VarDecl {
+            init: Some(expr), ..
+        } => {
             rewrite_late_bound_expr(expr, late_bound, short_to_qualified);
         }
         JsStmt::Assign { target, value } => {
@@ -2249,7 +2673,11 @@ fn rewrite_late_bound_stmt(
         JsStmt::Return(Some(expr)) => {
             rewrite_late_bound_expr(expr, late_bound, short_to_qualified);
         }
-        JsStmt::If { cond, then_body, else_body } => {
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
             rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
             rewrite_late_bound_types(then_body, late_bound, short_to_qualified);
             rewrite_late_bound_types(else_body, late_bound, short_to_qualified);
@@ -2258,7 +2686,12 @@ fn rewrite_late_bound_stmt(
             rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
             rewrite_late_bound_types(body, late_bound, short_to_qualified);
         }
-        JsStmt::For { init, cond, update, body } => {
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
             rewrite_late_bound_types(init, late_bound, short_to_qualified);
             rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
             rewrite_late_bound_types(update, late_bound, short_to_qualified);
@@ -2287,11 +2720,18 @@ fn rewrite_late_bound_expr(
 ) {
     // First, check if this expression itself needs rewriting.
     let needs_rewrite = match expr {
-        JsExpr::TypeCheck { ty: Type::Struct(name) | Type::Enum(name), .. } => {
+        JsExpr::TypeCheck {
+            ty: Type::Struct(name) | Type::Enum(name),
+            ..
+        } => {
             let short = name.rsplit("::").next().unwrap_or(name);
             late_bound.contains(short)
         }
-        JsExpr::Cast { ty: Type::Struct(name) | Type::Enum(name), kind: CastKind::NullableCoerce, .. } => {
+        JsExpr::Cast {
+            ty: Type::Struct(name) | Type::Enum(name),
+            kind: CastKind::NullableCoerce,
+            ..
+        } => {
             let short = name.rsplit("::").next().unwrap_or(name);
             late_bound.contains(short)
         }
@@ -2302,16 +2742,17 @@ fn rewrite_late_bound_expr(
         let dummy = JsExpr::Literal(Constant::Null);
         let old = std::mem::replace(expr, dummy);
         match old {
-            JsExpr::TypeCheck { expr: inner, ty, .. } => {
+            JsExpr::TypeCheck {
+                expr: inner, ty, ..
+            } => {
                 let name = match &ty {
                     Type::Struct(n) | Type::Enum(n) => n,
                     _ => unreachable!(),
                 };
                 let short = name.rsplit("::").next().unwrap_or(name);
-                let qualified = short_to_qualified.get(short).map_or_else(
-                    || name.clone(),
-                    |q| q.clone(),
-                );
+                let qualified = short_to_qualified
+                    .get(short)
+                    .map_or_else(|| name.clone(), |q| q.clone());
                 *expr = JsExpr::Call {
                     callee: Box::new(JsExpr::Var("isType".into())),
                     args: vec![
@@ -2323,16 +2764,17 @@ fn rewrite_late_bound_expr(
                     ],
                 };
             }
-            JsExpr::Cast { expr: inner, ty, .. } => {
+            JsExpr::Cast {
+                expr: inner, ty, ..
+            } => {
                 let name = match &ty {
                     Type::Struct(n) | Type::Enum(n) => n,
                     _ => unreachable!(),
                 };
                 let short = name.rsplit("::").next().unwrap_or(name);
-                let qualified = short_to_qualified.get(short).map_or_else(
-                    || name.clone(),
-                    |q| q.clone(),
-                );
+                let qualified = short_to_qualified
+                    .get(short)
+                    .map_or_else(|| name.clone(), |q| q.clone());
                 *expr = JsExpr::Call {
                     callee: Box::new(JsExpr::Var("asType".into())),
                     args: vec![
@@ -2353,14 +2795,20 @@ fn rewrite_late_bound_expr(
 
     // Recurse into child expressions.
     match expr {
-        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. }
-        | JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs } => {
             rewrite_late_bound_expr(lhs, late_bound, short_to_qualified);
             rewrite_late_bound_expr(rhs, late_bound, short_to_qualified);
         }
-        JsExpr::Unary { expr: inner, .. } | JsExpr::Not(inner)
-        | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) | JsExpr::TypeOf(inner)
-        | JsExpr::GeneratorResume(inner) | JsExpr::NonNull(inner) => {
+        JsExpr::Unary { expr: inner, .. }
+        | JsExpr::Not(inner)
+        | JsExpr::PostIncrement(inner)
+        | JsExpr::Spread(inner)
+        | JsExpr::TypeOf(inner)
+        | JsExpr::GeneratorResume(inner)
+        | JsExpr::NonNull(inner) => {
             rewrite_late_bound_expr(inner, late_bound, short_to_qualified);
         }
         JsExpr::Cast { expr: inner, .. } | JsExpr::TypeCheck { expr: inner, .. } => {
@@ -2379,7 +2827,11 @@ fn rewrite_late_bound_expr(
                 rewrite_late_bound_expr(arg, late_bound, short_to_qualified);
             }
         }
-        JsExpr::Ternary { cond, then_val, else_val } => {
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
             rewrite_late_bound_expr(cond, late_bound, short_to_qualified);
             rewrite_late_bound_expr(then_val, late_bound, short_to_qualified);
             rewrite_late_bound_expr(else_val, late_bound, short_to_qualified);
@@ -2427,8 +2879,12 @@ fn rewrite_late_bound_expr(
             rewrite_late_bound_types(body, late_bound, short_to_qualified);
         }
         // Leaf nodes — nothing to recurse into.
-        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This
-        | JsExpr::Activation | JsExpr::SuperGet(_) | JsExpr::Yield(None) => {}
+        JsExpr::Literal(_)
+        | JsExpr::Var(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_)
+        | JsExpr::Yield(None) => {}
     }
 }
 
@@ -2440,7 +2896,11 @@ fn emit_imports(module: &Module, out: &mut String) {
     for import in &module.imports {
         let name = match &import.alias {
             Some(alias) => {
-                format!("{} as {}", sanitize_ident(&import.name), sanitize_ident(alias))
+                format!(
+                    "{} as {}",
+                    sanitize_ident(&import.name),
+                    sanitize_ident(alias)
+                )
             }
             None => sanitize_ident(&import.name),
         };
@@ -2512,7 +2972,11 @@ fn emit_globals(module: &Module, out: &mut String) {
     for global in &module.globals {
         let vis = visibility_prefix(global.visibility);
         // const without initializer is invalid JS — demote to let.
-        let kw = if global.mutable || global.init.is_none() { "let" } else { "const" };
+        let kw = if global.mutable || global.init.is_none() {
+            "let"
+        } else {
+            "const"
+        };
         let ident = sanitize_ident(&global.name);
         let ts = ts_type(&global.ty);
         if let Some(val) = &global.init {
@@ -2552,7 +3016,9 @@ fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &HashSet<Str
                 // Replace: `name = value` → `$set_name(value)`
                 let setter = format!("$set_{name}");
                 let dummy = JsExpr::Literal(Constant::Null);
-                if let JsStmt::Assign { value, .. } = std::mem::replace(stmt, JsStmt::Expr(dummy.clone())) {
+                if let JsStmt::Assign { value, .. } =
+                    std::mem::replace(stmt, JsStmt::Expr(dummy.clone()))
+                {
                     *stmt = JsStmt::Expr(JsExpr::Call {
                         callee: Box::new(JsExpr::Var(setter)),
                         args: vec![value],
@@ -2567,7 +3033,9 @@ fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &HashSet<Str
                 let var_name = name.clone();
                 let setter = format!("$set_{var_name}");
                 let dummy = JsExpr::Literal(Constant::Null);
-                if let JsStmt::CompoundAssign { op, value, .. } = std::mem::replace(stmt, JsStmt::Expr(dummy.clone())) {
+                if let JsStmt::CompoundAssign { op, value, .. } =
+                    std::mem::replace(stmt, JsStmt::Expr(dummy.clone()))
+                {
                     *stmt = JsStmt::Expr(JsExpr::Call {
                         callee: Box::new(JsExpr::Var(setter)),
                         args: vec![JsExpr::Binary {
@@ -2579,16 +3047,20 @@ fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &HashSet<Str
                 }
             }
             // Recurse into nested bodies.
-            JsStmt::If { then_body, else_body, .. } => {
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
                 rewrite_global_assignments(then_body, mutable_globals);
                 rewrite_global_assignments(else_body, mutable_globals);
             }
-            JsStmt::While { body, .. }
-            | JsStmt::Loop { body }
-            | JsStmt::ForOf { body, .. } => {
+            JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
                 rewrite_global_assignments(body, mutable_globals);
             }
-            JsStmt::For { init, body, update, .. } => {
+            JsStmt::For {
+                init, body, update, ..
+            } => {
                 rewrite_global_assignments(init, mutable_globals);
                 rewrite_global_assignments(body, mutable_globals);
                 rewrite_global_assignments(update, mutable_globals);
@@ -2621,16 +3093,33 @@ fn emit_functions(
     out: &mut String,
 ) -> Result<(), CoreError> {
     let all_ids: Vec<_> = module.functions.keys().collect();
-    let closure_fids: Vec<FuncId> = all_ids.iter()
+    let closure_fids: Vec<FuncId> = all_ids
+        .iter()
         .copied()
         .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
         .collect();
-    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
     for id in all_ids {
         if module.functions[id].method_kind != MethodKind::Closure {
             let no_stateful = BTreeSet::new();
             let no_free_fns = HashSet::new();
-            emit_function(&mut module.functions[id], class_names, known_classes, mutable_global_names, lowering_config, engine, &module.sprite_names, &module.object_names, &closure_bodies, &no_stateful, &no_free_fns, stateful_system_aliases, runtime_config, debug, out)?;
+            emit_function(
+                &mut module.functions[id],
+                class_names,
+                known_classes,
+                mutable_global_names,
+                lowering_config,
+                engine,
+                &module.sprite_names,
+                &module.object_names,
+                &closure_bodies,
+                &no_stateful,
+                &no_free_fns,
+                stateful_system_aliases,
+                runtime_config,
+                debug,
+                out,
+            )?;
         }
     }
     Ok(())
@@ -2662,13 +3151,20 @@ fn emit_function(
 
     func.hoist_allocs();
     let shape = structurize::structurize(func);
-    let ast = linear::lower_function_linear(func, &shape, lowering_config, debug);
+    let effective_config = lowering_config_for_engine(lowering_config, engine);
+    let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
     };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
-        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, object_names, closure_bodies, None),
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(
+            js_func,
+            sprite_names,
+            object_names,
+            closure_bodies,
+            None,
+        ),
         EngineKind::Flash => {
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
@@ -2689,7 +3185,9 @@ fn emit_function(
             };
             crate::rewrites::flash::rewrite_flash_function(js_func, &rewrite_ctx)
         }
-        EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies),
+        EngineKind::Twine => {
+            crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies)
+        }
     };
     // Coerce numeric arguments to boolean at call sites where the signature expects boolean.
     if engine == EngineKind::GameMaker {
@@ -2716,7 +3214,9 @@ fn emit_function(
             .and_then(|c| c.runtime_type.as_ref())
             .map(|t| t.name.as_str())
             .unwrap_or("GameRuntime");
-        js_func.params.insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
+        js_func
+            .params
+            .insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
         js_func.param_defaults.insert(0, None);
         rewrite_stateful_calls(&mut js_func.body, stateful_names, false);
     }
@@ -2727,7 +3227,9 @@ fn emit_function(
             .and_then(|c| c.runtime_type.as_ref())
             .map(|t| t.name.as_str())
             .unwrap_or("SugarCubeRuntime");
-        js_func.params.insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
+        js_func
+            .params
+            .insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
         js_func.param_defaults.insert(0, None);
         // If a context_type is configured, retype the first Dynamic param after `_rt`
         // (e.g. `h: any` → `h: HarloweContext`).
@@ -2821,11 +3323,7 @@ fn as3_type_name(ty: &Type) -> String {
 }
 
 /// Emit a `registerClassTraits(ClassName, [...instance], [...static])` call.
-fn emit_register_class_traits(
-    group: &ClassGroup,
-    module: &Module,
-    out: &mut String,
-) {
+fn emit_register_class_traits(group: &ClassGroup, module: &Module, out: &mut String) {
     let class_name = sanitize_ident(&group.class_def.name);
 
     // Collect instance traits: fields from struct_def + instance methods/getters/setters
@@ -2854,28 +3352,28 @@ fn emit_register_class_traits(
         match func.method_kind {
             MethodKind::Constructor | MethodKind::Free | MethodKind::Closure => {}
             MethodKind::Instance => {
-                instance_traits.push(format!(
-                    "{{ name: \"{short}\", kind: \"method\" }}"
-                ));
+                instance_traits.push(format!("{{ name: \"{short}\", kind: \"method\" }}"));
             }
             MethodKind::Static => {
                 // Skip class initializer
                 if short == "cinit" || short == "$cinit" {
                     continue;
                 }
-                static_traits.push(format!(
-                    "{{ name: \"{short}\", kind: \"method\" }}"
-                ));
+                static_traits.push(format!("{{ name: \"{short}\", kind: \"method\" }}"));
             }
             MethodKind::Getter => {
                 // Strip get_ prefix to match AS3 accessor names
                 let acc_name = short.strip_prefix("get_").unwrap_or(short);
-                let entry = instance_accessors.entry(acc_name.to_string()).or_insert((false, false));
+                let entry = instance_accessors
+                    .entry(acc_name.to_string())
+                    .or_insert((false, false));
                 entry.0 = true;
             }
             MethodKind::Setter => {
                 let acc_name = short.strip_prefix("set_").unwrap_or(short);
-                let entry = instance_accessors.entry(acc_name.to_string()).or_insert((false, false));
+                let entry = instance_accessors
+                    .entry(acc_name.to_string())
+                    .or_insert((false, false));
                 entry.1 = true;
             }
         }
@@ -2937,7 +3435,11 @@ fn emit_class(
         None => String::new(),
     };
 
-    let abstract_kw = if group.class_def.is_interface { "abstract " } else { "" };
+    let abstract_kw = if group.class_def.is_interface {
+        "abstract "
+    } else {
+        ""
+    };
     let _ = writeln!(out, "{vis}{abstract_kw}class {class_name}{extends} {{");
     let qualified = qualified_class_name(&group.class_def);
     if engine == EngineKind::Flash {
@@ -2946,14 +3448,21 @@ fn emit_class(
 
     // Hoist parent member set lookup so it's available for field override detection below.
     let empty_set_early: HashSet<String> = HashSet::new();
-    let parent_method_names_early = class_meta.parent_method_name_sets.get(&qualified).unwrap_or(&empty_set_early);
+    let parent_method_names_early = class_meta
+        .parent_method_name_sets
+        .get(&qualified)
+        .unwrap_or(&empty_set_early);
 
     // Static fields from ClassDef (class-level Slot/Const + promoted instance Consts).
     for (name, ty, default) in &group.class_def.static_fields {
         let ident = sanitize_ident(name);
         let ts = ts_type(ty);
         if let Some(val) = default {
-            let _ = writeln!(out, "  static readonly {ident}: {ts} = {};", crate::ast_printer::emit_constant(val));
+            let _ = writeln!(
+                out,
+                "  static readonly {ident}: {ts} = {};",
+                crate::ast_printer::emit_constant(val)
+            );
         } else {
             let _ = writeln!(out, "  static {ident}: {ts};");
         }
@@ -2964,18 +3473,27 @@ fn emit_class(
         let ident = sanitize_ident(name);
         let ts = ts_type(ty);
         // A field that shadows a parent-class field/method needs `override`.
-        let ov = if parent_method_names_early.contains(name.as_str()) { "override " } else { "" };
+        let ov = if parent_method_names_early.contains(name.as_str()) {
+            "override "
+        } else {
+            ""
+        };
         if let Some(val) = default {
             if let Some(resolved) = resolve_sprite_constant(name, val, &module.sprite_names) {
                 let _ = writeln!(out, "  {ov}{ident}: {ts} = {resolved};");
             } else {
-                let _ = writeln!(out, "  {ov}{ident}: {ts} = {};", crate::ast_printer::emit_constant(val));
+                let _ = writeln!(
+                    out,
+                    "  {ov}{ident}: {ts} = {};",
+                    crate::ast_printer::emit_constant(val)
+                );
             }
         } else {
             let _ = writeln!(out, "  {ov}{ident}: {ts};");
         }
     }
-    let has_fields = !group.struct_def.fields.is_empty() || !group.class_def.static_fields.is_empty();
+    let has_fields =
+        !group.struct_def.fields.is_empty() || !group.class_def.static_fields.is_empty();
     if has_fields && !group.methods.is_empty() {
         out.push('\n');
     }
@@ -2983,7 +3501,9 @@ fn emit_class(
     // Methods — sorted: constructor first, then instance, static, getters, setters.
     // For interfaces, skip the constructor (AS3 interfaces have no constructor bodies).
     // Closures are separated and compiled for inlining as arrow functions.
-    let mut sorted_methods: Vec<FuncId> = group.methods.iter()
+    let mut sorted_methods: Vec<FuncId> = group
+        .methods
+        .iter()
         .copied()
         .filter(|&fid| {
             let mk = module.functions[fid].method_kind;
@@ -2993,7 +3513,9 @@ fn emit_class(
             mk != MethodKind::Closure
         })
         .collect();
-    let closure_fids: Vec<FuncId> = group.methods.iter()
+    let closure_fids: Vec<FuncId> = group
+        .methods
+        .iter()
         .copied()
         .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
         .collect();
@@ -3009,18 +3531,45 @@ fn emit_class(
 
     let empty_set = HashSet::new();
     let empty_map = HashMap::new();
-    let ancestors = class_meta.ancestor_sets.get(&qualified).unwrap_or(&empty_set);
-    let method_names = class_meta.method_name_sets.get(&qualified).unwrap_or(&empty_set);
-    let parent_method_names = class_meta.parent_method_name_sets.get(&qualified).unwrap_or(&empty_set);
-    let instance_fields = class_meta.instance_field_sets.get(&qualified).unwrap_or(&empty_set);
-    let static_method_owners = class_meta.static_method_owner_map.get(&qualified).unwrap_or(&empty_map);
-    let static_field_owners = class_meta.static_field_owner_map.get(&qualified).unwrap_or(&empty_map);
-    let bindable_methods = class_meta.bindable_method_sets.get(&qualified).unwrap_or(&empty_set);
-    let static_fields: HashSet<String> = group.class_def.static_fields.iter()
+    let ancestors = class_meta
+        .ancestor_sets
+        .get(&qualified)
+        .unwrap_or(&empty_set);
+    let method_names = class_meta
+        .method_name_sets
+        .get(&qualified)
+        .unwrap_or(&empty_set);
+    let parent_method_names = class_meta
+        .parent_method_name_sets
+        .get(&qualified)
+        .unwrap_or(&empty_set);
+    let instance_fields = class_meta
+        .instance_field_sets
+        .get(&qualified)
+        .unwrap_or(&empty_set);
+    let static_method_owners = class_meta
+        .static_method_owner_map
+        .get(&qualified)
+        .unwrap_or(&empty_map);
+    let static_field_owners = class_meta
+        .static_field_owner_map
+        .get(&qualified)
+        .unwrap_or(&empty_map);
+    let bindable_methods = class_meta
+        .bindable_method_sets
+        .get(&qualified)
+        .unwrap_or(&empty_set);
+    let static_fields: HashSet<String> = group
+        .class_def
+        .static_fields
+        .iter()
         .map(|(name, _, _)| name.clone())
         .collect();
     // Const instance fields promoted to static — entries with a value.
-    let const_instance_fields: HashSet<String> = group.class_def.static_fields.iter()
+    let const_instance_fields: HashSet<String> = group
+        .class_def
+        .static_fields
+        .iter()
         .filter(|(_, _, val)| val.is_some())
         .map(|(name, _, _)| name.clone())
         .collect();
@@ -3028,18 +3577,41 @@ fn emit_class(
     let suppress_super = extends.is_empty();
 
     // Compile closure bodies for inlining as arrow functions.
-    let closure_bodies = compile_closures(
-        &closure_fids,
-        module,
-        lowering_config,
-        debug,
-    );
+    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
 
     for (i, &fid) in sorted_methods.iter().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        emit_class_method(&mut module.functions[fid], class_names, ancestors, method_names, parent_method_names, instance_fields, &static_fields, static_method_owners, static_field_owners, suppress_super, &const_instance_fields, &class_name, mutable_global_names, late_bound, short_to_qualified, bindable_methods, &closure_bodies, known_classes, lowering_config, engine, &module.sprite_names, &module.object_names, stateful_names, free_func_names, func_sigs, debug, out)?;
+        emit_class_method(
+            &mut module.functions[fid],
+            class_names,
+            ancestors,
+            method_names,
+            parent_method_names,
+            instance_fields,
+            &static_fields,
+            static_method_owners,
+            static_field_owners,
+            suppress_super,
+            &const_instance_fields,
+            &class_name,
+            mutable_global_names,
+            late_bound,
+            short_to_qualified,
+            bindable_methods,
+            &closure_bodies,
+            known_classes,
+            lowering_config,
+            engine,
+            &module.sprite_names,
+            &module.object_names,
+            stateful_names,
+            free_func_names,
+            func_sigs,
+            debug,
+            out,
+        )?;
     }
 
     let _ = writeln!(out, "}}\n");
@@ -3052,13 +3624,20 @@ fn emit_class(
         }
         // Emit registerInterface for implementing classes.
         if !group.class_def.interfaces.is_empty() {
-            let iface_names: Vec<String> = group.class_def.interfaces.iter()
+            let iface_names: Vec<String> = group
+                .class_def
+                .interfaces
+                .iter()
                 .map(|name| {
                     let short = name.rsplit("::").next().unwrap_or(name);
                     sanitize_ident(short)
                 })
                 .collect();
-            let _ = writeln!(out, "registerInterface({class_name}, {});\n", iface_names.join(", "));
+            let _ = writeln!(
+                out,
+                "registerInterface({class_name}, {});\n",
+                iface_names.join(", ")
+            );
         }
     }
     Ok(())
@@ -3073,10 +3652,12 @@ fn compile_closures(
     closure_fids: &[FuncId],
     module: &mut Module,
     lowering_config: &LoweringConfig,
+    engine: EngineKind,
     debug: &DebugConfig,
 ) -> HashMap<String, JsFunction> {
     use reincarnate_core::ir::linear;
 
+    let effective_config = lowering_config_for_engine(lowering_config, engine);
     let mut result = HashMap::new();
     for &fid in closure_fids {
         let func = &mut module.functions[fid];
@@ -3089,7 +3670,7 @@ fn compile_closures(
 
         func.hoist_allocs();
         let shape = structurize::structurize(func);
-        let ast = linear::lower_function_linear(func, &shape, lowering_config, debug);
+        let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
 
         // Closures: self_param_name = None — the first param is the activation
         // scope, NOT `this`. This prevents the lowering pass from substituting
@@ -3159,7 +3740,8 @@ fn emit_class_method(
 
     func.hoist_allocs();
     let shape = structurize::structurize(func);
-    let ast = linear::lower_function_linear(func, &shape, lowering_config, debug);
+    let effective_config = lowering_config_for_engine(lowering_config, engine);
+    let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
 
     // Determine self_param_name for `this` substitution.
     let is_cinit = raw_name == "cinit" && matches!(func.method_kind, MethodKind::Static);
@@ -3174,7 +3756,13 @@ fn emit_class_method(
     let ctx = crate::lower::LowerCtx { self_param_name };
     let js_func = crate::lower::lower_function(&ast, &ctx);
     let mut js_func = match engine {
-        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(js_func, sprite_names, object_names, closure_bodies, Some(&raw_name)),
+        EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(
+            js_func,
+            sprite_names,
+            object_names,
+            closure_bodies,
+            Some(&raw_name),
+        ),
         EngineKind::Flash => {
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
@@ -3189,7 +3777,9 @@ fn emit_class_method(
                 static_field_owners: static_field_owners.clone(),
                 const_instance_fields: const_instance_fields.clone(),
                 class_short_name: Some(class_short_name.to_string()),
-                bindable_methods: if is_cinit || matches!(func.method_kind, MethodKind::Static | MethodKind::Closure) {
+                bindable_methods: if is_cinit
+                    || matches!(func.method_kind, MethodKind::Static | MethodKind::Closure)
+                {
                     HashSet::new()
                 } else {
                     bindable_methods.clone()
@@ -3201,7 +3791,9 @@ fn emit_class_method(
             crate::rewrites::flash::eliminate_dead_activations(&mut jf.body);
             jf
         }
-        EngineKind::Twine => crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies),
+        EngineKind::Twine => {
+            crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies)
+        }
     };
     // Coerce numeric arguments to boolean at call sites where the signature expects boolean.
     if engine == EngineKind::GameMaker {
@@ -3211,17 +3803,14 @@ fn emit_class_method(
     rewrite_late_bound_types(&mut js_func.body, late_bound, short_to_qualified);
     // Hoist super() to top of constructor body (after rewrite produces SuperCall nodes).
     if engine == EngineKind::Flash && func.method_kind == MethodKind::Constructor {
-        crate::rewrites::flash::hoist_super_call(
-            &mut js_func.body,
-            Some(class_short_name),
-        );
+        crate::rewrites::flash::hoist_super_call(&mut js_func.body, Some(class_short_name));
     }
     // Filter cinit: remove assignments that duplicate static readonly field defaults,
     // and skip emitting entirely if the body is empty after filtering.
     if is_cinit {
-        js_func.body.retain(|stmt| {
-            !is_redundant_static_assign(stmt, const_instance_fields)
-        });
+        js_func
+            .body
+            .retain(|stmt| !is_redundant_static_assign(stmt, const_instance_fields));
         if js_func.body.is_empty() {
             return Ok(());
         }
@@ -3242,7 +3831,10 @@ fn emit_class_method(
     // A method needs `override` if a parent class defines a method with the same name.
     // Constructors and cinit blocks are excluded — TypeScript forbids `override` on them.
     let is_override = !is_cinit
-        && !matches!(func.method_kind, MethodKind::Constructor | MethodKind::Static)
+        && !matches!(
+            func.method_kind,
+            MethodKind::Constructor | MethodKind::Static
+        )
         && parent_method_names.contains(&raw_name);
     // Flash constructors receive a `_shims: FlashShims` parameter so each game
     // instance carries its own shim set.  Base classes (suppress_super = true)
@@ -3258,7 +3850,15 @@ fn emit_class_method(
         } else {
             None
         };
-    crate::ast_printer::print_class_method(&js_func, &raw_name, skip_self, preamble.as_deref(), is_override, flash_ctor_extra_param.as_deref(), out);
+    crate::ast_printer::print_class_method(
+        &js_func,
+        &raw_name,
+        skip_self,
+        preamble.as_deref(),
+        is_override,
+        flash_ctor_extra_param.as_deref(),
+        out,
+    );
     Ok(())
 }
 /// Rewrite bare stateful runtime calls to qualified `_rt.foo(args)` form.
@@ -3299,7 +3899,11 @@ fn rewrite_stateful_calls_stmt(
         JsStmt::Expr(e) => rewrite_stateful_calls_expr(e, stateful_names, from_class),
         JsStmt::Return(Some(e)) => rewrite_stateful_calls_expr(e, stateful_names, from_class),
         JsStmt::Return(None) => {}
-        JsStmt::If { cond, then_body, else_body } => {
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
             rewrite_stateful_calls_expr(cond, stateful_names, from_class);
             rewrite_stateful_calls(then_body, stateful_names, from_class);
             rewrite_stateful_calls(else_body, stateful_names, from_class);
@@ -3308,7 +3912,12 @@ fn rewrite_stateful_calls_stmt(
             rewrite_stateful_calls_expr(cond, stateful_names, from_class);
             rewrite_stateful_calls(body, stateful_names, from_class);
         }
-        JsStmt::For { init, cond, update, body } => {
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
             rewrite_stateful_calls(init, stateful_names, from_class);
             rewrite_stateful_calls_expr(cond, stateful_names, from_class);
             rewrite_stateful_calls(update, stateful_names, from_class);
@@ -3327,7 +3936,11 @@ fn rewrite_stateful_calls_stmt(
                 rewrite_stateful_calls(stmts, stateful_names, from_class);
             }
         }
-        JsStmt::Switch { value, cases, default_body } => {
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
             rewrite_stateful_calls_expr(value, stateful_names, from_class);
             for (_, stmts) in cases {
                 rewrite_stateful_calls(stmts, stateful_names, from_class);
@@ -3362,12 +3975,18 @@ fn rewrite_stateful_calls_expr(
         | JsExpr::TypeCheck { expr: inner, .. } => {
             rewrite_stateful_calls_expr(inner, stateful_names, from_class);
         }
-        JsExpr::Field { object, .. } => rewrite_stateful_calls_expr(object, stateful_names, from_class),
+        JsExpr::Field { object, .. } => {
+            rewrite_stateful_calls_expr(object, stateful_names, from_class)
+        }
         JsExpr::Index { collection, index } => {
             rewrite_stateful_calls_expr(collection, stateful_names, from_class);
             rewrite_stateful_calls_expr(index, stateful_names, from_class);
         }
-        JsExpr::Ternary { cond, then_val, else_val } => {
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
             rewrite_stateful_calls_expr(cond, stateful_names, from_class);
             rewrite_stateful_calls_expr(then_val, stateful_names, from_class);
             rewrite_stateful_calls_expr(else_val, stateful_names, from_class);
@@ -3404,7 +4023,9 @@ fn rewrite_stateful_calls_expr(
                 rewrite_stateful_calls_expr(arg, stateful_names, from_class);
             }
         }
-        JsExpr::SuperSet { value, .. } => rewrite_stateful_calls_expr(value, stateful_names, from_class),
+        JsExpr::SuperSet { value, .. } => {
+            rewrite_stateful_calls_expr(value, stateful_names, from_class)
+        }
         JsExpr::NullCoalesceAssign { target, value } => {
             rewrite_stateful_calls_expr(target, stateful_names, from_class);
             rewrite_stateful_calls_expr(value, stateful_names, from_class);
@@ -3414,7 +4035,9 @@ fn rewrite_stateful_calls_expr(
                 rewrite_stateful_calls_expr(arg, stateful_names, from_class);
             }
         }
-        JsExpr::GeneratorResume(inner) => rewrite_stateful_calls_expr(inner, stateful_names, from_class),
+        JsExpr::GeneratorResume(inner) => {
+            rewrite_stateful_calls_expr(inner, stateful_names, from_class)
+        }
         JsExpr::Yield(inner) => {
             if let Some(e) = inner {
                 rewrite_stateful_calls_expr(e, stateful_names, from_class);
@@ -3471,8 +4094,11 @@ fn rewrite_stateful_calls_expr(
             };
         }
         // Leaf nodes — nothing to recurse into.
-        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This
-        | JsExpr::SuperGet(_) | JsExpr::Activation => {}
+        JsExpr::Literal(_)
+        | JsExpr::Var(_)
+        | JsExpr::This
+        | JsExpr::SuperGet(_)
+        | JsExpr::Activation => {}
     }
 }
 
@@ -3489,11 +4115,7 @@ fn prepend_rt_arg_to_free_calls(
     }
 }
 
-fn prepend_rt_arg_stmt(
-    stmt: &mut JsStmt,
-    free_func_names: &HashSet<String>,
-    from_class: bool,
-) {
+fn prepend_rt_arg_stmt(stmt: &mut JsStmt, free_func_names: &HashSet<String>, from_class: bool) {
     match stmt {
         JsStmt::VarDecl { init, .. } => {
             if let Some(expr) = init {
@@ -3511,7 +4133,11 @@ fn prepend_rt_arg_stmt(
         JsStmt::Expr(e) => prepend_rt_arg_expr(e, free_func_names, from_class),
         JsStmt::Return(Some(e)) => prepend_rt_arg_expr(e, free_func_names, from_class),
         JsStmt::Return(None) => {}
-        JsStmt::If { cond, then_body, else_body } => {
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
             prepend_rt_arg_expr(cond, free_func_names, from_class);
             prepend_rt_arg_to_free_calls(then_body, free_func_names, from_class);
             prepend_rt_arg_to_free_calls(else_body, free_func_names, from_class);
@@ -3520,7 +4146,12 @@ fn prepend_rt_arg_stmt(
             prepend_rt_arg_expr(cond, free_func_names, from_class);
             prepend_rt_arg_to_free_calls(body, free_func_names, from_class);
         }
-        JsStmt::For { init, cond, update, body } => {
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
             prepend_rt_arg_to_free_calls(init, free_func_names, from_class);
             prepend_rt_arg_expr(cond, free_func_names, from_class);
             prepend_rt_arg_to_free_calls(update, free_func_names, from_class);
@@ -3539,7 +4170,11 @@ fn prepend_rt_arg_stmt(
                 prepend_rt_arg_to_free_calls(stmts, free_func_names, from_class);
             }
         }
-        JsStmt::Switch { value, cases, default_body } => {
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
             prepend_rt_arg_expr(value, free_func_names, from_class);
             for (_, stmts) in cases {
                 prepend_rt_arg_to_free_calls(stmts, free_func_names, from_class);
@@ -3550,11 +4185,7 @@ fn prepend_rt_arg_stmt(
     }
 }
 
-fn prepend_rt_arg_expr(
-    expr: &mut JsExpr,
-    free_func_names: &HashSet<String>,
-    from_class: bool,
-) {
+fn prepend_rt_arg_expr(expr: &mut JsExpr, free_func_names: &HashSet<String>, from_class: bool) {
     // Recurse into children first.
     match expr {
         JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
@@ -3580,7 +4211,11 @@ fn prepend_rt_arg_expr(
             prepend_rt_arg_expr(collection, free_func_names, from_class);
             prepend_rt_arg_expr(index, free_func_names, from_class);
         }
-        JsExpr::Ternary { cond, then_val, else_val } => {
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
             prepend_rt_arg_expr(cond, free_func_names, from_class);
             prepend_rt_arg_expr(then_val, free_func_names, from_class);
             prepend_rt_arg_expr(else_val, free_func_names, from_class);
@@ -3660,11 +4295,13 @@ fn prepend_rt_arg_expr(
             }
         }
         // Leaf nodes — nothing to recurse into.
-        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This
-        | JsExpr::SuperGet(_) | JsExpr::Activation => {}
+        JsExpr::Literal(_)
+        | JsExpr::Var(_)
+        | JsExpr::This
+        | JsExpr::SuperGet(_)
+        | JsExpr::Activation => {}
     }
 }
-
 
 /// Whether a cinit statement is a redundant assignment to a field that already
 /// has a `static readonly` default value on the class.
@@ -3698,7 +4335,13 @@ mod tests {
     fn build_and_emit(build: impl FnOnce(&mut ModuleBuilder)) -> String {
         let mut mb = ModuleBuilder::new("test");
         build(&mut mb);
-        emit_module_to_string(&mut mb.build(), &LoweringConfig::default(), None, &DebugConfig::none()).unwrap()
+        emit_module_to_string(
+            &mut mb.build(),
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -3706,7 +4349,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64), Type::Int(64)],
-                return_ty: Type::Int(64), ..Default::default() };
+                return_ty: Type::Int(64),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
             let a = fb.param(0);
             let b = fb.param(1);
@@ -3717,8 +4362,14 @@ mod tests {
 
         assert!(out.contains("export function add(v0: number, v1: number): number {"));
         // Single-use sum is inlined into return.
-        assert!(out.contains("return v0 + v1;"), "Should inline sum into return:\n{out}");
-        assert!(!out.contains("let v2"), "Single-use v2 should be inlined:\n{out}");
+        assert!(
+            out.contains("return v0 + v1;"),
+            "Should inline sum into return:\n{out}"
+        );
+        assert!(
+            !out.contains("let v2"),
+            "Single-use v2 should be inlined:\n{out}"
+        );
         // Single block → no dispatch loop.
         assert!(!out.contains("$block"));
     }
@@ -3728,7 +4379,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-                return_ty: Type::Int(64), ..Default::default() };
+                return_ty: Type::Int(64),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("choose", sig, Visibility::Public);
 
             let cond = fb.param(0);
@@ -3750,11 +4403,20 @@ mod tests {
         });
 
         // Structured output: if/else instead of dispatch loop.
-        assert!(!out.contains("$block"), "Should not use dispatch loop:\n{out}");
+        assert!(
+            !out.contains("$block"),
+            "Should not use dispatch loop:\n{out}"
+        );
         assert!(out.contains("if (v0)"), "Should have if (v0):\n{out}");
         // Block-param vars folded away: return v1/v2 directly.
-        assert!(out.contains("return v1;"), "Should return v1 directly:\n{out}");
-        assert!(out.contains("return v2;"), "Should return v2 directly:\n{out}");
+        assert!(
+            out.contains("return v1;"),
+            "Should return v1 directly:\n{out}"
+        );
+        assert!(
+            out.contains("return v2;"),
+            "Should return v2 directly:\n{out}"
+        );
     }
 
     #[test]
@@ -3848,7 +4510,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
             let x = fb.const_int(100);
             let y = fb.const_int(200);
@@ -3871,7 +4535,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("tick", sig, Visibility::Public);
             fb.system_call("audio", "play", &[], Type::Void);
             fb.system_call("input", "update", &[], Type::Void);
@@ -3888,7 +4554,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("noop", sig, Visibility::Public);
             fb.ret(None);
             mb.add_function(fb.build());
@@ -3902,7 +4570,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("constants", sig, Visibility::Public);
             // Each constant is passed to a call so it actually appears in output.
             let a = fb.const_null();
@@ -3927,7 +4597,10 @@ mod tests {
         assert!(out.contains("42"), "Should contain 42:\n{out}");
         assert!(out.contains("3.125"), "Should contain 3.125:\n{out}");
         // Multiline strings are emitted as template literals
-        assert!(out.contains("`hello \"world\"\nnewline`"), "Should contain template literal string:\n{out}");
+        assert!(
+            out.contains("`hello \"world\"\nnewline`"),
+            "Should contain template literal string:\n{out}"
+        );
     }
 
     #[test]
@@ -3935,7 +4608,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
 
             let a = fb.const_int(1);
@@ -3953,7 +4628,10 @@ mod tests {
         });
 
         // Constants are inlined into the aggregate expressions.
-        assert!(out.contains("[1, 2]"), "Should inline consts into array:\n{out}");
+        assert!(
+            out.contains("[1, 2]"),
+            "Should inline consts into array:\n{out}"
+        );
         assert!(
             out.contains("{ x: 10.0, y: 20.0 }"),
             "Should inline consts into struct:\n{out}"
@@ -3967,7 +4645,9 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("identity", sig, Visibility::Public);
         let param = fb.param(0);
         // Alloc → Store → Load chain (typical local variable pattern).
@@ -3982,7 +4662,13 @@ mod tests {
 
         // Run mem2reg IR pass, then emit.
         let mut result = Mem2Reg.apply(module).unwrap();
-        let out = emit_module_to_string(&mut result.module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut result.module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         // The alloc/store/load should be eliminated; return refers to the
         // original parameter directly.
@@ -3993,7 +4679,10 @@ mod tests {
     #[test]
     fn sanitize_ident_handles_avm2_names() {
         assert_eq!(sanitize_ident("Flash.Object"), "Flash_Object");
-        assert_eq!(sanitize_ident("flash.display::Loader"), "flash_display__Loader");
+        assert_eq!(
+            sanitize_ident("flash.display::Loader"),
+            "flash_display__Loader"
+        );
         assert_eq!(sanitize_ident("4l9JT7u2nN1ZFk+5"), "_4l9JT7u2nN1ZFk_5");
         assert_eq!(sanitize_ident("l/YEs377IakicDh/"), "l_YEs377IakicDh_");
         assert_eq!(sanitize_ident("normal_name"), "normal_name");
@@ -4014,7 +4703,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic, ..Default::default() };
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("get_prop", sig, Visibility::Public);
             let obj = fb.param(0);
             // Qualified field → short name extraction.
@@ -4040,7 +4731,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("diamond", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -4063,10 +4756,19 @@ mod tests {
         });
 
         // Both branches are empty — entire if should be omitted.
-        assert!(!out.contains("$block"), "Should not use dispatch loop:\n{out}");
-        assert!(!out.contains("if ("), "Empty diamond should omit entire if:\n{out}");
+        assert!(
+            !out.contains("$block"),
+            "Should not use dispatch loop:\n{out}"
+        );
+        assert!(
+            !out.contains("if ("),
+            "Empty diamond should omit entire if:\n{out}"
+        );
         // Trailing void return should be stripped.
-        assert!(!out.contains("return;"), "Should not have trailing return:\n{out}");
+        assert!(
+            !out.contains("return;"),
+            "Should not have trailing return:\n{out}"
+        );
     }
 
     #[test]
@@ -4074,7 +4776,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("while_loop", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -4096,7 +4800,10 @@ mod tests {
             mb.add_function(fb.build());
         });
 
-        assert!(!out.contains("$block"), "Should not use dispatch loop:\n{out}");
+        assert!(
+            !out.contains("$block"),
+            "Should not use dispatch loop:\n{out}"
+        );
         assert!(out.contains("while ("), "Should have while loop:\n{out}");
     }
 
@@ -4107,7 +4814,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("for_loop", sig, Visibility::Public);
 
             let (header, header_vals) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -4134,14 +4843,23 @@ mod tests {
             mb.add_function(fb.build());
         });
 
-        assert!(!out.contains("$block"), "Should not use dispatch loop:\n{out}");
+        assert!(
+            !out.contains("$block"),
+            "Should not use dispatch loop:\n{out}"
+        );
         // For-loop emits as while(cond) with init assigns before and
         // update assigns inside.
         assert!(out.contains("while ("), "Should have loop:\n{out}");
         // Init assigns header param v0 from inlined const 0 (merged into decl).
-        assert!(out.contains("let v0: number = 0;"), "Should have init assign:\n{out}");
+        assert!(
+            out.contains("let v0: number = 0;"),
+            "Should have init assign:\n{out}"
+        );
         // Update assigns header param v0 from inlined v0 + 1 (compound assignment).
-        assert!(out.contains("v0 += 1;"), "Should have update assign:\n{out}");
+        assert!(
+            out.contains("v0 += 1;"),
+            "Should have update assign:\n{out}"
+        );
     }
 
     #[test]
@@ -4159,7 +4877,9 @@ mod tests {
         // Constructor: (this: dyn) -> void
         let ctor_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Fighter::new", ctor_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -4172,7 +4892,9 @@ mod tests {
         // Instance method: (this: dyn, amount: i32) -> void
         let method_sig = FunctionSig {
             params: vec![Type::Dynamic, Type::Int(32)],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Fighter::attack", method_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -4189,7 +4911,9 @@ mod tests {
         // a self/scope param that the emitter skips.
         let static_sig = FunctionSig {
             params: vec![Type::Dynamic, Type::Int(32)],
-            return_ty: Type::Int(32), ..Default::default() };
+            return_ty: Type::Int(32),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Fighter::create", static_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -4204,7 +4928,9 @@ mod tests {
         // Getter: (this: dyn) -> i32
         let getter_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Int(32), ..Default::default() };
+            return_ty: Type::Int(32),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Fighter::get_health", getter_sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -4229,7 +4955,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         // Class declaration — `extends Object` is suppressed (redundant in JS).
         assert!(
@@ -4278,7 +5010,9 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Foo::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "Foo".into(), MethodKind::Constructor);
         fb.ret(None);
@@ -4299,15 +5033,26 @@ mod tests {
         // Free function.
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
-        assert!(out.contains("export class Foo {"), "Should have class:\n{out}");
+        assert!(
+            out.contains("export class Foo {"),
+            "Should have class:\n{out}"
+        );
         assert!(
             out.contains("export function init(): void {"),
             "Should have free function:\n{out}"
@@ -4316,7 +5061,12 @@ mod tests {
 
     #[test]
     fn relative_import_path_same_dir() {
-        let from = vec!["classes".into(), "Scenes".into(), "Swamp".into(), "Swamp".into()];
+        let from = vec![
+            "classes".into(),
+            "Scenes".into(),
+            "Swamp".into(),
+            "Swamp".into(),
+        ];
         let to = vec![
             "classes".into(),
             "Scenes".into(),
@@ -4328,7 +5078,12 @@ mod tests {
 
     #[test]
     fn relative_import_path_different_dir() {
-        let from = vec!["classes".into(), "Scenes".into(), "Swamp".into(), "Swamp".into()];
+        let from = vec![
+            "classes".into(),
+            "Scenes".into(),
+            "Swamp".into(),
+            "Swamp".into(),
+        ];
         let to = vec!["classes".into(), "CoC".into()];
         assert_eq!(relative_import_path(&from, &to), "../../CoC");
     }
@@ -4355,7 +5110,9 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Swamp::new", sig, Visibility::Public);
         fb.set_class(
             vec!["classes".into(), "Scenes".into()],
@@ -4379,12 +5136,17 @@ mod tests {
         });
 
         let mut module = mb.build();
-        emit_module_to_dir(&mut module, dir.path(), &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        emit_module_to_dir(
+            &mut module,
+            dir.path(),
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         // Check nested file exists.
-        let class_file = dir
-            .path()
-            .join("frame1/classes/Scenes/Swamp.ts");
+        let class_file = dir.path().join("frame1/classes/Scenes/Swamp.ts");
         assert!(class_file.exists(), "Nested class file should exist");
 
         let content = fs::read_to_string(&class_file).unwrap();
@@ -4424,9 +5186,15 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Monster::new", sig.clone(), Visibility::Public);
-        fb.set_class(vec!["classes".into()], "Monster".into(), MethodKind::Constructor);
+        fb.set_class(
+            vec!["classes".into()],
+            "Monster".into(),
+            MethodKind::Constructor,
+        );
         fb.ret(None);
         let monster_ctor = mb.add_function(fb.build());
 
@@ -4463,7 +5231,14 @@ mod tests {
         });
 
         let mut module = mb.build();
-        emit_module_to_dir(&mut module, dir.path(), &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        emit_module_to_dir(
+            &mut module,
+            dir.path(),
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         let swamp_file = dir.path().join("frame1/classes/Scenes/Swamp.ts");
         let content = fs::read_to_string(&swamp_file).unwrap();
@@ -4488,7 +5263,9 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Child::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "Child".into(), MethodKind::Constructor);
         let this = fb.param(0);
@@ -4512,7 +5289,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("super(_shims);"),
@@ -4552,7 +5335,9 @@ mod tests {
         // Container constructor does findPropStrict + getField + construct.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Container::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "Container".into(), MethodKind::Constructor);
         let _this = fb.param(0);
@@ -4572,7 +5357,9 @@ mod tests {
         // Widget constructor (empty).
         let sig2 = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb2 = FunctionBuilder::new("Widget::new", sig2, Visibility::Public);
         fb2.set_class(Vec::new(), "Widget".into(), MethodKind::Constructor);
         fb2.ret(None);
@@ -4602,7 +5389,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("new Widget(this._shims)"),
@@ -4623,18 +5416,15 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic, ..Default::default() };
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let receiver = fb.param(0);
             let arg1 = fb.const_string("text");
             let arg2 = fb.const_bool(true);
             // Method call: receiver.outputText("text", true)
-            let result = fb.call_method(
-                receiver,
-                "outputText",
-                &[arg1, arg2],
-                Type::Dynamic,
-            );
+            let result = fb.call_method(receiver, "outputText", &[arg1, arg2], Type::Dynamic);
             fb.ret(Some(result));
             mb.add_function(fb.build());
         });
@@ -4654,7 +5444,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic, ..Default::default() };
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let obj = fb.param(0);
             let result = fb.get_field(obj, "classes:BaseContent::flags", Type::Dynamic);
@@ -4662,7 +5454,10 @@ mod tests {
             mb.add_function(fb.build());
         });
 
-        assert!(out.contains(".flags"), "Should use short field name:\n{out}");
+        assert!(
+            out.contains(".flags"),
+            "Should use short field name:\n{out}"
+        );
         assert!(
             !out.contains("BaseContent"),
             "Should not have qualified name:\n{out}"
@@ -4674,7 +5469,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic, Type::Int(32)],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let obj = fb.param(0);
             let val = fb.param(1);
@@ -4707,7 +5504,9 @@ mod tests {
         // Instance method that does findPropStrict("classes:Hero::hp") + getField.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic, ..Default::default() };
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Hero::getHp", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -4730,7 +5529,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("this.hp"),
@@ -4762,7 +5567,9 @@ mod tests {
         // Child instance method does findPropStrict("classes:Base::player") + getField.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic, ..Default::default() };
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Child::getPlayer", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Child".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -4796,7 +5603,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("this.player"),
@@ -4813,11 +5626,12 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Dynamic, ..Default::default() };
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
             let name = fb.const_string("classes:Hero::hp");
-            let scope =
-                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             let val = fb.get_field(scope, "classes:Hero::hp", Type::Dynamic);
             fb.ret(Some(val));
             mb.add_function(fb.build());
@@ -4857,7 +5671,9 @@ mod tests {
         // Hero method does findPropStrict("classes:Villain::power") — unrelated class.
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic, ..Default::default() };
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Hero::spy", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Hero".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -4891,7 +5707,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             !out.contains("this.power"),
@@ -4913,12 +5735,13 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic, ..Default::default() };
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let name = fb.const_string("rand");
-            let scope =
-                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             let rand_fn = fb.get_field(scope, "rand", Type::Dynamic);
             let result = fb.call_indirect(rand_fn, &[x], Type::Dynamic);
             fb.ret(Some(result));
@@ -4941,11 +5764,12 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("X");
-            let scope =
-                fb.system_call("Flash.Scope", "findProperty", &[name], Type::Dynamic);
+            let scope = fb.system_call("Flash.Scope", "findProperty", &[name], Type::Dynamic);
             let val = fb.const_int(5);
             fb.set_field(scope, "X", val);
             fb.ret(None);
@@ -4976,14 +5800,15 @@ mod tests {
 
         let sig = FunctionSig {
             params: vec![Type::Dynamic, Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Base::setTemp", sig, Visibility::Public);
         fb.set_class(vec!["classes".into()], "Base".into(), MethodKind::Instance);
         let _this = fb.param(0);
         let v = fb.param(1);
         let name = fb.const_string("classes:Base::temp");
-        let scope =
-            fb.system_call("Flash.Scope", "findProperty", &[name], Type::Dynamic);
+        let scope = fb.system_call("Flash.Scope", "findProperty", &[name], Type::Dynamic);
         fb.set_field(scope, "classes:Base::temp", v);
         fb.ret(None);
         let method_id = mb.add_function(fb.build());
@@ -5001,7 +5826,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("this.temp = "),
@@ -5019,11 +5850,12 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Dynamic, ..Default::default() };
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("flash.events::Event");
-            let scope =
-                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             let event_cls = fb.get_field(scope, "flash.events::Event", Type::Dynamic);
             let change = fb.get_field(event_cls, "CHANGE", Type::Dynamic);
             fb.ret(Some(change));
@@ -5034,10 +5866,7 @@ mod tests {
             !out.contains("Flash_Scope.findPropStrict"),
             "findPropStrict call should be resolved away:\n{out}"
         );
-        assert!(
-            out.contains("Event"),
-            "Should resolve to Event:\n{out}"
-        );
+        assert!(out.contains("Event"), "Should resolve to Event:\n{out}");
     }
 
     #[test]
@@ -5046,12 +5875,13 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64)],
-                return_ty: Type::Int(64), ..Default::default() };
+                return_ty: Type::Int(64),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let name = fb.const_string("rand");
-            let scope =
-                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             let result = fb.call_method(scope, "rand", &[x], Type::Int(64));
             fb.ret(Some(result));
             mb.add_function(fb.build());
@@ -5074,11 +5904,12 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("flash.net::registerClassAlias");
-            let scope =
-                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             let alias = fb.const_string("Foo");
             let cls = fb.const_string("FooCls");
             fb.call_method(scope, "registerClassAlias", &[alias, cls], Type::Void);
@@ -5106,7 +5937,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64), Type::Int(64)],
-                return_ty: Type::Int(64), ..Default::default() };
+                return_ty: Type::Int(64),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let a = fb.param(0);
             let b = fb.param(1);
@@ -5127,12 +5960,13 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Dynamic, ..Default::default() };
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let name = fb.const_string("int");
-            let scope =
-                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             let int_fn = fb.get_field(scope, "int", Type::Dynamic);
             let casted = fb.call_indirect(int_fn, &[x], Type::Int(64));
             let sum = fb.add(scope, casted);
@@ -5157,11 +5991,12 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let name = fb.const_string("rand");
-            let _scope =
-                fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+            let _scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
             fb.ret(None);
             mb.add_function(fb.build());
         });
@@ -5195,7 +6030,9 @@ mod tests {
         // Base class with isNaga method.
         let base_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Base::isNaga", base_sig, Visibility::Public);
         fb.set_class(vec![], "Base".into(), MethodKind::Instance);
         let _this = fb.param(0);
@@ -5218,13 +6055,14 @@ mod tests {
         // Child class with a method that calls isNaga via scope lookup.
         let child_sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Child::check", child_sig, Visibility::Public);
         fb.set_class(vec![], "Child".into(), MethodKind::Instance);
         let _this = fb.param(0);
         let name = fb.const_string("isNaga");
-        let scope =
-            fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
         let result = fb.call_method(scope, "isNaga", &[], Type::Bool);
         fb.ret(Some(result));
         let child_method_id = mb.add_function(fb.build());
@@ -5242,7 +6080,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("this.isNaga()"),
@@ -5260,7 +6104,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool, ..Default::default() };
+                return_ty: Type::Bool,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let player = fb.param(0);
             let result = fb.call_method(player, "isNaga", &[], Type::Bool);
@@ -5280,7 +6126,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Bool, ..Default::default() };
+                return_ty: Type::Bool,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Bool);
@@ -5300,7 +6148,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool, ..Default::default() };
+                return_ty: Type::Bool,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Bool);
@@ -5321,7 +6171,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool, ..Default::default() };
+                return_ty: Type::Bool,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Bool);
@@ -5347,7 +6199,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -5372,10 +6226,7 @@ mod tests {
             mb.add_function(fb.build());
         });
 
-        assert!(
-            out.contains("if (v0) {"),
-            "Should have if block:\n{out}"
-        );
+        assert!(out.contains("if (v0) {"), "Should have if block:\n{out}");
         assert!(
             !out.contains("} else {"),
             "Empty else should be suppressed:\n{out}"
@@ -5388,7 +6239,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -5429,7 +6282,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
 
@@ -5464,7 +6319,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Bool],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let cond = fb.param(0);
             let not_cond = fb.not(cond);
@@ -5494,10 +6351,7 @@ mod tests {
             out.contains("if (v0) {"),
             "Should unwrap Not and use original condition:\n{out}"
         );
-        assert!(
-            !out.contains("!(!"),
-            "Should not double-negate:\n{out}"
-        );
+        assert!(!out.contains("!(!"), "Should not double-negate:\n{out}");
     }
 
     #[test]
@@ -5506,7 +6360,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Int(64), Type::Int(64)],
-                return_ty: Type::Void, ..Default::default() };
+                return_ty: Type::Void,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let a = fb.param(0);
             let b = fb.param(1);
@@ -5537,10 +6393,7 @@ mod tests {
             out.contains("if (v0 < v1) {"),
             "Should flip Cmp(Ge) to < when then is empty:\n{out}"
         );
-        assert!(
-            !out.contains("!("),
-            "Should not wrap with !():\n{out}"
-        );
+        assert!(!out.contains("!("), "Should not wrap with !():\n{out}");
     }
 
     #[test]
@@ -5559,13 +6412,18 @@ mod tests {
         // cinit: static initializer that sets a static field via scope lookup
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("Settings::cinit", sig, Visibility::Public);
-        fb.set_class(vec!["classes".into()], "Settings".into(), MethodKind::Static);
+        fb.set_class(
+            vec!["classes".into()],
+            "Settings".into(),
+            MethodKind::Static,
+        );
         let _scope_param = fb.param(0);
         let name = fb.const_string("debugBuild");
-        let scope =
-            fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Dynamic);
         let val = fb.const_bool(true);
         fb.set_field(scope, "debugBuild", val);
         fb.ret(None);
@@ -5584,7 +6442,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
         assert!(
             out.contains("this.debugBuild = true"),
             "cinit should emit this.field, not bare field:\n{out}"
@@ -5609,7 +6473,9 @@ mod tests {
         // Interface constructor (will be skipped).
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("IEventListener::new", sig, Visibility::Public);
         fb.set_class(Vec::new(), "IEventListener".into(), MethodKind::Constructor);
         fb.ret(None);
@@ -5628,7 +6494,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("export abstract class IEventListener {"),
@@ -5661,7 +6533,9 @@ mod tests {
         });
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("IClickable::new", sig.clone(), Visibility::Public);
         fb.set_class(Vec::new(), "IClickable".into(), MethodKind::Constructor);
         fb.ret(None);
@@ -5702,7 +6576,13 @@ mod tests {
         });
 
         let mut module = mb.build();
-        let out = emit_module_to_string(&mut module, &LoweringConfig::default(), None, &DebugConfig::none()).unwrap();
+        let out = emit_module_to_string(
+            &mut module,
+            &LoweringConfig::default(),
+            None,
+            &DebugConfig::none(),
+        )
+        .unwrap();
 
         assert!(
             out.contains("registerInterface(Button, IClickable)"),
@@ -5715,7 +6595,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool, ..Default::default() };
+                return_ty: Type::Bool,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let check = fb.type_check(x, Type::Struct("Monster".into()));
@@ -5738,7 +6620,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Struct("Monster".into()), ..Default::default() };
+                return_ty: Type::Struct("Monster".into()),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let casted = fb.cast(x, Type::Struct("Monster".into()));
@@ -5761,7 +6645,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Int(32), ..Default::default() };
+                return_ty: Type::Int(32),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let coerced = fb.coerce(x, Type::Int(32));
@@ -5780,7 +6666,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Float(64), ..Default::default() };
+                return_ty: Type::Float(64),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let coerced = fb.coerce(x, Type::Float(64));
@@ -5799,7 +6687,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::UInt(32), ..Default::default() };
+                return_ty: Type::UInt(32),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let coerced = fb.coerce(x, Type::UInt(32));
@@ -5818,7 +6708,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::String, ..Default::default() };
+                return_ty: Type::String,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let coerced = fb.coerce(x, Type::String);
@@ -5837,7 +6729,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Bool, ..Default::default() };
+                return_ty: Type::Bool,
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let coerced = fb.coerce(x, Type::Bool);
@@ -5856,7 +6750,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Dynamic],
-                return_ty: Type::Struct("Monster".into()), ..Default::default() };
+                return_ty: Type::Struct("Monster".into()),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             let coerced = fb.coerce(x, Type::Struct("Monster".into()));
@@ -5880,7 +6776,9 @@ mod tests {
         let out = build_and_emit(|mb| {
             let sig = FunctionSig {
                 params: vec![Type::Struct("Monster".into())],
-                return_ty: Type::Struct("Monster".into()), ..Default::default() };
+                return_ty: Type::Struct("Monster".into()),
+                ..Default::default()
+            };
             let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
             let x = fb.param(0);
             // Cast to same type — should be eliminated by linear lowering.
@@ -5894,5 +6792,4 @@ mod tests {
             "Redundant asType should be eliminated:\n{out}"
         );
     }
-
 }

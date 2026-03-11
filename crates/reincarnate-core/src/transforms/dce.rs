@@ -203,9 +203,7 @@ fn eliminate_dead_code(func: &mut Function) -> bool {
                 changed = true;
             }
         } else {
-            if !func.blocks[block_id].insts.is_empty()
-                || !func.blocks[block_id].params.is_empty()
-            {
+            if !func.blocks[block_id].insts.is_empty() || !func.blocks[block_id].params.is_empty() {
                 changed = true;
             }
             func.blocks[block_id].insts.clear();
@@ -349,9 +347,7 @@ fn branch_target_args(op: &Op) -> Vec<(BlockId, &[ValueId])> {
             else_args,
             ..
         } => vec![(*then_target, then_args), (*else_target, else_args)],
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             let mut result: Vec<(BlockId, &[ValueId])> = cases
                 .iter()
                 .map(|(_, target, args)| (*target, args.as_slice()))
@@ -404,9 +400,7 @@ fn strip_dead_branch_args(op: &mut Op, dead: &HashMap<BlockId, Vec<bool>>) {
             filter_args(*then_target, then_args, dead);
             filter_args(*else_target, else_args, dead);
         }
-        Op::Switch {
-            cases, default, ..
-        } => {
+        Op::Switch { cases, default, .. } => {
             for (_, target, args) in cases.iter_mut() {
                 filter_args(*target, args, dead);
             }
@@ -426,10 +420,7 @@ impl Transform for DeadCodeElimination {
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             changed |= eliminate_dead_code(&mut module.functions[func_id]);
         }
-        Ok(TransformResult {
-            module,
-            changed,
-        })
+        Ok(TransformResult { module, changed })
     }
 }
 
@@ -459,7 +450,9 @@ mod tests {
     fn dead_arithmetic_removed() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(2);
@@ -481,7 +474,9 @@ mod tests {
     fn used_arithmetic_kept() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let b = fb.const_int(2);
@@ -499,7 +494,9 @@ mod tests {
     fn side_effects_kept() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let _call_result = fb.call("side_effect", &[], Type::Void);
         fb.ret(None);
@@ -515,7 +512,9 @@ mod tests {
     fn chained_dead_code() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(1);
         let _b = fb.add(a, a); // unused chain
@@ -531,7 +530,9 @@ mod tests {
     fn constant_branch_simplified() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let then_block = fb.create_block();
@@ -581,7 +582,9 @@ mod tests {
     fn identity_no_change() {
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.param(0);
         let b = fb.param(1);
@@ -601,7 +604,9 @@ mod tests {
         use crate::transforms::util::test_helpers::assert_idempotent;
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let _a = fb.const_int(1);
         let _b = fb.const_int(2);
@@ -614,7 +619,9 @@ mod tests {
     fn unreachable_block_cleared() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
 
         let dead_block = fb.create_block();
@@ -639,7 +646,9 @@ mod tests {
     fn void_function_minimal() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let _dead = fb.const_int(99); // unused
         fb.ret(None);
@@ -647,7 +656,10 @@ mod tests {
         let func = apply_dce(fb.build());
         let entry = func.entry;
         assert_eq!(block_inst_count(&func, entry), 1);
-        assert!(matches!(func.insts[func.blocks[entry].insts[0]].op, Op::Return(None)));
+        assert!(matches!(
+            func.insts[func.blocks[entry].insts[0]].op,
+            Op::Return(None)
+        ));
     }
 
     /// Store with unused ptr is not eliminated (side effect).
@@ -655,7 +667,9 @@ mod tests {
     fn store_kept_as_side_effect() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
@@ -664,7 +678,9 @@ mod tests {
 
         let func = apply_dce(fb.build());
         let entry = func.entry;
-        let has_store = func.blocks[entry].insts.iter()
+        let has_store = func.blocks[entry]
+            .insts
+            .iter()
             .any(|&id| matches!(func.insts[id].op, Op::Store { .. }));
         assert!(has_store, "Store should be preserved as a side effect");
     }
@@ -676,7 +692,9 @@ mod tests {
     fn dead_chain_depth() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let mut v = fb.const_int(1);
         for _ in 0..9 {
@@ -688,7 +706,11 @@ mod tests {
 
         let func = apply_dce(fb.build());
         let entry = func.entry;
-        assert_eq!(block_inst_count(&func, entry), 1, "all dead chain should be removed");
+        assert_eq!(
+            block_inst_count(&func, entry),
+            1,
+            "all dead chain should be removed"
+        );
     }
 
     /// Value used by both live and dead instruction — value kept.
@@ -696,21 +718,27 @@ mod tests {
     fn shared_value_live_and_dead_uses() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         let c = fb.const_int(2);
-        let live_use = fb.add(p, c);     // feeds return
-        let _dead_use = fb.mul(p, c);    // unused
+        let live_use = fb.add(p, c); // feeds return
+        let _dead_use = fb.mul(p, c); // unused
         fb.ret(Some(live_use));
 
         let func = apply_dce(fb.build());
         let entry = func.entry;
         // const 2, add, return should survive. mul should be removed.
-        let has_mul = func.blocks[entry].insts.iter()
+        let has_mul = func.blocks[entry]
+            .insts
+            .iter()
             .any(|&id| matches!(func.insts[id].op, Op::Mul(_, _)));
         assert!(!has_mul, "dead mul should be eliminated");
-        let has_add = func.blocks[entry].insts.iter()
+        let has_add = func.blocks[entry]
+            .insts
+            .iter()
             .any(|&id| matches!(func.insts[id].op, Op::Add(_, _)));
         assert!(has_add, "live add should be preserved");
     }
@@ -722,7 +750,9 @@ mod tests {
     fn branch_arg_chain_liveness() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let val = fb.const_int(42);
@@ -751,17 +781,23 @@ mod tests {
         let func = apply_dce(fb.build());
         // The final merge param should still exist and feed the Return.
         let has_return_val = func.blocks.values().any(|block| {
-            block.insts.iter().any(|&id| {
-                matches!(func.insts[id].op, Op::Return(Some(_)))
-            })
+            block
+                .insts
+                .iter()
+                .any(|&id| matches!(func.insts[id].op, Op::Return(Some(_))))
         });
         assert!(has_return_val, "return value must survive branch-arg chain");
         // All merge blocks should still have their params (not stripped as dead).
-        let non_entry_blocks_with_params = func.blocks.iter()
+        let non_entry_blocks_with_params = func
+            .blocks
+            .iter()
             .filter(|(id, _)| *id != func.entry)
             .filter(|(_, b)| !b.params.is_empty())
             .count();
-        assert_eq!(non_entry_blocks_with_params, 4, "all 4 merge blocks should keep their params");
+        assert_eq!(
+            non_entry_blocks_with_params, 4,
+            "all 4 merge blocks should keep their params"
+        );
     }
 
     /// SystemCall result unused — call preserved due to side effects.
@@ -769,14 +805,18 @@ mod tests {
     fn system_call_kept() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let _result = fb.system_call("Engine", "init", &[], Type::Void);
         fb.ret(None);
 
         let func = apply_dce(fb.build());
         let entry = func.entry;
-        let has_syscall = func.blocks[entry].insts.iter()
+        let has_syscall = func.blocks[entry]
+            .insts
+            .iter()
             .any(|&id| matches!(func.insts[id].op, Op::SystemCall { .. }));
         assert!(has_syscall, "SystemCall should be kept as side effect");
     }

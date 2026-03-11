@@ -69,10 +69,7 @@ pub enum Shape {
         body: Box<Shape>,
     },
     /// `while (true) { body }` — general loop with Break/Continue.
-    Loop {
-        header: BlockId,
-        body: Box<Shape>,
-    },
+    Loop { header: BlockId, body: Box<Shape> },
     /// `break;`
     Break,
     /// `continue;`
@@ -567,8 +564,15 @@ impl<'a> Structurizer<'a> {
                 .map(|last| self.trailing_merge_assigns(last, merge))
                 .unwrap_or_default(),
             Shape::LogicalOr { phi, .. } | Shape::LogicalAnd { phi, .. } => {
-                if self.func.blocks[merge].params.iter().any(|p| p.value == *phi) {
-                    vec![BlockArgAssign { dst: *phi, src: *phi }]
+                if self.func.blocks[merge]
+                    .params
+                    .iter()
+                    .any(|p| p.value == *phi)
+                {
+                    vec![BlockArgAssign {
+                        dst: *phi,
+                        src: *phi,
+                    }]
                 } else {
                     vec![]
                 }
@@ -740,8 +744,7 @@ impl<'a> Structurizer<'a> {
                     // then→exit, else→body (continues in loop)
                     if !then_in_loop && else_in_loop {
                         let exit_shape = self.loop_exit_shape(then_target, lb);
-                        let else_body_shape =
-                            self.structurize_region(else_target, None, loop_body);
+                        let else_body_shape = self.structurize_region(else_target, None, loop_body);
                         return Shape::IfElse {
                             block,
                             cond,
@@ -757,8 +760,7 @@ impl<'a> Structurizer<'a> {
                     // then→body (continues in loop), else→exit
                     if then_in_loop && !else_in_loop {
                         let exit_shape = self.loop_exit_shape(else_target, lb);
-                        let then_body_shape =
-                            self.structurize_region(then_target, None, loop_body);
+                        let then_body_shape = self.structurize_region(then_target, None, loop_body);
                         return Shape::IfElse {
                             block,
                             cond,
@@ -773,8 +775,7 @@ impl<'a> Structurizer<'a> {
 
                     // Both in loop — one might be the header (continue).
                     if then_is_header {
-                        let else_body_shape =
-                            self.structurize_region(else_target, None, loop_body);
+                        let else_body_shape = self.structurize_region(else_target, None, loop_body);
                         return Shape::IfElse {
                             block,
                             cond,
@@ -787,8 +788,7 @@ impl<'a> Structurizer<'a> {
                         };
                     }
                     if else_is_header {
-                        let then_body_shape =
-                            self.structurize_region(then_target, None, loop_body);
+                        let then_body_shape = self.structurize_region(then_target, None, loop_body);
                         return Shape::IfElse {
                             block,
                             cond,
@@ -867,7 +867,8 @@ impl<'a> Structurizer<'a> {
                         // Continuation: then branch flattened after.
                         if self.try_invert_cmp(cond) {
                             let guard_body = self.structurize_region(else_target, until, loop_body);
-                            let continuation = self.structurize_region(then_target, until, loop_body);
+                            let continuation =
+                                self.structurize_region(then_target, until, loop_body);
                             if then_assigns.is_empty() {
                                 let guard = Shape::IfElse {
                                     block,
@@ -940,15 +941,32 @@ impl<'a> Structurizer<'a> {
                 let else_empty = matches!(&else_body, Shape::Seq(v) if v.is_empty())
                     && else_assigns.is_empty()
                     && else_trailing_assigns.is_empty();
-                let (then_assigns, then_body, then_trailing_assigns,
-                     else_assigns, else_body, else_trailing_assigns) =
-                    if then_empty && !else_empty && self.try_invert_cmp(cond) {
-                        (else_assigns, else_body, else_trailing_assigns,
-                         then_assigns, then_body, then_trailing_assigns)
-                    } else {
-                        (then_assigns, then_body, then_trailing_assigns,
-                         else_assigns, else_body, else_trailing_assigns)
-                    };
+                let (
+                    then_assigns,
+                    then_body,
+                    then_trailing_assigns,
+                    else_assigns,
+                    else_body,
+                    else_trailing_assigns,
+                ) = if then_empty && !else_empty && self.try_invert_cmp(cond) {
+                    (
+                        else_assigns,
+                        else_body,
+                        else_trailing_assigns,
+                        then_assigns,
+                        then_body,
+                        then_trailing_assigns,
+                    )
+                } else {
+                    (
+                        then_assigns,
+                        then_body,
+                        then_trailing_assigns,
+                        else_assigns,
+                        else_body,
+                        else_trailing_assigns,
+                    )
+                };
 
                 let if_shape = Shape::IfElse {
                     block,
@@ -985,11 +1003,7 @@ impl<'a> Structurizer<'a> {
                 default,
             } => {
                 // Find the merge point (immediate post-dominator of the switch block).
-                let merge = self
-                    .ipdom
-                    .get(&block)
-                    .copied()
-                    .filter(|&m| m != block);
+                let merge = self.ipdom.get(&block).copied().filter(|&m| m != block);
 
                 // When multiple switch cases share the same target block,
                 // one is "primary" (first in the cases list for that target)
@@ -1026,8 +1040,7 @@ impl<'a> Structurizer<'a> {
 
                 // Build case_shapes with (original_index, shape) so we can
                 // sort into display order afterwards.
-                let mut indexed_shapes: Vec<(usize, SwitchCase)> =
-                    Vec::with_capacity(cases.len());
+                let mut indexed_shapes: Vec<(usize, SwitchCase)> = Vec::with_capacity(cases.len());
                 for &idx in &processing_indices {
                     let (constant, target, args) = &cases[idx];
                     let entry_assigns = self.branch_assigns(*target, args);
@@ -1056,10 +1069,8 @@ impl<'a> Structurizer<'a> {
                 let case_shapes: Vec<SwitchCase> =
                     indexed_shapes.into_iter().map(|(_, s)| s).collect();
 
-                let default_assigns =
-                    self.branch_assigns(default.0, &default.1);
-                let default_body =
-                    self.structurize_region(default.0, merge, loop_body);
+                let default_assigns = self.branch_assigns(default.0, &default.1);
+                let default_body = self.structurize_region(default.0, merge, loop_body);
                 let default_trailing_assigns =
                     merge.map_or(vec![], |m| self.trailing_merge_assigns(&default_body, m));
 
@@ -1295,19 +1306,11 @@ impl<'a> Structurizer<'a> {
                     // Try to flip a single-use Cmp so the break condition
                     // is already in the IR (avoids emitter-side negation).
                     let negated = self.try_invert_cmp(cond);
-                    let body = self.structurize_loop_body(
-                        then_target,
-                        header,
-                        &loop_body,
-                    );
+                    let body = self.structurize_loop_body(then_target, header, &loop_body);
                     self.try_for_loop(header, cond, negated, body, &loop_body)
                 } else if !then_in_loop && else_in_loop {
                     // while (!cond) { else_body }
-                    let body = self.structurize_loop_body(
-                        else_target,
-                        header,
-                        &loop_body,
-                    );
+                    let body = self.structurize_loop_body(else_target, header, &loop_body);
                     self.try_for_loop(header, cond, true, body, &loop_body)
                 } else {
                     // Both branches in loop or both exit — general loop.
@@ -1341,11 +1344,7 @@ impl<'a> Structurizer<'a> {
     }
 
     /// Find the block that follows the loop (the exit target).
-    fn find_loop_exit(
-        &self,
-        header: BlockId,
-        loop_body: &HashSet<BlockId>,
-    ) -> Option<BlockId> {
+    fn find_loop_exit(&self, header: BlockId, loop_body: &HashSet<BlockId>) -> Option<BlockId> {
         // Look for successors of loop blocks that are outside the loop.
         match self.terminator(header) {
             Some(Op::BrIf {
@@ -1658,11 +1657,7 @@ impl<'a> Structurizer<'a> {
     /// in the loop body but not the chain, it means the block is also the
     /// post-loop continuation (reachable from the normal loop exit) and must
     /// not be consumed here.
-    fn loop_exit_shape(
-        &mut self,
-        target: BlockId,
-        loop_body: &HashSet<BlockId>,
-    ) -> Shape {
+    fn loop_exit_shape(&mut self, target: BlockId, loop_body: &HashSet<BlockId>) -> Shape {
         // Collect a linear chain of blocks starting from target that:
         // 1. Have non-terminator instructions (worth emitting)
         // 2. Are exclusively reachable from the break path (see safety above)
@@ -1726,11 +1721,7 @@ impl<'a> Structurizer<'a> {
     }
 
     /// Structurize a general loop (while(true) with break/continue).
-    fn structurize_general_loop(
-        &mut self,
-        header: BlockId,
-        loop_body: &HashSet<BlockId>,
-    ) -> Shape {
+    fn structurize_general_loop(&mut self, header: BlockId, loop_body: &HashSet<BlockId>) -> Shape {
         // The header was already inserted into `emitted` by the initial
         // `structurize_region` call that detected it as a loop header.
         // Remove it so `structurize_region` can process the header's
@@ -1827,7 +1818,9 @@ mod tests {
     fn test_single_block() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("id", sig, Visibility::Public);
         let a = fb.param(0);
         fb.ret(Some(a));
@@ -1842,7 +1835,9 @@ mod tests {
         // entry → b1 → b2 (return)
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("chain", sig, Visibility::Public);
 
         let b1 = fb.create_block();
@@ -1875,7 +1870,9 @@ mod tests {
         //   merge: return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("diamond", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -1915,7 +1912,9 @@ mod tests {
         //   merge: return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("if_then", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -1964,7 +1963,9 @@ mod tests {
         //   exit:   return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("while_loop", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -2004,7 +2005,9 @@ mod tests {
         //   exit:   return
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("for_loop", sig, Visibility::Public);
 
         let (header, header_vals) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -2049,7 +2052,9 @@ mod tests {
         //   exit:   return
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("general_loop", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -2093,7 +2098,9 @@ mod tests {
         // This is a general loop (exit not at header) with if/else inside.
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("nested", sig, Visibility::Public);
         let cond = fb.param(0);
         let loop_cond = fb.param(1);
@@ -2142,7 +2149,9 @@ mod tests {
         //   merge → (return)
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("dom_test", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -2188,7 +2197,9 @@ mod tests {
         // The structurizer should upgrade the IfElse to LogicalOr.
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("trailing_else", sig, Visibility::Public);
         let cond = fb.param(0);
         let a = fb.param(1);
@@ -2249,7 +2260,9 @@ mod tests {
         // merge with args. Verify both sets of assigns are captured.
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("trailing_both", sig, Visibility::Public);
         let cond = fb.param(0);
 
@@ -2315,7 +2328,9 @@ mod tests {
         // Short-circuit AND: v_phi = cond && v_cmp.
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("logical_and", sig, Visibility::Public);
         let cond = fb.param(0);
         let a = fb.param(1);
@@ -2373,7 +2388,9 @@ mod tests {
         // Simplest OR: v_phi = cond || other (rhs_body is empty).
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Bool],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("or_simple", sig, Visibility::Public);
         let cond = fb.param(0);
         let other = fb.param(1);
@@ -2428,7 +2445,9 @@ mod tests {
         //   v_phi = v_ge && v_rhs
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("inv_and", sig, Visibility::Public);
         let x = fb.param(0);
         let y = fb.param(1);
@@ -2472,7 +2491,10 @@ mod tests {
             ..
         } = la
         {
-            assert_eq!(*la_cond, v_ge, "cond should be the v_ge (inverse of BrIf condition)");
+            assert_eq!(
+                *la_cond, v_ge,
+                "cond should be the v_ge (inverse of BrIf condition)"
+            );
             assert_eq!(*phi, v_phi);
             assert_eq!(*rhs, v_rhs);
         } else {
@@ -2494,7 +2516,9 @@ mod tests {
         //   v_phi = v_ge || v_rhs
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("inv_or", sig, Visibility::Public);
         let x = fb.param(0);
         let y = fb.param(1);
@@ -2538,7 +2562,10 @@ mod tests {
             ..
         } = lo
         {
-            assert_eq!(*lo_cond, v_ge, "cond should be v_ge (inverse of BrIf condition)");
+            assert_eq!(
+                *lo_cond, v_ge,
+                "cond should be v_ge (inverse of BrIf condition)"
+            );
             assert_eq!(*phi, v_phi);
             assert_eq!(*rhs, v_rhs);
         } else {
@@ -2558,7 +2585,9 @@ mod tests {
         //   v_phi = v_bool && v_rhs
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Bool, ..Default::default() };
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("inv_and_not", sig, Visibility::Public);
         let x = fb.param(0);
         let y = fb.param(1);
@@ -2593,10 +2622,7 @@ mod tests {
         }
 
         let la = find_logical_and(&shape).expect("Expected LogicalAnd in shape");
-        if let Shape::LogicalAnd {
-            cond: la_cond, ..
-        } = la
-        {
+        if let Shape::LogicalAnd { cond: la_cond, .. } = la {
             assert_eq!(*la_cond, v_bool, "cond should be v_bool (inner of Not)");
         } else {
             unreachable!();
@@ -2619,7 +2645,9 @@ mod tests {
         // Without loop_exit_shape, this would be just `break;`.
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("loop_exit_insts", sig, Visibility::Public);
         let cond = fb.param(0);
         let inner_cond = fb.param(1);
@@ -2661,15 +2689,17 @@ mod tests {
                 Shape::Seq(parts) => {
                     // Look for [Block(exit_path), Break] pattern
                     for window in parts.windows(2) {
-                        if window[0] == Shape::Block(target)
-                            && window[1] == Shape::Break
-                        {
+                        if window[0] == Shape::Block(target) && window[1] == Shape::Break {
                             return true;
                         }
                     }
                     parts.iter().any(|p| find_exit_path_block(p, target))
                 }
-                Shape::IfElse { then_body, else_body, .. } => {
+                Shape::IfElse {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
                     find_exit_path_block(then_body, target)
                         || find_exit_path_block(else_body, target)
                 }
@@ -2761,18 +2791,14 @@ mod tests {
             // Each case should have trailing assigns that set v_phi.
             for (i, case) in cases.iter().enumerate() {
                 assert!(
-                    case.trailing_assigns
-                        .iter()
-                        .any(|a| a.dst == v_phi),
+                    case.trailing_assigns.iter().any(|a| a.dst == v_phi),
                     "Case {i} should have trailing assign to v_phi, got: {:?}",
                     case.trailing_assigns
                 );
             }
             // Default should also have trailing assigns.
             assert!(
-                default_trailing_assigns
-                    .iter()
-                    .any(|a| a.dst == v_phi),
+                default_trailing_assigns.iter().any(|a| a.dst == v_phi),
                 "Default should have trailing assign to v_phi, got: {default_trailing_assigns:?}"
             );
         } else {

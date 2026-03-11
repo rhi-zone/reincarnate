@@ -30,10 +30,7 @@ pub enum JsExpr {
         rhs: Box<JsExpr>,
     },
     /// Unary operation: `op expr`.
-    Unary {
-        op: UnaryOp,
-        expr: Box<JsExpr>,
-    },
+    Unary { op: UnaryOp, expr: Box<JsExpr> },
     /// Comparison: `lhs cmp rhs`.
     Cmp {
         kind: CmpKind,
@@ -41,10 +38,7 @@ pub enum JsExpr {
         rhs: Box<JsExpr>,
     },
     /// Field access: `object.field`.
-    Field {
-        object: Box<JsExpr>,
-        field: String,
-    },
+    Field { object: Box<JsExpr>, field: String },
     /// Index access: `collection[index]`.
     Index {
         collection: Box<JsExpr>,
@@ -67,15 +61,9 @@ pub enum JsExpr {
         else_val: Box<JsExpr>,
     },
     /// Short-circuit OR: `lhs || rhs`.
-    LogicalOr {
-        lhs: Box<JsExpr>,
-        rhs: Box<JsExpr>,
-    },
+    LogicalOr { lhs: Box<JsExpr>, rhs: Box<JsExpr> },
     /// Short-circuit AND: `lhs && rhs`.
-    LogicalAnd {
-        lhs: Box<JsExpr>,
-        rhs: Box<JsExpr>,
-    },
+    LogicalAnd { lhs: Box<JsExpr>, rhs: Box<JsExpr> },
     /// Type cast: `expr as Type`.
     Cast {
         expr: Box<JsExpr>,
@@ -106,10 +94,7 @@ pub enum JsExpr {
     /// Spread: `...expr`.
     Spread(Box<JsExpr>),
     /// Generator create (call to generator function).
-    GeneratorCreate {
-        func: String,
-        args: Vec<JsExpr>,
-    },
+    GeneratorCreate { func: String, args: Vec<JsExpr> },
     /// Generator resume: `expr.next()`.
     GeneratorResume(Box<JsExpr>),
     /// Yield expression.
@@ -136,17 +121,11 @@ pub enum JsExpr {
     /// `super(args)` — super constructor call in expression context.
     SuperCall(Vec<JsExpr>),
     /// `super.method(args)`.
-    SuperMethodCall {
-        method: String,
-        args: Vec<JsExpr>,
-    },
+    SuperMethodCall { method: String, args: Vec<JsExpr> },
     /// `super.prop` — super property read.
     SuperGet(String),
     /// `super.prop = value` — super property write in expression context.
-    SuperSet {
-        prop: String,
-        value: Box<JsExpr>,
-    },
+    SuperSet { prop: String, value: Box<JsExpr> },
     /// Non-null assertion: `expr!`.
     NonNull(Box<JsExpr>),
     /// Null-coalescing assignment: `(target ??= value)`.
@@ -206,10 +185,7 @@ pub enum JsStmt {
         mutable: bool,
     },
     /// Assignment: `target = value;`.
-    Assign {
-        target: JsExpr,
-        value: JsExpr,
-    },
+    Assign { target: JsExpr, value: JsExpr },
     /// Compound assignment: `target op= value;`.
     CompoundAssign {
         target: JsExpr,
@@ -225,10 +201,7 @@ pub enum JsStmt {
         else_body: Vec<JsStmt>,
     },
     /// While loop.
-    While {
-        cond: JsExpr,
-        body: Vec<JsStmt>,
-    },
+    While { cond: JsExpr, body: Vec<JsStmt> },
     /// For loop (init promoted out, emitted as while).
     For {
         init: Vec<JsStmt>,
@@ -237,9 +210,7 @@ pub enum JsStmt {
         body: Vec<JsStmt>,
     },
     /// Infinite loop.
-    Loop {
-        body: Vec<JsStmt>,
-    },
+    Loop { body: Vec<JsStmt> },
     /// For-of loop.
     ForOf {
         binding: String,
@@ -254,9 +225,7 @@ pub enum JsStmt {
     /// Continue.
     Continue,
     /// Labeled break.
-    LabeledBreak {
-        depth: usize,
-    },
+    LabeledBreak { depth: usize },
     /// Dispatch (irreducible CFG fallback).
     Dispatch {
         blocks: Vec<(usize, Vec<JsStmt>)>,

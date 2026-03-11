@@ -138,7 +138,10 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
             .get(i)
             .map(|p| &func.value_types[p.value])
             .unwrap_or(&func.sig.params[i]);
-        let is_scalar = matches!(narrowed, Type::Bool | Type::Int(_) | Type::UInt(_) | Type::Float(_) | Type::String);
+        let is_scalar = matches!(
+            narrowed,
+            Type::Bool | Type::Int(_) | Type::UInt(_) | Type::Float(_) | Type::String
+        );
         let ty = if is_scalar { narrowed } else { &Type::Dynamic };
         func.sig.defaults[i] = Some(zero_for_type(ty));
         // Widen the param's value_type back to Dynamic for non-scalar types so the
@@ -326,8 +329,8 @@ fn try_match_default_check(
 mod tests {
     use super::*;
     use reincarnate_core::ir::builder::FunctionBuilder;
-    use reincarnate_core::ir::ModuleBuilder;
     use reincarnate_core::ir::ty::{FunctionSig, Type};
+    use reincarnate_core::ir::ModuleBuilder;
     use reincarnate_core::ir::Visibility;
 
     fn emit_constant(fb: &mut FunctionBuilder, c: &Constant) -> ValueId {
@@ -376,8 +379,7 @@ mod tests {
 
             // Create default block and continue block
             let default_block = fb.create_block();
-            let (continue_block, continue_vals) =
-                fb.create_block_with_params(&[Type::Dynamic]);
+            let (continue_block, continue_vals) = fb.create_block_with_params(&[Type::Dynamic]);
 
             // br_if cmp, default_block, continue_block(arg_param)
             fb.br_if(cmp, default_block, &[], continue_block, &[arg_param]);

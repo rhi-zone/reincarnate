@@ -64,10 +64,7 @@ impl DebugConfig {
         // Strategy 3: split-part matching — split filter on `.` and `::`,
         // require every non-empty part to appear in the lowercased name.
         if filter.contains('.') || filter.contains("::") {
-            let parts: Vec<&str> = filter
-                .split(['.', ':'])
-                .filter(|p| !p.is_empty())
-                .collect();
+            let parts: Vec<&str> = filter.split(['.', ':']).filter(|p| !p.is_empty()).collect();
             if !parts.is_empty() && parts.iter().all(|p| name_lower.contains(&p.to_lowercase())) {
                 return true;
             }
@@ -180,6 +177,20 @@ pub struct LoweringConfig {
     /// Hoist loop conditions into `while (cond)` instead of
     /// `while (true) { if (!cond) break; ... }`.
     pub while_condition_hoisting: bool,
+    /// System names whose `SystemCall` ops are scope-lookup ops that must be
+    /// always-inline so call sites can detect and resolve them (e.g. scope
+    /// lookup chains like `Field(scope_lookup, field)`).
+    ///
+    /// Flash sets this to `["Flash.Scope"]`; other engines leave it empty.
+    pub scope_lookup_systems: Vec<String>,
+    /// Wrap `ClassRef`-typed GlobalRef values with `as any` at each use site.
+    ///
+    /// GML OBJT class names are interchangeable with their integer object-type
+    /// indices at runtime; `as any` suppresses TypeScript's `typeof ClassName`
+    /// type errors when the value is used in numeric or mixed-type contexts.
+    ///
+    /// GML sets this to `true`; Flash and other engines leave it `false`.
+    pub wrap_class_refs_as_any: bool,
 }
 
 impl Default for LoweringConfig {
@@ -196,6 +207,8 @@ impl LoweringConfig {
             minmax: false,
             logical_operators: true,
             while_condition_hoisting: true,
+            scope_lookup_systems: vec![],
+            wrap_class_refs_as_any: false,
         }
     }
 
@@ -205,6 +218,8 @@ impl LoweringConfig {
             minmax: true,
             logical_operators: true,
             while_condition_hoisting: true,
+            scope_lookup_systems: vec![],
+            wrap_class_refs_as_any: false,
         }
     }
 }
@@ -227,10 +242,7 @@ impl Preset {
     ///
     /// `skip_passes` are applied on top of the preset's base `PassConfig`,
     /// allowing fine-grained overrides.
-    pub fn resolve(
-        name: &str,
-        skip_passes: &[&str],
-    ) -> Option<(PassConfig, LoweringConfig)> {
+    pub fn resolve(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, LoweringConfig)> {
         let (mut pass, lowering) = match name {
             "literal" => (
                 PassConfig {
@@ -395,7 +407,12 @@ mod tests {
 
     #[test]
     fn should_dump_no_filter() {
-        let cfg = DebugConfig { dump_ir: true, dump_ast: false, function_filter: None, dump_ir_after: None };
+        let cfg = DebugConfig {
+            dump_ir: true,
+            dump_ast: false,
+            function_filter: None,
+            dump_ir_after: None,
+        };
         assert!(cfg.should_dump("Gun::event_step_2"));
         assert!(cfg.should_dump("anything"));
     }
@@ -421,7 +438,7 @@ mod tests {
         let cfg = debug_with_filter("Gun.step");
         assert!(cfg.should_dump("Gun::event_step_2"));
         assert!(!cfg.should_dump("Bullet::event_step_2")); // "gun" not present
-        assert!(!cfg.should_dump("Gun::event_draw_0"));    // "step" not present
+        assert!(!cfg.should_dump("Gun::event_draw_0")); // "step" not present
     }
 
     #[test]

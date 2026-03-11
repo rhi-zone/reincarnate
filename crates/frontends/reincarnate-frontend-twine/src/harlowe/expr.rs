@@ -143,8 +143,10 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
             lexer.next_token(); // consume `'s`
             let property = if let Some((word, word_span)) = lexer.scan_word() {
                 // Interpret the entire property string (handles ordinal, range, named property)
-                interpret_property_string(&word, word_span)
-                    .unwrap_or(Expr { kind: ExprKind::Ident(word), span: word_span })
+                interpret_property_string(&word, word_span).unwrap_or(Expr {
+                    kind: ExprKind::Ident(word),
+                    span: word_span,
+                })
             } else {
                 // Computed property: `$arr's (expr)`
                 parse_prefix(lexer)
@@ -186,15 +188,11 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
             TokenKind::Contains if min_prec <= Prec::Equality => {
                 (Some(BinaryOp::Contains), Prec::Equality)
             }
-            TokenKind::IsIn if min_prec <= Prec::Equality => {
-                (Some(BinaryOp::IsIn), Prec::Equality)
-            }
+            TokenKind::IsIn if min_prec <= Prec::Equality => (Some(BinaryOp::IsIn), Prec::Equality),
             TokenKind::IsNotIn if min_prec <= Prec::Equality => {
                 (Some(BinaryOp::IsNotIn), Prec::Equality)
             }
-            TokenKind::IsA if min_prec <= Prec::Equality => {
-                (Some(BinaryOp::IsA), Prec::Equality)
-            }
+            TokenKind::IsA if min_prec <= Prec::Equality => (Some(BinaryOp::IsA), Prec::Equality),
             TokenKind::IsNotA if min_prec <= Prec::Equality => {
                 (Some(BinaryOp::IsNotA), Prec::Equality)
             }
@@ -242,12 +240,11 @@ fn parse_prec(lexer: &mut ExprLexer, min_prec: Prec) -> Expr {
 
                 // For `is`/`is not` followed by a comparison-type expression with implicit `it`,
                 // normalize to a direct comparison: `$x is > 5` → `$x > 5`.
-                let (bin_op, right) =
-                    if matches!(bin_op, BinaryOp::Is | BinaryOp::IsNot) {
-                        normalize_is_comparison_type(&left, bin_op, right)
-                    } else {
-                        (bin_op, right)
-                    };
+                let (bin_op, right) = if matches!(bin_op, BinaryOp::Is | BinaryOp::IsNot) {
+                    normalize_is_comparison_type(&left, bin_op, right)
+                } else {
+                    (bin_op, right)
+                };
 
                 let span = Span::new(left.span.start, right.span.end);
                 left = Expr {
@@ -308,12 +305,13 @@ fn maybe_distribute_comparison(left: &Expr, right: Expr) -> Expr {
         // e.g. `$x > 4 and < 10` → `($x > 4) and ($x < 10)`.
         // Also handles `$x is "A" or is not "B"` → `($x is "A") or ($x is not "B")`.
         if let ExprKind::Binary {
-            op: right_op @ (BinaryOp::Lt
-            | BinaryOp::Lte
-            | BinaryOp::Gt
-            | BinaryOp::Gte
-            | BinaryOp::Is
-            | BinaryOp::IsNot),
+            op:
+                right_op @ (BinaryOp::Lt
+                | BinaryOp::Lte
+                | BinaryOp::Gt
+                | BinaryOp::Gte
+                | BinaryOp::Is
+                | BinaryOp::IsNot),
             left: ref right_left,
             right: ref right_rhs,
         } = right.kind
@@ -494,7 +492,7 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
         TokenKind::LParen => {
             let start = tok.span.start;
             lexer.next_token(); // consume `(`
-            // Could be a sub-expression or an inline macro call like `(random: 1, 5)`
+                                // Could be a sub-expression or an inline macro call like `(random: 1, 5)`
             let next = lexer.peek_token();
             if let TokenKind::Ident(ref name) = next.kind {
                 let name = name.clone();
@@ -558,9 +556,10 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
                         let combined = format!("{n_int}{suffix}");
                         let end_span = next.span.end;
                         lexer.next_token(); // consume the suffix ident
-                        if let Some(expr) =
-                            interpret_property_string(&combined, Span::new(tok.span.start, end_span))
-                        {
+                        if let Some(expr) = interpret_property_string(
+                            &combined,
+                            Span::new(tok.span.start, end_span),
+                        ) {
                             return expr;
                         }
                     }
@@ -605,8 +604,10 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
                     span: tok.span,
                 };
                 let property = if let Some((word, word_span)) = lexer.scan_word() {
-                    interpret_property_string(&word, word_span)
-                        .unwrap_or(Expr { kind: ExprKind::Ident(word), span: word_span })
+                    interpret_property_string(&word, word_span).unwrap_or(Expr {
+                        kind: ExprKind::Ident(word),
+                        span: word_span,
+                    })
                 } else {
                     // Computed property: `its (expr)` — rare but possible
                     parse_prefix(lexer)
@@ -688,7 +689,7 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
             // Lambda: `each _var` or `each _var where condition`
             let start = tok.span.start;
             lexer.next_token(); // consume `each`
-            // Expect a temp variable (_var)
+                                // Expect a temp variable (_var)
             let var_tok = lexer.peek_token();
             let var_name = if let TokenKind::TempVar(ref name) = var_tok.kind {
                 let n = name.clone();
@@ -711,7 +712,7 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
                     if let TokenKind::TempVar(ref acc) = acc_tok.kind.clone() {
                         let acc_var = acc.clone();
                         lexer.next_token(); // consume _acc
-                        // Expect `via body`
+                                            // Expect `via body`
                         if let TokenKind::Ident(ref via_kw) = lexer.peek_token().kind.clone() {
                             if via_kw == "via" {
                                 lexer.next_token(); // consume `via`
@@ -791,7 +792,10 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
             Expr {
                 kind: ExprKind::Binary {
                     op,
-                    left: Box::new(Expr { kind: ExprKind::It, span: tok.span }),
+                    left: Box::new(Expr {
+                        kind: ExprKind::It,
+                        span: tok.span,
+                    }),
                     right: Box::new(rhs),
                 },
                 span,
@@ -815,7 +819,10 @@ fn parse_prefix(lexer: &mut ExprLexer) -> Expr {
             Expr {
                 kind: ExprKind::Binary {
                     op,
-                    left: Box::new(Expr { kind: ExprKind::It, span: tok.span }),
+                    left: Box::new(Expr {
+                        kind: ExprKind::It,
+                        span: tok.span,
+                    }),
                     right: Box::new(rhs),
                 },
                 span,
@@ -868,7 +875,10 @@ fn try_parse_inline_macro(lexer: &mut ExprLexer, start: usize) -> Option<Expr> {
             let span = Span::new(start, lexer.pos());
             return Some(Expr {
                 kind: ExprKind::DynCall {
-                    callee: Box::new(Expr { kind: callee_kind, span: callee_span }),
+                    callee: Box::new(Expr {
+                        kind: callee_kind,
+                        span: callee_span,
+                    }),
                     args,
                 },
                 span,
@@ -905,7 +915,10 @@ fn try_parse_inline_macro(lexer: &mut ExprLexer, start: usize) -> Option<Expr> {
                     .collect();
                 let span = Span::new(start, lexer.pos());
                 let kind = if let Some(hook_source) = hook_source {
-                    ExprKind::MacroDef { params, hook_source }
+                    ExprKind::MacroDef {
+                        params,
+                        hook_source,
+                    }
                 } else {
                     // No hook body — unusual, but produce a placeholder Call.
                     ExprKind::Call { name, args: params }
@@ -942,7 +955,6 @@ fn try_parse_inline_macro(lexer: &mut ExprLexer, start: usize) -> Option<Expr> {
     lexer.pos = saved;
     None
 }
-
 
 /// Check if a name is a Harlowe color keyword.
 fn is_color_name(name: &str) -> bool {
@@ -1037,13 +1049,25 @@ mod tests {
     #[test]
     fn test_comparison() {
         let expr = parse("$event3First is 0");
-        assert!(matches!(expr.kind, ExprKind::Binary { op: BinaryOp::Is, .. }));
+        assert!(matches!(
+            expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Is,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn test_arithmetic() {
         let expr = parse("$x + 1");
-        assert!(matches!(expr.kind, ExprKind::Binary { op: BinaryOp::Add, .. }));
+        assert!(matches!(
+            expr.kind,
+            ExprKind::Binary {
+                op: BinaryOp::Add,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1052,7 +1076,13 @@ mod tests {
         let expr = parse("$x + 1 > 5");
         if let ExprKind::Binary { op, left, .. } = &expr.kind {
             assert_eq!(*op, BinaryOp::Gt);
-            assert!(matches!(left.kind, ExprKind::Binary { op: BinaryOp::Add, .. }));
+            assert!(matches!(
+                left.kind,
+                ExprKind::Binary {
+                    op: BinaryOp::Add,
+                    ..
+                }
+            ));
         } else {
             panic!("expected binary");
         }
@@ -1061,7 +1091,13 @@ mod tests {
     #[test]
     fn test_not() {
         let expr = parse("not $done");
-        assert!(matches!(expr.kind, ExprKind::Unary { op: UnaryOp::Not, .. }));
+        assert!(matches!(
+            expr.kind,
+            ExprKind::Unary {
+                op: UnaryOp::Not,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -1083,7 +1119,13 @@ mod tests {
         if let ExprKind::Binary { op, left, right } = &expr.kind {
             assert_eq!(*op, BinaryOp::Or);
             // Left: $recover is 0
-            assert!(matches!(left.kind, ExprKind::Binary { op: BinaryOp::Is, .. }));
+            assert!(matches!(
+                left.kind,
+                ExprKind::Binary {
+                    op: BinaryOp::Is,
+                    ..
+                }
+            ));
             // Right: $recover is "" (distributed)
             if let ExprKind::Binary {
                 op: right_op,
@@ -1146,14 +1188,23 @@ mod tests {
     #[test]
     fn test_negative_number() {
         let expr = parse("-5");
-        assert!(matches!(expr.kind, ExprKind::Unary { op: UnaryOp::Neg, .. }));
+        assert!(matches!(
+            expr.kind,
+            ExprKind::Unary {
+                op: UnaryOp::Neg,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn test_nth_last_ordinal() {
         let expr = parse("$arr's 2ndlast");
         if let ExprKind::Possessive { property, .. } = &expr.kind {
-            assert!(matches!(property.kind, ExprKind::Ordinal(Ordinal::NthLast(2))));
+            assert!(matches!(
+                property.kind,
+                ExprKind::Ordinal(Ordinal::NthLast(2))
+            ));
         } else {
             panic!("expected Possessive, got {:?}", expr.kind);
         }
@@ -1258,10 +1309,21 @@ mod tests {
     fn test_fold_lambda() {
         // `each _item making _acc via _item + _acc` — FoldLambda
         let expr = parse("each _item making _acc via _item + _acc");
-        if let ExprKind::FoldLambda { item_var, acc_var, body } = &expr.kind {
+        if let ExprKind::FoldLambda {
+            item_var,
+            acc_var,
+            body,
+        } = &expr.kind
+        {
             assert_eq!(item_var, "item");
             assert_eq!(acc_var, "acc");
-            assert!(matches!(body.kind, ExprKind::Binary { op: BinaryOp::Add, .. }));
+            assert!(matches!(
+                body.kind,
+                ExprKind::Binary {
+                    op: BinaryOp::Add,
+                    ..
+                }
+            ));
         } else {
             panic!("expected FoldLambda, got {:?}", expr.kind);
         }
@@ -1313,8 +1375,16 @@ mod tests {
         // The `extract_macro_definition` scanner collects only `_varname` params (not
         // type annotations), so params contains just TempVar("x").
         let expr = parse("(macro: dm-type _x)[body text]");
-        if let ExprKind::MacroDef { params, hook_source } = &expr.kind {
-            assert_eq!(params.len(), 1, "expected 1 param (the TempVar), got {params:?}");
+        if let ExprKind::MacroDef {
+            params,
+            hook_source,
+        } = &expr.kind
+        {
+            assert_eq!(
+                params.len(),
+                1,
+                "expected 1 param (the TempVar), got {params:?}"
+            );
             assert!(matches!(&params[0].kind, ExprKind::TempVar(n) if n == "x"));
             assert_eq!(hook_source, "body text");
         } else {
@@ -1326,7 +1396,11 @@ mod tests {
     fn test_macro_def_multi_param() {
         // `(macro: dm-type _a, str-type _b)[body]` — two params
         let expr = parse("(macro: dm-type _a, str-type _b)[body]");
-        if let ExprKind::MacroDef { params, hook_source } = &expr.kind {
+        if let ExprKind::MacroDef {
+            params,
+            hook_source,
+        } = &expr.kind
+        {
             assert_eq!(params.len(), 2, "expected 2 params, got {params:?}");
             assert!(matches!(&params[0].kind, ExprKind::TempVar(n) if n == "a"));
             assert!(matches!(&params[1].kind, ExprKind::TempVar(n) if n == "b"));

@@ -34,10 +34,8 @@ fn encode_instruction(inst: &Instruction, out: &mut Vec<u8>) {
             // (type2 occupies bits 20-23, so its high bit is bit 23).
             let offset_words = byte_offset / 4;
             let lower16 = (offset_words as u32) & 0x0000_FFFF;
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16)
-                | lower16;
+            let word =
+                ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16) | lower16;
             out.extend_from_slice(&word.to_le_bytes());
         }
 
@@ -109,58 +107,44 @@ fn encode_instruction(inst: &Instruction, out: &mut Vec<u8>) {
         }
 
         Operand::None => {
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16);
+            let word = ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16);
             out.extend_from_slice(&word.to_le_bytes());
         }
 
         // Extended operands: primary word has val16=0, then extra data words
         Operand::Int32(v) => {
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16);
+            let word = ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16);
             out.extend_from_slice(&word.to_le_bytes());
             out.extend_from_slice(&(*v as u32).to_le_bytes());
         }
 
         Operand::Int64(v) => {
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16);
+            let word = ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16);
             out.extend_from_slice(&word.to_le_bytes());
             out.extend_from_slice(&v.to_le_bytes());
         }
 
         Operand::Double(v) => {
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16);
+            let word = ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16);
             out.extend_from_slice(&word.to_le_bytes());
             out.extend_from_slice(&v.to_le_bytes());
         }
 
         Operand::Float(v) => {
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16);
+            let word = ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16);
             out.extend_from_slice(&word.to_le_bytes());
             out.extend_from_slice(&v.to_le_bytes());
         }
 
         Operand::Bool(v) => {
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16);
+            let word = ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16);
             out.extend_from_slice(&word.to_le_bytes());
             let bool_val: u32 = if *v { 1 } else { 0 };
             out.extend_from_slice(&bool_val.to_le_bytes());
         }
 
         Operand::StringIndex(idx) => {
-            let word = ((opcode as u32) << 24)
-                | ((type2 as u32) << 20)
-                | ((type1 as u32) << 16);
+            let word = ((opcode as u32) << 24) | ((type2 as u32) << 20) | ((type1 as u32) << 16);
             out.extend_from_slice(&word.to_le_bytes());
             out.extend_from_slice(&idx.to_le_bytes());
         }

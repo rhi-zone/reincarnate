@@ -40,7 +40,13 @@ impl Shdr {
             let fragment = StringRef(ec.read_u32()?);
             // GMS2 may have attribute/uniform name lists after this point;
             // we stop here since we only need the source strings.
-            shaders.push(ShdrEntry { name, kind, glsl_es, vertex, fragment });
+            shaders.push(ShdrEntry {
+                name,
+                kind,
+                glsl_es,
+                vertex,
+                fragment,
+            });
         }
 
         Ok(Self { shaders })

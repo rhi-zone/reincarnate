@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
+use super::{DebugConfig, LoweringConfig};
 use crate::error::CoreError;
 use crate::ir::Module;
-use super::{DebugConfig, LoweringConfig};
 use crate::project::{AssetCatalog, PersistenceConfig, RuntimeConfig};
 
 /// A resolved runtime package: source directory + parsed config.

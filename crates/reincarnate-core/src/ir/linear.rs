@@ -17,7 +17,6 @@
 //!   values get `const`/`let` declarations. Produces the AST for existing
 //!   AST-to-AST passes.
 
-
 use std::collections::{HashMap, HashSet};
 
 use super::ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
@@ -126,12 +125,7 @@ pub(crate) fn linearize(func: &Function, shape: &Shape) -> Vec<LinearStmt> {
     out
 }
 
-fn linearize_into(
-    func: &Function,
-    shape: &Shape,
-    out: &mut Vec<LinearStmt>,
-    skip_init: bool,
-) {
+fn linearize_into(func: &Function, shape: &Shape, out: &mut Vec<LinearStmt>, skip_init: bool) {
     match shape {
         Shape::Block(block_id) => {
             emit_block_insts(func, *block_id, out);
@@ -139,20 +133,14 @@ fn linearize_into(
 
         Shape::Seq(parts) => {
             for (i, part) in parts.iter().enumerate() {
-                let next_is_loop = matches!(
-                    parts.get(i + 1),
-                    Some(Shape::ForLoop { .. })
-                );
+                let next_is_loop = matches!(parts.get(i + 1), Some(Shape::ForLoop { .. }));
 
                 // When a non-Block shape precedes a ForLoop in a Seq, its
                 // trailing assigns already set the loop header's block
                 // params — the ForLoop's own init_assigns would duplicate them.
                 let this_skip_init = if i > 0 {
                     let prev = &parts[i - 1];
-                    let is_loop = matches!(
-                        part,
-                        Shape::ForLoop { .. }
-                    );
+                    let is_loop = matches!(part, Shape::ForLoop { .. });
                     is_loop && !matches!(prev, Shape::Block(_))
                 } else {
                     false
@@ -492,7 +480,11 @@ pub(crate) struct ResolveCtx {
 /// Br/BrIf/Switch are absent, so their operand uses aren't counted). Runs
 /// dead-code elimination to fixpoint, then classifies each Def as constant,
 /// always-inline, lazy-inline, or materialized.
-pub(crate) fn resolve(func: &Function, stmts: &[LinearStmt]) -> ResolveCtx {
+pub(crate) fn resolve(
+    func: &Function,
+    stmts: &[LinearStmt],
+    scope_lookup_systems: &[String],
+) -> ResolveCtx {
     // Step 1: compute use counts from LinearStmt.
     let mut use_counts = HashMap::new();
     count_uses_in_stmts(func, stmts, &mut use_counts);
@@ -521,6 +513,7 @@ pub(crate) fn resolve(func: &Function, stmts: &[LinearStmt]) -> ResolveCtx {
         &mut constant_inlines,
         &mut always_inlines,
         &mut lazy_inlines,
+        scope_lookup_systems,
     );
 
     // Step 4: detect adjacent Alloc+Store patterns for merged init.
@@ -572,10 +565,7 @@ fn count_uses_in_stmts(
                 count_uses_in_stmts(func, else_body, counts);
             }
             LinearStmt::While {
-                header,
-                cond,
-                body,
-                ..
+                header, cond, body, ..
             } => {
                 count_uses_in_stmts(func, header, counts);
                 *counts.entry(*cond).or_default() += 1;
@@ -694,19 +684,32 @@ fn collect_def_use_depths(
             LinearStmt::Return { value: Some(v) } => {
                 update_use(*v, depth, min_use_depths);
             }
-            LinearStmt::If { cond, then_body, else_body } => {
+            LinearStmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
                 update_use(*cond, depth, min_use_depths);
                 collect_def_use_depths(func, then_body, depth + 1, defs, min_use_depths);
                 collect_def_use_depths(func, else_body, depth + 1, defs, min_use_depths);
             }
-            LinearStmt::While { header, cond, body, .. } => {
+            LinearStmt::While {
+                header, cond, body, ..
+            } => {
                 // header: same depth (emit_stmts_into, no protected scope)
                 collect_def_use_depths(func, header, depth, defs, min_use_depths);
                 update_use(*cond, depth, min_use_depths);
                 // body: depth+1 (emit_stmts_protected)
                 collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
             }
-            LinearStmt::For { init, header, cond, update, body, .. } => {
+            LinearStmt::For {
+                init,
+                header,
+                cond,
+                update,
+                body,
+                ..
+            } => {
                 collect_def_use_depths(func, init, depth, defs, min_use_depths);
                 collect_def_use_depths(func, header, depth, defs, min_use_depths);
                 update_use(*cond, depth, min_use_depths);
@@ -716,15 +719,29 @@ fn collect_def_use_depths(
             LinearStmt::Loop { body } => {
                 collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
             }
-            LinearStmt::LogicalOr { cond, rhs_body, rhs, phi }
-            | LinearStmt::LogicalAnd { cond, rhs_body, rhs, phi } => {
+            LinearStmt::LogicalOr {
+                cond,
+                rhs_body,
+                rhs,
+                phi,
+            }
+            | LinearStmt::LogicalAnd {
+                cond,
+                rhs_body,
+                rhs,
+                phi,
+            } => {
                 update_use(*cond, depth, min_use_depths);
                 collect_def_use_depths(func, rhs_body, depth + 1, defs, min_use_depths);
                 if *rhs != *phi {
                     update_use(*rhs, depth, min_use_depths);
                 }
             }
-            LinearStmt::Switch { value, cases, default_body } => {
+            LinearStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
                 update_use(*value, depth, min_use_depths);
                 for (_, case_stmts) in cases {
                     collect_def_use_depths(func, case_stmts, depth + 1, defs, min_use_depths);
@@ -836,8 +853,7 @@ fn collect_dead_uses(
             LinearStmt::Loop { body } => {
                 collect_dead_uses(func, body, counts, dead, changed);
             }
-            LinearStmt::LogicalOr { rhs_body, .. }
-            | LinearStmt::LogicalAnd { rhs_body, .. } => {
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
                 collect_dead_uses(func, rhs_body, counts, dead, changed);
             }
             LinearStmt::Dispatch { blocks, .. } => {
@@ -901,11 +917,14 @@ fn is_deferrable(op: &Op) -> bool {
 
 /// Scope-lookup calls are pure metadata — always rebuild so consumption
 /// sites (Field, Call) can detect and resolve them.
-fn is_scope_lookup_op(op: &Op) -> bool {
+fn is_scope_lookup_op(op: &Op, scope_lookup_systems: &[String]) -> bool {
+    if scope_lookup_systems.is_empty() {
+        return false;
+    }
     matches!(
         op,
         Op::SystemCall { system, method, .. }
-            if system == "Flash.Scope"
+            if scope_lookup_systems.contains(system)
                 && (method == "findPropStrict" || method == "findProperty")
     )
 }
@@ -919,6 +938,7 @@ fn classify_defs(
     constant_inlines: &mut HashMap<ValueId, Constant>,
     always_inlines: &mut HashSet<ValueId>,
     lazy_inlines: &mut HashSet<ValueId>,
+    scope_lookup_systems: &[String],
 ) {
     for stmt in stmts {
         match stmt {
@@ -937,14 +957,16 @@ fn classify_defs(
                     continue;
                 }
 
-                // Scope lookups always rebuilt.
-                if is_scope_lookup_op(op) {
+                // Scope lookups always rebuilt so call sites (Field, Call) can
+                // detect and resolve compound scope-lookup patterns.
+                if is_scope_lookup_op(op, scope_lookup_systems) {
                     always_inlines.insert(*result);
                     continue;
                 }
 
-                // GlobalRef (class/asset name references) always rebuilt so that
-                // the ClassRef → `as any` cast in build_val fires on every use.
+                // GlobalRef (class/asset name references) always rebuilt so
+                // that engines using wrap_class_refs_as_any fire the cast on
+                // every use, and scope-lookup cascade detection works correctly.
                 if matches!(op, Op::GlobalRef(_)) {
                     always_inlines.insert(*result);
                     continue;
@@ -980,6 +1002,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -988,6 +1011,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::While { header, body, .. } => {
@@ -998,6 +1022,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1006,6 +1031,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::For {
@@ -1022,6 +1048,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1030,6 +1057,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1038,6 +1066,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1046,6 +1075,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::Loop { body } => {
@@ -1056,10 +1086,10 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
-            LinearStmt::LogicalOr { rhs_body, .. }
-            | LinearStmt::LogicalAnd { rhs_body, .. } => {
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
                 classify_defs(
                     func,
                     rhs_body,
@@ -1067,6 +1097,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::Dispatch { blocks, .. } => {
@@ -1078,6 +1109,7 @@ fn classify_defs(
                         constant_inlines,
                         always_inlines,
                         lazy_inlines,
+                        scope_lookup_systems,
                     );
                 }
             }
@@ -1094,6 +1126,7 @@ fn classify_defs(
                         constant_inlines,
                         always_inlines,
                         lazy_inlines,
+                        scope_lookup_systems,
                     );
                 }
                 classify_defs(
@@ -1103,6 +1136,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             _ => {}
@@ -1138,9 +1172,7 @@ fn scan_alloc_stores(
                 result: alloc_r,
                 inst_id: alloc_iid,
             },
-            LinearStmt::Effect {
-                inst_id: store_iid,
-            },
+            LinearStmt::Effect { inst_id: store_iid },
         ) = (&pair[0], &pair[1])
         {
             if matches!(func.insts[*alloc_iid].op, Op::Alloc(_)) {
@@ -1183,8 +1215,7 @@ fn scan_alloc_stores(
             LinearStmt::Loop { body } => {
                 scan_alloc_stores(func, body, alloc_inits, skip_stores);
             }
-            LinearStmt::LogicalOr { rhs_body, .. }
-            | LinearStmt::LogicalAnd { rhs_body, .. } => {
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
                 scan_alloc_stores(func, rhs_body, alloc_inits, skip_stores);
             }
             LinearStmt::Dispatch { blocks, .. } => {
@@ -1219,7 +1250,7 @@ pub fn lower_function_linear(
     debug: &DebugConfig,
 ) -> AstFunction {
     let linear = linearize(func, shape);
-    let rctx = resolve(func, &linear);
+    let rctx = resolve(func, &linear, &config.scope_lookup_systems);
     let mut ctx = EmitCtx::new(func, &rctx, config);
 
     let mut body = ctx.emit_stmts(&linear);
@@ -1309,7 +1340,6 @@ pub fn lower_function_linear(
         num_capture_params: func.capture_params.len(),
     }
 }
-
 
 // -----------------------------------------------------------------------
 // Emit context
@@ -1401,9 +1431,7 @@ impl<'a> EmitCtx<'a> {
                         propagate_fwd(*then_target, then_args);
                         propagate_fwd(*else_target, else_args);
                     }
-                    Op::Switch {
-                        cases, default, ..
-                    } => {
+                    Op::Switch { cases, default, .. } => {
                         for (_, target, args) in cases {
                             propagate_fwd(*target, args);
                         }
@@ -1452,9 +1480,7 @@ impl<'a> EmitCtx<'a> {
                         collect(*then_target, then_args);
                         collect(*else_target, else_args);
                     }
-                    Op::Switch {
-                        cases, default, ..
-                    } => {
+                    Op::Switch { cases, default, .. } => {
                         for (_, target, args) in cases {
                             collect(*target, args);
                         }
@@ -1496,7 +1522,8 @@ impl<'a> EmitCtx<'a> {
                         _ => None,
                     };
                     if let Some(src) = src {
-                        if let std::collections::hash_map::Entry::Vacant(e) = value_names.entry(src) {
+                        if let std::collections::hash_map::Entry::Vacant(e) = value_names.entry(src)
+                        {
                             e.insert(name);
                             let src_uses = resolve.use_counts.get(&src).copied().unwrap_or(0);
                             if src_uses <= 1 {
@@ -1512,7 +1539,10 @@ impl<'a> EmitCtx<'a> {
         // the self name should use a distinct local name to avoid `this = ...`.
         let has_self = matches!(
             func.method_kind,
-            MethodKind::Instance | MethodKind::Constructor | MethodKind::Getter | MethodKind::Setter
+            MethodKind::Instance
+                | MethodKind::Constructor
+                | MethodKind::Getter
+                | MethodKind::Setter
         );
         if has_self && !func.blocks[func.entry].params.is_empty() {
             let self_value = func.blocks[func.entry].params[0].value;
@@ -1580,14 +1610,6 @@ impl<'a> EmitCtx<'a> {
         self.resolve.use_counts.get(&v).copied().unwrap_or(0)
     }
 
-    /// Check if a value has Dictionary type (flash.utils::Dictionary).
-    fn is_dictionary(&self, v: ValueId) -> bool {
-        matches!(
-            self.func.value_types.get(v),
-            Some(Type::Struct(name)) if name.rsplit("::").next() == Some("Dictionary")
-        )
-    }
-
     /// Build an expression for a value reference.
     fn build_val(&mut self, v: ValueId) -> Expr {
         // Constants — always inlined, not consumed.
@@ -1599,17 +1621,14 @@ impl<'a> EmitCtx<'a> {
         if let Some(&inst_id) = self.always_inline_map.get(&v) {
             let op = self.func.insts[inst_id].op.clone();
             if let Some(expr) = self.build_expr_from_op(&op) {
-                // OBJT class references (ClassRef type) must be wrapped in an `as any`
-                // cast so that TypeScript allows them in numeric/arithmetic contexts.
-                // In GML, object class names are interchangeable with their integer
-                // object indices; `as any` preserves the class constructor at runtime
-                // while suppressing TypeScript's `typeof ClassName` type errors.
-                if matches!(&self.func.value_types[v], Type::ClassRef(_)) {
-                    return Expr::Cast {
-                        expr: Box::new(expr),
-                        ty: self.func.value_types[v].clone(),
-                        kind: CastKind::NullableCoerce,
-                    };
+                if self.config.wrap_class_refs_as_any {
+                    if let Type::ClassRef(_) = &self.func.value_types[v] {
+                        return Expr::Cast {
+                            expr: Box::new(expr),
+                            ty: self.func.value_types[v].clone(),
+                            kind: CastKind::NullableCoerce,
+                        };
+                    }
                 }
                 return expr;
             }
@@ -1624,14 +1643,14 @@ impl<'a> EmitCtx<'a> {
         if let Some(inst_id) = self.pending_lazy.remove(&v) {
             let op = self.func.insts[inst_id].op.clone();
             if let Some(expr) = self.build_expr_from_op(&op) {
-                // OBJT class references (ClassRef type) must be wrapped in an `as any`
-                // cast so TypeScript allows them in numeric/arithmetic contexts.
-                if matches!(&self.func.value_types[v], Type::ClassRef(_)) {
-                    return Expr::Cast {
-                        expr: Box::new(expr),
-                        ty: self.func.value_types[v].clone(),
-                        kind: CastKind::NullableCoerce,
-                    };
+                if self.config.wrap_class_refs_as_any {
+                    if let Type::ClassRef(_) = &self.func.value_types[v] {
+                        return Expr::Cast {
+                            expr: Box::new(expr),
+                            ty: self.func.value_types[v].clone(),
+                            kind: CastKind::NullableCoerce,
+                        };
+                    }
                 }
                 return expr;
             }
@@ -1650,7 +1669,6 @@ impl<'a> EmitCtx<'a> {
 
         Expr::Var(self.value_name(v))
     }
-
 
     /// Build an Expr from an Op.
     fn build_expr_from_op(&mut self, op: &Op) -> Option<Expr> {
@@ -1749,28 +1767,12 @@ impl<'a> EmitCtx<'a> {
                 object: Box::new(self.build_val(*object)),
                 field: field.clone(),
             },
-            Op::GetIndex { collection, index } => {
-                if self.is_dictionary(*collection) {
-                    // Dictionary → Map: dict.get(key)
-                    Expr::CallIndirect {
-                        callee: Box::new(Expr::Field {
-                            object: Box::new(self.build_val(*collection)),
-                            field: "get".into(),
-                        }),
-                        args: vec![self.build_val(*index)],
-                    }
-                } else {
-                    Expr::Index {
-                        collection: Box::new(self.build_val(*collection)),
-                        index: Box::new(self.build_val(*index)),
-                    }
-                }
-            }
+            Op::GetIndex { collection, index } => Expr::Index {
+                collection: Box::new(self.build_val(*collection)),
+                index: Box::new(self.build_val(*index)),
+            },
 
-            Op::Call {
-                func: fname,
-                args,
-            } => Expr::Call {
+            Op::Call { func: fname, args } => Expr::Call {
                 func: fname.clone(),
                 args: args.iter().map(|a| self.build_val(*a)).collect(),
             },
@@ -1782,42 +1784,11 @@ impl<'a> EmitCtx<'a> {
                 system,
                 method,
                 args,
-            } => {
-                // Dictionary-specific rewrites for Flash.Object operations.
-                if system == "Flash.Object"
-                    && args.len() >= 2
-                    && self.is_dictionary(args[0])
-                {
-                    match method.as_str() {
-                        // deleteProperty(dict, key) → dict.delete(key)
-                        "deleteProperty" => {
-                            return Some(Expr::CallIndirect {
-                                callee: Box::new(Expr::Field {
-                                    object: Box::new(self.build_val(args[0])),
-                                    field: "delete".into(),
-                                }),
-                                args: vec![self.build_val(args[1])],
-                            });
-                        }
-                        // hasProperty(dict, key) → dict.has(key)
-                        "hasProperty" => {
-                            return Some(Expr::CallIndirect {
-                                callee: Box::new(Expr::Field {
-                                    object: Box::new(self.build_val(args[0])),
-                                    field: "has".into(),
-                                }),
-                                args: vec![self.build_val(args[1])],
-                            });
-                        }
-                        _ => {}
-                    }
-                }
-                Expr::SystemCall {
-                    system: system.clone(),
-                    method: method.clone(),
-                    args: args.iter().map(|a| self.build_val(*a)).collect(),
-                }
-            }
+            } => Expr::SystemCall {
+                system: system.clone(),
+                method: method.clone(),
+                args: args.iter().map(|a| self.build_val(*a)).collect(),
+            },
 
             Op::MethodCall {
                 receiver,
@@ -1866,10 +1837,7 @@ impl<'a> EmitCtx<'a> {
             }
 
             Op::Yield(v) => Expr::Yield(v.map(|yv| Box::new(self.build_val(yv)))),
-            Op::CoroutineCreate {
-                func: fname,
-                args,
-            } => Expr::CoroutineCreate {
+            Op::CoroutineCreate { func: fname, args } => Expr::CoroutineCreate {
                 func: fname.clone(),
                 args: args.iter().map(|a| self.build_val(*a)).collect(),
             },
@@ -2405,33 +2373,22 @@ impl<'a> EmitCtx<'a> {
                     object: Box::new(self.build_val(*object)),
                     field: field.clone(),
                 };
-                stmts.push(Stmt::Assign { target, value: self.build_val(*value) });
+                stmts.push(Stmt::Assign {
+                    target,
+                    value: self.build_val(*value),
+                });
             }
             Op::SetIndex {
                 collection,
                 index,
                 value,
             } => {
-                if self.is_dictionary(*collection) {
-                    // Dictionary → Map: dict.set(key, value)
-                    let dict = self.build_val(*collection);
-                    let key = self.build_val(*index);
-                    let val = self.build_val(*value);
-                    stmts.push(Stmt::Expr(Expr::CallIndirect {
-                        callee: Box::new(Expr::Field {
-                            object: Box::new(dict),
-                            field: "set".into(),
-                        }),
-                        args: vec![key, val],
-                    }));
-                } else {
-                    let target = Expr::Index {
-                        collection: Box::new(self.build_val(*collection)),
-                        index: Box::new(self.build_val(*index)),
-                    };
-                    let val = self.build_val(*value);
-                    stmts.push(Stmt::Assign { target, value: val });
-                }
+                let target = Expr::Index {
+                    collection: Box::new(self.build_val(*collection)),
+                    index: Box::new(self.build_val(*index)),
+                };
+                let val = self.build_val(*value);
+                stmts.push(Stmt::Assign { target, value: val });
             }
             // Skip terminators in dispatch blocks.
             Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } => {}
@@ -2842,7 +2799,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         assert!(ctx.constant_inlines.contains_key(&c));
         assert!(ctx.lazy_inlines.contains(&sum));
@@ -2865,7 +2822,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         // Dead add: use_count == 0, not in any inline set.
         assert_eq!(ctx.use_counts.get(&_dead).copied().unwrap_or(0), 0);
@@ -2890,7 +2847,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         // Both neg and sum should be dead after fixpoint.
         assert_eq!(ctx.use_counts.get(&_neg).copied().unwrap_or(0), 0);
@@ -2914,7 +2871,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         // sum has 2 uses — should NOT be lazy-inlined.
         assert_eq!(ctx.use_counts.get(&sum).copied().unwrap_or(0), 2);
@@ -2940,7 +2897,12 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         assert_eq!(ast.name, "add");
         assert_eq!(ast.params.len(), 2);
@@ -2948,10 +2910,7 @@ mod tests {
         assert_eq!(ast.body.len(), 1);
         assert!(matches!(
             &ast.body[0],
-            Stmt::Return(Some(Expr::Binary {
-                op: BinOp::Add,
-                ..
-            }))
+            Stmt::Return(Some(Expr::Binary { op: BinOp::Add, .. }))
         ));
     }
 
@@ -2970,7 +2929,12 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Constant and sum both inlined into return.
         assert_eq!(ast.body.len(), 1);
@@ -2997,9 +2961,18 @@ mod tests {
         let func = fb.build();
 
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
-        assert!(ast.body.is_empty(), "Expected empty body, got: {:?}", ast.body);
+        assert!(
+            ast.body.is_empty(),
+            "Expected empty body, got: {:?}",
+            ast.body
+        );
     }
 
     #[test]
@@ -3027,7 +3000,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         assert!(!ast.body.is_empty());
     }
@@ -3047,9 +3025,7 @@ mod tests {
             Stmt::Assign { target, value } => {
                 expr_contains_var(target, name) || expr_contains_var(value, name)
             }
-            Stmt::VarDecl { init, .. } => {
-                init.as_ref().is_some_and(|e| expr_contains_var(e, name))
-            }
+            Stmt::VarDecl { init, .. } => init.as_ref().is_some_and(|e| expr_contains_var(e, name)),
             Stmt::If {
                 cond,
                 then_body,
@@ -3104,8 +3080,7 @@ mod tests {
                 args.iter().any(|a| expr_contains_var(a, name))
             }
             Expr::MethodCall { receiver, args, .. } => {
-                expr_contains_var(receiver, name)
-                    || args.iter().any(|a| expr_contains_var(a, name))
+                expr_contains_var(receiver, name) || args.iter().any(|a| expr_contains_var(a, name))
             }
             Expr::Field { object, .. } => expr_contains_var(object, name),
             Expr::Index {
@@ -3130,9 +3105,7 @@ mod tests {
                     else_body,
                     ..
                 } => count_var_decls(then_body, name) + count_var_decls(else_body, name),
-                Stmt::While { body, .. } | Stmt::Loop { body } => {
-                    count_var_decls(body, name)
-                }
+                Stmt::While { body, .. } | Stmt::Loop { body } => count_var_decls(body, name),
                 Stmt::For {
                     init, body, update, ..
                 } => {
@@ -3188,13 +3161,19 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Should have an init assign before the loop, not just a naked while.
         // Verify the body is non-empty and has a loop.
-        let has_while_or_for = ast.body.iter().any(|s| {
-            matches!(s, Stmt::While { .. } | Stmt::For { .. })
-        });
+        let has_while_or_for = ast
+            .body
+            .iter()
+            .any(|s| matches!(s, Stmt::While { .. } | Stmt::For { .. }));
         assert!(
             has_while_or_for,
             "Expected loop in output: {}",
@@ -3235,8 +3214,18 @@ mod tests {
         let mut func = fb.build();
         let shape = structurize(&mut func);
 
-        let ast1 = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
-        let ast2 = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast1 = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
+        let ast2 = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         assert_eq!(
             format!("{:?}", ast1.body),
@@ -3266,7 +3255,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // The output should not panic or produce undeclared variables.
         // It may inline the cast or produce a declaration — either is correct.
@@ -3293,7 +3287,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Params should have distinct names.
         assert_eq!(ast.params.len(), 2);
@@ -3311,10 +3310,7 @@ mod tests {
         // Instance method with self param named "this".
         // Another value also named "this" — should be renamed to "_this".
         let sig = FunctionSig {
-            params: vec![
-                Type::Struct("Foo".to_string()),
-                Type::Int(64),
-            ],
+            params: vec![Type::Struct("Foo".to_string()), Type::Int(64)],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -3331,7 +3327,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // The two "this" params should have different names.
         // param(0) keeps "this", param(1) gets "_this" or similar.
@@ -3370,7 +3371,7 @@ mod tests {
         let func = fb.build();
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let resolved = resolve(&func, &linear);
+        let resolved = resolve(&func, &linear, &[]);
         let config = LoweringConfig::default();
         let mut ctx = EmitCtx::new(&func, &resolved, &config);
         let body = ctx.emit_stmts(&linear);
@@ -3415,7 +3416,12 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Output should reference "hp" somewhere, not a vN identifier.
         let body_str = debug_body(&ast.body);
@@ -3492,7 +3498,12 @@ mod tests {
         let func = fb.build();
         let shape = Shape::Block(func.entry);
         // Should not panic from double-flush.
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
         let _ = debug_body(&ast.body);
     }
 
@@ -3533,7 +3544,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // v_field's declaration must appear before the if/else, not inside it.
         // The return should reference the field value.
@@ -3568,10 +3584,20 @@ mod tests {
 
         let func = fb.build();
         let shape = Shape::Block(func.entry);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Should produce clean output with "result" name, no broken references.
-        assert_eq!(ast.body.len(), 1, "Expected single return: {}", debug_body(&ast.body));
+        assert_eq!(
+            ast.body.len(),
+            1,
+            "Expected single return: {}",
+            debug_body(&ast.body)
+        );
         assert!(matches!(&ast.body[0], Stmt::Return(Some(_))));
     }
 
@@ -3617,14 +3643,25 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Find the If statement and check its condition.
         let if_stmt = ast.body.iter().find(|s| matches!(s, Stmt::If { .. }));
         if let Some(Stmt::If { cond, .. }) = if_stmt {
             // Condition should be inverted Cmp (Ge), not Not(Cmp(Lt)).
             assert!(
-                matches!(cond, Expr::Cmp { kind: CmpKind::Ge, .. }),
+                matches!(
+                    cond,
+                    Expr::Cmp {
+                        kind: CmpKind::Ge,
+                        ..
+                    }
+                ),
                 "Expected inverted Cmp (Ge), not Not wrapper: {cond:?}"
             );
         }
@@ -3662,7 +3699,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Count VarDecl statements for the phi value's name. There should be
         // at most 1 declaration (not duplicated).
@@ -3718,7 +3760,12 @@ mod tests {
 
         let mut func = fb.build();
         let shape = structurize(&mut func);
-        let ast = lower_function_linear(&func, &shape, &LoweringConfig::default(), &DebugConfig::none());
+        let ast = lower_function_linear(
+            &func,
+            &shape,
+            &LoweringConfig::default(),
+            &DebugConfig::none(),
+        );
 
         // Should produce clean output — no panic from SE flush timing.
         assert!(
@@ -3818,7 +3865,11 @@ mod tests {
         // Entry: side-effecting call followed by switch.
         let v_call = fb.call("foo", &[], Type::Dynamic);
         fb.name_value(v_call, "foo_call".to_string());
-        fb.switch(v_key, vec![(Constant::Int(0), case0, vec![])], (case1, vec![]));
+        fb.switch(
+            v_key,
+            vec![(Constant::Int(0), case0, vec![])],
+            (case1, vec![]),
+        );
 
         // case0: contains inner if — this triggers flush_side_effecting_inlines
         // inside case0's scope when emitted, which (without the fix) materialises
@@ -3868,18 +3919,20 @@ mod tests {
             .body
             .iter()
             .any(|s| matches!(s, Stmt::VarDecl { name, .. } if name == "foo_call"));
-        let has_orphan_ref =
-            if let Some(Stmt::Switch { cases, default_body, .. }) =
-                ast.body.iter().find(|s| matches!(s, Stmt::Switch { .. }))
-            {
-                let in_cases = cases
-                    .iter()
-                    .any(|(_, stmts)| body_contains_var_ref(stmts, "foo_call"));
-                let in_default = body_contains_var_ref(default_body, "foo_call");
-                (in_cases || in_default) && !has_outer_decl
-            } else {
-                false
-            };
+        let has_orphan_ref = if let Some(Stmt::Switch {
+            cases,
+            default_body,
+            ..
+        }) = ast.body.iter().find(|s| matches!(s, Stmt::Switch { .. }))
+        {
+            let in_cases = cases
+                .iter()
+                .any(|(_, stmts)| body_contains_var_ref(stmts, "foo_call"));
+            let in_default = body_contains_var_ref(default_body, "foo_call");
+            (in_cases || in_default) && !has_outer_decl
+        } else {
+            false
+        };
         assert!(
             !has_orphan_ref,
             "'foo_call' is referenced inside a switch case but has no outer-scope \
@@ -3895,15 +3948,18 @@ mod tests {
 
     fn stmt_contains_var_ref(stmt: &Stmt, name: &str) -> bool {
         match stmt {
-            Stmt::VarDecl { init, .. } => {
-                init.as_ref().is_some_and(|e| expr_contains_var_ref(e, name))
-            }
-            Stmt::Assign { target, value }
-            | Stmt::CompoundAssign { target, value, .. } => {
+            Stmt::VarDecl { init, .. } => init
+                .as_ref()
+                .is_some_and(|e| expr_contains_var_ref(e, name)),
+            Stmt::Assign { target, value } | Stmt::CompoundAssign { target, value, .. } => {
                 expr_contains_var_ref(target, name) || expr_contains_var_ref(value, name)
             }
             Stmt::Expr(e) | Stmt::Return(Some(e)) => expr_contains_var_ref(e, name),
-            Stmt::If { cond, then_body, else_body } => {
+            Stmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
                 expr_contains_var_ref(cond, name)
                     || body_contains_var_ref(then_body, name)
                     || body_contains_var_ref(else_body, name)
@@ -3911,13 +3967,22 @@ mod tests {
             Stmt::While { cond, body } => {
                 expr_contains_var_ref(cond, name) || body_contains_var_ref(body, name)
             }
-            Stmt::For { init, cond, update, body } => {
+            Stmt::For {
+                init,
+                cond,
+                update,
+                body,
+            } => {
                 body_contains_var_ref(init, name)
                     || expr_contains_var_ref(cond, name)
                     || body_contains_var_ref(update, name)
                     || body_contains_var_ref(body, name)
             }
-            Stmt::Switch { value, cases, default_body } => {
+            Stmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
                 expr_contains_var_ref(value, name)
                     || cases.iter().any(|(_, s)| body_contains_var_ref(s, name))
                     || body_contains_var_ref(default_body, name)
@@ -3964,7 +4029,11 @@ mod tests {
             Expr::Index { collection, index } => {
                 expr_contains_var_ref(collection, name) || expr_contains_var_ref(index, name)
             }
-            Expr::Ternary { cond, then_val, else_val } => {
+            Expr::Ternary {
+                cond,
+                then_val,
+                else_val,
+            } => {
                 expr_contains_var_ref(cond, name)
                     || expr_contains_var_ref(then_val, name)
                     || expr_contains_var_ref(else_val, name)

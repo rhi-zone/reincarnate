@@ -639,7 +639,9 @@ mod tests {
     fn print_simple_add() {
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
         let a = fb.param(0);
         let b = fb.param(1);
@@ -663,7 +665,9 @@ pub fn add(v0: i64, v1: i64) -> i64 {
     fn print_branching() {
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("choose", sig, Visibility::Private);
 
         let cond = fb.param(0);
@@ -762,7 +766,9 @@ fn choose(v0: bool, v1: i64, v2: i64) -> i64 {
         // Add a simple function
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
         let a = fb.param(0);
         let b = fb.param(1);
@@ -807,7 +813,9 @@ pub fn add(v0: i64, v1: i64) -> i64 {
     fn print_constants() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("consts", sig, Visibility::Private);
         fb.const_int(42);
         fb.const_string("hello");
@@ -843,7 +851,9 @@ fn consts() -> void {
                 Type::Option(Box::new(Type::Float(64))),
                 Type::Tuple(vec![Type::Int(64), Type::Bool]),
             ],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("types", sig, Visibility::Private);
         fb.ret(None);
         let func = fb.build();
@@ -859,7 +869,9 @@ fn consts() -> void {
     fn print_syscall() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("draw", sig, Visibility::Private);
         let x = fb.const_int(10);
         let y = fb.const_int(20);
@@ -875,7 +887,9 @@ fn consts() -> void {
     fn print_void_return_function() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("noop", sig, Visibility::Private);
         fb.ret(None);
         let func = fb.build();
