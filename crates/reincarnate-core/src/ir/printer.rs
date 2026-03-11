@@ -132,8 +132,8 @@ fn fmt_cmp_kind(kind: CmpKind, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         CmpKind::Le => write!(f, "le"),
         CmpKind::Gt => write!(f, "gt"),
         CmpKind::Ge => write!(f, "ge"),
-        CmpKind::LooseEq => write!(f, "loose_eq"),
-        CmpKind::LooseNe => write!(f, "loose_ne"),
+        CmpKind::CoercingEq => write!(f, "coercing_eq"),
+        CmpKind::CoercingNe => write!(f, "coercing_ne"),
     }
 }
 

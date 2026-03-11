@@ -102,10 +102,9 @@ All of the following violate it and need to move to the respective frontend crat
   Already renamed to `CastKind::NullableCoerce` with language-agnostic doc: "Nullable cast —
   returns null if the value is not an instance of the target type (e.g. AS3 `as`, Kotlin `as?`, C# `as`)".
 
-- [ ] **`CmpKind::LooseEq` / `LooseNe` in core IR are JS-specific.**
-  `inst.rs` lines 47–51: Documented as "JavaScript loose equality (`==`)… used by SugarCube."
-  Rust backends and non-JS frontends have no concept of loose vs strict equality. Move to a
-  JS-backend-specific annotation or a frontend IR extension.
+- [x] **`CmpKind::LooseEq` / `LooseNe` in core IR are JS-specific.** (2026-03-11)
+  Renamed to `CoercingEq` / `CoercingNe` with language-neutral docs. Coercing equality
+  is a valid cross-language semantic concept (JS, PHP, Perl) — not engine-specific.
 
 - [x] **`datawin` crate missing `reincarnate-` prefix.** (2026-03-11)
   Already named `reincarnate-datawin` in Cargo.toml — the `reincarnate-` prefix is present.
