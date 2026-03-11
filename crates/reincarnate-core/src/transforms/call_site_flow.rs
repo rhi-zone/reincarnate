@@ -56,11 +56,7 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
                                 .push(ty.clone());
                         }
                     }
-                    Op::MethodCall {
-                        method,
-                        args,
-                        ..
-                    } => {
+                    Op::MethodCall { method, args, .. } => {
                         // Skip self-calls.
                         if method == &func.name {
                             continue;
@@ -391,8 +387,7 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut method =
-            FunctionBuilder::new("Foo::bar", method_sig, Visibility::Private);
+        let mut method = FunctionBuilder::new("Foo::bar", method_sig, Visibility::Private);
         method.ret(None);
         mb.add_function(method.build());
 

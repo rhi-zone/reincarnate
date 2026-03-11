@@ -48,9 +48,8 @@ fn parse_bounty_chunks() {
     assert_eq!(
         magics,
         [
-            "GEN8", "OPTN", "EXTN", "SOND", "AGRP", "SPRT", "BGND", "PATH", "SCPT", "SHDR",
-            "FONT", "TMLN", "OBJT", "ROOM", "DAFL", "TPAG", "CODE", "VARI", "FUNC", "STRG",
-            "TXTR", "AUDO",
+            "GEN8", "OPTN", "EXTN", "SOND", "AGRP", "SPRT", "BGND", "PATH", "SCPT", "SHDR", "FONT",
+            "TMLN", "OBJT", "ROOM", "DAFL", "TPAG", "CODE", "VARI", "FUNC", "STRG", "TXTR", "AUDO",
         ]
     );
 
@@ -139,7 +138,11 @@ fn undertale_string_table() {
     let table = StringTable::parse(strg_data, strg_entry.data_offset()).unwrap();
 
     // Undertale should have many strings
-    assert!(table.len() > 1000, "expected >1000 strings, got {}", table.len());
+    assert!(
+        table.len() > 1000,
+        "expected >1000 strings, got {}",
+        table.len()
+    );
 
     // First string should be "prototype" (same GMS convention)
     assert_eq!(table.get(0, &data).unwrap(), "prototype");
@@ -252,11 +255,10 @@ fn bounty_decode_all_bytecode() {
         let bc = code
             .entry_bytecode(i, &data)
             .unwrap_or_else(|| panic!("bytecode for entry {}", i));
-        let instructions = decode::decode(bc)
-            .unwrap_or_else(|e| {
-                let name = entry.name.resolve(&data).unwrap_or_default();
-                panic!("decode entry {} ({}): {}", i, name, e)
-            });
+        let instructions = decode::decode(bc).unwrap_or_else(|e| {
+            let name = entry.name.resolve(&data).unwrap_or_default();
+            panic!("decode entry {} ({}): {}", i, name, e)
+        });
         total_instructions += instructions.len();
     }
 
@@ -454,7 +456,8 @@ fn bounty_scpt() {
     // Scripts should map to sequential code IDs
     for (i, s) in scpt.scripts.iter().enumerate() {
         assert_eq!(
-            s.code_id, i as u32,
+            s.code_id,
+            i as u32,
             "script {} code_id mismatch",
             s.name.resolve(&data).unwrap_or_default()
         );
@@ -542,8 +545,18 @@ fn bounty_objt_code_linkage() {
     let obj_name = obj0.name.resolve(&data).unwrap();
 
     let event_type_names = [
-        "Create", "Destroy", "Alarm", "Step", "Collision", "Keyboard", "Mouse", "Other", "Draw",
-        "KeyPress", "KeyRelease", "Trigger",
+        "Create",
+        "Destroy",
+        "Alarm",
+        "Step",
+        "Collision",
+        "Keyboard",
+        "Mouse",
+        "Other",
+        "Draw",
+        "KeyPress",
+        "KeyRelease",
+        "Trigger",
     ];
 
     for (type_idx, event_list) in obj0.events.iter().enumerate() {
@@ -792,12 +805,7 @@ fn undertale_txtr() {
     // All textures should have PNG data
     for i in 0..txtr.textures.len() {
         let tex_data = txtr.texture_data(i, &data).unwrap();
-        assert_eq!(
-            &tex_data[..4],
-            b"\x89PNG",
-            "texture {} should be PNG",
-            i
-        );
+        assert_eq!(&tex_data[..4], b"\x89PNG", "texture {} should be PNG", i);
     }
 }
 
@@ -1079,11 +1087,7 @@ fn undertale_round_trip() {
     let chunks = reincarnate_datawin::writer::extract_chunks(&index, &data);
     let reassembled = reincarnate_datawin::writer::assemble_form(&chunks);
 
-    assert_eq!(
-        data.len(),
-        reassembled.len(),
-        "round-trip size mismatch"
-    );
+    assert_eq!(data.len(), reassembled.len(), "round-trip size mismatch");
     assert_eq!(data, reassembled, "round-trip byte mismatch");
 }
 
@@ -1098,11 +1102,7 @@ fn chronicon_round_trip() {
     let chunks = reincarnate_datawin::writer::extract_chunks(&index, &data);
     let reassembled = reincarnate_datawin::writer::assemble_form(&chunks);
 
-    assert_eq!(
-        data.len(),
-        reassembled.len(),
-        "round-trip size mismatch"
-    );
+    assert_eq!(data.len(), reassembled.len(), "round-trip size mismatch");
     assert_eq!(data, reassembled, "round-trip byte mismatch");
 }
 

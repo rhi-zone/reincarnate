@@ -230,7 +230,11 @@ fn stress_pass<T: Transform>(pass: &T, func: crate::ir::Function) {
 }
 
 /// Apply a pass to a module with two functions (needed for ConstraintSolve).
-fn stress_pass_module<T: Transform>(pass: &T, func1: crate::ir::Function, func2: crate::ir::Function) {
+fn stress_pass_module<T: Transform>(
+    pass: &T,
+    func1: crate::ir::Function,
+    func2: crate::ir::Function,
+) {
     let mut mb = ModuleBuilder::new("test");
     mb.add_function(func1);
     mb.add_function(func2);

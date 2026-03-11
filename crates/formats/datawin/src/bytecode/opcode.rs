@@ -178,7 +178,13 @@ impl Opcode {
             }
             Self::Call => 1, // Function reference
             // Break with Int32 type has 1 extra word (e.g. pushref)
-            Self::Break => if type1 == 0x2 { 1 } else { 0 },
+            Self::Break => {
+                if type1 == 0x2 {
+                    1
+                } else {
+                    0
+                }
+            }
             _ => 0,
         }
     }

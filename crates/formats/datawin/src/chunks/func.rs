@@ -70,7 +70,10 @@ impl Func {
         // BC >= 15: Functions list (count + entries), then CodeLocals list (count + entries).
         // A 0-size FUNC chunk means the game was compiled with YYC (no bytecode); return empty.
         if c.remaining() == 0 {
-            return Ok(Self { functions: Vec::new(), code_locals: Vec::new() });
+            return Ok(Self {
+                functions: Vec::new(),
+                code_locals: Vec::new(),
+            });
         }
 
         // Functions: count(u32) + count × 12 bytes

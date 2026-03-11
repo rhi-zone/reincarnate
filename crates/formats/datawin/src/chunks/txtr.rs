@@ -81,11 +81,7 @@ impl Txtr {
     ///
     /// Reads from `data_offset` until the start of the next texture or end of data.
     /// The caller should check the PNG magic (`\x89PNG`) or other format header.
-    pub fn texture_data<'a>(
-        &self,
-        index: usize,
-        data: &'a [u8],
-    ) -> Option<&'a [u8]> {
+    pub fn texture_data<'a>(&self, index: usize, data: &'a [u8]) -> Option<&'a [u8]> {
         let entry = self.textures.get(index)?;
         let start = entry.data_offset as usize;
         if start >= data.len() {

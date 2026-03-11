@@ -64,10 +64,7 @@ impl DebugConfig {
         // Strategy 3: split-part matching — split filter on `.` and `::`,
         // require every non-empty part to appear in the lowercased name.
         if filter.contains('.') || filter.contains("::") {
-            let parts: Vec<&str> = filter
-                .split(['.', ':'])
-                .filter(|p| !p.is_empty())
-                .collect();
+            let parts: Vec<&str> = filter.split(['.', ':']).filter(|p| !p.is_empty()).collect();
             if !parts.is_empty() && parts.iter().all(|p| name_lower.contains(&p.to_lowercase())) {
                 return true;
             }
@@ -227,10 +224,7 @@ impl Preset {
     ///
     /// `skip_passes` are applied on top of the preset's base `PassConfig`,
     /// allowing fine-grained overrides.
-    pub fn resolve(
-        name: &str,
-        skip_passes: &[&str],
-    ) -> Option<(PassConfig, LoweringConfig)> {
+    pub fn resolve(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, LoweringConfig)> {
         let (mut pass, lowering) = match name {
             "literal" => (
                 PassConfig {
@@ -395,7 +389,12 @@ mod tests {
 
     #[test]
     fn should_dump_no_filter() {
-        let cfg = DebugConfig { dump_ir: true, dump_ast: false, function_filter: None, dump_ir_after: None };
+        let cfg = DebugConfig {
+            dump_ir: true,
+            dump_ast: false,
+            function_filter: None,
+            dump_ir_after: None,
+        };
         assert!(cfg.should_dump("Gun::event_step_2"));
         assert!(cfg.should_dump("anything"));
     }
@@ -421,7 +420,7 @@ mod tests {
         let cfg = debug_with_filter("Gun.step");
         assert!(cfg.should_dump("Gun::event_step_2"));
         assert!(!cfg.should_dump("Bullet::event_step_2")); // "gun" not present
-        assert!(!cfg.should_dump("Gun::event_draw_0"));    // "step" not present
+        assert!(!cfg.should_dump("Gun::event_draw_0")); // "step" not present
     }
 
     #[test]

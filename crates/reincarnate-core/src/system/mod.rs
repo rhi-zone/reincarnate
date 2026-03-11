@@ -11,7 +11,7 @@ pub mod save_ui;
 pub mod settings_ui;
 pub mod timing;
 
-pub use audio::{Audio, BufferId, NodeId, VoiceId, NodeKind, ParamKind, PlayParams};
+pub use audio::{Audio, BufferId, NodeId, NodeKind, ParamKind, PlayParams, VoiceId};
 pub use dialog::Dialog;
 pub use files::Files;
 pub use graphics::{Color, Graphics, Rect};

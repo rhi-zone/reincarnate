@@ -8,7 +8,9 @@ use reincarnate_core::ir::{
 };
 use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, MethodFlags, Trait, TraitKind};
 
-use crate::multiname::{pool_string, resolve_multiname_index, resolve_multiname_structured, resolve_type, NsKind};
+use crate::multiname::{
+    pool_string, resolve_multiname_index, resolve_multiname_structured, resolve_type, NsKind,
+};
 use crate::translate::translate_method_body;
 
 /// Information about a translated class.
@@ -93,9 +95,14 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
             let prefix = method_prefix(&trait_.kind);
             let func_name = format!("{class_short_name}::{prefix}{bare_name}");
             let visibility = trait_visibility(pool, trait_);
-            if let Some(mut func) =
-                translate_class_method(abc, &method_idx, &func_name, true, Some(&class_short_name), &mut inner_functions)?
-            {
+            if let Some(mut func) = translate_class_method(
+                abc,
+                &method_idx,
+                &func_name,
+                true,
+                Some(&class_short_name),
+                &mut inner_functions,
+            )? {
                 func.namespace = class_ns.clone();
                 func.class = Some(class_short_name.clone());
                 func.method_kind = method_kind;
@@ -137,9 +144,14 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
             let prefix = method_prefix(&trait_.kind);
             let func_name = format!("{class_short_name}::{prefix}{bare_name}");
             let visibility = trait_visibility(pool, trait_);
-            if let Some(mut func) =
-                translate_class_method(abc, &method_idx, &func_name, true, None, &mut inner_functions)?
-            {
+            if let Some(mut func) = translate_class_method(
+                abc,
+                &method_idx,
+                &func_name,
+                true,
+                None,
+                &mut inner_functions,
+            )? {
                 func.namespace = class_ns.clone();
                 func.class = Some(class_short_name.clone());
                 func.method_kind = method_kind;
@@ -185,16 +197,24 @@ fn extract_instance_fields(
     let mut consts = Vec::new();
     for trait_ in traits {
         match &trait_.kind {
-            TraitKind::Slot { type_name, value, .. } => {
+            TraitKind::Slot {
+                type_name, value, ..
+            } => {
                 let name = resolve_trait_bare_name(pool, trait_, class_private_ns);
                 let ty = resolve_type(pool, type_name);
-                let default = value.as_ref().and_then(|dv| convert_default_value(pool, dv));
+                let default = value
+                    .as_ref()
+                    .and_then(|dv| convert_default_value(pool, dv));
                 slots.push((name, ty, default));
             }
-            TraitKind::Const { type_name, value, .. } => {
+            TraitKind::Const {
+                type_name, value, ..
+            } => {
                 let name = resolve_trait_bare_name(pool, trait_, class_private_ns);
                 let ty = resolve_type(pool, type_name);
-                let default = value.as_ref().and_then(|dv| convert_default_value(pool, dv));
+                let default = value
+                    .as_ref()
+                    .and_then(|dv| convert_default_value(pool, dv));
                 consts.push((name, ty, default));
             }
             _ => {}
@@ -212,10 +232,17 @@ fn extract_fields(
     let mut fields = Vec::new();
     for trait_ in traits {
         match &trait_.kind {
-            TraitKind::Slot { type_name, value, .. } | TraitKind::Const { type_name, value, .. } => {
+            TraitKind::Slot {
+                type_name, value, ..
+            }
+            | TraitKind::Const {
+                type_name, value, ..
+            } => {
                 let name = resolve_trait_bare_name(pool, trait_, class_private_ns);
                 let ty = resolve_type(pool, type_name);
-                let default = value.as_ref().and_then(|dv| convert_default_value(pool, dv));
+                let default = value
+                    .as_ref()
+                    .and_then(|dv| convert_default_value(pool, dv));
                 fields.push((name, ty, default));
             }
             _ => {}
@@ -230,7 +257,9 @@ fn trait_method_index(trait_: &Trait) -> Option<Index<swf::avm2::types::Method>>
         TraitKind::Method { method, .. }
         | TraitKind::Getter { method, .. }
         | TraitKind::Setter { method, .. }
-        | TraitKind::Function { function: method, .. } => Some(*method),
+        | TraitKind::Function {
+            function: method, ..
+        } => Some(*method),
         _ => None,
     }
 }
@@ -298,7 +327,10 @@ fn trait_visibility(pool: &ConstantPool, trait_: &Trait) -> Visibility {
 }
 
 /// Find the string of the private namespace associated with a class multiname.
-fn find_private_ns_string(pool: &ConstantPool, class_name_idx: &Index<swf::avm2::types::Multiname>) -> Option<String> {
+fn find_private_ns_string(
+    pool: &ConstantPool,
+    class_name_idx: &Index<swf::avm2::types::Multiname>,
+) -> Option<String> {
     // The class name's QName uses its own namespace. Private namespaces on
     // traits typically have the same string as the class's qualified path.
     if let Some(qn) = resolve_multiname_structured(pool, class_name_idx) {
@@ -394,7 +426,15 @@ fn translate_class_method(
         has_rest_param: has_rest,
     };
 
-    let func = translate_method_body(abc, body, func_name, sig, &param_names, has_self, inner_functions)?;
+    let func = translate_method_body(
+        abc,
+        body,
+        func_name,
+        sig,
+        &param_names,
+        has_self,
+        inner_functions,
+    )?;
     Ok(Some(func))
 }
 

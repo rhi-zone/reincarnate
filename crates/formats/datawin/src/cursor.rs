@@ -120,10 +120,7 @@ impl<'a> Cursor<'a> {
         let bytes = self.read_bytes(len)?;
         // Skip null terminator
         self.skip(1)?;
-        String::from_utf8(bytes.to_vec()).map_err(|e| Error::InvalidString {
-            offset,
-            source: e,
-        })
+        String::from_utf8(bytes.to_vec()).map_err(|e| Error::InvalidString { offset, source: e })
     }
 
     /// Read a pointer list: u32 count, then count × u32 absolute offsets.

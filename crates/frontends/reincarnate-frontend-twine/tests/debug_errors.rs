@@ -17,7 +17,12 @@ fn analyze_errors(html: &str, label: &str) {
         for err in &ast.errors {
             total_errors += 1;
             // Categorize by first few words of the error message
-            let category = err.message.split_whitespace().take(4).collect::<Vec<_>>().join(" ");
+            let category = err
+                .message
+                .split_whitespace()
+                .take(4)
+                .collect::<Vec<_>>()
+                .join(" ");
             *error_counts.entry(category.clone()).or_default() += 1;
 
             let examples_for_cat = examples.entry(category).or_default();

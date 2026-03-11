@@ -160,15 +160,9 @@ pub enum ExprKind {
         right: Box<Expr>,
     },
     /// Unary operation: `not x`, `-x`.
-    Unary {
-        op: UnaryOp,
-        operand: Box<Expr>,
-    },
+    Unary { op: UnaryOp, operand: Box<Expr> },
     /// Function/macro call within an expression: `(random: 1, 10)`.
-    Call {
-        name: String,
-        args: Vec<Expr>,
-    },
+    Call { name: String, args: Vec<Expr> },
     /// Possessive access: `$arr's 1st`, `$obj's name`.
     Possessive {
         object: Box<Expr>,
@@ -188,10 +182,7 @@ pub enum ExprKind {
     /// Ordinal accessor: `1st`, `2nd`, `3rd`, `last`.
     Ordinal(Ordinal),
     /// Assignment target in `(set:)`: `$var to expr`.
-    Assign {
-        target: Box<Expr>,
-        value: Box<Expr>,
-    },
+    Assign { target: Box<Expr>, value: Box<Expr> },
     /// Named hook selector: `?name`.
     /// Lowered to a CSS selector string `tw-hook[name='name']` for DOM targeting.
     HookSelector(String),
@@ -217,10 +208,7 @@ pub enum ExprKind {
     Spread(Box<Expr>),
     /// Dynamic macro call: `($var: args)` — callee is a story/temp var holding a custom macro.
     /// Lowered to `CallIndirect { callee, args }` in the IR.
-    DynCall {
-        callee: Box<Expr>,
-        args: Vec<Expr>,
-    },
+    DynCall { callee: Box<Expr>, args: Vec<Expr> },
     /// Inline `(macro:)` definition with its hook body captured in expression position.
     /// E.g. `(macro: dm-type _x)[body text]` when the whole expression appears as an arg
     /// to another macro. The hook body is stored as raw source text and re-parsed during
@@ -232,10 +220,7 @@ pub enum ExprKind {
     /// `bind $var` / `2bind $var` — variable binding descriptor for interactive macros.
     /// Lowered to `Harlowe.State.bind_ref(name)` which returns a `{ get, set }` object.
     /// `two_way` = true for `2bind` (initializes input from current variable value).
-    Bind {
-        two_way: bool,
-        target: Box<Expr>,
-    },
+    Bind { two_way: bool, target: Box<Expr> },
     /// Error placeholder for malformed expressions.
     Error(String),
 }

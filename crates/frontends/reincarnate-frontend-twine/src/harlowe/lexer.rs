@@ -212,7 +212,7 @@ impl<'a> ExprLexer<'a> {
                     // `[CodeHook]` is the last argument of (macro:) — extract body text.
                     // After extraction, skip whitespace/nothing until the closing `)`.
                     hook_source = self.extract_hook_body(); // pos is at `[`
-                    // Skip to and consume the closing `)` of (macro:...)
+                                                            // Skip to and consume the closing `)` of (macro:...)
                     while self.pos < self.bytes.len() && self.bytes[self.pos] != b')' {
                         self.pos += 1;
                     }
@@ -535,13 +535,20 @@ impl<'a> ExprLexer<'a> {
         let mut depth = 1usize;
         while self.pos < self.bytes.len() && depth > 0 {
             match self.bytes[self.pos] {
-                b'[' => { depth += 1; self.pos += 1; }
-                b']' => {
-                    depth -= 1;
-                    if depth == 0 { break; }
+                b'[' => {
+                    depth += 1;
                     self.pos += 1;
                 }
-                _ => { self.pos += 1; }
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                    self.pos += 1;
+                }
+                _ => {
+                    self.pos += 1;
+                }
             }
         }
         let text = self.input[text_start..self.pos].to_string();
@@ -725,7 +732,8 @@ impl<'a> ExprLexer<'a> {
                 // Check for "is not", "is in", "is a", "is an" (with whitespace)
                 let saved = self.pos;
                 self.skip_whitespace();
-                if self.pos + 3 <= self.bytes.len() && &self.input[self.pos..self.pos + 3] == "not" {
+                if self.pos + 3 <= self.bytes.len() && &self.input[self.pos..self.pos + 3] == "not"
+                {
                     let after_not = self.pos + 3;
                     if after_not >= self.bytes.len()
                         || !self.bytes[after_not].is_ascii_alphanumeric()
@@ -761,8 +769,7 @@ impl<'a> ExprLexer<'a> {
                     && &self.input[self.pos..self.pos + 2] == "in"
                 {
                     let after_in = self.pos + 2;
-                    if after_in >= self.bytes.len()
-                        || !self.bytes[after_in].is_ascii_alphanumeric()
+                    if after_in >= self.bytes.len() || !self.bytes[after_in].is_ascii_alphanumeric()
                     {
                         self.pos = after_in;
                         TokenKind::IsIn
@@ -906,10 +913,7 @@ mod tests {
     #[test]
     fn test_boolean_and_it() {
         let tokens = lex_all("true and it");
-        assert_eq!(
-            tokens,
-            vec![TokenKind::True, TokenKind::And, TokenKind::It]
-        );
+        assert_eq!(tokens, vec![TokenKind::True, TokenKind::And, TokenKind::It]);
     }
 
     #[test]

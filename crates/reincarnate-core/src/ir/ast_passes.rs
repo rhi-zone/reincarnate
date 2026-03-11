@@ -26,9 +26,7 @@ pub fn lower_output_nodes(body: &mut [Stmt]) {
 
 fn lower_output_nodes_in_stmt(stmt: &mut Stmt) {
     match stmt {
-        Stmt::VarDecl {
-            init: Some(e), ..
-        } => {
+        Stmt::VarDecl { init: Some(e), .. } => {
             lower_output_nodes_in_expr(e);
         }
         Stmt::Assign { target, value } => {
@@ -124,9 +122,7 @@ fn lower_output_nodes_in_expr(expr: &mut Expr) {
                 lower_output_nodes_in_expr(a);
             }
         }
-        Expr::MethodCall {
-            receiver, args, ..
-        } => {
+        Expr::MethodCall { receiver, args, .. } => {
             lower_output_nodes_in_expr(receiver);
             for a in args {
                 lower_output_nodes_in_expr(a);
@@ -498,10 +494,7 @@ pub fn fold_single_use_consts(body: &mut Vec<Stmt>) {
                 fold_single_use_consts(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 fold_single_use_consts(init);
                 fold_single_use_consts(update);
@@ -561,10 +554,7 @@ pub fn inline_ordered_single_use(body: &mut Vec<Stmt>) {
                 inline_ordered_single_use(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 inline_ordered_single_use(init);
                 inline_ordered_single_use(update);
@@ -624,15 +614,14 @@ fn try_inline_ordered(body: &mut Vec<Stmt>) {
             }
 
             // Find the statement containing the single use.
-            let use_idx = match (i + 1..body.len())
-                .find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0)
-            {
-                Some(idx) => idx,
-                None => {
-                    i += 1;
-                    continue;
-                }
-            };
+            let use_idx =
+                match (i + 1..body.len()).find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0) {
+                    Some(idx) => idx,
+                    None => {
+                        i += 1;
+                        continue;
+                    }
+                };
 
             // The read must be in an unconditional position within that
             // statement — not inside an if/loop body where it would make
@@ -649,9 +638,7 @@ fn try_inline_ordered(body: &mut Vec<Stmt>) {
 
             // If the init contains calls, don't move it past any statement
             // that also contains calls — that would rearrange call order.
-            if init_has_effects
-                && (i + 1..use_idx).any(|j| stmt_has_side_effects(&body[j]))
-            {
+            if init_has_effects && (i + 1..use_idx).any(|j| stmt_has_side_effects(&body[j])) {
                 i += 1;
                 continue;
             }
@@ -680,9 +667,7 @@ fn try_inline_ordered(body: &mut Vec<Stmt>) {
 /// operations. Used as a barrier for order-preserving inlining.
 fn stmt_has_side_effects(stmt: &Stmt) -> bool {
     match stmt {
-        Stmt::VarDecl {
-            init: Some(e), ..
-        } => expr_has_side_effects(e),
+        Stmt::VarDecl { init: Some(e), .. } => expr_has_side_effects(e),
         Stmt::VarDecl { init: None, .. } => false,
         Stmt::Assign { target, value } => {
             expr_has_side_effects(target) || expr_has_side_effects(value)
@@ -709,9 +694,7 @@ fn stmt_has_side_effects(stmt: &Stmt) -> bool {
 /// conditional and not counted.
 fn count_unconditional_reads(stmt: &Stmt, name: &str) -> usize {
     match stmt {
-        Stmt::VarDecl {
-            name: n, init, ..
-        } => {
+        Stmt::VarDecl { name: n, init, .. } => {
             usize::from(n == name)
                 + init
                     .as_ref()
@@ -762,8 +745,7 @@ fn try_fold_batch(body: &mut Vec<Stmt>) -> bool {
     while i < body.len() {
         // Dead uninit decl: `let vN: T;` with no remaining references.
         if let Stmt::VarDecl {
-            name,
-            init: None, ..
+            name, init: None, ..
         } = &body[i]
         {
             // The precomputed count includes the VarDecl name itself (1).
@@ -810,15 +792,14 @@ fn try_fold_batch(body: &mut Vec<Stmt>) -> bool {
         }
 
         // Find the statement containing the single use.
-        let use_idx = match (i + 1..body.len())
-            .find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0)
-        {
-            Some(idx) => idx,
-            None => {
-                i += 1;
-                continue;
-            }
-        };
+        let use_idx =
+            match (i + 1..body.len()).find(|&j| count_var_reads_in_stmt(&body[j], &name) > 0) {
+                Some(idx) => idx,
+                None => {
+                    i += 1;
+                    continue;
+                }
+            };
 
         let adjacent = use_idx == i + 1;
 
@@ -836,8 +817,7 @@ fn try_fold_batch(body: &mut Vec<Stmt>) -> bool {
                 // Pure constant with no variable references (e.g. `[]`, `0`,
                 // `"str"`) can be sunk past any statement safely —
                 // evaluation order doesn't matter.
-                let is_trivial_const =
-                    !expr_has_side_effects(init) && !expr_has_any_var_ref(init);
+                let is_trivial_const = !expr_has_side_effects(init) && !expr_has_any_var_ref(init);
                 if !is_trivial_const {
                     let can_sink_path = is_stable_path(init)
                         && body[i + 1..use_idx]
@@ -1017,9 +997,7 @@ fn accumulate_reads_expr(expr: &Expr, counts: &mut HashMap<String, usize>) {
                 accumulate_reads_expr(a, counts);
             }
         }
-        Expr::MethodCall {
-            receiver, args, ..
-        } => {
+        Expr::MethodCall { receiver, args, .. } => {
             accumulate_reads_expr(receiver, counts);
             for a in args {
                 accumulate_reads_expr(a, counts);
@@ -1056,7 +1034,6 @@ fn accumulate_reads_expr(expr: &Expr, counts: &mut HashMap<String, usize>) {
         }
     }
 }
-
 
 /// Whether a statement could have observable side effects.
 /// Whether an expression could have observable side effects (calls).
@@ -1095,11 +1072,9 @@ fn expr_has_side_effects(expr: &Expr) -> bool {
                 || expr_has_side_effects(then_val)
                 || expr_has_side_effects(else_val)
         }
-        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
-            elems.iter().any(expr_has_side_effects)
-        }
+        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => elems.iter().any(expr_has_side_effects),
         Expr::StructInit { fields, .. } => {
-            fields.iter().any(|(_, v)| expr_has_side_effects(v))  // closure needed: tuple destructure
+            fields.iter().any(|(_, v)| expr_has_side_effects(v)) // closure needed: tuple destructure
         }
         Expr::MakeClosure { captures, .. } => captures.iter().any(expr_has_side_effects),
     }
@@ -1288,16 +1263,20 @@ fn count_var_reads_in_expr(expr: &Expr, name: &str) -> usize {
         }
         Expr::CallIndirect { callee, args } => {
             count_var_reads_in_expr(callee, name)
-                + args.iter().map(|a| count_var_reads_in_expr(a, name)).sum::<usize>()
+                + args
+                    .iter()
+                    .map(|a| count_var_reads_in_expr(a, name))
+                    .sum::<usize>()
         }
         Expr::SystemCall { args, .. } => {
             args.iter().map(|a| count_var_reads_in_expr(a, name)).sum()
         }
-        Expr::MethodCall {
-            receiver, args, ..
-        } => {
+        Expr::MethodCall { receiver, args, .. } => {
             count_var_reads_in_expr(receiver, name)
-                + args.iter().map(|a| count_var_reads_in_expr(a, name)).sum::<usize>()
+                + args
+                    .iter()
+                    .map(|a| count_var_reads_in_expr(a, name))
+                    .sum::<usize>()
         }
         Expr::Ternary {
             cond,
@@ -1316,9 +1295,10 @@ fn count_var_reads_in_expr(expr: &Expr, name: &str) -> usize {
             .map(|(_, v)| count_var_reads_in_expr(v, name))
             .sum(),
         Expr::Yield(v) => v.as_ref().map_or(0, |e| count_var_reads_in_expr(e, name)),
-        Expr::MakeClosure { captures, .. } => {
-            captures.iter().map(|c| count_var_reads_in_expr(c, name)).sum()
-        }
+        Expr::MakeClosure { captures, .. } => captures
+            .iter()
+            .map(|c| count_var_reads_in_expr(c, name))
+            .sum(),
     }
 }
 
@@ -1348,10 +1328,7 @@ fn stmt_reassigns_var(stmt: &Stmt, name: &str) -> bool {
             var_is_reassigned(body, name)
         }
         Stmt::For {
-            init,
-            update,
-            body,
-            ..
+            init, update, body, ..
         } => {
             var_is_reassigned(init, name)
                 || var_is_reassigned(update, name)
@@ -1365,9 +1342,7 @@ fn stmt_reassigns_var(stmt: &Stmt, name: &str) -> bool {
             cases.iter().any(|(_, b)| var_is_reassigned(b, name))
                 || var_is_reassigned(default_body, name)
         }
-        Stmt::Dispatch { blocks, .. } => {
-            blocks.iter().any(|(_, b)| var_is_reassigned(b, name))
-        }
+        Stmt::Dispatch { blocks, .. } => blocks.iter().any(|(_, b)| var_is_reassigned(b, name)),
         _ => false,
     }
 }
@@ -1377,7 +1352,10 @@ fn stmt_reassigns_var(stmt: &Stmt, name: &str) -> bool {
 fn count_var_reads_in_stmt(stmt: &Stmt, name: &str) -> usize {
     match stmt {
         Stmt::VarDecl { name: n, init, .. } => {
-            usize::from(n == name) + init.as_ref().map_or(0, |e| count_var_reads_in_expr(e, name))
+            usize::from(n == name)
+                + init
+                    .as_ref()
+                    .map_or(0, |e| count_var_reads_in_expr(e, name))
         }
         Stmt::Assign { target, value } => {
             // A bare Var target is a write, not a read — don't count it.
@@ -1435,10 +1413,7 @@ fn count_var_reads_in_stmt(stmt: &Stmt, name: &str) -> usize {
                     .map(|s| count_var_reads_in_stmt(s, name))
                     .sum::<usize>()
         }
-        Stmt::Loop { body } => body
-            .iter()
-            .map(|s| count_var_reads_in_stmt(s, name))
-            .sum(),
+        Stmt::Loop { body } => body.iter().map(|s| count_var_reads_in_stmt(s, name)).sum(),
         Stmt::ForOf {
             binding,
             iterable,
@@ -1480,11 +1455,7 @@ fn count_var_reads_in_stmt(stmt: &Stmt, name: &str) -> usize {
 
 /// Replace the first `Var(name)` with `replacement` in an expression.
 /// Returns `true` if the substitution was performed.
-fn substitute_var_in_expr(
-    expr: &mut Expr,
-    name: &str,
-    replacement: &mut Option<Expr>,
-) -> bool {
+fn substitute_var_in_expr(expr: &mut Expr, name: &str, replacement: &mut Option<Expr>) -> bool {
     if replacement.is_none() {
         return false;
     }
@@ -1531,9 +1502,7 @@ fn substitute_var_in_expr(
         Expr::SystemCall { args, .. } => args
             .iter_mut()
             .any(|a| substitute_var_in_expr(a, name, replacement)),
-        Expr::MethodCall {
-            receiver, args, ..
-        } => {
+        Expr::MethodCall { receiver, args, .. } => {
             substitute_var_in_expr(receiver, name, replacement)
                 || args
                     .iter_mut()
@@ -1565,11 +1534,7 @@ fn substitute_var_in_expr(
 
 /// Replace the first `Var(name)` with `replacement` in a statement.
 /// Returns `true` if the substitution was performed.
-fn substitute_var_in_stmt(
-    stmt: &mut Stmt,
-    name: &str,
-    replacement: &mut Option<Expr>,
-) -> bool {
+fn substitute_var_in_stmt(stmt: &mut Stmt, name: &str, replacement: &mut Option<Expr>) -> bool {
     if replacement.is_none() {
         return false;
     }
@@ -1641,13 +1606,11 @@ fn substitute_var_in_stmt(
         Stmt::Return(e) => e
             .as_mut()
             .is_some_and(|e| substitute_var_in_expr(e, name, replacement)),
-        Stmt::Dispatch { blocks, .. } => blocks
-            .iter_mut()
-            .any(|(_, stmts)| {
-                stmts
-                    .iter_mut()
-                    .any(|s| substitute_var_in_stmt(s, name, replacement))
-            }),
+        Stmt::Dispatch { blocks, .. } => blocks.iter_mut().any(|(_, stmts)| {
+            stmts
+                .iter_mut()
+                .any(|s| substitute_var_in_stmt(s, name, replacement))
+        }),
         Stmt::Switch {
             value,
             cases,
@@ -1705,10 +1668,7 @@ pub fn forward_substitute(body: &mut Vec<Stmt>) {
                 forward_substitute(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 forward_substitute(init);
                 forward_substitute(update);
@@ -1838,16 +1798,11 @@ pub fn rewrite_foreach_loops(body: &mut [Stmt]) {
                 rewrite_foreach_loops(then_body);
                 rewrite_foreach_loops(else_body);
             }
-            Stmt::While { body, .. }
-            | Stmt::Loop { body }
-            | Stmt::ForOf { body, .. } => {
+            Stmt::While { body, .. } | Stmt::Loop { body } | Stmt::ForOf { body, .. } => {
                 rewrite_foreach_loops(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 rewrite_foreach_loops(init);
                 rewrite_foreach_loops(update);
@@ -1955,7 +1910,8 @@ fn try_rewrite_foreach(stmt: &Stmt) -> Option<Stmt> {
     let mut new_body: Vec<Stmt> = remaining.to_vec();
 
     // Extract binding from the statement containing the next call.
-    let (binding, declare) = extract_binding_and_replace(&mut new_body, next_stmt_idx, &obj_name, &idx_name)?;
+    let (binding, declare) =
+        extract_binding_and_replace(&mut new_body, next_stmt_idx, &obj_name, &idx_name)?;
 
     Some(Stmt::ForOf {
         binding,
@@ -1986,7 +1942,11 @@ fn match_index_assign(stmt: &Stmt, tmp_name: &str, index_val: i64) -> Option<Str
 
 /// Find the first statement in `body` containing a `Flash_Iterator.nextValue` or `nextName`
 /// call with the expected args. Returns the method name and index.
-fn find_next_call<'a>(body: &'a [Stmt], obj_name: &str, idx_name: &str) -> Option<(&'a str, usize)> {
+fn find_next_call<'a>(
+    body: &'a [Stmt],
+    obj_name: &str,
+    idx_name: &str,
+) -> Option<(&'a str, usize)> {
     for (i, stmt) in body.iter().enumerate() {
         if let Some(method) = stmt_contains_next_call(stmt, obj_name, idx_name) {
             return Some((method, i));
@@ -2023,13 +1983,14 @@ fn expr_contains_next_call<'a>(expr: &'a Expr, obj_name: &str, idx_name: &str) -
             Some(method.as_str())
         }
         Expr::Cast { expr, .. } => expr_contains_next_call(expr, obj_name, idx_name),
-        Expr::Call { args, .. } | Expr::SystemCall { args, .. } => {
-            args.iter().find_map(|a| expr_contains_next_call(a, obj_name, idx_name))
-        }
-        Expr::CallIndirect { callee, args } => {
-            expr_contains_next_call(callee, obj_name, idx_name)
-                .or_else(|| args.iter().find_map(|a| expr_contains_next_call(a, obj_name, idx_name)))
-        }
+        Expr::Call { args, .. } | Expr::SystemCall { args, .. } => args
+            .iter()
+            .find_map(|a| expr_contains_next_call(a, obj_name, idx_name)),
+        Expr::CallIndirect { callee, args } => expr_contains_next_call(callee, obj_name, idx_name)
+            .or_else(|| {
+                args.iter()
+                    .find_map(|a| expr_contains_next_call(a, obj_name, idx_name))
+            }),
         Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
             expr_contains_next_call(lhs, obj_name, idx_name)
                 .or_else(|| expr_contains_next_call(rhs, obj_name, idx_name))
@@ -2046,14 +2007,12 @@ fn expr_contains_next_call<'a>(expr: &'a Expr, obj_name: &str, idx_name: &str) -
             cond,
             then_val,
             else_val,
-        } => {
-            expr_contains_next_call(cond, obj_name, idx_name)
-                .or_else(|| expr_contains_next_call(then_val, obj_name, idx_name))
-                .or_else(|| expr_contains_next_call(else_val, obj_name, idx_name))
-        }
-        Expr::ArrayInit(elems) => {
-            elems.iter().find_map(|e| expr_contains_next_call(e, obj_name, idx_name))
-        }
+        } => expr_contains_next_call(cond, obj_name, idx_name)
+            .or_else(|| expr_contains_next_call(then_val, obj_name, idx_name))
+            .or_else(|| expr_contains_next_call(else_val, obj_name, idx_name)),
+        Expr::ArrayInit(elems) => elems
+            .iter()
+            .find_map(|e| expr_contains_next_call(e, obj_name, idx_name)),
         Expr::TypeCheck { expr, .. } => expr_contains_next_call(expr, obj_name, idx_name),
         _ => None,
     }
@@ -2077,7 +2036,8 @@ fn extract_binding_and_replace(
     } = &body[idx]
     {
         let is_direct = is_next_call(init, obj_name, idx_name);
-        let is_cast_wrapped = matches!(init, Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name));
+        let is_cast_wrapped =
+            matches!(init, Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name));
         if is_direct || is_cast_wrapped {
             let binding = name.clone();
             body.remove(idx);
@@ -2092,7 +2052,8 @@ fn extract_binding_and_replace(
     } = &body[idx]
     {
         let is_direct = is_next_call(value, obj_name, idx_name);
-        let is_cast_wrapped = matches!(value, Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name));
+        let is_cast_wrapped =
+            matches!(value, Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name));
         if is_direct || is_cast_wrapped {
             let binding = name.clone();
             body.remove(idx);
@@ -2126,12 +2087,21 @@ fn is_next_call(expr: &Expr, obj_name: &str, idx_name: &str) -> bool {
 
 /// Replace the first occurrence of nextValue/nextName call in a statement
 /// with `Var(binding)`. Returns true if replacement was performed.
-fn replace_next_call_in_stmt(stmt: &mut Stmt, obj_name: &str, idx_name: &str, binding: &str) -> bool {
+fn replace_next_call_in_stmt(
+    stmt: &mut Stmt,
+    obj_name: &str,
+    idx_name: &str,
+    binding: &str,
+) -> bool {
     match stmt {
-        Stmt::VarDecl { init: Some(e), .. } => replace_next_call_in_expr(e, obj_name, idx_name, binding),
+        Stmt::VarDecl { init: Some(e), .. } => {
+            replace_next_call_in_expr(e, obj_name, idx_name, binding)
+        }
         Stmt::Assign { value, .. } => replace_next_call_in_expr(value, obj_name, idx_name, binding),
         Stmt::Expr(e) => replace_next_call_in_expr(e, obj_name, idx_name, binding),
-        Stmt::CompoundAssign { value, .. } => replace_next_call_in_expr(value, obj_name, idx_name, binding),
+        Stmt::CompoundAssign { value, .. } => {
+            replace_next_call_in_expr(value, obj_name, idx_name, binding)
+        }
         Stmt::If { cond, .. } => replace_next_call_in_expr(cond, obj_name, idx_name, binding),
         _ => false,
     }
@@ -2139,7 +2109,12 @@ fn replace_next_call_in_stmt(stmt: &mut Stmt, obj_name: &str, idx_name: &str, bi
 
 /// Replace the first occurrence of a Flash_Iterator next call with `Var(binding)`.
 /// Handles Cast wrappers: `Cast(nextCall)` → `Var(binding)` (strip the cast).
-fn replace_next_call_in_expr(expr: &mut Expr, obj_name: &str, idx_name: &str, binding: &str) -> bool {
+fn replace_next_call_in_expr(
+    expr: &mut Expr,
+    obj_name: &str,
+    idx_name: &str,
+    binding: &str,
+) -> bool {
     // Check if this expression is the target (possibly wrapped in Cast).
     if is_next_call(expr, obj_name, idx_name) {
         *expr = Expr::Var(binding.to_string());
@@ -2155,12 +2130,14 @@ fn replace_next_call_in_expr(expr: &mut Expr, obj_name: &str, idx_name: &str, bi
     // Recurse into sub-expressions.
     match expr {
         Expr::Cast { expr, .. } => replace_next_call_in_expr(expr, obj_name, idx_name, binding),
-        Expr::Call { args, .. } | Expr::SystemCall { args, .. } => {
-            args.iter_mut().any(|a| replace_next_call_in_expr(a, obj_name, idx_name, binding))
-        }
+        Expr::Call { args, .. } | Expr::SystemCall { args, .. } => args
+            .iter_mut()
+            .any(|a| replace_next_call_in_expr(a, obj_name, idx_name, binding)),
         Expr::CallIndirect { callee, args } => {
             replace_next_call_in_expr(callee, obj_name, idx_name, binding)
-                || args.iter_mut().any(|a| replace_next_call_in_expr(a, obj_name, idx_name, binding))
+                || args
+                    .iter_mut()
+                    .any(|a| replace_next_call_in_expr(a, obj_name, idx_name, binding))
         }
         Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
             replace_next_call_in_expr(lhs, obj_name, idx_name, binding)
@@ -2173,7 +2150,9 @@ fn replace_next_call_in_expr(expr: &mut Expr, obj_name: &str, idx_name: &str, bi
             replace_next_call_in_expr(collection, obj_name, idx_name, binding)
                 || replace_next_call_in_expr(index, obj_name, idx_name, binding)
         }
-        Expr::Field { object, .. } => replace_next_call_in_expr(object, obj_name, idx_name, binding),
+        Expr::Field { object, .. } => {
+            replace_next_call_in_expr(object, obj_name, idx_name, binding)
+        }
         Expr::Ternary {
             cond,
             then_val,
@@ -2183,10 +2162,12 @@ fn replace_next_call_in_expr(expr: &mut Expr, obj_name: &str, idx_name: &str, bi
                 || replace_next_call_in_expr(then_val, obj_name, idx_name, binding)
                 || replace_next_call_in_expr(else_val, obj_name, idx_name, binding)
         }
-        Expr::ArrayInit(elems) => {
-            elems.iter_mut().any(|e| replace_next_call_in_expr(e, obj_name, idx_name, binding))
+        Expr::ArrayInit(elems) => elems
+            .iter_mut()
+            .any(|e| replace_next_call_in_expr(e, obj_name, idx_name, binding)),
+        Expr::TypeCheck { expr, .. } => {
+            replace_next_call_in_expr(expr, obj_name, idx_name, binding)
         }
-        Expr::TypeCheck { expr, .. } => replace_next_call_in_expr(expr, obj_name, idx_name, binding),
         Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
             replace_next_call_in_expr(lhs, obj_name, idx_name, binding)
                 || replace_next_call_in_expr(rhs, obj_name, idx_name, binding)
@@ -2305,10 +2286,7 @@ pub fn merge_decl_init(body: &mut Vec<Stmt>) {
                 merge_decl_init(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 merge_decl_init(init);
                 merge_decl_init(update);
@@ -2393,11 +2371,9 @@ fn try_merge_one_decl(body: &mut Vec<Stmt>) -> bool {
 /// Whether a statement references a named variable (in any position).
 fn stmt_references_var(stmt: &Stmt, name: &str) -> bool {
     match stmt {
-        Stmt::VarDecl {
-            name: n,
-            init,
-            ..
-        } => n == name || init.as_ref().is_some_and(|e| expr_references_var(e, name)),
+        Stmt::VarDecl { name: n, init, .. } => {
+            n == name || init.as_ref().is_some_and(|e| expr_references_var(e, name))
+        }
 
         Stmt::Assign { target, value } => {
             expr_references_var(target, name) || expr_references_var(value, name)
@@ -2500,9 +2476,9 @@ fn expr_has_any_var_ref(expr: &Expr) -> bool {
             expr_has_any_var_ref(callee) || args.iter().any(expr_has_any_var_ref)
         }
         Expr::SystemCall { args, .. } => args.iter().any(expr_has_any_var_ref),
-        Expr::MethodCall {
-            receiver, args, ..
-        } => expr_has_any_var_ref(receiver) || args.iter().any(expr_has_any_var_ref),
+        Expr::MethodCall { receiver, args, .. } => {
+            expr_has_any_var_ref(receiver) || args.iter().any(expr_has_any_var_ref)
+        }
         Expr::Ternary {
             cond,
             then_val,
@@ -2512,9 +2488,7 @@ fn expr_has_any_var_ref(expr: &Expr) -> bool {
                 || expr_has_any_var_ref(then_val)
                 || expr_has_any_var_ref(else_val)
         }
-        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
-            elems.iter().any(expr_has_any_var_ref)
-        }
+        Expr::ArrayInit(elems) | Expr::TupleInit(elems) => elems.iter().any(expr_has_any_var_ref),
         Expr::StructInit { fields, .. } => fields.iter().any(|(_, v)| expr_has_any_var_ref(v)),
         Expr::Yield(v) => v.as_ref().is_some_and(|e| expr_has_any_var_ref(e)),
         Expr::MakeClosure { captures, .. } => captures.iter().any(expr_has_any_var_ref),
@@ -2550,11 +2524,8 @@ fn expr_references_var(expr: &Expr, name: &str) -> bool {
             expr_references_var(callee, name) || args.iter().any(|a| expr_references_var(a, name))
         }
         Expr::SystemCall { args, .. } => args.iter().any(|a| expr_references_var(a, name)),
-        Expr::MethodCall {
-            receiver, args, ..
-        } => {
-            expr_references_var(receiver, name)
-                || args.iter().any(|a| expr_references_var(a, name))
+        Expr::MethodCall { receiver, args, .. } => {
+            expr_references_var(receiver, name) || args.iter().any(|a| expr_references_var(a, name))
         }
         Expr::Ternary {
             cond,
@@ -2568,13 +2539,9 @@ fn expr_references_var(expr: &Expr, name: &str) -> bool {
         Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
             elems.iter().any(|e| expr_references_var(e, name))
         }
-        Expr::StructInit { fields, .. } => {
-            fields.iter().any(|(_, v)| expr_references_var(v, name))
-        }
+        Expr::StructInit { fields, .. } => fields.iter().any(|(_, v)| expr_references_var(v, name)),
         Expr::Yield(v) => v.as_ref().is_some_and(|e| expr_references_var(e, name)),
-        Expr::MakeClosure { captures, .. } => {
-            captures.iter().any(|c| expr_references_var(c, name))
-        }
+        Expr::MakeClosure { captures, .. } => captures.iter().any(|c| expr_references_var(c, name)),
     }
 }
 
@@ -2612,10 +2579,7 @@ pub fn narrow_var_scope(body: &mut Vec<Stmt>) {
                 narrow_var_scope(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 narrow_var_scope(init);
                 narrow_var_scope(update);
@@ -2868,9 +2832,7 @@ fn collect_names_in_expr(expr: &Expr, names: &mut std::collections::HashSet<Stri
                 collect_names_in_expr(a, names);
             }
         }
-        Expr::MethodCall {
-            receiver, args, ..
-        } => {
+        Expr::MethodCall { receiver, args, .. } => {
             collect_names_in_expr(receiver, names);
             for a in args {
                 collect_names_in_expr(a, names);
@@ -3057,10 +3019,7 @@ pub fn eliminate_forwarding_stubs(body: &mut Vec<Stmt>) {
                 eliminate_forwarding_stubs(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 eliminate_forwarding_stubs(init);
                 eliminate_forwarding_stubs(update);
@@ -3149,10 +3108,7 @@ pub fn eliminate_self_assigns(body: &mut Vec<Stmt>) {
                 eliminate_self_assigns(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 eliminate_self_assigns(init);
                 eliminate_self_assigns(update);
@@ -3228,10 +3184,7 @@ pub fn eliminate_duplicate_assigns(body: &mut Vec<Stmt>) {
                 eliminate_duplicate_assigns(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 eliminate_duplicate_assigns(init);
                 eliminate_duplicate_assigns(update);
@@ -3334,10 +3287,7 @@ pub fn absorb_phi_condition(body: &mut Vec<Stmt>) {
                 absorb_phi_condition(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 absorb_phi_condition(init);
                 absorb_phi_condition(update);
@@ -3405,9 +3355,9 @@ fn try_absorb_phi_condition(body: &mut Vec<Stmt>) -> bool {
         // Use stmt_references_var which checks both, unlike
         // count_var_reads_in_stmt which only counts reads.
         let else_has_refs = match &body[i] {
-            Stmt::If { else_body, .. } => else_body
-                .iter()
-                .any(|s| stmt_references_var(s, &var_name)),
+            Stmt::If { else_body, .. } => {
+                else_body.iter().any(|s| stmt_references_var(s, &var_name))
+            }
             _ => unreachable!(),
         };
         if else_has_refs {
@@ -3557,10 +3507,7 @@ pub fn rewrite_post_increment(body: &mut Vec<Stmt>) {
                 rewrite_post_increment(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 rewrite_post_increment(init);
                 rewrite_post_increment(update);
@@ -3661,7 +3608,9 @@ fn is_var_plus_one(expr: &Expr, var_name: &str) -> bool {
         // lhs is either Var(vN) or Cast { expr: Var(vN), .. }
         match lhs.as_ref() {
             Expr::Var(n) => n == var_name,
-            Expr::Cast { expr: inner, .. } => matches!(inner.as_ref(), Expr::Var(n) if n == var_name),
+            Expr::Cast { expr: inner, .. } => {
+                matches!(inner.as_ref(), Expr::Var(n) if n == var_name)
+            }
             _ => false,
         }
     } else {
@@ -3682,12 +3631,11 @@ pub fn count_stmts(body: &[Stmt]) -> usize {
                 else_body,
                 ..
             } => 1 + count_stmts(then_body) + count_stmts(else_body),
-            Stmt::While { body, .. } | Stmt::Loop { body } | Stmt::ForOf { body, .. } => 1 + count_stmts(body),
+            Stmt::While { body, .. } | Stmt::Loop { body } | Stmt::ForOf { body, .. } => {
+                1 + count_stmts(body)
+            }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => 1 + count_stmts(init) + count_stmts(update) + count_stmts(body),
             Stmt::Dispatch { blocks, .. } => {
                 1 + blocks.iter().map(|(_, b)| count_stmts(b)).sum::<usize>()
@@ -3720,10 +3668,7 @@ fn recurse_into_stmt(stmt: &mut Stmt, pass: fn(&mut [Stmt])) {
             pass(body);
         }
         Stmt::For {
-            init,
-            update,
-            body,
-            ..
+            init, update, body, ..
         } => {
             pass(init);
             pass(update);
@@ -3775,10 +3720,7 @@ pub fn invert_empty_then(body: &mut [Stmt]) {
                 invert_empty_then(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 invert_empty_then(init);
                 invert_empty_then(update);
@@ -3844,10 +3786,7 @@ pub fn eliminate_unreachable_after_exit(body: &mut Vec<Stmt>) {
                 eliminate_unreachable_after_exit(body);
             }
             Stmt::For {
-                init,
-                update,
-                body,
-                ..
+                init, update, body, ..
             } => {
                 eliminate_unreachable_after_exit(init);
                 eliminate_unreachable_after_exit(update);
@@ -4025,9 +3964,7 @@ fn simplify_ternary_in_expr(expr: &mut Expr) {
                 simplify_ternary_in_expr(a);
             }
         }
-        Expr::MethodCall {
-            receiver, args, ..
-        } => {
+        Expr::MethodCall { receiver, args, .. } => {
             simplify_ternary_in_expr(receiver);
             for a in args {
                 simplify_ternary_in_expr(a);
@@ -4065,7 +4002,12 @@ fn simplify_ternary_in_expr(expr: &mut Expr) {
     }
 
     // After recursion, check if this is a simplifiable ternary.
-    if let Expr::Ternary { cond, then_val, else_val } = expr {
+    if let Expr::Ternary {
+        cond,
+        then_val,
+        else_val,
+    } = expr
+    {
         if **cond == **else_val {
             // cond ? then_val : cond → cond && then_val
             let dummy = Expr::Literal(Constant::Null);
@@ -4205,13 +4147,23 @@ pub fn promote_while_to_for(body: &mut Vec<Stmt>) {
         // and use `_i = v` as the for-init to preserve function-level scope.
         let has_post_loop_refs = matches!(
             &init_stmt,
-            Stmt::VarDecl { mutable: true, init: Some(_), .. }
+            Stmt::VarDecl {
+                mutable: true,
+                init: Some(_),
+                ..
+            }
         ) && body[(while_idx + 1)..]
             .iter()
             .any(|s| stmt_references(s, &var_name));
 
         if has_post_loop_refs {
-            let Stmt::VarDecl { name, ty, init: Some(val), .. } = init_stmt else {
+            let Stmt::VarDecl {
+                name,
+                ty,
+                init: Some(val),
+                ..
+            } = init_stmt
+            else {
                 unreachable!()
             };
             let scope_decl = Stmt::VarDecl {
@@ -4272,12 +4224,7 @@ fn stmt_references(stmt: &Stmt, name: &str) -> bool {
             name: decl_name,
             init,
             ..
-        } => {
-            decl_name == name
-                || init
-                    .as_ref()
-                    .is_some_and(|e| expr_references(e, name))
-        }
+        } => decl_name == name || init.as_ref().is_some_and(|e| expr_references(e, name)),
         Stmt::Assign { target, value } => {
             expr_references(target, name) || expr_references(value, name)
         }
@@ -4297,9 +4244,7 @@ fn expr_references(expr: &Expr, name: &str) -> bool {
         Expr::Binary { lhs, rhs, .. }
         | Expr::Cmp { lhs, rhs, .. }
         | Expr::LogicalOr { lhs, rhs }
-        | Expr::LogicalAnd { lhs, rhs } => {
-            expr_references(lhs, name) || expr_references(rhs, name)
-        }
+        | Expr::LogicalAnd { lhs, rhs } => expr_references(lhs, name) || expr_references(rhs, name),
         Expr::Unary { expr: inner, .. }
         | Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
@@ -4317,9 +4262,9 @@ fn expr_references(expr: &Expr, name: &str) -> bool {
         Expr::CallIndirect { callee, args } => {
             expr_references(callee, name) || args.iter().any(|a| expr_references(a, name))
         }
-        Expr::MethodCall {
-            receiver, args, ..
-        } => expr_references(receiver, name) || args.iter().any(|a| expr_references(a, name)),
+        Expr::MethodCall { receiver, args, .. } => {
+            expr_references(receiver, name) || args.iter().any(|a| expr_references(a, name))
+        }
         Expr::Ternary {
             cond,
             then_val,
@@ -4332,13 +4277,9 @@ fn expr_references(expr: &Expr, name: &str) -> bool {
         Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
             elems.iter().any(|e| expr_references(e, name))
         }
-        Expr::StructInit { fields, .. } => {
-            fields.iter().any(|(_, v)| expr_references(v, name))
-        }
+        Expr::StructInit { fields, .. } => fields.iter().any(|(_, v)| expr_references(v, name)),
         Expr::Yield(v) => v.as_ref().is_some_and(|e| expr_references(e, name)),
-        Expr::MakeClosure { captures, .. } => {
-            captures.iter().any(|c| expr_references(c, name))
-        }
+        Expr::MakeClosure { captures, .. } => captures.iter().any(|c| expr_references(c, name)),
     }
 }
 
@@ -4402,10 +4343,7 @@ fn try_promote_while(var_name: &str, init_stmt: &mut Stmt, while_stmt: &mut Stmt
                     cond: if_cond,
                     then_body: if_then,
                     else_body: if_else,
-                } = std::mem::replace(
-                    &mut body[0],
-                    Stmt::Expr(Expr::Literal(Constant::Null)),
-                )
+                } = std::mem::replace(&mut body[0], Stmt::Expr(Expr::Literal(Constant::Null)))
                 else {
                     unreachable!()
                 };
@@ -4969,7 +4907,10 @@ mod tests {
         assert_eq!(body.len(), 1);
         match &body[0] {
             Stmt::VarDecl {
-                name, init, mutable, ..
+                name,
+                init,
+                mutable,
+                ..
             } => {
                 assert_eq!(name, "x");
                 assert_eq!(*init, Some(int(5)));
@@ -5375,7 +5316,11 @@ mod tests {
         fold_single_use_consts(&mut body);
 
         // x is reassigned, so the fold is blocked. The decl is preserved.
-        assert_eq!(body.len(), 3, "All three statements should be preserved: {body:?}");
+        assert_eq!(
+            body.len(),
+            3,
+            "All three statements should be preserved: {body:?}"
+        );
         assert!(
             matches!(&body[0], Stmt::VarDecl { name, init: Some(_), .. } if name == "x"),
             "VarDecl for x should be preserved: {body:?}"
@@ -5432,10 +5377,7 @@ mod tests {
             func: "f".to_string(),
             args: vec![],
         };
-        let mut body = vec![
-            const_decl("v", call),
-            assign(var("v"), int(5)),
-        ];
+        let mut body = vec![const_decl("v", call), assign(var("v"), int(5))];
 
         forward_substitute(&mut body);
 
@@ -5454,14 +5396,15 @@ mod tests {
     // identical assignments (structurizer artifacts from duplicate edges).
     #[test]
     fn eliminate_duplicate_assigns_basic() {
-        let mut body = vec![
-            assign(var("x"), var("a")),
-            assign(var("x"), var("a")),
-        ];
+        let mut body = vec![assign(var("x"), var("a")), assign(var("x"), var("a"))];
 
         eliminate_duplicate_assigns(&mut body);
 
-        assert_eq!(body.len(), 1, "Expected single assign after dedup: {body:?}");
+        assert_eq!(
+            body.len(),
+            1,
+            "Expected single assign after dedup: {body:?}"
+        );
         assert!(matches!(&body[0], Stmt::Assign { target, value }
             if *target == var("x") && *value == var("a")));
     }
@@ -5491,7 +5434,10 @@ mod tests {
 
         fold_single_use_consts(&mut body);
 
-        assert!(body.is_empty(), "Expected pure dead decl to be removed: {body:?}");
+        assert!(
+            body.is_empty(),
+            "Expected pure dead decl to be removed: {body:?}"
+        );
     }
 
     // Regression: b9a1d9e — dead VarDecl with side-effectful init and 0 reads
@@ -5761,7 +5707,11 @@ mod tests {
         absorb_phi_condition(&mut body);
 
         // All three statements should remain unchanged.
-        assert_eq!(body.len(), 3, "absorb_phi_condition incorrectly absorbed a phi with an else-branch write: {body:?}");
+        assert_eq!(
+            body.len(),
+            3,
+            "absorb_phi_condition incorrectly absorbed a phi with an else-branch write: {body:?}"
+        );
         assert!(matches!(&body[0], Stmt::VarDecl { name, .. } if name == "v620"));
         assert!(matches!(&body[1], Stmt::If { .. }));
         assert!(matches!(&body[2], Stmt::If { cond, .. } if *cond == var("v620")));
@@ -5882,8 +5832,10 @@ mod tests {
         assert!(matches!(&body[0], Stmt::VarDecl { name, init: None, .. } if name == "v0"));
         assert!(matches!(&body[1], Stmt::If { then_body, else_body, .. }
             if then_body.len() == 1 && else_body.is_empty()));
-        assert!(matches!(&body[2], Stmt::Assign { target: Expr::Var(n), value }
-            if n == "v0" && *value == empty_array()));
+        assert!(
+            matches!(&body[2], Stmt::Assign { target: Expr::Var(n), value }
+            if n == "v0" && *value == empty_array())
+        );
     }
 
     #[test]
@@ -6046,11 +5998,7 @@ mod tests {
                 init: Some(br_call()),
                 mutable: false,
             },
-            Stmt::Return(Some(Expr::ArrayInit(vec![
-                var("v0"),
-                var("v1"),
-                var("v2"),
-            ]))),
+            Stmt::Return(Some(Expr::ArrayInit(vec![var("v0"), var("v1"), var("v2")]))),
         ];
 
         inline_ordered_single_use(&mut body);
@@ -6212,5 +6160,4 @@ mod tests {
             "First for-loop init must be an Assign, not a VarDecl: {body:?}"
         );
     }
-
 }

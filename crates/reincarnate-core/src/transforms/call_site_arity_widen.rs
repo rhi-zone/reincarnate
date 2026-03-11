@@ -124,7 +124,9 @@ impl Transform for CallSiteArityWiden {
                 while func.sig.defaults.len() < func.sig.params.len() - 1 {
                     func.sig.defaults.push(None);
                 }
-                func.sig.defaults.push(Some(crate::ir::value::Constant::Null));
+                func.sig
+                    .defaults
+                    .push(Some(crate::ir::value::Constant::Null));
             }
 
             // Extend entry block params with matching ValueIds.
@@ -279,7 +281,11 @@ mod tests {
         callee.ret(None);
         mb.add_function(callee.build());
 
-        let sig = FunctionSig { params: vec![], return_ty: Type::Void, ..Default::default() };
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
 
         // Caller A: 2 args
         let mut caller_a = FunctionBuilder::new("caller_a", sig.clone(), Visibility::Private);

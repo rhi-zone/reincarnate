@@ -63,7 +63,10 @@ fn translate_all_passages(html: &str) -> (usize, usize, usize) {
                     }));
                     if wr.is_err() {
                         translate_panics += 1;
-                        eprintln!("PANIC translating widget {name:?} from passage {:?}", passage.name);
+                        eprintln!(
+                            "PANIC translating widget {name:?} from passage {:?}",
+                            passage.name
+                        );
                     }
                 }
                 // Verify the function has at least one block

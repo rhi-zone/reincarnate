@@ -104,7 +104,9 @@ impl ChunkIndex {
 
     /// Get the raw content bytes for a chunk from the file data.
     pub fn chunk_data<'a>(&self, data: &'a [u8], magic: &[u8; 4]) -> Result<&'a [u8]> {
-        let entry = self.find(magic).ok_or(Error::ChunkNotFound { magic: *magic })?;
+        let entry = self
+            .find(magic)
+            .ok_or(Error::ChunkNotFound { magic: *magic })?;
         let start = entry.data_offset();
         let end = start + entry.size;
         if end > data.len() {

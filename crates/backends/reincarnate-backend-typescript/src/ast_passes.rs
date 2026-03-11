@@ -38,6 +38,13 @@ pub fn recover_switch_statements(body: &mut Vec<JsStmt>) {
 
     // Try the sequential-if pattern on runs of consecutive statements.
     try_recover_sequential_ifs(body);
+
+    // Finally, recover discriminants from switch statements whose value is a
+    // chained ternary comparison.  This undoes the AVM2 table-jump encoding
+    // `switch((x !== A) ? ((x !== B) ? 0 : 1) : 2)` back to `switch(x)`.
+    for stmt in body.iter_mut() {
+        try_recover_switch_discriminant(stmt);
+    }
 }
 
 /// Recurse into all sub-bodies of a statement.
@@ -51,16 +58,11 @@ fn recurse_into_stmt(stmt: &mut JsStmt) {
             recover_switch_statements(then_body);
             recover_switch_statements(else_body);
         }
-        JsStmt::While { body, .. }
-        | JsStmt::Loop { body }
-        | JsStmt::ForOf { body, .. } => {
+        JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
             recover_switch_statements(body);
         }
         JsStmt::For {
-            init,
-            body,
-            update,
-            ..
+            init, body, update, ..
         } => {
             recover_switch_statements(init);
             recover_switch_statements(body);
@@ -307,6 +309,161 @@ fn try_recover_sequential_ifs(body: &mut Vec<JsStmt>) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Switch discriminant recovery from chained ternary comparisons
+// ---------------------------------------------------------------------------
+
+/// Attempt to recover a clean `switch(v)` from a switch whose discriminant is
+/// an AVM2 table-jump encoding of the form:
+///
+/// ```text
+/// switch ((v !== A) ? ((v !== B) ? 0 : 1) : 2) {
+///   case 0: ...
+///   case 1: ...
+///   case 2: ...
+/// }
+/// ```
+///
+/// If the pattern matches, the switch is rewritten in-place to:
+///
+/// ```text
+/// switch (v) { case A: ... case B: ... case 2_fallback: ... }
+/// ```
+///
+/// where each integer discriminant is replaced by the corresponding source
+/// constant that was being compared against.
+fn try_recover_switch_discriminant(stmt: &mut JsStmt) {
+    let JsStmt::Switch {
+        value,
+        cases,
+        default_body,
+    } = stmt
+    else {
+        return;
+    };
+
+    let Some((shared_v, mapping)) = extract_ternary_chain(value) else {
+        return;
+    };
+
+    // mapping: Vec<(case_constant, discriminant_int)>
+    // Build a lookup: discriminant_int → case_constant.
+    let disc_map: HashMap<i64, Constant> = mapping
+        .into_iter()
+        .map(|(case_const, disc_int)| (disc_int, case_const))
+        .collect();
+
+    // Require that the mapping is non-trivial (at least one case to recover).
+    if disc_map.is_empty() {
+        return;
+    }
+
+    // Replace the switch discriminant with the shared expression.
+    *value = shared_v;
+
+    // Replace each case's integer key with the recovered source constant.
+    // The one integer that is NOT in disc_map is the "no-match" fallthrough
+    // discriminant (the innermost `then` literal in the ternary chain).
+    // If default_body is currently empty, promote that case to the default.
+    let mut new_cases: Vec<(Constant, Vec<JsStmt>)> = Vec::with_capacity(cases.len());
+    let mut taken_cases = std::mem::take(cases);
+    for (case_key, case_body) in taken_cases.drain(..) {
+        if let Constant::Int(n) = &case_key {
+            if let Some(recovered) = disc_map.get(n) {
+                new_cases.push((recovered.clone(), case_body));
+                continue;
+            }
+            // Not in disc_map → this is the "no-match" branch.
+            // Promote to default if default is currently empty.
+            if default_body.is_empty() {
+                *default_body = case_body;
+                continue;
+            }
+        }
+        // Keep as-is.
+        new_cases.push((case_key, case_body));
+    }
+    *cases = new_cases;
+}
+
+/// Walk a right-linear ternary chain of the form:
+///
+/// ```text
+/// (v !== A) ? (
+///   (v !== B) ? (
+///     ... ? N : N-1
+///   ) : N-2
+/// ) : N-3
+/// ```
+///
+/// Returns `Some((v, pairs))` where `pairs` is a list of
+/// `(case_constant, discriminant_int)` in order of the outermost ternary
+/// first. The `else_val` of each level is the integer discriminant for that
+/// level's condition.
+///
+/// Returns `None` if the expression does not match the pattern.
+fn extract_ternary_chain(expr: &JsExpr) -> Option<(JsExpr, Vec<(Constant, i64)>)> {
+    match expr {
+        // Base case: a bare integer literal — the innermost discriminant.
+        // We return an empty pair list; the caller will attach the correct
+        // case constant when it processes this level.
+        JsExpr::Literal(Constant::Int(_)) => {
+            // No pairs at the leaf — the leaf int is the fallthrough discriminant
+            // for the innermost ternary's `then` branch.  We signal success with
+            // no shared variable (None) so the parent can use its own `v`.
+            Some((JsExpr::Literal(Constant::Int(0)), vec![]))
+        }
+
+        // Recursive case: (v !== const_k) ? then_expr : disc_int
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            // Condition must be `v !== const_k` or `const_k !== v`.
+            let JsExpr::Cmp {
+                kind: CmpKind::Ne,
+                lhs,
+                rhs,
+            } = cond.as_ref()
+            else {
+                return None;
+            };
+
+            // Figure out which side is the constant.
+            let (shared_v_candidate, case_const) = if let JsExpr::Literal(c) = rhs.as_ref() {
+                (lhs.as_ref(), c)
+            } else if let JsExpr::Literal(c) = lhs.as_ref() {
+                (rhs.as_ref(), c)
+            } else {
+                return None;
+            };
+
+            // The else_val must be an integer literal (this ternary's discriminant).
+            let JsExpr::Literal(Constant::Int(disc)) = else_val.as_ref() else {
+                return None;
+            };
+
+            // Recurse into the then branch.
+            let (inner_v, mut pairs) = extract_ternary_chain(then_val)?;
+
+            // The shared variable expression must match across all levels.
+            // At the leaf we get a dummy literal — skip the equality check there.
+            let is_leaf = matches!(inner_v, JsExpr::Literal(Constant::Int(_))) && pairs.is_empty();
+            if !is_leaf && !exprs_structurally_equal(&inner_v, shared_v_candidate) {
+                return None;
+            }
+
+            // Append this level's pair: (case_constant, discriminant_int).
+            pairs.push((case_const.clone(), *disc));
+
+            Some((shared_v_candidate.clone(), pairs))
+        }
+
+        _ => None,
+    }
+}
+
 /// If `cond` is `EXPR === CONST` (or `CONST === EXPR`), return `(expr, constant)`.
 fn extract_eq_constant(cond: &JsExpr) -> Option<(&JsExpr, &Constant)> {
     if let JsExpr::Cmp {
@@ -332,9 +489,7 @@ fn is_stable_expr(expr: &JsExpr) -> bool {
     match expr {
         JsExpr::Var(_) | JsExpr::This | JsExpr::Literal(_) => true,
         JsExpr::Field { object, .. } => is_stable_expr(object),
-        JsExpr::Index { collection, index } => {
-            is_stable_expr(collection) && is_stable_expr(index)
-        }
+        JsExpr::Index { collection, index } => is_stable_expr(collection) && is_stable_expr(index),
         _ => false,
     }
 }
@@ -392,10 +547,9 @@ fn exprs_structurally_equal(a: &JsExpr, b: &JsExpr) -> bool {
                 rhs: r2,
             },
         ) => o1 == o2 && exprs_structurally_equal(l1, l2) && exprs_structurally_equal(r1, r2),
-        (
-            JsExpr::Unary { op: o1, expr: e1 },
-            JsExpr::Unary { op: o2, expr: e2 },
-        ) => o1 == o2 && exprs_structurally_equal(e1, e2),
+        (JsExpr::Unary { op: o1, expr: e1 }, JsExpr::Unary { op: o2, expr: e2 }) => {
+            o1 == o2 && exprs_structurally_equal(e1, e2)
+        }
         (JsExpr::Not(e1), JsExpr::Not(e2)) => exprs_structurally_equal(e1, e2),
         _ => false,
     }
@@ -440,9 +594,7 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
     for stmt in body {
         match stmt {
             JsStmt::VarDecl {
-                name,
-                ty: Some(ty),
-                ..
+                name, ty: Some(ty), ..
             } if *ty != Type::Dynamic => {
                 var_types.insert(name.clone(), ty.clone());
             }
@@ -471,16 +623,11 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
                 collect_var_types(then_body, var_types);
                 collect_var_types(else_body, var_types);
             }
-            JsStmt::While { body, .. }
-            | JsStmt::Loop { body }
-            | JsStmt::ForOf { body, .. } => {
+            JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
                 collect_var_types(body, var_types);
             }
             JsStmt::For {
-                init,
-                body,
-                update,
-                ..
+                init, body, update, ..
             } => {
                 collect_var_types(init, var_types);
                 collect_var_types(body, var_types);
@@ -694,11 +841,7 @@ fn strip_casts_in_expr(expr: &mut JsExpr, var_types: &HashMap<String, Type>) {
 
 /// Check if a Cast is redundant because the inner expression's type already
 /// matches the cast target.
-fn is_cast_redundant(
-    inner: &JsExpr,
-    cast_ty: &Type,
-    var_types: &HashMap<String, Type>,
-) -> bool {
+fn is_cast_redundant(inner: &JsExpr, cast_ty: &Type, var_types: &HashMap<String, Type>) -> bool {
     // Only strip TS assertion forms (not runtime calls like asType, Number).
     if matches!(cast_ty, Type::Struct(_) | Type::Enum(_)) {
         return false;
@@ -715,9 +858,7 @@ fn infer_expr_type(expr: &JsExpr, var_types: &HashMap<String, Type>) -> Option<T
     match expr {
         JsExpr::Var(name) => var_types.get(name).cloned(),
         JsExpr::Literal(c) => match c {
-            Constant::Int(_) | Constant::UInt(_) | Constant::Float(_) => {
-                Some(Type::Float(64))
-            }
+            Constant::Int(_) | Constant::UInt(_) | Constant::Float(_) => Some(Type::Float(64)),
             Constant::String(_) => Some(Type::String),
             Constant::Bool(_) => Some(Type::Bool),
             Constant::Null => None,
@@ -781,16 +922,11 @@ fn coalesce_text_in_stmt(stmt: &mut JsStmt) {
             coalesce_text_calls(then_body);
             coalesce_text_calls(else_body);
         }
-        JsStmt::While { body, .. }
-        | JsStmt::Loop { body }
-        | JsStmt::ForOf { body, .. } => {
+        JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
             coalesce_text_calls(body);
         }
         JsStmt::For {
-            init,
-            body,
-            update,
-            ..
+            init, body, update, ..
         } => {
             coalesce_text_calls(init);
             coalesce_text_calls(body);
@@ -1025,12 +1161,240 @@ mod tests {
         JsExpr::Literal(Constant::Int(n))
     }
 
+    fn str_lit(s: &str) -> JsExpr {
+        JsExpr::Literal(Constant::String(s.to_string()))
+    }
+
     fn eq(lhs: JsExpr, rhs: JsExpr) -> JsExpr {
         JsExpr::Cmp {
             kind: CmpKind::Eq,
             lhs: Box::new(lhs),
             rhs: Box::new(rhs),
         }
+    }
+
+    fn ne(lhs: JsExpr, rhs: JsExpr) -> JsExpr {
+        JsExpr::Cmp {
+            kind: CmpKind::Ne,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }
+    }
+
+    fn ternary(cond: JsExpr, then_val: JsExpr, else_val: JsExpr) -> JsExpr {
+        JsExpr::Ternary {
+            cond: Box::new(cond),
+            then_val: Box::new(then_val),
+            else_val: Box::new(else_val),
+        }
+    }
+
+    /// Build the AVM2 ternary-chain discriminant for:
+    ///   `switch(x) { case "A": ...; case "B": ... }` compiled as
+    ///   `switch((x !== "A") ? ((x !== "B") ? 0 : 1) : 2) { case 0: default; case 1: B body; case 2: A body }`
+    fn avm2_discriminant_2cases(v: JsExpr, a: JsExpr, b: JsExpr) -> JsExpr {
+        // (v !== a) ? ((v !== b) ? 0 : 1) : 2
+        ternary(
+            ne(v.clone(), a),
+            ternary(ne(v, b), int_lit(0), int_lit(1)),
+            int_lit(2),
+        )
+    }
+
+    /// Test that the AVM2 chained-ternary switch discriminant pattern is recovered
+    /// back to a clean `switch(v)` with source constants as case labels.
+    #[test]
+    fn switch_discriminant_recovery_from_ternary_chain() {
+        // Simulate: switch(x) { case "A": bodyA; case "B": bodyB; default: bodyDefault }
+        // compiled by AVM2 into:
+        //   switch ((x !== "A") ? ((x !== "B") ? 0 : 1) : 2) {
+        //     case 0: bodyDefault;
+        //     case 1: bodyB;
+        //     case 2: bodyA;
+        //   }
+        let discriminant = avm2_discriminant_2cases(var("x"), str_lit("A"), str_lit("B"));
+        let body_default = vec![JsStmt::Expr(var("bodyDefault"))];
+        let body_b = vec![JsStmt::Expr(var("bodyB"))];
+        let body_a = vec![JsStmt::Expr(var("bodyA"))];
+
+        let mut body = vec![JsStmt::Switch {
+            value: discriminant,
+            cases: vec![
+                (Constant::Int(0), body_default.clone()),
+                (Constant::Int(1), body_b.clone()),
+                (Constant::Int(2), body_a.clone()),
+            ],
+            default_body: vec![],
+        }];
+
+        recover_switch_statements(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            JsStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
+                // Discriminant must now be `x`, not the ternary chain.
+                assert!(
+                    matches!(value, JsExpr::Var(name) if name == "x"),
+                    "expected discriminant to be `x`, got: {value:?}"
+                );
+                // Case 0 should have been promoted to default_body.
+                assert!(
+                    !default_body.is_empty(),
+                    "expected default_body to be populated from case 0"
+                );
+                assert_eq!(
+                    cases.len(),
+                    2,
+                    "expected 2 recovered cases (A and B), got: {cases:?}"
+                );
+                // The two cases should have string constants, not integers.
+                let case_keys: Vec<_> = cases.iter().map(|(k, _)| k).collect();
+                assert!(
+                    case_keys
+                        .iter()
+                        .any(|k| matches!(k, Constant::String(s) if s == "B")),
+                    "expected case \"B\", got: {case_keys:?}"
+                );
+                assert!(
+                    case_keys
+                        .iter()
+                        .any(|k| matches!(k, Constant::String(s) if s == "A")),
+                    "expected case \"A\", got: {case_keys:?}"
+                );
+            }
+            other => panic!("expected Switch, got: {other:?}"),
+        }
+    }
+
+    /// Test the 3-comparison case with reversed comparison order (const on left, var on right)
+    /// and with a pre-existing default body.  Mirrors the Parser.ts pattern:
+    ///   `switch(("[" !== _loc8) ? (("]" !== _loc8) ? (("|" !== _loc8) ? 3 : 2) : 1) : 0)`
+    #[test]
+    fn switch_discriminant_recovery_3cases_const_left() {
+        // Innermost: ("|" !== x) ? 3 : 2
+        // Middle:    ("]" !== x) ? innermost : 1
+        // Outer:     ("[" !== x) ? middle : 0
+        let discriminant = ternary(
+            ne(str_lit("["), var("x")), // const on LEFT
+            ternary(
+                ne(str_lit("]"), var("x")),
+                ternary(ne(str_lit("|"), var("x")), int_lit(3), int_lit(2)),
+                int_lit(1),
+            ),
+            int_lit(0),
+        );
+
+        let body0 = vec![JsStmt::Expr(var("body_bracket_open"))];
+        let body1 = vec![JsStmt::Expr(var("body_bracket_close"))];
+        let body2 = vec![JsStmt::Expr(var("body_pipe"))];
+        let body3 = vec![JsStmt::Expr(var("body_other"))];
+        let default_body_pre = vec![JsStmt::Expr(var("default_pre"))];
+
+        let mut body = vec![JsStmt::Switch {
+            value: discriminant,
+            cases: vec![
+                (Constant::Int(0), body0.clone()),
+                (Constant::Int(1), body1.clone()),
+                (Constant::Int(2), body2.clone()),
+                (Constant::Int(3), body3.clone()),
+            ],
+            // Pre-existing default_body (non-empty) — should NOT block case recovery.
+            default_body: default_body_pre.clone(),
+        }];
+
+        recover_switch_statements(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            JsStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
+                // Discriminant must now be `x`.
+                assert!(
+                    matches!(value, JsExpr::Var(name) if name == "x"),
+                    "expected discriminant `x`, got: {value:?}"
+                );
+                // default_body should remain unchanged (was non-empty before).
+                assert!(!default_body.is_empty(), "default_body should be unchanged");
+
+                // The 4 cases should now have string constant keys.
+                assert_eq!(cases.len(), 4, "expected 4 cases, got: {cases:?}");
+                let case_keys: Vec<_> = cases.iter().map(|(k, _)| k).collect();
+                assert!(
+                    case_keys
+                        .iter()
+                        .any(|k| matches!(k, Constant::String(s) if s == "[")),
+                    "expected case \"[\", got: {case_keys:?}"
+                );
+                assert!(
+                    case_keys
+                        .iter()
+                        .any(|k| matches!(k, Constant::String(s) if s == "]")),
+                    "expected case \"]\", got: {case_keys:?}"
+                );
+                assert!(
+                    case_keys
+                        .iter()
+                        .any(|k| matches!(k, Constant::String(s) if s == "|")),
+                    "expected case \"|\", got: {case_keys:?}"
+                );
+                // case 3 (the no-match) stays as Int(3) since default_body was non-empty.
+                assert!(
+                    case_keys.iter().any(|k| matches!(k, Constant::Int(3))),
+                    "expected case Int(3) to remain, got: {case_keys:?}"
+                );
+            }
+            other => panic!("expected Switch, got: {other:?}"),
+        }
+    }
+
+    /// Direct test of extract_ternary_chain with the Parser.ts pattern.
+    #[test]
+    fn extract_ternary_chain_direct() {
+        // ("[" !== x) ? (("]" !== x) ? (("|" !== x) ? 3 : 2) : 1) : 0
+        let chain = ternary(
+            ne(str_lit("["), var("x")),
+            ternary(
+                ne(str_lit("]"), var("x")),
+                ternary(ne(str_lit("|"), var("x")), int_lit(3), int_lit(2)),
+                int_lit(1),
+            ),
+            int_lit(0),
+        );
+
+        let result = extract_ternary_chain(&chain);
+        assert!(result.is_some(), "expected Some, got None");
+        let (v, pairs) = result.unwrap();
+        assert!(
+            matches!(&v, JsExpr::Var(name) if name == "x"),
+            "expected v=Var(x), got: {v:?}"
+        );
+        assert_eq!(pairs.len(), 3, "expected 3 pairs, got: {pairs:?}");
+        // Pairs are built innermost-to-outermost: ("|", 2), ("]", 1), ("[", 0)
+        assert!(
+            matches!(&pairs[0].0, Constant::String(s) if s == "|"),
+            "got: {:?}",
+            pairs[0].0
+        );
+        assert_eq!(pairs[0].1, 2);
+        assert!(
+            matches!(&pairs[1].0, Constant::String(s) if s == "]"),
+            "got: {:?}",
+            pairs[1].0
+        );
+        assert_eq!(pairs[1].1, 1);
+        assert!(
+            matches!(&pairs[2].0, Constant::String(s) if s == "["),
+            "got: {:?}",
+            pairs[2].0
+        );
+        assert_eq!(pairs[2].1, 0);
     }
 
     #[test]
@@ -1101,7 +1465,9 @@ mod tests {
             panic!("expected text call");
         }
         // Second: barrier (void_element)
-        assert!(matches!(&body[1], JsStmt::Expr(JsExpr::SystemCall { method, .. }) if method == "void_element"));
+        assert!(
+            matches!(&body[1], JsStmt::Expr(JsExpr::SystemCall { method, .. }) if method == "void_element")
+        );
         // Third: merged "foobarbaz"
         if let JsStmt::Expr(JsExpr::SystemCall { args, .. }) = &body[2] {
             assert!(matches!(&args[0], JsExpr::Literal(Constant::String(s)) if s == "foobarbaz"));
@@ -1127,8 +1493,14 @@ mod tests {
         coalesce_array_strings(&mut body);
 
         if let JsStmt::Return(Some(JsExpr::ArrayInit(items))) = &body[0] {
-            assert_eq!(items.len(), 3, "expected 3 items after coalescing, got: {items:?}");
-            assert!(matches!(&items[0], JsExpr::Literal(Constant::String(s)) if s == "Hello world"));
+            assert_eq!(
+                items.len(),
+                3,
+                "expected 3 items after coalescing, got: {items:?}"
+            );
+            assert!(
+                matches!(&items[0], JsExpr::Literal(Constant::String(s)) if s == "Hello world")
+            );
             assert!(matches!(&items[1], JsExpr::Call { .. }));
             assert!(matches!(&items[2], JsExpr::Literal(Constant::String(s)) if s == "foobar"));
         } else {

@@ -152,7 +152,9 @@ mod tests {
         let mut mb_a = ModuleBuilder::new("mod_a");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("helper", sig, Visibility::Public);
         fb.ret(None);
         mb_a.add_function(fb.build());
@@ -213,7 +215,9 @@ mod tests {
         let mut mb_a = ModuleBuilder::new("mod_a");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("secret", sig, Visibility::Private);
         fb.ret(None);
         mb_a.add_function(fb.build());
@@ -237,7 +241,10 @@ mod tests {
         mb_a.add_struct(StructDef {
             name: "Point".into(),
             namespace: Vec::new(),
-            fields: vec![("x".into(), Type::Float(64), None), ("y".into(), Type::Float(64), None)],
+            fields: vec![
+                ("x".into(), Type::Float(64), None),
+                ("y".into(), Type::Float(64), None),
+            ],
             visibility: Visibility::Public,
         });
         mb_a.add_global(Global {
@@ -265,8 +272,14 @@ mod tests {
         let result = Linker::link(&[mod_a, mod_b]);
         assert!(result.is_ok());
         let table = result.unwrap();
-        assert_eq!(table.resolve("mod_a", "Point").unwrap().kind, SymbolKind::Struct);
-        assert_eq!(table.resolve("mod_a", "ORIGIN").unwrap().kind, SymbolKind::Global);
+        assert_eq!(
+            table.resolve("mod_a", "Point").unwrap().kind,
+            SymbolKind::Struct
+        );
+        assert_eq!(
+            table.resolve("mod_a", "ORIGIN").unwrap().kind,
+            SymbolKind::Global
+        );
     }
 
     #[test]
@@ -280,7 +293,9 @@ mod tests {
         let mut mb = ModuleBuilder::new("standalone");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("main", sig, Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -295,7 +310,9 @@ mod tests {
         let mut mb = ModuleBuilder::new("mod_a");
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("f1", sig.clone(), Visibility::Public);
         fb.ret(None);
         mb.add_function(fb.build());

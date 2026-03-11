@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use reincarnate_datawin::DataWin;
 use reincarnate_core::project::{Asset, AssetCatalog, AssetKind};
+use reincarnate_datawin::DataWin;
 
 /// Extract assets (textures, audio, icon) from a data.win file.
 ///
@@ -191,8 +191,10 @@ fn extract_ico_from_pe(data: &[u8]) -> Option<Vec<u8>> {
     }
 
     // COFF header: number of sections at pe_off+6, optional header size at pe_off+20.
-    let num_sections = u16::from_le_bytes(data.get(pe_off + 6..pe_off + 8)?.try_into().ok()?) as usize;
-    let opt_header_size = u16::from_le_bytes(data.get(pe_off + 20..pe_off + 22)?.try_into().ok()?) as usize;
+    let num_sections =
+        u16::from_le_bytes(data.get(pe_off + 6..pe_off + 8)?.try_into().ok()?) as usize;
+    let opt_header_size =
+        u16::from_le_bytes(data.get(pe_off + 20..pe_off + 22)?.try_into().ok()?) as usize;
 
     // Optional header magic: 0x10b = PE32, 0x20b = PE32+.
     let magic = u16::from_le_bytes(data.get(pe_off + 24..pe_off + 26)?.try_into().ok()?);
@@ -205,7 +207,8 @@ fn extract_ico_from_pe(data: &[u8]) -> Option<Vec<u8>> {
         0x020b => pe_off + 24 + 112,
         _ => return None,
     };
-    let rsrc_rva = u32::from_le_bytes(data.get(dd_base + 16..dd_base + 20)?.try_into().ok()?) as usize;
+    let rsrc_rva =
+        u32::from_le_bytes(data.get(dd_base + 16..dd_base + 20)?.try_into().ok()?) as usize;
     if rsrc_rva == 0 {
         return None;
     }
@@ -226,13 +229,19 @@ fn extract_ico_from_pe(data: &[u8]) -> Option<Vec<u8>> {
     let rt_icon_map = collect_rt_icon(data, rsrc_raw_off, rsrc_raw_off, rsrc_va, 3)?;
 
     // Find the first RT_GROUP_ICON entry and decode its directory.
-    let group_data = first_rt_group_icon_data(data, rsrc_raw_off, rsrc_raw_off, rsrc_va, 14, &rva_to_off)?;
+    let group_data =
+        first_rt_group_icon_data(data, rsrc_raw_off, rsrc_raw_off, rsrc_va, 14, &rva_to_off)?;
 
     build_ico(group_data, &rt_icon_map)
 }
 
 /// Find the PE section containing `target_rva`.  Returns `(raw_offset, virtual_address)`.
-fn find_section(data: &[u8], sections_off: usize, count: usize, target_rva: usize) -> Option<(usize, usize)> {
+fn find_section(
+    data: &[u8],
+    sections_off: usize,
+    count: usize,
+    target_rva: usize,
+) -> Option<(usize, usize)> {
     for i in 0..count {
         let base = sections_off + i * 40;
         if base + 40 > data.len() {
@@ -261,22 +270,24 @@ fn find_section(data: &[u8], sections_off: usize, count: usize, target_rva: usiz
 /// language variant for each name/id.
 fn collect_rt_icon(
     data: &[u8],
-    dir_off: usize,    // offset of current directory node within data
-    rsrc_raw: usize,   // raw file offset of the start of the .rsrc section
-    rsrc_va: usize,    // virtual address of the .rsrc section
+    dir_off: usize,  // offset of current directory node within data
+    rsrc_raw: usize, // raw file offset of the start of the .rsrc section
+    rsrc_va: usize,  // virtual address of the .rsrc section
     target_type: u32,
 ) -> Option<std::collections::HashMap<u32, &[u8]>> {
     let mut map = std::collections::HashMap::new();
 
     // Parse level-1 directory (resource types).
     let named = u16::from_le_bytes(data.get(dir_off + 12..dir_off + 14)?.try_into().ok()?) as usize;
-    let id_entries = u16::from_le_bytes(data.get(dir_off + 14..dir_off + 16)?.try_into().ok()?) as usize;
+    let id_entries =
+        u16::from_le_bytes(data.get(dir_off + 14..dir_off + 16)?.try_into().ok()?) as usize;
     let total = named + id_entries;
 
     for e in 0..total {
         let entry_off = dir_off + 16 + e * 8;
         let id_or_name = u32::from_le_bytes(data.get(entry_off..entry_off + 4)?.try_into().ok()?);
-        let subdiroff_raw = u32::from_le_bytes(data.get(entry_off + 4..entry_off + 8)?.try_into().ok()?);
+        let subdiroff_raw =
+            u32::from_le_bytes(data.get(entry_off + 4..entry_off + 8)?.try_into().ok()?);
         let is_dir = subdiroff_raw & 0x8000_0000 != 0;
 
         // Skip named entries (high bit set in id_or_name) and non-matching type IDs.
@@ -289,8 +300,16 @@ fn collect_rt_icon(
 
         let type_dir_off = rsrc_raw + (subdiroff_raw & 0x7FFF_FFFF) as usize;
         // Level 2: name/id entries under this type.
-        let named2 = u16::from_le_bytes(data.get(type_dir_off + 12..type_dir_off + 14)?.try_into().ok()?) as usize;
-        let id2 = u16::from_le_bytes(data.get(type_dir_off + 14..type_dir_off + 16)?.try_into().ok()?) as usize;
+        let named2 = u16::from_le_bytes(
+            data.get(type_dir_off + 12..type_dir_off + 14)?
+                .try_into()
+                .ok()?,
+        ) as usize;
+        let id2 = u16::from_le_bytes(
+            data.get(type_dir_off + 14..type_dir_off + 16)?
+                .try_into()
+                .ok()?,
+        ) as usize;
         let total2 = named2 + id2;
 
         for e2 in 0..total2 {
@@ -300,7 +319,8 @@ fn collect_rt_icon(
             if icon_id & 0x8000_0000 != 0 {
                 continue; // skip named entries
             }
-            let subdiroff2_raw = u32::from_le_bytes(data.get(e2_off + 4..e2_off + 8)?.try_into().ok()?);
+            let subdiroff2_raw =
+                u32::from_le_bytes(data.get(e2_off + 4..e2_off + 8)?.try_into().ok()?);
             if subdiroff2_raw & 0x8000_0000 == 0 {
                 continue; // expect a subdirectory (language level)
             }
@@ -310,14 +330,20 @@ fn collect_rt_icon(
             if data.len() < lang_dir_off + 16 {
                 continue;
             }
-            let leaf_off_raw = u32::from_le_bytes(data.get(lang_dir_off + 20..lang_dir_off + 24)?.try_into().ok()?);
+            let leaf_off_raw = u32::from_le_bytes(
+                data.get(lang_dir_off + 20..lang_dir_off + 24)?
+                    .try_into()
+                    .ok()?,
+            );
             if leaf_off_raw & 0x8000_0000 != 0 {
                 continue; // unexpected sub-directory
             }
             let leaf_off = rsrc_raw + leaf_off_raw as usize;
             // IMAGE_RESOURCE_DATA_ENTRY: RVA (4), Size (4), CodePage (4), Reserved (4).
-            let data_rva = u32::from_le_bytes(data.get(leaf_off..leaf_off + 4)?.try_into().ok()?) as usize;
-            let data_size = u32::from_le_bytes(data.get(leaf_off + 4..leaf_off + 8)?.try_into().ok()?) as usize;
+            let data_rva =
+                u32::from_le_bytes(data.get(leaf_off..leaf_off + 4)?.try_into().ok()?) as usize;
+            let data_size =
+                u32::from_le_bytes(data.get(leaf_off + 4..leaf_off + 8)?.try_into().ok()?) as usize;
             let file_off = rsrc_raw + data_rva.checked_sub(rsrc_va)?;
             let slice = data.get(file_off..file_off + data_size)?;
             map.insert(icon_id, slice);
@@ -339,21 +365,31 @@ fn first_rt_group_icon_data<'a>(
 ) -> Option<&'a [u8]> {
     // Level-1: find the target type directory.
     let named = u16::from_le_bytes(data.get(dir_off + 12..dir_off + 14)?.try_into().ok()?) as usize;
-    let id_entries = u16::from_le_bytes(data.get(dir_off + 14..dir_off + 16)?.try_into().ok()?) as usize;
+    let id_entries =
+        u16::from_le_bytes(data.get(dir_off + 14..dir_off + 16)?.try_into().ok()?) as usize;
     let total = named + id_entries;
 
     for e in 0..total {
         let entry_off = dir_off + 16 + e * 8;
         let id_or_name = u32::from_le_bytes(data.get(entry_off..entry_off + 4)?.try_into().ok()?);
-        let subdiroff_raw = u32::from_le_bytes(data.get(entry_off + 4..entry_off + 8)?.try_into().ok()?);
+        let subdiroff_raw =
+            u32::from_le_bytes(data.get(entry_off + 4..entry_off + 8)?.try_into().ok()?);
         let is_dir = subdiroff_raw & 0x8000_0000 != 0;
         if id_or_name & 0x8000_0000 != 0 || id_or_name != target_type || !is_dir {
             continue;
         }
 
         let type_dir_off = rsrc_raw + (subdiroff_raw & 0x7FFF_FFFF) as usize;
-        let named2 = u16::from_le_bytes(data.get(type_dir_off + 12..type_dir_off + 14)?.try_into().ok()?) as usize;
-        let id2 = u16::from_le_bytes(data.get(type_dir_off + 14..type_dir_off + 16)?.try_into().ok()?) as usize;
+        let named2 = u16::from_le_bytes(
+            data.get(type_dir_off + 12..type_dir_off + 14)?
+                .try_into()
+                .ok()?,
+        ) as usize;
+        let id2 = u16::from_le_bytes(
+            data.get(type_dir_off + 14..type_dir_off + 16)?
+                .try_into()
+                .ok()?,
+        ) as usize;
         let total2 = named2 + id2;
 
         // Take the first name/id entry.
@@ -369,13 +405,19 @@ fn first_rt_group_icon_data<'a>(
         if data.len() < lang_dir_off + 24 {
             break;
         }
-        let leaf_off_raw = u32::from_le_bytes(data.get(lang_dir_off + 20..lang_dir_off + 24)?.try_into().ok()?);
+        let leaf_off_raw = u32::from_le_bytes(
+            data.get(lang_dir_off + 20..lang_dir_off + 24)?
+                .try_into()
+                .ok()?,
+        );
         if leaf_off_raw & 0x8000_0000 != 0 {
             break;
         }
         let leaf_off = rsrc_raw + leaf_off_raw as usize;
-        let data_rva = u32::from_le_bytes(data.get(leaf_off..leaf_off + 4)?.try_into().ok()?) as usize;
-        let data_size = u32::from_le_bytes(data.get(leaf_off + 4..leaf_off + 8)?.try_into().ok()?) as usize;
+        let data_rva =
+            u32::from_le_bytes(data.get(leaf_off..leaf_off + 4)?.try_into().ok()?) as usize;
+        let data_size =
+            u32::from_le_bytes(data.get(leaf_off + 4..leaf_off + 8)?.try_into().ok()?) as usize;
         let file_off = rva_to_off(data_rva)?;
         return data.get(file_off..file_off + data_size);
     }
@@ -405,10 +447,7 @@ fn first_rt_group_icon_data<'a>(
 ///
 /// The `.ico` format uses the same layout but replaces `nId` with a `u32`
 /// file offset to the image data.
-fn build_ico(
-    group: &[u8],
-    icons: &std::collections::HashMap<u32, &[u8]>,
-) -> Option<Vec<u8>> {
+fn build_ico(group: &[u8], icons: &std::collections::HashMap<u32, &[u8]>) -> Option<Vec<u8>> {
     if group.len() < 6 {
         return None;
     }
@@ -445,7 +484,14 @@ fn build_ico(
         // base+8..base+12: dwBytesInRes (u32) — we use actual slice length instead
         let nid = u16::from_le_bytes(group[base + 12..base + 14].try_into().ok()?) as u32;
         let icon_data = icons.get(&nid)?;
-        entries.push(IcoEntry { width, height, color_count, planes, bit_count, data: icon_data });
+        entries.push(IcoEntry {
+            width,
+            height,
+            color_count,
+            planes,
+            bit_count,
+            data: icon_data,
+        });
     }
 
     // Build the .ico file:

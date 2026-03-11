@@ -6,7 +6,9 @@ use crate::ir::block::{Block, BlockParam};
 use crate::ir::inst::Inst;
 use crate::ir::module::StructDef;
 use crate::ir::ty::FunctionSig;
-use crate::ir::{BlockId, Constant, FuncId, Function, InstId, Module, Op, Type, ValueId, Visibility};
+use crate::ir::{
+    BlockId, Constant, FuncId, Function, InstId, Module, Op, Type, ValueId, Visibility,
+};
 use crate::pipeline::{Transform, TransformResult};
 
 use super::util::{branch_targets, value_operands};
@@ -62,8 +64,7 @@ fn split_at_yields(func: &mut Function) -> Vec<YieldPoint> {
         let resume_value = func.insts[yield_inst_id].result;
 
         // Split: post-yield instructions go to a new block.
-        let post_insts: Vec<InstId> =
-            func.blocks[block_id].insts[yield_pos + 1..].to_vec();
+        let post_insts: Vec<InstId> = func.blocks[block_id].insts[yield_pos + 1..].to_vec();
 
         // Truncate current block to before the yield (exclude yield itself).
         func.blocks[block_id].insts.truncate(yield_pos);
@@ -74,10 +75,7 @@ fn split_at_yields(func: &mut Function) -> Vec<YieldPoint> {
         let new_resume_value = if let Some(rv) = resume_value {
             let ty = func.value_types[rv].clone();
             let new_val = func.value_types.push(ty.clone());
-            post_params.push(BlockParam {
-                value: new_val,
-                ty,
-            });
+            post_params.push(BlockParam { value: new_val, ty });
             Some(new_val)
         } else {
             None
@@ -94,10 +92,7 @@ fn split_at_yields(func: &mut Function) -> Vec<YieldPoint> {
             let mut subst = HashMap::new();
             subst.insert(old_rv, new_rv);
             for &inst_id in &func.blocks[post_block].insts {
-                super::util::substitute_values_in_op(
-                    &mut func.insts[inst_id].op,
-                    &subst,
-                );
+                super::util::substitute_values_in_op(&mut func.insts[inst_id].op, &subst);
             }
         }
 
@@ -173,10 +168,7 @@ fn values_used_in_blocks(func: &Function, blocks: &HashSet<BlockId>) -> HashSet<
 
 /// Compute values that are live across at least one yield point.
 /// These need to be saved to the state struct.
-fn cross_yield_live_values(
-    func: &Function,
-    yield_points: &[YieldPoint],
-) -> Vec<ValueId> {
+fn cross_yield_live_values(func: &Function, yield_points: &[YieldPoint]) -> Vec<ValueId> {
     let def_map = build_def_map(func);
     let mut live_set = HashSet::new();
 
@@ -304,7 +296,9 @@ fn build_resume_function(
     let state_ty = Type::Struct(struct_name.to_string());
     let new_sig = FunctionSig {
         params: vec![state_ty.clone(), yield_ty.clone()],
-        return_ty: yield_ty.clone(), ..Default::default() };
+        return_ty: yield_ty.clone(),
+        ..Default::default()
+    };
 
     // Create entry block with params: state, resume_val.
     let state_param = rb.alloc_value(state_ty.clone());
@@ -559,11 +553,7 @@ fn emit_state_exit(
         match last_op {
             Op::Return(_) => {
                 // Set __done = true.
-                let true_val = rb.emit(
-                    target_block,
-                    Op::Const(Constant::Bool(true)),
-                    Type::Bool,
-                );
+                let true_val = rb.emit(target_block, Op::Const(Constant::Bool(true)), Type::Bool);
                 rb.emit_void(
                     target_block,
                     Op::SetField {
@@ -675,9 +665,9 @@ fn emit_yield_exit(
 
     // Fallback: match by equality.
     let yp = yp.or_else(|| {
-        yield_points.iter().find(|yp| {
-            orig_func.blocks[yp.pre_block].insts.as_slice() == orig_inst_ids
-        })
+        yield_points
+            .iter()
+            .find(|yp| orig_func.blocks[yp.pre_block].insts.as_slice() == orig_inst_ids)
     });
 
     if let Some(yp) = yp {
@@ -833,15 +823,14 @@ fn rewrite_callers(
                     let coroutine_val = *coroutine_val;
                     // Check if this resumes a coroutine of the right type.
                     let val_ty = &module.functions[func_id].value_types[coroutine_val];
-                    let is_our_coroutine = matches!(val_ty, Type::Coroutine { .. })
-                        || *val_ty == struct_ty;
+                    let is_our_coroutine =
+                        matches!(val_ty, Type::Coroutine { .. }) || *val_ty == struct_ty;
 
                     if is_our_coroutine {
                         // Replace with Call to the resume function.
-                        let null_val =
-                            module.functions[func_id].value_types.push(
-                                Type::Option(Box::new(Type::Dynamic)),
-                            );
+                        let null_val = module.functions[func_id]
+                            .value_types
+                            .push(Type::Option(Box::new(Type::Dynamic)));
                         let null_inst_id = module.functions[func_id].insts.push(Inst {
                             op: Op::Const(Constant::Null),
                             result: Some(null_val),
@@ -849,8 +838,7 @@ fn rewrite_callers(
                         });
 
                         // Insert null const before the resume.
-                        let block_id =
-                            find_inst_block(&module.functions[func_id], inst_id);
+                        let block_id = find_inst_block(&module.functions[func_id], inst_id);
                         if let Some(block_id) = block_id {
                             let pos = module.functions[func_id].blocks[block_id]
                                 .insts
@@ -898,9 +886,7 @@ impl Transform for CoroutineLowering {
         let coroutine_funcs: Vec<(FuncId, String)> = module
             .functions
             .iter()
-            .filter_map(|(id, func)| {
-                func.coroutine.as_ref().map(|_| (id, func.name.clone()))
-            })
+            .filter_map(|(id, func)| func.coroutine.as_ref().map(|_| (id, func.name.clone())))
             .collect();
 
         for (func_id, func_name) in &coroutine_funcs {
@@ -938,12 +924,7 @@ impl Transform for CoroutineLowering {
             module.functions[*func_id] = new_func;
 
             // Phase 5: Rewrite callers.
-            rewrite_callers(
-                &mut module,
-                *func_id,
-                &struct_name,
-                func_name,
-            );
+            rewrite_callers(&mut module, *func_id, &struct_name, func_name);
 
             changed = true;
         }
@@ -970,7 +951,9 @@ mod tests {
         //   entry: yield 42; return
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let val = fb.const_int(42);
         let _resume = fb.yield_(Some(val), Type::Dynamic);
@@ -993,7 +976,9 @@ mod tests {
     fn identity_no_change() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("normal", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -1058,7 +1043,9 @@ mod tests {
     fn multiple_yields() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen2", sig, Visibility::Public);
         let v1 = fb.const_int(1);
         let _r1 = fb.yield_(Some(v1), Type::Dynamic);
@@ -1096,7 +1083,9 @@ mod tests {
     fn yield_in_loop() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen_loop", sig, Visibility::Public);
         let counter = fb.param(0);
 
@@ -1149,7 +1138,9 @@ mod tests {
         // Build a coroutine function.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let p = fb.param(0);
         let _r = fb.yield_(Some(p), Type::Dynamic);
@@ -1163,7 +1154,9 @@ mod tests {
         // Build a caller function.
         let caller_sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb2 = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let arg = fb2.const_int(10);
         let _coro = fb2.coroutine_create("gen", &[arg], Type::Int(64), Type::Void);
@@ -1179,9 +1172,10 @@ mod tests {
 
         // The caller should now have a StructInit instead of CoroutineCreate.
         let caller = &module.functions[FuncId::new(1)];
-        let has_struct_init = caller.insts.values().any(|inst| {
-            matches!(&inst.op, Op::StructInit { name, .. } if name == "gen_state")
-        });
+        let has_struct_init = caller
+            .insts
+            .values()
+            .any(|inst| matches!(&inst.op, Op::StructInit { name, .. } if name == "gen_state"));
         assert!(
             has_struct_init,
             "caller should have StructInit for gen_state"
@@ -1202,7 +1196,9 @@ mod tests {
         // Build a coroutine function.
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let v = fb.const_int(1);
         let _r = fb.yield_(Some(v), Type::Dynamic);
@@ -1216,7 +1212,9 @@ mod tests {
         // Build a caller that creates and resumes.
         let caller_sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb2 = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let coro = fb2.coroutine_create("gen", &[], Type::Int(64), Type::Void);
         let result = fb2.coroutine_resume(coro, Type::Int(64));
@@ -1232,9 +1230,10 @@ mod tests {
 
         // The caller should now have a Call instead of CoroutineResume.
         let caller = &module.functions[FuncId::new(1)];
-        let has_call = caller.insts.values().any(|inst| {
-            matches!(&inst.op, Op::Call { func, .. } if func == "gen")
-        });
+        let has_call = caller
+            .insts
+            .values()
+            .any(|inst| matches!(&inst.op, Op::Call { func, .. } if func == "gen"));
         assert!(has_call, "caller should have Call to gen");
         let has_resume = caller
             .insts
@@ -1251,7 +1250,9 @@ mod tests {
     fn non_coroutine_unchanged() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("normal", sig, Visibility::Private);
         fb.ret(None);
         let func = fb.build();
@@ -1272,7 +1273,9 @@ mod tests {
     fn no_coroutine_noop() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
-            return_ty: Type::Int(64), ..Default::default() };
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("normal", sig, Visibility::Private);
         let p = fb.param(0);
         fb.ret(Some(p));
@@ -1289,7 +1292,9 @@ mod tests {
     fn yield_in_entry_block() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let val = fb.const_int(99);
         let _r = fb.yield_(Some(val), Type::Dynamic);
@@ -1308,7 +1313,9 @@ mod tests {
         // Function should still have a valid switch dispatch.
         let func = &module.functions[FuncId::new(0)];
         let entry = func.entry;
-        let has_switch = func.blocks[entry].insts.iter()
+        let has_switch = func.blocks[entry]
+            .insts
+            .iter()
             .any(|&id| matches!(func.insts[id].op, Op::Switch { .. }));
         assert!(has_switch, "entry should have state dispatch");
     }
@@ -1320,7 +1327,9 @@ mod tests {
     fn yield_in_both_branches() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let cond = fb.param(0);
         let then_b = fb.create_block();
@@ -1356,7 +1365,9 @@ mod tests {
         // Should have 3 states (0=entry, 1=yield-in-then, 2=yield-in-else).
         let func = &module.functions[FuncId::new(0)];
         let entry = func.entry;
-        let switch_inst = func.blocks[entry].insts.iter()
+        let switch_inst = func.blocks[entry]
+            .insts
+            .iter()
             .find(|&&id| matches!(func.insts[id].op, Op::Switch { .. }));
         assert!(switch_inst.is_some());
         if let Op::Switch { cases, .. } = &func.insts[*switch_inst.unwrap()].op {
@@ -1369,7 +1380,9 @@ mod tests {
     fn multiple_yields_sequence() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         for i in 1..=3 {
             let v = fb.const_int(i);
@@ -1390,7 +1403,9 @@ mod tests {
         // 4 states: 0=entry, 1=after-yield1, 2=after-yield2, 3=after-yield3
         let func = &module.functions[FuncId::new(0)];
         let entry = func.entry;
-        let switch_inst = func.blocks[entry].insts.iter()
+        let switch_inst = func.blocks[entry]
+            .insts
+            .iter()
             .find(|&&id| matches!(func.insts[id].op, Op::Switch { .. }));
         if let Op::Switch { cases, .. } = &func.insts[*switch_inst.unwrap()].op {
             assert_eq!(cases.len(), 4, "3 yields → 4 states");
@@ -1402,7 +1417,9 @@ mod tests {
     fn cross_yield_liveness() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Void, ..Default::default() };
+            return_ty: Type::Void,
+            ..Default::default()
+        };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
 
         // Define a value before yield.

@@ -61,11 +61,7 @@ pub fn extract_story(html: &str) -> Result<Story, ExtractError> {
     let format = sd.attr("format").unwrap_or_default().to_string();
     let format_version = sd.attr("format-version").unwrap_or_default().to_string();
     let ifid = sd.attr("ifid").unwrap_or_default().to_string();
-    let start_pid: u32 = sd
-        .attr("startnode")
-        .unwrap_or("1")
-        .parse()
-        .unwrap_or(1);
+    let start_pid: u32 = sd.attr("startnode").unwrap_or("1").parse().unwrap_or(1);
 
     let pd_sel = Selector::parse("tw-passagedata").unwrap();
     let passages: Vec<Passage> = document
@@ -109,7 +105,11 @@ pub fn extract_story(html: &str) -> Result<Story, ExtractError> {
     let format_css = document.select(&css_sel).next().and_then(|el| {
         let css = el.text().collect::<String>();
         let trimmed = css.trim().to_string();
-        if trimmed.is_empty() { None } else { Some(trimmed) }
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
     });
 
     Ok(Story {

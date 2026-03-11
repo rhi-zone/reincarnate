@@ -37,7 +37,10 @@ impl Transform for GmlClassRefResolve {
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         if module.object_names.is_empty() || module.external_function_sigs.is_empty() {
-            return Ok(TransformResult { module, changed: false });
+            return Ok(TransformResult {
+                module,
+                changed: false,
+            });
         }
 
         // Build a map: function name → list of param indices with "classref" type.
@@ -61,7 +64,10 @@ impl Transform for GmlClassRefResolve {
             .collect();
 
         if classref_params.is_empty() {
-            return Ok(TransformResult { module, changed: false });
+            return Ok(TransformResult {
+                module,
+                changed: false,
+            });
         }
 
         let object_names = module.object_names.clone();
@@ -127,7 +133,11 @@ fn resolve_function(
                 continue;
             };
             // Resolve the integer value — plain Const or Coerce-cast Const.
-            let n = match const_ints.get(&arg_val).copied().or_else(|| cast_const_ints.get(&arg_val).copied()) {
+            let n = match const_ints
+                .get(&arg_val)
+                .copied()
+                .or_else(|| cast_const_ints.get(&arg_val).copied())
+            {
                 Some(n) => n,
                 None => continue,
             };

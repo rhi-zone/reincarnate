@@ -20,7 +20,7 @@ pub use func::{CaptureMode, FuncId, Function, MethodKind, Visibility};
 pub use inst::{CastKind, CmpKind, Inst, InstId, Op, Span};
 pub use linear::lower_function_linear;
 pub use module::{
-    ClassDef, EnumDef, EnumVariant, EntryPoint, ExternalImport, Global, Import, Module, StructDef,
+    ClassDef, EntryPoint, EnumDef, EnumVariant, ExternalImport, Global, Import, Module, StructDef,
 };
 pub use structurize::{
     build_cfg, compute_dominators_lt, dominates, structurize, BlockArgAssign, Cfg, Shape,

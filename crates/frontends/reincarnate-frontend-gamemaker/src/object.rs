@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use reincarnate_datawin::chunks::objt::{event_type, ObjectEntry};
-use reincarnate_datawin::DataWin;
 use reincarnate_core::ir::builder::ModuleBuilder;
 use reincarnate_core::ir::func::{MethodKind, Visibility};
 use reincarnate_core::ir::module::{ClassDef, StructDef};
 use reincarnate_core::ir::{Constant, Type};
+use reincarnate_datawin::chunks::objt::{event_type, ObjectEntry};
+use reincarnate_datawin::DataWin;
 
 use crate::translate::{self, TranslateCtx};
 
@@ -50,18 +50,10 @@ pub fn translate_objects(
             ));
         }
         if obj.persistent {
-            fields.push((
-                "persistent".into(),
-                Type::Bool,
-                Some(Constant::Bool(true)),
-            ));
+            fields.push(("persistent".into(), Type::Bool, Some(Constant::Bool(true))));
         }
         if !obj.visible {
-            fields.push((
-                "visible".into(),
-                Type::Bool,
-                Some(Constant::Bool(false)),
-            ));
+            fields.push(("visible".into(), Type::Bool, Some(Constant::Bool(false))));
         }
 
         let ns = vec!["objects".into()];
@@ -89,11 +81,7 @@ pub fn translate_objects(
                         None => continue,
                     };
 
-                    let event_name = make_event_name(
-                        event_type_idx,
-                        event.subtype,
-                        obj_names,
-                    );
+                    let event_name = make_event_name(event_type_idx, event.subtype, obj_names);
                     let func_name = format!("{obj_name}::{event_name}");
 
                     let code_entry = &code.entries[code_idx];
@@ -102,8 +90,7 @@ pub fn translate_objects(
 
                     let is_collision = event_type_idx == event_type::COLLISION;
 
-                    let local_names =
-                        crate::resolve_local_names(locals, dw.data());
+                    let local_names = crate::resolve_local_names(locals, dw.data());
                     let ctx = TranslateCtx {
                         function_names,
                         asset_ref_names,
@@ -158,8 +145,7 @@ pub fn translate_objects(
         }
 
         // Resolve parent object. Root objects extend GMLObject.
-        let super_class = resolve_parent(obj, obj_names)
-            .or_else(|| Some("GMLObject".into()));
+        let super_class = resolve_parent(obj, obj_names).or_else(|| Some("GMLObject".into()));
 
         mb.add_class(ClassDef {
             name: obj_name.clone(),
@@ -218,11 +204,7 @@ fn build_ancestor_chain(objs: &[ObjectEntry], obj_idx: usize) -> HashSet<usize> 
 /// - Draw variants: `drawgui`, `drawbegin`, `drawend`, etc.
 /// - Mouse: `mouseenter`, `mouseleave`
 /// - Other: `roomstart`, `roomend`, `gamestart`, `gameend`, etc.
-fn make_event_name(
-    event_type_idx: usize,
-    subtype: u32,
-    _obj_names: &[String],
-) -> String {
+fn make_event_name(event_type_idx: usize, subtype: u32, _obj_names: &[String]) -> String {
     match event_type_idx {
         event_type::CREATE => "create".into(),
         event_type::DESTROY => "destroy".into(),
@@ -319,4 +301,3 @@ fn other_event_name(subtype: u32) -> String {
         _ => format!("other{subtype}"),
     }
 }
-
