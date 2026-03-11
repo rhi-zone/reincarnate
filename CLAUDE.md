@@ -40,25 +40,20 @@ These are invariant. When a violation appears, adjust the law — don't add a co
 
 **Do the work properly.** When asked to analyze X, actually read X — don't synthesize from conversation.
 
-## Operating Principles
+## How to Think and Act
 
-These define how the agent thinks, not just what it does. Violations of these principles produce subtly wrong code even when individual rules are followed.
+These principles govern judgment. Individual rules follow from them.
 
-- **Never work around anything.** A workaround is any change that avoids fixing the actual problem. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both layers in TODO.md and leave the code unchanged. "Special handling in the emitter" is a workaround. "Fix the pass that produces wrong output" is a fix. The distinction: does the change make the system more correct, or does it hide that the system is wrong?
-- **Friction is a maintainability signal.** When a fix is awkward, the awkwardness is information. A one-line fix that requires understanding five layers of context means those layers are poorly factored. A type that's a `Vec<(String, Type, Option<Constant>, bool)>` instead of a struct means someone optimized for writing speed over reading speed. When you encounter friction, ask: *what is wrong with the design that makes this hard?* — then fix that, or document it. Don't push through friction silently.
-- **Question existing code.** Code you wrote last session is not more trustworthy than code a stranger wrote. Before building on top of existing abstractions, ask whether the abstraction is correct. Before reusing a pattern, ask whether the pattern is good. "It already works this way" is not evidence that it should work this way. If existing code uses strings where it should use enums, or tuples where it should use structs, or puts engine-specific logic in engine-agnostic code — that's a bug in the existing code, not a constraint to work within.
-
-## Behavioral Patterns
-
-- **Implement fully.** Test projects are examples, not the spec — fix the entire class, not just the case that blew up. In a multi-stage pipeline, check all stages before closing a task. Every API method, even ones no test game uses, belongs in the runtime.
-- **Verify before stating.** Don't assert API behavior or codebase facts without checking.
-- **Write regression tests for reproducible compiler bugs.** Tests must assert correct externally-observable behavior — not mirror the implementation. If writing the correct assertion fails, mark `#[ignore = "known bug: ..."]` and add to TODO.md; never adjust the assertion to match broken behavior.
-- **Take the correct approach, not the simple or complex one.** Never optimize for ease of implementation or minimize scope to dodge difficulty. Never add complexity for its own sake either. Ask: what is the *right* design? Then do that. "Simpler" and "more complex" are not axes of quality — correctness is. A large refactor is not a reason to avoid the correct design. If the right fix touches 20 files, touch 20 files. "That's a large refactor" is never a valid objection — "that's the wrong design" is. Effort required, blast radius, and number of call sites to update are never reasons to skip or defer work that is architecturally correct. Use your judgment to determine whether a change is *architecturally correct* — if so, do it regardless of effort.
-- **Treat special-casing as a smell.** A fix that adds a narrow guard often means the pass's core logic is wrong. Fix the assumption, not the symptom. Use `git blame` to check for accumulated guards — that pattern indicates a design gap.
+- **Fix the real problem.** A workaround is any change that avoids fixing the actual cause. "Special handling in the emitter" is a workaround; "fix the pass that produces wrong output" is a fix. A narrow guard added to one case often means the pass's core logic is wrong — fix the assumption, not the symptom. Use `git blame` to check for accumulated guards; that pattern indicates a design gap. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both layers in TODO.md and leave the code unchanged. The test: does the change make the system more correct, or hide that the system is wrong?
+- **Effort is not an objection; design is.** The right fix touches however many files it touches. "That's a large refactor" is never a valid objection — "that's the wrong design" is. Never optimize for ease of implementation or add complexity for its own sake. The axis of quality is correctness, not simplicity or scope.
+- **Friction is information.** When a fix is awkward, the awkwardness reveals a design problem. A type that's `Vec<(String, Type, Option<Constant>, bool)>` instead of a struct, or engine-specific logic in engine-agnostic code, is a bug — not a constraint to work within. Ask *what is wrong with the design that makes this hard?* Fix that, or document it.
+- **Question existing code.** Code from last session is not more trustworthy than code from a stranger. Before building on an abstraction, ask whether it's correct. "It already works this way" is not evidence that it should.
+- **Implement fully.** Test projects are examples, not the spec — fix the entire class, not just the case that blew up. Check all pipeline stages before closing a task. Every API method belongs in the runtime.
+- **Verify before stating.** Don't assert API behavior or codebase facts without checking. Check what the original engine actually does. If no authoritative source exists, record the assumption in TODO.md.
+- **Write regression tests for reproducible compiler bugs.** Assert correct externally-observable behavior — not implementation details. If the correct assertion fails, mark `#[ignore = "known bug: ..."]` and add to TODO.md; never adjust the assertion to match broken behavior.
 - **Stubs must throw, not silently fail.** Implement the function or `throw Error("name: not yet implemented")` + add a TODO.md entry. Silent returns (`0`, `""`, `false`, `null`, `{}`) are always wrong.
 - **Don't hand-roll what a library does.** JS identifier validity → `unicode_ident::is_xid_start`/`is_xid_continue` (plus `$`); JS string escaping → `serde_json::to_string`.
-- **Verify semantics against the authoritative source.** Check what the original actually does. If no authoritative source is found, record the assumption in TODO.md.
-- **When something exists, it exists for a reason.** Before removing or bypassing a mechanism, read why it was added.
+- **Before removing a mechanism, read why it was added.**
 
 ## Workflow
 
