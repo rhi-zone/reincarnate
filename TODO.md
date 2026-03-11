@@ -268,8 +268,8 @@ is the primary Flash test game. Current baseline: **30 TS errors** (12 game-auth
 - TS7053 (2): StatsView.ts:129 (`player[statName]` where statName is from a malformed array)
 
 **Emitter bugs (11 errors — fixable):**
-- [ ] TS2348 (2): CockTypesEnum.ts:55,59 — `this(this, ...)` should be `new this(...)`.
-  Root: `callpropvoid` on `this` when target is a constructor.
+- [x] TS2348 (2): CockTypesEnum.ts:55,59 — `this(this, ...)` was class coercion, not construction.
+  Fixed: `this(this, arg)` in static method → `asType(arg, ClassName)` via NullableCoerce cast.
 - [ ] TS2417 (1): CockTypesEnum.ts:8 — `static override [QN_KEY]` on class extending Enum.
   Static computed property override syntax is invalid. Remove `override` keyword.
 - [ ] TS2538/TS2536 (6): UIComponent.ts:361,600 (4+1 — `IFocusManager`/`this` as Dictionary
@@ -563,8 +563,9 @@ Measured after TypeInference + ConstraintSolve + Alloc refinement.
 - [x] **Enum constants not initialized (CockTypesEnum)** — Fixed 2026-03-12. Two-part fix:
   (1) `is_redundant_static_assign` now only strips cinit assignments for const fields with
   `default.is_some()`. (2) Flash construct rewrite treats `is_cinit` as static context,
-  injecting `null as any` instead of `this._shims`. Remaining: 2 TS2348 errors from
-  `ParseConstant`/`ParseConstantByIndex` emitting `this(this, ...)` instead of `new this(...)`.
+  injecting `null as any` instead of `this._shims`. The 2 TS2348 errors from
+  `ParseConstant`/`ParseConstantByIndex` were fixed separately — `this(this, arg)` is type
+  coercion (not construction), emitted as `asType(arg, ClassName)`.
 
 ### Known Issues
 

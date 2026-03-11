@@ -1182,6 +1182,30 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
         }
     }
 
+    // AVM2 `Op::Call` on `this` in a static method = type coercion.
+    // Bytecode: getlocal0; getlocal0; <arg>; call 2  → this(this, arg)
+    // In a static method, `this` IS the class, so `this(arg)` = `ClassName(arg)`
+    // = coerce arg to ClassName → asType(arg, ClassName).
+    if let JsExpr::Call {
+        ref callee,
+        ref args,
+    } = expr
+    {
+        if matches!(**callee, JsExpr::This) && !args.is_empty() && matches!(&args[0], JsExpr::This)
+        {
+            let rest = rewrite_exprs(args[1..].to_vec(), ctx);
+            if rest.len() == 1 {
+                if let Some(ref class_name) = ctx.class_short_name {
+                    return JsExpr::Cast {
+                        expr: Box::new(rest.into_iter().next().unwrap()),
+                        ty: Type::Struct(class_name.clone()),
+                        kind: CastKind::NullableCoerce,
+                    };
+                }
+            }
+        }
+    }
+
     // Binary { lhs: scope_lookup, rhs } → strip scope lookup, return other side
     if let JsExpr::Binary {
         ref lhs, ref rhs, ..
