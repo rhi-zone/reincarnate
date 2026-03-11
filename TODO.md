@@ -251,22 +251,48 @@ Systematic audit of all 30 remaining TS errors and emitted code quality. The CC 
 is the primary Flash test game. Current baseline: **30 TS errors** (12 game-author bugs,
 7 Dictionary-with-object-key, 3 CockTypesEnum static inheritance, 8 AS3 coercion/type gaps).
 
-- [ ] **Categorize all 30 remaining TS errors** — For each error: is it (a) game-author bug
-  (leave it, emit diagnostic), (b) inference bug (fix the inference), (c) emitter bug (fix
-  the emitter), or (d) missing language feature? Currently lumped by TS error code; needs
-  per-error analysis with fix/accept decisions.
-- [ ] **CockTypesEnum TS2348** — `ParseConstant`/`ParseConstantByIndex` emit `this(this, ...)`
-  instead of `new this(...)`. Likely a `callpropvoid`/`callstatic` → wrong system call mapping.
-- [ ] **Dictionary with object keys (TS2538/TS2536)** — 7 errors. Flash `Dictionary` allows
-  object keys; TS `Record<K,V>` requires `K extends string | number | symbol`. Need either
-  a `Dictionary<K,V>` runtime class wrapping `Map<K,V>` or `as any` casts.
-- [ ] **Static inheritance TS2417** — `typeof CockTypesEnum` incorrectly extends `typeof Enum`.
-  Static side of enum subclasses doesn't match base. May need `declare` or override annotations.
+- [x] **Categorize all 30 remaining TS errors** — DONE 2026-03-12. Full per-error triage below.
+
+### Error Triage (30 errors, by category)
+
+**Game-author bugs (12 errors — leave as-is, these are correct diagnostics):**
+- TS2367 (6): Appearance.ts:1065 (`number === false`), JeanClaudeScenes.ts:283
+  (`!= "smooth" || != "latex"` — always true, should be `&&`), MinotaurKing.ts:249
+  (`!_orgasms !== 0`), Utils.ts:106 (`!typeof o[field] === "number"` — precedence bug),
+  Katherine.ts:3561 (`flags[FLAG > 10]` — comparison as index, should be `flags[FLAG] > 10`),
+  Appearance.ts:1065 (`skinType === false` — bool/number coercion)
+- TS2367 (2): CoC.ts:13871-3 (`0.0 !== 1/2/3` — dead code from constant folding;
+  investigate if this is a compiler bug vs dead branch)
+- TS1345 (1): Inventory.ts:337 (`!combatRoundOver()` — void tested for truthiness)
+- TS2339 (1): Parser.ts:714 (`arr.len` — typo, should be `.length`)
+- TS7053 (2): StatsView.ts:129 (`player[statName]` where statName is from a malformed array)
+
+**Emitter bugs (11 errors — fixable):**
+- [ ] TS2348 (2): CockTypesEnum.ts:55,59 — `this(this, ...)` should be `new this(...)`.
+  Root: `callpropvoid` on `this` when target is a constructor.
+- [ ] TS2417 (1): CockTypesEnum.ts:8 — `static override [QN_KEY]` on class extending Enum.
+  Static computed property override syntax is invalid. Remove `override` keyword.
+- [ ] TS2538/TS2536 (6): UIComponent.ts:361,600 (4+1 — `IFocusManager`/`this` as Dictionary
+  key), BindingPane.ts:148 (`XML` as Dictionary key). All stem from Dictionary bracket-notation
+  with non-string keys. Fix: emit `.get()`/`.set()` instead of bracket notation for Dictionary
+  access, OR cast key to `any`.
+- [ ] TS2322 (1): CoC.ts:11155 — `XML` assigned to `string` field. AS3 implicit XML→string
+  coercion. Fix: emit `String(xml)` or `xml.toString()`.
+- [ ] TS2769 (1): StatsView.ts:85 — `.replace()` chain with numeric args. Fix: emit
+  `String(hours)` wrapper.
+
+**Type inference issues (5 errors — needs investigation):**
+- [ ] TS2345 (3): BaseContent.ts:366 (`.apply(null, ...)` — AS3 idiom), ImageManager.ts:96
+  (nested `String(int(...))` type chain), RizzaRoot.ts:16 (`.apply(this, args)` context).
+- [ ] TS2322 (1): Appearance.ts:1032 (`string` assigned to `never` — investigate type
+  narrowing in switch case arm).
+- [ ] TS2367 (1): CoC.ts:13871 — variable replaced with `0.0` literal. May be constant
+  folding bug; needs IR investigation.
+
+**Remaining audit items:**
 - [ ] **Audit emitted code readability** — Spot-check 10+ files for: unnecessary casts,
   unresolved `vN` names, dead code after return/break, missing const promotion, verbose
   patterns that could be simplified.
-- [ ] **Audit AS3 coercion gaps** — 8 errors from implicit AS3 coercions that TypeScript
-  doesn't allow. Determine which need explicit casts in emitted code vs type widening.
 
 ---
 
