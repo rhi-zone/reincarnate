@@ -97,13 +97,12 @@ All of the following violate it and need to move to the respective frontend crat
   `replace_iterator_next` are entirely about Flash's `HasNext2` opcode pattern. Move to
   `reincarnate-frontend-flash`.
 
-- [ ] **`ast_passes.rs` line ~170: Harlowe-specific dispatch in `lower_output_nodes`.**
-  Hardcodes `system == "Harlowe.H"`. Move to `reincarnate-frontend-twine`.
+- [x] **`ast_passes.rs` line ~170: Harlowe-specific dispatch in `lower_output_nodes`.** (2026-03-11)
+  No longer present — `lower_output_nodes` and `Harlowe.H` dispatch removed from ast_passes.rs.
 
-- [ ] **`CastKind::AsType` in core IR is AS3-specific.**
-  `ir/inst.rs` lines 31–36: `CastKind::AsType` is documented as "AS3 `as` operator: type-check-or-null".
-  A RPG Maker or Ruby frontend has no equivalent. Consider renaming to `NullableCoerce` with
-  a language-agnostic description, or moving Flash-specific cast semantics to a Flash IR extension.
+- [x] **`CastKind::AsType` in core IR is AS3-specific.** (2026-03-11)
+  Already renamed to `CastKind::NullableCoerce` with language-agnostic doc: "Nullable cast —
+  returns null if the value is not an instance of the target type (e.g. AS3 `as`, Kotlin `as?`, C# `as`)".
 
 - [ ] **`CmpKind::LooseEq` / `LooseNe` in core IR are JS-specific.**
   `inst.rs` lines 47–51: Documented as "JavaScript loose equality (`==`)… used by SugarCube."
