@@ -125,3 +125,24 @@ pub(crate) fn emit_class_registration(
         "registerClassTraits({class_name}, [{instance_body}], [{static_body}]);\n"
     );
 }
+
+/// Emit the `static [QN_KEY]: string = "pkg::ClassName";` line at the top of
+/// every Flash class body.  `parent_in_module` controls whether `override` is
+/// needed (in-module parent already declares `[QN_KEY]`; external runtime
+/// parents do not).
+pub(crate) fn emit_flash_class_header(qualified: &str, parent_in_module: bool) -> String {
+    let ov = if parent_in_module { " override" } else { "" };
+    format!("  static{ov} [QN_KEY]: string = \"{qualified}\";\n")
+}
+
+/// Returns the `_shims: FlashShims` constructor parameter string for Flash
+/// class constructors, or `None` for non-constructor methods.
+/// `suppress_super` / `parent_is_runtime`: if either is true the parameter is
+/// `readonly` (base-class or runtime-parent constructor stores it as a field).
+pub(crate) fn flash_ctor_shims_param(suppress_super: bool, parent_is_runtime: bool) -> String {
+    if suppress_super || parent_is_runtime {
+        "readonly _shims: FlashShims".to_string()
+    } else {
+        "_shims: FlashShims".to_string()
+    }
+}

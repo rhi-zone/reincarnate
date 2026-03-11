@@ -1983,7 +1983,7 @@ fn warn_unmapped_reference(name: &str) {
         return;
     }
     // Flash authoring library — not part of the runtime.
-    if ns.starts_with("fl.") {
+    if crate::rewrites::flash::is_known_flash_namespace(ns) {
         return;
     }
     // Flash runtime stdlib — actionable: add to runtime.
@@ -3542,8 +3542,10 @@ fn emit_class(
                 let base = sc.rsplit("::").next().unwrap_or(sc);
                 module.classes.iter().any(|c| c.name == base)
             });
-        let qn_ov = if parent_is_in_module { " override" } else { "" };
-        let _ = writeln!(out, "  static{qn_ov} [QN_KEY]: string = \"{qualified}\";");
+        out.push_str(&crate::emit_flash_traits::emit_flash_class_header(
+            &qualified,
+            parent_is_in_module,
+        ));
     }
 
     // Hoist parent member set lookup so it's available for field override detection below.
@@ -4132,11 +4134,10 @@ fn emit_class_method(
     // param and thread it to `super(_shims, ...)`.
     let flash_ctor_extra_param: Option<String> =
         if engine == EngineKind::Flash && func.method_kind == MethodKind::Constructor {
-            if suppress_super || parent_is_runtime {
-                Some("readonly _shims: FlashShims".to_string())
-            } else {
-                Some("_shims: FlashShims".to_string())
-            }
+            Some(crate::emit_flash_traits::flash_ctor_shims_param(
+                suppress_super,
+                parent_is_runtime,
+            ))
         } else {
             None
         };

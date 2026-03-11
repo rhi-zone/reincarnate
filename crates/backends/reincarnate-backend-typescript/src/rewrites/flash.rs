@@ -2360,6 +2360,19 @@ pub(crate) fn collect_flash_scope_refs(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Flash namespace helpers (used by emit.rs warn_unmapped_reference)
+// ---------------------------------------------------------------------------
+
+/// Returns `true` for Flash package namespaces that are known non-runtime
+/// authoring-library packages (`fl.*`) or similar known prefixes that should
+/// not produce "unmapped external reference" warnings.  Flash runtime stdlib
+/// packages (`flash.*`) are NOT included here — callers handle those separately
+/// to emit a more actionable "not in runtime stdlib" message.
+pub fn is_known_flash_namespace(ns: &str) -> bool {
+    ns.starts_with("fl.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
