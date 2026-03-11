@@ -247,9 +247,9 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
 
 ## Flash Output Quality Audit (HIGH PRIORITY)
 
-Systematic audit of all 30 remaining TS errors and emitted code quality. The CC project
-is the primary Flash test game. Current baseline: **30 TS errors** (12 game-author bugs,
-7 Dictionary-with-object-key, 3 CockTypesEnum static inheritance, 8 AS3 coercion/type gaps).
+Systematic audit of all remaining TS errors and emitted code quality. The CC project
+is the primary Flash test game. Current baseline: **23 TS errors** (was 30; fixed 7 via
+class coercion rewrite and type inference for qualified field names).
 
 - [x] **Categorize all 30 remaining TS errors** — DONE 2026-03-12. Full per-error triage below.
 
@@ -272,10 +272,9 @@ is the primary Flash test game. Current baseline: **30 TS errors** (12 game-auth
   Fixed: `this(this, arg)` in static method → `asType(arg, ClassName)` via NullableCoerce cast.
 - [x] TS2417 (1): CockTypesEnum.ts:8 — WONTFIX. AS3/TS semantic gap: AS3 static methods don't
   inherit, so subclass can have incompatible signatures. TS is correct to flag this.
-- [ ] TS2538/TS2536 (6): UIComponent.ts:361,600 (4+1 — `IFocusManager`/`this` as Dictionary
-  key), BindingPane.ts:148 (`XML` as Dictionary key). All stem from Dictionary bracket-notation
-  with non-string keys. Fix: emit `.get()`/`.set()` instead of bracket notation for Dictionary
-  access, OR cast key to `any`.
+- [x] TS2538/TS2536 (5 of 7 fixed): UIComponent Dictionary bracket-notation fixed by teaching
+  type inference to resolve field types from qualified names on Dynamic base. Remaining 2:
+  BindingPane.ts (XML as index on Keyboard, not Dictionary) and Katherine.ts (boolean as index).
 - [ ] TS2322 (1): CoC.ts:11155 — `XML` assigned to `string` field. AS3 implicit XML→string
   coercion. Fix: emit `String(xml)` or `xml.toString()`.
 - [ ] TS2769 (1): StatsView.ts:85 — `.replace()` chain with numeric args. Fix: emit
