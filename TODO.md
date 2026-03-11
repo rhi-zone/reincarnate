@@ -298,20 +298,20 @@ New findings from this audit:
   `resolve_property` and `translate_op` now return `Result<_, String>`. Errors propagate
   to `translate_method_body` which already returned `Result`.
 
-### Code Quality — Monster Functions (MEDIUM)
+### Code Quality — Monster Functions (MEDIUM, mostly done)
 
-| File | Function | Lines | Issue |
-|------|----------|-------|-------|
-| `translate.rs` (GML) | `translate_op` | 1464 | Monolith opcode match — split by opcode category |
-| `emit.rs` | `emit_module_to_dir` | 589 | God function: file I/O, imports, module splitting, class grouping |
+| File | Function | Lines | Status |
+|------|----------|-------|--------|
+| ~~`translate.rs` (GML)~~ | ~~`translate_instruction`~~ | ~~730~~ | DONE 2026-03-11 — split into 9 themed helpers |
+| ~~`emit.rs`~~ | ~~`emit_module_to_dir`~~ | ~~589~~ | DONE 2026-03-11 — split into 6 focused functions |
 | `structurize.rs` | `structurize_region_inner` | 494 | Recursive CFG recovery |
 | `translate.rs` (GML) | `translate_push_variable` | 498 | GML variable access |
 | `translate.rs` (GML) | `translate_pop` | 423 | GML variable store |
 | `emit.rs` | `emit_class` | 389 | Class emission + field layout + methods + traits |
 
-Also: ~~`ast_passes.rs`~~ (DONE 2026-03-11 — split into `ast_passes/` with `AstPass` trait,
-`cleanup.rs`, `control_flow.rs`, `variables.rs`), `linear.rs` (4434 lines), `runtime.ts`
-GML (4463 lines). These should be split into sub-modules.
+Also done: ~~`ast_passes.rs`~~ (2026-03-11 — `ast_passes/` with `AstPass` trait),
+~~`linear.rs`~~ (2026-03-11 — `linear/{mod,linearize,resolve,emit,tests}`).
+Remaining: `runtime.ts` GML (4463 lines, TypeScript not Rust).
 
 ### Code Quality — Inconsistent Error Handling (MEDIUM)
 
@@ -336,9 +336,11 @@ and mem2reg.rs. New Op/Type variants now trigger compiler errors.
 - [x] Flash frontend `lib.rs` — internal modules changed to `pub(crate)` (2026-03-11)
 - [x] GML frontend `naming` module — changed to `pub(crate)` (2026-03-11)
 - [x] Twine frontend internal modules — changed to `pub(crate)` (2026-03-11)
-- [ ] `reincarnate-core/src/lib.rs` exports all 7 modules as `pub mod`. Internal helpers
-  like `ir::structurize::compute_dominators_lt`, `ir::ast_passes::*` (20+ functions)
-  are public despite being used only within the crate.
+- [x] `reincarnate-core` visibility tightening (2026-03-11):
+  `ir::ast_passes` module → `pub(crate)` (all items internal-only).
+  `ir::structurize` re-exports: removed `build_cfg`, `compute_dominators_lt`,
+  `dominates`, `Cfg`, `Shape`, `BlockArgAssign` (all internal-only). Only
+  `structurize()` remains re-exported.
 
 ### Duplicated Platform Directories (LOW, already tracked in MEMORY.md)
 
@@ -362,8 +364,10 @@ drift is a maintenance burden.
 - [x] `Linker` unit struct → `link_modules()` free function (2026-03-11)
 - `eprintln!` used for diagnostics in `builder.rs:436-498` — should use a proper diagnostic channel
 - `Module` and `Function` derive `Clone` but are potentially huge — invites accidental deep copies
-- Bool-coercion passes in Flash (`bool_coerce.rs`) and GML (`bool_arith_coerce.rs`) share
-  structural similarity — core pattern could be extracted to a shared configurable pass
+- ~~Bool-coercion passes~~ — analyzed: Flash and GML passes solve different root causes
+  (Flash: bool comparisons + void handling; GML: bool arithmetic + block param mismatches).
+  Only ~15 lines of `insert_cast_before` helper are duplicated. Not worth extracting until
+  a third similar pass emerges.
 
 ---
 
