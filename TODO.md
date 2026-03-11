@@ -311,14 +311,18 @@ Also done: ~~`ast_passes.rs`~~ (2026-03-11 — `ast_passes/` with `AstPass` trai
 ~~`linear.rs`~~ (2026-03-11 — `linear/{mod,linearize,resolve,emit,tests}`).
 Remaining: `runtime.ts` GML (4463 lines, TypeScript not Rust).
 
-### Code Quality — Inconsistent Error Handling (MEDIUM)
+### Code Quality — Inconsistent Error Handling (MEDIUM, partially fixed 2026-03-11)
 
-- Frontends use `Result<_, String>` internally, converting to `CoreError` at boundaries.
-  Loses error categorization, source context, and backtraces.
-- Transforms and emitter never return Results — they panic on any inconsistency.
-  Pipeline is crash-or-succeed with no graceful degradation.
-- `CoreError` variants are inconsistent: `Parse` has structured fields; `Type`/`Codegen`/
-  `Project` are just `String`. CLI wraps in `anyhow!("{e}")`, discarding typed info.
+- [x] `CoreError` dead variants removed (`UnsupportedFormat`, `Type`, `Codegen`) (2026-03-11)
+- [x] `CoreError::Translate` added — distinguishes translation errors from file parse errors (2026-03-11)
+- [x] CLI `anyhow!("{e}")` → plain `?` operator — preserves typed `CoreError` in error chain (2026-03-11)
+- Frontends still use `Result<_, String>` internally. The 5 error sites (1 Flash, 4 GML)
+  produce bytecode-offset messages; a typed `TranslateError` per frontend would add
+  structure but the benefit is marginal given so few sites.
+- Transform panics are deliberate ICE-style assertions (same pattern as LLVM/rustc).
+  These guard internal invariants assumed from prior passes — converting to `Result`
+  would propagate error handling through the entire pipeline for bugs that should never
+  reach users. Correct as-is.
 
 ### ~~Code Quality — `sanitize_ident` Violates CLAUDE.md Rule~~ (FIXED 2026-03-11)
 
@@ -360,8 +364,10 @@ drift is a maintenance burden.
 - [x] `unicode-ident` dep in backend: now uses `workspace = true` (was hardcoded `"1"`) (2026-03-11)
 - [x] `Preset` unit struct → `resolve_preset()` free function (2026-03-11)
 - [x] `Linker` unit struct → `link_modules()` free function (2026-03-11)
-- `eprintln!` used for diagnostics in `builder.rs:436-498` — should use a proper diagnostic channel
-- `Module` and `Function` derive `Clone` but are potentially huge — invites accidental deep copies
+- `eprintln!` diagnostics in `builder.rs:436-498` — debug-only (`cfg!(debug_assertions)`),
+  5 warnings for stack-depth mismatches. Too few to justify a logging framework; fine as-is.
+- ~~`Module` and `Function` derive `Clone` — accidental deep copies~~ Audited 2026-03-11:
+  7 clone sites, all necessary (coroutine lowering, test helpers, CLI backend input).
 - ~~Bool-coercion passes~~ — analyzed: Flash and GML passes solve different root causes
   (Flash: bool comparisons + void handling; GML: bool arithmetic + block param mismatches).
   Only ~15 lines of `insert_cast_before` helper are duplicated. Not worth extracting until
