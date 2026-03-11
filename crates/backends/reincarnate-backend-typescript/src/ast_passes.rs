@@ -637,6 +637,192 @@ fn format_case_label(expr: &JsExpr) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Duplicate object key deduplication
+// ---------------------------------------------------------------------------
+
+/// Deduplicate object literal keys, keeping the last value for each key.
+///
+/// When the source language allows duplicate keys in struct/object literals
+/// (e.g. AS3 NewObject with repeated keys), the IR faithfully preserves all
+/// entries. This pass deduplicates them for valid TypeScript output and emits
+/// a diagnostic warning for each duplicate (game-author bug signal).
+pub fn dedup_object_keys(
+    func: &mut JsFunction,
+    func_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    dedup_object_keys_in_stmts(&mut func.body, func_name, diagnostics);
+}
+
+fn dedup_object_keys_in_stmts(
+    stmts: &mut [JsStmt],
+    func_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    for stmt in stmts.iter_mut() {
+        dedup_object_keys_in_stmt(stmt, func_name, diagnostics);
+    }
+}
+
+fn dedup_object_keys_in_stmt(
+    stmt: &mut JsStmt,
+    func_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match stmt {
+        JsStmt::VarDecl { init: Some(e), .. }
+        | JsStmt::Assign { value: e, .. }
+        | JsStmt::Expr(e)
+        | JsStmt::Return(Some(e))
+        | JsStmt::Throw(e) => dedup_object_keys_in_expr(e, func_name, diagnostics),
+        JsStmt::CompoundAssign { value, .. } => {
+            dedup_object_keys_in_expr(value, func_name, diagnostics);
+        }
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            dedup_object_keys_in_expr(cond, func_name, diagnostics);
+            dedup_object_keys_in_stmts(then_body, func_name, diagnostics);
+            dedup_object_keys_in_stmts(else_body, func_name, diagnostics);
+        }
+        JsStmt::While { cond, body } => {
+            dedup_object_keys_in_expr(cond, func_name, diagnostics);
+            dedup_object_keys_in_stmts(body, func_name, diagnostics);
+        }
+        JsStmt::Loop { body } => {
+            dedup_object_keys_in_stmts(body, func_name, diagnostics);
+        }
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            dedup_object_keys_in_stmts(init, func_name, diagnostics);
+            dedup_object_keys_in_expr(cond, func_name, diagnostics);
+            dedup_object_keys_in_stmts(update, func_name, diagnostics);
+            dedup_object_keys_in_stmts(body, func_name, diagnostics);
+        }
+        JsStmt::ForOf { iterable, body, .. } => {
+            dedup_object_keys_in_expr(iterable, func_name, diagnostics);
+            dedup_object_keys_in_stmts(body, func_name, diagnostics);
+        }
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            dedup_object_keys_in_expr(value, func_name, diagnostics);
+            for (label, case_body) in cases.iter_mut() {
+                dedup_object_keys_in_expr(label, func_name, diagnostics);
+                dedup_object_keys_in_stmts(case_body, func_name, diagnostics);
+            }
+            dedup_object_keys_in_stmts(default_body, func_name, diagnostics);
+        }
+        _ => {}
+    }
+}
+
+fn dedup_object_keys_in_expr(
+    expr: &mut JsExpr,
+    func_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match expr {
+        JsExpr::ObjectInit(pairs) => {
+            let mut seen = std::collections::HashMap::<String, usize>::new();
+            let mut i = 0;
+            while i < pairs.len() {
+                let name = &pairs[i].0;
+                if name == "..." {
+                    // Spread entries are never deduplicated.
+                    i += 1;
+                    continue;
+                }
+                if let Some(&prev_idx) = seen.get(name) {
+                    diagnostics.push(Diagnostic {
+                        file: func_name.to_string(),
+                        line: 0,
+                        col: 0,
+                        code: "RC0002".to_string(),
+                        severity: Severity::Warning,
+                        message: format!(
+                            "duplicate key '{name}' in object literal (last value wins)"
+                        ),
+                    });
+                    // Replace the previous value with the later one, remove the later entry.
+                    pairs[prev_idx].1 = pairs.remove(i).1;
+                    // Don't increment i — the next element shifted down.
+                } else {
+                    seen.insert(name.clone(), i);
+                    i += 1;
+                }
+            }
+            // Recurse into the values.
+            for (_, val) in pairs.iter_mut() {
+                dedup_object_keys_in_expr(val, func_name, diagnostics);
+            }
+        }
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs } => {
+            dedup_object_keys_in_expr(lhs, func_name, diagnostics);
+            dedup_object_keys_in_expr(rhs, func_name, diagnostics);
+        }
+        JsExpr::Field { object, .. } => {
+            dedup_object_keys_in_expr(object, func_name, diagnostics);
+        }
+        JsExpr::Index { collection, index } => {
+            dedup_object_keys_in_expr(collection, func_name, diagnostics);
+            dedup_object_keys_in_expr(index, func_name, diagnostics);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            dedup_object_keys_in_expr(callee, func_name, diagnostics);
+            for arg in args {
+                dedup_object_keys_in_expr(arg, func_name, diagnostics);
+            }
+        }
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            dedup_object_keys_in_expr(cond, func_name, diagnostics);
+            dedup_object_keys_in_expr(then_val, func_name, diagnostics);
+            dedup_object_keys_in_expr(else_val, func_name, diagnostics);
+        }
+        JsExpr::Unary { expr: e, .. }
+        | JsExpr::Cast { expr: e, .. }
+        | JsExpr::TypeCheck { expr: e, .. }
+        | JsExpr::Not(e)
+        | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
+        | JsExpr::TypeOf(e) => {
+            dedup_object_keys_in_expr(e, func_name, diagnostics);
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) => {
+            for e in elems {
+                dedup_object_keys_in_expr(e, func_name, diagnostics);
+            }
+        }
+        JsExpr::ArrowFunction { body, .. } => {
+            dedup_object_keys_in_stmts(body, func_name, diagnostics);
+        }
+        JsExpr::SystemCall { args, .. }
+        | JsExpr::SuperCall(args)
+        | JsExpr::SuperMethodCall { args, .. } => {
+            for arg in args {
+                dedup_object_keys_in_expr(arg, func_name, diagnostics);
+            }
+        }
+        _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Redundant NullableCoerce cast elimination
 // ---------------------------------------------------------------------------
 

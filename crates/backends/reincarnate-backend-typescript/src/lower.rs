@@ -255,23 +255,10 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
         Expr::ArrayInit(elems) => JsExpr::ArrayInit(lower_exprs(elems, ctx)),
 
         Expr::StructInit { name: _, fields } => {
-            let mut seen = std::collections::HashMap::<String, usize>::new();
-            let mut pairs: Vec<(String, JsExpr)> = Vec::with_capacity(fields.len());
-            for (name, val) in fields {
-                let lowered = lower_expr(val, ctx);
-                if name == "..." {
-                    // Spread entries are never deduplicated
-                    pairs.push((name.clone(), lowered));
-                } else if let Some(&idx) = seen.get(name) {
-                    eprintln!(
-                        "warning: duplicate key '{name}' in object literal (last value wins)"
-                    );
-                    pairs[idx].1 = lowered;
-                } else {
-                    seen.insert(name.clone(), pairs.len());
-                    pairs.push((name.clone(), lowered));
-                }
-            }
+            let pairs: Vec<(String, JsExpr)> = fields
+                .iter()
+                .map(|(name, val)| (name.clone(), lower_expr(val, ctx)))
+                .collect();
             JsExpr::ObjectInit(pairs)
         }
 

@@ -3867,6 +3867,7 @@ fn emit_function(
         crate::rewrites::gamemaker::coerce_bool_args(&mut js_func, func_sigs);
     }
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
+    crate::ast_passes::dedup_object_keys(&mut js_func, &func.name, diagnostics);
     crate::ast_passes::recover_switch_statements(&mut js_func.body, &func.name, diagnostics);
     crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
@@ -4558,6 +4559,7 @@ fn emit_class_method(
             return Ok(());
         }
     }
+    crate::ast_passes::dedup_object_keys(&mut js_func, &func.name, diagnostics);
     crate::ast_passes::recover_switch_statements(&mut js_func.body, &func.name, diagnostics);
     crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
