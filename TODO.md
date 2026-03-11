@@ -1336,6 +1336,27 @@ in runtime.json for any newly referenced but unimplemented functions.
 
 ## IR Architecture
 
+### Class Representation Audit (HIGH PRIORITY)
+
+The IR's class-level types have accumulated design debt. A dedicated audit session should
+review these holistically rather than fixing them piecemeal:
+
+- **`StaticField.default: Option<Constant>`** — Only represents compile-time literals.
+  Non-constant initializers (constructor calls, method calls) live in a separate cinit
+  `Function` body. The emitter should at minimum inline simple cinit assignments as field
+  initializers (`static HUMAN = new CockTypesEnum(...)`) instead of emitting a `static { }`
+  block. Question: should the IR carry richer initializer info, or is this purely an emitter
+  pattern-match?
+- **Instance fields on `StructDef`, static fields on `ClassDef`** — Why split? Both describe
+  class members. The split forces the emitter to cross-reference `struct_index`.
+- **`abstract_members: Vec<(String, Type, Vec<Type>, MethodKind)>`** — Unreadable tuple,
+  same problem `static_fields` had before the `StaticField` struct refactor.
+- **Flash-specific fields on engine-agnostic `ClassDef`** — `is_interface`, `interfaces`,
+  `zero_initialized`, `needs_index_signature` are Flash concepts on a core type. Law 2
+  violation? Or are these general enough to justify?
+- **cinit as `Function` with `MethodKind::StaticInit`** — Is a method body the right
+  representation for class-level initialization, or should it be a distinct concept?
+
 ### IR Invariant Violations (found 2026-03-09 audit)
 
 - [ ] **`FunctionBuilder::br()` / `br_if()` don't validate arg count vs target block param count.**
