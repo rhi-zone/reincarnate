@@ -177,6 +177,20 @@ pub struct LoweringConfig {
     /// Hoist loop conditions into `while (cond)` instead of
     /// `while (true) { if (!cond) break; ... }`.
     pub while_condition_hoisting: bool,
+    /// System names whose `SystemCall` ops are scope-lookup ops that must be
+    /// always-inline so call sites can detect and resolve them (e.g. scope
+    /// lookup chains like `Field(scope_lookup, field)`).
+    ///
+    /// Flash sets this to `["Flash.Scope"]`; other engines leave it empty.
+    pub scope_lookup_systems: Vec<String>,
+    /// Wrap `ClassRef`-typed GlobalRef values with `as any` at each use site.
+    ///
+    /// GML OBJT class names are interchangeable with their integer object-type
+    /// indices at runtime; `as any` suppresses TypeScript's `typeof ClassName`
+    /// type errors when the value is used in numeric or mixed-type contexts.
+    ///
+    /// GML sets this to `true`; Flash and other engines leave it `false`.
+    pub wrap_class_refs_as_any: bool,
 }
 
 impl Default for LoweringConfig {
@@ -193,6 +207,8 @@ impl LoweringConfig {
             minmax: false,
             logical_operators: true,
             while_condition_hoisting: true,
+            scope_lookup_systems: vec![],
+            wrap_class_refs_as_any: false,
         }
     }
 
@@ -202,6 +218,8 @@ impl LoweringConfig {
             minmax: true,
             logical_operators: true,
             while_condition_hoisting: true,
+            scope_lookup_systems: vec![],
+            wrap_class_refs_as_any: false,
         }
     }
 }

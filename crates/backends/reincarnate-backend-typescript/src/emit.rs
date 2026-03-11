@@ -44,6 +44,32 @@ fn detect_engine(runtime_config: Option<&RuntimeConfig>) -> EngineKind {
     EngineKind::Flash
 }
 
+/// Build a `LoweringConfig` augmented with engine-specific settings.
+///
+/// - Flash: sets `scope_lookup_systems = ["Flash.Scope"]` so that scope-lookup
+///   SystemCalls are always-inlined for chain resolution in flash.rs.
+/// - GML: sets `wrap_class_refs_as_any = true` so that `ClassRef`-typed GlobalRef
+///   values get `as any` at each use site (GML object names double as integer indices).
+fn lowering_config_for_engine(
+    config: &LoweringConfig,
+    engine: EngineKind,
+) -> std::borrow::Cow<'_, LoweringConfig> {
+    let needs_flash = engine == EngineKind::Flash && config.scope_lookup_systems.is_empty();
+    let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
+    if needs_flash || needs_gml {
+        let mut c = config.clone();
+        if needs_flash {
+            c.scope_lookup_systems = vec!["Flash.Scope".to_string()];
+        }
+        if needs_gml {
+            c.wrap_class_refs_as_any = true;
+        }
+        std::borrow::Cow::Owned(c)
+    } else {
+        std::borrow::Cow::Borrowed(config)
+    }
+}
+
 /// Emit a single module into `output_dir`.
 ///
 /// If the module has classes, emits a directory with one file per class plus
@@ -178,7 +204,8 @@ pub fn emit_module_to_string(
             .copied()
             .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
             .collect();
-        let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+        let closure_bodies =
+            compile_closures(&closure_fids, module, lowering_config, engine, debug);
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
                 emit_function(
@@ -1517,7 +1544,8 @@ pub fn emit_module_to_dir(
             .copied()
             .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
             .collect();
-        let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+        let closure_bodies =
+            compile_closures(&closure_fids, module, lowering_config, engine, debug);
         let no_sys_aliases = BTreeMap::new();
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
@@ -3265,7 +3293,7 @@ fn emit_functions(
         .copied()
         .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
         .collect();
-    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
     for id in all_ids {
         if module.functions[id].method_kind != MethodKind::Closure {
             let no_stateful = BTreeSet::new();
@@ -3320,7 +3348,8 @@ fn emit_function(
 
     func.hoist_allocs();
     let shape = structurize::structurize(func);
-    let ast = linear::lower_function_linear(func, &shape, lowering_config, debug);
+    let effective_config = lowering_config_for_engine(lowering_config, engine);
+    let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
     };
@@ -3777,7 +3806,7 @@ fn emit_class(
             });
 
     // Compile closure bodies for inlining as arrow functions.
-    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, debug);
+    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
 
     // Flash: detect getter overrides without matching setter overrides.
     // When a class overrides a getter but not the corresponding setter, and the parent has
@@ -3919,10 +3948,12 @@ fn compile_closures(
     closure_fids: &[FuncId],
     module: &mut Module,
     lowering_config: &LoweringConfig,
+    engine: EngineKind,
     debug: &DebugConfig,
 ) -> HashMap<String, JsFunction> {
     use reincarnate_core::ir::linear;
 
+    let effective_config = lowering_config_for_engine(lowering_config, engine);
     let mut result = HashMap::new();
     for &fid in closure_fids {
         let func = &mut module.functions[fid];
@@ -3935,7 +3966,7 @@ fn compile_closures(
 
         func.hoist_allocs();
         let shape = structurize::structurize(func);
-        let ast = linear::lower_function_linear(func, &shape, lowering_config, debug);
+        let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
 
         // Closures: self_param_name = None — the first param is the activation
         // scope, NOT `this`. This prevents the lowering pass from substituting
@@ -4008,7 +4039,8 @@ fn emit_class_method(
 
     func.hoist_allocs();
     let shape = structurize::structurize(func);
-    let ast = linear::lower_function_linear(func, &shape, lowering_config, debug);
+    let effective_config = lowering_config_for_engine(lowering_config, engine);
+    let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
 
     // Determine self_param_name for `this` substitution.
     let is_cinit = matches!(func.method_kind, MethodKind::StaticInit);

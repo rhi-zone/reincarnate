@@ -480,7 +480,11 @@ pub(crate) struct ResolveCtx {
 /// Br/BrIf/Switch are absent, so their operand uses aren't counted). Runs
 /// dead-code elimination to fixpoint, then classifies each Def as constant,
 /// always-inline, lazy-inline, or materialized.
-pub(crate) fn resolve(func: &Function, stmts: &[LinearStmt]) -> ResolveCtx {
+pub(crate) fn resolve(
+    func: &Function,
+    stmts: &[LinearStmt],
+    scope_lookup_systems: &[String],
+) -> ResolveCtx {
     // Step 1: compute use counts from LinearStmt.
     let mut use_counts = HashMap::new();
     count_uses_in_stmts(func, stmts, &mut use_counts);
@@ -509,6 +513,7 @@ pub(crate) fn resolve(func: &Function, stmts: &[LinearStmt]) -> ResolveCtx {
         &mut constant_inlines,
         &mut always_inlines,
         &mut lazy_inlines,
+        scope_lookup_systems,
     );
 
     // Step 4: detect adjacent Alloc+Store patterns for merged init.
@@ -912,11 +917,14 @@ fn is_deferrable(op: &Op) -> bool {
 
 /// Scope-lookup calls are pure metadata — always rebuild so consumption
 /// sites (Field, Call) can detect and resolve them.
-fn is_scope_lookup_op(op: &Op) -> bool {
+fn is_scope_lookup_op(op: &Op, scope_lookup_systems: &[String]) -> bool {
+    if scope_lookup_systems.is_empty() {
+        return false;
+    }
     matches!(
         op,
         Op::SystemCall { system, method, .. }
-            if system == "Flash.Scope"
+            if scope_lookup_systems.contains(system)
                 && (method == "findPropStrict" || method == "findProperty")
     )
 }
@@ -930,6 +938,7 @@ fn classify_defs(
     constant_inlines: &mut HashMap<ValueId, Constant>,
     always_inlines: &mut HashSet<ValueId>,
     lazy_inlines: &mut HashSet<ValueId>,
+    scope_lookup_systems: &[String],
 ) {
     for stmt in stmts {
         match stmt {
@@ -948,14 +957,16 @@ fn classify_defs(
                     continue;
                 }
 
-                // Scope lookups always rebuilt.
-                if is_scope_lookup_op(op) {
+                // Scope lookups always rebuilt so call sites (Field, Call) can
+                // detect and resolve compound scope-lookup patterns.
+                if is_scope_lookup_op(op, scope_lookup_systems) {
                     always_inlines.insert(*result);
                     continue;
                 }
 
-                // GlobalRef (class/asset name references) always rebuilt so that
-                // the ClassRef → `as any` cast in build_val fires on every use.
+                // GlobalRef (class/asset name references) always rebuilt so
+                // that engines using wrap_class_refs_as_any fire the cast on
+                // every use, and scope-lookup cascade detection works correctly.
                 if matches!(op, Op::GlobalRef(_)) {
                     always_inlines.insert(*result);
                     continue;
@@ -991,6 +1002,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -999,6 +1011,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::While { header, body, .. } => {
@@ -1009,6 +1022,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1017,6 +1031,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::For {
@@ -1033,6 +1048,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1041,6 +1057,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1049,6 +1066,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
                 classify_defs(
                     func,
@@ -1057,6 +1075,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::Loop { body } => {
@@ -1067,6 +1086,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
@@ -1077,6 +1097,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             LinearStmt::Dispatch { blocks, .. } => {
@@ -1088,6 +1109,7 @@ fn classify_defs(
                         constant_inlines,
                         always_inlines,
                         lazy_inlines,
+                        scope_lookup_systems,
                     );
                 }
             }
@@ -1104,6 +1126,7 @@ fn classify_defs(
                         constant_inlines,
                         always_inlines,
                         lazy_inlines,
+                        scope_lookup_systems,
                     );
                 }
                 classify_defs(
@@ -1113,6 +1136,7 @@ fn classify_defs(
                     constant_inlines,
                     always_inlines,
                     lazy_inlines,
+                    scope_lookup_systems,
                 );
             }
             _ => {}
@@ -1244,7 +1268,7 @@ pub fn lower_function_linear(
     debug: &DebugConfig,
 ) -> AstFunction {
     let linear = linearize(func, shape);
-    let rctx = resolve(func, &linear);
+    let rctx = resolve(func, &linear, &config.scope_lookup_systems);
     let mut ctx = EmitCtx::new(func, &rctx, config);
 
     let mut body = ctx.emit_stmts(&linear);
@@ -1708,17 +1732,14 @@ impl<'a> EmitCtx<'a> {
         if let Some(&inst_id) = self.always_inline_map.get(&v) {
             let op = self.func.insts[inst_id].op.clone();
             if let Some(expr) = self.build_expr_from_op(&op) {
-                // OBJT class references (ClassRef type) must be wrapped in an `as any`
-                // cast so that TypeScript allows them in numeric/arithmetic contexts.
-                // In GML, object class names are interchangeable with their integer
-                // object indices; `as any` preserves the class constructor at runtime
-                // while suppressing TypeScript's `typeof ClassName` type errors.
-                if matches!(&self.func.value_types[v], Type::ClassRef(_)) {
-                    return Expr::Cast {
-                        expr: Box::new(expr),
-                        ty: self.func.value_types[v].clone(),
-                        kind: CastKind::NullableCoerce,
-                    };
+                if self.config.wrap_class_refs_as_any {
+                    if let Type::ClassRef(_) = &self.func.value_types[v] {
+                        return Expr::Cast {
+                            expr: Box::new(expr),
+                            ty: self.func.value_types[v].clone(),
+                            kind: CastKind::NullableCoerce,
+                        };
+                    }
                 }
                 return expr;
             }
@@ -1733,14 +1754,14 @@ impl<'a> EmitCtx<'a> {
         if let Some(inst_id) = self.pending_lazy.remove(&v) {
             let op = self.func.insts[inst_id].op.clone();
             if let Some(expr) = self.build_expr_from_op(&op) {
-                // OBJT class references (ClassRef type) must be wrapped in an `as any`
-                // cast so TypeScript allows them in numeric/arithmetic contexts.
-                if matches!(&self.func.value_types[v], Type::ClassRef(_)) {
-                    return Expr::Cast {
-                        expr: Box::new(expr),
-                        ty: self.func.value_types[v].clone(),
-                        kind: CastKind::NullableCoerce,
-                    };
+                if self.config.wrap_class_refs_as_any {
+                    if let Type::ClassRef(_) = &self.func.value_types[v] {
+                        return Expr::Cast {
+                            expr: Box::new(expr),
+                            ty: self.func.value_types[v].clone(),
+                            kind: CastKind::NullableCoerce,
+                        };
+                    }
                 }
                 return expr;
             }
@@ -3069,7 +3090,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         assert!(ctx.constant_inlines.contains_key(&c));
         assert!(ctx.lazy_inlines.contains(&sum));
@@ -3092,7 +3113,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         // Dead add: use_count == 0, not in any inline set.
         assert_eq!(ctx.use_counts.get(&_dead).copied().unwrap_or(0), 0);
@@ -3117,7 +3138,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         // Both neg and sum should be dead after fixpoint.
         assert_eq!(ctx.use_counts.get(&_neg).copied().unwrap_or(0), 0);
@@ -3141,7 +3162,7 @@ mod tests {
 
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let ctx = resolve(&func, &linear);
+        let ctx = resolve(&func, &linear, &[]);
 
         // sum has 2 uses — should NOT be lazy-inlined.
         assert_eq!(ctx.use_counts.get(&sum).copied().unwrap_or(0), 2);
@@ -3641,7 +3662,7 @@ mod tests {
         let func = fb.build();
         let shape = Shape::Block(func.entry);
         let linear = linearize(&func, &shape);
-        let resolved = resolve(&func, &linear);
+        let resolved = resolve(&func, &linear, &[]);
         let config = LoweringConfig::default();
         let mut ctx = EmitCtx::new(&func, &resolved, &config);
         let body = ctx.emit_stmts(&linear);
