@@ -184,6 +184,7 @@ pub fn emit_module_to_string(
             .map(|c| &c.function_signatures)
             .unwrap_or(&empty_func_sigs);
         for group in &class_groups {
+            let mut traits_buf = String::new();
             emit_class(
                 group,
                 module,
@@ -200,7 +201,10 @@ pub fn emit_module_to_string(
                 func_sigs,
                 debug,
                 &mut out,
+                &mut traits_buf,
             )?;
+            // In string mode (tests), append traits inline.
+            out.push_str(&traits_buf);
         }
         let closure_fids: Vec<FuncId> = free_funcs
             .iter()
@@ -1400,6 +1404,7 @@ pub fn emit_module_to_dir(
             );
         }
 
+        let mut traits_buf = String::new();
         emit_class(
             group,
             module,
@@ -1416,15 +1421,92 @@ pub fn emit_module_to_dir(
             func_sigs,
             debug,
             &mut out,
+            &mut traits_buf,
         )?;
 
         strip_unused_namespace_imports(&mut out);
         let path = file_dir.join(format!("{short_name}.ts"));
         fs::write(&path, &out).map_err(CoreError::Io)?;
 
+        // Write companion _traits.ts file for Flash registration calls.
+        if !traits_buf.is_empty() {
+            let prefix = "../".repeat(depth + 1);
+            let prefix = prefix.trim_end_matches('/');
+            let mut traits_file = String::new();
+            // Import only the registration functions actually used.
+            let mut reg_names = Vec::new();
+            if traits_buf.contains("registerClass(") {
+                reg_names.push("registerClass");
+            }
+            if traits_buf.contains("registerClassTraits(") {
+                reg_names.push("registerClassTraits");
+            }
+            if traits_buf.contains("registerInterface(") {
+                reg_names.push("registerInterface");
+            }
+            if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+                let _ = writeln!(
+                    traits_file,
+                    "import {{ {} }} from \"{prefix}/runtime/{}\";",
+                    reg_names.join(", "),
+                    preamble.path,
+                );
+            }
+            // Import the class itself (use disambiguated TS identifier, not filesystem name).
+            let qualified = qualified_class_name(&group.class_def);
+            let ts_name = class_names
+                .get(&qualified)
+                .cloned()
+                .unwrap_or_else(|| short_name.clone());
+            let _ = writeln!(
+                traits_file,
+                "import {{ {ts_name} }} from \"./{short_name}\";"
+            );
+            // Import interface classes referenced by registerInterface.
+            let mut traits_segments = segments.clone();
+            if let Some(last) = traits_segments.last_mut() {
+                *last = format!("{last}_traits");
+            }
+            for iface_qualified in &group.class_def.interfaces {
+                let iface_ts = class_names
+                    .get(iface_qualified.as_str())
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        let short = iface_qualified
+                            .rsplit("::")
+                            .next()
+                            .unwrap_or(iface_qualified);
+                        sanitize_ident(short)
+                    });
+                if let Some(entry) = registry.lookup(iface_qualified) {
+                    // In-module interface — relative path.
+                    let rel = relative_import_path(&traits_segments, &entry.path_segments);
+                    let _ = writeln!(traits_file, "import {{ {iface_ts} }} from \"{rel}\";");
+                } else if let Some(ext) = module.external_imports.get(iface_qualified) {
+                    // External runtime interface — import from runtime path.
+                    let _ = writeln!(
+                        traits_file,
+                        "import {{ {} }} from \"{prefix}/runtime/{}\";",
+                        ext.short_name, ext.module_path,
+                    );
+                }
+            }
+            traits_file.push('\n');
+            traits_file.push_str(&traits_buf);
+            let traits_path = file_dir.join(format!("{short_name}_traits.ts"));
+            fs::write(&traits_path, &traits_file).map_err(CoreError::Io)?;
+        }
+
         // Barrel export path: relative from module_dir.
         let export_path = segments.join("/");
         barrel_exports.push(export_path);
+        if !traits_buf.is_empty() {
+            let mut traits_segments = segments.clone();
+            if let Some(last) = traits_segments.last_mut() {
+                *last = format!("{last}_traits");
+            }
+            barrel_exports.push(traits_segments.join("/"));
+        }
     }
 
     // Free functions → _init.ts (at module root, depth 0).
@@ -3529,6 +3611,7 @@ fn emit_class(
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
     debug: &DebugConfig,
     out: &mut String,
+    traits_out: &mut String,
 ) -> Result<(), CoreError> {
     let qualified = qualified_class_name(&group.class_def);
     // Use the (possibly disambiguated) TypeScript class identifier.
@@ -3869,12 +3952,17 @@ fn emit_class(
     }
 
     let _ = writeln!(out, "}}\n");
-    // Flash-specific class registration.
+    // Flash-specific class registration → written to traits_out for companion file split.
     if engine == EngineKind::Flash {
-        let _ = writeln!(out, "registerClass({class_name});\n");
+        let _ = writeln!(traits_out, "registerClass({class_name});\n");
         // Skip registerClassTraits for interfaces (they have no runtime traits).
         if !group.class_def.is_interface {
-            crate::emit_flash_traits::emit_class_registration(group, module, class_names, out);
+            crate::emit_flash_traits::emit_class_registration(
+                group,
+                module,
+                class_names,
+                traits_out,
+            );
         }
         // Emit registerInterface for implementing classes.
         if !group.class_def.interfaces.is_empty() {
@@ -3888,7 +3976,7 @@ fn emit_class(
                 })
                 .collect();
             let _ = writeln!(
-                out,
+                traits_out,
                 "registerInterface({class_name}, {});\n",
                 iface_names.join(", ")
             );

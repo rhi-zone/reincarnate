@@ -215,11 +215,11 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
 - [x] **Format `registerClassTraits(...)` as multi-line.** (2026-03-11)
   Already implemented in `emit_flash_traits.rs` — one trait object per line with 2-space indent.
 
-- [ ] **Separate `registerClass`/`registerClassTraits` into a companion file.**
-  Alternative (or complement) to formatting fix: emit AVM2 registration calls into a
-  `ClassName_traits.ts` companion alongside each class file. Class file stays pure logic.
-  The companion is rarely touched and can be safely ignored by modders. Requires scaffold change
-  to include the companion file in the tsconfig.
+- [x] **Separate `registerClass`/`registerClassTraits` into a companion file.** (2026-03-11)
+  `emit_class` writes registration calls to `traits_out` buffer; file-mode call site generates
+  `ClassName_traits.ts` companions with smart imports (registry lookup for in-module interfaces,
+  `external_imports` for runtime interfaces, disambiguated TS names). 429 companions emitted;
+  barrel exports include them. Scaffold tsconfig change still needed (TODO below).
 
 - [ ] **Dead code in Parser.ts `recParser` — structurizer failure.**
   `Parser.ts` line ~751: the `recParser` function body has a `while(true)` loop that
