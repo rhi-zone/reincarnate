@@ -15,7 +15,7 @@ use std::fs;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::ModuleBuilder;
 use reincarnate_core::ir::func::Visibility;
-use reincarnate_core::ir::module::Global;
+use reincarnate_core::ir::module::{Global, SystemCallTypeRule};
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
 use reincarnate_core::project::EngineOrigin;
@@ -212,7 +212,13 @@ impl Frontend for GameMakerFrontend {
             mb.set_initial_room_name(name);
         }
 
-        let module = mb.build();
+        let mut module = mb.build();
+
+        // Register SystemCall type inference rules for the GML engine.
+        module.system_call_type_rules.insert(
+            ("GameMaker.Global".into(), "get".into()),
+            SystemCallTypeRule::ResolveGlobalType,
+        );
 
         let obj_names_set: HashSet<String> = obj_names.iter().cloned().collect();
 

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use reincarnate_core::ir::{
     ClassDef, Constant, EntryPoint, ExternalImport, Function, FunctionSig, Global, MethodKind,
-    Module, ModuleBuilder, Op, StructDef, Type, Visibility,
+    Module, ModuleBuilder, Op, StructDef, SystemCallTypeRule, Type, Visibility,
 };
 use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, MethodFlags, Trait, TraitKind};
 
@@ -651,6 +651,16 @@ pub fn translate_abc_to_module(
             }
         }
     }
+
+    // Register SystemCall type inference rules for the Flash engine.
+    module.system_call_type_rules.insert(
+        ("Flash.Scope".into(), "findPropStrict".into()),
+        SystemCallTypeRule::ResolveClassName,
+    );
+    module.system_call_type_rules.insert(
+        ("Flash.Object".into(), "construct".into()),
+        SystemCallTypeRule::ConstructFromFirstArgType,
+    );
 
     Ok(module)
 }

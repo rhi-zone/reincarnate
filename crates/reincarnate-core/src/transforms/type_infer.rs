@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::error::CoreError;
 use crate::ir::ty::parse_type_notation;
-use crate::ir::{BlockId, Constant, Function, Inst, Module, Op, Type, ValueId};
+use crate::ir::{BlockId, Constant, Function, Inst, Module, Op, SystemCallTypeRule, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
 /// Type inference transform — refines `Dynamic` types to concrete types
@@ -25,6 +25,8 @@ struct ModuleContext {
     class_hierarchy: HashMap<String, Option<String>>,
     /// bare_method_name → return type (only for unambiguous names across all classes).
     unique_method_types: HashMap<String, Type>,
+    /// (system, method) → type rule for SystemCall result inference.
+    system_call_type_rules: HashMap<(String, String), SystemCallTypeRule>,
 }
 
 impl ModuleContext {
@@ -135,6 +137,12 @@ impl ModuleContext {
             .filter_map(|(name, ty)| ty.map(|t| (name, t)))
             .collect();
 
+        let system_call_type_rules = module
+            .system_call_type_rules
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+
         Self {
             struct_fields,
             static_fields: static_fields_map,
@@ -143,6 +151,7 @@ impl ModuleContext {
             method_return_types,
             class_hierarchy,
             unique_method_types,
+            system_call_type_rules,
         }
     }
 
@@ -486,60 +495,43 @@ fn infer_inst_type(
             [&func.value_types[*on_true], &func.value_types[*on_false]].into_iter(),
         ),
 
-        // SystemCall: infer types for known patterns.
+        // SystemCall: infer types from frontend-provided rules.
         Op::SystemCall {
             system,
             method,
             args,
         } => {
-            match (system.as_str(), method.as_str()) {
-                // findPropStrict with a const string matching a known class → Struct(name).
-                ("Flash.Scope", "findPropStrict") => {
-                    if let Some(first) = args.first() {
-                        if let Some(name) = const_strings.get(first) {
-                            let bare = name.rsplit("::").next().unwrap_or(name);
-                            if ctx.struct_fields.contains_key(bare)
-                                || ctx.class_hierarchy.contains_key(bare)
-                            {
-                                Type::Struct(bare.to_string())
-                            } else {
-                                return None;
-                            }
-                        } else {
-                            return None;
-                        }
+            let key = (system.clone(), method.clone());
+            match ctx.system_call_type_rules.get(&key) {
+                Some(SystemCallTypeRule::ResolveClassName) => {
+                    let first = args.first()?;
+                    let name = const_strings.get(first)?;
+                    let bare = name.rsplit("::").next().unwrap_or(name);
+                    if ctx.struct_fields.contains_key(bare)
+                        || ctx.class_hierarchy.contains_key(bare)
+                    {
+                        Type::Struct(bare.to_string())
                     } else {
                         return None;
                     }
                 }
-                // construct: if the constructor arg is Struct(name), the result is Struct(name).
-                ("Flash.Object", "construct") => {
-                    if let Some(first) = args.first() {
-                        if let Type::Struct(name) = &func.value_types[*first] {
-                            Type::Struct(name.clone())
-                        } else {
-                            return None;
-                        }
+                Some(SystemCallTypeRule::ConstructFromFirstArgType) => {
+                    let first = args.first()?;
+                    if let Type::Struct(name) = &func.value_types[*first] {
+                        Type::Struct(name.clone())
                     } else {
                         return None;
                     }
                 }
-                // GameMaker.Global get: resolve from global_types.
-                ("GameMaker.Global", "get") => {
-                    if let Some(first) = args.first() {
-                        if let Some(name) = const_strings.get(first) {
-                            ctx.global_types
-                                .get(name.as_str())
-                                .cloned()
-                                .unwrap_or(Type::Dynamic)
-                        } else {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
+                Some(SystemCallTypeRule::ResolveGlobalType) => {
+                    let first = args.first()?;
+                    let name = const_strings.get(first)?;
+                    ctx.global_types
+                        .get(name.as_str())
+                        .cloned()
+                        .unwrap_or(Type::Dynamic)
                 }
-                _ => return None,
+                None => return None,
             }
         }
 
@@ -2067,7 +2059,11 @@ mod tests {
         });
         mb.add_function(writer);
         mb.add_function(reader);
-        let module = mb.build();
+        let mut module = mb.build();
+        module.system_call_type_rules.insert(
+            ("GameMaker.Global".into(), "get".into()),
+            SystemCallTypeRule::ResolveGlobalType,
+        );
 
         let transform = TypeInference;
         let module = transform.apply(module).unwrap().module;

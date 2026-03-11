@@ -130,6 +130,21 @@ pub struct ClassDef {
     pub needs_index_signature: bool,
 }
 
+/// How the type inference pass should infer the result type of a `SystemCall`.
+///
+/// Frontends populate `Module::system_call_type_rules` with entries keyed by
+/// `(system, method)`.  The type inference pass reads these rules instead of
+/// hardcoding engine-specific logic.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SystemCallTypeRule {
+    /// First arg is a const string → resolve as struct/class name → `Struct(name)`.
+    ResolveClassName,
+    /// First arg's type is `Struct(name)` → result is `Struct(name)`.
+    ConstructFromFirstArgType,
+    /// First arg is a const string → look up in `Module::globals` → that type.
+    ResolveGlobalType,
+}
+
 /// A module — the top-level compilation unit.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
@@ -199,6 +214,12 @@ pub struct Module {
     /// availability condition with the runtime's storylet system.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub passage_storylets: BTreeMap<String, String>,
+    /// Type inference rules for `SystemCall` results, keyed by `(system, method)`.
+    ///
+    /// Populated by frontends so the shared type inference pass can infer
+    /// result types without hardcoding engine-specific dispatch.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub system_call_type_rules: BTreeMap<(String, String), SystemCallTypeRule>,
 }
 
 impl Module {
@@ -223,6 +244,7 @@ impl Module {
             passage_tags: BTreeMap::new(),
             passage_sources: BTreeMap::new(),
             passage_storylets: BTreeMap::new(),
+            system_call_type_rules: BTreeMap::new(),
         }
     }
 }
