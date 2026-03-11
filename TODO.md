@@ -263,9 +263,7 @@ New findings from this audit:
 - [x] **`linear.rs:2456` — `xml_construct_string_coerce()` inserts `.toString()` for Flash XML.** (2026-03-11)
   Gated behind `LoweringConfig::construct_string_coerce` (default false, Flash backend sets true).
 
-- [ ] **`call_site_flow.rs:97` — ClassRef narrowing guard motivated by GML semantics.**
-  The logic (blocking narrowing for ClassRef args) is arguably engine-agnostic, but the
-  comment and motivation are GML-specific. Low priority — behavior is correct for all engines.
+- [x] **`call_site_flow.rs:97` — ClassRef narrowing guard comment updated to be engine-neutral.** (2026-03-11)
 
 ### Structural — Dead Code & Config Bugs (CRITICAL/HIGH)
 

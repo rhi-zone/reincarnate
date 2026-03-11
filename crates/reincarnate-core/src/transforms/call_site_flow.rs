@@ -95,12 +95,11 @@ fn narrow(types: &[Type]) -> Option<Type> {
     if types.contains(&Type::Dynamic) {
         return None;
     }
-    // ClassRef callers block narrowing. GML object class names (OBJT) are integer
-    // indices at runtime, but TypeScript represents them as class constructors
-    // (`typeof ClassName`). Narrowing a callee param to ClassRef would cause
-    // TypeScript type errors whenever that param is used in numeric/arithmetic
-    // contexts — the param type should stay Dynamic so the caller-passed class
-    // constructor is treated as `any`.
+    // ClassRef callers block narrowing. ClassRef values represent class constructors
+    // (`typeof ClassName` in TypeScript), which are incompatible with numeric or
+    // other concrete types the callee body might expect. Narrowing a callee param
+    // to ClassRef would cause type errors whenever that param is used in non-class
+    // contexts — the param type should stay Dynamic.
     if types.iter().any(|t| matches!(t, Type::ClassRef(_))) {
         return None;
     }
