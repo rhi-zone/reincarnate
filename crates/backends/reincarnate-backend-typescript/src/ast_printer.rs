@@ -625,8 +625,8 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
         } => {
             let _ = writeln!(out, "{indent}switch ({} as any) {{", print_expr(value));
             let case_indent = format!("{indent}  ");
-            for (constant, case_stmts) in cases {
-                let _ = writeln!(out, "{indent}  case {}:", emit_constant(constant));
+            for (case_expr, case_stmts) in cases {
+                let _ = writeln!(out, "{indent}  case {}:", print_expr(case_expr));
                 if case_stmts.is_empty() {
                     // Fall-through: no body, no break.
                 } else {

@@ -212,15 +212,12 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
 
 - [x] **Recover switch discriminant from chained ternary chains.** (2026-03-11)
   `try_recover_switch_discriminant` + `extract_ternary_chain` in `ast_passes.rs`. Recovers
-  literal-constant cases (e.g. `"["`, `"]"`, `"|"` in Parser.ts). Non-literal constants (class
-  fields like `Keyboard.UP`) not yet recovered — requires extending `JsCase.test` to hold `JsExpr`
-  instead of `Constant`; tracked in TODO as future work.
+  both literal constants (e.g. `"["`, `"]"`, `"|"` in Parser.ts) and non-literal expressions
+  (e.g. `Keyboard.UP`, `CockTypesEnum.ANEMONE`) as case labels. `JsStmt::Switch` cases are
+  `Vec<(JsExpr, Vec<JsStmt>)>` — case labels are arbitrary expressions, not just `Constant`.
 
-- [ ] **Format `registerClassTraits(...)` as multi-line.**
-  Currently emitted as a single line that can exceed 30,000 characters (CoC.ts). This makes
-  `git diff` of any class file unreadable — a property rename registers as touching the entire
-  30KB traits line. Fix: emit the instance-traits array and static-traits array on separate lines,
-  with one trait object per line and 2-space indent. No semantic change; purely formatting.
+- [x] **Format `registerClassTraits(...)` as multi-line.** (2026-03-11)
+  Already implemented in `emit_flash_traits.rs` — one trait object per line with 2-space indent.
 
 - [ ] **Separate `registerClass`/`registerClassTraits` into a companion file.**
   Alternative (or complement) to formatting fix: emit AVM2 registration calls into a

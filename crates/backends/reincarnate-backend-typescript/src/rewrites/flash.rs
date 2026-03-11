@@ -1145,7 +1145,7 @@ fn rewrite_stmt(stmt: JsStmt, ctx: &FlashRewriteCtx) -> Option<JsStmt> {
             value: rewrite_expr(value, ctx),
             cases: cases
                 .into_iter()
-                .map(|(c, stmts)| (c, rewrite_stmts(stmts, ctx)))
+                .map(|(c, stmts)| (rewrite_expr(c, ctx), rewrite_stmts(stmts, ctx)))
                 .collect(),
             default_body: rewrite_stmts(default_body, ctx),
         },

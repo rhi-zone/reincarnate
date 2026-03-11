@@ -141,7 +141,7 @@ fn lower_stmt(stmt: &Stmt, ctx: &LowerCtx) -> JsStmt {
             value: lower_expr(value, ctx),
             cases: cases
                 .iter()
-                .map(|(c, stmts)| (c.clone(), lower_stmts(stmts, ctx)))
+                .map(|(c, stmts)| (JsExpr::Literal(c.clone()), lower_stmts(stmts, ctx)))
                 .collect(),
             default_body: lower_stmts(default_body, ctx),
         },

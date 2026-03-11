@@ -232,9 +232,11 @@ pub enum JsStmt {
         entry: usize,
     },
     /// Switch statement: `switch (value) { case X: ...; default: ...; }`.
+    /// Case labels are `JsExpr` (not just `Constant`) so that switch recovery
+    /// can produce non-literal labels like `Keyboard.UP` or `CockTypesEnum.ANEMONE`.
     Switch {
         value: JsExpr,
-        cases: Vec<(Constant, Vec<JsStmt>)>,
+        cases: Vec<(JsExpr, Vec<JsStmt>)>,
         default_body: Vec<JsStmt>,
     },
 

@@ -187,7 +187,7 @@ fn recurse_into_expr(expr: &mut JsExpr) {
 ///
 /// Pattern: `if (EXPR === C1) { body1 } else if (EXPR === C2) { body2 } else { default }`
 fn try_recover_nested_if_else(stmt: &mut JsStmt) {
-    let mut cases: Vec<(Constant, Vec<JsStmt>)> = Vec::new();
+    let mut cases: Vec<(JsExpr, Vec<JsStmt>)> = Vec::new();
     let mut discriminant: Option<&JsExpr> = None;
 
     // Walk the if-else-if chain without consuming the statement.
@@ -214,7 +214,7 @@ fn try_recover_nested_if_else(stmt: &mut JsStmt) {
                         }
                     }
                 }
-                cases.push((constant.clone(), then_body.clone()));
+                cases.push((JsExpr::Literal(constant.clone()), then_body.clone()));
 
                 // Continue down the else chain.
                 if else_body.len() == 1 {
@@ -237,7 +237,7 @@ fn try_recover_nested_if_else(stmt: &mut JsStmt) {
         return;
     }
 
-    if !all_constants_distinct(&cases) {
+    if !all_case_labels_distinct(&cases) {
         return;
     }
 
@@ -256,7 +256,7 @@ fn try_recover_sequential_ifs(body: &mut Vec<JsStmt>) {
     while i < body.len() {
         // Find the start of a potential run.
         let run_start = i;
-        let mut cases: Vec<(Constant, Vec<JsStmt>)> = Vec::new();
+        let mut cases: Vec<(JsExpr, Vec<JsStmt>)> = Vec::new();
         let mut discriminant: Option<&JsExpr> = None;
 
         while i < body.len() {
@@ -283,7 +283,7 @@ fn try_recover_sequential_ifs(body: &mut Vec<JsStmt>) {
                             }
                         }
                     }
-                    cases.push((constant.clone(), then_body.clone()));
+                    cases.push((JsExpr::Literal(constant.clone()), then_body.clone()));
                     i += 1;
                     continue;
                 }
@@ -346,11 +346,11 @@ fn try_recover_switch_discriminant(stmt: &mut JsStmt) {
         return;
     };
 
-    // mapping: Vec<(case_constant, discriminant_int)>
-    // Build a lookup: discriminant_int → case_constant.
-    let disc_map: HashMap<i64, Constant> = mapping
+    // mapping: Vec<(case_expr, discriminant_int)>
+    // Build a lookup: discriminant_int → case_expr.
+    let disc_map: HashMap<i64, JsExpr> = mapping
         .into_iter()
-        .map(|(case_const, disc_int)| (disc_int, case_const))
+        .map(|(case_expr, disc_int)| (disc_int, case_expr))
         .collect();
 
     // Require that the mapping is non-trivial (at least one case to recover).
@@ -361,14 +361,14 @@ fn try_recover_switch_discriminant(stmt: &mut JsStmt) {
     // Replace the switch discriminant with the shared expression.
     *value = shared_v;
 
-    // Replace each case's integer key with the recovered source constant.
+    // Replace each case's integer key with the recovered source expression.
     // The one integer that is NOT in disc_map is the "no-match" fallthrough
     // discriminant (the innermost `then` literal in the ternary chain).
     // If default_body is currently empty, promote that case to the default.
-    let mut new_cases: Vec<(Constant, Vec<JsStmt>)> = Vec::with_capacity(cases.len());
+    let mut new_cases: Vec<(JsExpr, Vec<JsStmt>)> = Vec::with_capacity(cases.len());
     let mut taken_cases = std::mem::take(cases);
     for (case_key, case_body) in taken_cases.drain(..) {
-        if let Constant::Int(n) = &case_key {
+        if let JsExpr::Literal(Constant::Int(n)) = &case_key {
             if let Some(recovered) = disc_map.get(n) {
                 new_cases.push((recovered.clone(), case_body));
                 continue;
@@ -402,7 +402,7 @@ fn try_recover_switch_discriminant(stmt: &mut JsStmt) {
 /// level's condition.
 ///
 /// Returns `None` if the expression does not match the pattern.
-fn extract_ternary_chain(expr: &JsExpr) -> Option<(JsExpr, Vec<(Constant, i64)>)> {
+fn extract_ternary_chain(expr: &JsExpr) -> Option<(JsExpr, Vec<(JsExpr, i64)>)> {
     match expr {
         // Base case: a bare integer literal — the innermost discriminant.
         // We return an empty pair list; the caller will attach the correct
@@ -414,13 +414,13 @@ fn extract_ternary_chain(expr: &JsExpr) -> Option<(JsExpr, Vec<(Constant, i64)>)
             Some((JsExpr::Literal(Constant::Int(0)), vec![]))
         }
 
-        // Recursive case: (v !== const_k) ? then_expr : disc_int
+        // Recursive case: (v !== case_expr) ? then_expr : disc_int
         JsExpr::Ternary {
             cond,
             then_val,
             else_val,
         } => {
-            // Condition must be `v !== const_k` or `const_k !== v`.
+            // Condition must be `v !== case_expr` or `case_expr !== v`.
             let JsExpr::Cmp {
                 kind: CmpKind::Ne,
                 lhs,
@@ -430,32 +430,42 @@ fn extract_ternary_chain(expr: &JsExpr) -> Option<(JsExpr, Vec<(Constant, i64)>)
                 return None;
             };
 
-            // Figure out which side is the constant.
-            let (shared_v_candidate, case_const) = if let JsExpr::Literal(c) = rhs.as_ref() {
-                (lhs.as_ref(), c)
-            } else if let JsExpr::Literal(c) = lhs.as_ref() {
-                (rhs.as_ref(), c)
-            } else {
-                return None;
-            };
-
             // The else_val must be an integer literal (this ternary's discriminant).
             let JsExpr::Literal(Constant::Int(disc)) = else_val.as_ref() else {
                 return None;
             };
 
-            // Recurse into the then branch.
+            // Recurse into the then branch to get the shared variable.
             let (inner_v, mut pairs) = extract_ternary_chain(then_val)?;
 
-            // The shared variable expression must match across all levels.
-            // At the leaf we get a dummy literal — skip the equality check there.
             let is_leaf = matches!(inner_v, JsExpr::Literal(Constant::Int(_))) && pairs.is_empty();
-            if !is_leaf && !exprs_structurally_equal(&inner_v, shared_v_candidate) {
-                return None;
-            }
 
-            // Append this level's pair: (case_constant, discriminant_int).
-            pairs.push((case_const.clone(), *disc));
+            // Figure out which side is the shared variable and which is the
+            // case expression. At the leaf (innermost level), we don't have a
+            // known shared_v yet, so prefer literal on the case side.  At
+            // non-leaf levels, match against the known shared_v from recursion.
+            let (shared_v_candidate, case_expr) = if is_leaf {
+                // Leaf: pick whichever side is a literal as the case constant.
+                // If neither is literal, use lhs as shared_v — the parent's
+                // structural equality check will validate this choice.
+                if matches!(rhs.as_ref(), JsExpr::Literal(_)) {
+                    (lhs.as_ref(), rhs.as_ref())
+                } else if matches!(lhs.as_ref(), JsExpr::Literal(_)) {
+                    (rhs.as_ref(), lhs.as_ref())
+                } else {
+                    // Neither side is a literal — pick lhs as shared_v.
+                    (lhs.as_ref(), rhs.as_ref())
+                }
+            } else if exprs_structurally_equal(&inner_v, lhs.as_ref()) {
+                (lhs.as_ref(), rhs.as_ref())
+            } else if exprs_structurally_equal(&inner_v, rhs.as_ref()) {
+                (rhs.as_ref(), lhs.as_ref())
+            } else {
+                return None;
+            };
+
+            // Append this level's pair: (case_expr, discriminant_int).
+            pairs.push((case_expr.clone(), *disc));
 
             Some((shared_v_candidate.clone(), pairs))
         }
@@ -555,11 +565,11 @@ fn exprs_structurally_equal(a: &JsExpr, b: &JsExpr) -> bool {
     }
 }
 
-/// Check that all case constants in the list are distinct.
-fn all_constants_distinct(cases: &[(Constant, Vec<JsStmt>)]) -> bool {
+/// Check that all case labels in the list are distinct (structurally).
+fn all_case_labels_distinct(cases: &[(JsExpr, Vec<JsStmt>)]) -> bool {
     for i in 0..cases.len() {
         for j in (i + 1)..cases.len() {
-            if cases[i].0 == cases[j].0 {
+            if exprs_structurally_equal(&cases[i].0, &cases[j].0) {
                 return false;
             }
         }
@@ -1220,9 +1230,9 @@ mod tests {
         let mut body = vec![JsStmt::Switch {
             value: discriminant,
             cases: vec![
-                (Constant::Int(0), body_default.clone()),
-                (Constant::Int(1), body_b.clone()),
-                (Constant::Int(2), body_a.clone()),
+                (JsExpr::Literal(Constant::Int(0)), body_default.clone()),
+                (JsExpr::Literal(Constant::Int(1)), body_b.clone()),
+                (JsExpr::Literal(Constant::Int(2)), body_a.clone()),
             ],
             default_body: vec![],
         }];
@@ -1256,13 +1266,13 @@ mod tests {
                 assert!(
                     case_keys
                         .iter()
-                        .any(|k| matches!(k, Constant::String(s) if s == "B")),
+                        .any(|k| matches!(k, JsExpr::Literal(Constant::String(s)) if s == "B")),
                     "expected case \"B\", got: {case_keys:?}"
                 );
                 assert!(
                     case_keys
                         .iter()
-                        .any(|k| matches!(k, Constant::String(s) if s == "A")),
+                        .any(|k| matches!(k, JsExpr::Literal(Constant::String(s)) if s == "A")),
                     "expected case \"A\", got: {case_keys:?}"
                 );
             }
@@ -1297,10 +1307,10 @@ mod tests {
         let mut body = vec![JsStmt::Switch {
             value: discriminant,
             cases: vec![
-                (Constant::Int(0), body0.clone()),
-                (Constant::Int(1), body1.clone()),
-                (Constant::Int(2), body2.clone()),
-                (Constant::Int(3), body3.clone()),
+                (JsExpr::Literal(Constant::Int(0)), body0.clone()),
+                (JsExpr::Literal(Constant::Int(1)), body1.clone()),
+                (JsExpr::Literal(Constant::Int(2)), body2.clone()),
+                (JsExpr::Literal(Constant::Int(3)), body3.clone()),
             ],
             // Pre-existing default_body (non-empty) — should NOT block case recovery.
             default_body: default_body_pre.clone(),
@@ -1329,24 +1339,26 @@ mod tests {
                 assert!(
                     case_keys
                         .iter()
-                        .any(|k| matches!(k, Constant::String(s) if s == "[")),
+                        .any(|k| matches!(k, JsExpr::Literal(Constant::String(s)) if s == "[")),
                     "expected case \"[\", got: {case_keys:?}"
                 );
                 assert!(
                     case_keys
                         .iter()
-                        .any(|k| matches!(k, Constant::String(s) if s == "]")),
+                        .any(|k| matches!(k, JsExpr::Literal(Constant::String(s)) if s == "]")),
                     "expected case \"]\", got: {case_keys:?}"
                 );
                 assert!(
                     case_keys
                         .iter()
-                        .any(|k| matches!(k, Constant::String(s) if s == "|")),
+                        .any(|k| matches!(k, JsExpr::Literal(Constant::String(s)) if s == "|")),
                     "expected case \"|\", got: {case_keys:?}"
                 );
                 // case 3 (the no-match) stays as Int(3) since default_body was non-empty.
                 assert!(
-                    case_keys.iter().any(|k| matches!(k, Constant::Int(3))),
+                    case_keys
+                        .iter()
+                        .any(|k| matches!(k, JsExpr::Literal(Constant::Int(3)))),
                     "expected case Int(3) to remain, got: {case_keys:?}"
                 );
             }
@@ -1378,23 +1390,97 @@ mod tests {
         assert_eq!(pairs.len(), 3, "expected 3 pairs, got: {pairs:?}");
         // Pairs are built innermost-to-outermost: ("|", 2), ("]", 1), ("[", 0)
         assert!(
-            matches!(&pairs[0].0, Constant::String(s) if s == "|"),
+            matches!(&pairs[0].0, JsExpr::Literal(Constant::String(s)) if s == "|"),
             "got: {:?}",
             pairs[0].0
         );
         assert_eq!(pairs[0].1, 2);
         assert!(
-            matches!(&pairs[1].0, Constant::String(s) if s == "]"),
+            matches!(&pairs[1].0, JsExpr::Literal(Constant::String(s)) if s == "]"),
             "got: {:?}",
             pairs[1].0
         );
         assert_eq!(pairs[1].1, 1);
         assert!(
-            matches!(&pairs[2].0, Constant::String(s) if s == "["),
+            matches!(&pairs[2].0, JsExpr::Literal(Constant::String(s)) if s == "["),
             "got: {:?}",
             pairs[2].0
         );
         assert_eq!(pairs[2].1, 0);
+    }
+
+    /// Test that non-literal case expressions (e.g. `Keyboard.UP`) are recovered
+    /// from chained ternary patterns. This is the key new capability: case labels
+    /// can be arbitrary JsExpr, not just Constant.
+    #[test]
+    fn switch_discriminant_recovery_non_literal_cases() {
+        // Pattern: switch((x !== Keyboard.UP) ? ((x !== Keyboard.DOWN) ? 0 : 1) : 2)
+        // Should recover: switch(x) { case Keyboard.UP: ...; case Keyboard.DOWN: ...; }
+        let keyboard_up = JsExpr::Field {
+            object: Box::new(var("Keyboard")),
+            field: "UP".to_string(),
+        };
+        let keyboard_down = JsExpr::Field {
+            object: Box::new(var("Keyboard")),
+            field: "DOWN".to_string(),
+        };
+
+        let discriminant = ternary(
+            ne(var("x"), keyboard_up.clone()),
+            ternary(ne(var("x"), keyboard_down.clone()), int_lit(0), int_lit(1)),
+            int_lit(2),
+        );
+
+        let body0 = vec![JsStmt::Expr(var("body_default"))];
+        let body1 = vec![JsStmt::Expr(var("body_down"))];
+        let body2 = vec![JsStmt::Expr(var("body_up"))];
+
+        let mut body = vec![JsStmt::Switch {
+            value: discriminant,
+            cases: vec![
+                (JsExpr::Literal(Constant::Int(0)), body0),
+                (JsExpr::Literal(Constant::Int(1)), body1),
+                (JsExpr::Literal(Constant::Int(2)), body2),
+            ],
+            default_body: vec![],
+        }];
+
+        recover_switch_statements(&mut body);
+
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            JsStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
+                // Discriminant must now be `x`.
+                assert!(
+                    matches!(value, JsExpr::Var(name) if name == "x"),
+                    "expected discriminant `x`, got: {value:?}"
+                );
+                // Case 0 (no-match) should be promoted to default.
+                assert!(
+                    !default_body.is_empty(),
+                    "expected default_body from case 0"
+                );
+                assert_eq!(cases.len(), 2, "expected 2 cases, got: {cases:?}");
+                // One case should be Keyboard.UP, the other Keyboard.DOWN.
+                let has_up = cases.iter().any(|(k, _)| {
+                    matches!(k, JsExpr::Field { object, field }
+                        if matches!(object.as_ref(), JsExpr::Var(n) if n == "Keyboard")
+                        && field == "UP")
+                });
+                let has_down = cases.iter().any(|(k, _)| {
+                    matches!(k, JsExpr::Field { object, field }
+                        if matches!(object.as_ref(), JsExpr::Var(n) if n == "Keyboard")
+                        && field == "DOWN")
+                });
+                assert!(has_up, "expected case Keyboard.UP");
+                assert!(has_down, "expected case Keyboard.DOWN");
+            }
+            other => panic!("expected Switch, got: {other:?}"),
+        }
     }
 
     #[test]
