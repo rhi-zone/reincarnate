@@ -167,7 +167,7 @@ All of the following violate it and need to move to the respective frontend crat
   `StyleManager.registerInstance` goes from 40 impenetrable lines to ~15 natural ones.
 
 - [ ] **`emit.rs` Flash contamination — remaining `EngineKind::Flash` branches.**
-  Found in 2026-03-11 audit. **7/9 items addressed (2026-03-11)**:
+  Found in 2026-03-11 audit. **8/9 items addressed (2026-03-11)**:
   - ✅ `emit_register_class_traits` + `as3_type_name` → `emit_flash_traits.rs`
   - ✅ `QN_KEY` static field injection → `emit_flash_traits::emit_flash_class_header()`
   - ✅ `registerClass`/`registerClassTraits` → `emit_flash_traits::emit_class_registration()`
