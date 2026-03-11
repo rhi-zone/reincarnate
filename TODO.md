@@ -151,7 +151,88 @@ All of the following violate it and need to move to the respective frontend crat
   (`"3platgen": 515`) to handle GML names that aren't valid TypeScript identifiers. This is
   a local fix; the real fix requires this whole design change.
 
+- [ ] **`Module` struct is a per-engine kitchen sink — Fundamental Law 1 violated.**
+  `module.rs` already has 6 GML-specific fields (`room_creation_code`, `initial_room_name`,
+  `sprite_names`, `object_names`) and 4 Twine-specific fields (`passage_names`, `passage_tags`,
+  `passage_sources`, `passage_storylets`). Each new engine adds more. The IR-as-sole-channel
+  law is dead in practice once fields that only one engine reads start accumulating.
+  **Fix:** migrate engine-specific metadata into the aggregate-constants design above, or add
+  a `Module::metadata: HashMap<String, Box<dyn Any>>` typed-extension slot. Track: every
+  new `Module` field added for a new engine is a regression.
+
+- [ ] **Flash `NewActivation` emitted as `Record<string,any>` heap object — wrong IR.**
+  `Op::SystemCall("Flash.Scope", "newActivation")` → `({})` in the emitter produces
+  `const v10: Record<string,any> = ({})` followed by property accesses. But activation
+  record slots have statically-known names (from `MethodBody.traits`) and types (from
+  the AVM2 trait table). The correct IR: emit one `Op::Alloc(slotType)` per slot, map
+  `GetSlot(obj, i)` → `Op::Load(alloc_i)`, `SetSlot(obj, i, v)` → `Op::Store(alloc_i, v)`.
+  Mem2Reg promotes them to SSA; closures capture them via `MakeClosure.captures`. The
+  `Record<string,any>` pattern disappears entirely, along with the `find_activation_var` /
+  `collect_activation_slots` / `activation_var` fields in `FlashRewriteCtx` which exist
+  only to paper over the defective representation.
+  **Impact:** This is the single change that would most improve Flash output readability.
+  `StyleManager.registerInstance` goes from 40 impenetrable lines to ~15 natural ones.
+
+- [ ] **`emit.rs` Flash contamination — 22+ `EngineKind::Flash` branches in 7,266 lines.**
+  Found in 2026-03-11 audit. Specific items to move to `rewrites/flash.rs` or the Flash frontend:
+  - `emit_register_class_traits` + `as3_type_name` (lines 3479–3582) — pure AVM2 reflection metadata
+  - `QN_KEY` static field injection (lines 3635–3649) → Flash rewrite class hook
+  - `registerClass` / `registerInterface` / `registerClassTraits` emission (lines 3989–4013) → Flash rewrite class hook
+  - `forwarding_setters` for getter-without-setter TS2540 fix (lines 3886–3941) → Flash rewrite pass
+  - `flash_ctor_extra_param` string injection (lines 4232–4241) → Flash rewrite inserts synthetic `JsFunction.params` entry
+  - `bang = if Flash { "!" }` definite-assignment assertion (line 3714) → IR field `ClassDef.zero_initialized: bool` set by Flash frontend
+  - Index signatures (`is_dynamic || Proxy ancestry`, lines 3720–3734) → IR field `ClassDef.needs_index_signature: bool`
+  - `warn_unmapped_reference` Flash namespace filtering (lines 1982–1990) → `rewrites::flash::is_known_flash_ref()`
+  - `cinit` name-string matching without engine guard (lines 4117, 4186) → add `MethodKind::StaticInit` variant; Flash frontend marks cinit methods with it
+  **Root cause:** no `FlashClassEmitter` hook point exists; all class-level Flash concerns are
+  inline `if engine == Flash` checks because the architecture provides no injection site for
+  engine-specific class-level output.
+
+- [ ] **`coalesced_decl_types` widening to `Dynamic` is a suppression, not a fix (Law 4).**
+  When two branch arms produce different types for the same out-of-SSA variable, widening to
+  `Dynamic` silences TS2322/TS2739 but commits to "this is truly dynamically typed" without
+  distinguishing it from "our inference inferred wrong types" or "naming collision in the
+  coalescer." A type conflict is a diagnostic signal. The correct fix: produce `Type::Union`
+  of the conflicting types and let the backend emit a TypeScript union annotation
+  (`TimeModel | DefaultDict`). If the union is unsound, the TS error that remains is
+  telling us something real about inference quality. (2026-03-11 fix: commit 9f80254.
+  Should be revisited once union types are added to the IR.)
+
 ---
+
+## Flash Output Quality (2026-03-11 audit)
+
+Audit of generated `.ts` files for human maintainability (see `~/reincarnate/flash/cc/out/`).
+Game-logic files (CoC.ts, ConsumableLib.ts) are excellent — <1% artifact names, readable methods.
+Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, activation record objects.
+
+- [ ] **Recover switch discriminant from chained ternary chains.**
+  Emitter produces `switch ((A !== x) ? ((B !== x) ? 0 : 1) : 2)` when a switch table was
+  compiled via a chain of comparisons. The original `switch(x) { case A: case B: }` is
+  recoverable by detecting the pattern: a right-linear chain of `(const_expr !== v) ? ... : N`
+  ternaries computing integer discriminants 0..N. Emit `switch(v) { case const_expr: }` instead.
+  Affects: every keyboard/enum dispatch in List.ts, CoC.ts (6 instances), etc.
+
+- [ ] **Format `registerClassTraits(...)` as multi-line.**
+  Currently emitted as a single line that can exceed 30,000 characters (CoC.ts). This makes
+  `git diff` of any class file unreadable — a property rename registers as touching the entire
+  30KB traits line. Fix: emit the instance-traits array and static-traits array on separate lines,
+  with one trait object per line and 2-space indent. No semantic change; purely formatting.
+
+- [ ] **Separate `registerClass`/`registerClassTraits` into a companion file.**
+  Alternative (or complement) to formatting fix: emit AVM2 registration calls into a
+  `ClassName_traits.ts` companion alongside each class file. Class file stays pure logic.
+  The companion is rarely touched and can be safely ignored by modders. Requires scaffold change
+  to include the companion file in the tsconfig.
+
+- [ ] **Dead code in Parser.ts `recParser` — structurizer failure.**
+  `Parser.ts` line ~751: the `recParser` function body has a `while(true)` loop that
+  unconditionally breaks before reaching meaningful code; the function returns `""` from only
+  one path and throws `Error("unreachable")` from the exit. The loop body logic appears to have
+  been lost during structurization. Also: `Parser.ts:603–610` has dead assignments
+  (`sectionStart = ret; section = sectionStart; nestLevel = sectionStart;`) assigning `any[]`
+  to a `number` variable in dead switch arms. Investigate with `--dump-function recParser`
+  and `--dump-ir-after structurize`.
 
 ## Developer Experience / Tooling Gaps (HIGH PRIORITY)
 
