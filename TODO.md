@@ -84,15 +84,13 @@ All of the following violate it and need to move to the respective frontend crat
   rules in a shared pass. Fix: frontends register type inference hooks (e.g. a `SystemCallTypeHook`
   callback map) that the pass calls out to, rather than hardcoding engine names.
 
-- [ ] **`linear.rs` lines 765, 1638–1669: Flash-specific rewrites in the shared linearizer.**
-  `is_scope_lookup_op()` hardcodes `"Flash.Scope"` (line 765). `build_expr_from_op` converts
-  `"Flash.Object"` / `deleteProperty` / `hasProperty` to `dict.delete()`/`dict.has()` (lines
-  1638–1669). These belong in `reincarnate-frontend-flash`'s post-linearization rewrite pass.
+- [x] **`linear.rs` lines 765, 1638–1669: Flash-specific rewrites in the shared linearizer.** (2026-03-11)
+  `is_scope_lookup_op()` now parameterized via `LoweringConfig::scope_lookup_systems` (Flash backend
+  sets `["Flash.Scope"]`). `Flash.Object deleteProperty/hasProperty` dead code removed (was
+  unreachable — Dictionary maps to `Type::Map`, not `Type::Struct`). Law 2 satisfied.
 
-- [ ] **`linear.rs` line ~1454–1465: GML `ClassRef as any` widening in the shared linearizer.**
-  `build_val` adds an `AsType` cast for `Type::ClassRef` with the comment "In GML, object class
-  names are interchangeable with their integer object indices." This is GML-specific and belongs
-  in the GML backend's rewrite pass, not the shared linearizer.
+- [x] **`linear.rs` line ~1454–1465: GML `ClassRef as any` widening in the shared linearizer.** (2026-03-11)
+  Now gated on `LoweringConfig::wrap_class_refs_as_any` (GML backend sets `true`). Law 2 satisfied.
 
 - [ ] **`ast_passes.rs` lines 1804–2140: Flash `ForOfRewrite` / `HasNext2` pattern in shared AST passes.**
   `ForOfRewrite`, `is_hasnext2_expr`, `contains_iterator_next`, `is_iterator_next_expr`,
@@ -205,30 +203,18 @@ Audit of generated `.ts` files for human maintainability (see `~/reincarnate/fla
 Game-logic files (CoC.ts, ConsumableLib.ts) are excellent — <1% artifact names, readable methods.
 Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, activation record objects.
 
-- [ ] **`GetIndex`/`SetIndex` with `Constant::String` key → emit dot notation.**
-  When `Op::GetIndex(obj, Constant::String(s))` and `s` is a valid JS identifier
-  (`unicode_ident::is_xid_start`/`is_xid_continue` + `$`, first char must be xid_start or `$` or `_`),
-  emit `obj.s` instead of `obj["s"]`. 127 instances in Flash CC output are incorrectly using
-  bracket notation for static property names (ProLoaderInfo, ProLoader, context objects, etc.).
-  Invalid identifiers (e.g. `"with spaces"`, `"123abc"`) must stay as `obj["key"]`.
+- [x] **`GetIndex`/`SetIndex` with `Constant::String` key → emit dot notation.** (2026-03-11)
+  `is_js_ident()` in `linear.rs`; GetIndex and SetIndex both emit `obj.field` when key is a
+  valid JS identifier.
 
-- [ ] **IR fields to replace `EngineKind::Flash` branches in class emission (medium).**
-  Three IR additions that eliminate inline engine checks in `emit.rs`:
-  - `ClassDef.zero_initialized: bool` — Flash frontend sets `true` for all AS3 instance fields
-    (AS3 zero-initializes before constructor runs); emitter emits `!` iff true. Replaces
-    `bang = if engine == Flash { "!" } else { "" }` (emit.rs line 3714).
-  - `ClassDef.needs_index_signature: bool` — Flash frontend sets `true` for `dynamic` classes
-    and Proxy subclasses; emitter emits `[key: string]: any; [key: number]: any;` iff true.
-    Replaces the `is_dynamic || ancestor == "Proxy"` check (emit.rs lines 3720–3734).
-  - `MethodKind::StaticInit` — new variant; Flash frontend marks `cinit` methods with it.
-    Replaces the `method_name == "cinit"` string match in the backend (emit.rs lines 4117, 4186).
+- [x] **IR fields to replace `EngineKind::Flash` branches in class emission.** (2026-03-11)
+  `ClassDef.zero_initialized`, `ClassDef.needs_index_signature`, `MethodKind::StaticInit` all added.
 
-- [ ] **Recover switch discriminant from chained ternary chains.**
-  Emitter produces `switch ((A !== x) ? ((B !== x) ? 0 : 1) : 2)` when a switch table was
-  compiled via a chain of comparisons. The original `switch(x) { case A: case B: }` is
-  recoverable by detecting the pattern: a right-linear chain of `(const_expr !== v) ? ... : N`
-  ternaries computing integer discriminants 0..N. Emit `switch(v) { case const_expr: }` instead.
-  Affects: every keyboard/enum dispatch in List.ts, CoC.ts (6 instances), etc.
+- [x] **Recover switch discriminant from chained ternary chains.** (2026-03-11)
+  `try_recover_switch_discriminant` + `extract_ternary_chain` in `ast_passes.rs`. Recovers
+  literal-constant cases (e.g. `"["`, `"]"`, `"|"` in Parser.ts). Non-literal constants (class
+  fields like `Keyboard.UP`) not yet recovered — requires extending `JsCase.test` to hold `JsExpr`
+  instead of `Constant`; tracked in TODO as future work.
 
 - [ ] **Format `registerClassTraits(...)` as multi-line.**
   Currently emitted as a single line that can exceed 30,000 characters (CoC.ts). This makes
