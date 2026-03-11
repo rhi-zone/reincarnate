@@ -1603,7 +1603,7 @@ fn rewrite_system_call(
         // shim-dependent methods at runtime, so null is safe.
         let mut new_args = if !is_user_class {
             vec![]
-        } else if ctx.is_static {
+        } else if ctx.is_static || ctx.is_cinit {
             vec![JsExpr::Cast {
                 expr: Box::new(JsExpr::Literal(Constant::Null)),
                 ty: Type::Dynamic,

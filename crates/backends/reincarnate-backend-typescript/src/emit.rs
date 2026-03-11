@@ -4255,17 +4255,15 @@ fn emit_class(
         .iter()
         .map(|f| f.name.clone())
         .collect();
-    // Const instance fields promoted to static — entries marked is_const.
     // Const static fields with scalar defaults: their cinit assignments are redundant
-    // (the default already appears on the declaration).  Const fields WITHOUT defaults
-    // (e.g. CockTypesEnum.HUMAN) need their cinit assignments to survive — but emitting
-    // them currently produces broken code because the Flash `construct` rewrite injects
-    // `this._shims` which doesn't exist in static context.  See TODO.md.
+    // (the default already appears on the declaration).  Only filter fields that
+    // actually have a default — const fields without defaults (e.g. CockTypesEnum.HUMAN)
+    // need their cinit assignments to survive.
     let const_instance_fields: HashSet<String> = group
         .class_def
         .static_fields
         .iter()
-        .filter(|f| f.is_const)
+        .filter(|f| f.is_const && f.default.is_some())
         .map(|f| f.name.clone())
         .collect();
 
