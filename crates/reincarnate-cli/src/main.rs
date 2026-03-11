@@ -533,9 +533,7 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let output = frontend
-        .extract(input)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let output = frontend.extract(input)?;
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let config = PassConfig::from_skip_list(&skip_refs);
@@ -544,7 +542,7 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
         pipeline.add(extra);
     }
     for module in output.modules {
-        let module = pipeline.run(module).map_err(|e| anyhow::anyhow!("{e}"))?;
+        let module = pipeline.run(module)?;
         println!("{module}");
     }
     Ok(())
@@ -568,9 +566,7 @@ fn cmd_emit(
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let output = frontend
-        .extract(input)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let output = frontend.extract(input)?;
 
     let runtime_variant = output.runtime_variant.as_deref();
     let first_backend = manifest.targets.first().map(|t| &t.backend);
@@ -607,9 +603,7 @@ fn cmd_emit(
         let PipelineOutput {
             module,
             stopped_early: early,
-        } = pipeline
-            .run_with_debug(module, debug)
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        } = pipeline.run_with_debug(module, debug)?;
         modules.push(module);
         if early {
             stopped_early = true;
@@ -691,7 +685,7 @@ fn cmd_emit(
             favicon,
         };
         eprintln!("[emit] emitting to {}...", target.output_dir.display());
-        backend.emit(input).map_err(|e| anyhow::anyhow!("{e}"))?;
+        backend.emit(input)?;
 
         if !manifest.assets.is_empty() {
             copy_manifest_assets(&manifest.assets, &target.output_dir)?;
@@ -822,11 +816,9 @@ fn run_checks(targets: &[(PathBuf, TargetBackend)], cfg: &CheckConfig<'_>) -> Re
             checker.name(),
             output_dir.display()
         );
-        let result = checker
-            .check(CheckerInput {
-                output_dir: output_dir.clone(),
-            })
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let result = checker.check(CheckerInput {
+            output_dir: output_dir.clone(),
+        })?;
 
         if result.summary.total_errors > 0 {
             has_errors = true;
@@ -1604,9 +1596,7 @@ fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> 
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let output = frontend
-        .extract(input)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let output = frontend.extract(input)?;
 
     let debug_config = DebugConfig {
         dump_ir: false,
@@ -1699,9 +1689,7 @@ fn cmd_stress(
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let initial_output = frontend
-        .extract(initial_input)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let initial_output = frontend.extract(initial_input)?;
 
     let runtime_variant = initial_output.runtime_variant.as_deref();
     let first_backend = manifest.targets.first().map(|t| &t.backend);
@@ -1766,10 +1754,7 @@ fn cmd_stress(
                         engine: manifest.engine.clone(),
                         options: manifest.frontend_options.clone(),
                     };
-                    frontend
-                        .extract(re_input)
-                        .map_err(|e| anyhow::anyhow!("{e}"))?
-                        .extra_passes
+                    frontend.extract(re_input)?.extra_passes
                 };
 
             // Build a fresh pipeline for this run.
@@ -1781,9 +1766,7 @@ fn cmd_stress(
             let PipelineOutput {
                 module: transformed,
                 stopped_early: _,
-            } = pipeline
-                .run_with_debug(module, &debug)
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            } = pipeline.run_with_debug(module, &debug)?;
             module = transformed;
 
             let module_json = serde_json::to_string(&module)?;

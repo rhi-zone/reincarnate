@@ -142,7 +142,7 @@ impl Frontend for GameMakerFrontend {
             &script_names,
             bc_version,
         )
-        .map_err(|e| CoreError::Parse {
+        .map_err(|e| CoreError::Translate {
             file: input.source.clone(),
             message: e,
         })?;

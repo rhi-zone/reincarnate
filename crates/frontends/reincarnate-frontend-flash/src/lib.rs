@@ -82,9 +82,9 @@ impl Frontend for FlashFrontend {
 
                 let module =
                     class::translate_abc_to_module(&abc, &module_name, document_class.as_deref())
-                        .map_err(|e| CoreError::Parse {
+                        .map_err(|e| CoreError::Translate {
                         file: input.source.clone(),
-                        message: format!("translation failed in {module_name}: {e}"),
+                        message: format!("{module_name}: {e}"),
                     })?;
 
                 modules.push(module);
