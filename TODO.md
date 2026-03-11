@@ -659,23 +659,22 @@ improve output fidelity:
 
 ### Flash CC TypeScript Error Tracking
 
-Progress: 21,557 → 7,784 (2026-03-10: 5 emitter fixes: Proxy index sigs −11,571 TS7053, static field init in constructor −198 TS2576, _shims in static methods −155+ TS2339, override detection −327 TS4114, unique_static_fields rewrite −1,178 total) → 387 → 275 → 201 → 176 (2026-03-10 session: TS18047 scrollRect non-nullable, TS1345 void conditions 7/8, TS2554 IIFE scope arg 4, TS2749 Class coerce cast, TS2345 FlashRuntime shims wiring, TS2417 QN_KEY string annotation + Event constants, DOM.AsyncIterable lib, ArrayBufferLike casts, Array.sortOn declaration) → 46 (multiple sessions: null removal −73 TS2322, structurizer vN −9 TS2304, null patterns −6 TS2531, static _shims −5 TS2554, misc) → **40** (class name disambiguation: GooArmor Armors_/NPCs_ prefix, lower_field stripped-ns scope-arg fallback, TypeCheck/registerClassTraits/scaffold disambiguation).
+Progress: 21,557 → 7,784 → 387 → 275 → 201 → 176 → 46 → 40 → **30** (2026-03-11: cinit as `static { }` block −16 TS2576 −13 TS4114; coalesced shared-name type widening −10; dot notation GetIndex/SetIndex for valid-ident string keys).
 
-Remaining issues (**40** total — as of 2026-03-10):
+Remaining issues (**30** total — as of 2026-03-11, all acceptable):
 | Count | Code | Root cause |
 |-------|------|-----------|
 | 8 | TS2367 | Unintentional comparisons (game-author bugs) |
-| 7 | TS2322 | Type mismatches (XML→string, dynamic assignment, string→never narrowing) |
-| 6 | TS2538 | Object/boolean/XML as Dictionary index — game-author AS3 patterns |
-| 5 | TS7053 | Dynamic property access (Player[stat], TimeModel[n]) — coalescing + game-author |
-| 4 | TS2345 | Arg type mismatches (game-author: .apply, varargs) |
-| 2 | TS2348 | CockTypesEnum callable (game-author: Enum extends design) |
-| 2 | TS2739 | DefaultDict where TimeModel expected — coalescing (CoC.ts) |
-| 2 | TS2769 | StatsView Player[stat] overload — game-author dynamic access |
+| 6 | TS2538+TS2536 | Object/boolean/XML as Dictionary index — AS3 object-keyed Dictionary pattern |
+| 4 | TS2345 | Arg type mismatches (game-author: .apply, varargs, XML coercion) |
+| 2 | TS2322 | XML→string, string→never narrowing |
+| 2 | TS2348 | CockTypesEnum callable (AS3 Enum extends design) |
+| 2 | TS2769 | replace() with number arg — game-author implicit coercion |
+| 2 | TS7053 | player[statName] dynamic access — game-author pattern |
 | 1 | TS1345 | Void in truthiness — game-author bug |
 | 1 | TS2339 | .len on any[] — game-author bug (should be .length) |
-| 1 | TS2417 | CockTypesEnum static extends — game-author design |
-| 1 | TS2536 | `this` can't index Dictionary — game-author pattern |
+| 1 | TS2417 | CockTypesEnum static extends — AS3 covariant static override |
+| 1 | TS2536 | `this` can't index Dictionary — AS3 object-key pattern |
 
 **Coalescing type conflicts (~11 errors)**: Parser.ts, List.ts, CoC.ts, StyleManager.ts have AS3 variables reused with incompatible types across code paths. Out-of-SSA coalescer should widen to `any` when coalesced types are incompatible. Tracked here for future fix.
 
