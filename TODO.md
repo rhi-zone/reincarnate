@@ -252,7 +252,9 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
 
 ## TODO.md Staleness Audit (HIGH PRIORITY)
 
-- [ ] **Audit TODO.md for stale items** — Many items were written months ago and may already be implemented, superseded, or no longer relevant. Go through each open `[ ]` item, check against the codebase, and either mark `[x]` with a note, update the description, or delete if obsolete. Known example: `IR-level closure representation` was stale (now marked done). `withBegin`/withEnd design debt references "no closure construct" which is now resolved but the debt itself is still live.
+- [x] **Audit TODO.md for stale items** (2026-03-11)
+  Sweep complete. Found 4 stale items marked done: flash/memory.ts, project registry,
+  HAL audio library, feature-gate CLI. Remaining open items are genuinely unimplemented.
 
 ---
 
@@ -419,7 +421,8 @@ All mutable state in the Flash runtime lives at module scope, which means two Fl
 - [x] **`flash/input.ts` — `InputState` singleton** — fixed (2026-03-09)
 - [x] **`flash/audio.ts` — `AudioState` singleton** — fixed (2026-03-09)
 - [x] **`flash/renderer.ts` — hardcoded canvas** — fixed (2026-03-09)
-- [ ] **`flash/memory.ts` — shared heap** — `heap = new ArrayBuffer(HEAP_SIZE)` and typed array views at module scope (lines 4–13). Move heap + DataView to `FlashRuntime`; update emitter to emit memory ops as `_rt.memory.load_i8(...)` calls instead of free function imports.
+- [x] **`flash/memory.ts` — shared heap** (2026-03-11, found done in staleness audit)
+  `FlashMemory` class with per-instance `ArrayBuffer` heap; instantiated via `FlashShims.create()`.
 
 ### Twine platform: module-level singletons (multi-instance blocker)
 
@@ -460,10 +463,9 @@ generic unknown-call spam.
 
 **Known libraries observed in the wild:**
 
-- [ ] **HAL (Harlowe Audio Library)** — `(masteraudio:)`, `(track:)`, `(newtrack:)`,
-  `(newplaylist:)`, `(newgroup:)`, `(playlist:)`, `(group:)`. Registered via
-  `Chapel.Macros.add()`. Maps naturally to the platform audio layer.
-  Observed in: Artifact v0.76 (Harlowe).
+- [x] **HAL (Harlowe Audio Library)** (2026-03-11, found done in staleness audit)
+  All 7 macros implemented in `harlowe/translate.rs`: `masteraudio`, `track`, `playlist`,
+  `group`, `newtrack`, `newplaylist`, `newgroup`.
 
 
 ## Format Spec (game_maker_data.ksy)
@@ -494,41 +496,9 @@ generic unknown-call spam.
 
 ## CLI — Project Registry
 
-- [ ] **Project registry** — Persistent project registry so you don't have to pass `--manifest` every time.
-
-  **Fully decided:**
-
-  **Registry storage**
-  - File: `~/.config/reincarnate/projects.json` (global, XDG config dir)
-  - Schema: `{ "version": 1, "projects": { "<name>": { "manifest": "<abs-path>", "added_at": "<iso8601>", "last_emitted_at": "<iso8601> | null" } } }`
-  - `last_emitted_at` enables future `--stale` / `--since` filters on `--all`
-  - Load-time version check: if `version > 1`, error with "registry version N not supported — please upgrade reincarnate"; no auto-migration
-  - Registry loaded from disk at startup when a registry-aware subcommand runs, passed as a value — no global state
-
-  **`reincarnate add [path] [name]`**
-  - `path` accepts: a directory (searches for `reincarnate.json` inside), a direct `.json` file, or omitted (searches ancestors of cwd — same upward-walk as current `resolve_manifest_path`)
-  - Name defaults to the folder name of the manifest's parent directory
-  - Error on collision with message hinting `--force`; `--force` overwrites
-  - Verifies manifest file exists at add-time (defers parseability to emit-time)
-
-  **`reincarnate remove <name>`** — remove entry
-
-  **`reincarnate list`**
-  - Tabular output: name | engine | manifest path | last emitted
-  - Default sort: alphabetical by name; `--sort=engine|last-emitted` flags
-  - `--json` flag for scripting (JSON array of project objects)
-  - Output format modelled after normalize's `OutputFormat` (Compact/Pretty/Json) — use `--json` for Json mode; TTY auto-detects Pretty vs Compact
-
-  **`reincarnate emit <name>`** — registry lookup → manifest path → existing pipeline
-  **`reincarnate emit <path>`** — bare path accepted as positional; no `--manifest` required
-  **`reincarnate emit --manifest <path>`** — existing behaviour unchanged
-  **`reincarnate emit --all`** — sequential by default; `--parallel` flag for concurrent
-  - Output format: per-project sections (`[1/3] bounty (gamemaker)\n  ...`)
-  - Error handling: continue-and-collect — finish all projects, print failure summary at end
-
-  **All commands accept bare path as positional arg** (not just `--manifest <path>`) when they take a manifest input. Commands: `emit`, `extract`, `info`.
-
-  **`reincarnate info <name-or-path>`** — unified: accepts registry name, directory, or `.json` path; replaces old `--manifest`-only form
+- [x] **Project registry** (2026-03-11, found done in staleness audit)
+  `ProjectRegistry` in `registry.rs` with `~/.config/reincarnate/projects.json`, versioned schema,
+  `add`/`remove`/`list` subcommands, bare path positional args, `--all`/`--parallel` emit.
 
 ## CLI — Build Configuration
 
