@@ -377,17 +377,11 @@ remains if edited independently; consider symlink or build-time copy if it recur
 
 ## Warning Diagnostics for Game-Author Bugs
 
-- [ ] **Diagnostic channel for game-author bug warnings** — When a pass detects a
-  game-author bug with one clear correct resolution (e.g., duplicate switch cases,
-  unreachable code after return), emit a warning. Current behavior: we silently
-  preserve the bug per Law 3 (Behavioral Equivalence) but give the modder no
-  indication that the original game had a bug here.
-  - Backend AST pass `try_recover_sequential_ifs`: duplicate case values → skip
-    switch synthesis, but should warn "duplicate case value N at line L"
-  - Existing passes should audit for similar opportunities (dead code, type
-    mismatches that are game-author bugs not inference failures)
-  - Infrastructure: need a `Diagnostic` type (level: Warning/Info, source location,
-    message) threaded through pipeline stages and reported in `check` output
+- [x] **Diagnostic infrastructure** — `Diagnostic` type (level: Warning/Info, source location,
+  message) threaded through pipeline stages and reported in `check` output. Implemented.
+- [ ] **Emit diagnostics from more passes** — Currently only `try_recover_sequential_ifs`
+  (duplicate case values) emits warnings. Existing passes should audit for similar
+  opportunities (dead code, type mismatches that are game-author bugs not inference failures).
 
 ---
 
@@ -759,29 +753,6 @@ improve output fidelity:
 
 ## Flash Output Quality
 
-### Flash CC TypeScript Error Tracking
-
-Progress: 21,557 → 7,784 → 387 → 275 → 201 → 176 → 46 → 40 → **30** (2026-03-11: cinit as `static { }` block −16 TS2576 −13 TS4114; coalesced shared-name type widening −10; dot notation GetIndex/SetIndex for valid-ident string keys).
-
-Remaining issues (**30** total — as of 2026-03-11, all acceptable):
-| Count | Code | Root cause |
-|-------|------|-----------|
-| 8 | TS2367 | Unintentional comparisons (game-author bugs) |
-| 6 | TS2538+TS2536 | Object/boolean/XML as Dictionary index — AS3 object-keyed Dictionary pattern |
-| 4 | TS2345 | Arg type mismatches (game-author: .apply, varargs, XML coercion) |
-| 2 | TS2322 | XML→string, string→never narrowing |
-| 2 | TS2348 | CockTypesEnum callable (AS3 Enum extends design) |
-| 2 | TS2769 | replace() with number arg — game-author implicit coercion |
-| 2 | TS7053 | player[statName] dynamic access — game-author pattern |
-| 1 | TS1345 | Void in truthiness — game-author bug |
-| 1 | TS2339 | .len on any[] — game-author bug (should be .length) |
-| 1 | TS2417 | CockTypesEnum static extends — AS3 covariant static override |
-| 1 | TS2536 | `this` can't index Dictionary — AS3 object-key pattern |
-
-**Coalescing type conflicts (~11 errors)**: Parser.ts, List.ts, CoC.ts, StyleManager.ts have AS3 variables reused with incompatible types across code paths. Out-of-SSA coalescer should widen to `any` when coalesced types are incompatible. Tracked here for future fix.
-
-**Game-author bugs (~29 errors)**: Keep per behavioral equivalence — these reflect real AS3 dynamic typing patterns that TS flags as errors.
-
 ### Correctness
 
 - [ ] **Complex loop decompilation** — Some while-loop bodies have unreachable
@@ -921,344 +892,83 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   pushac target, or (b) the TS printer detecting integer-as-collection in SetIndex and routing
   to a GameMaker.setIndex runtime call. Only 6 errors in Schism, low priority.
 
-### 7. Dead Estate remaining TS errors — 112 as of 2026-03-10 (after bool runtime.json signatures)
+### 7. Dead Estate / GML open bugs
 
-Progress: 12350 → 4151 → 3341 → 2112 → 879 → 743 → 2927 → 1622 → 2108 → 946 (cross-obj 2D read fix) → 883 (ClassRef + OBJT constructor type fix) → 596 (CallSiteTypeWiden: −284 TS2345) → 573 (BoolAnd/BoolOr IR ops) → 561 (BrIf cascade via reachability-aware const map) → 559 (fold_cast Bool→Bool + ends_with_terminal fall-through switch) → 472 (wrap ClassRef GlobalRef with `as any`) → 345 (also fix lazy-inline ClassRef path) → 335 (ClassRef→any in ts_type + GlobalRef always-inline) → 282 (CallSiteTypeWiden zero-caller: `_self: number` in closures fixed) → 307 (NorthPassage regression from Switch SE inline fix; 3 TS2304 fixed) → 285 (arith_val: Bool→Number coercion in arithmetic ops; 22 fixed) → 281 (runtime createCanvas/resizeCanvas stale calls fixed) → 248 (collect_block_param_decls reads value_types instead of BlockParam.ty; removed arith_val and all Bool-coercion hacks from core linearizer; TS2362 now correctly surfaces as intended diagnostics) → 222 (GmlLogicalOpNormalize: `else_target == merge_target` guard prevents if-then mis-identified as `||`; TS2322 38→6) → 183 (Uint8Array TS5.9 compat + steam/psn persistence string↔bytes + sprite_index sentinel + loadImage local def) → 176 (object_exists accepts number; z/mask_index in GMLObject; initialRoom template substitution) → 181 (reverted instance_exists(number): those errors are correct diagnostics of instance_place/instance_find returning number instead of GMLObject|null — fix belongs in type inference, not runtime signature) → 206 (2026-03-09 session: instance_type_flow Ne fix, record_depth min, runtime physics/particles/string/irandom fixes, NullableCoerce rename, GetField on Union; count increased due to newly-surfaced IR from br() arg mismatch warnings + record_depth changes) → 192 (2026-03-09: (as any) instanceof prevents TS never-narrowing in Wall class; scan_body_local_names uses live locals map fixing on-the-fly capture gap for TS2304) → 191 (2026-03-09: `(target as unknown) === -4` in instance_exists suppresses TS2367) → 186 (2026-03-09: CallSiteArityWiden pass — GML loose calling convention; 5 TS2554 eliminated) → 186 (2026-03-09: resolve_classref_args backend rewrite — GMS1 integer object indices → class names; 31 classref params in runtime.json; Bounty 48→13 TS errors. Fixed regression: parse_type_notation("classref") now maps to Dynamic instead of Struct("classref"), preventing `argument0: classref` TS type annotations in callee params).
-→ 6199 (af06ab3 preamble removal regression: `global`/`other`/`__SetStatic__` etc. no longer rewritten)
-→ 278 (2026-03-09: fix stateful call rewriting — sanitize_ident before stateful_names lookup fixes @@SetStatic@@/@@CopyStatic@@/etc.; Var("global")/Var("other") arms rewrite to _rt.global/_rt.other. New TS2345 +91 are CORRECT pipeline bug diagnostics: dynamic integer class indices reaching setInstanceField(GMLObject|typeof GMLObject), not regressions. Bounty: 13 TS errors unchanged).
-→ 228 (fix: strip_int_coerce now strips Cast{ty:Dynamic,kind:Coerce} wrapper in addition to Int(32); import collector in emit.rs now tracks dyn-coerced integers via extended const_ints map; getOn handler now calls resolve_instance_target for integer indices; setField import collection added; getOn integer import collection added. Result: 50 fewer errors. Root cause was GML bytecode `coerce i64_const, dyn` before syscall args; strip_int_coerce only handled Int(32) coerce).
-→ 194 (2026-03-10: post-convergence widening in TypeInference; @@NewGMLObject@@ returns Struct("GMLObject") instead of Dynamic + emits `new GMLObject()`; _globals.ts preamble imports for runtime types; 228→194).
-→ 186 (2026-03-10: runtime global typed as GMLObject not Record<string,any>; 8 TS2345 from global-as-GMLObject fixed).
-→ 178 (2026-03-10: GmlDefaultArgRecovery uses Dynamic for non-scalar variadic defaults; ast_printer widens param type to `any` when default constant type mismatches param type; 8 TS2322 from `number/GMLObject = 0.0` mismatch fixed).
-→ 177 (2026-03-10: cross-scope SE inline hoisting — TS2552 `sarr` undeclared; cross_scope_defs + cross_scope_hoisted_types → `let name!: ty`).
-→ 172 (2026-03-10: return X inside with — TS2367; has_exit_popenv + with_body_has_return in TranslateCtx; withInstances returns any).
-→ 140 (2026-03-10: widen getInstanceField/setInstanceField/setInstanceFieldIndex to accept number; −32 TS2345).
-→ 125 (2026-03-10: GmlBoolArithCoerce pass — Cast(Bool→Float) before bool arithmetic operands → Number(expr); −15).
-→ 117 (2026-03-10: GmlBoolArithCoerce Fix A (Bool-returning callee in arithmetic) + Fix C (Br/BrIf bool→numeric block-param args) + IntToBoolPromotion ordered before coerce pass; −8).
-→ 112 (2026-03-10: added mouse_wheel_up/down, point_in_rectangle/circle/triangle to runtime.json function_signatures with boolean returns; GmlBoolArithCoerce now inserts Number() wraps; −5).
-→ 112 (2026-03-10: GMS1 array scope fix — dim2 (second stack pop) drives self-vs-cross-object for ref_type=0x00; fixes Bounty `this.advantages is undefined` runtime error; Dead Estate unchanged).
-→ 112 (2026-03-10: with-body self-object-index normalization fix — `!ctx.is_with_body` guard in push/pop normalizations; cross-object writes to outer object inside with-body now emit setOn instead of _self.field; fixes Bounty AdvReader/TimelineReader "undefined" screens; Dead Estate unchanged).
-→ 121 (2026-03-10: regression from linear coalescing collision fix `1167690` — renamed dominating block-param values to `v{idx}` causing new TS2304 "Cannot find name 'v36'"; needs investigation). Bounty: 11.
-
-
-CallSiteTypeWiden: ConstraintSolve narrows params via body constraints (e.g. `cmp.eq(i64_val, param)`)
-but callers may pass incompatible types (ClassRef vs Int). The widening pass detects these conflicts
-post-ConstraintSolve and widens back to Dynamic. Critical: must read from entry block params, not
-sig.params, because ConstraintSolve only updates entry.params[i].ty and value_types, not func.sig.params.
-
-| Code | Count | Root cause |
-|------|-------|------------|
-| TS2345 | 76 | Game-author GML weak-typing bugs (number↔GMLObject, string↔number, bool↔number, etc.). |
-| TS2322 | 14 | 7 bool→number; 2 GMLObject→number; 2 number[]→number; 1 string→number; 1 number→any[]; 1 bool→number\|GMLObject. All game-author type bugs from GML's weak typing. |
-| TS2339 | 14 | `length` on type `number` or `-4` — variable typed as number but treated as array/string |
-| TS2362 | 4 | Left-hand side of arithmetic is GMLObject — `_gif` typed as GMLObject used as a number. Game-author bug. |
-| TS2365 | 0 | Fixed by adding bool-returning function signatures to runtime.json. |
-| TS2363 | 0 | Fixed. |
-| TS2872 | 2 | Always truthy expression (emitter `!(!const)` pattern — pre-existing) |
-| TS2304 | 0 | Fixed: scan_body_local_names; global/other/SetStatic/etc. rewritten to _rt.X (2026-03-09) |
-| TS2552 | 0 | Fixed: cross-scope SE inline hoisting |
-| TS7027 | 2 | Unreachable code — game-author bugs (pre-existing) |
-
-**TS2345 integer class index resolution (fixed 2026-03-09):** The 91 "number not assignable to GMLObject" diagnostics introduced at 278 were a pipeline bug: `strip_int_coerce` only stripped `Cast{ty:Int(32), kind:Coerce}` but GML bytecode also emits `coerce i64_const, dyn` (`Cast{ty:Dynamic}`), hiding the constant integer from `resolve_instance_target`. Fixed by widening `strip_int_coerce` to also strip `Cast{ty:Dynamic,kind:Coerce}`, extending the import collector's `const_ints` map to follow dyn-coerce chains, and fixing `getOn` to call `resolve_instance_target` for integer args (was missing entirely). 50 errors fixed (278→228).
-
-**"number not assignable to GMLObject | typeof GMLObject":** Fixed 32 by widening `getInstanceField`/`setInstanceField`/`setInstanceFieldIndex` in `GameRuntime` to accept `number` (object type index, resolved via `this.classes[idx]`). Remaining 3 are `GMLObject | typeof GMLObject | null` params (e.g. `instance_exists`/`instance_nearest` target); tracked separately.
-
-**TS2362 / TS2363 / TS2365 (Bool in arithmetic/operators):** GML treats booleans as integers — `bool * 60`
-is standard GML idiom. The TypeScript output is semantically correct (`true * 60 === 60` at JS runtime)
-but TypeScript rejects it statically. The right fix is to inject `+boolExpr` (unary-plus coercion) in
-the GML TypeScript rewrite pass (`rewrites/gamemaker.rs`) when a `Bool`-typed IR value is used as an
-arithmetic operand. This is a faithful representation of GML semantics, not a suppression. The IR pass
-`arith_val` was wrong because it mutated types globally; a rewrite that only wraps the TS expression is
-the correct approach. See TODO item below for the concrete fix plan.
-
-- [ ] **Inject `+expr` for Bool operands in GML arithmetic (TS2362/TS2365, ~28 errors in Dead Estate)**
+- [ ] **Inject `+expr` for Bool operands in GML arithmetic (TS2362/TS2365)**
   In `rewrites/gamemaker.rs`, detect `JsExpr::BinOp` nodes where one operand has a `Bool`-typed IR value
   and the operator is arithmetic (`+`, `-`, `*`, `/`, `%`, etc.). Wrap the Bool operand with a unary
   `+` expression (`JsExpr::UnaryOp("+", expr)`). This is a TypeScript-emission-layer fix only — no IR
   changes needed. Must check that the unary `+` is inserted at the correct sub-expression (the Bool
   operand, not the whole expression).
 
-**TS2322 "boolean not assignable to number" (7 remaining as of 2026-03-10):** Previously 38, fixed
-many by adding `else_target != merge_target` guard in `GmlLogicalOpNormalize`. Additional 6
-"number/GMLObject = 0.0" parameter annotation mismatches fixed 2026-03-10 by printer widening params
-to `any` when default constant type is incompatible with declared param type.
-
-6 remaining divide into two root causes:
-- **GmlLogicalOpNormalize false positive (3 instances: OAdultLevi:98, MainMenu:381, _init.ts:3428)**:
+- [ ] **GmlLogicalOpNormalize false positive (3 instances: OAdultLevi:98, MainMenu:381, _init.ts:3428)**:
   else_target ≠ merge_target so the guard doesn't fire, but the pattern is still an if-then-else
   not `||`. The fundamental problem: GmlLogicalOpNormalize runs AFTER TypeInference, so replacing
   a block arg changes the arg type without updating `value_types` for the block param. Refreshing
   `value_types` fixes the declaration but then passing `boolean | number` to `number` params causes
   TS2345 regressions (net +1 error). Needs a smarter guard OR fixing at the TypeInference level
   (re-run TypeInference after extra passes, or propagate type changes through the pass).
-- **Direct bool→number field/variable assignment (3 instances: PassageGate:27, NewCharacterSelect:551, ParentMenu:204)**:
+
+- [ ] **Direct bool→number field/variable assignment (3 instances: PassageGate:27, NewCharacterSelect:551, ParentMenu:204)**:
   Game author assigns a comparison result to a `number`-typed field (e.g. `image_index = y > height/2`).
   This is a GML idiom (comparison gives 0/1). Our `image_index` struct field is declared `number` in the
   runtime types. Fix would require widening affected field types to `number | boolean` in the runtime,
   or accepting these 3 errors as intended diagnostics (game author using bool as int).
 
-**TS2367 (5):** GML functions with `return value` inside a `with` block. Our `withInstances` callback
-model doesn't propagate return values — the function is typed as `void` even though it should return
-a number. Root cause investigated (2026-03-09):
+- [ ] **TS2367: `return value` inside `with` block (5 errors)** — Our `withInstances` callback
+  model doesn't propagate return values — the function is typed as `void` even though it should return
+  a number. Correct fix: detect exit PopEnv within body_insts (Branch offset ≈ -4194304 sentinel).
+  Truncate body_insts there; keep post-break code in the outer function. Requires the outer function
+  to branch to the post-break code after `withInstances` call (needs block map entries for post-break
+  offsets). Complex because the post-break code must also return the value captured in the local.
 
-In GML bytecode, `return X` inside `with` stores X to a local, then `PopEnv.d[e]` (exit PopEnv with
-sentinel offset ~0xffc00000) breaks out and falls through to `Push local; Ret` in the outer function.
-`find_with_ranges` maps PushEnv → loop-back PopEnv (not the exit PopEnv), so `body_insts` includes
-code from PushEnv+1 to the loop-back PopEnv. This inadvertently includes the post-break outer code
-(the `Push local; Ret`) in the with-body closure's bytecode range, where it becomes dead code (block2
-after exit PopEnv's `fb.ret(None)`). The outer function branches past this code to `Exit`, returning void.
+- [ ] **TS2554: GML loose calling convention (5 errors)** — `loadSetting`, `getScreenType`,
+  `getPiecesWidth`, `getPiecesHeight`, `drawTextPieces` called with more args than their signatures
+  declare. GML extra args accessible via `argument[N]`. Fix: `CallSiteArityWiden` IR transform pass
+  — scan all `Op::Call` sites; if any passes more args than the declared param count, append
+  `argumentN: T = default` params to the `FunctionSig`.
 
-Correct fix: detect exit PopEnv within body_insts (Branch offset ≈ -4194304 sentinel). Truncate
-body_insts there; keep post-break code in the outer function. Requires the outer function to branch to
-the post-break code after `withInstances` call (needs block map entries for post-break offsets). Complex
-because the post-break code must also return the value captured in the local.
+- [ ] **Unreachable code after return/continue in switch cases (TS7027)** — The switch-case emitter
+  emits both a `continue`/`return` AND a trailing `break` for the same case. Fix: suppress the
+  auto-generated `break` when the case body already ends with `return`, `continue`, or `break`.
 
-**TS2554 (5):** `loadSetting(_rt, self, key, default)` — 4 args, but function only declares 3 (`_rt,
-self, argument0 = 0`). Similarly `getScreenType`, `getPiecesWidth`, `getPiecesHeight`, `drawTextPieces`
-called with more args than their signatures declare. GML loose calling convention: extra args are
-accessible via `argument[N]` in GML but are ignored in TypeScript. Correct fix: a new `CallSiteArityWiden` IR transform pass (sibling of `CallSiteTypeFlow`).
-For each callee, scan all `Op::Call` sites; if any passes more args than the declared param count,
-append `argumentN: T = default` params to the `FunctionSig`, where `T` comes from call-site type
-analysis (meet of observed arg types at each extra position). The emitter reads the widened sig
-as-is — no emitter changes needed. NOT: `...args: any[]` (too broad, untyped). NOT: `: any` for
-extra params (use observed call-site types). NOT: a global policy (only callees that are actually
-called with extra args need widening).
+- [ ] **Undeclared variables — `vNNN` and named vars (TS2304)** — Three sub-patterns:
+  1. SSA register names in ternary chains — structurizer's ternary/select lowering doesn't ensure
+     all referenced values have declarations in the enclosing scope.
+  2. `spd` in with-body (Barnacle.ts:142-143) — linearizer or translator lost the assignment target.
+  3. `pass` in controller objects (OAnya*Controller.ts) — same category as `spd`.
+  All are correctness bugs — emitted code references variables that don't exist.
 
-#### TS2345 Detailed Breakdown (2043 errors, by type pair)
+- [ ] **TS7053: `int(x)[field]` indexing number** — 2D array access patterns where the array variable
+  is coerced to `int` before being used as an array target. The `coerce i32` instruction wraps the
+  array in `int()` when it should access the array directly. Fix in GML translator or as a rewrite pass.
 
-| Count | Source type → Expected type | Root cause |
-|------:|----------------------------|------------|
-| 505 | `(_rt, self) => void` → `number` | **pushref name resolution (Bug 7a)**: GMS2.3+ constructor refs resolved to imported function values instead of numeric asset indices |
-| 432 | `number` → `boolean` | **GML calling convention (Bug 7b)**: GML has no boolean type; `0`/`1` used everywhere for boolean params (`audio_play_sound(..., loop)`, `sprite_create_from_surface(..., removeback, smooth)`) |
-| 116 | `() => string` → `number` | **pushref name resolution (Bug 7a)**: e.g. `instance_exists(steam_current_game_language)` — `steam_current_game_language` is a runtime function but should be a numeric object ID |
-| 111 | `(_rt, self, arg0?, arg1?) => any` → `number` | **pushref name resolution (Bug 7a)**: multi-arg function refs where object index expected |
-| 58 | `(_rt, self) => void` → `GMLObject` | Same pushref issue, different target type |
-| 55 | `(_rt, self, ...) => void` → `number` | Same pushref issue, various arities |
-| 50 | `(_rt, self, arg0?) => any` → `number` | Same |
-| 47 | `(_rt, self, arg0?) => void` → `number` | Same |
-| 41 | `(_result: number) => void` → `number` | **pushref name resolution**: e.g. `collision_line(..., steam_inventory_result_destroy, ...)` — clearly wrong name for a collision object |
-| 33 | `string` → `number` | Mixed: some genuine type mismatches, some asset name resolution |
-| 28 | `(_rt, self, ..4 args) => void` → `number` | Same pushref issue |
-| 24 | `(_rt, self, ..4 args) => void` → `GMLObject` | Same |
-| 23 | `(font: number) => void` → `number` | Same pushref issue |
-| 22 | `Record<string, any>` → `number` | Struct objects used as numeric IDs |
-| 22 | `GMLObject \| null` → `number` | Instance refs used as numeric IDs |
-| 21 | `() => void` → `number` | Same pushref issue |
-| 17 | `(s: string) => number` → `number` | Same |
-| 16 | `boolean` → `number` | Reverse of Bug 7b |
-| 14 | `() => number` → `number` | Same pushref issue |
-| ~400 | (remaining long tail) | Mix of pushref, type inference gaps, game author errors |
+- [ ] **TS7053: struct field access on number-typed vars** — `v['fieldName']` where `v` is typed as
+  `number` rather than `any`. Root cause: instance variables that hold object references (e.g. created
+  by `instance_create_depth`) are typed as `number` (the raw instance ID) rather than as the class type.
+  Fix requires GML instance ID type propagation.
 
-**~900 errors are pushref name resolution (Bug 7a)**, **~450 are number↔boolean (Bug 7b)**.
+- [ ] **TS2304: `dynamic` identifier (Dead Estate)** — GML `dynamic` keyword used as an identifier
+  in GML 2.3+ struct definitions. Translator emits `dynamic` as a bare identifier which TypeScript
+  doesn't recognize. Needs investigation — may be a translator keyword lookup bug.
 
-#### Bug 7a: FIXED — pushref type_tag=0 is OBJT, not FUNC (2026-02-26)
+- [ ] **TS2345: OBJT class constructors passed to user scripts typed as `number`** — Game-author
+  pattern: user scripts inferred `argument0: number` from arithmetic context now receive `typeof
+  ClassName` (class constructor). Future: CallSiteTypeFlow could propagate `typeof GMLObject` into
+  user script params.
 
-Root cause: pushref type_tag=0 was treated as FUNC chunk index, but UndertaleModTool confirms
-type 0 = Object (OBJT) in all GameMaker versions. Fix: added OBJT names to `build_asset_ref_names`
-at type_tag=0, removed special-case FUNC lookup, added Objects group to `generate_asset_ids`.
-Result: TS2345 2043 → 846, total errors 4151 → 2112.
+- [ ] **TS2339: Missing particle system properties** — `part_system_depth` and
+  `part_system_automatic_draw` not declared on the particle system type. Need to add to GMLObject
+  type definition or particle system type.
 
-**Remaining risk:** pushref type_tag mapping is **version-dependent** (UndertaleModTool
-`AdaptAssetType`). Our code uses the GM 2024.4+ layout. Pre-2024.4 games have a different
-mapping (e.g. type 4=Background instead of Path, type 6=Script instead of Font, type 8=Timeline
-instead of Shader, type 10=Shader instead of AnimCurve). Types 0–3 are the same in both versions.
-Need version detection + dual mapping for pre-2024.4 games. See `lib.rs` comment on
-`build_asset_ref_names` for full table.
-
-#### Bug 7b: FIXED — GML number↔boolean calling convention (2026-02-26)
-
-Root cause: GML has no boolean type — `0`/`1` used everywhere for boolean params. The IR
-represented these as `Int(0)`/`Int(1)` but the constraint solver skipped non-Dynamic values.
-
-Fix: new `IntToBoolPromotion` transform pass that identifies values demanded as Bool (via
-`external_function_sigs` param types, `BrIf` conditions, `Not` operands, internal function
-sig param types) and traces backward through SSA. If all leaves are Int(0/1)/Bool, the
-chain is promoted to Bool. Also subsumes `BoolLiteralReturn` (return type inference).
-Result: TS2345 846 → 325, total errors 2112 → 879.
-
-#### Bug 7b2: FIXED — IntToBoolPromotion bare-exit + SetField gaps (2026-02-27)
-
-Two bugs in `IntToBoolPromotion`:
-1. `infer_bool_return` set return type to `Bool` even when the function had `Op::Return(None)`
-   (bare `exit;` paths), causing 121 TS2322 `undefined → boolean` errors.
-2. `collect_bool_demands` didn't check `SetField` operations, so `this.persistent = 1` stayed
-   as `number` even though the field was `Type::Bool`, causing ~12 TS2322 `boolean → number` errors.
-Result: TS2322 319 → 187, total errors 879 → 743.
-
-#### Bug 7e: FIXED — Object indices exposed as bare numbers (2026-02-27)
-
-All `instance_destroy(objName)` TS2345 errors and related patterns fixed by changing OBJT names
-from numeric constants to typed class constructors throughout.
-
-Changes:
-- [x] Pushref OBJT references resolve to class constructors (PascalCase via `object_name_to_pascal`)
-- [x] Runtime functions (`instance_destroy`, `instance_create_depth`, `instance_exists`, `instance_find`,
-  `instance_nearest`, all collision functions, etc.) accept class constructors instead of numeric indices
-- [x] `asset_ids.d.ts` no longer declares OBJT names — they are imported as classes
-- [x] `collect_type_refs_from_function` registers OBJT `GlobalRef` as class value imports
-- [x] `GmlInstanceTypeFlow` pass: narrows `instance_create_*` return types from `Dynamic` to `Struct(ClassName)`;
-  rewrites `object_index == OEnemy` comparisons to `Op::TypeCheck` (instanceof)
-- [x] With-body `_self` typed from OBJT pushref in `translate.rs` (Phase 4)
-- [x] `runtime.json` signatures for `instance_create/find/nearest/furthest` use `"*"` (not `"int"`)
-- [x] `getInstanceField`/`setInstanceField` accept `typeof GMLObject | number`
-
-Result: TS2345 `number → GMLObject` at instance_destroy: resolved.
-
-**Residual TS2345 (524 `typeof Class → number`):** User-defined GML scripts that typed their
-parameters as `number` (from arithmetic context) now receive `typeof ClassName` (class constructor).
-These are game-author errors — GML game code using object indices as plain numbers in user scripts.
-TypeScript correctly flags them. Fixing would require GML call-site type inference to propagate
-class constructor types into user script params (future work).
-
-**Residual TS2304 (238):** `dynamic` (GML built-in keyword used as identifier), `isType` (TypeCheck
-emits `isType(x, T)` but no such GML runtime function exists — should emit `x instanceof T`; tracked
-as separate bug), `v12`/`v34` etc. (SSA variable names not hoisted, pre-existing Bug 7d).
-
-#### Bug 7c: Unreachable code after return/continue (207 TS7027)
-
-Two distinct patterns:
-
-1. **`break` after `return`/`continue` in switch cases** — The structurizer/emitter emits both
-   a `continue`/`return` AND a trailing `break` for the same switch case. The `break` is dead code.
-   Example: `case 2: ... continue; break;` — the `break` is unreachable. This is a code quality
-   bug in the switch-case emitter: when a case body ends with `return`/`continue`, the `break`
-   should be suppressed.
-
-2. **`return 0 as any;` after all-paths-return functions** — The `ends_with_terminal` fallback
-   adds a trailing return to satisfy TS2366, but when all switch/if branches already return,
-   it's unreachable. This is cosmetic — the trailing return is a safety net, not a semantic error.
-
-Fix for pattern 1: in the switch-case emitter, check whether the last statement in a case body
-is a `return`, `continue`, or `break`, and suppress the auto-generated `break` if so.
-
-#### Bug 7d: Undeclared variables — `vNNN` and named vars (17 TS2304)
-
-Three distinct sub-patterns:
-
-1. **SSA register names in ternary chains** (10 errors) — `v33`, `v29`, `v12`, `v14`, `v418`, `v40`,
-   `v247`, `v264`, `v4`, `v2` appear in complex conditional expressions. The structurizer creates
-   ternary expressions that reference SSA values from different CFG branches, but those values were
-   never declared in the emitted scope. Example: `chance(0.05 * ...) ? v33 : (chance(0.5 * ...) ?
-   ... : v29)` — `v33` and `v29` are values from predecessor blocks that weren't properly hoisted.
-   Root cause: the structurizer's ternary/select lowering doesn't ensure all referenced values have
-   declarations in the enclosing scope.
-
-2. **`spd` in with-body** (2 errors, Barnacle.ts:142-143) — `lengthdir_x(spd, d)` where `spd` was
-   never declared. The preceding line `random_range(2, 4)` is a bare expression (result discarded).
-   In the original bytecode, this was likely `spd = random_range(2, 4)` but the linearizer dropped
-   the assignment, leaving only the bare function call. The with-body closure then references `spd`
-   which doesn't exist. Root cause: linearizer or translator lost the assignment target.
-
-3. **`pass` in controller objects** (3 errors, OAnya*Controller.ts) — `pass` used as a variable
-   but never declared. Same category as `spd` — assignment dropped by linearizer.
-
-All 17 are **correctness bugs**, not cosmetic issues — the emitted code references variables
-that don't exist, meaning these functions would crash at runtime.
-
-#### TS7053: `int(x)[field]` indexing number (454 errors)
-
-Pattern: `int(global.argument0)[AceDoll.instances[0]!.items] = 0` — `int()` returns `number`,
-which can't be indexed. These are 2D array access patterns where the array variable is coerced
-to `int` before being used as an array target. Root cause: the 2D array access codegen wraps
-the array in `int()` (from a `coerce i32` instruction) when it should be accessing the array directly.
-
-#### Bug 7f: FIXED — `instanceof` for GML TypeCheck (2026-02-27)
-
-Added `use_instanceof: bool` to `JsExpr::TypeCheck`. The GML rewrite pass (`rewrites/gamemaker.rs`)
-sets `use_instanceof = true` for `Type::Struct` TypeCheck nodes. The printer emits `x instanceof T`
-when true, `isType(x, T)` (AS3 interface-aware) when false. Flash keeps `use_instanceof: false`.
-Regression tests added in `ast_printer.rs`.
-
-#### TS2304: `dynamic` identifier (Dead Estate, ~10 errors)
-
-GML has a `dynamic` keyword for struct literals. Some game code uses `dynamic` as an identifier
-(likely from GML 2.3+ struct definitions). The translator emits `dynamic` as a bare identifier
-which TypeScript doesn't recognize. Needs investigation — may be a translator keyword lookup bug.
-
-#### ~~`!(!1)` double-negation for GML boolean literals~~ — **FIXED**
-
-Was our artifact, not GML bytecode. `coerce_bool_args` in `rewrites/gamemaker.rs` wrapped
-non-bool args in `!!` — but `Int(0)`/`Int(1)` should become `false`/`true` directly.
-Fixed in `coerce_to_bool()`: int literals are replaced with bool literals; all other
-non-bool expressions still get `!!`. GML bytecode emits a single `Not` instruction; it
-never emits two consecutive NOTs for boolean true.
-
-#### TS2345: OBJT class constructors passed to user scripts typed as `number` (~524 errors)
-
-Game-author pattern: user scripts like `hurt(Player, damage)` pass OBJT class constructors to
-functions that inferred `argument0: number` from arithmetic context (e.g., comparisons to `-4`,
-arithmetic expressions). These are correctly surfaced as type errors — GML game code relied on
-object indices being plain integers, but class constructors are not numbers.
-
-Future: could resolve by having CallSiteTypeFlow propagate `typeof GMLObject` into user script
-params, changing their inferred type from `number` to `typeof GMLObject | number`. Would require
-tracking that the value came from a `GlobalRef` of an OBJT class.
-
-#### TS2339: Missing particle system properties (107 of 149)
-
-`part_system_depth` (55) and `part_system_automatic_draw` (52) are not declared on the particle
-system type. These are standard GML particle system properties that need to be added to the
-GMLObject type definition or the particle system type.
-
-Fixed in previous sessions (2026-02-24):
-- TS2393 (14→0): Duplicate method blocks in runtime.ts removed
-- TS2454 (204→0): `let v!: T;` definite-assignment assertion in ast_printer.rs
-- TS2552 (150→1): Added ~50 missing runtime stubs + registered in runtime.json
-- TS2366 (114→0): Added `ends_with_terminal()` + trailing `return 0 as any;` in ast_printer.rs
-- TS2769 (417→0): Reclassified as TS2345 after adding type signatures to runtime.json
-- TS2554 (512→7): Variadic scripts get rest param; game-script shadowing fix; ~80 signature corrections
-
-**Highest-leverage next targets (by error reduction potential):**
-
-- [x] **Bug 7a: pushref type_tag=0 is OBJT (~1200 TS2345 fixed)** — Fixed 2026-02-26.
-
-- [x] **Bug 7b: number→boolean casting (~450 TS2345 fixed)** — Fixed 2026-02-26/27. `IntToBoolPromotion`
-  pass + bare-exit fix + SetField demands.
-
-- [ ] **TS7053 (454): int() wrapping array access targets** — The `coerce i32` instruction
-  before a 2D array access should not wrap the array variable in `int()`. Fix in GML translator
-  or as a rewrite pass.
-
-- [ ] **TS7053 (518): struct field access on number-typed vars** — `v['fieldName']` where `v` is
-  typed as `number` rather than `any`. Root cause: instance variables that hold object references
-  (e.g. created by `instance_create_depth`) are typed as `number` (the raw instance ID) rather
-  than as the class type. Fix requires GML instance ID type propagation (see Type System section).
-  This was the original "102k error" regression from `7c4dc61` — it had briefly been worse but
-  type inference improvements have since reduced it.
-
-- [ ] **TS2339 (107): particle system properties** — Add `part_system_depth` and
-  `part_system_automatic_draw` to the GMLObject type definition or particle system type.
-
-- [ ] **TS2554 (5): Remaining runtime signature mismatches** — 5 remaining. All are either
-  game-author errors (`gamepad_set_axis_deadzone` called with 2 args, `draw_roundrect_color` called
-  with 7 args) or decompiler arg-count mismatches (functions that read fewer args than callers pass;
-  e.g. `getScreenType`, `loadSetting`, `getPiecesWidth`/`getPiecesHeight`/`drawTextPieces`). The
-  decompiler issue requires a new emit to fix (arg count determined by reads in function body).
-
-- [x] **TS2454 (204→0): used before assigned** — Fixed with `let v!: T;` definite-assignment assertion in ast_printer.rs.
-
-- [x] **TS2552 (150→1): missing runtime stubs** — Added ~50 stubs + registered in runtime.json.
-  Remaining 1: `sarr` self-reference bug in with-body translation (see below).
-
-- [ ] **TS2552 (1): `sarr` in with-body** — `sarr.length` on `_init.ts:6198` should be `self.sarr.length`.
+- [ ] **TS2552: `sarr` in with-body** — `sarr.length` on `_init.ts:6198` should be `self.sarr.length`.
   Adjacent references correctly use `self.sarr[...]` — one reference dropped the `self.` prefix.
-  This is a with-body codegen bug; needs investigation in GML translator.
+  With-body codegen bug; needs investigation in GML translator.
 
-- [ ] **TS2308/TS2300/TS2440 (6): struct constructor / object class name collision in barrel** —
+- [ ] **TS2308/TS2300/TS2440: struct constructor / object class name collision in barrel** —
   `_init.ts` exports `function TextEffect(...)` (GML struct ctor) and `objects/TextEffect.ts` exports
-  `class TextEffect extends GMLObject`. Same for `___struct___127/128`: exported as both a variable
-  in `_globals.ts` and a function in `_init.ts`. `index.ts` does `export *` from both → TS2308
-  duplicate re-export. Fix: when a struct ctor name collides with an object class of the same name,
-  skip emitting the struct ctor as a separate export (the class IS the constructor). For `___struct___N`
-  naming conflicts, either deduplicate or suppress the variable export when a same-named function
-  already exists.
-
-- [x] **TS2322 boolean↔number (135 errors): IntToBoolPromotion missing forward propagation** —
-  Forward propagation was added (Phase 5 now iterates all Bool-return funcs, not just newly
-  changed ones). Additionally, the root cause of many of these errors was `GmlLogicalOpNormalize`
-  incorrectly substituting `cond: bool` for `const 0: i64` loop counter initial values when the
-  merge target happened to be a loop header. Fixed with a `is_loop_header` BFS guard.
-  Combined result: 553 → 472 total errors (−81); TS2322: 135 → 126.
+  `class TextEffect extends GMLObject`. Same for `___struct___127/128`. Fix: when a struct ctor name
+  collides with an object class of the same name, skip emitting the struct ctor as a separate export.
 
 - [ ] **`instance_type_flow.rs` line 165: `Ne` TypeCheck case not handled.**
   The `Ne` comparison falls through to the same `TypeCheck` rewrite as `Eq`, which is wrong —
