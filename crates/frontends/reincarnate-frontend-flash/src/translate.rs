@@ -139,6 +139,31 @@ pub fn translate_method_body(
         })
         .collect();
 
+    // Only emit Alloc per activation slot for functions WITHOUT closures.
+    // Functions with closures (NewFunction opcodes) still need the activation
+    // object on the scope chain so that closures can access outer-scope
+    // variables via GetScopeObject + GetProperty.  Without MakeClosure
+    // captures, there's no way to connect allocs to closure scope access.
+    let has_closures = ops
+        .iter()
+        .any(|loc| matches!(&loc.op, Op::NewFunction { .. }));
+    let activation_allocs: HashMap<u32, ValueId> = if !has_closures {
+        activation_slot_names
+            .iter()
+            .map(|(&slot_id, name)| {
+                let alloc = fb.alloc(Type::Dynamic);
+                fb.name_value(alloc, name.clone());
+                (slot_id, alloc)
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
+    // Track the ValueId produced by NewActivation so that GetSlot/SetSlot on
+    // the activation object can be redirected to Load/Store on individual allocs.
+    // Only active when activation_allocs is non-empty (no closures).
+    let mut activation_vid: Option<ValueId> = None;
+
     // For exception handler entry blocks, record the param values.
     for &start in &exception_entries {
         if let Some(&block) = block_map.get(&start) {
@@ -205,6 +230,8 @@ pub fn translate_method_body(
             inner_functions,
             &mut class_value_hints,
             &activation_slot_names,
+            &activation_allocs,
+            &mut activation_vid,
         );
     }
 
@@ -580,6 +607,8 @@ fn translate_op(
     inner_functions: &mut Vec<Function>,
     class_value_hints: &mut HashMap<ValueId, String>,
     activation_slot_names: &HashMap<u32, String>,
+    activation_allocs: &HashMap<u32, ValueId>,
+    activation_vid: &mut Option<ValueId>,
 ) {
     let pool = &abc.constant_pool;
     let loc = &ops[op_idx];
@@ -1121,21 +1150,43 @@ fn translate_op(
         }
         Op::GetSlot { index } => {
             if let Some(obj) = stack.pop() {
-                let slot_name = activation_slot_names
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_else(|| format!("slot{index}"));
-                let v = fb.get_field(obj, &slot_name, Type::Dynamic);
-                stack.push(v);
+                if *activation_vid == Some(obj) {
+                    if let Some(&alloc) = activation_allocs.get(index) {
+                        let v = fb.load(alloc, Type::Dynamic);
+                        stack.push(v);
+                    } else {
+                        // Unknown activation slot — fall back to field access.
+                        let slot_name = format!("slot{index}");
+                        let v = fb.get_field(obj, &slot_name, Type::Dynamic);
+                        stack.push(v);
+                    }
+                } else {
+                    // Non-activation GetSlot (e.g. on a class instance).
+                    let slot_name = activation_slot_names
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| format!("slot{index}"));
+                    let v = fb.get_field(obj, &slot_name, Type::Dynamic);
+                    stack.push(v);
+                }
             }
         }
         Op::SetSlot { index } => {
             if let (Some(val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let slot_name = activation_slot_names
-                    .get(index)
-                    .cloned()
-                    .unwrap_or_else(|| format!("slot{index}"));
-                fb.set_field(obj, &slot_name, val);
+                if *activation_vid == Some(obj) {
+                    if let Some(&alloc) = activation_allocs.get(index) {
+                        fb.store(alloc, val);
+                    } else {
+                        let slot_name = format!("slot{index}");
+                        fb.set_field(obj, &slot_name, val);
+                    }
+                } else {
+                    let slot_name = activation_slot_names
+                        .get(index)
+                        .cloned()
+                        .unwrap_or_else(|| format!("slot{index}"));
+                    fb.set_field(obj, &slot_name, val);
+                }
             }
         }
         Op::GetGlobalSlot { index } => {
@@ -1396,7 +1447,14 @@ fn translate_op(
             stack.push(v);
         }
         Op::NewActivation => {
+            // Always emit the activation SystemCall so scope-chain access
+            // (PushScope/GetScopeObject/GetProperty) still works.
             let v = fb.system_call("Flash.Scope", "newActivation", &[], Type::Dynamic);
+            if !activation_allocs.is_empty() {
+                // No closures: GetSlot/SetSlot will use per-slot Allocs instead.
+                // Track the activation ValueId so we can intercept those ops.
+                *activation_vid = Some(v);
+            }
             stack.push(v);
         }
         Op::NewFunction { index } => {

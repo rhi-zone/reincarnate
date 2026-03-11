@@ -4487,8 +4487,8 @@ fn rewrite_stateful_calls_expr(
         JsExpr::Literal(_)
         | JsExpr::Var(_)
         | JsExpr::This
-        | JsExpr::SuperGet(_)
-        | JsExpr::Activation => {}
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => {}
     }
 }
 
@@ -4688,8 +4688,8 @@ fn prepend_rt_arg_expr(expr: &mut JsExpr, free_func_names: &HashSet<String>, fro
         JsExpr::Literal(_)
         | JsExpr::Var(_)
         | JsExpr::This
-        | JsExpr::SuperGet(_)
-        | JsExpr::Activation => {}
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => {}
     }
 }
 

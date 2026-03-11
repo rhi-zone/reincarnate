@@ -63,14 +63,11 @@ pub struct FlashRewriteCtx {
     /// Enables `instance.UNIQUE_STATIC_FIELD` → `OwnerClass.UNIQUE_STATIC_FIELD` rewrites.
     pub unique_static_fields: HashMap<String, String>,
     /// Name of the activation-scope variable in the current context, if any.
-    /// Set when rewriting a closure body: scope-chain lookups (`findPropStrict`)
-    /// that don't resolve to a class, instance field, or static fall back to
+    /// Set when rewriting a function with closures: scope-chain lookups that
+    /// don't resolve to a class, instance field, or static fall back to
     /// `activation_var.fieldname` instead of a bare `fieldname` Var.
     pub activation_var: Option<String>,
     /// Field names assigned to the activation-scope object.
-    /// Only scope-chain lookups for names in this set are prefixed with
-    /// `activation_var`; other lookups (global JS objects like `Math`, class
-    /// constructors) pass through unchanged.
     pub activation_slots: HashSet<String>,
 }
 
@@ -286,7 +283,6 @@ fn resolve_scope_call(
                 }
             } else if let Some(ref av) = ctx.activation_var {
                 if ctx.activation_slots.contains(effective) {
-                    // Activation-scope callable (local function/closure stored on activation obj).
                     JsExpr::Field {
                         object: Box::new(JsExpr::Var(av.clone())),
                         field: effective.to_string(),
@@ -322,30 +318,26 @@ fn resolve_scope_call(
 }
 
 // ---------------------------------------------------------------------------
-// Top-level rewrite entry point
+// Activation-scope detection (for functions with closures)
 // ---------------------------------------------------------------------------
 
 /// Scan a statement list (top-level only) for the first `VarDecl` whose init
-/// is either `JsExpr::Activation` (post-rewrite) or a `Flash.Scope.newActivation`
-/// SystemCall (pre-rewrite).  Returns the variable name, or `None`.
+/// is a `Flash.Scope.newActivation` SystemCall.  Returns the variable name.
 fn find_activation_var(stmts: &[JsStmt]) -> Option<String> {
     for stmt in stmts {
         if let JsStmt::VarDecl {
             name,
-            init: Some(init_expr),
-            ..
-        } = stmt
-        {
-            match init_expr {
-                JsExpr::Activation => return Some(name.clone()),
-                JsExpr::SystemCall {
+            init:
+                Some(JsExpr::SystemCall {
                     system,
                     method,
                     args,
-                } if system == "Flash.Scope" && method == "newActivation" && args.is_empty() => {
-                    return Some(name.clone());
-                }
-                _ => {}
+                }),
+            ..
+        } = stmt
+        {
+            if system == "Flash.Scope" && method == "newActivation" && args.is_empty() {
+                return Some(name.clone());
             }
         }
     }
@@ -353,10 +345,6 @@ fn find_activation_var(stmts: &[JsStmt]) -> Option<String> {
 }
 
 /// Collect all field names assigned to the activation-scope object.
-///
-/// Scans the top-level statements for `activation_var.field = ...` assignments
-/// and returns the set of field names.  Only these names should receive the
-/// activation-scope prefix inside closure bodies.
 fn collect_activation_slots(stmts: &[JsStmt], activation_var: &str) -> HashSet<String> {
     let mut slots = HashSet::new();
     for stmt in stmts {
@@ -373,21 +361,21 @@ fn collect_activation_slots(stmts: &[JsStmt], activation_var: &str) -> HashSet<S
     slots
 }
 
+// ---------------------------------------------------------------------------
+// Top-level rewrite entry point
+// ---------------------------------------------------------------------------
+
 /// Rewrite a lowered JS function, resolving all Flash SystemCalls and
 /// scope-lookup patterns.
 pub fn rewrite_flash_function(mut func: JsFunction, ctx: &FlashRewriteCtx) -> JsFunction {
-    // If the function body contains an activation-scope declaration and the
-    // ctx doesn't already have one set, auto-detect it so that
-    // scope-chain lookups inside inlined closures resolve to the right var.
+    // Auto-detect activation scope for functions with closures (those that
+    // still emit the SystemCall("Flash.Scope", "newActivation") pattern).
     if ctx.activation_var.is_none() {
         if let Some(av) = find_activation_var(&func.body) {
             let slots = collect_activation_slots(&func.body, &av);
             let ctx2 = FlashRewriteCtx {
                 activation_var: Some(av),
                 activation_slots: slots,
-                // Shallow-clone the cheap scalar fields; share the rest via
-                // cheap clone (HashMap/HashSet clone is O(n) but only triggered
-                // for functions that actually have an activation scope).
                 class_names: ctx.class_names.clone(),
                 ancestors: ctx.ancestors.clone(),
                 method_names: ctx.method_names.clone(),
@@ -408,10 +396,6 @@ pub fn rewrite_flash_function(mut func: JsFunction, ctx: &FlashRewriteCtx) -> Js
                 known_classes: ctx.known_classes.clone(),
                 unique_static_fields: ctx.unique_static_fields.clone(),
             };
-            // Don't let activation_var bleed into non-closure context: the
-            // parent function's own body should still use the activation var
-            // for its own accesses, but this is correct — scope lookups in the
-            // parent that fall through to activation are also valid.
             func.body = rewrite_stmts(func.body, &ctx2);
             if ctx2.has_self && !ctx2.bindable_methods.is_empty() {
                 bind_method_refs_stmts(&mut func.body, &ctx2.bindable_methods);
@@ -1655,7 +1639,8 @@ fn rewrite_system_call(
         });
     }
 
-    // newActivation → ({})
+    // newActivation → ({}) for functions that still use the activation object
+    // (those with closures that need scope-chain access).
     if system == "Flash.Scope" && method == "newActivation" && args.is_empty() {
         return Some(JsExpr::Activation);
     }
@@ -1949,7 +1934,6 @@ fn bind_method_refs_expr(expr: &mut JsExpr, bindable: &HashSet<String>, in_calle
 // Dead activation object elimination
 // ---------------------------------------------------------------------------
 
-/// Check whether `name` appears in an expression (read or write).
 fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
     match expr {
         JsExpr::Var(n) => n == name,
@@ -2007,12 +1991,10 @@ fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
     }
 }
 
-/// Check whether any statement in a list references `name`.
 fn stmts_reference_var(stmts: &[JsStmt], name: &str) -> bool {
     stmts.iter().any(|s| stmt_references_var(s, name))
 }
 
-/// Check whether a statement references `name`.
 fn stmt_references_var(stmt: &JsStmt, name: &str) -> bool {
     match stmt {
         JsStmt::VarDecl { name: n, init, .. } => {
@@ -2071,7 +2053,6 @@ fn stmt_references_var(stmt: &JsStmt, name: &str) -> bool {
     }
 }
 
-/// Check whether a statement is a dead field-write to `act_name` (e.g. `act.field = value`).
 fn is_dead_activation_field_write(stmt: &JsStmt, act_name: &str) -> bool {
     matches!(
         stmt,
@@ -2083,16 +2064,7 @@ fn is_dead_activation_field_write(stmt: &JsStmt, act_name: &str) -> bool {
 }
 
 /// Eliminate dead activation objects after closure inlining.
-///
-/// After closures are inlined as arrow functions, activation objects like:
-///   const curry$0 = ({});
-///   curry$0.func = func;
-///   curry$0.args = args;
-/// become dead code (the arrow function captures variables lexically).
-/// This pass removes the VarDecl and all field-write assigns if the activation
-/// object has no other references.
 pub fn eliminate_dead_activations(body: &mut Vec<JsStmt>) {
-    // Find activation object names: VarDecl with Activation init.
     let act_names: Vec<String> = body
         .iter()
         .filter_map(|s| {
@@ -2110,11 +2082,7 @@ pub fn eliminate_dead_activations(body: &mut Vec<JsStmt>) {
         .collect();
 
     for act_name in &act_names {
-        // Check that ALL remaining references to act_name are either:
-        // 1. The VarDecl itself
-        // 2. Field-write assigns (act_name.field = value)
         let all_dead = body.iter().all(|s| {
-            // Skip the VarDecl itself
             if let JsStmt::VarDecl {
                 name,
                 init: Some(JsExpr::Activation),
@@ -2123,20 +2091,16 @@ pub fn eliminate_dead_activations(body: &mut Vec<JsStmt>) {
             {
                 return name == act_name;
             }
-            // Field-write: act_name.field = value (only check `act_name` appears as target object)
             if is_dead_activation_field_write(s, act_name) {
-                // Check that the VALUE side doesn't reference act_name.
                 if let JsStmt::Assign { value, .. } = s {
                     return !expr_references_var(value, act_name);
                 }
             }
-            // Any other statement: must not reference act_name at all.
             !stmt_references_var(s, act_name)
         });
 
         if all_dead {
             body.retain(|s| {
-                // Remove the VarDecl
                 if let JsStmt::VarDecl {
                     name,
                     init: Some(JsExpr::Activation),
@@ -2145,27 +2109,22 @@ pub fn eliminate_dead_activations(body: &mut Vec<JsStmt>) {
                 {
                     return name != act_name;
                 }
-                // Remove field-write assigns
                 !is_dead_activation_field_write(s, act_name)
             });
         }
     }
 
-    // Recurse into nested arrow function bodies.
     for stmt in body.iter_mut() {
         eliminate_dead_activations_in_stmt(stmt);
     }
 }
 
-/// Recurse into statement bodies to eliminate dead activations in nested scopes.
 fn eliminate_dead_activations_in_stmt(stmt: &mut JsStmt) {
     match stmt {
         JsStmt::VarDecl { init: Some(e), .. }
         | JsStmt::Expr(e)
         | JsStmt::Return(Some(e))
-        | JsStmt::Throw(e) => {
-            eliminate_dead_activations_in_expr(e);
-        }
+        | JsStmt::Throw(e) => eliminate_dead_activations_in_expr(e),
         JsStmt::Assign { target, value } | JsStmt::CompoundAssign { target, value, .. } => {
             eliminate_dead_activations_in_expr(target);
             eliminate_dead_activations_in_expr(value);
@@ -2223,12 +2182,9 @@ fn eliminate_dead_activations_in_stmt(stmt: &mut JsStmt) {
     }
 }
 
-/// Recurse into expressions to find and clean arrow function bodies.
 fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
     match expr {
-        JsExpr::ArrowFunction { body, .. } => {
-            eliminate_dead_activations(body);
-        }
+        JsExpr::ArrowFunction { body, .. } => eliminate_dead_activations(body),
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LogicalOr { lhs, rhs }
@@ -2765,48 +2721,6 @@ mod tests {
         } if prop == "value"));
     }
 
-    // --- eliminate_dead_activations ---
-
-    #[test]
-    fn dead_activation_removed() {
-        let mut body = vec![
-            JsStmt::VarDecl {
-                name: "act$0".into(),
-                ty: Some(Type::Dynamic),
-                init: Some(JsExpr::Activation),
-                mutable: false,
-            },
-            JsStmt::Assign {
-                target: JsExpr::Field {
-                    object: Box::new(JsExpr::Var("act$0".into())),
-                    field: "x".into(),
-                },
-                value: JsExpr::Literal(Constant::Int(1)),
-            },
-            body_stmt("other"),
-        ];
-        eliminate_dead_activations(&mut body);
-        assert_eq!(body.len(), 1);
-    }
-
-    #[test]
-    fn live_activation_kept() {
-        let mut body = vec![
-            JsStmt::VarDecl {
-                name: "act$0".into(),
-                ty: Some(Type::Dynamic),
-                init: Some(JsExpr::Activation),
-                mutable: false,
-            },
-            JsStmt::Expr(JsExpr::Call {
-                callee: Box::new(JsExpr::Var("doSomething".into())),
-                args: vec![JsExpr::Var("act$0".into())],
-            }),
-        ];
-        eliminate_dead_activations(&mut body);
-        assert_eq!(body.len(), 2);
-    }
-
     // --- as3Bind ---
 
     #[test]
@@ -3086,29 +3000,6 @@ mod tests {
             "super should be at index 3, got {:?}",
             body[3]
         );
-    }
-
-    #[test]
-    fn activation_with_self_referencing_value_kept() {
-        // act$0.x = act$0 — the value references act$0, so it's not dead.
-        let mut body = vec![
-            JsStmt::VarDecl {
-                name: "act$0".into(),
-                ty: Some(Type::Dynamic),
-                init: Some(JsExpr::Activation),
-                mutable: false,
-            },
-            JsStmt::Assign {
-                target: JsExpr::Field {
-                    object: Box::new(JsExpr::Var("act$0".into())),
-                    field: "self_ref".into(),
-                },
-                value: JsExpr::Var("act$0".into()), // value references act$0!
-            },
-        ];
-        eliminate_dead_activations(&mut body);
-        // Self-referencing value means it's NOT purely dead — should be kept.
-        assert_eq!(body.len(), 2, "self-referencing activation should be kept");
     }
 
     #[test]

@@ -153,18 +153,14 @@ All of the following violate it and need to move to the respective frontend crat
   a `Module::metadata: HashMap<String, Box<dyn Any>>` typed-extension slot. Track: every
   new `Module` field added for a new engine is a regression.
 
-- [ ] **Flash `NewActivation` emitted as `Record<string,any>` heap object — wrong IR.**
-  `Op::SystemCall("Flash.Scope", "newActivation")` → `({})` in the emitter produces
-  `const v10: Record<string,any> = ({})` followed by property accesses. But activation
-  record slots have statically-known names (from `MethodBody.traits`) and types (from
-  the AVM2 trait table). The correct IR: emit one `Op::Alloc(slotType)` per slot, map
-  `GetSlot(obj, i)` → `Op::Load(alloc_i)`, `SetSlot(obj, i, v)` → `Op::Store(alloc_i, v)`.
-  Mem2Reg promotes them to SSA; closures capture them via `MakeClosure.captures`. The
-  `Record<string,any>` pattern disappears entirely, along with the `find_activation_var` /
-  `collect_activation_slots` / `activation_var` fields in `FlashRewriteCtx` which exist
-  only to paper over the defective representation.
-  **Impact:** This is the single change that would most improve Flash output readability.
-  `StyleManager.registerInstance` goes from 40 impenetrable lines to ~15 natural ones.
+- [x] **Flash `NewActivation` emitted as `Record<string,any>` heap object — wrong IR.**
+  *(2026-03-11)* For functions without closures: frontend emits `Alloc` per activation slot,
+  intercepts `GetSlot`/`SetSlot` → `Load`/`Store`. Mem2Reg promotes to SSA locals.
+  `eliminate_dead_activations` removes the now-unread activation object. Zero `newActivation`
+  calls in emitted output; all activation slots are direct `let` declarations.
+  Functions WITH closures retain `SystemCall("Flash.Scope","newActivation")` + backend
+  rewrite pipeline — closures need the scope-chain object until `MakeClosure.captures`
+  is implemented.
 
 - [ ] **`emit.rs` Flash contamination — remaining `EngineKind::Flash` branches.**
   Found in 2026-03-11 audit. **8/9 items addressed (2026-03-11)**:

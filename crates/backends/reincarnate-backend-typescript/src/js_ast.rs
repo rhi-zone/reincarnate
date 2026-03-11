@@ -141,6 +141,7 @@ pub enum JsExpr {
         value: Box<JsExpr>,
     },
     /// Activation object: `({})`.
+    /// Only emitted for functions with closures that need scope-chain access.
     Activation,
     /// Arrow function: `(params) => { body }`.
     ArrowFunction {

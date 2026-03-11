@@ -746,9 +746,9 @@ fn print_expr(expr: &JsExpr) -> String {
         }
 
         JsExpr::Field { object, field } => {
-            // AS3 activation objects and empty object literals have no index signature;
+            // Activation objects and empty object literals have no index signature;
             // accessing dynamic properties on them causes TS2339. Cast to
-            // Record<string, any> so the access type-checks. Activation prints as `({})`.
+            // Record<string, any> so the access type-checks.
             let is_bare_obj = matches!(object.as_ref(), JsExpr::Activation)
                 || matches!(object.as_ref(), JsExpr::ObjectInit(p) if p.is_empty());
             let obj_str = if is_bare_obj {
