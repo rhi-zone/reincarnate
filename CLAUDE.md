@@ -40,6 +40,14 @@ These are invariant. When a violation appears, adjust the law — don't add a co
 
 **Do the work properly.** When asked to analyze X, actually read X — don't synthesize from conversation.
 
+## Operating Principles
+
+These define how the agent thinks, not just what it does. Violations of these principles produce subtly wrong code even when individual rules are followed.
+
+- **Never work around anything.** A workaround is any change that avoids fixing the actual problem. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both layers in TODO.md and leave the code unchanged. "Special handling in the emitter" is a workaround. "Fix the pass that produces wrong output" is a fix. The distinction: does the change make the system more correct, or does it hide that the system is wrong?
+- **Friction is a maintainability signal.** When a fix is awkward, the awkwardness is information. A one-line fix that requires understanding five layers of context means those layers are poorly factored. A type that's a `Vec<(String, Type, Option<Constant>, bool)>` instead of a struct means someone optimized for writing speed over reading speed. When you encounter friction, ask: *what is wrong with the design that makes this hard?* — then fix that, or document it. Don't push through friction silently.
+- **Question existing code.** Code you wrote last session is not more trustworthy than code a stranger wrote. Before building on top of existing abstractions, ask whether the abstraction is correct. Before reusing a pattern, ask whether the pattern is good. "It already works this way" is not evidence that it should work this way. If existing code uses strings where it should use enums, or tuples where it should use structs, or puts engine-specific logic in engine-agnostic code — that's a bug in the existing code, not a constraint to work within.
+
 ## Behavioral Patterns
 
 - **Implement fully.** Test projects are examples, not the spec — fix the entire class, not just the case that blew up. In a multi-stage pipeline, check all stages before closing a task. Every API method, even ones no test game uses, belongs in the runtime.
