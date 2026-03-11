@@ -56,13 +56,16 @@ fn lowering_config_for_engine(
     engine: EngineKind,
 ) -> std::borrow::Cow<'_, LoweringConfig> {
     let needs_flash = engine == EngineKind::Flash
-        && (config.scope_lookup_systems.is_empty() || !config.foreach_rewrite);
+        && (config.scope_lookup_systems.is_empty()
+            || !config.foreach_rewrite
+            || !config.construct_string_coerce);
     let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
     if needs_flash || needs_gml {
         let mut c = config.clone();
         if needs_flash {
             c.scope_lookup_systems = vec!["Flash.Scope".to_string()];
             c.foreach_rewrite = true;
+            c.construct_string_coerce = true;
         }
         if needs_gml {
             c.wrap_class_refs_as_any = true;
@@ -652,7 +655,13 @@ fn build_method_name_sets(
                                         names.insert(prop.to_string());
                                     }
                                 }
-                                _ => {}
+                                // Other method kinds don't contribute bare property names.
+                                MethodKind::Free
+                                | MethodKind::Constructor
+                                | MethodKind::Instance
+                                | MethodKind::Static
+                                | MethodKind::StaticInit
+                                | MethodKind::Closure => {}
                             }
                         }
                     }
@@ -1992,7 +2001,51 @@ fn collect_call_names_from_funcs<'a>(
                 Op::Cast(_, Type::UInt(32), CastKind::Coerce) => {
                     used.insert("uint".to_string());
                 }
-                _ => {}
+                // Non-Coerce casts and casts to other types don't introduce free function calls.
+                Op::Cast(..) => {}
+                // Ops that don't introduce runtime free-function imports:
+                Op::Const(_)
+                | Op::Add(..)
+                | Op::Sub(..)
+                | Op::Mul(..)
+                | Op::Div(..)
+                | Op::Rem(..)
+                | Op::Neg(_)
+                | Op::BitAnd(..)
+                | Op::BitOr(..)
+                | Op::BitXor(..)
+                | Op::BitNot(_)
+                | Op::Shl(..)
+                | Op::Shr(..)
+                | Op::Cmp(..)
+                | Op::Not(_)
+                | Op::BoolAnd(..)
+                | Op::BoolOr(..)
+                | Op::Select { .. }
+                | Op::Br { .. }
+                | Op::BrIf { .. }
+                | Op::Switch { .. }
+                | Op::Return(_)
+                | Op::Alloc(_)
+                | Op::Load(_)
+                | Op::Store { .. }
+                | Op::GetField { .. }
+                | Op::SetField { .. }
+                | Op::GetIndex { .. }
+                | Op::SetIndex { .. }
+                | Op::MakeClosure { .. }
+                | Op::CallIndirect { .. }
+                | Op::SystemCall { .. }
+                | Op::MethodCall { .. }
+                | Op::TypeCheck(..)
+                | Op::StructInit { .. }
+                | Op::ArrayInit(_)
+                | Op::TupleInit(_)
+                | Op::Yield(_)
+                | Op::CoroutineCreate { .. }
+                | Op::CoroutineResume(_)
+                | Op::Spread(_)
+                | Op::Copy(_) => {}
             }
         }
     }
@@ -2490,7 +2543,12 @@ fn collect_type_refs_from_function(
                             );
                         }
                     }
-                    _ => {}
+                    // Flash scope lookups handled above; other Flash/Twine SystemCalls
+                    // don't introduce class-constructor imports.
+                    EngineKind::Flash | EngineKind::Twine => {}
+                    // GameMaker SystemCalls not matching the Instance guard above
+                    // don't introduce class-constructor imports.
+                    EngineKind::GameMaker => {}
                 }
             }
             // GlobalRef to a known class (OBJT in GameMaker) → class constructor
@@ -2505,7 +2563,49 @@ fn collect_type_refs_from_function(
                     &mut refs.ext_value_refs,
                 );
             }
-            _ => {}
+            // GlobalRef to a non-class name — no type reference to collect.
+            Op::GlobalRef(_) => {}
+            // Ops that don't contain type references requiring imports.
+            // (Type info from these flows through value_types, handled below.)
+            Op::Const(_)
+            | Op::Add(..)
+            | Op::Sub(..)
+            | Op::Mul(..)
+            | Op::Div(..)
+            | Op::Rem(..)
+            | Op::Neg(_)
+            | Op::BitAnd(..)
+            | Op::BitOr(..)
+            | Op::BitXor(..)
+            | Op::BitNot(_)
+            | Op::Shl(..)
+            | Op::Shr(..)
+            | Op::Cmp(..)
+            | Op::Not(_)
+            | Op::BoolAnd(..)
+            | Op::BoolOr(..)
+            | Op::Select { .. }
+            | Op::Br { .. }
+            | Op::BrIf { .. }
+            | Op::Switch { .. }
+            | Op::Return(_)
+            | Op::Load(_)
+            | Op::Store { .. }
+            | Op::SetField { .. }
+            | Op::GetIndex { .. }
+            | Op::SetIndex { .. }
+            | Op::Call { .. }
+            | Op::MakeClosure { .. }
+            | Op::CallIndirect { .. }
+            | Op::MethodCall { .. }
+            | Op::StructInit { .. }
+            | Op::ArrayInit(_)
+            | Op::TupleInit(_)
+            | Op::Yield(_)
+            | Op::CoroutineCreate { .. }
+            | Op::CoroutineResume(_)
+            | Op::Spread(_)
+            | Op::Copy(_) => {}
         }
     }
 
@@ -2604,7 +2704,16 @@ fn collect_type_ref(
                 collect_type_ref(t, self_name, registry, external_imports, refs, ext_refs);
             }
         }
-        _ => {}
+        // Primitive and leaf types — no type references to collect.
+        Type::Void
+        | Type::Bool
+        | Type::Int(_)
+        | Type::UInt(_)
+        | Type::Float(_)
+        | Type::String
+        | Type::Var(_)
+        | Type::Dynamic
+        | Type::Unknown => {}
     }
 }
 
@@ -2634,7 +2743,23 @@ fn collect_global_type_imports(ty: &Type, registry: &ClassRegistry, refs: &mut B
                 collect_global_type_imports(p, registry, refs);
             }
         }
-        _ => {}
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => {
+            collect_global_type_imports(yield_ty, registry, refs);
+            collect_global_type_imports(return_ty, registry, refs);
+        }
+        // Primitive and leaf types — no class imports to collect.
+        Type::Void
+        | Type::Bool
+        | Type::Int(_)
+        | Type::UInt(_)
+        | Type::Float(_)
+        | Type::String
+        | Type::Var(_)
+        | Type::Dynamic
+        | Type::Unknown => {}
     }
 }
 
@@ -2662,7 +2787,23 @@ fn collect_all_struct_names(ty: &Type, refs: &mut BTreeSet<String>) {
                 collect_all_struct_names(p, refs);
             }
         }
-        _ => {}
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => {
+            collect_all_struct_names(yield_ty, refs);
+            collect_all_struct_names(return_ty, refs);
+        }
+        // Primitive and leaf types — no struct/enum names to collect.
+        Type::Void
+        | Type::Bool
+        | Type::Int(_)
+        | Type::UInt(_)
+        | Type::Float(_)
+        | Type::String
+        | Type::Var(_)
+        | Type::Dynamic
+        | Type::Unknown => {}
     }
 }
 
@@ -2999,7 +3140,22 @@ fn rewrite_late_bound_stmt(
                 rewrite_late_bound_types(stmts, late_bound, short_to_qualified);
             }
         }
-        _ => {}
+        JsStmt::Switch {
+            cases,
+            default_body,
+            ..
+        } => {
+            for (_, body) in cases {
+                rewrite_late_bound_types(body, late_bound, short_to_qualified);
+            }
+            rewrite_late_bound_types(default_body, late_bound, short_to_qualified);
+        }
+        // Remaining leaf statements — no nested type references to rewrite.
+        JsStmt::VarDecl { init: None, .. }
+        | JsStmt::Return(None)
+        | JsStmt::Break
+        | JsStmt::Continue
+        | JsStmt::LabeledBreak { .. } => {}
     }
 }
 
@@ -3360,7 +3516,26 @@ fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &HashSet<Str
                     rewrite_global_assignments(stmts, mutable_globals);
                 }
             }
-            _ => {}
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, body) in cases {
+                    rewrite_global_assignments(body, mutable_globals);
+                }
+                rewrite_global_assignments(default_body, mutable_globals);
+            }
+            // Leaf statements and non-matching forms — no nested assignments to rewrite.
+            JsStmt::VarDecl { .. }
+            | JsStmt::Assign { .. }
+            | JsStmt::CompoundAssign { .. }
+            | JsStmt::Expr(_)
+            | JsStmt::Return(_)
+            | JsStmt::Break
+            | JsStmt::Continue
+            | JsStmt::LabeledBreak { .. }
+            | JsStmt::Throw(_) => {}
         }
     }
 }
@@ -3799,7 +3974,13 @@ fn emit_class(
                     param_strs.join(", ")
                 );
             }
-            _ => {}
+            // Abstract members are only Getter, Setter, or Instance — other kinds
+            // (Free, Constructor, Static, StaticInit, Closure) don't appear here.
+            MethodKind::Free
+            | MethodKind::Constructor
+            | MethodKind::Static
+            | MethodKind::StaticInit
+            | MethodKind::Closure => {}
         }
     }
     let has_fields = !group.struct_def.fields.is_empty()

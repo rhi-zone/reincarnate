@@ -2453,22 +2453,25 @@ impl<'a> EmitCtx<'a> {
         }
     }
 
-    /// Wraps `Flash.Object.construct(...)` with `.toString()` when the IR result
+    /// Wraps a `SystemCall` `construct` op with `.toString()` when the IR result
     /// type is `String`.  In AS3, constructing `XML`/`XMLList` from a string
     /// implicitly coerces the result to a string.  The IR captures this as a
     /// `String` result type on the `SystemCall`, but the TypeScript backend rewrites
-    /// `construct` to `new XML(...)` whose TypeScript type is `XML`, not `string`.
+    /// `construct` to `new XML(...)` whose TS type is `XML`, not `string`.
     /// Inserting `.toString()` here restores the correct string type and avoids
     /// TS2345/TS2322 errors at call sites.
     ///
-    /// Only fires for `Flash.Object.construct` with a `String` result type; dead
-    /// code for every other engine and every non-string-coerced Flash construct.
-    fn xml_construct_string_coerce(result_ty: &Type, op: &Op, expr: Expr) -> Expr {
+    /// Only fires when `LoweringConfig::construct_string_coerce` is `true`
+    /// (set by the Flash backend).  Other engines never produce this pattern.
+    fn construct_string_coerce(enabled: bool, result_ty: &Type, op: &Op, expr: Expr) -> Expr {
+        if !enabled {
+            return expr;
+        }
         if !matches!(result_ty, Type::String) {
             return expr;
         }
-        if let Op::SystemCall { system, method, .. } = op {
-            if system == "Flash.Object" && method == "construct" {
+        if let Op::SystemCall { method, .. } = op {
+            if method == "construct" {
                 return Expr::MethodCall {
                     receiver: Box::new(expr),
                     method: "toString".into(),
@@ -2550,7 +2553,12 @@ impl<'a> EmitCtx<'a> {
             .build_expr_from_op(&op_clone)
             .unwrap_or_else(|| Expr::Var(self.value_name(result)));
         let result_ty = self.func.value_types[result].clone();
-        let expr = Self::xml_construct_string_coerce(&result_ty, &op_clone, expr);
+        let expr = Self::construct_string_coerce(
+            self.config.construct_string_coerce,
+            &result_ty,
+            &op_clone,
+            expr,
+        );
         let side_effecting = is_side_effecting_op(&op_clone);
 
         if count == 0 && side_effecting {

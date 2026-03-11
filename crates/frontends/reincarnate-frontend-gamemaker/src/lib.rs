@@ -219,6 +219,19 @@ impl Frontend for GameMakerFrontend {
             ("GameMaker.Global".into(), "get".into()),
             SystemCallTypeRule::ResolveGlobalType,
         );
+        module.system_call_type_rules.insert(
+            ("GameMaker.Global".into(), "set".into()),
+            SystemCallTypeRule::GlobalStore {
+                name_arg: 0,
+                value_arg: 1,
+            },
+        );
+
+        // Register callback-return system calls for the GML engine.
+        // withInstances callbacks hide the real return value from the outer function.
+        module
+            .callback_return_calls
+            .insert(("GameMaker.Instance".into(), "withInstances".into()), ());
 
         let obj_names_set: HashSet<String> = obj_names.iter().cloned().collect();
 

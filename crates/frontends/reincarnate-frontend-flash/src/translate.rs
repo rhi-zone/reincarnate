@@ -232,7 +232,7 @@ pub fn translate_method_body(
             &activation_slot_names,
             &activation_allocs,
             &mut activation_vid,
-        );
+        )?;
     }
 
     // Infer names for unnamed parameters (methods without Op::Debug info).
@@ -561,28 +561,34 @@ fn resolve_property(
     pool: &swf::avm2::types::ConstantPool,
     index: &swf::avm2::types::Index<swf::avm2::types::Multiname>,
     stack: &mut Vec<ValueId>,
-) -> PropertyAccess {
+) -> Result<PropertyAccess, String> {
     match classify_multiname(pool, index) {
-        MultinameKind::Named(name) => PropertyAccess::Named(name),
+        MultinameKind::Named(name) => Ok(PropertyAccess::Named(name)),
         MultinameKind::RuntimeNs(name) => {
             // Pop the namespace value from the stack and discard it.
             stack.pop();
-            PropertyAccess::Named(name)
+            Ok(PropertyAccess::Named(name))
         }
         MultinameKind::RuntimeName => {
             // Pop the name/index value from the stack.
-            let idx = stack
-                .pop()
-                .unwrap_or_else(|| panic!("stack underflow for RuntimeName"));
-            PropertyAccess::Indexed(idx)
+            let idx = stack.pop().ok_or_else(|| {
+                format!(
+                    "stack underflow for RuntimeName at multiname index {}",
+                    index.0
+                )
+            })?;
+            Ok(PropertyAccess::Indexed(idx))
         }
         MultinameKind::RuntimeBoth => {
             // Pop name first, then namespace (AVM2 stack order).
-            let idx = stack
-                .pop()
-                .unwrap_or_else(|| panic!("stack underflow for RuntimeBoth name"));
+            let idx = stack.pop().ok_or_else(|| {
+                format!(
+                    "stack underflow for RuntimeBoth name at multiname index {}",
+                    index.0
+                )
+            })?;
             stack.pop(); // namespace, discard
-            PropertyAccess::Indexed(idx)
+            Ok(PropertyAccess::Indexed(idx))
         }
     }
 }
@@ -609,7 +615,7 @@ fn translate_op(
     activation_slot_names: &HashMap<u32, String>,
     activation_allocs: &HashMap<u32, ValueId>,
     activation_vid: &mut Option<ValueId>,
-) {
+) -> Result<(), String> {
     let pool = &abc.constant_pool;
     let loc = &ops[op_idx];
     match &loc.op {
@@ -1110,7 +1116,7 @@ fn translate_op(
         // Property access
         // ====================================================================
         Op::GetProperty { index } => {
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 let v = match prop {
                     PropertyAccess::Named(name) => fb.get_field(obj, &name, Type::Dynamic),
@@ -1124,7 +1130,7 @@ fn translate_op(
             // Pop value first, then resolve multiname (may pop runtime name),
             // then pop object.
             let val = stack.pop();
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let (Some(val), Some(obj)) = (val, stack.pop()) {
                 match prop {
                     PropertyAccess::Named(name) => fb.set_field(obj, &name, val),
@@ -1133,7 +1139,7 @@ fn translate_op(
             }
         }
         Op::DeleteProperty { index } => {
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 let key_val = match prop {
                     PropertyAccess::Named(name) => fb.const_string(&name),
@@ -1202,7 +1208,7 @@ fn translate_op(
             }
         }
         Op::GetSuper { index } => {
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 let name_val = match prop {
                     PropertyAccess::Named(name) => fb.const_string(&name),
@@ -1215,7 +1221,7 @@ fn translate_op(
         Op::SetSuper { index } => {
             // AVM2 stack order: ..., object, [ns], [name], value
             let val = stack.pop();
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let (Some(val), Some(obj)) = (val, stack.pop()) {
                 let name_val = match prop {
                     PropertyAccess::Named(name) => fb.const_string(&name),
@@ -1238,7 +1244,7 @@ fn translate_op(
         // Find property (scope chain)
         // ====================================================================
         Op::FindProperty { index } => {
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             let name_val = match prop {
                 PropertyAccess::Named(name) => fb.const_string(&name),
                 PropertyAccess::Indexed(idx) => idx,
@@ -1247,7 +1253,7 @@ fn translate_op(
             stack.push(v);
         }
         Op::FindPropStrict { index } => {
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             let name_val = match prop {
                 PropertyAccess::Named(ref name) => fb.const_string(name),
                 PropertyAccess::Indexed(idx) => idx,
@@ -1271,7 +1277,7 @@ fn translate_op(
         Op::CallProperty { index, num_args } => {
             let n = *num_args as usize;
             let args = pop_n(stack, n);
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 match prop {
                     PropertyAccess::Named(ref name) if name.starts_with("flash.utils::") => {
@@ -1294,7 +1300,7 @@ fn translate_op(
         Op::CallPropVoid { index, num_args } => {
             let n = *num_args as usize;
             let args = pop_n(stack, n);
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 match prop {
                     PropertyAccess::Named(ref name) if name.starts_with("flash.utils::") => {
@@ -1314,7 +1320,7 @@ fn translate_op(
         Op::CallPropLex { index, num_args } => {
             let n = *num_args as usize;
             let args = pop_n(stack, n);
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 match prop {
                     PropertyAccess::Named(ref name) if name.starts_with("flash.utils::") => {
@@ -1337,7 +1343,7 @@ fn translate_op(
         Op::CallSuper { index, num_args } => {
             let n = *num_args as usize;
             let args = pop_n(stack, n);
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 let name_val = match prop {
                     PropertyAccess::Named(name) => fb.const_string(&name),
@@ -1352,7 +1358,7 @@ fn translate_op(
         Op::CallSuperVoid { index, num_args } => {
             let n = *num_args as usize;
             let args = pop_n(stack, n);
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 let name_val = match prop {
                     PropertyAccess::Named(name) => fb.const_string(&name),
@@ -1408,7 +1414,7 @@ fn translate_op(
         Op::ConstructProp { index, num_args } => {
             let n = *num_args as usize;
             let args = pop_n(stack, n);
-            let prop_access = resolve_property(pool, index, stack);
+            let prop_access = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 let prop = match prop_access {
                     PropertyAccess::Named(name) => fb.get_field(obj, &name, Type::Dynamic),
@@ -1985,7 +1991,7 @@ fn translate_op(
             }
         }
         Op::GetDescendants { index } => {
-            let prop = resolve_property(pool, index, stack);
+            let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
                 let name_val = match prop {
                     PropertyAccess::Named(name) => fb.const_string(&name),
@@ -2052,6 +2058,7 @@ fn translate_op(
             // Could set span info on subsequent instructions, but skip for now.
         }
     }
+    Ok(())
 }
 
 /// Pop N values from the stack (in stack order, so last popped = deepest).

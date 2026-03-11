@@ -531,7 +531,9 @@ fn infer_inst_type(
                         .cloned()
                         .unwrap_or(Type::Dynamic)
                 }
-                None => return None,
+                // GlobalStore is a write-side rule used by build_global_types,
+                // not a result-type rule — no type to infer here.
+                Some(SystemCallTypeRule::GlobalStore { .. }) | None => return None,
             }
         }
 
@@ -564,9 +566,33 @@ fn infer_common_type<'a>(mut types: impl Iterator<Item = &'a Type>) -> Type {
     result
 }
 
-/// Cross-function scan: collect value types from all `SystemCall("GameMaker.Global", "set")`
-/// instructions. Returns a map from global name → inferred type.
+/// Cross-function scan: collect value types from all global-store `SystemCall`
+/// instructions (identified via `SystemCallTypeRule::GlobalStore` rules registered
+/// by frontends).  Returns a map from global name → inferred type.
 fn build_global_types(module: &Module) -> HashMap<String, Type> {
+    use crate::ir::module::SystemCallTypeRule;
+
+    // Pre-collect the GlobalStore rules so we can match by (system, method).
+    let store_rules: HashMap<(&str, &str), (usize, usize)> = module
+        .system_call_type_rules
+        .iter()
+        .filter_map(|((sys, meth), rule)| {
+            if let SystemCallTypeRule::GlobalStore {
+                name_arg,
+                value_arg,
+            } = rule
+            {
+                Some(((sys.as_str(), meth.as_str()), (*name_arg, *value_arg)))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if store_rules.is_empty() {
+        return HashMap::new();
+    }
+
     let mut global_stores: HashMap<String, Option<Type>> = HashMap::new();
     for func in module.functions.values() {
         let const_strings: HashMap<ValueId, &str> = func
@@ -587,15 +613,19 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
                 args,
             } = &inst.op
             {
-                if system == "GameMaker.Global" && method == "set" && args.len() == 2 {
-                    if let Some(name) = const_strings.get(&args[0]) {
-                        let value_ty = func.value_types[args[1]].clone();
-                        if value_ty != Type::Dynamic {
-                            let entry = global_stores.entry(name.to_string()).or_insert(None);
-                            match entry {
-                                None => *entry = Some(value_ty),
-                                Some(existing) => {
-                                    *existing = union_type(existing.clone(), value_ty)
+                if let Some(&(name_arg, value_arg)) =
+                    store_rules.get(&(system.as_str(), method.as_str()))
+                {
+                    if name_arg < args.len() && value_arg < args.len() {
+                        if let Some(name) = const_strings.get(&args[name_arg]) {
+                            let value_ty = func.value_types[args[value_arg]].clone();
+                            if value_ty != Type::Dynamic {
+                                let entry = global_stores.entry(name.to_string()).or_insert(None);
+                                match entry {
+                                    None => *entry = Some(value_ty),
+                                    Some(existing) => {
+                                        *existing = union_type(existing.clone(), value_ty)
+                                    }
                                 }
                             }
                         }
@@ -2063,6 +2093,13 @@ mod tests {
         module.system_call_type_rules.insert(
             ("GameMaker.Global".into(), "get".into()),
             SystemCallTypeRule::ResolveGlobalType,
+        );
+        module.system_call_type_rules.insert(
+            ("GameMaker.Global".into(), "set".into()),
+            SystemCallTypeRule::GlobalStore {
+                name_arg: 0,
+                value_arg: 1,
+            },
         );
 
         let transform = TypeInference;

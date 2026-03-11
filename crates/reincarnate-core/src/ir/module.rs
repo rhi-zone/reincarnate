@@ -143,6 +143,12 @@ pub enum SystemCallTypeRule {
     ConstructFromFirstArgType,
     /// First arg is a const string → look up in `Module::globals` → that type.
     ResolveGlobalType,
+    /// This system call stores a value into a global variable.
+    /// `name_arg` is the index of the argument containing the global name
+    /// (a const string), `value_arg` is the index of the argument containing
+    /// the value being stored.  Used by `build_global_types` to collect
+    /// global variable types without hardcoding engine-specific system names.
+    GlobalStore { name_arg: usize, value_arg: usize },
 }
 
 /// A module — the top-level compilation unit.
@@ -220,6 +226,18 @@ pub struct Module {
     /// result types without hardcoding engine-specific dispatch.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub system_call_type_rules: BTreeMap<(String, String), SystemCallTypeRule>,
+    /// System calls whose callbacks hide the real return path.
+    ///
+    /// Functions that call any `(system, method)` in this set may have their
+    /// real return value propagated through a callback side channel (e.g.
+    /// `live_result`), so `infer_bool_return` must not falsely promote the
+    /// outer function's return type to Bool based on visible `Op::Return`
+    /// paths.
+    ///
+    /// GML sets `[("GameMaker.Instance", "withInstances")]`; other engines
+    /// leave this empty.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub callback_return_calls: BTreeMap<(String, String), ()>,
 }
 
 impl Module {
@@ -245,6 +263,7 @@ impl Module {
             passage_sources: BTreeMap::new(),
             passage_storylets: BTreeMap::new(),
             system_call_type_rules: BTreeMap::new(),
+            callback_return_calls: BTreeMap::new(),
         }
     }
 }

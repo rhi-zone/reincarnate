@@ -208,6 +208,15 @@ pub struct LoweringConfig {
     ///
     /// Flash sets this to `true`; all other engines leave it `false`.
     pub foreach_rewrite: bool,
+    /// Insert `.toString()` on `SystemCall` construct ops that produce a String
+    /// result type.  In AS3, constructing `XML`/`XMLList` from a string
+    /// implicitly coerces the result to a string, but the TypeScript backend
+    /// rewrites `construct` to `new XML(...)` whose TS type is `XML`, not
+    /// `string`.  This flag restores the correct string type at the IR-to-AST
+    /// lowering boundary.
+    ///
+    /// Flash sets this to `true`; all other engines leave it `false`.
+    pub construct_string_coerce: bool,
 }
 
 impl Default for LoweringConfig {
@@ -227,6 +236,7 @@ impl LoweringConfig {
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
             foreach_rewrite: false,
+            construct_string_coerce: false,
         }
     }
 
@@ -239,6 +249,7 @@ impl LoweringConfig {
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
             foreach_rewrite: false,
+            construct_string_coerce: false,
         }
     }
 }

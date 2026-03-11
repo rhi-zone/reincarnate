@@ -115,6 +115,7 @@ fn promote_single_store(func: &mut Function) -> bool {
                     store_inst_map.insert(*ptr, inst_id);
                 }
             }
+            // Other ops don't produce Alloc/Store — only those two matter for initial scan.
             _ => {}
         }
     }
@@ -376,6 +377,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                         loads.push((inst_id, blk));
                     }
                 }
+                // Other ops don't affect this alloc's Store/Load tracking.
                 _ => {}
             }
         }
@@ -540,6 +542,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                             dead_insts.insert(inst_id);
                         }
                     }
+                    // Other ops don't participate in the SSA rename for this alloc.
                     _ => {}
                 }
             }

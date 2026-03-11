@@ -74,6 +74,7 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
                                 .push(ty.clone());
                         }
                     }
+                    // Other ops don't produce call sites — only Call and MethodCall do.
                     _ => {}
                 }
             }
