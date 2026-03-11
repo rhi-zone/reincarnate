@@ -222,6 +222,27 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
   `compute_cross_scope_defs` to handle multi-use values, not just SE inlines.
   Also still open: `Parser.ts:603–610` dead assignments in switch arms.
 
+## Next Session: Architecture & Adversarial Audit
+
+Run parallel Opus subagents to audit the entire codebase for:
+
+1. **Architecture drift audit** — Scan all crates for ad hoc patterns that accumulated
+   over time: special-case guards that should be general logic, copy-paste between
+   frontends/backends, Law violations (engine knowledge in core, side channels around
+   IR, mutable module-level state). Check `git blame` for accumulated guards.
+
+2. **Adversarial audit** — Look for: silent failures (stubs returning defaults instead
+   of throwing), suppressed diagnostics (type widening to silence errors instead of
+   fixing inference), dead code paths, unreachable branches, panics that should be
+   Results, TODO comments not tracked in TODO.md.
+
+3. **Cross-crate API surface audit** — Check pub visibility: are internal helpers
+   accidentally public? Are crate boundaries clean? Could any crate be split further?
+
+Each agent writes findings to a scratch file; synthesize into TODO.md entries.
+
+---
+
 ## Developer Experience / Tooling Gaps (HIGH PRIORITY)
 
 - [x] **Session tooling review** — Completed 2026-02-28. Found gaps below (items added as separate entries).
