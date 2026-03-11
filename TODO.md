@@ -352,8 +352,8 @@ remains if edited independently; consider symlink or build-time copy if it recur
 
 ### Test Coverage Gaps (LOW — already partially tracked)
 
-- GML translator: 5 tests for 4021 lines (critical code path, minimal coverage)
-- Flash translator: 4 tests for 2302 lines
+- GML translator: 13 tests for 4021 lines (improved 2026-03-12, up from 5)
+- Flash translator: 14 tests for 2302 lines (improved 2026-03-12, up from 4)
 - GML rewrites: 4 tests for 1482 lines
 - No end-to-end snapshot tests (tracked at "Snapshot tests for both frontends" above)
 
@@ -372,6 +372,22 @@ remains if edited independently; consider symlink or build-time copy if it recur
   (Flash: bool comparisons + void handling; GML: bool arithmetic + block param mismatches).
   Only ~15 lines of `insert_cast_before` helper are duplicated. Not worth extracting until
   a third similar pass emerges.
+
+---
+
+## Warning Diagnostics for Game-Author Bugs
+
+- [ ] **Diagnostic channel for game-author bug warnings** — When a pass detects a
+  game-author bug with one clear correct resolution (e.g., duplicate switch cases,
+  unreachable code after return), emit a warning. Current behavior: we silently
+  preserve the bug per Law 3 (Behavioral Equivalence) but give the modder no
+  indication that the original game had a bug here.
+  - Backend AST pass `try_recover_sequential_ifs`: duplicate case values → skip
+    switch synthesis, but should warn "duplicate case value N at line L"
+  - Existing passes should audit for similar opportunities (dead code, type
+    mismatches that are game-author bugs not inference failures)
+  - Infrastructure: need a `Diagnostic` type (level: Warning/Info, source location,
+    message) threaded through pipeline stages and reported in `check` output
 
 ---
 
@@ -420,25 +436,18 @@ remains if edited independently; consider symlink or build-time copy if it recur
   `resolve_string: &dyn Fn(u32) -> &str` field (or equivalent) so tests can
   construct a `TranslateCtx` without a real `DataWin`.
 
-- [ ] **GML translator unit tests** — Once `DataWin` dependency is narrowed,
-  add regression tests for:
-  - 2D array write stack pop order (`ref_type==0` VARI pops must check
-    `is_2d_array_access` before popping — `dim1` on top, not value)
-  - AVM2 `ref_type==0xA0` singleton field access (no pops)
-  - `argument` variable mapping (`dim1=-1, dim2=N` → `fb.param(offset + N)`)
+- [x] **GML translator unit tests** — 13 tests added (2026-03-12): 2D array write
+  (scalar + non-scalar), compound 2D assignment, argument mapping, PushEnv/PopEnv
+  with-block, self-field read/write, call opcode, arithmetic, cmp, bf→br_if,
+  push string, push double. `DataWin` dependency narrowed via `string_table` field.
 
 ### Flash Translator Tests
 
-- [ ] **Flash translator unit tests** — The `swf` crate (v0.2.2) has
-  `avm2::write::Writer` + `write_op()`, so AVM2 bytecode is constructable.
-  Still need a minimal `AbcFile` builder to avoid constructing a full SWF.
-  Add regression tests for:
-  - `SetProperty` operand order (receiver pushed before value, not after)
-  - `Debug` register layout (register names extracted from `DebugFile`/`DebugLine`)
-
-- [ ] **Minimal `AbcFile` test builder** — Helper that constructs a bare-minimum
-  `AbcFile` (empty constant pool, one method body with supplied ops) so Flash
-  translator tests don't require real SWF files.
+- [x] **Flash translator unit tests** — 14 tests added (2026-03-12): return void,
+  push int+return, add two bytes, getlocal/setlocal, iffalse/iftrue branch,
+  get/set property, callproperty, newarray, newobject, coerce/convert, pushstring,
+  pushdouble, dup+swap. Minimal `AbcFile` builder (`make_abc`, `build_abc`,
+  `pool_with_qname` helpers) included — no real SWF files needed.
 
 ## Type System
 
