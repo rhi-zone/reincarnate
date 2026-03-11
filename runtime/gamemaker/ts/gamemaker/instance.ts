@@ -1,7 +1,7 @@
 /** GML instance helpers — field access on specific object types. */
 
 import type { GameRuntime } from "./runtime";
-import { GMLObject } from "./runtime";
+import { GMLObject } from "./object";
 
 export function createInstanceAPI(rt: GameRuntime) {
   /** Get a field value from the first instance of a given object type. */
