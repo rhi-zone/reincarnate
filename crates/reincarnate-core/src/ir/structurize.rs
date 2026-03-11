@@ -813,6 +813,17 @@ impl<'a> Structurizer<'a> {
                     merge = self.find_merge_bfs(then_target, else_target, until, loop_body);
                 }
 
+                // Inside a loop body, don't use a merge point that's outside the
+                // loop body. Such a merge is the loop exit — structurize_loop will
+                // handle it after the loop shape is built. Consuming it here would
+                // add it to `emitted` prematurely, causing the post-loop code to
+                // be dropped.
+                if let (Some(m), Some(lb)) = (merge, loop_body) {
+                    if !lb.contains(&m) {
+                        merge = None;
+                    }
+                }
+
                 // Guard clause: when no merge point exists and one branch
                 // terminates (returns), emit it as a flat guard and continue
                 // with the non-terminating branch as a sibling sequence.
@@ -1671,10 +1682,13 @@ impl<'a> Structurizer<'a> {
             // our break path and not also from the normal loop exit.
             if let Some(preds) = self.cfg.preds.get(&current) {
                 let safe = if chain.is_empty() {
-                    // First block: all predecessors must be in the loop body.
-                    // This ensures the block is only reachable from the break
-                    // path, not from outside the loop.
-                    preds.iter().all(|p| loop_body.contains(p))
+                    // First block: all predecessors must be in the loop body
+                    // AND there must be exactly one such predecessor. If multiple
+                    // loop-body blocks branch here, this block is the canonical
+                    // loop exit (a convergence point for multiple break paths)
+                    // and must not be consumed — structurize_loop will process
+                    // it as the post-loop continuation.
+                    preds.len() == 1 && loop_body.contains(&preds[0])
                 } else {
                     // Subsequent blocks: all predecessors must be in our chain.
                     // If any predecessor is in the loop body (but not the chain),
@@ -3139,5 +3153,95 @@ mod tests {
         } else {
             unreachable!();
         }
+    }
+
+    /// Regression test: general loop where merge-point computation could
+    /// consume the loop exit block, dropping all post-loop code.
+    ///
+    /// CFG:
+    ///   entry → header(BrIf → A, B)  [both in loop body]
+    ///   A(BrIf → B, exit)            [B in loop, exit outside]
+    ///   B(BrIf → header, exit)       [back-edge + exit]
+    ///   exit → return
+    ///
+    /// Before fix: structurizer used `exit` as merge of A/B inside the loop,
+    /// consumed it into `emitted`, then structurize_loop couldn't emit
+    /// post-loop code → exit block was lost.
+    #[test]
+    fn general_loop_exit_not_consumed_by_merge() {
+        let sig = FunctionSig {
+            params: vec![Type::Int(64)],
+            return_ty: Type::Int(64),
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("loop_exit_test", sig, Visibility::Public);
+        let param = fb.param(0);
+
+        let header = fb.create_block();
+        let block_a = fb.create_block();
+        let block_b = fb.create_block();
+        let exit = fb.create_block();
+
+        // entry → header
+        fb.br(header, &[]);
+
+        // header: BrIf → A, B (both in loop body)
+        fb.switch_to_block(header);
+        let cond = fb.cmp(CmpKind::Eq, param, param);
+        fb.br_if(cond, block_a, &[], block_b, &[]);
+
+        // A: BrIf → B (in loop), exit (outside loop)
+        fb.switch_to_block(block_a);
+        let c2 = fb.cmp(CmpKind::Ne, param, param);
+        fb.br_if(c2, block_b, &[], exit, &[]);
+
+        // B: BrIf → header (back-edge), exit
+        fb.switch_to_block(block_b);
+        let c3 = fb.cmp(CmpKind::Eq, param, param);
+        fb.br_if(c3, header, &[], exit, &[]);
+
+        // exit: return param
+        fb.switch_to_block(exit);
+        fb.ret(Some(param));
+
+        let mut func = fb.build();
+        let shape = structurize(&mut func);
+
+        fn contains_loop(shape: &Shape) -> bool {
+            match shape {
+                Shape::Loop { .. } => true,
+                Shape::Seq(parts) => parts.iter().any(contains_loop),
+                _ => false,
+            }
+        }
+
+        // The exit block (which has the return) must appear OUTSIDE the loop,
+        // as a sibling in a Seq. If the structurizer consumed it inside the
+        // loop body, it would only appear as dead code inside the loop.
+        fn has_block_outside_loop(shape: &Shape, target: BlockId) -> bool {
+            match shape {
+                Shape::Block(b) => *b == target,
+                Shape::Seq(parts) => parts.iter().any(|p| has_block_outside_loop(p, target)),
+                Shape::Loop { .. } => false, // don't recurse into loop
+                Shape::IfElse {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
+                    has_block_outside_loop(then_body, target)
+                        || has_block_outside_loop(else_body, target)
+                }
+                _ => false,
+            }
+        }
+
+        assert!(
+            contains_loop(&shape),
+            "Shape should contain a loop: {shape:?}"
+        );
+        assert!(
+            has_block_outside_loop(&shape, exit),
+            "Exit block should appear outside the loop (post-loop code not dropped): {shape:?}"
+        );
     }
 }

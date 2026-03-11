@@ -217,14 +217,19 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
   `external_imports` for runtime interfaces, disambiguated TS names). 429 companions emitted;
   barrel exports include them. Scaffold tsconfig change still needed (TODO below).
 
-- [ ] **Dead code in Parser.ts `recParser` — structurizer failure.**
-  `Parser.ts` line ~751: the `recParser` function body has a `while(true)` loop that
-  unconditionally breaks before reaching meaningful code; the function returns `""` from only
-  one path and throws `Error("unreachable")` from the exit. The loop body logic appears to have
-  been lost during structurization. Also: `Parser.ts:603–610` has dead assignments
-  (`sectionStart = ret; section = sectionStart; nestLevel = sectionStart;`) assigning `any[]`
-  to a `number` variable in dead switch arms. Investigate with `--dump-function recParser`
-  and `--dump-ir-after structurize`.
+- [x] **Dead code in Parser.ts `recParser` — structurizer failure.** (2026-03-11)
+  Root cause: two bugs in `structurize.rs` when processing general loops (both BrIf targets
+  in the loop body).
+  1. `find_merge` computed the loop exit block (outside loop body) as the merge point for
+     in-loop branches, then `structurize_region(merge_block)` consumed it — adding it to
+     `emitted` so `structurize_loop`'s post-loop continuation found it already emitted.
+     Fix: reject merge points outside the loop body when inside loop body processing.
+  2. `loop_exit_shape` consumed multi-predecessor exit blocks (convergence points for
+     multiple break paths). Fix: require exactly 1 predecessor for the first block in
+     the exit chain.
+  Remaining: 3 new TS2304 (`v54` scoping) — variable defined inside while(true) loop
+  but used after loop break. Separate linearizer/emitter issue.
+  Also still open: `Parser.ts:603–610` dead assignments in switch arms.
 
 ## Developer Experience / Tooling Gaps (HIGH PRIORITY)
 
