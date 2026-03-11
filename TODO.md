@@ -78,11 +78,10 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 CLAUDE.md rule: "Frontend/backend specific logic never belongs in `reincarnate-core`."
 All of the following violate it and need to move to the respective frontend crates.
 
-- [ ] **`type_infer.rs` lines 473–514: Flash and GML dispatch in the shared type inference pass.**
-  Hardcoded match arms on `("Flash.Scope", "findPropStrict")`, `("Flash.Object", "construct")`,
-  and `("GameMaker.Global", "get")` to infer output types. These are engine-specific inference
-  rules in a shared pass. Fix: frontends register type inference hooks (e.g. a `SystemCallTypeHook`
-  callback map) that the pass calls out to, rather than hardcoding engine names.
+- [x] **`type_infer.rs` lines 473–514: Flash and GML dispatch in the shared type inference pass.** (2026-03-11)
+  Replaced with `Module.system_call_type_rules` — frontends register `SystemCallTypeRule` entries
+  (ResolveClassName, ConstructFromFirstArgType, ResolveGlobalType). Type inference reads the
+  map instead of hardcoding engine names. Commit: `4e88003`.
 
 - [x] **`linear.rs` lines 765, 1638–1669: Flash-specific rewrites in the shared linearizer.** (2026-03-11)
   `is_scope_lookup_op()` now parameterized via `LoweringConfig::scope_lookup_systems` (Flash backend
