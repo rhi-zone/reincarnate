@@ -270,8 +270,8 @@ is the primary Flash test game. Current baseline: **30 TS errors** (12 game-auth
 **Emitter bugs (11 errors — fixable):**
 - [x] TS2348 (2): CockTypesEnum.ts:55,59 — `this(this, ...)` was class coercion, not construction.
   Fixed: `this(this, arg)` in static method → `asType(arg, ClassName)` via NullableCoerce cast.
-- [ ] TS2417 (1): CockTypesEnum.ts:8 — `static override [QN_KEY]` on class extending Enum.
-  Static computed property override syntax is invalid. Remove `override` keyword.
+- [x] TS2417 (1): CockTypesEnum.ts:8 — WONTFIX. AS3/TS semantic gap: AS3 static methods don't
+  inherit, so subclass can have incompatible signatures. TS is correct to flag this.
 - [ ] TS2538/TS2536 (6): UIComponent.ts:361,600 (4+1 — `IFocusManager`/`this` as Dictionary
   key), BindingPane.ts:148 (`XML` as Dictionary key). All stem from Dictionary bracket-notation
   with non-string keys. Fix: emit `.get()`/`.set()` instead of bracket notation for Dictionary

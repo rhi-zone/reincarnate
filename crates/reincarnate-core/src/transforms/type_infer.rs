@@ -396,7 +396,20 @@ fn infer_inst_type(
                     }
                     result
                 }
-                _ => return None,
+                _ => {
+                    // When the base is Dynamic but the field name is qualified
+                    // (e.g. "fl.core:UIComponent::focusManagerUsers"), extract
+                    // the class name and resolve the field type.  This handles
+                    // Flash scope-lookup patterns where findPropStrict returns
+                    // Dynamic but the field name carries the class info.
+                    if let Some(class_part) = field.rsplit("::").nth(1) {
+                        // class_part is e.g. "fl.core:UIComponent" — extract short name.
+                        let short = class_part.rsplit([':', '.']).next().unwrap_or(class_part);
+                        ctx.resolve_field_type(short, field)?
+                    } else {
+                        return None;
+                    }
+                }
             }
         }
 
