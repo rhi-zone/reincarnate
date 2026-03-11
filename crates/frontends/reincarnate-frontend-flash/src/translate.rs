@@ -2306,4 +2306,334 @@ mod tests {
         assert!(output.contains("store"), "expected store in:\n{output}");
         assert!(output.contains("load"), "expected load in:\n{output}");
     }
+
+    /// Helper: build a constant pool with a single QName multiname.
+    ///
+    /// Returns a pool where multiname index 1 is a QName with the given name
+    /// and an empty (public) namespace.
+    fn pool_with_qname(name: &str) -> ConstantPool {
+        let mut pool = empty_pool();
+        pool.strings.push(b"".to_vec()); // string index 1: empty namespace
+        pool.strings.push(name.as_bytes().to_vec()); // string index 2: the name
+        pool.namespaces.push(Namespace::Package(Index::new(1))); // namespace index 1
+        pool.multinames.push(Multiname::QName {
+            namespace: Index::new(1),
+            name: Index::new(2),
+        }); // multiname index 1
+        pool
+    }
+
+    /// Helper: build a MethodBody + Method + AbcFile from raw bytecode.
+    fn build_abc(
+        pool: ConstantPool,
+        code: Vec<u8>,
+        num_locals: u32,
+        max_stack: u32,
+    ) -> (AbcFile, MethodBody) {
+        let body = MethodBody {
+            method: Index::new(0),
+            max_stack,
+            num_locals,
+            init_scope_depth: 0,
+            max_scope_depth: 1,
+            code,
+            exceptions: vec![],
+            traits: vec![],
+        };
+        let method = Method {
+            name: Index::new(0),
+            params: vec![],
+            return_type: Index::new(0),
+            flags: MethodFlags::empty(),
+            body: Some(Index::new(0)),
+        };
+        let abc = make_abc(pool, vec![body.clone()], vec![method]);
+        (abc, body)
+    }
+
+    #[test]
+    fn translate_iffalse_branch() {
+        let code = vec![
+            0x24, 1, // pushbyte 1
+            0x12, 0x03, 0x00, 0x00, // iffalse +3
+            0x24, 10,   // pushbyte 10
+            0x48, // returnvalue
+            0x24, 20,   // pushbyte 20
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(empty_pool(), code, 1, 1);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func = translate_method_body(&abc, &body, "branch_test", sig, &[], false, &mut vec![])
+            .unwrap();
+        let output = format!("{func}");
+        assert!(output.contains("br_if"), "expected br_if in:\n{output}");
+        assert!(
+            output.contains("not "),
+            "expected not (iffalse negates) in:\n{output}"
+        );
+        assert!(
+            output.contains("const 10"),
+            "expected const 10 in:\n{output}"
+        );
+        assert!(
+            output.contains("const 20"),
+            "expected const 20 in:\n{output}"
+        );
+    }
+
+    #[test]
+    fn translate_iftrue_branch() {
+        let code = vec![
+            0x24, 1, 0x11, 0x03, 0x00, 0x00, // iftrue +3
+            0x24, 10, 0x48, 0x24, 20, 0x48,
+        ];
+        let (abc, body) = build_abc(empty_pool(), code, 1, 1);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func = translate_method_body(&abc, &body, "iftrue_test", sig, &[], false, &mut vec![])
+            .unwrap();
+        let output = format!("{func}");
+        assert!(output.contains("br_if"), "expected br_if in:\n{output}");
+        assert!(
+            !output.contains("not "),
+            "iftrue should not negate; found not in:\n{output}"
+        );
+    }
+
+    #[test]
+    fn translate_getproperty_setproperty() {
+        let pool = pool_with_qname("foo");
+        let code = vec![
+            0x62, 0x00, // getlocal 0
+            0x24, 42, // pushbyte 42
+            0x61, 0x01, // setproperty mn:1
+            0x62, 0x00, // getlocal 0
+            0x66, 0x01, // getproperty mn:1
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(pool, code, 1, 2);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func =
+            translate_method_body(&abc, &body, "prop_test", sig, &[], false, &mut vec![]).unwrap();
+        let output = format!("{func}");
+        assert!(
+            output.contains("set_field"),
+            "expected set_field in:\n{output}"
+        );
+        assert!(
+            output.contains("\"foo\""),
+            "expected field name \"foo\" in:\n{output}"
+        );
+        assert!(
+            output.contains("get_field"),
+            "expected get_field in:\n{output}"
+        );
+    }
+
+    #[test]
+    fn translate_callproperty() {
+        let pool = pool_with_qname("bar");
+        let code = vec![
+            0x62, 0x00, // getlocal 0  (receiver)
+            0x24, 5, // pushbyte 5  (argument)
+            0x46, 0x01, 0x01, // callproperty mn:1, num_args:1
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(pool, code, 1, 2);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func =
+            translate_method_body(&abc, &body, "call_test", sig, &[], false, &mut vec![]).unwrap();
+        let output = format!("{func}");
+        assert!(
+            output.contains("call_method"),
+            "expected call_method in:\n{output}"
+        );
+        assert!(
+            output.contains("\"bar\""),
+            "expected method name \"bar\" in:\n{output}"
+        );
+    }
+
+    #[test]
+    fn translate_newarray() {
+        let code = vec![
+            0x24, 1, // pushbyte 1
+            0x24, 2, // pushbyte 2
+            0x24, 3, // pushbyte 3
+            0x56, 0x03, // newarray 3
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(empty_pool(), code, 1, 3);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func =
+            translate_method_body(&abc, &body, "array_test", sig, &[], false, &mut vec![]).unwrap();
+        let output = format!("{func}");
+        assert!(
+            output.contains("array_init"),
+            "expected array_init in:\n{output}"
+        );
+        assert!(output.contains("const 1"), "expected const 1 in:\n{output}");
+        assert!(output.contains("const 2"), "expected const 2 in:\n{output}");
+        assert!(output.contains("const 3"), "expected const 3 in:\n{output}");
+    }
+
+    #[test]
+    fn translate_newobject() {
+        let mut pool = empty_pool();
+        pool.strings.push(b"x".to_vec()); // string index 1
+        let code = vec![
+            0x2c, 0x01, // pushstring index:1 ("x")
+            0x24, 10, // pushbyte 10
+            0x55, 0x01, // newobject 1
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(pool, code, 1, 2);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func =
+            translate_method_body(&abc, &body, "obj_test", sig, &[], false, &mut vec![]).unwrap();
+        let output = format!("{func}");
+        assert!(
+            output.contains("syscall \"Flash.Object\".\"newObject\""),
+            "expected newObject syscall in:\n{output}"
+        );
+        assert!(
+            output.contains("\"x\""),
+            "expected string \"x\" in:\n{output}"
+        );
+    }
+
+    #[test]
+    fn translate_coerce_convert_opcodes() {
+        let code = vec![
+            0x24, 1,    // pushbyte 1
+            0x76, // convert_b (ConvertB → coerce to Bool)
+            0x24, 2,    // pushbyte 2
+            0x83, // coerce_i (CoerceI → coerce to Int(32))
+            0xA0, // add
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(empty_pool(), code, 1, 2);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func = translate_method_body(&abc, &body, "coerce_test", sig, &[], false, &mut vec![])
+            .unwrap();
+        let output = format!("{func}");
+        assert!(
+            output.contains("coerce") && output.contains("bool"),
+            "expected coerce to bool in:\n{output}"
+        );
+        assert!(
+            output.contains("i32"),
+            "expected coerce to i32 in:\n{output}"
+        );
+    }
+
+    #[test]
+    fn translate_pushstring() {
+        let mut pool = empty_pool();
+        pool.strings.push(b"hello".to_vec()); // string index 1
+        let code = vec![
+            0x2c, 0x01, // pushstring index:1
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(pool, code, 1, 1);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::String,
+            ..Default::default()
+        };
+
+        let func =
+            translate_method_body(&abc, &body, "str_test", sig, &[], false, &mut vec![]).unwrap();
+        let output = format!("{func}");
+        assert!(
+            output.contains("\"hello\""),
+            "expected string constant \"hello\" in:\n{output}"
+        );
+        assert!(output.contains("return"), "expected return in:\n{output}");
+    }
+
+    #[test]
+    fn translate_pushdouble() {
+        let mut pool = empty_pool();
+        pool.doubles.push(2.75); // double index 1
+        let code = vec![
+            0x2f, 0x01, // pushdouble index:1
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(pool, code, 1, 1);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Float(64),
+            ..Default::default()
+        };
+
+        let func = translate_method_body(&abc, &body, "double_test", sig, &[], false, &mut vec![])
+            .unwrap();
+        let output = format!("{func}");
+        assert!(output.contains("2.75"), "expected const 2.75 in:\n{output}");
+    }
+
+    #[test]
+    fn translate_dup_and_swap() {
+        let code = vec![
+            0x24, 7,    // pushbyte 7
+            0x2a, // dup
+            0xA0, // add
+            0x24, 1,    // pushbyte 1
+            0x2b, // swap
+            0xA1, // subtract
+            0x48, // returnvalue
+        ];
+        let (abc, body) = build_abc(empty_pool(), code, 1, 2);
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+
+        let func =
+            translate_method_body(&abc, &body, "dup_swap_test", sig, &[], false, &mut vec![])
+                .unwrap();
+        let output = format!("{func}");
+        assert!(
+            output.contains("copy"),
+            "expected copy (from dup) in:\n{output}"
+        );
+        assert!(output.contains("add "), "expected add in:\n{output}");
+        assert!(output.contains("sub "), "expected sub in:\n{output}");
+    }
 }

@@ -4208,4 +4208,443 @@ mod tests {
             "expected 2 params for implicit argument[1]"
         );
     }
+
+    // -----------------------------------------------------------------------
+    // Self-field read (Push.v.v with instance=Own)
+    // -----------------------------------------------------------------------
+
+    /// Reading a self-field (instance=-1, Own) produces `GetField(self, "hp")`.
+    #[test]
+    fn test_self_field_read_emits_get_field() {
+        let instructions = vec![
+            pushi(-1),      // dim2 = -1 (self scope)
+            pushi(-1),      // dim1 = -1 (scalar)
+            push_var(0, 0), // ref_type=0, instance=0 → 2D array
+            ret_inst(),
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![("hp".into(), -1)];
+        let vari_ref_map: HashMap<usize, usize> = [(8, 0)].into_iter().collect();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(
+            true,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_self_read", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let has_get_field = ops
+            .iter()
+            .any(|op| matches!(op, Op::GetField { field, .. } if field == "hp"));
+        assert!(
+            has_get_field,
+            "self-field read must produce GetField(\"hp\"); ops: {ops:?}"
+        );
+
+        let has_return_with_value = ops.iter().any(|op| matches!(op, Op::Return(Some(_))));
+        assert!(
+            has_return_with_value,
+            "Ret must produce Return(Some(_)); ops: {ops:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Self-field write (Pop.v.v with instance=Own)
+    // -----------------------------------------------------------------------
+
+    /// Writing a self-field: `self.hp = 100` emits SetField(self, "hp", 100).
+    #[test]
+    fn test_self_field_write_emits_set_field() {
+        let instructions = vec![pushi(100), pushi(-1), pushi(-1), pop_var(0, 0), exit_inst()];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![("hp".into(), -1)];
+        let vari_ref_map: HashMap<usize, usize> = [(12, 0)].into_iter().collect();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(
+            true,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_self_write", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let has_set_field = ops
+            .iter()
+            .any(|op| matches!(op, Op::SetField { field, .. } if field == "hp"));
+        assert!(
+            has_set_field,
+            "self-field write must produce SetField(\"hp\"); ops: {ops:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Function call (Call opcode)
+    // -----------------------------------------------------------------------
+
+    /// `Call show_debug_message(42)` emits `Op::Call`.
+    #[test]
+    fn test_call_opcode_emits_ir_call() {
+        let instructions = vec![
+            pushi(42),
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Call,
+                type1: DataType::Int32,
+                type2: DataType::Double,
+                operand: Operand::Call {
+                    function_id: 0,
+                    argc: 1,
+                },
+            },
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Popz,
+                type1: DataType::Variable,
+                type2: DataType::Double,
+                operand: Operand::None,
+            },
+            exit_inst(),
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![];
+        let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+        let fn_names: HashMap<u32, String> = [(0, "show_debug_message".to_string())]
+            .into_iter()
+            .collect();
+        let func_ref_map: HashMap<usize, usize> = [(4, 0)].into_iter().collect();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_call", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let has_call = ops.iter().any(|op| {
+            matches!(op, Op::Call { func, args } if func == "show_debug_message" && args.len() == 1)
+        });
+        assert!(
+            has_call,
+            "Call opcode must produce Op::Call with correct name and 1 arg; ops: {ops:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Arithmetic: Add, Sub, Mul
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_arithmetic_add_sub_mul() {
+        fn sub_inst(type1: DataType) -> Instruction {
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Sub,
+                type1,
+                type2: DataType::Double,
+                operand: Operand::None,
+            }
+        }
+        fn mul_inst(type1: DataType) -> Instruction {
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Mul,
+                type1,
+                type2: DataType::Double,
+                operand: Operand::None,
+            }
+        }
+
+        let instructions = vec![
+            pushi(3),
+            pushi(5),
+            add_inst(DataType::Int16),
+            pushi(10),
+            pushi(2),
+            sub_inst(DataType::Int16),
+            add_inst(DataType::Int16),
+            pushi(4),
+            pushi(7),
+            mul_inst(DataType::Int16),
+            add_inst(DataType::Int16),
+            ret_inst(),
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![];
+        let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_arith", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let add_count = ops.iter().filter(|op| matches!(op, Op::Add(_, _))).count();
+        let sub_count = ops.iter().filter(|op| matches!(op, Op::Sub(_, _))).count();
+        let mul_count = ops.iter().filter(|op| matches!(op, Op::Mul(_, _))).count();
+        assert_eq!(add_count, 3, "expected 3 Add ops; ops: {ops:?}");
+        assert_eq!(sub_count, 1, "expected 1 Sub op; ops: {ops:?}");
+        assert_eq!(mul_count, 1, "expected 1 Mul op; ops: {ops:?}");
+    }
+
+    // -----------------------------------------------------------------------
+    // Comparison (Cmp with Equal)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_cmp_equal_emits_cmp_eq() {
+        use datawin::bytecode::types::ComparisonKind;
+        use reincarnate_core::ir::inst::CmpKind;
+
+        let instructions = vec![
+            pushi(10),
+            pushi(20),
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Cmp,
+                type1: DataType::Int16,
+                type2: DataType::Int16,
+                operand: Operand::Comparison(ComparisonKind::Equal),
+            },
+            ret_inst(),
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![];
+        let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_cmp", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let has_cmp_eq = ops
+            .iter()
+            .any(|op| matches!(op, Op::Cmp(CmpKind::Eq, _, _)));
+        assert!(
+            has_cmp_eq,
+            "Cmp with Equal must produce Op::Cmp(Eq, ..); ops: {ops:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Conditional branch (Bf producing BrIf)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_bf_produces_br_if() {
+        fn branch_inst(opcode: Opcode, byte_offset: i32) -> Instruction {
+            Instruction {
+                offset: 0,
+                opcode,
+                type1: DataType::Double,
+                type2: DataType::Double,
+                operand: Operand::Branch(byte_offset),
+            }
+        }
+
+        let instructions = vec![
+            pushi(1),                    // offset  0: condition
+            branch_inst(Opcode::Bf, 16), // offset  4: Bf → offset 20
+            pushi(10),                   // offset  8: then value
+            ret_inst(),                  // offset 12: return from then
+            branch_inst(Opcode::B, 8),   // offset 16: B → offset 24 (skip else)
+            pushi(20),                   // offset 20: else value
+            ret_inst(),                  // offset 24: return from else
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![];
+        let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_bf", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let has_br_if = ops.iter().any(|op| matches!(op, Op::BrIf { .. }));
+        assert!(has_br_if, "Bf must produce BrIf; ops: {ops:?}");
+
+        let return_count = ops
+            .iter()
+            .filter(|op| matches!(op, Op::Return(Some(_))))
+            .count();
+        assert!(
+            return_count >= 2,
+            "both branches must return; got {return_count} returns; ops: {ops:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // String constant push
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_push_string_constant() {
+        use reincarnate_core::ir::value::Constant;
+
+        let instructions = vec![
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Push,
+                type1: DataType::String,
+                type2: DataType::Double,
+                operand: Operand::StringIndex(0),
+            },
+            ret_inst(),
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![];
+        let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let string_table = vec!["hello".to_string()];
+        let mut ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+        ctx.string_table = &string_table;
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_string", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let has_hello = ops
+            .iter()
+            .any(|op| matches!(op, Op::Const(Constant::String(s)) if s == "hello"));
+        assert!(
+            has_hello,
+            "Push.String must produce Const(String(\"hello\")); ops: {ops:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Float constant push
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_push_double_constant() {
+        use reincarnate_core::ir::value::Constant;
+
+        let instructions = vec![
+            Instruction {
+                offset: 0,
+                opcode: Opcode::Push,
+                type1: DataType::Double,
+                type2: DataType::Double,
+                operand: Operand::Double(2.75),
+            },
+            ret_inst(),
+        ];
+        let bytecode = encode(&instructions);
+
+        let vars: Vec<(String, i32)> = vec![];
+        let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+        let fn_names: HashMap<u32, String> = HashMap::new();
+        let func_ref_map: HashMap<usize, usize> = HashMap::new();
+        let obj_names: Vec<String> = vec![];
+        let script_names: HashSet<String> = HashSet::new();
+        let ctx = make_ctx(
+            false,
+            0,
+            &vars,
+            &vari_ref_map,
+            &func_ref_map,
+            &obj_names,
+            &fn_names,
+            &script_names,
+        );
+
+        let (func, _) =
+            translate_code_entry(&bytecode, "test_double", &ctx).expect("translation failed");
+        let ops = collect_ops(&func);
+
+        let has_float = ops.iter().any(
+            |op| matches!(op, Op::Const(Constant::Float(v)) if (*v - 2.75).abs() < f64::EPSILON),
+        );
+        assert!(
+            has_float,
+            "Push.Double must produce Const(Float(2.75)); ops: {ops:?}"
+        );
+    }
 }
