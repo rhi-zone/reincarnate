@@ -548,14 +548,15 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Run emit and return the list of output directories produced.
+/// Run emit and return the list of output directories produced, plus any
+/// pipeline diagnostics (game-author bug warnings, etc.).
 fn cmd_emit(
     manifest_path: &Path,
     skip_passes: &[String],
     preset: &str,
     fixpoint: bool,
     debug: &DebugConfig,
-) -> Result<Vec<PathBuf>> {
+) -> Result<(Vec<PathBuf>, Vec<Diagnostic>)> {
     let manifest = load_manifest(manifest_path)?;
     let Some(frontend) = find_frontend(&manifest.engine) else {
         bail!("no frontend available for engine {:?}", manifest.engine);
@@ -612,7 +613,7 @@ fn cmd_emit(
     }
 
     if stopped_early {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), Vec::new()));
     }
 
     eprintln!("[emit] transforms done, linking...");
@@ -624,6 +625,7 @@ fn cmd_emit(
     eprintln!("[emit] linking done, emitting...");
 
     let mut output_dirs = Vec::new();
+    let mut all_diagnostics: Vec<Diagnostic> = Vec::new();
     for target in &manifest.targets {
         let Some(backend) = find_backend(&target.backend) else {
             bail!("no backend available for {:?}", target.backend);
@@ -685,7 +687,8 @@ fn cmd_emit(
             favicon,
         };
         eprintln!("[emit] emitting to {}...", target.output_dir.display());
-        backend.emit(input)?;
+        let backend_output = backend.emit(input)?;
+        all_diagnostics.extend(backend_output.diagnostics);
 
         if !manifest.assets.is_empty() {
             copy_manifest_assets(&manifest.assets, &target.output_dir)?;
@@ -699,7 +702,7 @@ fn cmd_emit(
         output_dirs.push(target.output_dir.clone());
     }
 
-    Ok(output_dirs)
+    Ok((output_dirs, all_diagnostics))
 }
 
 /// After a successful emit, update `last_emitted_at` for any registry entry whose
@@ -738,7 +741,10 @@ fn cmd_emit_all(skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Re
 
         let manifest_path = PathBuf::from(&entry.manifest);
         match cmd_emit(&manifest_path, skip_passes, preset, false, debug) {
-            Ok(_) => {
+            Ok((_, pipeline_diags)) => {
+                if !pipeline_diags.is_empty() {
+                    eprintln!("  {} pipeline warning(s)", pipeline_diags.len());
+                }
                 try_update_last_emitted(&manifest_path);
             }
             Err(e) => {
@@ -793,7 +799,11 @@ fn collect_output_dirs(manifest_path: &Path) -> Result<Vec<(PathBuf, TargetBacke
         .collect())
 }
 
-fn run_checks(targets: &[(PathBuf, TargetBackend)], cfg: &CheckConfig<'_>) -> Result<()> {
+fn run_checks(
+    targets: &[(PathBuf, TargetBackend)],
+    pipeline_diagnostics: &[Diagnostic],
+    cfg: &CheckConfig<'_>,
+) -> Result<()> {
     let json = cfg.json;
     let save_baseline = cfg.save_baseline;
     let baseline = cfg.baseline;
@@ -824,6 +834,33 @@ fn run_checks(targets: &[(PathBuf, TargetBackend)], cfg: &CheckConfig<'_>) -> Re
             has_errors = true;
         }
         all_outputs.push(result);
+    }
+
+    // Merge pipeline diagnostics (game-author bug warnings) into check output.
+    if !pipeline_diagnostics.is_empty() {
+        if let Some(first) = all_outputs.first_mut() {
+            first
+                .diagnostics
+                .extend(pipeline_diagnostics.iter().cloned());
+            first.summary.total_warnings += pipeline_diagnostics.len();
+            // Add pipeline warning codes to the by_code summary.
+            for diag in pipeline_diagnostics {
+                if let Some(entry) = first
+                    .summary
+                    .by_code
+                    .iter_mut()
+                    .find(|(code, _)| code == &diag.code)
+                {
+                    entry.1 += 1;
+                } else {
+                    first.summary.by_code.push((diag.code.clone(), 1));
+                }
+                first
+                    .summary
+                    .by_message
+                    .push((diag.message.clone(), diag.code.clone(), 1));
+            }
+        }
     }
 
     let summaries: Vec<CheckSummary> = all_outputs.iter().map(|o| o.summary.clone()).collect();
@@ -1204,21 +1241,23 @@ fn cmd_check(
     preset: &str,
     cfg: &CheckConfig<'_>,
 ) -> Result<()> {
-    let targets = if no_emit {
-        collect_output_dirs(manifest_path)?
+    let (targets, pipeline_diagnostics) = if no_emit {
+        (collect_output_dirs(manifest_path)?, Vec::new())
     } else {
         let debug = DebugConfig::default();
-        let output_dirs = cmd_emit(manifest_path, skip_passes, preset, false, &debug)?;
+        let (output_dirs, pipeline_diags) =
+            cmd_emit(manifest_path, skip_passes, preset, false, &debug)?;
         try_update_last_emitted(manifest_path);
         // Pair output dirs with backends from the manifest.
         let manifest = load_manifest(manifest_path)?;
-        output_dirs
+        let targets = output_dirs
             .into_iter()
             .zip(manifest.targets.iter().map(|t| t.backend.clone()))
-            .collect()
+            .collect();
+        (targets, pipeline_diags)
     };
 
-    run_checks(&targets, cfg)
+    run_checks(&targets, &pipeline_diagnostics, cfg)
 }
 
 fn cmd_check_all(
@@ -2069,7 +2108,13 @@ fn main() -> Result<()> {
             } else {
                 let path = resolve_target(target.as_deref(), manifest.as_deref())?;
                 let result = cmd_emit(&path, skip_passes, preset, *fixpoint, &debug);
-                if result.is_ok() {
+                if let Ok((_, pipeline_diags)) = &result {
+                    if !pipeline_diags.is_empty() {
+                        eprintln!("{} pipeline warning(s)", pipeline_diags.len());
+                        for diag in pipeline_diags {
+                            eprintln!("  [{}] {}: {}", diag.code, diag.file, diag.message);
+                        }
+                    }
                     try_update_last_emitted(&path);
                 }
                 result.map(|_| ())

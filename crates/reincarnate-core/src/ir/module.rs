@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::entity::PrimaryMap;
-
+use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
 use super::func::{FuncId, Function, MethodKind, Visibility};
@@ -238,6 +238,13 @@ pub struct Module {
     /// leave this empty.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub callback_return_calls: BTreeMap<(String, String), ()>,
+    /// Diagnostics accumulated during compilation (transforms, backend, etc.).
+    ///
+    /// These are pipeline-generated warnings/info about the source program
+    /// (e.g. game-author bugs like duplicate switch cases). They are merged
+    /// with external checker diagnostics (e.g. TypeScript errors) in the CLI.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<Diagnostic>,
 }
 
 impl Module {
@@ -264,6 +271,7 @@ impl Module {
             passage_storylets: BTreeMap::new(),
             system_call_type_rules: BTreeMap::new(),
             callback_return_calls: BTreeMap::new(),
+            diagnostics: Vec::new(),
         }
     }
 }

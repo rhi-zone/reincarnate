@@ -5,7 +5,7 @@ pub mod frontend;
 pub mod linker;
 pub mod transform;
 
-pub use backend::{Backend, BackendInput, RuntimePackage};
+pub use backend::{Backend, BackendInput, BackendOutput, RuntimePackage};
 pub use checker::{CheckSummary, Checker, CheckerInput, CheckerOutput, Diagnostic, Severity};
 pub use config::{resolve_preset, DebugConfig, LoweringConfig, PassConfig};
 pub use frontend::{Frontend, FrontendInput, FrontendOutput};

@@ -12,7 +12,7 @@ pub mod types;
 use std::fs;
 
 use reincarnate_core::error::CoreError;
-use reincarnate_core::pipeline::{Backend, BackendInput};
+use reincarnate_core::pipeline::{Backend, BackendInput, BackendOutput, Diagnostic};
 
 /// TypeScript codegen backend.
 pub struct TypeScriptBackend;
@@ -22,7 +22,7 @@ impl Backend for TypeScriptBackend {
         "typescript"
     }
 
-    fn emit(&self, mut input: BackendInput) -> Result<(), CoreError> {
+    fn emit(&self, mut input: BackendInput) -> Result<BackendOutput, CoreError> {
         fs::create_dir_all(&input.output_dir)?;
 
         if let Some(ref runtime_pkg) = input.runtime {
@@ -34,6 +34,13 @@ impl Backend for TypeScriptBackend {
         }
 
         let runtime_config = input.runtime.as_ref().map(|p| &p.config);
+        let mut diagnostics: Vec<Diagnostic> = Vec::new();
+
+        // Collect any IR-level diagnostics from transforms.
+        for module in &input.modules {
+            diagnostics.extend(module.diagnostics.iter().cloned());
+        }
+
         for module in &mut input.modules {
             emit::emit_module(
                 module,
@@ -41,6 +48,7 @@ impl Backend for TypeScriptBackend {
                 &input.lowering_config,
                 runtime_config,
                 &input.debug,
+                &mut diagnostics,
             )?;
         }
 
@@ -65,6 +73,6 @@ impl Backend for TypeScriptBackend {
             fs::write(&path, &asset.data)?;
         }
 
-        Ok(())
+        Ok(BackendOutput { diagnostics })
     }
 }

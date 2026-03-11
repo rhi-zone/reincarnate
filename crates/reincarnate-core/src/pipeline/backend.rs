@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::checker::Diagnostic;
 use super::{DebugConfig, LoweringConfig};
 use crate::error::CoreError;
 use crate::ir::Module;
@@ -36,11 +37,21 @@ pub struct BackendInput {
     pub favicon: Option<String>,
 }
 
+/// Output from a backend.
+pub struct BackendOutput {
+    /// Pipeline-generated diagnostics (game-author bugs, warnings, etc.)
+    /// collected during code emission.
+    pub diagnostics: Vec<Diagnostic>,
+}
+
 /// Backend trait — emits target code from IR.
 pub trait Backend {
     /// Name of this backend (e.g., "rust", "typescript").
     fn name(&self) -> &str;
 
     /// Generate code from the IR modules.
-    fn emit(&self, input: BackendInput) -> Result<(), CoreError>;
+    ///
+    /// Returns pipeline diagnostics accumulated during emission (e.g.
+    /// game-author bug warnings like duplicate switch case values).
+    fn emit(&self, input: BackendInput) -> Result<BackendOutput, CoreError>;
 }

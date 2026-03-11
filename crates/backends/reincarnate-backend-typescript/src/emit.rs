@@ -8,7 +8,7 @@ use reincarnate_core::ir::{
     structurize, CastKind, ClassDef, Constant, ExternalImport, FuncId, Function, MethodKind,
     Module, Op, StructDef, Type, Visibility,
 };
-use reincarnate_core::pipeline::{DebugConfig, LoweringConfig};
+use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, ExternalTypeDef, RuntimeConfig};
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
@@ -86,13 +86,22 @@ pub fn emit_module(
     lowering_config: &LoweringConfig,
     runtime_config: Option<&RuntimeConfig>,
     debug: &DebugConfig,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     if module.classes.is_empty() {
-        let out = emit_module_to_string(module, lowering_config, runtime_config, debug)?;
+        let out =
+            emit_module_to_string(module, lowering_config, runtime_config, debug, diagnostics)?;
         let path = output_dir.join(format!("{}.ts", module.name));
         fs::write(&path, &out).map_err(CoreError::Io)?;
     } else {
-        emit_module_to_dir(module, output_dir, lowering_config, runtime_config, debug)?;
+        emit_module_to_dir(
+            module,
+            output_dir,
+            lowering_config,
+            runtime_config,
+            debug,
+            diagnostics,
+        )?;
     }
     Ok(())
 }
@@ -103,6 +112,7 @@ pub fn emit_module_to_string(
     lowering_config: &LoweringConfig,
     runtime_config: Option<&RuntimeConfig>,
     debug: &DebugConfig,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<String, CoreError> {
     let mut out = String::new();
     let class_names = build_class_names(module);
@@ -173,6 +183,7 @@ pub fn emit_module_to_string(
             &class_meta.unique_static_field_map,
             debug,
             &mut out,
+            diagnostics,
         )?;
     } else {
         // Single-file mode: no circular imports (all classes in one scope).
@@ -205,6 +216,7 @@ pub fn emit_module_to_string(
                 debug,
                 &mut out,
                 &mut traits_buf,
+                diagnostics,
             )?;
             // In string mode (tests), append traits inline.
             out.push_str(&traits_buf);
@@ -235,6 +247,7 @@ pub fn emit_module_to_string(
                     &class_meta.unique_static_field_map,
                     debug,
                     &mut out,
+                    diagnostics,
                 )?;
             }
         }
@@ -1286,6 +1299,7 @@ fn emit_class_file(
     engine: EngineKind,
     debug: &DebugConfig,
     barrel_exports: &mut Vec<String>,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     let class_def = &group.class_def;
     let short_name = sanitize_ident(&class_def.name);
@@ -1429,6 +1443,7 @@ fn emit_class_file(
         debug,
         &mut out,
         &mut traits_buf,
+        diagnostics,
     )?;
 
     strip_unused_namespace_imports(&mut out);
@@ -1565,6 +1580,7 @@ fn emit_free_functions_file(
     runtime_config: Option<&RuntimeConfig>,
     engine: EngineKind,
     debug: &DebugConfig,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<bool, CoreError> {
     if free_funcs.is_empty() {
         return Ok(false);
@@ -1708,6 +1724,7 @@ fn emit_free_functions_file(
                 &class_meta.unique_static_field_map,
                 debug,
                 &mut out,
+                diagnostics,
             )?;
         }
     }
@@ -1734,6 +1751,7 @@ pub fn emit_module_to_dir(
     lowering_config: &LoweringConfig,
     runtime_config: Option<&RuntimeConfig>,
     debug: &DebugConfig,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     let module_dir = output_dir.join(&module.name);
     fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
@@ -1821,6 +1839,7 @@ pub fn emit_module_to_dir(
             engine,
             debug,
             &mut barrel_exports,
+            diagnostics,
         )?;
     }
 
@@ -1841,6 +1860,7 @@ pub fn emit_module_to_dir(
         runtime_config,
         engine,
         debug,
+        diagnostics,
     )? {
         barrel_exports.push("_init".to_string());
     }
@@ -3729,6 +3749,7 @@ fn emit_functions(
     unique_static_fields: &HashMap<String, String>,
     debug: &DebugConfig,
     out: &mut String,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     let all_ids: Vec<_> = module.functions.keys().collect();
     let closure_fids: Vec<FuncId> = all_ids
@@ -3758,6 +3779,7 @@ fn emit_functions(
                 unique_static_fields,
                 debug,
                 out,
+                diagnostics,
             )?;
         }
     }
@@ -3782,6 +3804,7 @@ fn emit_function(
     unique_static_fields: &HashMap<String, String>,
     debug: &DebugConfig,
     out: &mut String,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     use reincarnate_core::ir::linear;
 
@@ -3844,7 +3867,7 @@ fn emit_function(
         crate::rewrites::gamemaker::coerce_bool_args(&mut js_func, func_sigs);
     }
     rewrite_global_assignments(&mut js_func.body, mutable_global_names);
-    crate::ast_passes::recover_switch_statements(&mut js_func.body);
+    crate::ast_passes::recover_switch_statements(&mut js_func.body, &func.name, diagnostics);
     crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
@@ -3970,6 +3993,7 @@ fn emit_class(
     debug: &DebugConfig,
     out: &mut String,
     traits_out: &mut String,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     let qualified = qualified_class_name(&group.class_def);
     // Use the (possibly disambiguated) TypeScript class identifier.
@@ -4304,6 +4328,7 @@ fn emit_class(
             func_sigs,
             debug,
             out,
+            diagnostics,
         )?;
     }
 
@@ -4421,6 +4446,7 @@ fn emit_class_method(
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
     debug: &DebugConfig,
     out: &mut String,
+    diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     #![allow(clippy::too_many_arguments)]
     use reincarnate_core::ir::linear;
@@ -4532,7 +4558,7 @@ fn emit_class_method(
             return Ok(());
         }
     }
-    crate::ast_passes::recover_switch_statements(&mut js_func.body);
+    crate::ast_passes::recover_switch_statements(&mut js_func.body, &func.name, diagnostics);
     crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
@@ -5089,11 +5115,13 @@ mod tests {
     fn build_and_emit(build: impl FnOnce(&mut ModuleBuilder)) -> String {
         let mut mb = ModuleBuilder::new("test");
         build(&mut mb);
+        let mut diagnostics = Vec::new();
         emit_module_to_string(
             &mut mb.build(),
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap()
     }
@@ -5416,11 +5444,13 @@ mod tests {
 
         // Run mem2reg IR pass, then emit.
         let mut result = Mem2Reg.apply(module).unwrap();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut result.module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -5713,11 +5743,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -5803,11 +5835,13 @@ mod tests {
         mb.add_function(fb.build());
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -5902,12 +5936,14 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         emit_module_to_dir(
             &mut module,
             dir.path(),
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6005,12 +6041,14 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         emit_module_to_dir(
             &mut module,
             dir.path(),
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6090,11 +6128,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6198,11 +6238,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6342,11 +6384,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6424,11 +6468,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6536,11 +6582,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6659,11 +6707,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -6921,11 +6971,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -7287,11 +7339,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
         assert!(
@@ -7343,11 +7397,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 
@@ -7433,11 +7489,13 @@ mod tests {
         });
 
         let mut module = mb.build();
+        let mut diagnostics = Vec::new();
         let out = emit_module_to_string(
             &mut module,
             &LoweringConfig::default(),
             None,
             &DebugConfig::none(),
+            &mut diagnostics,
         )
         .unwrap();
 

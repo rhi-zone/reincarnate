@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{CastKind, Type};
+use reincarnate_core::pipeline::{Diagnostic, Severity};
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::types::ts_type;
@@ -23,7 +24,11 @@ use crate::types::ts_type;
 /// original if-chain evaluates it N times. We only apply this when
 /// `is_stable_expr` returns true, but that check is conservative and syntactic
 /// — it cannot rule out all side effects (e.g. getters on fields).
-pub fn recover_switch_statements(body: &mut Vec<JsStmt>) {
+pub fn recover_switch_statements(
+    body: &mut Vec<JsStmt>,
+    func_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     // Try the nested if-else-if pattern FIRST (outside-in), before recursing
     // into children. Otherwise inner if-else chains get converted to Switch
     // nodes and the outer chain no longer matches the if-else-if pattern.
@@ -33,11 +38,11 @@ pub fn recover_switch_statements(body: &mut Vec<JsStmt>) {
 
     // Then recurse into all nested bodies.
     for stmt in body.iter_mut() {
-        recurse_into_stmt(stmt);
+        recurse_into_stmt(stmt, func_name, diagnostics);
     }
 
     // Try the sequential-if pattern on runs of consecutive statements.
-    try_recover_sequential_ifs(body);
+    try_recover_sequential_ifs(body, func_name, diagnostics);
 
     // Finally, recover discriminants from switch statements whose value is a
     // chained ternary comparison.  This undoes the AVM2 table-jump encoding
@@ -48,25 +53,25 @@ pub fn recover_switch_statements(body: &mut Vec<JsStmt>) {
 }
 
 /// Recurse into all sub-bodies of a statement.
-fn recurse_into_stmt(stmt: &mut JsStmt) {
+fn recurse_into_stmt(stmt: &mut JsStmt, func_name: &str, diagnostics: &mut Vec<Diagnostic>) {
     match stmt {
         JsStmt::If {
             then_body,
             else_body,
             ..
         } => {
-            recover_switch_statements(then_body);
-            recover_switch_statements(else_body);
+            recover_switch_statements(then_body, func_name, diagnostics);
+            recover_switch_statements(else_body, func_name, diagnostics);
         }
         JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
-            recover_switch_statements(body);
+            recover_switch_statements(body, func_name, diagnostics);
         }
         JsStmt::For {
             init, body, update, ..
         } => {
-            recover_switch_statements(init);
-            recover_switch_statements(body);
-            recover_switch_statements(update);
+            recover_switch_statements(init, func_name, diagnostics);
+            recover_switch_statements(body, func_name, diagnostics);
+            recover_switch_statements(update, func_name, diagnostics);
         }
         JsStmt::Switch {
             cases,
@@ -74,13 +79,13 @@ fn recurse_into_stmt(stmt: &mut JsStmt) {
             ..
         } => {
             for (_, case_body) in cases {
-                recover_switch_statements(case_body);
+                recover_switch_statements(case_body, func_name, diagnostics);
             }
-            recover_switch_statements(default_body);
+            recover_switch_statements(default_body, func_name, diagnostics);
         }
         JsStmt::Dispatch { blocks, .. } => {
             for (_, block_body) in blocks {
-                recover_switch_statements(block_body);
+                recover_switch_statements(block_body, func_name, diagnostics);
             }
         }
         // Recurse into expressions that contain statement bodies (e.g. arrow fns).
@@ -89,43 +94,43 @@ fn recurse_into_stmt(stmt: &mut JsStmt) {
         | JsStmt::Expr(e)
         | JsStmt::Return(Some(e))
         | JsStmt::Throw(e) => {
-            recurse_into_expr(e);
+            recurse_into_expr(e, func_name, diagnostics);
         }
         JsStmt::CompoundAssign { value, .. } => {
-            recurse_into_expr(value);
+            recurse_into_expr(value, func_name, diagnostics);
         }
         _ => {}
     }
 }
 
 /// Recurse into an expression to find nested statement bodies (arrow functions).
-fn recurse_into_expr(expr: &mut JsExpr) {
+fn recurse_into_expr(expr: &mut JsExpr, func_name: &str, diagnostics: &mut Vec<Diagnostic>) {
     match expr {
         JsExpr::ArrowFunction { body, .. } => {
-            recover_switch_statements(body);
+            recover_switch_statements(body, func_name, diagnostics);
         }
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs } => {
-            recurse_into_expr(lhs);
-            recurse_into_expr(rhs);
+            recurse_into_expr(lhs, func_name, diagnostics);
+            recurse_into_expr(rhs, func_name, diagnostics);
         }
-        JsExpr::Field { object, .. } => recurse_into_expr(object),
+        JsExpr::Field { object, .. } => recurse_into_expr(object, func_name, diagnostics),
         JsExpr::Index { collection, index } => {
-            recurse_into_expr(collection);
-            recurse_into_expr(index);
+            recurse_into_expr(collection, func_name, diagnostics);
+            recurse_into_expr(index, func_name, diagnostics);
         }
         JsExpr::Call { callee, args } => {
-            recurse_into_expr(callee);
+            recurse_into_expr(callee, func_name, diagnostics);
             for arg in args {
-                recurse_into_expr(arg);
+                recurse_into_expr(arg, func_name, diagnostics);
             }
         }
         JsExpr::New { callee, args } => {
-            recurse_into_expr(callee);
+            recurse_into_expr(callee, func_name, diagnostics);
             for arg in args {
-                recurse_into_expr(arg);
+                recurse_into_expr(arg, func_name, diagnostics);
             }
         }
         JsExpr::Ternary {
@@ -133,9 +138,9 @@ fn recurse_into_expr(expr: &mut JsExpr) {
             then_val,
             else_val,
         } => {
-            recurse_into_expr(cond);
-            recurse_into_expr(then_val);
-            recurse_into_expr(else_val);
+            recurse_into_expr(cond, func_name, diagnostics);
+            recurse_into_expr(then_val, func_name, diagnostics);
+            recurse_into_expr(else_val, func_name, diagnostics);
         }
         JsExpr::Unary { expr, .. }
         | JsExpr::Cast { expr, .. }
@@ -145,40 +150,40 @@ fn recurse_into_expr(expr: &mut JsExpr) {
         | JsExpr::Spread(expr)
         | JsExpr::TypeOf(expr)
         | JsExpr::GeneratorResume(expr) => {
-            recurse_into_expr(expr);
+            recurse_into_expr(expr, func_name, diagnostics);
         }
-        JsExpr::Yield(Some(expr)) => recurse_into_expr(expr),
+        JsExpr::Yield(Some(expr)) => recurse_into_expr(expr, func_name, diagnostics),
         JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) => {
             for e in elems {
-                recurse_into_expr(e);
+                recurse_into_expr(e, func_name, diagnostics);
             }
         }
         JsExpr::ObjectInit(fields) => {
             for (_, e) in fields {
-                recurse_into_expr(e);
+                recurse_into_expr(e, func_name, diagnostics);
             }
         }
         JsExpr::SystemCall { args, .. }
         | JsExpr::SuperCall(args)
         | JsExpr::GeneratorCreate { args, .. } => {
             for arg in args {
-                recurse_into_expr(arg);
+                recurse_into_expr(arg, func_name, diagnostics);
             }
         }
         JsExpr::SuperMethodCall { args, .. } => {
             for arg in args {
-                recurse_into_expr(arg);
+                recurse_into_expr(arg, func_name, diagnostics);
             }
         }
         JsExpr::In { key, object } => {
-            recurse_into_expr(key);
-            recurse_into_expr(object);
+            recurse_into_expr(key, func_name, diagnostics);
+            recurse_into_expr(object, func_name, diagnostics);
         }
         JsExpr::Delete { object, key } => {
-            recurse_into_expr(object);
-            recurse_into_expr(key);
+            recurse_into_expr(object, func_name, diagnostics);
+            recurse_into_expr(key, func_name, diagnostics);
         }
-        JsExpr::SuperSet { value, .. } => recurse_into_expr(value),
+        JsExpr::SuperSet { value, .. } => recurse_into_expr(value, func_name, diagnostics),
         _ => {}
     }
 }
@@ -251,7 +256,11 @@ fn try_recover_nested_if_else(stmt: &mut JsStmt) {
 
 /// Try to recover switches from runs of consecutive `if` statements with empty
 /// else bodies that all compare the same expression against distinct constants.
-fn try_recover_sequential_ifs(body: &mut Vec<JsStmt>) {
+fn try_recover_sequential_ifs(
+    body: &mut Vec<JsStmt>,
+    func_name: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
     let mut i = 0;
     while i < body.len() {
         // Find the start of a potential run.
@@ -305,6 +314,27 @@ fn try_recover_sequential_ifs(body: &mut Vec<JsStmt>) {
             body.splice(run_start..i, std::iter::once(switch_stmt));
             // After splice, the switch is at run_start; advance past it.
             i = run_start + 1;
+        } else if cases.len() >= 2 {
+            // Duplicate case values detected — this is a game-author bug.
+            // The original code has sequential ifs comparing the same expression
+            // to the same constant multiple times, which means multiple branches
+            // execute for the same value.
+            let dupes = find_duplicate_case_labels(&cases);
+            for dupe in dupes {
+                diagnostics.push(Diagnostic {
+                    file: func_name.to_string(),
+                    line: 0,
+                    col: 0,
+                    code: "RC0001".to_string(),
+                    severity: Severity::Warning,
+                    message: format!(
+                        "duplicate case value {dupe} in sequential if-chain \
+                         (game-author bug: multiple branches execute for same value)"
+                    ),
+                });
+            }
+            // No run found starting at run_start; advance.
+            i = if i == run_start { run_start + 1 } else { i };
         } else {
             // No run found starting at run_start; advance.
             i = if i == run_start { run_start + 1 } else { i };
@@ -578,6 +608,32 @@ fn all_case_labels_distinct(cases: &[(JsExpr, Vec<JsStmt>)]) -> bool {
         }
     }
     true
+}
+
+/// Return human-readable representations of duplicate case label values.
+fn find_duplicate_case_labels(cases: &[(JsExpr, Vec<JsStmt>)]) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut dupes = Vec::new();
+    for (label, _) in cases {
+        let repr = format_case_label(label);
+        if !seen.insert(repr.clone()) && !dupes.contains(&repr) {
+            dupes.push(repr);
+        }
+    }
+    dupes
+}
+
+/// Format a case label expression as a short string for diagnostic messages.
+fn format_case_label(expr: &JsExpr) -> String {
+    match expr {
+        JsExpr::Literal(Constant::Int(n)) => n.to_string(),
+        JsExpr::Literal(Constant::Float(f)) => f.to_string(),
+        JsExpr::Literal(Constant::String(s)) => format!("\"{s}\""),
+        JsExpr::Literal(Constant::Bool(b)) => b.to_string(),
+        JsExpr::Literal(Constant::Null) => "null".to_string(),
+        JsExpr::Var(name) => name.clone(),
+        _ => "<expr>".to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1240,7 +1296,8 @@ mod tests {
             default_body: vec![],
         }];
 
-        recover_switch_statements(&mut body);
+        let mut diags = Vec::new();
+        recover_switch_statements(&mut body, "test", &mut diags);
 
         assert_eq!(body.len(), 1);
         match &body[0] {
@@ -1319,7 +1376,8 @@ mod tests {
             default_body: default_body_pre.clone(),
         }];
 
-        recover_switch_statements(&mut body);
+        let mut diags = Vec::new();
+        recover_switch_statements(&mut body, "test", &mut diags);
 
         assert_eq!(body.len(), 1);
         match &body[0] {
@@ -1448,7 +1506,8 @@ mod tests {
             default_body: vec![],
         }];
 
-        recover_switch_statements(&mut body);
+        let mut diags = Vec::new();
+        recover_switch_statements(&mut body, "test", &mut diags);
 
         assert_eq!(body.len(), 1);
         match &body[0] {
@@ -1504,7 +1563,8 @@ mod tests {
             }],
         }];
 
-        recover_switch_statements(&mut body);
+        let mut diags = Vec::new();
+        recover_switch_statements(&mut body, "test", &mut diags);
 
         assert_eq!(body.len(), 1, "Expected single statement, got: {body:?}");
         match &body[0] {
@@ -1518,6 +1578,44 @@ mod tests {
             }
             other => panic!("Expected Switch, got: {other:?}"),
         }
+    }
+
+    #[test]
+    fn sequential_ifs_duplicate_case_emits_warning() {
+        // Two if-stmts compare the same discriminant against the same constant.
+        // This should NOT be converted to a switch (semantics differ) but SHOULD
+        // produce a diagnostic warning about a game-author bug.
+        let body_a = vec![JsStmt::Expr(var("A"))];
+        let body_b = vec![JsStmt::Expr(var("B"))];
+        let mut body = vec![
+            JsStmt::If {
+                cond: eq(var("x"), int_lit(1)),
+                then_body: body_a.clone(),
+                else_body: vec![],
+            },
+            JsStmt::If {
+                cond: eq(var("x"), int_lit(1)),
+                then_body: body_b.clone(),
+                else_body: vec![],
+            },
+        ];
+
+        let mut diags = Vec::new();
+        recover_switch_statements(&mut body, "TestFunc", &mut diags);
+
+        // Should NOT have been converted to a switch.
+        assert_eq!(body.len(), 2, "Should remain as 2 if-stmts");
+        assert!(matches!(&body[0], JsStmt::If { .. }));
+
+        // Should have emitted a duplicate-case warning.
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].code, "RC0001");
+        assert_eq!(diags[0].file, "TestFunc");
+        assert!(
+            diags[0].message.contains("duplicate case value 1"),
+            "message: {}",
+            diags[0].message
+        );
     }
 
     #[test]

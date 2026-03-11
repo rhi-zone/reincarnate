@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use crate::error::CoreError;
 
 /// A single diagnostic from a language-level type checker.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Diagnostic {
     pub file: String,
     pub line: u32,
@@ -14,7 +14,7 @@ pub struct Diagnostic {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Severity {
     Error,
     Warning,
