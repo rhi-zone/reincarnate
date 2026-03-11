@@ -1,12 +1,13 @@
-//! Flash AVM2 reflection metadata emission.
+//! Flash AVM2 class emission helpers.
 //!
-//! Emits `registerClassTraits(ClassName, [...instance], [...static])` calls
-//! that feed the AS3 `describeType`-compatible reflection layer at runtime.
+//! Contains reflection metadata (`registerClassTraits`), qualified-name headers,
+//! constructor shim parameters, and forwarding-setter detection — all specific
+//! to the Flash/AS3 getter/setter naming convention (`get_`/`set_` prefixes).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
-use reincarnate_core::ir::{MethodKind, Module, Type};
+use reincarnate_core::ir::{FuncId, MethodKind, Module, Type};
 
 use crate::emit::{qualified_class_name, sanitize_ident, ClassGroup};
 
@@ -145,4 +146,68 @@ pub(crate) fn flash_ctor_shims_param(suppress_super: bool, parent_is_runtime: bo
     } else {
         "_shims: FlashShims".to_string()
     }
+}
+
+/// Detect getter overrides without matching setter overrides in Flash classes.
+///
+/// When a subclass overrides a getter but not the corresponding setter, and the
+/// parent has a setter for that property, TypeScript treats the property as
+/// read-only in the subclass (TS2540). This returns `(property_name, type_str)`
+/// pairs for which a forwarding `override set prop(value: T) { super.prop = value; }`
+/// should be emitted.
+///
+/// Flash-specific: relies on the `get_`/`set_` naming convention for AS3 accessors.
+pub(crate) fn flash_forwarding_setters(
+    module: &Module,
+    sorted_methods: &[FuncId],
+    parent_method_names: &HashSet<String>,
+) -> Vec<(String, String)> {
+    let own_getter_props: HashSet<String> = sorted_methods
+        .iter()
+        .filter_map(|&fid| {
+            let f = &module.functions[fid];
+            if matches!(f.method_kind, MethodKind::Getter) {
+                let short = f.name.rsplit("::").next().unwrap_or(&f.name);
+                short.strip_prefix("get_").map(|p| p.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    let own_setter_props: HashSet<String> = sorted_methods
+        .iter()
+        .filter_map(|&fid| {
+            let f = &module.functions[fid];
+            if matches!(f.method_kind, MethodKind::Setter) {
+                let short = f.name.rsplit("::").next().unwrap_or(&f.name);
+                short.strip_prefix("set_").map(|p| p.to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+    own_getter_props
+        .into_iter()
+        .filter(|prop| {
+            !own_setter_props.contains(prop.as_str())
+                && parent_method_names.contains(&format!("set_{prop}"))
+        })
+        .map(|prop| {
+            // Use the getter's return type as the setter parameter type.
+            let ty = sorted_methods
+                .iter()
+                .find_map(|&fid| {
+                    let f = &module.functions[fid];
+                    if matches!(f.method_kind, MethodKind::Getter) {
+                        let short = f.name.rsplit("::").next().unwrap_or(&f.name);
+                        if short.strip_prefix("get_") == Some(prop.as_str()) {
+                            return Some(crate::types::ts_type(&f.sig.return_ty));
+                        }
+                    }
+                    None
+                })
+                .unwrap_or_else(|| "any".to_string());
+            (prop, ty)
+        })
+        .collect()
 }

@@ -3811,59 +3811,14 @@ fn emit_class(
     // Compile closure bodies for inlining as arrow functions.
     let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
 
-    // Flash: detect getter overrides without matching setter overrides.
-    // When a class overrides a getter but not the corresponding setter, and the parent has
-    // a setter for the same property, TypeScript treats the property as read-only in the
-    // subclass (TS2540). Emit a forwarding override setter that delegates to super.
-    let forwarding_setters: Vec<(String, String)> = if engine == EngineKind::Flash {
-        let own_getter_props: HashSet<String> = sorted_methods
-            .iter()
-            .filter_map(|&fid| {
-                let f = &module.functions[fid];
-                if matches!(f.method_kind, MethodKind::Getter) {
-                    let short = f.name.rsplit("::").next().unwrap_or(&f.name);
-                    short.strip_prefix("get_").map(|p| p.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        let own_setter_props: HashSet<String> = sorted_methods
-            .iter()
-            .filter_map(|&fid| {
-                let f = &module.functions[fid];
-                if matches!(f.method_kind, MethodKind::Setter) {
-                    let short = f.name.rsplit("::").next().unwrap_or(&f.name);
-                    short.strip_prefix("set_").map(|p| p.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        own_getter_props
-            .into_iter()
-            .filter(|prop| {
-                !own_setter_props.contains(prop.as_str())
-                    && parent_method_names.contains(&format!("set_{prop}"))
-            })
-            .map(|prop| {
-                // Use the getter's return type as the setter parameter type.
-                let ty = sorted_methods
-                    .iter()
-                    .find_map(|&fid| {
-                        let f = &module.functions[fid];
-                        if matches!(f.method_kind, MethodKind::Getter) {
-                            let short = f.name.rsplit("::").next().unwrap_or(&f.name);
-                            if short.strip_prefix("get_") == Some(prop.as_str()) {
-                                return Some(crate::types::ts_type(&f.sig.return_ty));
-                            }
-                        }
-                        None
-                    })
-                    .unwrap_or_else(|| "any".to_string());
-                (prop, ty)
-            })
-            .collect()
+    // Detect getter overrides without matching setter overrides (TS2540 fix).
+    // Flash-specific: relies on `get_`/`set_` naming convention.
+    let forwarding_setters = if engine == EngineKind::Flash {
+        crate::emit_flash_traits::flash_forwarding_setters(
+            module,
+            &sorted_methods,
+            parent_method_names,
+        )
     } else {
         Vec::new()
     };

@@ -91,10 +91,9 @@ All of the following violate it and need to move to the respective frontend crat
 - [x] **`linear.rs` line ~1454–1465: GML `ClassRef as any` widening in the shared linearizer.** (2026-03-11)
   Now gated on `LoweringConfig::wrap_class_refs_as_any` (GML backend sets `true`). Law 2 satisfied.
 
-- [ ] **`ast_passes.rs` lines 1804–2140: Flash `ForOfRewrite` / `HasNext2` pattern in shared AST passes.**
-  `ForOfRewrite`, `is_hasnext2_expr`, `contains_iterator_next`, `is_iterator_next_expr`,
-  `replace_iterator_next` are entirely about Flash's `HasNext2` opcode pattern. Move to
-  `reincarnate-frontend-flash`.
+- [x] **`ast_passes.rs` lines 1804–2140: Flash `ForOfRewrite` / `HasNext2` pattern in shared AST passes.** (2026-03-11)
+  Gated behind `LoweringConfig::foreach_rewrite` (Flash backend sets `true`; other engines skip).
+  Code stays in shared `ast_passes.rs` but is inert unless opted in — Law 2 satisfied.
 
 - [x] **`ast_passes.rs` line ~170: Harlowe-specific dispatch in `lower_output_nodes`.** (2026-03-11)
   No longer present — `lower_output_nodes` and `Harlowe.H` dispatch removed from ast_passes.rs.
@@ -178,9 +177,10 @@ All of the following violate it and need to move to the respective frontend crat
   - ✅ Index signatures → `ClassDef.needs_index_signature` IR field
   - ✅ `warn_unmapped_reference` → `rewrites::flash::is_known_flash_namespace()`
   - ✅ `cinit` name match → `MethodKind::StaticInit` IR variant
-  - [ ] `forwarding_setters` detection (50-line block) → needs `FlashClassEmitter` hook point
-  **Root cause:** no `FlashClassEmitter` hook point exists; all remaining class-level Flash
-  concerns are inline `if engine == Flash` checks with no injection site.
+  - [x] `forwarding_setters` detection (50-line block) → moved to `emit_flash_traits::flash_forwarding_setters()` (2026-03-11)
+  **Root cause:** no `FlashClassEmitter` hook point exists; remaining class-level Flash
+  concerns are inline `if engine == Flash` checks. The `forwarding_setters` logic was the
+  last large block — now extracted. Only the 3-line call site + guard remains in emit.rs.
 
 - [ ] **`coalesced_decl_types` widening to `Dynamic` is a suppression, not a fix (Law 4).**
   When two branch arms produce different types for the same out-of-SSA variable, widening to
