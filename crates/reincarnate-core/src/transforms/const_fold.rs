@@ -1089,4 +1089,65 @@ mod tests {
             Op::Const(Constant::Int(55))
         ));
     }
+
+    /// `Not(Int(16777215))` folds to `Bool(false)` (truthiness: non-zero → truthy → !truthy = false).
+    #[test]
+    fn not_int_folds_to_bool() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let c = fb.const_int(16777215);
+        let n = fb.not(c);
+        fb.ret(Some(n));
+
+        let func = apply_fold(fb.build());
+        assert!(matches!(
+            &find_inst_for(&func, n).op,
+            Op::Const(Constant::Bool(false))
+        ));
+    }
+
+    /// `Not(Int(0))` folds to `Bool(true)` (0 is falsy).
+    #[test]
+    fn not_zero_folds_to_true() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let c = fb.const_int(0);
+        let n = fb.not(c);
+        fb.ret(Some(n));
+
+        let func = apply_fold(fb.build());
+        assert!(matches!(
+            &find_inst_for(&func, n).op,
+            Op::Const(Constant::Bool(true))
+        ));
+    }
+
+    /// `Not(Not(Int(42)))` folds to `Bool(true)` (double negation of truthy).
+    #[test]
+    fn double_not_int_folds_to_bool() {
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let c = fb.const_int(42);
+        let n1 = fb.not(c);
+        let n2 = fb.not(n1);
+        fb.ret(Some(n2));
+
+        let func = apply_fold(fb.build());
+        assert!(matches!(
+            &find_inst_for(&func, n2).op,
+            Op::Const(Constant::Bool(true))
+        ));
+    }
 }
