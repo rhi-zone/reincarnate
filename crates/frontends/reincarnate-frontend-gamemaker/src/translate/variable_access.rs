@@ -234,15 +234,26 @@ pub(super) fn translate_push_variable(
             let is_self_scope = matches!(&dim2_scope, Some(Constant::Int(n)) if *n < 0);
             let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
             if is_self_scope {
-                // Self-array: access on the current instance.
-                let self_param = fb.param(0);
-                if is_scalar {
-                    let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
-                    stack.push(field_val);
+                // Self-array read: check locals first (GML resolves locals
+                // before instance fields).
+                if let Some(&slot) = locals.get(&var_name) {
+                    if is_scalar {
+                        stack.push(fb.load(slot, Type::Dynamic));
+                    } else {
+                        let arr = fb.load(slot, Type::Dynamic);
+                        let indexed = fb.get_index(arr, dim1, Type::Dynamic);
+                        stack.push(indexed);
+                    }
                 } else {
-                    let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
-                    let indexed = fb.get_index(field_val, dim1, Type::Dynamic);
-                    stack.push(indexed);
+                    let self_param = fb.param(0);
+                    if is_scalar {
+                        let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
+                        stack.push(field_val);
+                    } else {
+                        let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
+                        let indexed = fb.get_index(field_val, dim1, Type::Dynamic);
+                        stack.push(indexed);
+                    }
                 }
             } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
                 // Cross-object: dim2 is the OBJT index of the target object.
@@ -700,12 +711,27 @@ pub(super) fn translate_pop(
                 let is_self_scope = matches!(&dim2_scope, Some(Constant::Int(n)) if *n < 0);
                 let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
                 if is_self_scope {
-                    let self_param = fb.param(0);
-                    if is_scalar {
-                        fb.set_field(self_param, &var_name, value);
+                    // Self-array write: check locals first (GML resolves
+                    // locals before instance fields).
+                    if let Some(&slot) = locals.get(&var_name) {
+                        if is_scalar {
+                            fb.store(slot, value);
+                        } else {
+                            // Local array write: GML auto-creates an array
+                            // when writing to a non-array local via index.
+                            let arr = fb.load(slot, Type::Dynamic);
+                            let result =
+                                fb.call("arrayLocalSet", &[arr, dim1, value], Type::Dynamic);
+                            fb.store(slot, result);
+                        }
                     } else {
-                        let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
-                        fb.set_index(field_val, dim1, value);
+                        let self_param = fb.param(0);
+                        if is_scalar {
+                            fb.set_field(self_param, &var_name, value);
+                        } else {
+                            let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
+                            fb.set_index(field_val, dim1, value);
+                        }
                     }
                 } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
                     // Cross-object: dim2 is the OBJT index of the target object.

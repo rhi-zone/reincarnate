@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
 use crate::ir::ty::parse_type_notation;
@@ -263,12 +263,20 @@ fn union_type(a: Type, b: Type) -> Type {
 /// Build a map from alloc ValueId → stored type, by scanning all Store instructions.
 /// If all stores to a given alloc write the same concrete type, that type is recorded.
 /// If stores write different concrete types, a `Type::Union` is produced.
+/// If any store writes `Dynamic`, the alloc is left out of the map (stays Dynamic)
+/// because `Dynamic` means "any type" and must not be silently dropped by the union.
 fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
     let mut alloc_stores: HashMap<ValueId, Option<Type>> = HashMap::new();
+    // Track allocs that receive a Dynamic store — these must stay Dynamic.
+    let mut has_dynamic_store: HashSet<ValueId> = HashSet::new();
 
     for inst in func.insts.values() {
         if let Op::Store { ptr, value } = &inst.op {
             let stored_ty = func.value_types[*value].clone();
+            if stored_ty == Type::Dynamic {
+                has_dynamic_store.insert(*ptr);
+                continue;
+            }
             let entry = alloc_stores.entry(*ptr).or_insert(None);
             match entry {
                 None => *entry = Some(stored_ty),
@@ -281,7 +289,13 @@ fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
 
     alloc_stores
         .into_iter()
-        .filter_map(|(ptr, ty)| ty.map(|t| (ptr, t)))
+        .filter_map(|(ptr, ty)| {
+            // If any store wrote Dynamic, don't narrow this alloc.
+            if has_dynamic_store.contains(&ptr) {
+                return None;
+            }
+            ty.map(|t| (ptr, t))
+        })
         .collect()
 }
 
@@ -1972,7 +1986,9 @@ mod tests {
             .find(|i| matches!(&i.op, Op::Alloc(_)))
             .unwrap();
         match &alloc_inst.op {
-            Op::Alloc(ty) => assert_eq!(*ty, Type::Option(Box::new(Type::Dynamic))),
+            // Dynamic allocs that receive at least one Dynamic store stay Dynamic
+            // (the null sentinel is subsumed by Dynamic).
+            Op::Alloc(ty) => assert_eq!(*ty, Type::Dynamic),
             other => panic!("expected Alloc, got {:?}", other),
         }
     }

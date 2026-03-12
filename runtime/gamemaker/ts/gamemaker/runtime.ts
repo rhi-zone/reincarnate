@@ -1147,6 +1147,13 @@ export class GameRuntime {
   array_insert(arr: any[], index: number, ...vals: any[]): void { arr.splice(index, 0, ...vals); }
   array_get(arr: any[], index: number): any { return arr[index]; }
   array_set(arr: any[], index: number, val: any): void { arr[index] = val; }
+  /** Array write for local variables: creates an array if the current value is
+   *  not one (GML auto-creates arrays on indexed assignment to non-array locals). */
+  arrayLocalSet(arr: any, index: number, val: any): any[] {
+    if (!Array.isArray(arr)) arr = [];
+    arr[index] = val;
+    return arr;
+  }
   array_sort(arr: any[], ascending: boolean): void { arr.sort((a, b) => ascending ? a - b : b - a); }
   array_shuffle(arr: any[], _start?: number, _count?: number): void {
     for (let i = arr.length - 1; i > 0; i--) {

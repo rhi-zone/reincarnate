@@ -4086,6 +4086,7 @@
         "array_insert",
         "array_get",
         "array_set",
+        "arrayLocalSet",
         "array_sort",
         "array_shuffle",
         "array_shuffle_ext",
