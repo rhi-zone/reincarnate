@@ -312,6 +312,27 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 
 ---
 
+## Session 2026-03-12 (session 7) — Type inference + readability + GML fixes
+
+**String method type inference (Flash readability):**
+- [x] Added `string_method_return_type()` to type inference — ECMAScript String prototype
+  methods now return correct types (replace→String, indexOf→Float, startsWith→Bool).
+  RedCastElim eliminates redundant Cast(String→String) after method calls.
+  Flash output: 258→231 `String()` calls (−27 redundant).
+
+**GML error reduction (Dead Estate 114→112):**
+- [x] `coerce_to_bool` constant folding: All constant literal types (Int, UInt, Float, Null)
+  now fold to Bool directly. Unwraps Coerce casts to reach inner literals. Fixes
+  `!(!16777215)` → `true`, `!(!0)` → `false`. −2 TS2872 "always truthy" errors.
+- [x] IR-level `Not` constant folding: Extended to handle Int/UInt/Float/String/Null operands
+  using JS truthiness rules (was Bool-only).
+- [ ] **~80 GMLObject→number errors NOT tractable via simple arithmetic widening** — see
+  updated notes in TS2345/TS2322/TS2365 item below.
+
+**Baselines:** Flash 15, Bounty 2, Dead Estate 112.
+
+---
+
 ## Next Session: Remaining Refactors
 
 **Completed module splits (2026-03-12):**
