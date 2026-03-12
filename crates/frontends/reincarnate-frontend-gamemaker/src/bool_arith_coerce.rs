@@ -30,6 +30,7 @@ use std::collections::{HashMap, HashSet};
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
+use reincarnate_core::ir::module::StructDef;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{Function, Module, ValueId};
 use reincarnate_core::pipeline::{Transform, TransformResult};
@@ -54,10 +55,14 @@ impl Transform for GmlBoolArithCoerce {
             .map(|f| f.name.clone())
             .collect();
 
+        // Build field type lookup from struct definitions for SetField coercion.
+        let struct_field_types = build_struct_field_type_map(&module.structs);
+
         let mut changed = false;
         for func in module.functions.values_mut() {
             changed |= coerce_bool_arithmetic(func, &bool_returning);
             changed |= coerce_bool_br_args(func);
+            changed |= coerce_bool_set_field(func, &struct_field_types);
         }
         Ok(TransformResult { module, changed })
     }
@@ -275,6 +280,108 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
             Op::BrIf { then_args, .. } if arm == 1 => then_args[pos] = new_v,
             Op::BrIf { else_args, .. } if arm == 2 => else_args[pos] = new_v,
             _ => {}
+        }
+    }
+
+    true
+}
+
+// ---------------------------------------------------------------------------
+// Pass 3 — Bool values stored via SetField (TS2322)
+// ---------------------------------------------------------------------------
+
+/// Build a map of (field_name → Type) from all struct definitions.
+/// If multiple structs define the same field with different types, the entry
+/// is removed (ambiguous — don't coerce).
+fn build_struct_field_type_map(structs: &[StructDef]) -> HashMap<String, Option<Type>> {
+    let mut map: HashMap<String, Option<Type>> = HashMap::new();
+    for s in structs {
+        for field in &s.fields {
+            let entry = map
+                .entry(field.name.clone())
+                .or_insert(Some(field.ty.clone()));
+            if let Some(existing) = entry {
+                if *existing != field.ty {
+                    *entry = None;
+                }
+            }
+        }
+    }
+    map
+}
+
+/// Returns true if a field name is a known GML built-in numeric property.
+/// These are fields on GMLObject that are declared as `number` in the
+/// TypeScript runtime (object.ts). Excludes fields that accept boolean
+/// values like `visible`, `solid`, `persistent`.
+fn is_gml_numeric_field(name: &str) -> bool {
+    matches!(
+        name,
+        "x" | "y"
+            | "z"
+            | "xstart"
+            | "ystart"
+            | "xprevious"
+            | "yprevious"
+            | "image_xscale"
+            | "image_yscale"
+            | "image_index"
+            | "image_alpha"
+            | "image_speed"
+            | "image_angle"
+            | "depth"
+            | "speed"
+            | "direction"
+            | "hspeed"
+            | "vspeed"
+            | "friction"
+            | "gravity"
+            | "gravity_direction"
+    )
+}
+
+/// Coerce Bool values stored via SetField to Float(64) when the target field
+/// is known to be numeric.
+///
+/// GML treats booleans as numbers (true=1, false=0), so assignments like
+/// `this.image_index = (y > threshold)` are valid GML but fail TypeScript
+/// (TS2322: "Type 'boolean' is not assignable to type 'number'"). We insert
+/// Cast(Bool→Float(64), Coerce) only for fields known to be numeric — either
+/// GML built-in numeric properties or fields declared as numeric in structs.
+fn coerce_bool_set_field(
+    func: &mut Function,
+    struct_field_types: &HashMap<String, Option<Type>>,
+) -> bool {
+    let targets: Vec<(InstId, ValueId)> = func
+        .insts
+        .iter()
+        .filter_map(|(id, inst)| {
+            if let Op::SetField { field, value, .. } = &inst.op {
+                if is_bool(func, *value) {
+                    // Check built-in GML numeric fields.
+                    if is_gml_numeric_field(field) {
+                        return Some((id, *value));
+                    }
+                    // Check struct-defined numeric fields.
+                    if let Some(Some(ty)) = struct_field_types.get(field) {
+                        if is_numeric(ty) {
+                            return Some((id, *value));
+                        }
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+
+    if targets.is_empty() {
+        return false;
+    }
+
+    for (inst_id, old_v) in targets {
+        let new_v = insert_cast_before(func, old_v, inst_id, Type::Float(64));
+        if let Op::SetField { value, .. } = &mut func.insts[inst_id].op {
+            *value = new_v;
         }
     }
 

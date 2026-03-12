@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::CoreError;
-use crate::ir::{Module, Op, Type};
+use crate::ir::{Function, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
 /// Interprocedural call-site type narrowing — collects argument types from all
@@ -84,6 +84,45 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
     observations
 }
 
+/// Check if a parameter value is used as a collection in the function body —
+/// i.e. via `GetIndex(param, _)` or `GetField(param, "length")`. If so,
+/// narrowing it to a non-collection type (e.g. Float(64)) would cause
+/// `.length` / `[i]` to produce type errors in the emitted code.
+fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
+    // Collect the param value and any direct copies of it.
+    let mut tracked: Vec<ValueId> = vec![param_value];
+    for block in func.blocks.values() {
+        for &inst_id in &block.insts {
+            let inst = &func.insts[inst_id];
+            if let Op::Copy(src) = &inst.op {
+                if *src == param_value {
+                    if let Some(r) = inst.result {
+                        tracked.push(r);
+                    }
+                }
+            }
+        }
+    }
+
+    for block in func.blocks.values() {
+        for &inst_id in &block.insts {
+            let inst = &func.insts[inst_id];
+            match &inst.op {
+                Op::GetIndex { collection, .. } if tracked.contains(collection) => {
+                    return true;
+                }
+                Op::GetField { object, field } if tracked.contains(object) => {
+                    if field == "length" {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
 /// Narrow a set of observed types to a single type, or `None` if they disagree
 /// or if any caller passes `Dynamic` (meaning "could be anything at runtime").
 fn narrow(types: &[Type]) -> Option<Type> {
@@ -162,6 +201,19 @@ impl Transform for CallSiteTypeFlow {
                 }
 
                 if let Some(narrowed) = narrow(types) {
+                    // Don't narrow if the body uses this param as a collection
+                    // (GetIndex, .length) — narrowing to e.g. Float(64) would
+                    // break those accesses.
+                    if !matches!(&narrowed, Type::Array(_)) {
+                        let entry = func.entry;
+                        if param_idx < func.blocks[entry].params.len() {
+                            let param_val = func.blocks[entry].params[param_idx].value;
+                            if param_used_as_collection(func, param_val) {
+                                continue;
+                            }
+                        }
+                    }
+
                     let func = &mut module.functions[func_id];
 
                     // Update signature.
@@ -562,5 +614,77 @@ mod tests {
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(target.sig.params[0], Type::String); // Agreed.
         assert_eq!(target.sig.params[1], Type::Dynamic); // Disagreed.
+    }
+
+    // ---- Collection body usage prevents narrowing ----
+
+    /// Callers all pass Float(64), but body uses GetIndex on param → stays Dynamic.
+    #[test]
+    fn collection_body_usage_prevents_narrowing() {
+        let mut mb = ModuleBuilder::new("test");
+
+        // Callee: fn target(arr: Dynamic) → Void; body does GetIndex(arr, 0)
+        let callee_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
+        let arr = callee.param(0);
+        let idx = callee.const_int(0);
+        callee.get_index(arr, idx, Type::Dynamic);
+        callee.ret(None);
+        mb.add_function(callee.build());
+
+        // Caller passes Float(64).
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut caller = FunctionBuilder::new("caller", sig, Visibility::Private);
+        let v = caller.const_float(1.0);
+        caller.call("target", &[v], Type::Void);
+        caller.ret(None);
+        mb.add_function(caller.build());
+
+        let result = run(mb);
+        assert!(!result.changed);
+        let target = &result.module.functions[FuncId::new(0)];
+        // Body uses param as collection → stays Dynamic despite callers agreeing.
+        assert_eq!(target.sig.params[0], Type::Dynamic);
+    }
+
+    /// Callers all pass Float(64), but body uses GetField "length" on param → stays Dynamic.
+    #[test]
+    fn length_access_prevents_narrowing() {
+        let mut mb = ModuleBuilder::new("test");
+
+        let callee_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
+        let arr = callee.param(0);
+        callee.get_field(arr, "length", Type::Float(64));
+        callee.ret(None);
+        mb.add_function(callee.build());
+
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut caller = FunctionBuilder::new("caller", sig, Visibility::Private);
+        let v = caller.const_float(42.0);
+        caller.call("target", &[v], Type::Void);
+        caller.ret(None);
+        mb.add_function(caller.build());
+
+        let result = run(mb);
+        assert!(!result.changed);
+        let target = &result.module.functions[FuncId::new(0)];
+        assert_eq!(target.sig.params[0], Type::Dynamic);
     }
 }

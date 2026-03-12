@@ -65,8 +65,8 @@ fn recover_defaults(func: &mut Function) -> bool {
     }
 
     // Collect recovered defaults: (param_index, constant).
-    let defaults = scan_default_chain(func);
-    if defaults.is_empty() {
+    let matches = scan_default_chain(func);
+    if matches.is_empty() {
         return false;
     }
 
@@ -75,8 +75,41 @@ fn recover_defaults(func: &mut Function) -> bool {
         func.sig.defaults.push(None);
     }
 
-    for (param_idx, constant) in &defaults {
-        func.sig.defaults[*param_idx] = Some(constant.clone());
+    for m in &matches {
+        func.sig.defaults[m.param_idx] = Some(m.constant.clone());
+    }
+
+    // DCE the undefined-check blocks: replace each BrIf with an unconditional
+    // Br to the continue block, passing the original param value.  This
+    // prevents later passes (e.g. IntToBoolPromotion) from changing the body
+    // constant to a different type than the recovered sig default.
+    for m in &matches {
+        let block = &func.blocks[m.check_block];
+        // Find the BrIf instruction in this block.
+        let brif_pos = block.insts.iter().position(|&iid| {
+            matches!(
+                &func.insts[iid].op,
+                Op::BrIf {
+                    then_target,
+                    ..
+                } if func.blocks.get(*then_target).is_some()
+            )
+        });
+        if let Some(pos) = brif_pos {
+            let brif_id = block.insts[pos];
+            // Extract the else_target and else_args from the BrIf.
+            if let Op::BrIf {
+                else_target,
+                else_args,
+                ..
+            } = &func.insts[brif_id].op
+            {
+                let target = *else_target;
+                let args = else_args.clone();
+                // Replace BrIf with unconditional Br to continue block.
+                func.insts[brif_id].op = Op::Br { target, args };
+            }
+        }
     }
 
     true
@@ -171,9 +204,20 @@ fn zero_for_type(ty: &Type) -> Constant {
     }
 }
 
+/// Info needed to rewrite a matched default-check block.
+struct DefaultCheckMatch {
+    param_idx: usize,
+    constant: Constant,
+    /// The block containing the BrIf.
+    check_block: BlockId,
+    /// The continue block (else_target of the BrIf) — used for debugging.
+    #[allow(dead_code)]
+    continue_block: BlockId,
+}
+
 /// Walk the entry block chain looking for the `if (arg === undefined) arg = default` pattern.
-/// Returns a list of (param_index, default_constant) pairs.
-fn scan_default_chain(func: &Function) -> Vec<(usize, Constant)> {
+/// Returns match info for each recovered default.
+fn scan_default_chain(func: &Function) -> Vec<DefaultCheckMatch> {
     let mut results = Vec::new();
     let mut current_block = func.entry;
 
@@ -194,7 +238,12 @@ fn scan_default_chain(func: &Function) -> Vec<(usize, Constant)> {
     while let Some((param_idx, constant, next_block)) =
         try_match_default_check(func, current_block, self_param, &entry_params)
     {
-        results.push((param_idx, constant));
+        results.push(DefaultCheckMatch {
+            param_idx,
+            constant,
+            check_block: current_block,
+            continue_block: next_block,
+        });
         current_block = next_block;
     }
 
