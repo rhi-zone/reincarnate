@@ -1582,6 +1582,11 @@ pub fn hoist_else_after_terminal(body: &mut Vec<JsStmt>) {
         }
     }
 
+    // Recurse into expressions containing arrow function bodies.
+    for stmt in body.iter_mut() {
+        hoist_else_in_stmt_exprs(stmt);
+    }
+
     let mut i = 0;
     while i < body.len() {
         let hoist = if let JsStmt::If {
@@ -1604,6 +1609,103 @@ pub fn hoist_else_after_terminal(body: &mut Vec<JsStmt>) {
             }
         }
         i += 1;
+    }
+}
+
+/// Walk all expressions in a statement, applying `hoist_else_after_terminal` to any
+/// arrow function bodies found. This extends the pass to cover closures.
+fn hoist_else_in_stmt_exprs(stmt: &mut JsStmt) {
+    match stmt {
+        JsStmt::VarDecl { init: Some(e), .. } | JsStmt::Expr(e) | JsStmt::Return(Some(e)) => {
+            hoist_else_in_expr(e);
+        }
+        JsStmt::Assign { target, value } | JsStmt::CompoundAssign { target, value, .. } => {
+            hoist_else_in_expr(target);
+            hoist_else_in_expr(value);
+        }
+        JsStmt::Throw(e) => hoist_else_in_expr(e),
+        // If/While/Loop/For/ForOf/Switch/Dispatch are handled by the main recursion
+        _ => {}
+    }
+}
+
+/// Walk an expression tree, applying `hoist_else_after_terminal` to any arrow function bodies.
+fn hoist_else_in_expr(expr: &mut JsExpr) {
+    match expr {
+        JsExpr::ArrowFunction { body, .. } => {
+            hoist_else_after_terminal(body);
+        }
+        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+            hoist_else_in_expr(lhs);
+            hoist_else_in_expr(rhs);
+        }
+        JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
+            hoist_else_in_expr(lhs);
+            hoist_else_in_expr(rhs);
+        }
+        JsExpr::Unary { expr: e, .. }
+        | JsExpr::Not(e)
+        | JsExpr::PostIncrement(e)
+        | JsExpr::Spread(e)
+        | JsExpr::Cast { expr: e, .. }
+        | JsExpr::TypeCheck { expr: e, .. }
+        | JsExpr::TypeOf(e)
+        | JsExpr::GeneratorResume(e)
+        | JsExpr::NonNull(e) => hoist_else_in_expr(e),
+        JsExpr::Field { object, .. } => hoist_else_in_expr(object),
+        JsExpr::Index { collection, index } => {
+            hoist_else_in_expr(collection);
+            hoist_else_in_expr(index);
+        }
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            hoist_else_in_expr(cond);
+            hoist_else_in_expr(then_val);
+            hoist_else_in_expr(else_val);
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            hoist_else_in_expr(callee);
+            for a in args {
+                hoist_else_in_expr(a);
+            }
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) => {
+            for e in elems {
+                hoist_else_in_expr(e);
+            }
+        }
+        JsExpr::ObjectInit(pairs) => {
+            for (_, v) in pairs {
+                hoist_else_in_expr(v);
+            }
+        }
+        JsExpr::In { key, object } | JsExpr::Delete { key, object } => {
+            hoist_else_in_expr(key);
+            hoist_else_in_expr(object);
+        }
+        JsExpr::NullCoalesceAssign { target, value } => {
+            hoist_else_in_expr(target);
+            hoist_else_in_expr(value);
+        }
+        JsExpr::SuperSet { value, .. } => hoist_else_in_expr(value),
+        JsExpr::SuperCall(args)
+        | JsExpr::SuperMethodCall { args, .. }
+        | JsExpr::GeneratorCreate { args, .. } => {
+            for a in args {
+                hoist_else_in_expr(a);
+            }
+        }
+        JsExpr::SystemCall { args, .. } => {
+            for a in args {
+                hoist_else_in_expr(a);
+            }
+        }
+        JsExpr::Yield(Some(e)) => hoist_else_in_expr(e),
+        // Leaf nodes — no sub-expressions
+        _ => {}
     }
 }
 
