@@ -2662,10 +2662,9 @@
     },
     "steam_file_read_buffer": {
       "params": [
-        "string",
-        "number"
+        "string"
       ],
-      "returns": "boolean"
+      "returns": "number"
     },
     "steam_file_write": {
       "params": [

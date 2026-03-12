@@ -3510,11 +3510,12 @@ export class GameRuntime {
   steam_get_quota_free(): number { return 104857600; }
   steam_get_number_of_current_players(): void { /* no-op — Steam player count not available in browser */ }
   steam_get_app_ownership_ticket_data(_appId: number): string { return ""; /* no-op — Steam DRM not available in browser */ }
-  steam_file_read_buffer(path: string, buf?: number): boolean {
-    const data = fetchItem(this._persistence, this._steamCloudKey(path)); if (!data) return false;
-    const b = this._buffers.get(buf ?? -1); if (!b) return false;
-    this._bufferGrow(b, data.length); b.data.set(data, 0);
-    return true;
+  steam_file_read_buffer(path: string): number {
+    const data = fetchItem(this._persistence, this._steamCloudKey(path)); if (!data) return -1;
+    const id = this.buffer_create(data.length, 0, 1);
+    const b = this._buffers.get(id)!;
+    b.data.set(data, 0);
+    return id;
   }
   steam_file_persisted(_path: string): boolean { return this.steam_file_exists(_path); }
   steam_download_scores_around_user(_board: string, _range: number, _range2?: number): void { /* no-op — Steam leaderboards not available in browser */ }
