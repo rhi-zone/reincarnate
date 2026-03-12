@@ -329,14 +329,20 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 - [ ] **~80 GMLObject→number errors NOT tractable via simple arithmetic widening** — see
   updated notes in TS2345/TS2322/TS2365 item below.
 
-**GML error reduction continued (Dead Estate 112→104, session 8):**
+**GML error reduction continued (Dead Estate 112→100, session 8):**
 - [x] `coerce_bool_args` reverse direction: boolean→number coercion at runtime call sites.
   Extended `is_already_boolean` to look through Cast(Coerce) wrappers. Added `may_produce_boolean`
   for ternary branches. New helpers: `coerce_to_number`, `is_numeric_param`. −6 errors.
 - [x] Fixed `steam_file_read_buffer` return type in both `runtime.json` and `runtime.ts`
   (was `boolean`, should be `number` returning buffer ID). −2 errors.
+- [x] Reordered extra passes: `GmlBoolArithCoerce` after `GmlLogicalOpNormalize`. LogicalOp
+  creates blocks that pass Bool values to numeric block params; BoolArithCoerce must run after.
+- [x] Fixed `coerce_bool_br_args`: use `value_types[param.value]` instead of stale `param.ty`;
+  always cast to `Float(64)` (printer has no handler for `Coerce(_, Int(64))`). −2 errors.
+- [x] Fixed `IntToBoolPromotion` internal sig demands: read `value_types[entry_param.value]`
+  instead of `sig.params` (sig not updated by CallSiteTypeFlow/ConstraintSolve). −2 errors.
 
-**Baselines:** Flash 15, Bounty 2, Dead Estate 104.
+**Baselines:** Flash 15, Bounty 2, Dead Estate 100.
 
 ---
 
@@ -1215,7 +1221,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 104 TS errors + 1 translation error (2026-03-12) |
+| Dead Estate | `data.win` 192MB | ⚠️ 100 TS errors + 1 translation error (2026-03-12) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
