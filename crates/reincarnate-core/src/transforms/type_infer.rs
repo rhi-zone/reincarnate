@@ -325,6 +325,27 @@ fn branch_targets(op: &Op) -> Vec<(BlockId, &[ValueId])> {
     }
 }
 
+/// Return type of ECMAScript String prototype methods.
+/// Returns `None` for unknown methods (falls back to Dynamic).
+fn string_method_return_type(method: &str) -> Option<Type> {
+    match method {
+        // Methods that return string
+        "charAt" | "concat" | "normalize" | "padEnd" | "padStart" | "repeat" | "replace"
+        | "replaceAll" | "slice" | "substring" | "substr" | "toLocaleLowerCase"
+        | "toLocaleUpperCase" | "toLowerCase" | "toString" | "toUpperCase" | "trim" | "trimEnd"
+        | "trimStart" | "valueOf" => Some(Type::String),
+        // Methods that return number
+        "charCodeAt" | "codePointAt" | "indexOf" | "lastIndexOf" | "localeCompare" | "search" => {
+            Some(Type::Float(64))
+        }
+        // Methods that return boolean
+        "endsWith" | "includes" | "startsWith" => Some(Type::Bool),
+        // Methods that return number (property-like)
+        "length" => Some(Type::Float(64)),
+        _ => None,
+    }
+}
+
 /// Infer the type of an instruction's result given the current value types.
 fn infer_inst_type(
     inst: &Inst,
@@ -466,6 +487,13 @@ fn infer_inst_type(
                             .cloned()
                             .unwrap_or(Type::Dynamic)
                     })
+            } else if func.value_types[*receiver] == Type::String {
+                string_method_return_type(bare).unwrap_or_else(|| {
+                    ctx.unique_method_types
+                        .get(bare)
+                        .cloned()
+                        .unwrap_or(Type::Dynamic)
+                })
             } else {
                 ctx.unique_method_types
                     .get(bare)
