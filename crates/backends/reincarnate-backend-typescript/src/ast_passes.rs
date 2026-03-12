@@ -1539,6 +1539,74 @@ pub fn simplify_boolean_returns(body: &mut [JsStmt]) {
     }
 }
 
+/// Hoist else bodies when then-body ends in a terminal (return/throw/break/continue).
+/// `if (c) { ...; return X; } else { S1; S2; }` → `if (c) { ...; return X; } S1; S2;`
+pub fn hoist_else_after_terminal(body: &mut Vec<JsStmt>) {
+    // Recurse into nested bodies first.
+    for stmt in body.iter_mut() {
+        match stmt {
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                hoist_else_after_terminal(then_body);
+                hoist_else_after_terminal(else_body);
+            }
+            JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
+                hoist_else_after_terminal(body);
+            }
+            JsStmt::For {
+                init, body, update, ..
+            } => {
+                hoist_else_after_terminal(init);
+                hoist_else_after_terminal(body);
+                hoist_else_after_terminal(update);
+            }
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    hoist_else_after_terminal(case_body);
+                }
+                hoist_else_after_terminal(default_body);
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    hoist_else_after_terminal(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut i = 0;
+    while i < body.len() {
+        let hoist = if let JsStmt::If {
+            then_body,
+            else_body,
+            ..
+        } = &body[i]
+        {
+            !else_body.is_empty() && crate::ast_printer::ends_with_terminal(then_body)
+        } else {
+            false
+        };
+        if hoist {
+            if let JsStmt::If { else_body, .. } = &mut body[i] {
+                let hoisted = std::mem::take(else_body);
+                let insert_at = i + 1;
+                for (j, stmt) in hoisted.into_iter().enumerate() {
+                    body.insert(insert_at + j, stmt);
+                }
+            }
+        }
+        i += 1;
+    }
+}
+
 /// If `body` is exactly `[Return(Literal(Bool(b)))]`, return `Some(b)`.
 fn returns_bool_literal(body: &[JsStmt]) -> Option<bool> {
     if body.len() == 1 {

@@ -3878,6 +3878,7 @@ fn emit_function(
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
     crate::ast_passes::simplify_boolean_returns(&mut js_func.body);
+    crate::ast_passes::hoist_else_after_terminal(&mut js_func.body);
     // Rewrite calls to free functions: prepend `_rt` as first argument.
     // Includes recursive self-calls — do NOT remove self from the set.
     if !free_func_names.is_empty() {
@@ -4576,6 +4577,7 @@ fn emit_class_method(
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
     crate::ast_passes::simplify_boolean_returns(&mut js_func.body);
+    crate::ast_passes::hoist_else_after_terminal(&mut js_func.body);
     // Rewrite calls to free functions: prepend `this._rt` as first argument.
     if !free_func_names.is_empty() {
         prepend_rt_arg_to_free_calls(&mut js_func.body, free_func_names, true);
