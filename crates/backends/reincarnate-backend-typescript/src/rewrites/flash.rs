@@ -1262,6 +1262,42 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
         }
     }
 
+    // AS3 `String.replace(pattern, repl)` auto-coerces `repl` to String.
+    // TypeScript's String.replace() requires `string` — wrap with String() to avoid TS2769.
+    if let JsExpr::Call {
+        ref callee,
+        ref args,
+    } = expr
+    {
+        if args.len() == 2 {
+            if let JsExpr::Field { ref field, .. } = **callee {
+                if field == "replace" {
+                    if let JsExpr::Call { callee, args } = expr {
+                        let callee_rewritten = Box::new(rewrite_expr(*callee, ctx));
+                        let mut args_iter = args.into_iter();
+                        let search = rewrite_expr(args_iter.next().unwrap(), ctx);
+                        let repl = rewrite_expr(args_iter.next().unwrap(), ctx);
+                        // Wrap replacement with String() unless already a string literal
+                        let repl = if matches!(&repl, JsExpr::Literal(Constant::String(_)))
+                            || matches!(&repl, JsExpr::Call { callee, .. } if matches!(**callee, JsExpr::Var(ref n) if n == "String"))
+                        {
+                            repl
+                        } else {
+                            JsExpr::Call {
+                                callee: Box::new(JsExpr::Var("String".to_string())),
+                                args: vec![repl],
+                            }
+                        };
+                        return JsExpr::Call {
+                            callee: callee_rewritten,
+                            args: vec![search, repl],
+                        };
+                    }
+                }
+            }
+        }
+    }
+
     // `.apply(receiver, args_array)` — cast args_array as `any` to satisfy TS strict
     // Function.apply() typing (TS2345: any[] not assignable to exact param tuples).
     if let JsExpr::Call {
