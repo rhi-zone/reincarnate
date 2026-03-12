@@ -290,9 +290,9 @@ class coercion rewrite and type inference for qualified field names).
 
 **Remaining audit items:**
 - [x] **Audit emitted code readability** — DONE 2026-03-12. Key findings:
-  - [ ] Boolean return chains: `if (x) return true; else return false;` → `return x;` (93+ files)
-  - [ ] Double `String()` wrapping: `String(String(x))` → `String(x)` (5 files)
-  - [ ] Redundant else after return: `if (x) { ...; return; } else { return; }` simplification
+  - [x] Boolean return chains: `if (x) return true; else return false;` → `return x;` — DONE 2026-03-12 (`simplify_boolean_returns` pass, 208 simplified)
+  - [x] Double `String()` wrapping: `String(String(x))` → `String(x)` — DONE 2026-03-12 (`unwrap_coerce` in printer, 19→15 remaining are chained method-call patterns)
+  - [x] Redundant else after return — DONE 2026-03-12 (`hoist_else_after_terminal` pass, 560→50 instances, 91% reduction)
   - Items correctly kept as-is: `== null` (AS3 loose equality, Law 3), `as any` on shims
     (structural), concatenated string arrays (faithful to bytecode), `vN` names (from hasNext2
     tuple unpacking — structural to AVM2 iteration model)
