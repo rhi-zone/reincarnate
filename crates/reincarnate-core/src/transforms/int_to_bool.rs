@@ -447,13 +447,22 @@ impl Transform for IntToBoolPromotion {
             }
         }
 
-        // Build internal function sig param types map
+        // Build internal function sig param types map.
+        // Use value_types[entry_param.value] instead of sig.params — sig.params
+        // may still be Dynamic even after CallSiteTypeFlow/ConstraintSolve
+        // narrowed the entry block params (those passes update entry.params.ty
+        // and value_types but not sig.params).
         let internal_sigs: HashMap<String, Vec<Type>> = module
             .functions
             .keys()
             .map(|fid| {
                 let f = &module.functions[fid];
-                (f.name.clone(), f.sig.params.clone())
+                let param_tys: Vec<Type> = f.blocks[f.entry]
+                    .params
+                    .iter()
+                    .map(|p| f.value_types[p.value].clone())
+                    .collect();
+                (f.name.clone(), param_tys)
             })
             .collect();
 
@@ -499,7 +508,12 @@ impl Transform for IntToBoolPromotion {
                 .keys()
                 .map(|fid| {
                     let f = &module.functions[fid];
-                    (f.name.clone(), f.sig.params.clone())
+                    let param_tys: Vec<Type> = f.blocks[f.entry]
+                        .params
+                        .iter()
+                        .map(|p| f.value_types[p.value].clone())
+                        .collect();
+                    (f.name.clone(), param_tys)
                 })
                 .collect();
 
