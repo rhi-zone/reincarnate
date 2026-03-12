@@ -197,10 +197,21 @@ fn coerce_bool_arithmetic(func: &mut Function, bool_returning: &HashSet<String>)
 
 fn coerce_bool_br_args(func: &mut Function) -> bool {
     // Pre-build: BlockId → Vec<param_ty> for target-block param type lookup.
+    // Use value_types[param.value] instead of param.ty — param.ty can be stale
+    // (set by Mem2Reg at creation time, not updated by later passes like
+    // IntToBoolPromotion which changes value_types but not param.ty).
     let block_param_tys: HashMap<BlockId, Vec<Type>> = func
         .blocks
         .iter()
-        .map(|(bid, b)| (bid, b.params.iter().map(|p| p.ty.clone()).collect()))
+        .map(|(bid, b)| {
+            (
+                bid,
+                b.params
+                    .iter()
+                    .map(|p| func.value_types[p.value].clone())
+                    .collect(),
+            )
+        })
         .collect();
 
     // Collect casts needed: (inst_id, arm, arg_pos, old_v, to_type)
@@ -214,7 +225,10 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
                     for (i, &v) in args.iter().enumerate() {
                         if let Some(pty) = param_tys.get(i) {
                             if is_bool(func, v) && is_numeric(pty) {
-                                casts.push((inst_id, 0, i, v, pty.clone()));
+                                // Always cast to Float(64) — the printer emits
+                                // Number(expr) for Float, but has no handler for
+                                // Int(64) Coerce casts (they fall through as no-op).
+                                casts.push((inst_id, 0, i, v, Type::Float(64)));
                             }
                         }
                     }
@@ -231,7 +245,7 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
                     for (i, &v) in then_args.iter().enumerate() {
                         if let Some(pty) = param_tys.get(i) {
                             if is_bool(func, v) && is_numeric(pty) {
-                                casts.push((inst_id, 1, i, v, pty.clone()));
+                                casts.push((inst_id, 1, i, v, Type::Float(64)));
                             }
                         }
                     }
@@ -240,7 +254,7 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
                     for (i, &v) in else_args.iter().enumerate() {
                         if let Some(pty) = param_tys.get(i) {
                             if is_bool(func, v) && is_numeric(pty) {
-                                casts.push((inst_id, 2, i, v, pty.clone()));
+                                casts.push((inst_id, 2, i, v, Type::Float(64)));
                             }
                         }
                     }
