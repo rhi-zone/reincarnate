@@ -2190,4 +2190,93 @@ mod tests {
         let reader_func = &module.functions[FuncId::new(1)];
         assert_eq!(reader_func.value_types[result], Type::Int(64));
     }
+
+    /// MethodCall on a String receiver infers return type from the method name.
+    #[test]
+    fn string_method_call_return_type() {
+        let sig = FunctionSig {
+            params: vec![Type::String],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let s = fb.param(0);
+        let pattern = fb.const_string("a");
+        let replacement = fb.const_string("b");
+        // call_method with Dynamic return type — simulating untyped frontend output.
+        let replaced = fb.call_method(s, "replace", &[pattern, replacement], Type::Dynamic);
+        let idx = fb.call_method(s, "indexOf", &[pattern], Type::Dynamic);
+        let starts = fb.call_method(s, "startsWith", &[pattern], Type::Dynamic);
+        fb.ret(Some(replaced));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+        let module = TypeInference.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        assert_eq!(
+            func.value_types[replaced],
+            Type::String,
+            "replace returns String"
+        );
+        assert_eq!(
+            func.value_types[idx],
+            Type::Float(64),
+            "indexOf returns Float(64)"
+        );
+        assert_eq!(
+            func.value_types[starts],
+            Type::Bool,
+            "startsWith returns Bool"
+        );
+    }
+
+    /// String method inference + RedCastElim eliminates redundant coerce_s.
+    #[test]
+    fn string_replace_coerce_eliminated() {
+        let sig = FunctionSig {
+            params: vec![Type::String],
+            return_ty: Type::String,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let s = fb.param(0);
+        let pattern = fb.const_string("a");
+        let replacement = fb.const_string("b");
+        // Simulate: v1 = s.replace(a, b) → Dynamic, then coerce to String.
+        let replaced = fb.call_method(s, "replace", &[pattern, replacement], Type::Dynamic);
+        let coerced = fb.coerce(replaced, Type::String);
+        fb.ret(Some(coerced));
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+
+        // After type inference, replaced should be String, making the coerce redundant.
+        let module = TypeInference.apply(module).unwrap().module;
+        let func = &module.functions[FuncId::new(0)];
+        assert_eq!(func.value_types[replaced], Type::String);
+
+        // RedCastElim should now eliminate the redundant Cast.
+        let mut mb2 = ModuleBuilder::new("test");
+        mb2.add_function(func.clone());
+        let module2 = mb2.build();
+        let result = crate::transforms::red_cast_elim::RedundantCastElimination
+            .apply(module2)
+            .unwrap();
+        assert!(result.changed, "redundant coerce should be eliminated");
+        let func = &result.module.functions[FuncId::new(0)];
+        assert!(
+            matches!(
+                func.insts
+                    .values()
+                    .find(|i| i.result == Some(coerced))
+                    .unwrap()
+                    .op,
+                Op::Copy(_)
+            ),
+            "Cast(String→String) should become Copy"
+        );
+    }
 }
