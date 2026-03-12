@@ -308,24 +308,27 @@ class coercion rewrite and type inference for qualified field names).
 
 ---
 
-## Next Session: Remaining Audit Fixes
+## Next Session: Remaining Refactors
 
-Monster function splits — launch 2-3 parallel agents:
+**Completed module splits (2026-03-12):**
+- [x] `translate.rs` (4650 lines) → `translate/` module directory (7 files)
+- [x] `emit.rs` (7767 lines) → `emit/` module directory (7 files)
 
-1. **`translate_op` (1464 lines)** — `crates/frontends/reincarnate-frontend-gamemaker/src/translate.rs`.
-   Single match on GML opcodes. Split by category (arithmetic, stack, comparison, control flow,
-   variable access, type ops) as methods on `TranslateCtx` or free functions in sub-modules.
+**Remaining splits:**
+- [ ] `flash.rs` (3197 lines) — `crates/backends/reincarnate-backend-typescript/src/rewrites/flash.rs`.
+  `rewrite_expr` (412 lines) + `rewrite_system_call` (251 lines) are the big functions.
+  Split into `flash/mod.rs`, `flash/scope.rs`, `flash/system_calls.rs`, `flash/binding.rs`.
+- [ ] `linear.rs` (4434 lines) — `crates/reincarnate-core/src/ir/linear.rs`.
+  Already split into `linear/{mod,linearize,resolve,emit,tests}` but some files still large.
+- [ ] `variable_access.rs` (991 lines) — `translate_push_variable` (498 lines) and
+  `translate_pop` (422 lines) each need internal refactoring (shared stacktop resolution,
+  2D array access, instance dispatch helpers). Prerequisite: `TranslationState` struct
+  to bundle the 10+ function parameters.
 
-2. **`emit_module_to_dir` (589 lines)** — `crates/backends/reincarnate-backend-typescript/src/emit.rs`.
-   God function: file I/O, import collection, module splitting, class grouping, barrel exports.
-   Extract `collect_imports()`, `split_modules()`, `write_barrel_exports()`, `write_scaffold()`.
-
-3. **`linear.rs` (4434 lines)** — `crates/reincarnate-core/src/ir/linear.rs`.
-   Linearizer, resolver, expression building. Split into `linear/mod.rs`, `linear/resolve.rs`,
-   `linear/expr_builder.rs`.
-
-Also: core `pub` → `pub(crate)` visibility tightening, error handling consistency redesign
-(save for dedicated session), minor items listed below.
+**Also remaining:**
+- core `pub` → `pub(crate)` visibility tightening
+- error handling consistency redesign (save for dedicated session)
+- test coverage (Flash frontend: 14 tests, GML rewrites: 4 tests, no e2e snapshots)
 
 ---
 
