@@ -53,6 +53,8 @@ export { ContextMenu as NativeMenu };
 // ---------------------------------------------------------------------------
 
 export class Keyboard {
+  // AS3 allows bracket access on class constructors (e.g. Keyboard["ENTER"]).
+  static readonly [key: string]: any;
   static readonly BACKSPACE = 8;
   static readonly TAB = 9;
   static readonly ENTER = 13;

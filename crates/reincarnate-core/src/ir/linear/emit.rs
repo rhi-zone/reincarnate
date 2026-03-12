@@ -383,6 +383,29 @@ impl<'a> EmitCtx<'a> {
         }
     }
 
+    /// Check if a Struct-typed collection needs `(as any)` wrapping for bracket access.
+    ///
+    /// Returns true when the collection is a concrete class (Struct) that isn't
+    /// Object/Class/Dictionary — types that already have index signatures in TS.
+    fn is_struct_needing_index_coerce(&self, v: ValueId) -> bool {
+        if let Some(Type::Struct(name)) = self.func.value_types.get(v) {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            !matches!(short, "Object" | "Class" | "Dictionary")
+        } else {
+            false
+        }
+    }
+
+    /// Check if a value is XML or XMLList typed (needs String coercion when used as index).
+    fn is_xml_typed(&self, v: ValueId) -> bool {
+        if let Some(Type::Struct(name)) = self.func.value_types.get(v) {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            matches!(short, "XML" | "XMLList")
+        } else {
+            false
+        }
+    }
+
     /// Build an expression for a value reference.
     fn build_val(&mut self, v: ValueId) -> Expr {
         // Constants — always inlined, not consumed.
@@ -564,9 +587,34 @@ impl<'a> EmitCtx<'a> {
                         }
                     }
                 } else {
+                    let mut coll_expr = self.build_val(*collection);
+                    let mut idx_expr = self.build_val(*index);
+                    if self.config.coerce_index_types {
+                        // Struct-typed collection + Dynamic index → (collection as any)
+                        if self.is_struct_needing_index_coerce(*collection)
+                            && matches!(
+                                self.func.value_types.get(*index),
+                                Some(Type::Dynamic) | None
+                            )
+                        {
+                            coll_expr = Expr::Cast {
+                                expr: Box::new(coll_expr),
+                                ty: Type::Dynamic,
+                                kind: CastKind::NullableCoerce,
+                            };
+                        }
+                        // XML/XMLList index → String(index)
+                        if self.is_xml_typed(*index) {
+                            idx_expr = Expr::Cast {
+                                expr: Box::new(idx_expr),
+                                ty: Type::String,
+                                kind: CastKind::Coerce,
+                            };
+                        }
+                    }
                     Expr::Index {
-                        collection: Box::new(self.build_val(*collection)),
-                        index: Box::new(self.build_val(*index)),
+                        collection: Box::new(coll_expr),
+                        index: Box::new(idx_expr),
                     }
                 }
             }

@@ -217,6 +217,17 @@ pub struct LoweringConfig {
     ///
     /// Flash sets this to `true`; all other engines leave it `false`.
     pub construct_string_coerce: bool,
+    /// Coerce index expressions for type-safe bracket access.
+    ///
+    /// When `true`, two coercions are applied in `GetIndex` emission:
+    /// 1. If the collection is a `Struct` type (not Object/Class/Dictionary)
+    ///    and the index is `Dynamic`, the collection is wrapped with
+    ///    `(collection as any)` so bracket access is allowed.
+    /// 2. If the index is an XML/XMLList type, it is wrapped with
+    ///    `String(index)` to coerce to a valid TS index type.
+    ///
+    /// Flash sets this to `true`; all other engines leave it `false`.
+    pub coerce_index_types: bool,
 }
 
 impl Default for LoweringConfig {
@@ -237,6 +248,7 @@ impl LoweringConfig {
             wrap_class_refs_as_any: false,
             foreach_rewrite: false,
             construct_string_coerce: false,
+            coerce_index_types: false,
         }
     }
 
@@ -250,6 +262,7 @@ impl LoweringConfig {
             wrap_class_refs_as_any: false,
             foreach_rewrite: false,
             construct_string_coerce: false,
+            coerce_index_types: false,
         }
     }
 }

@@ -634,41 +634,20 @@ pub fn translate_abc_to_module(
     let mut module = mb.build();
     populate_external_imports(&mut module);
 
-    // Post-processing pass: set needs_index_signature on each class.
+    // Post-processing pass: set needs_index_signature on ALL classes.
     //
-    // A class needs an index signature when:
-    // (a) it is marked `dynamic` (AS3 non-sealed class), or
-    // (b) any ancestor in the super_class chain is named "Proxy"
-    //     (flash.utils::Proxy — models dynamic dispatch via interceptor methods).
+    // AS3 allows bracket property access (`obj["prop"]`) on ALL objects,
+    // including sealed (non-dynamic) classes.  In TypeScript, this requires
+    // an index signature.  Without it, `player[statName]` on a sealed
+    // Player class produces TS7053.
     //
-    // Proxy ancestor detection requires the full class list, so we can't do
-    // this at class-construction time — hence the post-processing pass here.
-    {
-        // Build a short-name → super_class map for internal classes only.
-        let short_to_super: std::collections::HashMap<String, Option<String>> = module
-            .classes
-            .iter()
-            .map(|c| (c.name.clone(), c.super_class.clone()))
-            .collect();
-
-        for class in &mut module.classes {
-            if class.is_dynamic {
-                class.needs_index_signature = true;
-            } else {
-                // Walk the super_class chain looking for a "Proxy" ancestor.
-                let mut has_proxy = false;
-                let mut cur = class.super_class.clone();
-                while let Some(ref sc) = cur {
-                    let short = sc.rsplit("::").next().unwrap_or(sc);
-                    if short == "Proxy" {
-                        has_proxy = true;
-                        break;
-                    }
-                    // Continue up the chain through internal classes only.
-                    cur = short_to_super.get(short).and_then(|opt| opt.clone());
-                }
-                class.needs_index_signature = has_proxy;
-            }
+    // Dynamic classes additionally allow *creating* new properties via
+    // bracket access, but TypeScript's `[key: string]: any` doesn't
+    // distinguish read-only vs read-write bracket access, so we emit it
+    // for all classes uniformly.
+    for class in &mut module.classes {
+        if !class.is_interface {
+            class.needs_index_signature = true;
         }
     }
 

@@ -40,6 +40,12 @@ pub fn ts_type(ty: &Type) -> String {
             if short == "Class" {
                 return "any".into();
             }
+            // AS3 XML/XMLList have implicit string coercion — they are valid as index
+            // keys and assignable to string fields.  TypeScript's XML class has no such
+            // implicit coercion, so widen to `any` to avoid TS2538 and TS2322.
+            if matches!(short, "XML" | "XMLList") {
+                return "any".into();
+            }
             sanitize_ident(short)
         }
         Type::ClassRef(_) => {
@@ -97,6 +103,15 @@ pub fn flash_ts_type(ty: &Type) -> String {
         // TypeScript's `any[]` only allows numeric indexing, causing TS7015 on string
         // keys. Emit `any` to allow all indexing patterns faithfully.
         Type::Array(_) => "any".into(),
+        // AS3 XML/XMLList have implicit string coercion — they are valid as index
+        // keys and assignable to string fields.  TypeScript's XML class has no such
+        // implicit coercion, so declaring variables as `any` instead of `XML`/`XMLList`
+        // avoids TS2538 (XML can't be used as index) and TS2322 (XML→string).
+        Type::Struct(name)
+            if matches!(name.rsplit("::").next().unwrap_or(name), "XML" | "XMLList") =>
+        {
+            "any".into()
+        }
         _ => ts_type(ty),
     }
 }
@@ -131,6 +146,11 @@ pub fn flash_ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>
     match ty {
         Type::Map(k, _) if matches!(k.as_ref(), Type::Dynamic) => "Dictionary".into(),
         Type::Array(_) => "any".into(),
+        Type::Struct(name)
+            if matches!(name.rsplit("::").next().unwrap_or(name), "XML" | "XMLList") =>
+        {
+            "any".into()
+        }
         _ => ts_type_with_names(ty, class_names),
     }
 }

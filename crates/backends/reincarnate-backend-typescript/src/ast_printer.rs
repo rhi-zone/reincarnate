@@ -1087,9 +1087,8 @@ fn needs_parens(expr: &JsExpr) -> bool {
                 CastKind::Coerce,
                 Type::Float(_) | Type::Int(32) | Type::UInt(32) | Type::String | Type::Bool,
             ) => false,
-            (CastKind::Coerce, _) => false, // passthrough
-            (CastKind::NullableCoerce, Type::Dynamic) => false, // passthrough
-            (CastKind::NullableCoerce, _) => true, // `x as T`
+            (CastKind::Coerce, _) => false,        // passthrough
+            (CastKind::NullableCoerce, _) => true, // `x as T` / `x as any`
         },
         // Negative numeric literals need parens to allow member access:
         //   (-4).length  not  -4.length  (TS1351: identifier after numeric literal)

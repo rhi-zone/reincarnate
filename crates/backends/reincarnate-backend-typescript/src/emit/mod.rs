@@ -79,7 +79,8 @@ fn lowering_config_for_engine(
     let needs_flash = engine == EngineKind::Flash
         && (config.scope_lookup_systems.is_empty()
             || !config.foreach_rewrite
-            || !config.construct_string_coerce);
+            || !config.construct_string_coerce
+            || !config.coerce_index_types);
     let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
     if needs_flash || needs_gml {
         let mut c = config.clone();
@@ -87,6 +88,7 @@ fn lowering_config_for_engine(
             c.scope_lookup_systems = vec!["Flash.Scope".to_string()];
             c.foreach_rewrite = true;
             c.construct_string_coerce = true;
+            c.coerce_index_types = true;
         }
         if needs_gml {
             c.wrap_class_refs_as_any = true;
