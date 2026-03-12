@@ -342,7 +342,28 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 - [x] Fixed `IntToBoolPromotion` internal sig demands: read `value_types[entry_param.value]`
   instead of `sig.params` (sig not updated by CallSiteTypeFlow/ConstraintSolve). −2 errors.
 
-**Baselines:** Flash 15, Bounty 2, Dead Estate 100.
+**GML error reduction continued (Dead Estate 100→98, session 9):**
+- [x] `GmlBoolArithCoerce` Pass 3: Bool values stored via SetField to known numeric fields
+  (GML built-in properties like `image_index`, `depth`, `speed` etc. + struct-defined numeric
+  fields) get Cast(Bool→Float(64), Coerce). Fixes `this.image_index = (y > threshold)`. −1 error.
+- [x] `GmlDefaultArgRecovery` DCE: after extracting sig defaults, replaces BrIf with
+  unconditional Br to continue block. Prevents IntToBoolPromotion from changing body constants
+  to boolean type when the sig default is numeric (was causing `argument4 = false` on number-typed
+  param). −1 error.
+- [x] `CallSiteTypeFlow` body-usage guard: skips narrowing when the callee body uses the param
+  as a collection (GetIndex or GetField "length"). Defensive — prevents future regressions from
+  narrowing array params to Float(64).
+- [ ] **TS2304 block depth (9 errors)**: tried worklist-based CFG depth analysis — caused massive
+  regression (98→216) because min() depths are too low, losing values. Tried fixpoint iteration
+  of linear scan — no effect (depths already converge in first pass). Root cause is likely
+  incorrect `stack_effect()` for specific instruction patterns, not the algorithm. Needs per-
+  function bytecode-level debugging (OBulkingUpEmptySpace, OEmptySpaceController, etc.).
+- [ ] **TS2339 .length on number (15 errors)**: 12 from `instancePlaceList3d` return type (always
+  returns -4/noone, callers check .length — game-author bug or const-folding artifact), 2 from
+  param narrowing (body-usage guard added but params not directly used with GetIndex), 1 from
+  literal -4.
+
+**Baselines:** Flash 15, Bounty 2, Dead Estate 98.
 
 ---
 
