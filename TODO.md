@@ -248,8 +248,8 @@ Library files (List.ts, StyleManager.ts) are poor — 22–40% artifact names, a
 ## Flash Output Quality Audit (HIGH PRIORITY)
 
 Systematic audit of all remaining TS errors and emitted code quality. The CC project
-is the primary Flash test game. Current baseline: **23 TS errors** (was 30; fixed 7 via
-class coercion rewrite and type inference for qualified field names).
+is the primary Flash test game. Current baseline: **15 TS errors** (was 30; fixed 15 via
+class coercion rewrite, type inference, XML→any mapping, universal index signatures).
 
 - [x] **Categorize all 30 remaining TS errors** — DONE 2026-03-12. Full per-error triage below.
 
@@ -281,12 +281,16 @@ class coercion rewrite and type inference for qualified field names).
   `.apply()` second arg as `any` in rewrite_this_to_prototype + generic rewrite_expr rule.
   Also widened `int()` runtime function from `(x: number)` to `(x: any)` for AS3 semantics.
 
-**Remaining Flash errors (18 = 5 fixable + 13 game-author):**
-- [ ] TS2322 (1): CoC.ts:11057 — `XML` assigned to `string` field. AS3 implicit XML→string
-  coercion. Needs type-aware coercion (IR pass or rewriter with field type info).
-- [ ] TS2538 (1): BindingPane.ts:148 — XML as index type (non-Dictionary, same XML coercion issue).
-- [ ] TS7053 (2): StatsView.ts:128 — `any` indexing `Player` (no index signature on class).
-- [ ] TS2322 (1): Appearance.ts:985 — `string` assigned to `never`. Game-author dead code:
+**Remaining Flash errors (15 = 2 fixable + 13 game-author):**
+- [ ] TS2322 (1): CoC.ts:11059 — `XML` assigned to `string` field. AS3 implicit XML→string
+  coercion. `construct_string_coerce` only fires when result type is String; here it's
+  Struct("XML") because type inference can't see the assignment target type. Needs either
+  context-aware construct coercion or a post-emit rewrite.
+- [x] TS2538 (1): BindingPane.ts — FIXED 2026-03-12: XML/XMLList mapped to `any` in ts_type.
+- [x] TS7053 (2): StatsView.ts — FIXED 2026-03-12: needs_index_signature=true for ALL Flash
+  classes (AS3 allows bracket access on sealed classes too).
+- [x] TS7053 (1): BindingPane.ts — FIXED 2026-03-12: static index signature on Keyboard runtime class.
+- [ ] TS2322 (1): Appearance.ts:987 — `string` assigned to `never`. Game-author dead code:
   outer `description === ""` makes inner `description !== ""` always false, TS narrows to `never`.
 
 **Game-author bugs (per Law 3 — preserve):**
