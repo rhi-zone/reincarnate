@@ -317,11 +317,9 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 **Completed module splits (2026-03-12):**
 - [x] `translate.rs` (4650 lines) → `translate/` module directory (7 files)
 - [x] `emit.rs` (7767 lines) → `emit/` module directory (7 files)
+- [x] `flash.rs` (3197 lines) → `flash/` module directory (8 files: context, scope, expr, stmt, super_hoist, method_bind, dead_activation, mod)
 
 **Remaining splits:**
-- [ ] `flash.rs` (3197 lines) — `crates/backends/reincarnate-backend-typescript/src/rewrites/flash.rs`.
-  `rewrite_expr` (412 lines) + `rewrite_system_call` (251 lines) are the big functions.
-  Split into `flash/mod.rs`, `flash/scope.rs`, `flash/system_calls.rs`, `flash/binding.rs`.
 - [ ] `linear.rs` (4434 lines) — `crates/reincarnate-core/src/ir/linear.rs`.
   Already split into `linear/{mod,linearize,resolve,emit,tests}` but some files still large.
 - [ ] `variable_access.rs` (991 lines) — `translate_push_variable` (498 lines) and
