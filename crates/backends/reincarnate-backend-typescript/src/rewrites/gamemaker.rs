@@ -1227,8 +1227,13 @@ pub(crate) fn collect_gamemaker_instance_refs(
 /// Wrap numeric arguments with `!!` at positions where the function signature
 /// expects `boolean`.  GML has no boolean type — 0/1 are used everywhere —
 /// but the TypeScript runtime declarations use `boolean` params, causing
-/// TS2345 ("Argument of type 'number' is not assignable to parameter of type
-/// 'boolean'").  This pass inserts `!!arg` to coerce at the call site.
+/// TS2345 coercion for GML's boolean/number interchangeability.
+///
+/// Direction 1 — number → boolean: inserts `!!arg` when a numeric expression is
+/// passed to a parameter typed `"boolean"` in the runtime signature.
+///
+/// Direction 2 — boolean → number: inserts `Number(arg)` when a boolean expression
+/// is passed to a parameter typed `"number"` or `"int"`.
 pub fn coerce_bool_args(func: &mut JsFunction, sigs: &BTreeMap<String, ExternalMethodSig>) {
     if sigs.is_empty() {
         return;
@@ -1309,19 +1314,26 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
     match expr {
         JsExpr::Call { callee, args } => {
             coerce_bool_expr(callee, sigs);
-            // Check if this is a call to a known function with boolean params.
-            if let JsExpr::Var(name) = callee.as_ref() {
-                if let Some(sig) = sigs.get(name.as_str()) {
-                    for (i, arg) in args.iter_mut().enumerate() {
-                        coerce_bool_expr(arg, sigs);
-                        if let Some(param_ty) = sig.params.get(i) {
-                            if param_ty == "boolean" && !is_already_boolean(arg) {
-                                coerce_to_bool(arg);
-                            }
+            // Resolve callee name: direct `name(...)` or `_rt.name(...)`.
+            let callee_name: Option<&str> = match callee.as_ref() {
+                JsExpr::Var(name) => Some(name.as_str()),
+                JsExpr::Field { field, .. } => Some(field.as_str()),
+                _ => None,
+            };
+            let sig = callee_name.and_then(|n| sigs.get(n));
+            if let Some(sig) = sig {
+                for (i, arg) in args.iter_mut().enumerate() {
+                    coerce_bool_expr(arg, sigs);
+                    if let Some(param_ty) = sig.params.get(i) {
+                        if param_ty == "boolean" && !is_already_boolean(arg) {
+                            coerce_to_bool(arg);
+                        } else if is_numeric_param(param_ty) && is_already_boolean(arg) {
+                            eprintln!("[DEBUG] coerce_to_number: arg {i} is_already_boolean=true, param_ty={param_ty}");
+                            coerce_to_number(arg);
                         }
                     }
-                    return;
                 }
+                return;
             }
             for arg in args.iter_mut() {
                 coerce_bool_expr(arg, sigs);
@@ -1447,19 +1459,65 @@ fn try_const_truthiness(expr: &JsExpr) -> Option<bool> {
 }
 
 /// Returns true if the expression is already boolean-typed and doesn't need `!!`.
+/// Looks through `Cast(expr, Dynamic, Coerce)` wrappers that are no-ops at runtime.
 fn is_already_boolean(expr: &JsExpr) -> bool {
-    matches!(
-        expr,
+    match expr {
         JsExpr::Literal(Constant::Bool(_))
-            | JsExpr::Not(_)
-            | JsExpr::Cmp { .. }
-            | JsExpr::TypeCheck { .. }
-    )
+        | JsExpr::Not(_)
+        | JsExpr::Cmp { .. }
+        | JsExpr::TypeCheck { .. }
+        | JsExpr::LogicalOr { .. }
+        | JsExpr::LogicalAnd { .. } => true,
+        JsExpr::Cast {
+            expr: inner,
+            kind: CastKind::Coerce,
+            ..
+        } => is_already_boolean(inner),
+        _ => false,
+    }
+}
+
+/// Returns true if the parameter type string indicates a numeric type.
+fn is_numeric_param(param_ty: &str) -> bool {
+    param_ty == "number" || param_ty == "int"
+}
+
+/// Coerces a boolean expression to number in-place.
+/// Wraps with `Number(expr)` — emitted as `JsExpr::Cast { ty: Float(64), kind: Coerce }`.
+/// Unwraps redundant `Cast(_, Dynamic, Coerce)` wrappers first (no-ops at runtime).
+fn coerce_to_number(arg: &mut JsExpr) {
+    // `false` → `0`, `true` → `1` (constant fold).
+    if let JsExpr::Literal(Constant::Bool(b)) = arg {
+        *arg = JsExpr::Literal(Constant::Float(if *b { 1.0 } else { 0.0 }));
+        return;
+    }
+    // Unwrap `Cast(inner, Dynamic, Coerce)` — replacing with `Number(inner)` directly.
+    let inner = match arg {
+        JsExpr::Cast {
+            kind: CastKind::Coerce,
+            ..
+        } => {
+            // Take the Cast node, then extract the inner expression.
+            let taken = std::mem::replace(arg, JsExpr::Literal(Constant::Null));
+            if let JsExpr::Cast { expr, .. } = taken {
+                *expr
+            } else {
+                unreachable!()
+            }
+        }
+        _ => std::mem::replace(arg, JsExpr::Literal(Constant::Null)),
+    };
+    *arg = JsExpr::Cast {
+        expr: Box::new(inner),
+        ty: Type::Float(64),
+        kind: CastKind::Coerce,
+    };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reincarnate_core::ir::{MethodKind, Visibility};
 
     #[test]
     fn coerce_to_bool_int_literal_becomes_bool_literal() {
@@ -1504,6 +1562,131 @@ mod tests {
             matches!(&expr, JsExpr::Not(inner) if matches!(inner.as_ref(), JsExpr::Not(_))),
             "expected !!<expr>"
         );
+    }
+
+    #[test]
+    fn coerce_to_number_bool_literal_becomes_float_literal() {
+        let mut expr = JsExpr::Literal(Constant::Bool(true));
+        coerce_to_number(&mut expr);
+        assert!(
+            matches!(expr, JsExpr::Literal(Constant::Float(f)) if f == 1.0),
+            "Bool(true) should become Float(1.0), got {expr:?}"
+        );
+
+        let mut expr = JsExpr::Literal(Constant::Bool(false));
+        coerce_to_number(&mut expr);
+        assert!(
+            matches!(expr, JsExpr::Literal(Constant::Float(f)) if f == 0.0),
+            "Bool(false) should become Float(0.0), got {expr:?}"
+        );
+    }
+
+    #[test]
+    fn coerce_to_number_cmp_gets_number_cast() {
+        let mut expr = JsExpr::Cmp {
+            kind: CmpKind::Ge,
+            lhs: Box::new(JsExpr::Var("x".to_string())),
+            rhs: Box::new(JsExpr::Literal(Constant::Int(3))),
+        };
+        coerce_to_number(&mut expr);
+        assert!(
+            matches!(
+                &expr,
+                JsExpr::Cast {
+                    ty: Type::Float(64),
+                    kind: CastKind::Coerce,
+                    ..
+                }
+            ),
+            "Cmp should be wrapped with Cast(Float(64), Coerce), got {expr:?}"
+        );
+    }
+
+    #[test]
+    fn coerce_to_number_unwraps_dynamic_coerce_wrapper() {
+        // Cast(Cmp → Dynamic, Coerce) should become Cast(Cmp → Float(64), Coerce)
+        let cmp = JsExpr::Cmp {
+            kind: CmpKind::Eq,
+            lhs: Box::new(JsExpr::Var("a".to_string())),
+            rhs: Box::new(JsExpr::Literal(Constant::Int(0))),
+        };
+        let mut expr = JsExpr::Cast {
+            expr: Box::new(cmp),
+            ty: Type::Dynamic,
+            kind: CastKind::Coerce,
+        };
+        coerce_to_number(&mut expr);
+        match &expr {
+            JsExpr::Cast {
+                expr: inner,
+                ty: Type::Float(64),
+                kind: CastKind::Coerce,
+            } => {
+                assert!(
+                    matches!(inner.as_ref(), JsExpr::Cmp { .. }),
+                    "inner should be Cmp, got {inner:?}"
+                );
+            }
+            _ => panic!("expected Cast(Cmp, Float(64), Coerce), got {expr:?}"),
+        }
+    }
+
+    #[test]
+    fn coerce_bool_args_coerces_bool_to_number_at_call_site() {
+        let mut sigs = BTreeMap::new();
+        sigs.insert(
+            "lerp".to_string(),
+            ExternalMethodSig {
+                params: vec![
+                    "number".to_string(),
+                    "number".to_string(),
+                    "number".to_string(),
+                ],
+                returns: "number".to_string(),
+            },
+        );
+        // lerp(x, y >= 3, 0.5) — 2nd arg is Cmp (boolean), should get Number() wrap
+        let mut func = JsFunction {
+            name: "test".to_string(),
+            params: vec![],
+            body: vec![JsStmt::Expr(JsExpr::Call {
+                callee: Box::new(JsExpr::Var("lerp".to_string())),
+                args: vec![
+                    JsExpr::Var("x".to_string()),
+                    JsExpr::Cmp {
+                        kind: CmpKind::Ge,
+                        lhs: Box::new(JsExpr::Var("y".to_string())),
+                        rhs: Box::new(JsExpr::Literal(Constant::Int(3))),
+                    },
+                    JsExpr::Literal(Constant::Float(0.5)),
+                ],
+            })],
+            param_defaults: vec![],
+            return_ty: Type::Dynamic,
+            is_generator: false,
+            visibility: Visibility::Public,
+            method_kind: MethodKind::Free,
+            has_rest_param: false,
+            num_capture_params: 0,
+        };
+        coerce_bool_args(&mut func, &sigs);
+        // The 2nd arg should now be Cast(Cmp, Float(64), Coerce)
+        if let JsStmt::Expr(JsExpr::Call { args, .. }) = &func.body[0] {
+            assert!(
+                matches!(
+                    &args[1],
+                    JsExpr::Cast {
+                        ty: Type::Float(64),
+                        kind: CastKind::Coerce,
+                        ..
+                    }
+                ),
+                "2nd arg should be Number()-wrapped, got {:?}",
+                args[1]
+            );
+        } else {
+            panic!("expected Call statement");
+        }
     }
 
     #[test]
