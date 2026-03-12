@@ -17,7 +17,7 @@ const _bindCache = new WeakMap<Function, WeakMap<object, Function>>();
 /** Cache-backed method bind — identity-stable so removeEventListener works.
  *  Returns a variadic function so callers may pass extra arguments (AS3
  *  silently ignores surplus arguments; TypeScript would otherwise TS2554). */
-export function as3Bind<T extends (...args: any[]) => any>(
+export function cachedBind<T extends (...args: any[]) => any>(
   thisArg: any,
   fn: T,
 ): (...args: any[]) => ReturnType<T> {

@@ -52,7 +52,7 @@ pub struct FlashRewriteCtx {
     pub const_instance_fields: HashSet<String>,
     /// Short name of the current class (for `this.CONST` → `ClassName.CONST` rewrites).
     pub class_short_name: Option<String>,
-    /// Instance/Free method names that need `as3Bind` wrapping when used outside callee position.
+    /// Instance/Free method names that need `cachedBind` wrapping when used outside callee position.
     pub bindable_methods: HashSet<String>,
     /// Pre-compiled closure bodies (short name → JsFunction), for inlining as arrow functions.
     pub closure_bodies: HashMap<String, JsFunction>,
@@ -784,7 +784,7 @@ fn subst_var_to_this_expr(expr: &mut JsExpr, var_name: &str) {
 /// AVM2 allows `this` before `super()`, but ES6 does not; method references live on
 /// the prototype and are accessible without `this`.
 fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
-    // Replace as3Bind(this, X) with a lazy arrow function:
+    // Replace cachedBind(this, X) with a lazy arrow function:
     //   (...args: any[]): any => { return X.apply(this, args); }
     // Arrow functions capture `this` lexically but only evaluate it when called,
     // which is after super() completes — so this is safe in super() arguments.
@@ -792,7 +792,7 @@ fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
         let is_as3_bind = matches!(
             expr,
             JsExpr::Call { callee, args }
-            if matches!(callee.as_ref(), JsExpr::Var(n) if n == "as3Bind")
+            if matches!(callee.as_ref(), JsExpr::Var(n) if n == "cachedBind")
                 && args.len() == 2
                 && matches!(&args[0], JsExpr::This)
         );
@@ -1753,11 +1753,11 @@ fn extract_object_key(expr: &JsExpr) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// AS3 method closure auto-binding: as3Bind(this, this.method)
+// AS3 method closure auto-binding: cachedBind(this, this.method)
 // ---------------------------------------------------------------------------
 
 /// Post-rewrite pass: wrap `this.method` references (not in callee position)
-/// with `as3Bind(this, this.method)` for identity-stable method closures.
+/// with `cachedBind(this, this.method)` for identity-stable method closures.
 fn bind_method_refs_stmts(stmts: &mut [JsStmt], bindable: &HashSet<String>) {
     for stmt in stmts.iter_mut() {
         bind_method_refs_stmt(stmt, bindable);
@@ -1840,9 +1840,18 @@ fn bind_method_refs_expr(expr: &mut JsExpr, bindable: &HashSet<String>, in_calle
     // First, recurse into children with correct in_callee propagation.
     match expr {
         JsExpr::Call { callee, args } => {
+            // Skip recursing into cachedBind's method-ref arg to prevent
+            // double-wrapping when an inlined closure's body is revisited.
+            let is_cached_bind =
+                matches!(callee.as_ref(), JsExpr::Var(n) if n == "cachedBind") && args.len() == 2;
             bind_method_refs_expr(callee, bindable, true);
-            for a in args.iter_mut() {
-                bind_method_refs_expr(a, bindable, false);
+            if is_cached_bind {
+                // Only recurse into the thisArg (args[0]), not the method ref (args[1]).
+                bind_method_refs_expr(&mut args[0], bindable, false);
+            } else {
+                for a in args.iter_mut() {
+                    bind_method_refs_expr(a, bindable, false);
+                }
             }
         }
         JsExpr::New { callee, args } => {
@@ -1932,14 +1941,14 @@ fn bind_method_refs_expr(expr: &mut JsExpr, bindable: &HashSet<String>, in_calle
         | JsExpr::SuperGet(_) => {}
     }
 
-    // After recursing, check if this expr should be wrapped with as3Bind.
+    // After recursing, check if this expr should be wrapped with cachedBind.
     if !in_callee {
         if let JsExpr::Field { object, field } = expr {
             if matches!(object.as_ref(), JsExpr::This) && bindable.contains(field.as_str()) {
-                // Replace `this.method` with `as3Bind(this, this.method)`.
+                // Replace `this.method` with `cachedBind(this, this.method)`.
                 let original = std::mem::replace(expr, JsExpr::This); // placeholder
                 *expr = JsExpr::Call {
-                    callee: Box::new(JsExpr::Var("as3Bind".to_string())),
+                    callee: Box::new(JsExpr::Var("cachedBind".to_string())),
                     args: vec![JsExpr::This, original],
                 };
             }
@@ -2738,7 +2747,7 @@ mod tests {
         } if prop == "value"));
     }
 
-    // --- as3Bind ---
+    // --- cachedBind ---
 
     #[test]
     fn method_ref_in_non_callee_position_bound() {
@@ -2749,7 +2758,7 @@ mod tests {
         };
         bind_method_refs_expr(&mut expr, &bindable, false);
         assert!(matches!(&expr, JsExpr::Call { callee, args }
-            if matches!(callee.as_ref(), JsExpr::Var(n) if n == "as3Bind")
+            if matches!(callee.as_ref(), JsExpr::Var(n) if n == "cachedBind")
             && args.len() == 2));
     }
 
@@ -3030,12 +3039,12 @@ mod tests {
             }],
         };
         bind_method_refs_expr(&mut expr, &bindable, false);
-        // The arg this.update should be wrapped with as3Bind.
+        // The arg this.update should be wrapped with cachedBind.
         if let JsExpr::Call { args, .. } = &expr {
             assert!(
                 matches!(&args[0], JsExpr::Call { callee, .. }
-                    if matches!(callee.as_ref(), JsExpr::Var(n) if n == "as3Bind")),
-                "arg should be wrapped with as3Bind, got {:?}",
+                    if matches!(callee.as_ref(), JsExpr::Var(n) if n == "cachedBind")),
+                "arg should be wrapped with cachedBind, got {:?}",
                 args[0]
             );
         } else {

@@ -16,7 +16,7 @@
     "entry": "createFlashRuntime().start({rootClass});"
   },
   "class_preamble": {
-    "names": ["QN_KEY", "registerClass", "registerClassTraits", "registerInterface", "isType", "asType", "int", "uint", "Class", "getDefinitionByName", "as3Bind", "registerClassAlias"],
+    "names": ["QN_KEY", "registerClass", "registerClassTraits", "registerInterface", "isType", "asType", "int", "uint", "Class", "getDefinitionByName", "cachedBind", "registerClassAlias"],
     "path": "flash/utils"
   },
   "type_definitions": {
