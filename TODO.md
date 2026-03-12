@@ -370,7 +370,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   local array creation. 2 from param narrowing (CallSiteTypeFlow body-usage guard doesn't follow
   Alloc/Load chains). 1 from literal -4.
 
-**Baselines:** Flash 15, Bounty 2, Dead Estate 89.
+**Baselines:** Flash 14, Bounty 0, Dead Estate 74.
 
 ---
 
