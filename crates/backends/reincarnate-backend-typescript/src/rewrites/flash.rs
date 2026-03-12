@@ -817,7 +817,14 @@ fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
                             object: Box::new(method_ref),
                             field: "apply".to_string(),
                         }),
-                        args: vec![JsExpr::This, JsExpr::Var("args".to_string())],
+                        args: vec![
+                            JsExpr::This,
+                            JsExpr::Cast {
+                                expr: Box::new(JsExpr::Var("args".to_string())),
+                                ty: Type::Dynamic,
+                                kind: CastKind::NullableCoerce,
+                            },
+                        ],
                     }))],
                     has_rest_param: true,
                     cast_as,
@@ -1250,6 +1257,38 @@ fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
                         object,
                         field: "length".to_string(),
                     };
+                }
+            }
+        }
+    }
+
+    // `.apply(receiver, args_array)` — cast args_array as `any` to satisfy TS strict
+    // Function.apply() typing (TS2345: any[] not assignable to exact param tuples).
+    if let JsExpr::Call {
+        ref callee,
+        ref args,
+    } = expr
+    {
+        if args.len() == 2 {
+            if let JsExpr::Field { ref field, .. } = **callee {
+                if field == "apply" {
+                    if let JsExpr::Call { callee, args } = expr {
+                        let callee_rewritten = Box::new(rewrite_expr(*callee, ctx));
+                        let mut args_iter = args.into_iter();
+                        let receiver = rewrite_expr(args_iter.next().unwrap(), ctx);
+                        let args_array = rewrite_expr(args_iter.next().unwrap(), ctx);
+                        return JsExpr::Call {
+                            callee: callee_rewritten,
+                            args: vec![
+                                receiver,
+                                JsExpr::Cast {
+                                    expr: Box::new(args_array),
+                                    ty: Type::Dynamic,
+                                    kind: CastKind::NullableCoerce,
+                                },
+                            ],
+                        };
+                    }
                 }
             }
         }

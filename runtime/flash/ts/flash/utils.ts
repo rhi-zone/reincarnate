@@ -39,7 +39,7 @@ export function cachedBind<T extends (...args: any[]) => any>(
 // ---------------------------------------------------------------------------
 
 /** AS3 `int()` — truncate to signed 32-bit integer. */
-export function int(x: number): number { return x | 0; }
+export function int(x: any): number { return x | 0; }
 export namespace int {
   export const MAX_VALUE = 2147483647;
   export const MIN_VALUE = -2147483648;
