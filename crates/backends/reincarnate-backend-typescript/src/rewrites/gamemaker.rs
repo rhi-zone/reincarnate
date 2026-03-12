@@ -1327,8 +1327,7 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
                     if let Some(param_ty) = sig.params.get(i) {
                         if param_ty == "boolean" && !is_already_boolean(arg) {
                             coerce_to_bool(arg);
-                        } else if is_numeric_param(param_ty) && is_already_boolean(arg) {
-                            eprintln!("[DEBUG] coerce_to_number: arg {i} is_already_boolean=true, param_ty={param_ty}");
+                        } else if is_numeric_param(param_ty) && may_produce_boolean(arg) {
                             coerce_to_number(arg);
                         }
                     }
@@ -1473,6 +1472,26 @@ fn is_already_boolean(expr: &JsExpr) -> bool {
             kind: CastKind::Coerce,
             ..
         } => is_already_boolean(inner),
+        _ => false,
+    }
+}
+
+/// Returns true if the expression may produce a boolean value, even if it also
+/// produces other types (e.g. `cond ? true : 0` → `boolean | number`).
+/// Used for boolean→number coercion at numeric param sites.
+fn may_produce_boolean(expr: &JsExpr) -> bool {
+    if is_already_boolean(expr) {
+        return true;
+    }
+    match expr {
+        JsExpr::Ternary {
+            then_val, else_val, ..
+        } => may_produce_boolean(then_val) || may_produce_boolean(else_val),
+        JsExpr::Cast {
+            expr: inner,
+            kind: CastKind::Coerce,
+            ..
+        } => may_produce_boolean(inner),
         _ => false,
     }
 }
@@ -1682,6 +1701,64 @@ mod tests {
                     }
                 ),
                 "2nd arg should be Number()-wrapped, got {:?}",
+                args[1]
+            );
+        } else {
+            panic!("expected Call statement");
+        }
+    }
+
+    #[test]
+    fn coerce_bool_args_ternary_with_boolean_branch_gets_number_wrap() {
+        let mut sigs = BTreeMap::new();
+        sigs.insert(
+            "lerp".to_string(),
+            ExternalMethodSig {
+                params: vec![
+                    "number".to_string(),
+                    "number".to_string(),
+                    "number".to_string(),
+                ],
+                returns: "number".to_string(),
+            },
+        );
+        // lerp(x, cond ? !y : 0, 0.5) — ternary with boolean branch
+        let mut func = JsFunction {
+            name: "test".to_string(),
+            params: vec![],
+            body: vec![JsStmt::Expr(JsExpr::Call {
+                callee: Box::new(JsExpr::Var("lerp".to_string())),
+                args: vec![
+                    JsExpr::Var("x".to_string()),
+                    JsExpr::Ternary {
+                        cond: Box::new(JsExpr::Var("cond".to_string())),
+                        then_val: Box::new(JsExpr::Not(Box::new(JsExpr::Var("y".to_string())))),
+                        else_val: Box::new(JsExpr::Literal(Constant::Int(0))),
+                    },
+                    JsExpr::Literal(Constant::Float(0.5)),
+                ],
+            })],
+            param_defaults: vec![],
+            return_ty: Type::Dynamic,
+            is_generator: false,
+            visibility: Visibility::Public,
+            method_kind: MethodKind::Free,
+            has_rest_param: false,
+            num_capture_params: 0,
+        };
+        coerce_bool_args(&mut func, &sigs);
+        // The 2nd arg (ternary) should now be wrapped with Number()
+        if let JsStmt::Expr(JsExpr::Call { args, .. }) = &func.body[0] {
+            assert!(
+                matches!(
+                    &args[1],
+                    JsExpr::Cast {
+                        ty: Type::Float(64),
+                        kind: CastKind::Coerce,
+                        ..
+                    }
+                ),
+                "ternary with boolean branch should be Number()-wrapped, got {:?}",
                 args[1]
             );
         } else {
