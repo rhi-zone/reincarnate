@@ -267,7 +267,7 @@ class coercion rewrite and type inference for qualified field names).
 - TS2339 (1): Parser.ts:714 (`arr.len` — typo, should be `.length`)
 - TS7053 (2): StatsView.ts:129 (`player[statName]` where statName is from a malformed array)
 
-**Emitter bugs (11 errors — fixable):**
+**Emitter bugs (fixed):**
 - [x] TS2348 (2): CockTypesEnum.ts:55,59 — `this(this, ...)` was class coercion, not construction.
   Fixed: `this(this, arg)` in static method → `asType(arg, ClassName)` via NullableCoerce cast.
 - [x] TS2417 (1): CockTypesEnum.ts:8 — WONTFIX. AS3/TS semantic gap: AS3 static methods don't
@@ -275,18 +275,27 @@ class coercion rewrite and type inference for qualified field names).
 - [x] TS2538/TS2536 (5 of 7 fixed): UIComponent Dictionary bracket-notation fixed by teaching
   type inference to resolve field types from qualified names on Dynamic base. Remaining 2:
   BindingPane.ts (XML as index on Keyboard, not Dictionary) and Katherine.ts (boolean as index).
-- [ ] TS2322 (1): CoC.ts:11155 — `XML` assigned to `string` field. AS3 implicit XML→string
-  coercion. Fix: emit `String(xml)` or `xml.toString()`.
-- [ ] TS2769 (1): StatsView.ts:85 — `.replace()` chain with numeric args. Fix: emit
-  `String(hours)` wrapper.
+- [x] TS2769 (2): StatsView.ts:84 — `.replace()` with numeric args. Fixed: Flash rewriter wraps
+  second arg of `.replace()` with `String()`.
+- [x] TS2345 (3): `.apply()` args typed as `any[]` not matching exact tuples. Fixed: cast
+  `.apply()` second arg as `any` in rewrite_this_to_prototype + generic rewrite_expr rule.
+  Also widened `int()` runtime function from `(x: number)` to `(x: any)` for AS3 semantics.
 
-**Type inference issues (5 errors — needs investigation):**
-- [ ] TS2345 (3): BaseContent.ts:366 (`.apply(null, ...)` — AS3 idiom), ImageManager.ts:96
-  (nested `String(int(...))` type chain), RizzaRoot.ts:16 (`.apply(this, args)` context).
-- [ ] TS2322 (1): Appearance.ts:1032 (`string` assigned to `never` — investigate type
-  narrowing in switch case arm).
-- [ ] TS2367 (1): CoC.ts:13871 — variable replaced with `0.0` literal. May be constant
-  folding bug; needs IR investigation.
+**Remaining Flash errors (18 = 5 fixable + 13 game-author):**
+- [ ] TS2322 (1): CoC.ts:11057 — `XML` assigned to `string` field. AS3 implicit XML→string
+  coercion. Needs type-aware coercion (IR pass or rewriter with field type info).
+- [ ] TS2538 (1): BindingPane.ts:148 — XML as index type (non-Dictionary, same XML coercion issue).
+- [ ] TS7053 (2): StatsView.ts:128 — `any` indexing `Player` (no index signature on class).
+- [ ] TS2322 (1): Appearance.ts:985 — `string` assigned to `never`. Game-author dead code:
+  outer `description === ""` makes inner `description !== ""` always false, TS narrows to `never`.
+
+**Game-author bugs (per Law 3 — preserve):**
+- TS2367 (8): constant-folded `0.0` comparisons (CoC.ts:13755-13758 — `damage = rand(4)` missing
+  in Misdirection block, game-author copy-paste error), boolean/string overlaps, `smooth`/`latex`.
+- TS2345 (1): Parser.ts:596 — `new Error(msg, textCtnt)` second arg is string, not ErrorOptions.
+- TS1345 (1): Inventory.ts:327 — void tested for truthiness.
+- TS2339 (1): Parser.ts:682 — `.len` on Array (should be `.length`, game-author typo).
+- TS2538 (1): Katherine.ts:3550 — boolean as index type.
 
 **Remaining audit items:**
 - [x] **Audit emitted code readability** — DONE 2026-03-12. Key findings:
