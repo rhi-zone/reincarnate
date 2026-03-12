@@ -304,7 +304,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 **Remaining audit items:**
 - [x] **Audit emitted code readability** — DONE 2026-03-12. Key findings:
   - [x] Boolean return chains: `if (x) return true; else return false;` → `return x;` — DONE 2026-03-12 (`simplify_boolean_returns` pass, 208 simplified)
-  - [x] Double `String()` wrapping: `String(String(x))` → `String(x)` — DONE 2026-03-12 (`unwrap_coerce` in printer, 19→15 remaining are chained method-call patterns)
+  - [x] Double `String()` wrapping: `String(String(x))` → `String(x)` — DONE 2026-03-12 (`unwrap_coerce` in printer, then `string_method_return_type` in type_infer.rs: 258→231 String() calls, −27 redundant; 1 double-String remaining)
   - [x] Redundant else after return — DONE 2026-03-12 (`hoist_else_after_terminal` pass, 560→50 instances, 91% reduction)
   - Items correctly kept as-is: `== null` (AS3 loose equality, Law 3), `as any` on shims
     (structural), concatenated string arrays (faithful to bytecode), `vN` names (from hasNext2
@@ -1110,6 +1110,12 @@ Batch-emitting 7 new games from the Steam library exposed 4 distinct bugs:
   appear in arithmetic operand positions — use `Dynamic` instead. (b) In type inference, when
   an arithmetic op has a `Struct` or class-ref operand, widen the result to `Dynamic`/`Float`.
   Also affects return type inference: `getUIMouseX` returns `typeof Game` instead of `number`.
+  **Attempted 2026-03-12:** Options (a) and (b) both don't help — the Struct types propagate
+  through field accesses and assignments, not direct arithmetic operands of `instance_create`.
+  The real issue is that GML object IDs ARE integers that happen to be narrowed to class types
+  by CallSiteTypeFlow and ConstraintSolve, then passed to functions expecting `number`. Needs
+  a deeper approach: possibly widen Struct→Dynamic in the backend when a Struct-typed value
+  is passed to a `number`-typed parameter, or add `as any` casts at call sites.
 
 ### 8. RunLoader::step stack underflow on Popz at 0x19c — Dead Estate translation error
 

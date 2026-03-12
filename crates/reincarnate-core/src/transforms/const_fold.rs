@@ -367,14 +367,15 @@ fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
         // Comparison
         Op::Cmp(kind, a, b) => fold_cmp(*kind, consts.get(a)?, consts.get(b)?),
 
-        // Logical not
-        Op::Not(a) => {
-            if let Constant::Bool(v) = consts.get(a)? {
-                Some(Constant::Bool(!v))
-            } else {
-                None
-            }
-        }
+        // Logical not — folds Bool, Int, UInt, Float, and String using JS truthiness.
+        Op::Not(a) => match consts.get(a)? {
+            Constant::Bool(v) => Some(Constant::Bool(!v)),
+            Constant::Int(v) => Some(Constant::Bool(*v == 0)),
+            Constant::UInt(v) => Some(Constant::Bool(*v == 0)),
+            Constant::Float(v) => Some(Constant::Bool(*v == 0.0)),
+            Constant::String(s) => Some(Constant::Bool(s.is_empty())),
+            Constant::Null => Some(Constant::Bool(true)),
+        },
 
         // Boolean AND/OR: short-circuit absorbing elements, then full fold.
         Op::BoolAnd(a, b) => match (consts.get(a), consts.get(b)) {

@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use reincarnate_core::ir::inst::CastKind;
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{CmpKind, ExternalImport, Type, ValueId};
 use reincarnate_core::project::ExternalMethodSig;
@@ -1413,15 +1414,36 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
 }
 
 /// Coerces an expression to boolean in-place.
-/// Integer literals 0/1 are replaced with `false`/`true` directly.
+/// Constant literals are replaced with their truthiness value directly.
 /// All other non-boolean expressions are wrapped with `!!`.
 fn coerce_to_bool(arg: &mut JsExpr) {
-    if let JsExpr::Literal(Constant::Int(n)) = arg {
-        *arg = JsExpr::Literal(Constant::Bool(*n != 0));
+    // Extract constant from nested Coerce casts (e.g. Cast(Int(16777215), Dynamic, Coerce)).
+    if let Some(b) = try_const_truthiness(arg) {
+        *arg = JsExpr::Literal(Constant::Bool(b));
         return;
     }
     let inner = std::mem::replace(arg, JsExpr::Literal(Constant::Null));
     *arg = JsExpr::Not(Box::new(JsExpr::Not(Box::new(inner))));
+}
+
+/// Try to evaluate the truthiness of a constant expression, unwrapping Coerce casts.
+fn try_const_truthiness(expr: &JsExpr) -> Option<bool> {
+    match expr {
+        JsExpr::Literal(c) => Some(match c {
+            Constant::Bool(b) => *b,
+            Constant::Int(n) => *n != 0,
+            Constant::UInt(n) => *n != 0,
+            Constant::Float(f) => *f != 0.0,
+            Constant::String(s) => !s.is_empty(),
+            Constant::Null => false,
+        }),
+        JsExpr::Cast {
+            expr,
+            kind: CastKind::Coerce,
+            ..
+        } => try_const_truthiness(expr),
+        _ => None,
+    }
 }
 
 /// Returns true if the expression is already boolean-typed and doesn't need `!!`.
@@ -1457,9 +1479,26 @@ mod tests {
     }
 
     #[test]
-    fn coerce_to_bool_non_int_gets_double_not() {
-        // A float literal that isn't 0/1 should be wrapped with !!
+    fn coerce_to_bool_float_literal_becomes_bool_literal() {
         let mut expr = JsExpr::Literal(Constant::Float(2.0));
+        coerce_to_bool(&mut expr);
+        assert!(
+            matches!(expr, JsExpr::Literal(Constant::Bool(true))),
+            "Float(2.0) should become Bool(true)"
+        );
+
+        let mut expr = JsExpr::Literal(Constant::Float(0.0));
+        coerce_to_bool(&mut expr);
+        assert!(
+            matches!(expr, JsExpr::Literal(Constant::Bool(false))),
+            "Float(0.0) should become Bool(false)"
+        );
+    }
+
+    #[test]
+    fn coerce_to_bool_non_literal_gets_double_not() {
+        // Non-literal expressions should be wrapped with !!
+        let mut expr = JsExpr::Var("x".to_string());
         coerce_to_bool(&mut expr);
         assert!(
             matches!(&expr, JsExpr::Not(inner) if matches!(inner.as_ref(), JsExpr::Not(_))),
