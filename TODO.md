@@ -353,17 +353,24 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 - [x] `CallSiteTypeFlow` body-usage guard: skips narrowing when the callee body uses the param
   as a collection (GetIndex or GetField "length"). Defensive — prevents future regressions from
   narrowing array params to Float(64).
-- [ ] **TS2304 block depth (9 errors)**: tried worklist-based CFG depth analysis — caused massive
-  regression (98→216) because min() depths are too low, losing values. Tried fixpoint iteration
-  of linear scan — no effect (depths already converge in first pass). Root cause is likely
-  incorrect `stack_effect()` for specific instruction patterns, not the algorithm. Needs per-
-  function bytecode-level debugging (OBulkingUpEmptySpace, OEmptySpaceController, etc.).
-- [ ] **TS2339 .length on number (15 errors)**: 12 from `instancePlaceList3d` return type (always
-  returns -4/noone, callers check .length — game-author bug or const-folding artifact), 2 from
-  param narrowing (body-usage guard added but params not directly used with GetIndex), 1 from
-  literal -4.
+- [x] **TS2304 loop-escaping values (9 errors → 0)**: FIXED. Root cause was NOT
+  `stack_effect()`/`compute_block_stack_depths` — it was Mem2Reg's Cytron-style phi placement
+  skipping single-predecessor loop exits (dominance frontier computation skips blocks with <2
+  preds). After CfgSimplify removes dead edges, self-loop exits have 1 predecessor, so no phi
+  is placed. Values defined inside the loop body are referenced directly from the exit block.
+  The linearizer scopes the defining `const` inside the while body, making it invisible after
+  the loop. Fix: detect loop-escaping values in `EmitCtx::new()` (find self-loop blocks, find
+  instruction results used in different blocks) and add their names to `shared_names` so the
+  existing hoisting mechanism emits `let name!;` at function scope. File:
+  `crates/reincarnate-core/src/ir/linear/emit.rs` lines 342-395.
+- [ ] **TS2339 .length on number (15 errors)**: 12 from `instancePlaceList3d` — local variable
+  `_meetingArray` (init noone/-4) resolved array writes to `self._meetingArray` instead of the
+  local. Local stays -4, function returns -4, callers get `number` return type. Root cause:
+  GML translator variable resolution maps `localvar[index] = value` to field writes instead of
+  local array creation. 2 from param narrowing (CallSiteTypeFlow body-usage guard doesn't follow
+  Alloc/Load chains). 1 from literal -4.
 
-**Baselines:** Flash 15, Bounty 2, Dead Estate 98.
+**Baselines:** Flash 15, Bounty 2, Dead Estate 89.
 
 ---
 
