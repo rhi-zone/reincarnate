@@ -14,6 +14,38 @@ use crate::emit::sanitize_ident;
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::types::ts_type;
 
+/// Unwrap nested `Cast(x, T, Coerce)` when the inner is also a Coerce to the
+/// same type — collapses `String(String(x))` → `String(x)`, etc.
+/// Also unwraps `Call(Var("String"), [x])` inside `Cast(_, String, Coerce)` (and
+/// similarly for Number/int/uint/Boolean), since the Call is semantically
+/// identical to the outer Coerce.
+fn unwrap_coerce<'a>(expr: &'a JsExpr, target_ty: &Type) -> &'a JsExpr {
+    match expr {
+        JsExpr::Cast {
+            expr: inner,
+            ty,
+            kind: CastKind::Coerce,
+        } if ty == target_ty => unwrap_coerce(inner, target_ty),
+        JsExpr::Call { callee, args } if args.len() == 1 => {
+            let wrapper_name = match target_ty {
+                Type::String => Some("String"),
+                Type::Float(_) => Some("Number"),
+                Type::Int(32) => Some("int"),
+                Type::UInt(32) => Some("uint"),
+                Type::Bool => Some("Boolean"),
+                _ => None,
+            };
+            if let Some(name) = wrapper_name {
+                if matches!(callee.as_ref(), JsExpr::Var(n) if n == name) {
+                    return unwrap_coerce(&args[0], target_ty);
+                }
+            }
+            expr
+        }
+        _ => expr,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Function / method printing
 // ---------------------------------------------------------------------------
@@ -834,23 +866,23 @@ fn print_expr(expr: &JsExpr) -> String {
                 }
                 // Coerce + Float → Number(x).
                 (CastKind::Coerce, Type::Float(_)) => {
-                    format!("Number({})", print_expr(inner))
+                    format!("Number({})", print_expr(unwrap_coerce(inner, ty)))
                 }
                 // Coerce + Int(32) → int(x).
                 (CastKind::Coerce, Type::Int(32)) => {
-                    format!("int({})", print_expr(inner))
+                    format!("int({})", print_expr(unwrap_coerce(inner, ty)))
                 }
                 // Coerce + UInt(32) → uint(x).
                 (CastKind::Coerce, Type::UInt(32)) => {
-                    format!("uint({})", print_expr(inner))
+                    format!("uint({})", print_expr(unwrap_coerce(inner, ty)))
                 }
                 // Coerce + String → String(x).
                 (CastKind::Coerce, Type::String) => {
-                    format!("String({})", print_expr(inner))
+                    format!("String({})", print_expr(unwrap_coerce(inner, ty)))
                 }
                 // Coerce + Bool → Boolean(x).
                 (CastKind::Coerce, Type::Bool) => {
-                    format!("Boolean({})", print_expr(inner))
+                    format!("Boolean({})", print_expr(unwrap_coerce(inner, ty)))
                 }
                 // Coerce + Dynamic/other → passthrough (no-op).
                 (CastKind::Coerce, _) => print_expr(inner),
