@@ -299,7 +299,7 @@ impl<'a> EmitCtx<'a> {
             }
             *name_counts.entry(name.as_str()).or_default() += 1;
         }
-        let shared_names: HashSet<String> = name_counts
+        let mut shared_names: HashSet<String> = name_counts
             .into_iter()
             .filter(|(_, count)| *count >= 2)
             .map(|(name, _)| name.to_string())
@@ -310,7 +310,7 @@ impl<'a> EmitCtx<'a> {
         // the declared type to Dynamic so TypeScript doesn't flag TS2739/TS2322
         // on assignments from a branch with a different type.  Covers both
         // block params AND instruction results that end up sharing a name.
-        let coalesced_decl_types: HashMap<String, Type> = {
+        let mut coalesced_decl_types: HashMap<String, Type> = {
             let mut name_types: HashMap<String, Type> = HashMap::new();
             for (vid, name) in &value_names {
                 if !shared_names.contains(name.as_str()) {
@@ -338,6 +338,57 @@ impl<'a> EmitCtx<'a> {
             .filter(|(bid, _)| *bid != func.entry)
             .flat_map(|(_, block)| block.params.iter().map(|p| p.value))
             .collect();
+
+        // Detect instruction results defined in loop bodies but used outside.
+        // These need function-scope `let` declarations because the linearizer
+        // scopes their `const` inside the while body, making them invisible
+        // after the loop (TS2304).  We add their names to shared_names so the
+        // existing hoisting mechanism emits `let name;` + Assign inside the loop.
+        {
+            let mut loop_blocks: HashSet<BlockId> = HashSet::new();
+            for (block_id, block) in func.blocks.iter() {
+                if let Some(&last) = block.insts.last() {
+                    let targets = crate::transforms::util::branch_targets(&func.insts[last].op);
+                    for t in &targets {
+                        if *t == block_id {
+                            loop_blocks.insert(block_id);
+                        }
+                    }
+                }
+            }
+
+            if !loop_blocks.is_empty() {
+                let mut def_block: HashMap<ValueId, BlockId> = HashMap::new();
+                for (block_id, block) in func.blocks.iter() {
+                    for &inst_id in &block.insts {
+                        if let Some(r) = func.insts[inst_id].result {
+                            def_block.insert(r, block_id);
+                        }
+                    }
+                }
+
+                for (block_id, block) in func.blocks.iter() {
+                    for &inst_id in &block.insts {
+                        let op = &func.insts[inst_id].op;
+                        for operand in value_operands(op) {
+                            if let Some(&db) = def_block.get(&operand) {
+                                if loop_blocks.contains(&db) && db != block_id {
+                                    let name = value_names
+                                        .get(&operand)
+                                        .cloned()
+                                        .unwrap_or_else(|| format!("v{}", operand.index()));
+                                    shared_names.insert(name.clone());
+                                    // Record the type for the hoisted declaration.
+                                    coalesced_decl_types
+                                        .entry(name)
+                                        .or_insert_with(|| func.value_types[operand].clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Self {
             func,
@@ -915,9 +966,8 @@ impl<'a> EmitCtx<'a> {
             // count >= 2: materialize into a named variable.
             let name = self.value_name(v);
             if self.all_block_params.contains(&v) {
-                // Block params are used across scope boundaries: hoist a `let`
+                // Actual block params used across scope boundaries: hoist a `let`
                 // declaration to function scope and emit an Assign here.
-                // Mirrors the flush_side_effecting_inlines block-param path.
                 // Do NOT add to or_inline_declared — build_val must still be
                 // able to insert into referenced_block_params on later uses.
                 self.referenced_block_params.insert(v);
@@ -926,14 +976,9 @@ impl<'a> EmitCtx<'a> {
                     value: expr,
                 });
             } else {
-                // Non-block-param: materialize into a named variable.
-                // Add to or_inline_declared so build_val skips inserting into
-                // referenced_block_params — prevents collect_block_param_decls
-                // from emitting a duplicate `let name;`.
                 self.or_inline_declared.insert(v);
-                // If name is in shared_names, a hoisted `let name;` exists.
-                // Otherwise emit a VarDecl — sole definition for this value.
                 if self.shared_names.contains(&name) {
+                    // A hoisted `let name;` exists — emit Assign only.
                     stmts.push(Stmt::Assign {
                         target: Expr::Var(name),
                         value: expr,
