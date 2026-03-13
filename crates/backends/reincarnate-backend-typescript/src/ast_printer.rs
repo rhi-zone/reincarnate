@@ -5,6 +5,7 @@
 //! Contains zero engine knowledge — all SystemCall resolution happened during
 //! the `lower` pass.
 
+use std::cell::Cell;
 use std::fmt::Write;
 
 use reincarnate_core::ir::ast::BinOp;
@@ -13,6 +14,12 @@ use reincarnate_core::ir::{CastKind, CmpKind, Constant, MethodKind, Type, UnaryO
 use crate::emit::sanitize_ident;
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::types::ts_type;
+
+thread_local! {
+    /// When true, bare `return;` is printed as `return undefined;` to satisfy
+    /// `noImplicitReturns` in non-void functions (AS3 `returnvoid` in typed functions).
+    static BARE_RETURN_UNDEFINED: Cell<bool> = const { Cell::new(false) };
+}
 
 /// Unwrap nested `Cast(x, T, Coerce)` when the inner is also a Coerce to the
 /// same type — collapses `String(String(x))` → `String(x)`, etc.
@@ -137,12 +144,78 @@ fn implicit_gml_return(ty: &Type) -> Option<&'static str> {
     }
 }
 
+/// Returns `true` if the statement list contains a bare `return;` (no value).
+/// Recurses into conditionals and switches but NOT into nested functions/closures.
+fn has_bare_return(stmts: &[JsStmt]) -> bool {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::Return(None) => return true,
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                if has_bare_return(then_body) || has_bare_return(else_body) {
+                    return true;
+                }
+            }
+            JsStmt::While { body, .. }
+            | JsStmt::Loop { body }
+            | JsStmt::For { body, .. }
+            | JsStmt::ForOf { body, .. } => {
+                if has_bare_return(body) {
+                    return true;
+                }
+            }
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    if has_bare_return(case_body) {
+                        return true;
+                    }
+                }
+                if has_bare_return(default_body) {
+                    return true;
+                }
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    if has_bare_return(block_body) {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Returns the effective TypeScript return type string for a function and whether
+/// bare returns should be emitted as `return undefined;`.
+/// If the function has a concrete non-void return type but also contains bare
+/// `return;` statements, the type is widened to `T | undefined` to satisfy
+/// `noImplicitReturns`. (AS3 functions can `returnvoid` from typed functions.)
+fn effective_return_type(js: &JsFunction) -> (String, bool) {
+    let ret_ty = ts_type(&js.return_ty);
+    let needs_undefined =
+        !matches!(js.return_ty, Type::Void | Type::Dynamic) && has_bare_return(&js.body);
+    if needs_undefined {
+        (format!("{ret_ty} | undefined"), true)
+    } else {
+        (ret_ty, false)
+    }
+}
+
 /// Print a standalone function.
 pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String) {
     let vis = visibility_prefix(js.visibility);
     let star = if js.is_generator { "*" } else { "" };
     let params = print_params(&js.params, &js.param_defaults, js.has_rest_param, false);
-    let ret_ty = ts_type(&js.return_ty);
+    let (ret_ty, bare_undefined) = effective_return_type(js);
 
     let _ = writeln!(
         out,
@@ -154,7 +227,9 @@ pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String)
         let _ = writeln!(out, "  {pre}");
     }
 
+    BARE_RETURN_UNDEFINED.set(bare_undefined);
     print_stmts(&js.body, out, "  ");
+    BARE_RETURN_UNDEFINED.set(false);
 
     // GML functions implicitly return 0 when no explicit return is reached.
     // Emit a synthetic return to suppress TS2366 for concrete return types.
@@ -191,7 +266,7 @@ pub fn print_class_method(
         (&js.params[..], &js.param_defaults[..])
     };
     let params_str = print_params(params, param_defaults, js.has_rest_param, false);
-    let ret_ty = ts_type(&js.return_ty);
+    let (ret_ty, bare_undefined) = effective_return_type(js);
     let star = if js.is_generator { "*" } else { "" };
 
     // cinit → static initializer block
@@ -244,7 +319,9 @@ pub fn print_class_method(
     if let Some(pre) = preamble {
         let _ = writeln!(out, "{indent}{pre}");
     }
+    BARE_RETURN_UNDEFINED.set(bare_undefined);
     print_stmts(&js.body, out, indent);
+    BARE_RETURN_UNDEFINED.set(false);
 
     // GML methods implicitly return 0 when no explicit return is reached.
     // Emit a synthetic return to suppress TS2366 for concrete return types.
@@ -611,6 +688,8 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
         JsStmt::Return(expr) => {
             if let Some(e) = expr {
                 let _ = writeln!(out, "{indent}return {};", print_expr(e));
+            } else if BARE_RETURN_UNDEFINED.get() {
+                let _ = writeln!(out, "{indent}return undefined;");
             } else {
                 let _ = writeln!(out, "{indent}return;");
             }
