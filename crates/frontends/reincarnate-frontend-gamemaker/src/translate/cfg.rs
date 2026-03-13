@@ -74,9 +74,16 @@ pub(super) fn filter_reachable(instructions: &[Instruction]) -> Vec<Instruction>
 }
 
 /// Pass 1: Identify basic block start offsets.
-pub(super) fn find_block_starts(instructions: &[Instruction]) -> BTreeSet<usize> {
+///
+/// `entry_offset` is the bytecode offset of the first instruction in the slice.
+/// For top-level functions this is 0; for with-body closures it is the first
+/// body instruction's offset.
+pub(super) fn find_block_starts(
+    instructions: &[Instruction],
+    entry_offset: usize,
+) -> BTreeSet<usize> {
     let mut starts = BTreeSet::new();
-    starts.insert(0);
+    starts.insert(entry_offset);
 
     for (i, inst) in instructions.iter().enumerate() {
         match inst.opcode {
@@ -140,13 +147,14 @@ pub(super) fn setup_blocks(
     HashMap<usize, Vec<ValueId>>,
     HashMap<usize, usize>,
 ) {
-    let block_starts = find_block_starts(instructions);
+    let block_starts = find_block_starts(instructions, entry_offset);
     let block_entry_depths = compute_block_stack_depths(
         instructions,
         &block_starts,
         function_names,
         bytecode_offset,
         func_ref_map,
+        entry_offset,
     );
 
     // Collect offsets that belong to with-body ranges (body + PopEnv).
@@ -220,9 +228,10 @@ pub(super) fn compute_block_stack_depths(
     function_names: &HashMap<u32, String>,
     bytecode_offset: usize,
     func_ref_map: &HashMap<usize, usize>,
+    entry_offset: usize,
 ) -> HashMap<usize, usize> {
     let mut depths: HashMap<usize, usize> = HashMap::new();
-    depths.insert(0, 0);
+    depths.insert(entry_offset, 0);
 
     // Width stack: each entry is the gml_slot_units of that stack item.
     let mut ws: Vec<u8> = Vec::new();
