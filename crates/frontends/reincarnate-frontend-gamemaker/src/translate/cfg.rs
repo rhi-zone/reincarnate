@@ -178,123 +178,6 @@ pub(super) fn gml_slot_units(dt: DataType) -> u8 {
     }
 }
 
-/// Compute the stack effect (pops, pushes) of an instruction.
-/// `rest` is the slice of instructions *following* `inst` in the same
-/// function body, used by `is_cross_obj_2d_read` to detect read vs write
-/// context via lookahead.
-pub(super) fn stack_effect(inst: &Instruction, rest: &[Instruction]) -> (usize, usize) {
-    match inst.opcode {
-        Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn => {
-            if let datawin::bytecode::decode::Operand::Variable { var_ref, instance } =
-                &inst.operand
-            {
-                if matches!(
-                    InstanceType::from_i16(*instance),
-                    Some(InstanceType::Stacktop)
-                ) || is_stacktop_ref(var_ref, *instance)
-                {
-                    (1, 1) // pops instance from stack, pushes field value
-                } else if is_2d_array_access(var_ref, *instance)
-                    || is_cross_obj_2d_read(var_ref, *instance, rest)
-                {
-                    (2, 1) // pops dim1+dim2, pushes value
-                } else {
-                    (0, 1)
-                }
-            } else if matches!(inst.operand, datawin::bytecode::decode::Operand::Int16(-9))
-                && is_next_stacktop_access(rest)
-            {
-                // PushI -9 sentinel before stacktop access — skipped at
-                // translation time for cross-object, net-zero for self-access.
-                (0, 0)
-            } else {
-                (0, 1)
-            }
-        }
-        Opcode::Add | Opcode::Sub | Opcode::Mul | Opcode::Div | Opcode::Rem | Opcode::Mod => (2, 1),
-        Opcode::Neg | Opcode::Not => (1, 1),
-        Opcode::And | Opcode::Or | Opcode::Xor | Opcode::Shl | Opcode::Shr => (2, 1),
-        Opcode::Cmp => (2, 1),
-        Opcode::Conv => (1, 1),
-        Opcode::Dup => {
-            // Dup(N): high byte is DupExtra (GMS2.3+ extended flag), low byte is dup_size.
-            // DupExtra != 0 → GMS2.3+ extended encoding (no-op for our IR, no net stack change).
-            // DupExtra == 0 → normal dup; approximated as pushing dup_size+1 items.
-            if let datawin::bytecode::decode::Operand::Dup(n) = inst.operand {
-                let dup_extra = (n >> 8) & 0xFF;
-                let dup_size = n & 0xFF;
-                if dup_extra != 0 {
-                    (0, 0) // swap or no-op: no net item change
-                } else {
-                    (0, dup_size as usize + 1)
-                }
-            } else {
-                (0, 1)
-            }
-        }
-        Opcode::Popz => (1, 0),
-        Opcode::Pop => {
-            if let datawin::bytecode::decode::Operand::Variable { var_ref, instance } =
-                &inst.operand
-            {
-                if matches!(
-                    InstanceType::from_i16(*instance),
-                    Some(InstanceType::Stacktop)
-                ) || is_stacktop_ref(var_ref, *instance)
-                {
-                    (2, 0) // pops value + instance from stack
-                } else if is_2d_array_access(var_ref, *instance) {
-                    (3, 0) // pops value + 2D indices
-                } else {
-                    (1, 0)
-                }
-            } else {
-                (1, 0)
-            }
-        }
-        Opcode::Call => {
-            if let datawin::bytecode::decode::Operand::Call { argc, .. } = inst.operand {
-                (argc as usize, 1)
-            } else {
-                (0, 1)
-            }
-        }
-        Opcode::CallV => {
-            // CallV pops: function ref + instance + argc args
-            if let datawin::bytecode::decode::Operand::Call { argc, .. } = inst.operand {
-                (argc as usize + 2, 1)
-            } else {
-                (2, 1)
-            }
-        }
-        Opcode::Ret => (1, 0),
-        Opcode::Exit => (0, 0),
-        Opcode::B => (0, 0),
-        Opcode::Bt | Opcode::Bf => (1, 0),
-        Opcode::PushEnv => (1, 0),
-        Opcode::PopEnv => (0, 0),
-        Opcode::Break => {
-            if let datawin::bytecode::decode::Operand::Break { signal, .. } = inst.operand {
-                match signal {
-                    0xFFFF => (0, 0),          // chkindex
-                    0xFFFC => (1, 0),          // pushac — captures array ref (pops 1)
-                    0xFFFB => (1, 0),          // setowner — pops owner ID
-                    0xFFFE => (2, 1),          // pushaf
-                    0xFFFD => (2, 0),          // popaf — pops value + index (array from pushac)
-                    0xFFF6 => (0, 1),          // chknullish — pushes boolean
-                    0xFFF5 => (0, 1),          // pushref — pushes function ref
-                    0xFFFA => (0, 1),          // isstaticok — pushes boolean
-                    0xFFF9 => (0, 0),          // setstatic — nop
-                    0xFFF8 | 0xFFF7 => (0, 0), // savearef, restorearef — nop
-                    _ => (0, 0),
-                }
-            } else {
-                (0, 0)
-            }
-        }
-    }
-}
-
 /// Pre-compute the operand stack depth at each block entry point.
 fn record_depth(depths: &mut HashMap<usize, usize>, offset: usize, depth: usize) {
     // Use min across all predecessor paths — if paths disagree on depth, only the
@@ -305,6 +188,19 @@ fn record_depth(depths: &mut HashMap<usize, usize>, offset: usize, depth: usize)
         .or_insert(depth);
 }
 
+/// Pop `n` items from the width stack, clamping to avoid underflow.
+fn ws_pop(ws: &mut Vec<u8>, n: usize) {
+    ws.truncate(ws.len().saturating_sub(n));
+}
+
+/// Compute block entry depths using a width-aware stack simulation.
+///
+/// The GML VM stack uses variable-width slots (1/2/4 units per item depending
+/// on DataType). Most opcodes have fixed item-count effects, but `Dup(N)`
+/// duplicates `(N+1) * gml_slot_units(type1)` *bytes* — the actual number of
+/// items depends on the byte widths of items already on the stack. This
+/// function tracks a `Vec<u8>` of per-item slot widths so that Dup computes
+/// the same item count as the actual translator in `translate_stack_op`.
 pub(super) fn compute_block_stack_depths(
     instructions: &[Instruction],
     block_starts: &BTreeSet<usize>,
@@ -312,21 +208,22 @@ pub(super) fn compute_block_stack_depths(
     let mut depths: HashMap<usize, usize> = HashMap::new();
     depths.insert(0, 0);
 
-    let mut depth: i32 = 0;
+    // Width stack: each entry is the gml_slot_units of that stack item.
+    let mut ws: Vec<u8> = Vec::new();
     let mut terminated = false;
 
     for (i, inst) in instructions.iter().enumerate() {
         if block_starts.contains(&inst.offset) && i > 0 {
             if !terminated {
-                record_depth(&mut depths, inst.offset, depth as usize);
+                record_depth(&mut depths, inst.offset, ws.len());
             }
             if let Some(&d) = depths.get(&inst.offset) {
-                depth = d as i32;
+                // Reconstruct: block params are Variable-width (4 units each)
+                ws = vec![4u8; d];
                 terminated = false;
             } else {
                 // Unreachable block (no incoming edge recorded a depth).
-                // Don't process instructions or propagate depths from here.
-                depth = 0;
+                ws.clear();
                 terminated = true;
             }
         }
@@ -335,26 +232,186 @@ pub(super) fn compute_block_stack_depths(
             continue;
         }
 
-        let (pops, pushes) = stack_effect(inst, &instructions[i + 1..]);
-        depth -= pops as i32;
-        if depth < 0 {
-            depth = 0;
+        let rest = &instructions[i + 1..];
+
+        // Apply stack effect with per-item width tracking.
+        // For branch/terminator instructions only pops are applied here;
+        // depths are recorded at targets below (pushes are always 0 for those).
+        match inst.opcode {
+            Opcode::PushI | Opcode::Push | Opcode::PushLoc | Opcode::PushGlb | Opcode::PushBltn => {
+                if let datawin::bytecode::decode::Operand::Variable {
+                    var_ref, instance, ..
+                } = &inst.operand
+                {
+                    if matches!(
+                        InstanceType::from_i16(*instance),
+                        Some(InstanceType::Stacktop)
+                    ) || is_stacktop_ref(var_ref, *instance)
+                    {
+                        ws_pop(&mut ws, 1); // pop instance
+                        ws.push(4); // push Variable-width result
+                    } else if is_2d_array_access(var_ref, *instance)
+                        || is_cross_obj_2d_read(var_ref, *instance, rest)
+                    {
+                        ws_pop(&mut ws, 2); // pop dim1+dim2
+                        ws.push(4); // push Variable-width result
+                    } else {
+                        ws.push(4); // variable access → Variable (4 units)
+                    }
+                } else if matches!(inst.operand, datawin::bytecode::decode::Operand::Int16(-9))
+                    && is_next_stacktop_access(rest)
+                {
+                    // PushI -9 sentinel — net zero
+                } else {
+                    ws.push(gml_slot_units(inst.type1));
+                }
+            }
+
+            Opcode::Add | Opcode::Sub | Opcode::Mul | Opcode::Div | Opcode::Rem | Opcode::Mod => {
+                ws_pop(&mut ws, 2);
+                ws.push(gml_slot_units(inst.type1).max(gml_slot_units(inst.type2)));
+            }
+
+            Opcode::Neg | Opcode::Not => {
+                ws_pop(&mut ws, 1);
+                ws.push(gml_slot_units(inst.type1).max(gml_slot_units(inst.type2)));
+            }
+
+            Opcode::And | Opcode::Or | Opcode::Xor | Opcode::Shl | Opcode::Shr | Opcode::Cmp => {
+                ws_pop(&mut ws, 2);
+                ws.push(gml_slot_units(inst.type1).max(gml_slot_units(inst.type2)));
+            }
+
+            Opcode::Conv => {
+                ws_pop(&mut ws, 1);
+                ws.push(gml_slot_units(inst.type2));
+            }
+
+            Opcode::Dup => {
+                if let datawin::bytecode::decode::Operand::Dup(n) = inst.operand {
+                    let dup_extra = (n >> 8) & 0xFF;
+                    let dup_size = (n & 0xFF) as usize;
+                    if dup_extra == 0 {
+                        // Normal dup: duplicate (dup_size+1) * type_unit bytes.
+                        // Walk backwards by per-item widths to find actual item count,
+                        // matching the logic in translate_stack_op (ops.rs).
+                        let type_unit = gml_slot_units(inst.type1) as usize;
+                        let total_units = (dup_size + 1) * type_unit;
+
+                        let mut units_remaining = total_units;
+                        let mut item_count = 0;
+                        for &w in ws.iter().rev() {
+                            if units_remaining == 0 {
+                                break;
+                            }
+                            let item_units = w as usize;
+                            if item_units > units_remaining {
+                                item_count += 1;
+                                break;
+                            }
+                            units_remaining -= item_units;
+                            item_count += 1;
+                        }
+
+                        // Duplicate the widths of the top item_count items.
+                        let start = ws.len().saturating_sub(item_count);
+                        let duped: Vec<u8> = ws[start..].to_vec();
+                        ws.extend(duped);
+                    }
+                    // dup_extra != 0 → GMS2.3+ swap/no-op, no net stack change
+                }
+            }
+
+            Opcode::Popz => {
+                ws_pop(&mut ws, 1);
+            }
+
+            Opcode::Pop => {
+                if let datawin::bytecode::decode::Operand::Variable {
+                    var_ref, instance, ..
+                } = &inst.operand
+                {
+                    if matches!(
+                        InstanceType::from_i16(*instance),
+                        Some(InstanceType::Stacktop)
+                    ) || is_stacktop_ref(var_ref, *instance)
+                    {
+                        ws_pop(&mut ws, 2); // value + instance
+                    } else if is_2d_array_access(var_ref, *instance) {
+                        ws_pop(&mut ws, 3); // value + 2D indices
+                    } else {
+                        ws_pop(&mut ws, 1);
+                    }
+                } else {
+                    ws_pop(&mut ws, 1);
+                }
+            }
+
+            Opcode::Call => {
+                if let datawin::bytecode::decode::Operand::Call { argc, .. } = inst.operand {
+                    ws_pop(&mut ws, argc as usize);
+                }
+                ws.push(4); // return value = Variable
+            }
+
+            Opcode::CallV => {
+                if let datawin::bytecode::decode::Operand::Call { argc, .. } = inst.operand {
+                    ws_pop(&mut ws, argc as usize + 2);
+                } else {
+                    ws_pop(&mut ws, 2);
+                }
+                ws.push(4); // return value = Variable
+            }
+
+            // Branch/terminator pops (pushes are always 0):
+            Opcode::Bt | Opcode::Bf => {
+                ws_pop(&mut ws, 1);
+            }
+            Opcode::PushEnv => {
+                ws_pop(&mut ws, 1);
+            }
+            Opcode::Ret => {
+                ws_pop(&mut ws, 1);
+            }
+            Opcode::B | Opcode::Exit | Opcode::PopEnv => {}
+
+            Opcode::Break => {
+                if let datawin::bytecode::decode::Operand::Break { signal, .. } = inst.operand {
+                    match signal {
+                        0xFFFF => {}                  // chkindex
+                        0xFFFC => ws_pop(&mut ws, 1), // pushac
+                        0xFFFB => ws_pop(&mut ws, 1), // setowner
+                        0xFFFE => {
+                            // pushaf
+                            ws_pop(&mut ws, 2);
+                            ws.push(4);
+                        }
+                        0xFFFD => ws_pop(&mut ws, 2), // popaf
+                        0xFFF6 => ws.push(1),         // chknullish (bool)
+                        0xFFF5 => ws.push(4),         // pushref
+                        0xFFFA => ws.push(1),         // isstaticok (bool)
+                        0xFFF7..=0xFFF9 => {}         // setstatic, savearef, restorearef
+                        _ => {}
+                    }
+                }
+            }
         }
 
+        // Record depths at branch targets.
         match inst.opcode {
             Opcode::B => {
                 if let datawin::bytecode::decode::Operand::Branch(offset) = inst.operand {
                     let target = (inst.offset as i64 + offset as i64) as usize;
-                    record_depth(&mut depths, target, depth as usize);
+                    record_depth(&mut depths, target, ws.len());
                 }
                 terminated = true;
             }
             Opcode::Bt | Opcode::Bf => {
                 if let datawin::bytecode::decode::Operand::Branch(offset) = inst.operand {
                     let target = (inst.offset as i64 + offset as i64) as usize;
-                    record_depth(&mut depths, target, depth as usize);
+                    record_depth(&mut depths, target, ws.len());
                     if let Some(next) = instructions.get(i + 1) {
-                        record_depth(&mut depths, next.offset, depth as usize);
+                        record_depth(&mut depths, next.offset, ws.len());
                     }
                 }
                 terminated = true;
@@ -362,9 +419,9 @@ pub(super) fn compute_block_stack_depths(
             Opcode::PushEnv => {
                 if let datawin::bytecode::decode::Operand::Branch(offset) = inst.operand {
                     let target = (inst.offset as i64 + offset as i64) as usize;
-                    record_depth(&mut depths, target, depth as usize);
+                    record_depth(&mut depths, target, ws.len());
                     if let Some(next) = instructions.get(i + 1) {
-                        record_depth(&mut depths, next.offset, depth as usize);
+                        record_depth(&mut depths, next.offset, ws.len());
                     }
                 }
                 terminated = true;
@@ -372,9 +429,9 @@ pub(super) fn compute_block_stack_depths(
             Opcode::PopEnv => {
                 if let datawin::bytecode::decode::Operand::Branch(offset) = inst.operand {
                     let target = (inst.offset as i64 + offset as i64) as usize;
-                    record_depth(&mut depths, target, depth as usize);
+                    record_depth(&mut depths, target, ws.len());
                     if let Some(next) = instructions.get(i + 1) {
-                        record_depth(&mut depths, next.offset, depth as usize);
+                        record_depth(&mut depths, next.offset, ws.len());
                     }
                 }
                 terminated = true;
@@ -384,8 +441,6 @@ pub(super) fn compute_block_stack_depths(
             }
             _ => {}
         }
-
-        depth += pushes as i32;
     }
 
     depths
