@@ -400,6 +400,61 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 
 ---
 
+## Adversarial Architecture Audit (2026-03-13)
+
+Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction campaign
+(Dead Estate 228→16) introduced suppression patterns that weaken output quality.
+
+### Critical
+
+- [ ] **tsconfig strictness retreat (commits `941feb5`, `7c42296`, `73df2b1`).**
+  `strictNullChecks: false`, `noImplicitReturns: false`, `allowUnreachableCode: true` all
+  disabled in `scaffold.rs` to reduce error counts. This permanently weakens output for ALL
+  games across ALL engines. Law 4 violation (suppression, not fix). The emitter should produce
+  code that passes strict checks. Track: every tsconfig relaxation is a regression.
+  **File:** `crates/backends/reincarnate-backend-typescript/src/scaffold.rs:335-341`
+
+- [ ] **`switch (x as any)` on every switch statement.**
+  `ast_printer.rs:658` wraps every switch discriminant with `as any` to suppress TS2678.
+  Defeats TypeScript exhaustiveness checking and hides genuine type mismatches. The correct
+  fix is to ensure discriminant and case label types are compatible upstream (type inference
+  or lowering). Law 4 violation.
+  **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs:658`
+
+- [ ] **Return type inference keeps `Dynamic` for no-return functions — GML-specific in core.**
+  `type_infer.rs:888-894` skips return-type narrowing for functions with no value-bearing
+  returns, with comment "In GML, all functions implicitly return a value." Flash functions
+  with no `return <value>` should infer `void`, not `Dynamic`. Law 2 violation.
+  **Fix:** Add a `Function`-level or `Module`-level flag (e.g. `implicit_return_value: bool`)
+  set by GML frontend, read by type inference. Don't hardcode GML semantics in core.
+  **File:** `crates/reincarnate-core/src/transforms/type_infer.rs:888-894`
+
+### Concerning
+
+- [ ] **`CallSiteArityWiden` is a GML-only pass living in core.**
+  Docs and `PassConfig` comment say "GML loose calling convention." No other engine needs it.
+  Should be a GML `extra_pass`, not a core pass. Harmless as no-op for other engines but sets
+  a bad precedent.
+  **File:** `crates/reincarnate-core/src/transforms/call_site_arity_widen.rs`
+
+- [ ] **`Object.values()/keys()` cast to `any[]` in printer.**
+  `ast_printer.rs:540-552` pattern-matches `Object.values()`/`Object.keys()` inside `for..of`
+  loops and wraps with `(... as any[])`. Content-aware hack in the printer — should fix types
+  upstream.
+  **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs:540-552`
+
+- [ ] **`is_gml_numeric_field` hardcodes 20+ field names.**
+  `bool_arith_coerce.rs:317-341` maintains a static list of GML built-in fields. Should read
+  from `external_type_defs` on the Module instead.
+  **File:** `crates/frontends/reincarnate-frontend-gamemaker/src/bool_arith_coerce.rs:317-341`
+
+- [ ] **Accumulated guards in PushI -9 skip (3 commits widening same guard).**
+  `ops.rs:168-203` has 8 preceding-opcode variants, 2 conditions, and a state flag. The
+  underlying issue: translator doesn't model -9 as a stack-machine scope marker. Each new
+  pattern adds another guard instead of fixing the abstraction.
+
+---
+
 ## Next Session: Remaining Refactors
 
 **Completed module splits (2026-03-12):**
