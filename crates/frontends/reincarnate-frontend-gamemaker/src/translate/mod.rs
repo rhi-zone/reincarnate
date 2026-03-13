@@ -164,7 +164,7 @@ pub fn translate_code_entry(
     };
 
     let (block_map, block_params, block_entry_depths) =
-        setup_blocks(&mut fb, &instructions, &with_ranges, 0);
+        setup_blocks(&mut fb, &instructions, &with_ranges, 0, ctx.function_names);
 
     // Allocate locals.
     let mut locals = allocate_locals(&mut fb, ctx);
@@ -509,26 +509,6 @@ fn is_cross_obj_2d_read(var_ref: &VariableRef, instance: i16, rest: &[Instructio
 /// the actual instance ID is popped from the stack at runtime.
 fn is_stacktop_ref(var_ref: &VariableRef, instance: i16) -> bool {
     instance >= 0 && var_ref.ref_type == 0x80
-}
-
-/// Check if the next instruction is a stacktop variable access.
-///
-/// Matches both `ref_type=0x80` (cross-object stacktop) and
-/// `InstanceType::Stacktop` (instance=-9, used for self and @@Global@@).
-/// Used by `stack_effect` (depth computation) and `translate_push_instruction`.
-pub(super) fn is_next_stacktop_access(rest: &[Instruction]) -> bool {
-    if let Some(next) = rest.first() {
-        if matches!(next.opcode, Opcode::Push | Opcode::Pop) {
-            if let Operand::Variable { var_ref, instance } = &next.operand {
-                return is_stacktop_ref(var_ref, *instance)
-                    || matches!(
-                        InstanceType::from_i16(*instance),
-                        Some(InstanceType::Stacktop)
-                    );
-            }
-        }
-    }
-    false
 }
 
 /// Check if the next instruction is a stacktop variable access via

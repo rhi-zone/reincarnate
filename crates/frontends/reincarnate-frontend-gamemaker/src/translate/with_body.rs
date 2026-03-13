@@ -278,8 +278,13 @@ pub(super) fn translate_with_body(
 
     let inner_with_ranges = find_with_ranges(wctx.body_insts);
     let entry_offset = wctx.body_insts.first().map_or(0, |inst| inst.offset);
-    let (block_map, block_params, block_entry_depths) =
-        setup_blocks(&mut fb, wctx.body_insts, &inner_with_ranges, entry_offset);
+    let (block_map, block_params, block_entry_depths) = setup_blocks(
+        &mut fb,
+        wctx.body_insts,
+        &inner_with_ranges,
+        entry_offset,
+        wctx.ctx.function_names,
+    );
 
     let ctx = wctx.ctx;
 

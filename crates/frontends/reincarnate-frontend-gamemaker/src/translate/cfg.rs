@@ -8,7 +8,11 @@ use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::value::ValueId;
 
-use super::{is_2d_array_access, is_cross_obj_2d_read, is_next_stacktop_access, is_stacktop_ref};
+use datawin::bytecode::decode::Operand;
+
+use super::{
+    is_2d_array_access, is_cross_obj_2d_read, is_next_stacktop_ref_access, is_stacktop_ref,
+};
 
 /// Filter instructions to only those reachable from the entry point.
 ///
@@ -128,13 +132,15 @@ pub(super) fn setup_blocks(
     instructions: &[Instruction],
     with_ranges: &HashMap<usize, usize>,
     entry_offset: usize,
+    function_names: &HashMap<u32, String>,
 ) -> (
     HashMap<usize, BlockId>,
     HashMap<usize, Vec<ValueId>>,
     HashMap<usize, usize>,
 ) {
     let block_starts = find_block_starts(instructions);
-    let block_entry_depths = compute_block_stack_depths(instructions, &block_starts);
+    let block_entry_depths =
+        compute_block_stack_depths(instructions, &block_starts, function_names);
 
     // Collect offsets that belong to with-body ranges (body + PopEnv).
     // Blocks at these offsets are owned by extracted closures, not the outer function.
@@ -204,6 +210,7 @@ fn ws_pop(ws: &mut Vec<u8>, n: usize) {
 pub(super) fn compute_block_stack_depths(
     instructions: &[Instruction],
     block_starts: &BTreeSet<usize>,
+    function_names: &HashMap<u32, String>,
 ) -> HashMap<usize, usize> {
     let mut depths: HashMap<usize, usize> = HashMap::new();
     depths.insert(0, 0);
@@ -214,6 +221,9 @@ pub(super) fn compute_block_stack_depths(
     // Track pushac state: when pushac captures an array index, the
     // subsequent popaf pops only 2 items (value + array) instead of 3.
     let mut pushac_pending = false;
+    // Track @@Global@@ scope: Call @@Global@@ sets this; PushI -9
+    // sentinel is skipped unconditionally when this flag is set.
+    let mut global_scope_on_stack = false;
 
     for (i, inst) in instructions.iter().enumerate() {
         if block_starts.contains(&inst.offset) && i > 0 {
@@ -225,11 +235,13 @@ pub(super) fn compute_block_stack_depths(
                 ws = vec![4u8; d];
                 terminated = false;
                 pushac_pending = false;
+                global_scope_on_stack = false;
             } else {
                 // Unreachable block (no incoming edge recorded a depth).
                 ws.clear();
                 terminated = true;
                 pushac_pending = false;
+                global_scope_on_stack = false;
             }
         }
 
@@ -263,10 +275,13 @@ pub(super) fn compute_block_stack_depths(
                     } else {
                         ws.push(4); // variable access → Variable (4 units)
                     }
-                } else if matches!(inst.operand, datawin::bytecode::decode::Operand::Int16(-9))
-                    && is_next_stacktop_access(rest)
+                } else if matches!(inst.operand, Operand::Int16(-9))
+                    && (is_next_stacktop_ref_access(rest) || global_scope_on_stack)
                 {
-                    // PushI -9 sentinel — net zero
+                    // PushI -9 sentinel — skipped (net zero).
+                    // Matches translation logic: skip when next is a stacktop ref
+                    // access (cross-object) OR when @@Global@@ scope is on the stack.
+                    global_scope_on_stack = false;
                 } else {
                     ws.push(gml_slot_units(inst.type1));
                 }
@@ -353,8 +368,19 @@ pub(super) fn compute_block_stack_depths(
             }
 
             Opcode::Call => {
-                if let datawin::bytecode::decode::Operand::Call { argc, .. } = inst.operand {
+                if let Operand::Call {
+                    function_id, argc, ..
+                } = inst.operand
+                {
                     ws_pop(&mut ws, argc as usize);
+                    // Detect Call @@Global@@ (argc=0) to set global_scope_on_stack.
+                    if argc == 0 {
+                        if let Some(name) = function_names.get(&function_id) {
+                            if name == "@@Global@@" {
+                                global_scope_on_stack = true;
+                            }
+                        }
+                    }
                 }
                 ws.push(4); // return value = Variable
             }
