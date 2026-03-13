@@ -211,6 +211,9 @@ pub(super) fn compute_block_stack_depths(
     // Width stack: each entry is the gml_slot_units of that stack item.
     let mut ws: Vec<u8> = Vec::new();
     let mut terminated = false;
+    // Track pushac state: when pushac captures an array index, the
+    // subsequent popaf pops only 2 items (value + array) instead of 3.
+    let mut pushac_pending = false;
 
     for (i, inst) in instructions.iter().enumerate() {
         if block_starts.contains(&inst.offset) && i > 0 {
@@ -221,10 +224,12 @@ pub(super) fn compute_block_stack_depths(
                 // Reconstruct: block params are Variable-width (4 units each)
                 ws = vec![4u8; d];
                 terminated = false;
+                pushac_pending = false;
             } else {
                 // Unreachable block (no incoming edge recorded a depth).
                 ws.clear();
                 terminated = true;
+                pushac_pending = false;
             }
         }
 
@@ -378,19 +383,34 @@ pub(super) fn compute_block_stack_depths(
             Opcode::Break => {
                 if let datawin::bytecode::decode::Operand::Break { signal, .. } = inst.operand {
                     match signal {
-                        0xFFFF => {}                  // chkindex
-                        0xFFFC => ws_pop(&mut ws, 1), // pushac
+                        0xFFFF => {} // chkindex
+                        0xFFFC => {
+                            // pushac — captures array index for upcoming popaf.
+                            ws_pop(&mut ws, 1);
+                            pushac_pending = true;
+                        }
                         0xFFFB => ws_pop(&mut ws, 1), // setowner
                         0xFFFE => {
                             // pushaf
                             ws_pop(&mut ws, 2);
                             ws.push(4);
                         }
-                        0xFFFD => ws_pop(&mut ws, 2), // popaf
-                        0xFFF6 => ws.push(1),         // chknullish (bool)
-                        0xFFF5 => ws.push(4),         // pushref
-                        0xFFFA => ws.push(1),         // isstaticok (bool)
-                        0xFFF7..=0xFFF9 => {}         // setstatic, savearef, restorearef
+                        0xFFFD => {
+                            // popaf — array element set.
+                            // If pushac captured the index, popaf pops 2 (value + array).
+                            // Otherwise (simple or compound write), popaf pops 3
+                            // (value + array + index).
+                            if pushac_pending {
+                                ws_pop(&mut ws, 2);
+                                pushac_pending = false;
+                            } else {
+                                ws_pop(&mut ws, 3);
+                            }
+                        }
+                        0xFFF6 => ws.push(1), // chknullish (bool)
+                        0xFFF5 => ws.push(4), // pushref
+                        0xFFFA => ws.push(1), // isstaticok (bool)
+                        0xFFF7..=0xFFF9 => {} // setstatic, savearef, restorearef
                         _ => {}
                     }
                 }
