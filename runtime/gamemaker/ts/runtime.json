@@ -3428,7 +3428,7 @@
     },
     "video_get_format": {
       "params": [],
-      "returns": "string"
+      "returns": "number"
     },
     "getInstanceField": {
       "params": [

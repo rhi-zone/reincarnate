@@ -3804,7 +3804,7 @@ export class GameRuntime {
   get_string_async(_message: string, _default: string): string { return _default; }
 
   // ---- Video extras ----
-  video_get_format(): string { return this._video ? "MPEG4" : ""; }
+  video_get_format(): number { return this._video ? 1 : 0; }
 
   // ---- PSN — mapped to browser equivalents ----
   // Trophy state is stored under __psn_trophy_<gameName> (distinct from __gml_fs_ ini saves).

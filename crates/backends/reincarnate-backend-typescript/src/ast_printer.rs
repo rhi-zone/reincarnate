@@ -740,7 +740,15 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
             cases,
             default_body,
         } => {
-            let _ = writeln!(out, "{indent}switch ({} as any) {{", print_expr(value));
+            // Use `as any` only when the discriminant is a literal constant —
+            // constant folding can produce e.g. `switch (0.0) { case 1: ... }`
+            // where the case types don't match the discriminant type.
+            let cast = if matches!(value, JsExpr::Literal(_)) {
+                " as any"
+            } else {
+                ""
+            };
+            let _ = writeln!(out, "{indent}switch ({}{}) {{", print_expr(value), cast);
             let case_indent = format!("{indent}  ");
             for (case_expr, case_stmts) in cases {
                 let _ = writeln!(out, "{indent}  case {}:", print_expr(case_expr));

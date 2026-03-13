@@ -961,6 +961,11 @@ fn emit_class_method(
 /// body does not already have a guaranteed return on all paths.  This silences
 /// TS2366 ("Function lacks ending return statement") for exhaustive switch/if
 /// trees that TypeScript cannot prove are complete.
+///
+/// Special case: if the body ends with a Switch whose default body is empty but
+/// all case bodies are terminal, inject the throw into the default body instead
+/// of after the switch.  This prevents TS7027 ("Unreachable code") when
+/// TypeScript can prove the switch is exhaustive from the discriminant type.
 fn ensure_trailing_unreachable(func: &Function, js_func: &mut JsFunction) {
     if matches!(func.sig.return_ty, Type::Void) {
         return;
@@ -968,8 +973,26 @@ fn ensure_trailing_unreachable(func: &Function, js_func: &mut JsFunction) {
     if crate::ast_printer::ends_with_terminal(&js_func.body) {
         return;
     }
-    js_func.body.push(JsStmt::Throw(JsExpr::New {
+    let unreachable_throw = JsStmt::Throw(JsExpr::New {
         callee: Box::new(JsExpr::Var("Error".into())),
         args: vec![JsExpr::Literal(Constant::String("unreachable".into()))],
-    }));
+    });
+    // If the body ends with a switch where all cases are terminal but there's
+    // no default, inject the throw as the default body so TS sees the switch
+    // itself as exhaustive and doesn't flag code after it as unreachable.
+    if let Some(JsStmt::Switch {
+        default_body,
+        cases,
+        ..
+    }) = js_func.body.last_mut()
+    {
+        let all_cases_terminal = cases
+            .iter()
+            .all(|(_, body)| body.is_empty() || crate::ast_printer::ends_with_terminal(body));
+        if default_body.is_empty() && all_cases_terminal {
+            default_body.push(unreachable_throw);
+            return;
+        }
+    }
+    js_func.body.push(unreachable_throw);
 }
