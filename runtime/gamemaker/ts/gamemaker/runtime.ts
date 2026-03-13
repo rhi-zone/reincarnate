@@ -1019,15 +1019,19 @@ export class GameRuntime {
     return this._instanceCreate(x, y, resolved);
   }
 
-  instance_create_depth<T extends GMLObject>(x: number, y: number, depth: number, cls: (new() => T) | number): T {
-    const resolved = (typeof cls === 'number' ? this.classes[cls] : cls) as new() => T;
+  instance_create_depth<T extends GMLObject>(x: number, y: number, depth: number, cls: (new() => T) | number): T;
+  instance_create_depth(x: number, y: number, depth: number, cls: any): any;
+  instance_create_depth(x: number, y: number, depth: number, cls: any): any {
+    const resolved = (typeof cls === 'number' ? this.classes[cls] : cls) as new() => GMLObject;
     const inst = this._instanceCreate(x, y, resolved);
     inst.depth = depth;
     return inst;
   }
 
-  instance_create_layer<T extends GMLObject>(x: number, y: number, _layer: any, cls: (new() => T) | number): T {
-    const resolved = (typeof cls === 'number' ? this.classes[cls] : cls) as new() => T;
+  instance_create_layer<T extends GMLObject>(x: number, y: number, _layer: any, cls: (new() => T) | number): T;
+  instance_create_layer(x: number, y: number, _layer: any, cls: any): any;
+  instance_create_layer(x: number, y: number, _layer: any, cls: any): any {
+    const resolved = (typeof cls === 'number' ? this.classes[cls] : cls) as new() => GMLObject;
     return this._instanceCreate(x, y, resolved);
   }
 
