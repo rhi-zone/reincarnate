@@ -62,11 +62,29 @@ impl Transform for GmlBoolArithCoerce {
         // GMLObject.x, GMLObject.depth) so we don't hardcode field names.
         let external_numeric_fields = build_external_numeric_fields(&module);
 
+        // Pre-collect entry block param types for call-arg coercion (Pass 4).
+        // Maps function name → vec of entry block param value_types (skipping
+        // the first param which is `self` for instance methods).
+        let callee_param_types: HashMap<String, Vec<Type>> = module
+            .functions
+            .values()
+            .map(|f| {
+                let entry = &f.blocks[f.entry];
+                let tys: Vec<Type> = entry
+                    .params
+                    .iter()
+                    .map(|p| f.value_types[p.value].clone())
+                    .collect();
+                (f.name.clone(), tys)
+            })
+            .collect();
+
         let mut changed = false;
         for func in module.functions.values_mut() {
             changed |= coerce_bool_arithmetic(func, &bool_returning);
             changed |= coerce_bool_br_args(func);
             changed |= coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
+            changed |= coerce_bool_call_args(func, &callee_param_types);
         }
         Ok(TransformResult { module, changed })
     }
@@ -79,6 +97,26 @@ impl Transform for GmlBoolArithCoerce {
 /// Returns true if `v` has type `Bool` in `func.value_types`.
 fn is_bool(func: &Function, v: ValueId) -> bool {
     matches!(func.value_types.get(v), Some(Type::Bool))
+}
+
+/// Returns true if `v` is "effectively boolean" — either directly Bool-typed,
+/// or the result of a `Cast(bool_val, Dynamic, Coerce)` from a Bool value.
+///
+/// GML's `cmp.eq`/`cmp.lt` etc. produce Bool, which then gets coerced to
+/// Dynamic before being passed as a call arg.  The emitter strips the coerce,
+/// leaving a boolean expression where TypeScript expects a number.
+fn is_effectively_bool(func: &Function, v: ValueId) -> bool {
+    if is_bool(func, v) {
+        return true;
+    }
+    // Look through Cast(source, _, Coerce) to see if source is Bool.
+    let result_map = result_inst_map(func);
+    if let Some(&inst_id) = result_map.get(&v) {
+        if let Op::Cast(source, _, CastKind::Coerce) = &func.insts[inst_id].op {
+            return is_bool(func, *source);
+        }
+    }
+    false
 }
 
 /// Returns true if `ty` is an integer or float type (needs coercion from Bool).
@@ -376,6 +414,60 @@ fn coerce_bool_set_field(
         let new_v = insert_cast_before(func, old_v, inst_id, Type::Float(64));
         if let Op::SetField { value, .. } = &mut func.insts[inst_id].op {
             *value = new_v;
+        }
+    }
+
+    true
+}
+
+// ---------------------------------------------------------------------------
+// Pass 4 — Bool args passed to numeric callee params via Call (TS2345)
+// ---------------------------------------------------------------------------
+
+/// Coerce Bool arguments in function calls when the callee's entry block param
+/// is numeric.  GML treats booleans as numbers, so `func(x == y)` is valid GML
+/// when `func` expects a number.
+///
+/// The challenge: at call sites, the Bool value is often coerced to Dynamic
+/// (`coerce bool, dyn`) before being passed.  The emitter strips the coerce,
+/// exposing the boolean expression to TypeScript.  We look through the coerce
+/// to find the underlying Bool and insert `Cast(Bool→Float(64), Coerce)`.
+fn coerce_bool_call_args(
+    func: &mut Function,
+    callee_param_types: &HashMap<String, Vec<Type>>,
+) -> bool {
+    // Collect: (inst_id, arg_index, old_value)
+    let mut casts: Vec<(InstId, usize, ValueId)> = Vec::new();
+
+    for (inst_id, inst) in func.insts.iter() {
+        if let Op::Call {
+            func: callee_name,
+            args,
+        } = &inst.op
+        {
+            if let Some(param_tys) = callee_param_types.get(callee_name) {
+                // Call args map directly to entry block params: args[i]
+                // corresponds to entry_params[i]. The emitter adds _rt as
+                // an extra first argument, but the IR doesn't have it.
+                for (i, &arg_v) in args.iter().enumerate() {
+                    if let Some(pty) = param_tys.get(i) {
+                        if is_numeric(pty) && is_effectively_bool(func, arg_v) {
+                            casts.push((inst_id, i, arg_v));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if casts.is_empty() {
+        return false;
+    }
+
+    for (inst_id, arg_idx, old_v) in casts {
+        let new_v = insert_cast_before(func, old_v, inst_id, Type::Float(64));
+        if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+            args[arg_idx] = new_v;
         }
     }
 
