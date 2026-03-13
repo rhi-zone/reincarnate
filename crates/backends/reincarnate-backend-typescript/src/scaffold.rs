@@ -333,7 +333,7 @@ const TSCONFIG: &str = r#"{
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": true,
     "strict": true,
-    "strictNullChecks": false,
+    "strictNullChecks": true,
     "exactOptionalPropertyTypes": false,
     "noImplicitReturns": true,
     "noImplicitOverride": true,

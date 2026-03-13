@@ -196,6 +196,26 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
         }
     }
 
+    // `regex.exec(str)[i]` → `regex.exec(str)![i]` — RegExp.exec() returns
+    // RegExpExecArray | null in TypeScript; add non-null assertion when the result
+    // is immediately indexed (the source AS3 has no null check either).
+    if let JsExpr::Index { ref collection, .. } = expr {
+        if let JsExpr::Call { ref callee, .. } = **collection {
+            if let JsExpr::Field { ref field, .. } = **callee {
+                if field == "exec" {
+                    if let JsExpr::Index { collection, index } = expr {
+                        let collection = rewrite_expr(*collection, ctx);
+                        let index = rewrite_expr(*index, ctx);
+                        return JsExpr::Index {
+                            collection: Box::new(JsExpr::NonNull(Box::new(collection))),
+                            index: Box::new(index),
+                        };
+                    }
+                }
+            }
+        }
+    }
+
     // --- Recurse into children ---
     match expr {
         JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This | JsExpr::Activation => expr,
