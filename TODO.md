@@ -376,15 +376,27 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   redundant; skipping it lets the stacktop handler pop the actual target instance.
   Previous instruction check covers PushLoc, PushGlb, Push, PushBltn, PushI, Call,
   CallV, Break (for pushref). −22 errors.
-- [ ] **@@Global@@ + PushI -9 pattern (7 GMLObject errors)**: `Call @@Global@@` pushes
-  global scope, followed by `PushI -9`, but the stacktop access is NOT the immediately
-  next instruction — there are intermediate instructions (PushLoc for array index,
-  Push Int64 for enum IDs, etc.). Current skip logic only checks rest.first() so it
-  never fires. Needs a different approach: either intercept @@Global@@ at the Call
-  handler level (like @@This@@), or scan forward past intermediates to find the
-  stacktop access. Affects ps5SubmitSaveBuffer, ps5SubmitLoadBuffer, and similar.
+- [x] **@@Global@@ + PushI -9 pattern (6 errors fixed)**: `Call @@Global@@` pushes
+  global scope, followed by `PushI -9`, then intermediate instructions (PushLoc for
+  array index, Push Int64 for enum IDs). Fix: track `global_scope_on_stack` flag set
+  by `Call @@Global@@` handler; when flag is set, unconditionally skip PushI -9.
+  Without skip, 2D array handler pops dim2=-9 (self-scope) and global scope orphaned
+  on stack. With skip, global scope lands in dim2 slot → dynamic-dim2 branch →
+  `setOn(global_scope, field, index, value)`. −6 errors.
+- [x] **instance_exists numeric object index (2 errors fixed)**: Widened runtime
+  `instance_exists` to accept `number` (object indices, sentinels like -4/noone).
+  Resolves numeric indices via `this.classes[target]`. −2 errors.
 
-**Baselines:** Flash 14, Bounty 0, Dead Estate 52.
+**GML remaining errors (Dead Estate 16, session 13):**
+- Shared blob decompilation (7): _init.ts:7757,8767,8768,8781,8782,18289; ObjSteamSetVolume.ts:22
+- Shared blob type inference (4): ObjSteamMusic.ts:12,29; OAnyaDoppelganger.ts:62,113
+- Type inference (3): OMortonsForkController.ts:54; DoctorMenu.ts:76; ObjSteamStorageInfo.ts:29x2
+- GML implicit conversion (1): AchievementTester.ts:43 (bool→number in function arg)
+- [ ] **Bool-to-number coercion in call args**: GmlBoolArithCoerce only handles arithmetic ops
+  (Add/Sub/Mul/Div/Rem), not function call arguments where a boolean is passed as number.
+  AchievementTester.ts:43 passes `this.selected === i` (boolean) where number expected.
+
+**Baselines:** Flash 14, Bounty 0, Dead Estate 16.
 
 ---
 
@@ -1263,7 +1275,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 52 TS errors + 1 translation error (2026-03-13) |
+| Dead Estate | `data.win` 192MB | ⚠️ 16 TS errors + 1 translation error (2026-03-13) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
