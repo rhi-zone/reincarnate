@@ -668,34 +668,24 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
         JsStmt::ForOf {
             binding,
             declare,
+            binding_ty,
             iterable,
             body,
         } => {
             let inner = format!("{indent}  ");
             let decl = if *declare { "const " } else { "" };
-            // `Object.values()` / `Object.keys()` return `unknown[]` in strict mode.
-            // Cast to `any[]` so the loop binding is typed `any` instead of `unknown`,
-            // suppressing TS18046 ("X is of type 'unknown'") on property accesses inside.
-            let is_object_values_or_keys = matches!(
-                iterable,
-                JsExpr::Call { callee, .. }
-                    if matches!(
-                        callee.as_ref(),
-                        JsExpr::Field { object, field }
-                            if matches!(object.as_ref(), JsExpr::Var(n) if n == "Object")
-                                && (field == "values" || field == "keys")
-                    )
-            );
-            let iterable_str = if is_object_values_or_keys {
+            // TypeScript doesn't allow type annotations on for-of bindings
+            // (TS2483), so when the binding is typed Dynamic (AVM2 for-each-in)
+            // we cast the iterable to `any[]` instead.
+            let iterable_str = if matches!(binding_ty, Some(Type::Dynamic)) {
                 format!("({} as any[])", print_expr(iterable))
             } else {
                 print_expr(iterable)
             };
             let _ = writeln!(
                 out,
-                "{indent}for ({decl}{} of {}) {{",
+                "{indent}for ({decl}{} of {iterable_str}) {{",
                 sanitize_ident(binding),
-                iterable_str,
             );
             print_stmts(body, out, &inner);
             let _ = writeln!(out, "{indent}}}");

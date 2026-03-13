@@ -216,6 +216,8 @@ pub enum JsStmt {
     ForOf {
         binding: String,
         declare: bool,
+        /// Optional type annotation for the loop variable.
+        binding_ty: Option<Type>,
         iterable: JsExpr,
         body: Vec<JsStmt>,
     },

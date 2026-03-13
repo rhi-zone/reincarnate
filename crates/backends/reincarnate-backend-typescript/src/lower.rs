@@ -111,11 +111,13 @@ fn lower_stmt(stmt: &Stmt, ctx: &LowerCtx) -> JsStmt {
         Stmt::ForOf {
             binding,
             declare,
+            binding_ty,
             iterable,
             body,
         } => JsStmt::ForOf {
             binding: binding.clone(),
             declare: *declare,
+            binding_ty: binding_ty.clone(),
             iterable: lower_expr(iterable, ctx),
             body: lower_stmts(body, ctx),
         },

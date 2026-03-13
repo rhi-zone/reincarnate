@@ -4,6 +4,7 @@
 
 use super::super::ast::{BinOp, Expr, Stmt};
 use super::super::inst::CmpKind;
+use super::super::ty::Type;
 use super::super::value::Constant;
 use super::{count_var_reads_in_stmt, recurse_into_stmt, strip_as_type, substitute_var_in_stmt};
 
@@ -639,6 +640,7 @@ fn try_rewrite_foreach(stmt: &Stmt) -> Option<Stmt> {
     Some(Stmt::ForOf {
         binding,
         declare,
+        binding_ty: Some(Type::Dynamic),
         iterable,
         body: new_body,
     })

@@ -173,6 +173,8 @@ pub enum Stmt {
         binding: String,
         /// `true` = `const binding` (new decl), `false` = bare `binding` (existing var).
         declare: bool,
+        /// Optional type annotation for the loop variable (e.g. `any` for AVM2 iterators).
+        binding_ty: Option<Type>,
         iterable: Expr,
         body: Vec<Stmt>,
     },

@@ -137,11 +137,13 @@ pub(super) fn rewrite_stmt(stmt: JsStmt, ctx: &FlashRewriteCtx) -> Option<JsStmt
         JsStmt::ForOf {
             binding,
             declare,
+            binding_ty,
             iterable,
             body,
         } => JsStmt::ForOf {
             binding,
             declare,
+            binding_ty,
             iterable: rewrite_expr(iterable, ctx),
             body: rewrite_stmts(body, ctx),
         },
