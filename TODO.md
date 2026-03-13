@@ -387,11 +387,12 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   `instance_exists` to accept `number` (object indices, sentinels like -4/noone).
   Resolves numeric indices via `this.classes[target]`. −2 errors.
 
-**GML remaining errors (Dead Estate 15, session 18):**
-- Shared blob decompilation (10 TS2345): _init.ts:8767,8768,8781,8782; ObjSteamSetVolume.ts:22;
-  DoctorMenu.ts:76; ObjSteamStorageInfo.ts:29x2; ObjSteamMusic.ts:12,29
-- Shared blob type inference (2 TS7053): OAnyaDoppelganger.ts:62,113
-- Shared blob `.length` (1 TS2339): _init.ts:7757 (argument1 inferred as number, should be array)
+**GML remaining errors (Dead Estate 8, session 19):**
+- Shared blob arg ordering (2 TS2345): _init.ts:8768,8782 (`setInstanceFieldIndex` args swapped)
+- Shared blob decompilation (1 TS2345): DoctorMenu.ts:76 (`variable_instance_get(id, 0.0)` wrong arg)
+- Shared blob type inference (2 TS7053): OAnyaDoppelganger.ts:62,113 (`[0]` on Number)
+- CallSiteTypeFlow narrowing (1 TS2339): _init.ts:7757 (`argument1.length` on number — callers
+  pass numbers but body expects array; mixed usage)
 - strictNullChecks artifact (1 TS2345): OBossRushController.ts:278 (`[].push()` on `never[]`)
 - Unreachable code (1 TS7027): DiavolaEye.ts:81 (game-author infinite loop, wontfix)
 - [x] **TS2349 `int` shadows import** — fixed: `rename_shadowing_locals` in backend sanitize pass
@@ -409,7 +410,26 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   Flash 15→18 (+3 game-author), Dead Estate 15→16 (+1 shared blob `[].push(never[])`).
 - [x] **Bool-to-number call args**: GmlBoolArithCoerce Pass 4. Dead Estate 16→15 (−1).
 
-**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 15.
+**Session 19 changes:**
+- [x] **Mixed-type arithmetic result sizing**: `translate_arithmetic_op` and
+  `translate_bitwise_cmp_op` now use `max(gml_slot_units(type1), gml_slot_units(type2))`
+  for result size. Fixes `Add.i[v]` producing 1-unit result when operand is Variable (4 units),
+  which corrupted Dup item counting. Dead Estate 15→13 (ObjSteamMusic draw_text fixed).
+- [x] **Runtime signature fixes**: `buffer_load_async` param order swapped to match GML
+  convention `(buf, path, offset, size)`. `buffer_save_async` param order fixed in
+  runtime.json. `steam_file_get_list` returns `any[]` with `{file_name, file_size}` structs
+  instead of `string[]`. `steam_music_set_volume` returns `number` (GML functions always
+  return a value). Dead Estate 13→8.
+
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 8.
+
+**Root cause of remaining shared blob errors:** `compute_block_stack_depths` uses
+`stack_effect` which counts logical items, but `Dup` translation uses `gml_sizes` to
+count byte-width-aware items. When stack items have smaller gml_sizes than Dup expects
+(e.g. `Dup.v` over Int32-sized items), the actual translation pushes more/fewer items
+than predicted, causing block param depth mismatches. Fix requires either making
+`compute_block_stack_depths` type-width-aware (mini-emulator) or unifying the depth
+prediction with actual translation logic.
 
 ---
 
