@@ -449,7 +449,32 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   CsCharacter::draw (1), DevTool::step (2), DiavolaEye::step_with (1),
   FinalLock::step_with (1), Player::step (1) — all off by 1-3.
 
-**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5.
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 3078.
+
+### Undertale quality sweep (2026-03-14)
+
+First TS check on Undertale (GMS1, 1731 .ts files). Initial: 4447 errors. After bool-cmp
+coerce fix (Pass 5 in GmlBoolArithCoerce): 3078.
+
+**Error breakdown (3078 remaining):**
+- TS2304 "Cannot find name" (~1200): missing runtime function stubs. Top functions:
+  `script_execute` (673), `move_towards_point` (89), `sprite_replace` (65),
+  `action_kill_object` (42), `tile_layer_shift` (24), plus ~50 other GML built-ins.
+  Fix: add stubs to GML runtime (`instance.ts`, `draw.ts`, etc.).
+- TS2339 "Property does not exist on type" (~800): `_rt` property access failures.
+  Class type resolution issues — objects accessing fields/methods on other objects where
+  the type system resolves to a numeric instance ID (Float64) instead of the class type.
+  Same root cause as Dead Estate's fixpoint TS2339 spike. CallSiteTypeFlow limitation.
+- TS2345 "Argument type not assignable" (~400): type mismatches at call sites, likely
+  cascading from the TS2339/TS2304 issues above.
+- TS7053 "Element implicitly has 'any' type" (~200): array/map indexing on wrong types.
+- Other (~400): miscellaneous type errors.
+
+**Chronicon**: YYC compiled (no CODE chunk). Cannot process — same as Katana Zero, Risk of Rain.
+
+**Actionable next steps for Undertale:**
+1. Add missing GML runtime stubs (biggest bang: `script_execute` alone = 673 errors)
+2. Investigate TS2339 `_rt` pattern — may be solvable with better instance ID → class type mapping
 
 ---
 
@@ -1413,6 +1438,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Schism | `data.win` 77MB | ⚠️ emits (TS errors TBD) |
 | Shelldiver | `data.win` 2MB | ❌ YYC |
 | Soulknight Survivor | `data.win` 35MB | ❌ YYC |
+| Undertale | `data.win` 5MB | ⚠️ 3078 TS errors (runtime API gaps + class type resolution) |
 | VA-11 HALL-A | `game.unx` 212MB | ⚠️ emits (TS errors TBD) |
 
 ---
