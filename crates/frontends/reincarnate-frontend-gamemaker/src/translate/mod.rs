@@ -511,11 +511,33 @@ fn is_stacktop_ref(var_ref: &VariableRef, instance: i16) -> bool {
     instance >= 0 && var_ref.ref_type == 0x80
 }
 
-/// Check if the next instruction is a stacktop variable access (ref_type=0x80).
+/// Check if the next instruction is a stacktop variable access.
 ///
-/// Used by `stack_effect` and `translate_push_instruction` to identify
-/// `PushI -9` sentinels that precede stacktop accesses.
-fn is_next_stacktop_access(rest: &[Instruction]) -> bool {
+/// Matches both `ref_type=0x80` (cross-object stacktop) and
+/// `InstanceType::Stacktop` (instance=-9, used for self and @@Global@@).
+/// Used by `stack_effect` (depth computation) and `translate_push_instruction`.
+pub(super) fn is_next_stacktop_access(rest: &[Instruction]) -> bool {
+    if let Some(next) = rest.first() {
+        if matches!(next.opcode, Opcode::Push | Opcode::Pop) {
+            if let Operand::Variable { var_ref, instance } = &next.operand {
+                return is_stacktop_ref(var_ref, *instance)
+                    || matches!(
+                        InstanceType::from_i16(*instance),
+                        Some(InstanceType::Stacktop)
+                    );
+            }
+        }
+    }
+    false
+}
+
+/// Check if the next instruction is a stacktop variable access via
+/// `ref_type=0x80` only (not `InstanceType::Stacktop`).
+///
+/// Used by the cross-object sentinel skip in `translate_push_instruction`
+/// where `InstanceType::Stacktop` needs a separate, more precise check
+/// (@@Global@@ only) to avoid false positives on self-access.
+pub(super) fn is_next_stacktop_ref_access(rest: &[Instruction]) -> bool {
     if let Some(next) = rest.first() {
         if matches!(next.opcode, Opcode::Push | Opcode::Pop) {
             if let Operand::Variable { var_ref, instance } = &next.operand {

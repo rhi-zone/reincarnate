@@ -12,7 +12,7 @@ use reincarnate_core::ir::value::ValueId;
 use super::cfg::{get_branch_args, gml_slot_units};
 use super::variable_access::{translate_pop, translate_push};
 use super::{
-    comparison_to_cmp_kind, datatype_to_ir_type, is_next_stacktop_access, pop,
+    comparison_to_cmp_kind, datatype_to_ir_type, is_next_stacktop_ref_access, pop,
     resolve_branch_target, resolve_fallthrough, TranslateCtx,
 };
 
@@ -168,7 +168,7 @@ fn translate_push_instruction(
     // The -9 is a redundant sentinel; skipping it lets the stacktop handler
     // pop the actual target instance instead of the useless -9.
     if matches!(inst.operand, Operand::Int16(-9))
-        && is_next_stacktop_access(&instructions[inst_idx + 1..])
+        && is_next_stacktop_ref_access(&instructions[inst_idx + 1..])
         && inst_idx > 0
         && matches!(
             instructions[inst_idx - 1].opcode,
