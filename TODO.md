@@ -426,20 +426,18 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   `cfg.rs` to use `Vec<u8>` width stack instead of scalar `stack_effect` counter. Tracks
   per-item byte widths for Dup backward-walk, `pushac_pending` for popaf pop count,
   `global_scope_on_stack` for `@@Global@@` sentinel handling. Depth mismatches reduced
-  182→78 across Dead Estate. All 78 are GMS2.3+-specific (Bounty/GMS1 = 0). No TS error
-  count change (the 5 shared-blob errors' functions still have mismatches among the 78).
+  182→78 across Dead Estate.
+- [x] **func_ref_map resolution in cfg.rs**: `compute_block_stack_depths` used direct
+  `function_names[function_id]` to detect `@@Global@@` calls, but in GMS2.3+ shared blobs
+  `function_id` resolves to different names via direct lookup vs `func_ref_map` (absolute
+  address → FUNC index → name). Translation uses `func_ref_map`; cfg.rs now matches.
+  Also added previous-instruction guard to PushI -9 skip (matching translation).
+  Depth mismatches: 78→8. Function names added to depth mismatch WARN messages.
+- Remaining 8 mismatches: Barnacle::destroy (1), Barnacle::step_with (1),
+  CsCharacter::draw (1), DevTool::step (2), DiavolaEye::step_with (1),
+  FinalLock::step_with (1), Player::step (1) — all off by 1-3.
 
 **Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 8.
-
-**Root cause of remaining shared blob errors:** `compute_block_stack_depths` formerly used
-`stack_effect` which counts logical items, but `Dup` translation uses `gml_sizes` to
-count byte-width-aware items. Session 20 rewrote `compute_block_stack_depths` to use a
-`Vec<u8>` width stack (mini-emulator) tracking per-item byte widths, added `pushac_pending`
-state for correct popaf pop count, and aligned `@@Global@@` sentinel handling with
-`is_next_stacktop_ref_access`. This reduced depth mismatches from 182→78 across Dead Estate.
-All 78 remaining mismatches are GMS2.3+-specific (Bounty/GMS1 has 0). Distribution:
-46 off-by-1, 28 off-by-2, 1 off-by-3, 3 off-by-4. Further reduction may require
-fixpoint iteration or tracing which specific opcodes cause divergence in specific functions.
 
 ---
 
