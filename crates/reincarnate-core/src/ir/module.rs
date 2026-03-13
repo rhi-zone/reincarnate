@@ -268,6 +268,15 @@ pub struct Module {
     /// with external checker diagnostics (e.g. TypeScript errors) in the CLI.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostics: Vec<Diagnostic>,
+    /// Whether the source language implicitly returns a value from every
+    /// function (e.g. GML returns `0.0` by default).
+    ///
+    /// When `true`, type inference keeps `Dynamic` return types for functions
+    /// that have no value-bearing `Return` instructions, because callers may
+    /// still use the implicit return value.  When `false` (the default, e.g.
+    /// Flash/AS3), such functions are narrowed to `Void`.
+    #[serde(default)]
+    pub implicit_return_value: bool,
 }
 
 impl Module {
@@ -295,6 +304,7 @@ impl Module {
             system_call_type_rules: BTreeMap::new(),
             callback_return_calls: BTreeMap::new(),
             diagnostics: Vec::new(),
+            implicit_return_value: false,
         }
     }
 }

@@ -214,6 +214,12 @@ impl Frontend for GameMakerFrontend {
 
         let mut module = mb.build();
 
+        // GML implicitly returns 0.0 from every function even without an
+        // explicit `return` statement.  Type inference must not narrow
+        // functions with no value-bearing returns to Void, because callers
+        // may still use the result.
+        module.implicit_return_value = true;
+
         // Register SystemCall type inference rules for the GML engine.
         module.system_call_type_rules.insert(
             ("GameMaker.Global".into(), "get".into()),

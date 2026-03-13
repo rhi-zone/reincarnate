@@ -27,6 +27,9 @@ struct ModuleContext {
     unique_method_types: HashMap<String, Type>,
     /// (system, method) → type rule for SystemCall result inference.
     system_call_type_rules: HashMap<(String, String), SystemCallTypeRule>,
+    /// Whether the source language implicitly returns a value from every
+    /// function (mirrors `Module::implicit_return_value`).
+    implicit_return_value: bool,
 }
 
 impl ModuleContext {
@@ -152,6 +155,7 @@ impl ModuleContext {
             class_hierarchy,
             unique_method_types,
             system_call_type_rules,
+            implicit_return_value: module.implicit_return_value,
         }
     }
 
@@ -886,12 +890,20 @@ impl Transform for TypeInference {
                 }
             }
             let inferred = if return_types.is_empty() {
-                // No value-bearing returns. Keep the original Dynamic return type
-                // rather than narrowing to Void. In GML, all functions implicitly
-                // return a value (0.0 by default), so callers may use the result.
-                // Init-guard stubs in GMS2.3+ shared blobs have only `Return(None)`
-                // but callers index the result, causing TS7053 if narrowed to void.
-                continue;
+                if ctx.implicit_return_value {
+                    // Source language returns a value from every function even
+                    // without an explicit `return` (e.g. GML returns 0.0 by
+                    // default).  Keep the Dynamic return type so callers may
+                    // still use the result.  Init-guard stubs in GMS2.3+ shared
+                    // blobs have only `Return(None)` but callers index the
+                    // result, causing TS7053 if narrowed to void.
+                    continue;
+                } else {
+                    // No value-bearing returns and the language does not provide
+                    // an implicit return value (e.g. Flash/AS3 `void` functions).
+                    // Narrow to Void so callers do not treat the result as usable.
+                    Type::Void
+                }
             } else {
                 infer_common_type(return_types.into_iter())
             };
