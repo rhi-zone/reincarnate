@@ -35,6 +35,7 @@ pub(super) fn translate_instruction(
     compound_popaf_pending: &mut bool,
     global_arg_count: u16,
     obj_ref_values: &mut HashMap<ValueId, String>,
+    global_scope_on_stack: &mut bool,
 ) -> Result<(), String> {
     match inst.opcode {
         // Constants (push)
@@ -50,6 +51,7 @@ pub(super) fn translate_instruction(
                 gml_sizes,
                 compound_2d_pending,
                 global_arg_count,
+                global_scope_on_stack,
             )?;
         }
 
@@ -104,7 +106,7 @@ pub(super) fn translate_instruction(
 
         // Function calls
         Opcode::Call | Opcode::CallV => {
-            translate_call_op(inst, fb, stack, ctx, gml_sizes)?;
+            translate_call_op(inst, fb, stack, ctx, gml_sizes, global_scope_on_stack)?;
         }
 
         // Type conversion
@@ -162,13 +164,22 @@ fn translate_push_instruction(
     gml_sizes: &mut HashMap<ValueId, u8>,
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
+    global_scope_on_stack: &mut bool,
 ) -> Result<(), String> {
     // Skip PushI -9 sentinel for cross-object stacktop field access.
     // Pattern: PushLoc/PushGlb/Push target → PushI -9 → Push.v/Pop.v [ref_type=0x80]
     // The -9 is a redundant sentinel; skipping it lets the stacktop handler
     // pop the actual target instance instead of the useless -9.
+    //
+    // Also skip unconditionally when @@Global@@ pushed the global scope.
+    // GMS2.3+ @@Global@@ emits: Call @@Global@@ → PushI -9 → intermediates → VARI access.
+    // The intermediates (PushLoc for array index, Push Int64 for enum ID) push values
+    // consumed by the eventual Pop.v/Push.v as array indices in the 2D array handler.
+    // If -9 is NOT skipped, the 2D handler pops dim2=-9 (treats as self-scope) and
+    // the global scope value becomes orphaned or consumed as the wrong operand.
+    // Skipping -9 lets the global scope land in the dim2 slot, routing through
+    // the "dynamic dim2" branch → setOn(global_scope, field, index, value).
     if matches!(inst.operand, Operand::Int16(-9))
-        && is_next_stacktop_ref_access(&instructions[inst_idx + 1..])
         && inst_idx > 0
         && matches!(
             instructions[inst_idx - 1].opcode,
@@ -181,8 +192,14 @@ fn translate_push_instruction(
                 | Opcode::CallV
                 | Opcode::Break
         )
+        && (is_next_stacktop_ref_access(&instructions[inst_idx + 1..]) || *global_scope_on_stack)
     {
+        *global_scope_on_stack = false;
         return Ok(());
+    }
+    // Clear the flag if PushI -9 was NOT skipped (e.g. different operand).
+    if *global_scope_on_stack && matches!(inst.operand, Operand::Int16(-9)) {
+        *global_scope_on_stack = false;
     }
 
     let depth_before = stack.len();
@@ -600,6 +617,7 @@ fn translate_call_op(
     stack: &mut Vec<ValueId>,
     ctx: &TranslateCtx,
     gml_sizes: &mut HashMap<ValueId, u8>,
+    global_scope_on_stack: &mut bool,
 ) -> Result<(), String> {
     match inst.opcode {
         Opcode::Call => {
@@ -625,6 +643,17 @@ fn translate_call_op(
                     };
                     gml_sizes.insert(val, 4);
                     stack.push(val);
+                    return Ok(());
+                }
+
+                // @@Global@@ returns the global scope. Push the call result
+                // (which the backend rewrites to `global`) and set the flag
+                // so the PushI -9 skip fires for InstanceType::Stacktop too.
+                if func_name == "@@Global@@" && argc == 0 {
+                    let result = fb.call("@@Global@@", &[], Type::Dynamic);
+                    gml_sizes.insert(result, 4);
+                    stack.push(result);
+                    *global_scope_on_stack = true;
                     return Ok(());
                 }
 

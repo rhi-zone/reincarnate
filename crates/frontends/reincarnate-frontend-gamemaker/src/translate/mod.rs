@@ -638,6 +638,9 @@ fn run_translation_loop(
     // Track pushref OBJT values: ValueId → class name. Populated by translate_instruction
     // for signal 0xFFF5 with type_tag==0, consumed at PushEnv to type the with-body _self.
     let mut obj_ref_values: HashMap<ValueId, String> = HashMap::new();
+    // Set when Call @@Global@@ pushes the global scope. The PushI -9 skip uses this
+    // to also check InstanceType::Stacktop (not just ref_type=0x80).
+    let mut global_scope_on_stack = false;
 
     for (inst_idx, inst) in instructions.iter().enumerate() {
         // Skip instructions that belong to a with-body extracted as a closure.
@@ -811,6 +814,7 @@ fn run_translation_loop(
             &mut compound_popaf_pending,
             global_arg_count,
             &mut obj_ref_values,
+            &mut global_scope_on_stack,
         )?;
     }
 

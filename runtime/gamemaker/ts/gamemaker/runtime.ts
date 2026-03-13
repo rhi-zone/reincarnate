@@ -3953,8 +3953,13 @@ export class GameRuntime {
     }
   }
 
-  instance_exists(target: typeof GMLObject | GMLObject | null): boolean {
-    if (target === null || (target as unknown) === -4) return false;
+  instance_exists(target: typeof GMLObject | GMLObject | number | null): boolean {
+    if (target === null || target === -4) return false;
+    if (typeof target === 'number') {
+      // Numeric object index — resolve to class and check for instances.
+      const cls = this.classes[target];
+      return cls ? this._getInstances(cls).length > 0 : false;
+    }
     if (typeof target === 'function') {
       return this._getInstances(target as typeof GMLObject).length > 0;
     }
