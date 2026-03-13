@@ -33,7 +33,7 @@ use imports::{
     emit_runtime_imports_for, relative_import_path, strip_unused_namespace_imports,
 };
 use rewrites::visibility_prefix;
-use sanitize::rename_colliding_free_funcs;
+use sanitize::{rename_colliding_free_funcs, rename_shadowing_locals};
 use scaffold::{validate_member_accesses, ClassMeta};
 
 /// Which engine's rewrite pass to use.
@@ -1139,6 +1139,10 @@ pub fn emit_module_to_dir(
 
     // Rename colliding free functions before emission.
     rename_colliding_free_funcs(module, &free_funcs, &known_classes);
+
+    // Rename local variables that shadow imported function names (e.g. `int`).
+    let imported_names = collect_call_names_from_funcs(module.functions.values(), engine);
+    rename_shadowing_locals(module, &imported_names);
 
     // Rebuild free_func_names after potential renames.
     let free_func_names: HashSet<String> = free_funcs

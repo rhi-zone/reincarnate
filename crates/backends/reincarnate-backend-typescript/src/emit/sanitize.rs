@@ -2,7 +2,7 @@
 // Identifier sanitization
 // ---------------------------------------------------------------------------
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use reincarnate_core::ir::{Constant, FuncId, Module, Op};
 
@@ -140,6 +140,24 @@ pub(super) fn rename_colliding_free_funcs(
                         func.clone_from(new_name);
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Rename local variables (IR value names) that shadow imported function names.
+///
+/// GML allows local variables to share names with built-in functions (e.g. a
+/// local `int` alongside calls to `int()`). In the emitted TypeScript, the
+/// import `import { int } from "..."` is file-scoped, so a local `let int = ...`
+/// shadows it, causing TS2349 ("This expression is not callable").
+///
+/// This pass prefixes colliding value names with `_`.
+pub(super) fn rename_shadowing_locals(module: &mut Module, imported_names: &BTreeSet<String>) {
+    for func in module.functions.values_mut() {
+        for name in func.value_names.values_mut() {
+            if imported_names.contains(name.as_str()) {
+                *name = format!("_{name}");
             }
         }
     }
