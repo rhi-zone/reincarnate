@@ -85,6 +85,7 @@ impl Transform for GmlBoolArithCoerce {
             changed |= coerce_bool_br_args(func);
             changed |= coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
             changed |= coerce_bool_call_args(func, &callee_param_types);
+            changed |= coerce_bool_cmp_operands(func, &bool_returning);
         }
         Ok(TransformResult { module, changed })
     }
@@ -468,6 +469,66 @@ fn coerce_bool_call_args(
         let new_v = insert_cast_before(func, old_v, inst_id, Type::Float(64));
         if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
             args[arg_idx] = new_v;
+        }
+    }
+
+    true
+}
+
+// ---------------------------------------------------------------------------
+// Pass 5 — Bool operand in Cmp with numeric other side (TS2367)
+// ---------------------------------------------------------------------------
+
+/// Coerce Bool operands in comparison ops when the other side is numeric.
+///
+/// GML treats booleans as numbers, so `(x > y) === 0` is valid GML.
+/// TypeScript with strict mode flags this: "types 'boolean' and 'number'
+/// have no overlap" (TS2367).  We insert Cast(Bool→Float(64)) on the Bool
+/// side so TypeScript sees `Number(x > y) === 0`.
+fn coerce_bool_cmp_operands(func: &mut Function, bool_returning: &HashSet<String>) -> bool {
+    let result_map = result_inst_map(func);
+
+    let targets: Vec<(InstId, ValueId, ValueId, bool, bool)> = func
+        .insts
+        .iter()
+        .filter_map(|(id, inst)| {
+            let (a, b) = match &inst.op {
+                Op::Cmp(_, a, b) => (*a, *b),
+                _ => return None,
+            };
+            let a_bool = needs_arith_coerce(func, a, &result_map, bool_returning);
+            let b_bool = needs_arith_coerce(func, b, &result_map, bool_returning);
+            let a_num = is_numeric(&func.value_types[a]);
+            let b_num = is_numeric(&func.value_types[b]);
+            // Coerce when one side is bool and the other is numeric.
+            let coerce_a = a_bool && b_num;
+            let coerce_b = b_bool && a_num;
+            if coerce_a || coerce_b {
+                Some((id, a, b, coerce_a, coerce_b))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if targets.is_empty() {
+        return false;
+    }
+
+    for (inst_id, lhs, rhs, lhs_coerce, rhs_coerce) in targets {
+        let new_lhs = if lhs_coerce {
+            insert_cast_before(func, lhs, inst_id, Type::Float(64))
+        } else {
+            lhs
+        };
+        let new_rhs = if rhs_coerce {
+            insert_cast_before(func, rhs, inst_id, Type::Float(64))
+        } else {
+            rhs
+        };
+        if let Op::Cmp(_, a, b) = &mut func.insts[inst_id].op {
+            *a = new_lhs;
+            *b = new_rhs;
         }
     }
 
