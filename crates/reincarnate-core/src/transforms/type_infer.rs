@@ -886,7 +886,12 @@ impl Transform for TypeInference {
                 }
             }
             let inferred = if return_types.is_empty() {
-                Type::Void
+                // No value-bearing returns. Keep the original Dynamic return type
+                // rather than narrowing to Void. In GML, all functions implicitly
+                // return a value (0.0 by default), so callers may use the result.
+                // Init-guard stubs in GMS2.3+ shared blobs have only `Return(None)`
+                // but callers index the result, causing TS7053 if narrowed to void.
+                continue;
             } else {
                 infer_common_type(return_types.into_iter())
             };
