@@ -387,13 +387,19 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   `instance_exists` to accept `number` (object indices, sentinels like -4/noone).
   Resolves numeric indices via `this.classes[target]`. −2 errors.
 
-**GML remaining errors (Dead Estate 8, session 19):**
-- Shared blob arg ordering (2 TS2345): _init.ts:8768,8782 (`setInstanceFieldIndex` args swapped)
-- Shared blob decompilation (1 TS2345): DoctorMenu.ts:76 (`variable_instance_get(id, 0.0)` wrong arg)
-- Shared blob type inference (2 TS7053): OAnyaDoppelganger.ts:62,113 (`[0]` on Number)
-- CallSiteTypeFlow narrowing (1 TS2339): _init.ts:7757 (`argument1.length` on number — callers
+**GML remaining errors (Dead Estate 5, session 21):**
+- [x] Shared blob arg ordering (2 TS2345): _init.ts `setInstanceFieldIndex` args swapped —
+  fixed: `preceded_by_dup` check replaces `stack.len() >= 2` heuristic for compound_2d_pending.
+  Dead Estate 8→6.
+- [x] With-body capture gap (1 TS2345): DoctorMenu.ts:76 `variable_instance_get(id, 0.0)` —
+  fixed: create alloc slots on-demand in with-body pre-store loop when CodeLocals is missing
+  (obfuscated GMS2.3+ games). Dead Estate 6→5.
+- Variable decompilation (2 TS7053): OAnyaDoppelganger.ts:60,111 (`(-1)[0]`, `(-1)[int(sd)]`).
+  Variable references resolve to literal `-1` instead of array variable. Root cause unclear —
+  may be missing CodeLocals causing variable lookups to read default/wrong values.
+- CallSiteTypeFlow narrowing (1 TS2339): _init.ts:7721 (`argument1.length` on number — callers
   pass numbers but body expects array; mixed usage)
-- strictNullChecks artifact (1 TS2345): OBossRushController.ts:278 (`[].push()` on `never[]`)
+- strictNullChecks artifact (1 TS2345): OBossRushController.ts:273 (`[].push()` on `never[]`)
 - Unreachable code (1 TS7027): DiavolaEye.ts:81 (game-author infinite loop, wontfix)
 - [x] **TS2349 `int` shadows import** — fixed: `rename_shadowing_locals` in backend sanitize pass
   renames local variables that collide with imported function names. Dead Estate 17→16.
@@ -437,7 +443,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   CsCharacter::draw (1), DevTool::step (2), DiavolaEye::step_with (1),
   FinalLock::step_with (1), Player::step (1) — all off by 1-3.
 
-**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 8.
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5.
 
 ---
 
@@ -1386,7 +1392,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 15 TS errors + 1 translation error (2026-03-13) |
+| Dead Estate | `data.win` 192MB | ⚠️ 5 TS errors + 1 translation error (2026-03-14) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
