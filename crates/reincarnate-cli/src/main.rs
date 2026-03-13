@@ -1374,6 +1374,9 @@ fn format_instruction(
     inst: &Instruction,
     vari_names: &HashMap<u32, String>,
     func_names: &HashMap<u32, String>,
+    vari_ref_map: &HashMap<usize, usize>,
+    func_ref_map: &HashMap<usize, usize>,
+    bytecode_offset: usize,
     dw: &DataWin,
 ) -> String {
     let opcode_str = match inst.opcode {
@@ -1451,8 +1454,14 @@ fn format_instruction(
         }
         Operand::Variable { var_ref, instance } => {
             let inst_name = format_instance_type(*instance);
-            let var_name = vari_names
-                .get(&var_ref.variable_id)
+            // Prefer ref-map lookup (correct for GMS2.3+ where operand bits
+            // are overwritten with linked-list offsets).  Fall back to the
+            // index-based lookup for pre-GMS2.3 or if the ref map misses.
+            let abs_addr = bytecode_offset + inst.offset;
+            let var_name = vari_ref_map
+                .get(&abs_addr)
+                .and_then(|&idx| vari_names.get(&(idx as u32)))
+                .or_else(|| vari_names.get(&var_ref.variable_id))
                 .map(|s| s.as_str())
                 .unwrap_or("<unknown>");
             if var_ref.ref_type != 0 {
@@ -1480,8 +1489,12 @@ fn format_instruction(
             sym.to_string()
         }
         Operand::Call { function_id, argc } => {
-            let name = func_names
-                .get(function_id)
+            // Prefer ref-map lookup (correct for GMS2.3+), fall back to index.
+            let abs_addr = bytecode_offset + inst.offset;
+            let name = func_ref_map
+                .get(&abs_addr)
+                .and_then(|&idx| func_names.get(&(idx as u32)))
+                .or_else(|| func_names.get(function_id))
                 .map(|s| s.as_str())
                 .unwrap_or("<unknown>");
             format!("{name}  (argc={argc})")
@@ -1551,6 +1564,9 @@ fn cmd_disasm(manifest_path: &Path, function_filter: Option<&str>) -> Result<()>
     let code = dw.code().context("failed to parse CODE chunk")?;
     let func = dw.func().context("failed to parse FUNC chunk")?;
     let vari = dw.vari().context("failed to parse VARI chunk")?;
+    let bc_version = dw
+        .bytecode_version()
+        .unwrap_or(datawin::BytecodeVersion(15));
 
     // Build variable name lookup: variable_id → name.
     let mut vari_names: HashMap<u32, String> = HashMap::new();
@@ -1567,6 +1583,20 @@ fn cmd_disasm(manifest_path: &Path, function_filter: Option<&str>) -> Result<()>
             func_names.insert(i as u32, name);
         }
     }
+
+    // Build ref maps for GMS2.3+ correct name resolution.
+    // These walk the VARI/FUNC linked lists to map absolute instruction
+    // addresses to entry indices (the operand bits are overwritten with
+    // linked-list offsets in GMS2.3+, making index-based lookup wrong).
+    #[cfg(feature = "frontend-gamemaker")]
+    let vari_ref_map = reincarnate_frontend_gamemaker::build_vari_ref_map(vari, dw.data());
+    #[cfg(feature = "frontend-gamemaker")]
+    let func_ref_map =
+        reincarnate_frontend_gamemaker::build_func_ref_map(func, dw.data(), bc_version);
+    #[cfg(not(feature = "frontend-gamemaker"))]
+    let vari_ref_map: HashMap<usize, usize> = HashMap::new();
+    #[cfg(not(feature = "frontend-gamemaker"))]
+    let func_ref_map: HashMap<usize, usize> = HashMap::new();
 
     // Collect all CODE entry names.
     let mut entries: Vec<(usize, String)> = Vec::new();
@@ -1626,7 +1656,15 @@ fn cmd_disasm(manifest_path: &Path, function_filter: Option<&str>) -> Result<()>
             instructions.len()
         );
         for inst in &instructions {
-            let line = format_instruction(inst, &vari_names, &func_names, &dw);
+            let line = format_instruction(
+                inst,
+                &vari_names,
+                &func_names,
+                &vari_ref_map,
+                &func_ref_map,
+                entry.bytecode_offset,
+                &dw,
+            );
             println!("{line}");
         }
     }

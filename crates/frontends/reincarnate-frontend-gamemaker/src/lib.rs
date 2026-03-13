@@ -625,7 +625,7 @@ fn build_function_names(
 /// instruction). The operand's lower 27 bits encode the byte offset to the next
 /// operand occurrence. We normalise to instruction-word address so keys match
 /// the `bytecode_offset + inst.offset` values computed during translation.
-fn build_func_ref_map(
+pub fn build_func_ref_map(
     func: &datawin::chunks::func::Func,
     data: &[u8],
     bc_version: datawin::BytecodeVersion,
@@ -663,7 +663,10 @@ fn build_func_ref_map(
 /// `first_address` points to the Push/Pop instruction word; the variable operand
 /// is at `first_address + 4`. The operand's lower 27 bits encode a relative
 /// offset to the next occurrence: `next_addr = addr + offset`.
-fn build_vari_ref_map(vari: &datawin::chunks::vari::Vari, data: &[u8]) -> HashMap<usize, usize> {
+pub fn build_vari_ref_map(
+    vari: &datawin::chunks::vari::Vari,
+    data: &[u8],
+) -> HashMap<usize, usize> {
     let mut map = HashMap::new();
     for (i, entry) in vari.variables.iter().enumerate() {
         if entry.first_address < 0 || entry.occurrences == 0 {
