@@ -2673,7 +2673,7 @@ export class GameRuntime {
     let binary = ""; for (const byte of b.data) binary += String.fromCharCode(byte);
     try { localStorage.setItem(this._fileKey(filename), btoa(binary)); } catch { /* storage full */ }
   }
-  buffer_load_async(path: string, buf: number, offset: number, size: number): number {
+  buffer_load_async(buf: number, path: string, offset: number, size: number): number {
     // Kick off async fetch; fire ds_map async_load event when done.
     // Returns a request handle (reuse nextBufferId counter as a request ID).
     const reqId = this._nextBufferId++;
@@ -3898,7 +3898,12 @@ export class GameRuntime {
     remove(this._persistence, this._steamCloudKey(_path));
     this._steamCloudRemoveFromIndex(_path);
   }
-  steam_file_get_list(): string[] { return this._steamCloudIndex(); }
+  steam_file_get_list(): any[] {
+    return this._steamCloudIndex().map(name => ({
+      file_name: name,
+      file_size: (fetchItem(this._persistence, this._steamCloudKey(name)) ?? "").length,
+    }));
+  }
   steam_file_share(_path: string): void { /* no-op — Steam file sharing not available in browser */ }
   steam_file_size(_path: string): number { return (fetchItem(this._persistence, this._steamCloudKey(_path)) ?? "").length; }
   steam_file_write_buffer(path: string, buf: number, size?: number): boolean {

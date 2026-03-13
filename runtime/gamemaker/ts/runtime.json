@@ -2899,14 +2899,16 @@
     "buffer_load_async": {
       "params": [
         "number",
-        "string"
+        "string",
+        "number",
+        "number"
       ],
       "returns": "number"
     },
     "buffer_save_async": {
       "params": [
-        "string",
         "number",
+        "string",
         "number",
         "number"
       ],
