@@ -431,6 +431,15 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
             let name_str = sanitize_ident(name);
             match (ty, init) {
                 (Some(ty), Some(init)) => {
+                    // Null literal init with non-nullable type: widen to `T | null`
+                    // so `strictNullChecks` accepts the assignment.
+                    let is_null_init = matches!(init, JsExpr::Literal(Constant::Null))
+                        && !matches!(ty, Type::Dynamic | Type::Option(_));
+                    let type_str = if is_null_init {
+                        format!("{} | null", ts_type(ty))
+                    } else {
+                        ts_type(ty)
+                    };
                     // Cast to the same type: strip TS assertion forms and use type
                     // annotation. Keep function-call forms (asType, Number, int, etc.).
                     if let JsExpr::Cast {
@@ -450,8 +459,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         if cast_ty == ty && is_ts_assertion {
                             let _ = writeln!(
                                 out,
-                                "{indent}{kw} {name_str}: {} = {};",
-                                ts_type(ty),
+                                "{indent}{kw} {name_str}: {type_str} = {};",
                                 print_expr(expr),
                             );
                             return;
@@ -459,8 +467,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     }
                     let _ = writeln!(
                         out,
-                        "{indent}{kw} {name_str}: {} = {};",
-                        ts_type(ty),
+                        "{indent}{kw} {name_str}: {type_str} = {};",
                         print_expr(init),
                     );
                 }

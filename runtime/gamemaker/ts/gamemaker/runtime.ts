@@ -885,7 +885,7 @@ export class GameRuntime {
   // ---- Instance field helpers ----
 
   /** Get a field value from a specific instance or the first instance of a given class. */
-  getInstanceField(cls: GMLObject | typeof GMLObject | number, field: string): any {
+  getInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string): any {
     if (cls instanceof GMLObject) return (cls as any)[field];
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return undefined;
@@ -894,7 +894,7 @@ export class GameRuntime {
   }
 
   /** Set a field value on a specific instance or the first instance of a given class. */
-  setInstanceField(cls: GMLObject | typeof GMLObject | number, field: string, value: unknown): void {
+  setInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string, value: unknown): void {
     if (cls instanceof GMLObject) { (cls as any)[field] = value; return; }
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return;
@@ -903,7 +903,7 @@ export class GameRuntime {
   }
 
   /** Set an indexed element of a field on a specific instance or the first instance of a given class. */
-  setInstanceFieldIndex(cls: GMLObject | typeof GMLObject | number, field: string, index: number, value: unknown): void {
+  setInstanceFieldIndex(cls: GMLObject | typeof GMLObject | number | null, field: string, index: number, value: unknown): void {
     if (cls instanceof GMLObject) { (cls as any)[field][index] = value; return; }
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return;

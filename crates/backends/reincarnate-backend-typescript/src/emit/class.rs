@@ -346,7 +346,7 @@ pub(super) fn emit_class(
     // Static fields from ClassDef (class-level Slot/Const + promoted instance Consts).
     for f in &group.class_def.static_fields {
         let ident = sanitize_ident(&f.name);
-        let ts = if engine == EngineKind::Flash {
+        let mut ts = if engine == EngineKind::Flash {
             flash_ts_type_with_names(&f.ty, class_names)
         } else {
             ts_type_with_names(&f.ty, class_names)
@@ -361,6 +361,9 @@ pub(super) fn emit_class(
         // causes TS2540 when game code does reassign them, so we omit it.
         let ro = "";
         if let Some(val) = &f.default {
+            if matches!(val, Constant::Null) {
+                widen_type_for_null(&f.ty, &mut ts);
+            }
             let _ = writeln!(
                 out,
                 "  static {ov}{ro}{ident}: {ts} = {};",
@@ -374,7 +377,7 @@ pub(super) fn emit_class(
     // Instance fields from struct def.
     for field in &group.struct_def.fields {
         let ident = sanitize_ident(&field.name);
-        let ts = if engine == EngineKind::Flash {
+        let mut ts = if engine == EngineKind::Flash {
             flash_ts_type_with_names(&field.ty, class_names)
         } else {
             ts_type_with_names(&field.ty, class_names)
@@ -386,6 +389,9 @@ pub(super) fn emit_class(
             ""
         };
         if let Some(val) = &field.default {
+            if matches!(val, Constant::Null) {
+                widen_type_for_null(&field.ty, &mut ts);
+            }
             if let Some(resolved) = resolve_sprite_constant(&field.name, val, &module.sprite_names)
             {
                 let _ = writeln!(out, "  {ov}{ident}: {ts} = {resolved};");
@@ -618,6 +624,14 @@ pub(super) fn emit_class(
         }
     }
     Ok(())
+}
+
+/// Appends `| null` to a type string when a field has a `null` default initializer,
+/// unless the type already accommodates null (Dynamic → `any`, Option → `T | null`).
+fn widen_type_for_null(ty: &Type, ts: &mut String) {
+    if !matches!(ty, Type::Dynamic | Type::Option(_)) {
+        ts.push_str(" | null");
+    }
 }
 
 fn emit_abstract_member(
