@@ -4112,6 +4112,219 @@ export class GameRuntime {
     this.room_goto(config.initialRoom);
     this._runFrame();
   }
+
+  // ---- Script execute (indirect dispatch) ----
+  script_execute(script_id: number, ...args: any[]): any {
+    throw Error("script_execute: not yet implemented");
+  }
+  execute_string(_str: string, ...args: any[]): any {
+    throw Error("execute_string: not yet implemented");
+  }
+
+  // ---- Motion built-ins ----
+  move_towards_point(x: number, y: number, sp: number): void {
+    if (!this._self) return;
+    const self = this._self;
+    const dx = x - self.x, dy = y - self.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 0) {
+      self.direction = ((Math.atan2(-dy, dx) * 180) / Math.PI + 360) % 360;
+      self.speed = Math.min(sp, dist);
+    }
+  }
+  motion_set(dir: number, speed: number): void {
+    if (!this._self) return;
+    this._self.direction = dir;
+    this._self.speed = speed;
+  }
+  move_wrap(_hor: boolean, _vert: boolean, _margin: number): void {
+    throw Error("move_wrap: not yet implemented");
+  }
+  move_bounce_all(_advanced: boolean): void {
+    throw Error("move_bounce_all: not yet implemented");
+  }
+  move_bounce_solid(_advanced: boolean): void {
+    throw Error("move_bounce_solid: not yet implemented");
+  }
+  move_contact_all(_dir: number, _maxdist: number): void {
+    throw Error("move_contact_all: not yet implemented");
+  }
+  move_contact_solid(_dir: number, _maxdist: number): void {
+    throw Error("move_contact_solid: not yet implemented");
+  }
+  move_outside_all(_dir: number, _maxdist: number): void {
+    throw Error("move_outside_all: not yet implemented");
+  }
+  move_outside_solid(_dir: number, _maxdist: number): void {
+    throw Error("move_outside_solid: not yet implemented");
+  }
+  move_snap(_hsnap: number, _vsnap: number): void {
+    if (!this._self) return;
+    this._self.x = Math.round(this._self.x / _hsnap) * _hsnap;
+    this._self.y = Math.round(this._self.y / _vsnap) * _vsnap;
+  }
+  move_random(_hsnap: number, _vsnap: number): void {
+    throw Error("move_random: not yet implemented");
+  }
+
+  // ---- Sprite management ----
+  sprite_replace(_sprite: number, _fname: string, _imgnum: number, _removeback: boolean, _smooth: boolean, _xorig: number, _yorig: number): void {
+    throw Error("sprite_replace: not yet implemented");
+  }
+
+  // ---- Tile management ----
+  tile_layer_shift(_layer: number, _x: number, _y: number): void {
+    /* no-op: tile layer shifting not supported in Canvas 2D renderer */
+  }
+
+  // ---- Date/time ----
+  date_current_datetime(): number {
+    // GML serial date: days since 1899-12-30
+    const now = new Date();
+    const epoch = new Date(1899, 11, 30).getTime();
+    return (now.getTime() - epoch) / 86400000;
+  }
+  date_current_date(): number {
+    const now = new Date();
+    const epoch = new Date(1899, 11, 30).getTime();
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return (d.getTime() - epoch) / 86400000;
+  }
+  date_current_time(): number {
+    const now = new Date();
+    return (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400;
+  }
+
+  // ---- Legacy D&D actions ----
+  action_kill_object(): void {
+    if (this._self) this.instance_destroy(this._self);
+  }
+  action_move_to(_x: number, _y: number): void {
+    if (!this._self) return;
+    this._self.x = _x;
+    this._self.y = _y;
+  }
+  action_set_motion(dir: number, speed: number): void {
+    this.motion_set(dir, speed);
+  }
+  action_set_speed(speed: number): void {
+    if (this._self) this._self.speed = speed;
+  }
+  action_set_hspeed(hspeed: number): void {
+    if (this._self) this._self.hspeed = hspeed;
+  }
+  action_set_vspeed(vspeed: number): void {
+    if (this._self) this._self.vspeed = vspeed;
+  }
+  action_set_gravity(dir: number, amount: number): void {
+    if (!this._self) return;
+    this._self.gravity_direction = dir;
+    this._self.gravity = amount;
+  }
+  action_set_friction(amount: number): void {
+    if (this._self) this._self.friction = amount;
+  }
+  action_move_start(): void {
+    if (!this._self) return;
+    this._self.x = this._self.xstart;
+    this._self.y = this._self.ystart;
+  }
+  action_move_random(_hsnap: number, _vsnap: number): void {
+    throw Error("action_move_random: not yet implemented");
+  }
+  action_reverse_xdir(): void {
+    if (this._self) this._self.hspeed = -this._self.hspeed;
+  }
+  action_reverse_ydir(): void {
+    if (this._self) this._self.vspeed = -this._self.vspeed;
+  }
+  action_wrap(_hor: boolean, _vert: boolean): void {
+    throw Error("action_wrap: not yet implemented");
+  }
+  action_create_object(obj: any, x: number, y: number): void {
+    this.instance_create(x, y, obj);
+  }
+  action_create_object_motion(obj: any, x: number, y: number, speed: number, dir: number): void {
+    const inst = this.instance_create(x, y, obj);
+    if (inst) { inst.speed = speed; inst.direction = dir; }
+  }
+  action_create_object_random(_obj1: any, _obj2: any, _obj3: any, _obj4: any, _x: number, _y: number): void {
+    throw Error("action_create_object_random: not yet implemented");
+  }
+  action_inherited(): void {
+    throw Error("action_inherited: not yet implemented");
+  }
+  action_if_variable(name: string, value: any, op: number): boolean {
+    if (!this._self) return false;
+    const v = (this._self as any)[name];
+    return op === 0 ? v === value : v < value;
+  }
+  action_set_alarm(steps: number, alarm: number): void {
+    if (!this._self) return;
+    (this._self as any)["alarm" + alarm] = steps;
+  }
+  action_execute_script(script_id: number, ...args: any[]): any {
+    return this.script_execute(script_id, ...args);
+  }
+  action_another_room(room: number, transition: number): void {
+    this.room_goto(room);
+  }
+  action_sleep(_ms: number): void {
+    /* no-op: blocking sleep not possible in browser event loop */
+  }
+  action_message(_msg: string): void {
+    console.log(_msg);
+  }
+  action_sprite_set(sprite: number, subimg: number, speed: number): void {
+    if (!this._self) return;
+    this._self.sprite_index = sprite;
+    this._self.image_index = subimg;
+    this._self.image_speed = speed;
+  }
+  action_set_health(val: number): void {
+    throw Error("action_set_health: not yet implemented");
+  }
+  action_set_score(val: number): void {
+    throw Error("action_set_score: not yet implemented");
+  }
+  action_if_health(val: number, op: number): boolean {
+    throw Error("action_if_health: not yet implemented");
+  }
+  action_set_life(val: number): void {
+    throw Error("action_set_life: not yet implemented");
+  }
+  action_if_life(val: number, op: number): boolean {
+    throw Error("action_if_life: not yet implemented");
+  }
+  action_replace_sprite(_sprite: number, _fname: string, _imgnum: number): void {
+    throw Error("action_replace_sprite: not yet implemented");
+  }
+
+  // ---- Place helpers ----
+  place_free(_x: number, _y: number): boolean {
+    throw Error("place_free: not yet implemented");
+  }
+  place_empty(_x: number, _y: number): boolean {
+    throw Error("place_empty: not yet implemented");
+  }
+  place_snapped(_hsnap: number, _vsnap: number): boolean {
+    if (!this._self) return false;
+    return this._self.x % _hsnap === 0 && this._self.y % _vsnap === 0;
+  }
+
+  // ---- MP potential step ----
+  mp_linear_step(_x: number, _y: number, _speed: number, _checkall: boolean): boolean {
+    throw Error("mp_linear_step: not yet implemented");
+  }
+  mp_linear_step_object(_x: number, _y: number, _speed: number, _obj: any): boolean {
+    throw Error("mp_linear_step_object: not yet implemented");
+  }
+  mp_potential_step(_x: number, _y: number, _speed: number, _checkall: boolean): boolean {
+    throw Error("mp_potential_step: not yet implemented");
+  }
+  mp_potential_step_object(_x: number, _y: number, _speed: number, _obj: any): boolean {
+    throw Error("mp_potential_step_object: not yet implemented");
+  }
 }
 
 // ---- Game config ----
