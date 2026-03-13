@@ -88,10 +88,6 @@ pub struct PassConfig {
     /// `call_site_flow` and `constraint_solve` to have run for useful results,
     /// but is not gated on them (it is a no-op on already-Dynamic params).
     pub call_site_widen: bool,
-    /// Extend callee signatures for call sites that pass more arguments than
-    /// the function declares (GML loose calling convention). Extra params are
-    /// typed Dynamic with a Null default.
-    pub call_site_arity_widen: bool,
     pub constant_folding: bool,
     pub cfg_simplify: bool,
     pub coroutine_lowering: bool,
@@ -109,7 +105,7 @@ impl Default for PassConfig {
             call_site_flow: true,
             constraint_solve: true,
             call_site_widen: true,
-            call_site_arity_widen: true,
+
             constant_folding: true,
             cfg_simplify: true,
             coroutine_lowering: true,
@@ -157,7 +153,7 @@ impl PassConfig {
             "call-site-type-flow" => self.call_site_flow = false,
             "constraint-solve" => self.constraint_solve = false,
             "call-site-type-widen" => self.call_site_widen = false,
-            "call-site-arity-widen" => self.call_site_arity_widen = false,
+
             "constant-folding" => self.constant_folding = false,
             "cfg-simplify" => self.cfg_simplify = false,
             "coroutine-lowering" => self.coroutine_lowering = false,
@@ -291,7 +287,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
                 call_site_flow: true,
                 constraint_solve: true,
                 call_site_widen: true,
-                call_site_arity_widen: true,
+
                 coroutine_lowering: true,
                 mem2reg: true,
                 // Optimization passes — disabled for literal.
@@ -348,7 +344,6 @@ mod tests {
             "call-site-type-flow",
             "constraint-solve",
             "call-site-type-widen",
-            "call-site-arity-widen",
             "constant-folding",
             "cfg-simplify",
             "coroutine-lowering",
@@ -361,7 +356,6 @@ mod tests {
         assert!(!config.call_site_flow);
         assert!(!config.constraint_solve);
         assert!(!config.call_site_widen);
-        assert!(!config.call_site_arity_widen);
         assert!(!config.constant_folding);
         assert!(!config.cfg_simplify);
         assert!(!config.coroutine_lowering);

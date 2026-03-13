@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use crate::error::CoreError;
-use crate::ir::block::BlockParam;
-use crate::ir::{Module, Op, Type};
-use crate::pipeline::{Transform, TransformResult};
+use reincarnate_core::error::CoreError;
+use reincarnate_core::ir::block::BlockParam;
+use reincarnate_core::ir::{Module, Op, Type};
+use reincarnate_core::pipeline::{Transform, TransformResult};
 
 /// Interprocedural call-site arity widening — appends optional `Dynamic`
 /// parameters to functions that are called with more arguments than they
@@ -126,7 +126,7 @@ impl Transform for CallSiteArityWiden {
                 }
                 func.sig
                     .defaults
-                    .push(Some(crate::ir::value::Constant::Null));
+                    .push(Some(reincarnate_core::ir::value::Constant::Null));
             }
 
             // Extend entry block params with matching ValueIds.
@@ -149,10 +149,10 @@ impl Transform for CallSiteArityWiden {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::EntityRef;
-    use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
-    use crate::ir::ty::FunctionSig;
-    use crate::ir::{FuncId, Type, Visibility};
+    use reincarnate_core::entity::EntityRef;
+    use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
+    use reincarnate_core::ir::ty::FunctionSig;
+    use reincarnate_core::ir::{FuncId, Type, Visibility};
 
     fn run(mb: ModuleBuilder) -> TransformResult {
         CallSiteArityWiden.apply(mb.build()).unwrap()
@@ -194,7 +194,7 @@ mod tests {
         assert!(target.sig.defaults.len() >= 2);
         assert!(matches!(
             target.sig.defaults[1],
-            Some(crate::ir::value::Constant::Null)
+            Some(reincarnate_core::ir::value::Constant::Null)
         ));
         // Entry block should have 2 params.
         let entry = target.entry;

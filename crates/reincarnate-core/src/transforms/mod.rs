@@ -1,4 +1,3 @@
-pub mod call_site_arity_widen;
 pub mod call_site_flow;
 pub mod call_site_widen;
 pub mod cfg_simplify;
@@ -12,7 +11,6 @@ pub mod red_cast_elim;
 pub mod type_infer;
 pub mod util;
 
-pub use call_site_arity_widen::CallSiteArityWiden;
 pub use call_site_flow::CallSiteTypeFlow;
 pub use call_site_widen::CallSiteTypeWiden;
 pub use cfg_simplify::CfgSimplify;
@@ -48,11 +46,6 @@ pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     // constraints but callers pass incompatible types, widen back to Dynamic.
     if config.call_site_widen {
         pipeline.add(Box::new(CallSiteTypeWiden));
-    }
-    // Extend callee signatures for over-applied call sites (GML loose calling
-    // convention). Runs after all type widening so new params start as Dynamic.
-    if config.call_site_arity_widen {
-        pipeline.add(Box::new(CallSiteArityWiden));
     }
     if config.constant_folding {
         pipeline.add(Box::new(ConstantFolding));

@@ -1,5 +1,6 @@
 mod assets;
 mod bool_arith_coerce;
+mod call_site_arity_widen;
 mod classref_resolve;
 mod data;
 mod default_arg;
@@ -246,6 +247,7 @@ impl Frontend for GameMakerFrontend {
             assets,
             runtime_variant: None,
             extra_passes: vec![
+                Box::new(call_site_arity_widen::CallSiteArityWiden),
                 Box::new(default_arg::GmlDefaultArgRecovery),
                 Box::new(reincarnate_core::transforms::IntToBoolPromotion),
                 Box::new(logical_op::GmlLogicalOpNormalize),
