@@ -394,9 +394,15 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 - [x] With-body capture gap (1 TS2345): DoctorMenu.ts:76 `variable_instance_get(id, 0.0)` —
   fixed: create alloc slots on-demand in with-body pre-store loop when CodeLocals is missing
   (obfuscated GMS2.3+ games). Dead Estate 6→5.
-- Variable decompilation (2 TS7053): OAnyaDoppelganger.ts:60,111 (`(-1)[0]`, `(-1)[int(sd)]`).
-  Variable references resolve to literal `-1` instead of array variable. Root cause unclear —
-  may be missing CodeLocals causing variable lookups to read default/wrong values.
+- ByRef capture gap (2 TS7053): OAnyaDoppelganger.ts:60,111 (`(-1)[0]`, `(-1)[int(sd)]`).
+  Root cause: local `csa` initialized to `-1`, then modified inside `with` block to an array.
+  IIFE ByValue capture means the modification doesn't propagate back to the outer scope — `csa`
+  stays `-1` after with-body completes. Investigated ByRef capture (session 22): stripping the
+  IIFE fails because Mem2Reg eliminates allocs whose only loads are capture values — the outer
+  function has no `let csa` declaration, so the closure body's `csa` reference is undefined.
+  Fix requires either (a) wrapper objects `{val: x}` with body rewriting, (b) preventing Mem2Reg
+  from eliminating capture-source allocs, or (c) post-with write-back via modified IIFE return.
+  All options are substantial; behaviorally the `-1` paths are dead code at runtime (wontfix).
 - CallSiteTypeFlow narrowing (1 TS2339): _init.ts:7721 (`argument1.length` on number — callers
   pass numbers but body expects array; mixed usage)
 - strictNullChecks artifact (1 TS2345): OBossRushController.ts:273 (`[].push()` on `never[]`)
