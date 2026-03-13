@@ -3354,10 +3354,11 @@ export class GameRuntime {
     if (!this._video) return;
     this._video.pause(); this._video.remove(); this._video = null;
   }
-  video_draw(): void {
-    const v = this._video; if (!v || v.readyState < 2) return;
+  video_draw(): any[] {
+    const v = this._video; if (!v || v.readyState < 2) return [0, -1, -1];
     const ctx = this._gfx.ctx;
     ctx.drawImage(v, 0, 0, ctx.canvas.width, ctx.canvas.height);
+    return [1, -1, -1]; // [status, surface, chroma_surface]
   }
   video_get_status(): number {
     if (!this._video) return 0; // video_status_none
