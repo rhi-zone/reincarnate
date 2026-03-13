@@ -370,7 +370,21 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   local array creation. 2 from param narrowing (CallSiteTypeFlow body-usage guard doesn't follow
   Alloc/Load chains). 1 from literal -4.
 
-**Baselines:** Flash 14, Bounty 0, Dead Estate 74.
+**GML cross-object stacktop field access (Dead Estate 74→52, session 12):**
+- [x] **Skip PushI -9 sentinel for ref_type=0x80 cross-object stacktop**: Pattern is
+  `PushLoc target → PushI -9 → Push.v/Pop.v [ref_type=0x80]`. The -9 sentinel is
+  redundant; skipping it lets the stacktop handler pop the actual target instance.
+  Previous instruction check covers PushLoc, PushGlb, Push, PushBltn, PushI, Call,
+  CallV, Break (for pushref). −22 errors.
+- [ ] **@@Global@@ + PushI -9 pattern (7 GMLObject errors)**: `Call @@Global@@` pushes
+  global scope, followed by `PushI -9`, but the stacktop access is NOT the immediately
+  next instruction — there are intermediate instructions (PushLoc for array index,
+  Push Int64 for enum IDs, etc.). Current skip logic only checks rest.first() so it
+  never fires. Needs a different approach: either intercept @@Global@@ at the Call
+  handler level (like @@This@@), or scan forward past intermediates to find the
+  stacktop access. Affects ps5SubmitSaveBuffer, ps5SubmitLoadBuffer, and similar.
+
+**Baselines:** Flash 14, Bounty 0, Dead Estate 52.
 
 ---
 
@@ -1249,7 +1263,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 100 TS errors + 1 translation error (2026-03-12) |
+| Dead Estate | `data.win` 192MB | ⚠️ 52 TS errors + 1 translation error (2026-03-13) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
