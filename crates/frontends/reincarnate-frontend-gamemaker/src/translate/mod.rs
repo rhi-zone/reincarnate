@@ -163,8 +163,15 @@ pub fn translate_code_entry(
         None
     };
 
-    let (block_map, block_params, block_entry_depths) =
-        setup_blocks(&mut fb, &instructions, &with_ranges, 0, ctx.function_names);
+    let (block_map, block_params, block_entry_depths) = setup_blocks(
+        &mut fb,
+        &instructions,
+        &with_ranges,
+        0,
+        ctx.function_names,
+        ctx.bytecode_offset,
+        ctx.func_ref_map,
+    );
 
     // Allocate locals.
     let mut locals = allocate_locals(&mut fb, ctx);

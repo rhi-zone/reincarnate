@@ -133,14 +133,21 @@ pub(super) fn setup_blocks(
     with_ranges: &HashMap<usize, usize>,
     entry_offset: usize,
     function_names: &HashMap<u32, String>,
+    bytecode_offset: usize,
+    func_ref_map: &HashMap<usize, usize>,
 ) -> (
     HashMap<usize, BlockId>,
     HashMap<usize, Vec<ValueId>>,
     HashMap<usize, usize>,
 ) {
     let block_starts = find_block_starts(instructions);
-    let block_entry_depths =
-        compute_block_stack_depths(instructions, &block_starts, function_names);
+    let block_entry_depths = compute_block_stack_depths(
+        instructions,
+        &block_starts,
+        function_names,
+        bytecode_offset,
+        func_ref_map,
+    );
 
     // Collect offsets that belong to with-body ranges (body + PopEnv).
     // Blocks at these offsets are owned by extracted closures, not the outer function.
@@ -211,6 +218,8 @@ pub(super) fn compute_block_stack_depths(
     instructions: &[Instruction],
     block_starts: &BTreeSet<usize>,
     function_names: &HashMap<u32, String>,
+    bytecode_offset: usize,
+    func_ref_map: &HashMap<usize, usize>,
 ) -> HashMap<usize, usize> {
     let mut depths: HashMap<usize, usize> = HashMap::new();
     depths.insert(0, 0);
@@ -276,11 +285,23 @@ pub(super) fn compute_block_stack_depths(
                         ws.push(4); // variable access → Variable (4 units)
                     }
                 } else if matches!(inst.operand, Operand::Int16(-9))
+                    && i > 0
+                    && matches!(
+                        instructions[i - 1].opcode,
+                        Opcode::PushLoc
+                            | Opcode::PushGlb
+                            | Opcode::Push
+                            | Opcode::PushBltn
+                            | Opcode::PushI
+                            | Opcode::Call
+                            | Opcode::CallV
+                            | Opcode::Break
+                    )
                     && (is_next_stacktop_ref_access(rest) || global_scope_on_stack)
                 {
                     // PushI -9 sentinel — skipped (net zero).
-                    // Matches translation logic: skip when next is a stacktop ref
-                    // access (cross-object) OR when @@Global@@ scope is on the stack.
+                    // Matches translation logic: skip when previous instruction is a
+                    // push/call/break AND next is a stacktop ref access or @@Global@@.
                     global_scope_on_stack = false;
                 } else {
                     ws.push(gml_slot_units(inst.type1));
@@ -374,11 +395,17 @@ pub(super) fn compute_block_stack_depths(
                 {
                     ws_pop(&mut ws, argc as usize);
                     // Detect Call @@Global@@ (argc=0) to set global_scope_on_stack.
+                    // Use func_ref_map (absolute address → FUNC index) for resolution,
+                    // matching the translation path in translate_call_op.
                     if argc == 0 {
-                        if let Some(name) = function_names.get(&function_id) {
-                            if name == "@@Global@@" {
-                                global_scope_on_stack = true;
-                            }
+                        let abs_addr = bytecode_offset + inst.offset;
+                        let resolved_name = func_ref_map
+                            .get(&abs_addr)
+                            .and_then(|&idx| function_names.get(&(idx as u32)));
+                        let fallback_name = function_names.get(&function_id);
+                        let name = resolved_name.or(fallback_name);
+                        if matches!(name, Some(n) if n == "@@Global@@") {
+                            global_scope_on_stack = true;
                         }
                     }
                 }

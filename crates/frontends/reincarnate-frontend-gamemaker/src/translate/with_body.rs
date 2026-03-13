@@ -284,6 +284,8 @@ pub(super) fn translate_with_body(
         &inner_with_ranges,
         entry_offset,
         wctx.ctx.function_names,
+        wctx.ctx.bytecode_offset,
+        wctx.ctx.func_ref_map,
     );
 
     let ctx = wctx.ctx;

@@ -434,8 +434,9 @@ impl FunctionBuilder {
         // partial output for debugging; the emitted IR will have missing param assignments.
         if cfg!(debug_assertions) && args.len() != self.func.blocks[target].params.len() {
             eprintln!(
-                "[reincarnate] WARN: br to {:?} with {} args but block has {} params \
+                "[reincarnate] WARN: {} — br to {:?} with {} args but block has {} params \
                  (compute_block_stack_depths depth mismatch — see TODO.md)",
+                self.func.name,
                 target,
                 args.len(),
                 self.func.blocks[target].params.len()
@@ -457,16 +458,16 @@ impl FunctionBuilder {
     ) {
         if cfg!(debug_assertions) && then_args.len() != self.func.blocks[then_target].params.len() {
             eprintln!(
-                "[reincarnate] WARN: br_if then-branch to {:?} with {} args but block has {} params \
+                "[reincarnate] WARN: {} — br_if then-branch to {:?} with {} args but block has {} params \
                  (compute_block_stack_depths depth mismatch — see TODO.md)",
-                then_target, then_args.len(), self.func.blocks[then_target].params.len()
+                self.func.name, then_target, then_args.len(), self.func.blocks[then_target].params.len()
             );
         }
         if cfg!(debug_assertions) && else_args.len() != self.func.blocks[else_target].params.len() {
             eprintln!(
-                "[reincarnate] WARN: br_if else-branch to {:?} with {} args but block has {} params \
+                "[reincarnate] WARN: {} — br_if else-branch to {:?} with {} args but block has {} params \
                  (compute_block_stack_depths depth mismatch — see TODO.md)",
-                else_target, else_args.len(), self.func.blocks[else_target].params.len()
+                self.func.name, else_target, else_args.len(), self.func.blocks[else_target].params.len()
             );
         }
         self.emit_void(Op::BrIf {
@@ -488,17 +489,17 @@ impl FunctionBuilder {
             for (_, target, args) in &cases {
                 if args.len() != self.func.blocks[*target].params.len() {
                     eprintln!(
-                        "[reincarnate] WARN: switch case to {:?} with {} args but block has {} params \
+                        "[reincarnate] WARN: {} — switch case to {:?} with {} args but block has {} params \
                          (compute_block_stack_depths depth mismatch — see TODO.md)",
-                        target, args.len(), self.func.blocks[*target].params.len()
+                        self.func.name, target, args.len(), self.func.blocks[*target].params.len()
                     );
                 }
             }
             if default.1.len() != self.func.blocks[default.0].params.len() {
                 eprintln!(
-                    "[reincarnate] WARN: switch default to {:?} with {} args but block has {} params \
+                    "[reincarnate] WARN: {} — switch default to {:?} with {} args but block has {} params \
                      (compute_block_stack_depths depth mismatch — see TODO.md)",
-                    default.0, default.1.len(), self.func.blocks[default.0].params.len()
+                    self.func.name, default.0, default.1.len(), self.func.blocks[default.0].params.len()
                 );
             }
         }
