@@ -217,4 +217,8 @@ pub struct AstFunction {
     /// Number of capture parameters (appended at the end of `params`).
     /// For non-closures this is always 0.
     pub num_capture_params: usize,
+    /// Capture mode for each capture parameter (parallel to the last
+    /// `num_capture_params` entries in `params`).  Empty when there are
+    /// no captures.
+    pub capture_modes: Vec<super::func::CaptureMode>,
 }

@@ -271,4 +271,8 @@ pub struct JsFunction {
     /// Non-zero only for `MethodKind::Closure` functions that were built
     /// with `FunctionBuilder::add_capture_params`.
     pub num_capture_params: usize,
+    /// Capture mode for each capture parameter (parallel to the last
+    /// `num_capture_params` entries in `params`).  Empty when there are
+    /// no captures.
+    pub capture_modes: Vec<reincarnate_core::ir::CaptureMode>,
 }

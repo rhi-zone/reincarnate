@@ -941,7 +941,36 @@ fn try_rewrite_system_call(
                     infer_param_types: false,
                 });
             }
-            // IIFE for captures: ((cap0, ...) => (_self) => body)(cap_val0, ...)
+
+            // Check if all captures are ByRef (future: GML ByRef capture
+            // support).  Currently all GML with-body captures are ByValue,
+            // so this branch is not taken.
+            let modes = &closure_func.capture_modes;
+            let all_byref = n_cap > 0
+                && modes.len() == n_cap
+                && modes
+                    .iter()
+                    .all(|m| *m == reincarnate_core::ir::CaptureMode::ByRef);
+
+            if all_byref {
+                // All captures are ByRef: plain arrow function.
+                // The capture params are stripped — the closure body references
+                // outer `let` variables directly via JS closure semantics, so
+                // mutations inside the closure propagate back to the outer scope.
+                let mut all_params = closure_func.params;
+                all_params.truncate(n_reg);
+                args.drain(1..);
+                return Some(JsExpr::ArrowFunction {
+                    params: all_params,
+                    return_ty: closure_func.return_ty,
+                    body: closure_func.body,
+                    has_rest_param: closure_func.has_rest_param,
+                    cast_as: None,
+                    infer_param_types: false,
+                });
+            }
+
+            // IIFE for ByValue captures: ((cap0, ...) => (_self) => body)(cap_val0, ...)
             let mut all_params = closure_func.params;
             let cap_params: Vec<(String, Type)> = all_params
                 .split_off(n_reg)
@@ -1687,6 +1716,7 @@ mod tests {
             method_kind: MethodKind::Free,
             has_rest_param: false,
             num_capture_params: 0,
+            capture_modes: vec![],
         };
         coerce_bool_args(&mut func, &sigs);
         // The 2nd arg should now be Cast(Cmp, Float(64), Coerce)
@@ -1745,6 +1775,7 @@ mod tests {
             method_kind: MethodKind::Free,
             has_rest_param: false,
             num_capture_params: 0,
+            capture_modes: vec![],
         };
         coerce_bool_args(&mut func, &sigs);
         // The 2nd arg (ternary) should now be wrapped with Number()

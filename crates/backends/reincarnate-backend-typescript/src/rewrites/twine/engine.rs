@@ -293,6 +293,7 @@ mod tests {
             method_kind: MethodKind::Free,
             has_rest_param: false,
             num_capture_params: 0,
+            capture_modes: vec![],
         }
     }
 
@@ -659,6 +660,7 @@ mod tests {
             method_kind: MethodKind::Closure,
             has_rest_param: false,
             num_capture_params: 0,
+            capture_modes: vec![],
         }
     }
 

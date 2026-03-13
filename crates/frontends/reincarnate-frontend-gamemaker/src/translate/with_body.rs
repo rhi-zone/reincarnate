@@ -265,6 +265,9 @@ pub(super) fn translate_with_body(
     fb.name_value(fb.param(0), "_self".to_string());
 
     // Declare capture parameters (ByValue snapshots of outer locals).
+    // ByRef would be more faithful to GML semantics (with-bodies are
+    // inline code) but requires outer-scope `let` declarations that
+    // Mem2Reg may have eliminated.  ByValue is safe for all cases.
     let capture_ids = if wctx.captured_names.is_empty() {
         vec![]
     } else {

@@ -38,6 +38,7 @@ pub fn lower_function(ast: &AstFunction, ctx: &LowerCtx) -> JsFunction {
         method_kind: ast.method_kind,
         has_rest_param: ast.has_rest_param,
         num_capture_params: ast.num_capture_params,
+        capture_modes: ast.capture_modes.clone(),
     }
 }
 
