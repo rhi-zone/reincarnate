@@ -3141,7 +3141,7 @@ export class GameRuntime {
   json_decode(str: string): any { try { return JSON.parse(str); } catch { return undefined; } }
 
   // ---- Game lifecycle ----
-  game_end(): never {
+  game_end(): void {
     // Stop the game loop and close the window (if allowed).
     clearTimeout(this._drawHandle);
     this._drawHandle = 0;

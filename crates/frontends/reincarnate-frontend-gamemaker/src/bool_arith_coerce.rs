@@ -58,11 +58,15 @@ impl Transform for GmlBoolArithCoerce {
         // Build field type lookup from struct definitions for SetField coercion.
         let struct_field_types = build_struct_field_type_map(&module.structs);
 
+        // Collect numeric field names from external type definitions (e.g.
+        // GMLObject.x, GMLObject.depth) so we don't hardcode field names.
+        let external_numeric_fields = build_external_numeric_fields(&module);
+
         let mut changed = false;
         for func in module.functions.values_mut() {
             changed |= coerce_bool_arithmetic(func, &bool_returning);
             changed |= coerce_bool_br_args(func);
-            changed |= coerce_bool_set_field(func, &struct_field_types);
+            changed |= coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
         }
         Ok(TransformResult { module, changed })
     }
@@ -310,34 +314,23 @@ fn build_struct_field_type_map(structs: &[StructDef]) -> HashMap<String, Option<
     map
 }
 
-/// Returns true if a field name is a known GML built-in numeric property.
-/// These are fields on GMLObject that are declared as `number` in the
-/// TypeScript runtime (object.ts). Excludes fields that accept boolean
-/// values like `visible`, `solid`, `persistent`.
-fn is_gml_numeric_field(name: &str) -> bool {
-    matches!(
-        name,
-        "x" | "y"
-            | "z"
-            | "xstart"
-            | "ystart"
-            | "xprevious"
-            | "yprevious"
-            | "image_xscale"
-            | "image_yscale"
-            | "image_index"
-            | "image_alpha"
-            | "image_speed"
-            | "image_angle"
-            | "depth"
-            | "speed"
-            | "direction"
-            | "hspeed"
-            | "vspeed"
-            | "friction"
-            | "gravity"
-            | "gravity_direction"
-    )
+/// Build a set of numeric field names from external type definitions.
+///
+/// Reads `module.external_type_defs` and collects all fields whose type
+/// notation parses to a numeric type (Int or Float). This replaces a
+/// previously hardcoded list of GML built-in property names.
+fn build_external_numeric_fields(module: &Module) -> HashSet<String> {
+    use reincarnate_core::ir::ty::parse_type_notation;
+    let mut result = HashSet::new();
+    for ext in module.external_type_defs.values() {
+        for (field_name, type_str) in &ext.fields {
+            let ty = parse_type_notation(type_str);
+            if is_numeric(&ty) {
+                result.insert(field_name.clone());
+            }
+        }
+    }
+    result
 }
 
 /// Coerce Bool values stored via SetField to Float(64) when the target field
@@ -351,6 +344,7 @@ fn is_gml_numeric_field(name: &str) -> bool {
 fn coerce_bool_set_field(
     func: &mut Function,
     struct_field_types: &HashMap<String, Option<Type>>,
+    external_numeric_fields: &HashSet<String>,
 ) -> bool {
     let targets: Vec<(InstId, ValueId)> = func
         .insts
@@ -358,8 +352,8 @@ fn coerce_bool_set_field(
         .filter_map(|(id, inst)| {
             if let Op::SetField { field, value, .. } = &inst.op {
                 if is_bool(func, *value) {
-                    // Check built-in GML numeric fields.
-                    if is_gml_numeric_field(field) {
+                    // Check external type definitions (e.g. GMLObject built-ins).
+                    if external_numeric_fields.contains(field.as_str()) {
                         return Some((id, *value));
                     }
                     // Check struct-defined numeric fields.
