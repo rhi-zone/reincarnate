@@ -303,10 +303,20 @@ pub(super) fn translate_with_body(
     }
 
     // Pre-store captured values into their alloc slots so the body can read them.
+    // When a local variable has no pre-allocated slot (e.g. no CodeLocals in
+    // obfuscated GMS2.3+ games), create the alloc here. Without this, the body's
+    // on-the-fly alloc would be disconnected from the capture parameter, causing
+    // the captured value to be lost (reads would return the default 0.0/null).
     for (i, name) in wctx.captured_names.iter().enumerate() {
-        if let Some(&slot) = locals.get(name) {
-            fb.store(slot, capture_ids[i]);
-        }
+        let slot = if let Some(&s) = locals.get(name) {
+            s
+        } else {
+            let s = fb.alloc(Type::Dynamic);
+            fb.name_value(s, name.clone());
+            locals.insert(name.clone(), s);
+            s
+        };
+        fb.store(slot, capture_ids[i]);
     }
 
     // Inner context: same VARI/FUNC tables but no declared args, class-typed self.
