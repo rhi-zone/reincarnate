@@ -432,10 +432,13 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
 - [ ] **`switch (x as any)` on every switch statement.**
   `ast_printer.rs` wraps every switch discriminant with `as any` to suppress TS2678.
   Defeats TypeScript exhaustiveness checking and hides genuine type mismatches. Law 4 violation.
-  **Investigation (2026-03-13):** Only ~0.05% of switches (2-3 out of ~3900) actually need
-  `as any` — degenerate switches where constant folding replaced the discriminant with a literal
-  (`switch (0.0) { case 1: ... }`). Two-layer fix: (1) selective `as any` only on literal
-  discriminants (trivial, ~30 min), (2) dead switch elimination in constant folding (medium).
+  **Investigation (2026-03-13):** Removing `as any` from non-literal discriminants was attempted
+  but reverted — it reveals hidden issues: (1) +4 Flash TS7027 from exhaustive switches where
+  the emitter adds safety `throw new Error("unreachable")` after the switch (fix: don't emit
+  unreachable throws), (2) +2 Dead Estate TS2678 from `video_get_format()` returning `string`
+  in runtime but game code using numeric case labels (fix: correct runtime return type or type
+  inference). **Prerequisites:** fix exhaustive-switch dead throws + runtime type mismatches,
+  THEN selectively remove `as any`.
   **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs`
 
 - [x] **Return type inference keeps `Dynamic` for no-return functions — GML-specific in core.**
