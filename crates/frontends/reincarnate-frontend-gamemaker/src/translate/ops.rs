@@ -231,58 +231,67 @@ fn translate_push_instruction(
 // ============================================================
 
 /// Handle Add, Sub, Mul, Div, Rem/Mod, Neg, Not.
+///
+/// The result size on the GML VM stack is the MAXIMUM of the two operand type
+/// sizes. For same-type ops like `Add.i` (Int32+Int32), the result is Int32-
+/// sized (1 unit). For mixed-type ops like `Add.i[v]` (Int32+Variable), the
+/// result is Variable-sized (4 units). This matters for subsequent `Dup`
+/// instructions which count backwards by byte units — recording a smaller
+/// size causes Dup to over-duplicate items from below the intended top.
 fn translate_arithmetic_op(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
     gml_sizes: &mut HashMap<ValueId, u8>,
 ) -> Result<(), String> {
+    let result_units = gml_slot_units(inst.type1).max(gml_slot_units(inst.type2));
+
     match inst.opcode {
         Opcode::Add => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.add(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Sub => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.sub(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Mul => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.mul(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Div => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.div(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Rem | Opcode::Mod => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.rem(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Neg => {
             let a = pop(stack, inst)?;
             let r = fb.neg(a);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Not => {
             let a = pop(stack, inst)?;
             let r = fb.not(a);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         _ => unreachable!(),
@@ -295,12 +304,17 @@ fn translate_arithmetic_op(
 // ============================================================
 
 /// Handle And, Or, Xor, Shl, Shr, Cmp.
+///
+/// Like arithmetic ops, the result size is max(type1, type2) to correctly
+/// model the VM stack slot size for subsequent Dup instructions.
 fn translate_bitwise_cmp_op(
     inst: &Instruction,
     fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
     gml_sizes: &mut HashMap<ValueId, u8>,
 ) -> Result<(), String> {
+    let result_units = gml_slot_units(inst.type1).max(gml_slot_units(inst.type2));
+
     match inst.opcode {
         Opcode::And => {
             let b = pop(stack, inst)?;
@@ -311,7 +325,7 @@ fn translate_bitwise_cmp_op(
             } else {
                 fb.bit_and(a, b)
             };
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Or => {
@@ -323,28 +337,28 @@ fn translate_bitwise_cmp_op(
             } else {
                 fb.bit_or(a, b)
             };
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Xor => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.bit_xor(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Shl => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.shl(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Shr => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let r = fb.shr(a, b);
-            gml_sizes.insert(r, gml_slot_units(inst.type1));
+            gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Cmp => {
@@ -353,7 +367,7 @@ fn translate_bitwise_cmp_op(
             if let Operand::Comparison(kind) = inst.operand {
                 let cmp_kind = comparison_to_cmp_kind(kind);
                 let r = fb.cmp(cmp_kind, a, b);
-                gml_sizes.insert(r, 1); // Boolean = 4 bytes = 1 unit
+                gml_sizes.insert(r, result_units);
                 stack.push(r);
             } else {
                 return Err(format!(
