@@ -421,7 +421,7 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
   or lowering). Law 4 violation.
   **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs:658`
 
-- [ ] **Return type inference keeps `Dynamic` for no-return functions — GML-specific in core.**
+- [x] **Return type inference keeps `Dynamic` for no-return functions — GML-specific in core.**
   `type_infer.rs:888-894` skips return-type narrowing for functions with no value-bearing
   returns, with comment "In GML, all functions implicitly return a value." Flash functions
   with no `return <value>` should infer `void`, not `Dynamic`. Law 2 violation.
@@ -431,7 +431,7 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
 
 ### Concerning
 
-- [ ] **`CallSiteArityWiden` is a GML-only pass living in core.**
+- [x] **`CallSiteArityWiden` is a GML-only pass living in core.**
   Docs and `PassConfig` comment say "GML loose calling convention." No other engine needs it.
   Should be a GML `extra_pass`, not a core pass. Harmless as no-op for other engines but sets
   a bad precedent.
