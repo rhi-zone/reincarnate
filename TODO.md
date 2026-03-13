@@ -387,11 +387,16 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   `instance_exists` to accept `number` (object indices, sentinels like -4/noone).
   Resolves numeric indices via `this.classes[target]`. −2 errors.
 
-**GML remaining errors (Dead Estate 16, session 13):**
-- Shared blob decompilation (7): _init.ts:7757,8767,8768,8781,8782,18289; ObjSteamSetVolume.ts:22
-- Shared blob type inference (4): ObjSteamMusic.ts:12,29; OAnyaDoppelganger.ts:62,113
-- Type inference (3): OMortonsForkController.ts:54; DoctorMenu.ts:76; ObjSteamStorageInfo.ts:29x2
-- GML implicit conversion (1): AchievementTester.ts:43 (bool→number in function arg)
+**GML remaining errors (Dead Estate 15, session 17):**
+- Shared blob decompilation (11 TS2345): _init.ts:7757,8767,8768,8781,8782,18289; ObjSteamSetVolume.ts:22; DoctorMenu.ts:76; ObjSteamStorageInfo.ts:29x2; AchievementTester.ts:43
+- Shared blob type inference (2 TS7053): OAnyaDoppelganger.ts:62,113
+- Shared blob `.length` (1 TS2339): _init.ts:7757 (argument1 inferred as number, should be array)
+- Unreachable code (1 TS7027): DiavolaEye.ts:81 (game-author infinite loop, wontfix)
+- [x] **TS2349 `int` shadows import** — fixed: `rename_shadowing_locals` in backend sanitize pass
+  renames local variables that collide with imported function names. Dead Estate 17→16.
+- [x] **TS2362 `instance_create_depth` return type** — fixed: method overloads with `any`
+  catch-all signature. `cls: any` (from `Foo as any`) resolves to `any` return, not `T`.
+  Dead Estate 16→15.
 - [ ] **Bool-to-number coercion in call args**: GmlBoolArithCoerce only handles arithmetic ops
   (Add/Sub/Mul/Div/Rem), not function call arguments where a boolean is passed as number.
   AchievementTester.ts:43 passes `this.selected === i` (boolean) where number expected.
@@ -401,7 +406,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   entry block param types for callee lookup, or detecting CmpEq-produced values regardless
   of `value_types` widening.
 
-**Baselines:** Flash 14, Bounty 0, Dead Estate 16.
+**Baselines:** Flash 15, Bounty 0, Dead Estate 15.
 
 ---
 
@@ -418,15 +423,17 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
 - [x] **`allowUnreachableCode: false`** — re-enabled 2026-03-13. +1 correct TS7027 per game
   (DiavolaEye infinite loop, HelFollower `&& false`).
 - [ ] **`strictNullChecks: false`** — still disabled. **Phase A done:** GML runtime widened
-  (`getInstanceField`/`setInstanceField`/`setInstanceFieldIndex` accept `null`). With
-  strictNullChecks, Dead Estate = 18 (+1), Bounty = 0, Flash = 95 (+80).
-  **Remaining Flash work:**
+  (`getInstanceField`/`setInstanceField`/`setInstanceFieldIndex` accept `null`). **Phase B
+  partial (2026-03-13):** Flash runtime getters widened to non-nullable (`parent`, `getChildByName`,
+  `applicationDomain`, `bytes`, `content`, `loader`, `focus`, `restrict`). Flash strictNullChecks
+  now 21 (down from 39). Dead Estate = 18 (+1), Bounty = 0.
+  **Remaining Flash strictNullChecks work (~6 new errors):**
   - `this.field = null` assignments where zero-initialized fields use `T!` (~40 errors).
     Widening ALL zero-init reference fields to `T | null` causes 12K+ cascading errors.
     Needs targeted analysis: track which fields are assigned `null` in method bodies and
     widen only those fields' types.
-  - Nullable return propagation from Flash runtime methods like `getChildByName` (~7 TS2531).
-  - `null` passed as function argument to non-nullable params (~10 TS2345).
+  - 3 `RegExp.exec` nullable returns (TS2531) — need `!` or null guard in emitted code.
+  - 3 game-author patterns (nullable used as non-null).
   **File:** `scaffold.rs:336`
 
 - [x] **`switch (x as any)` on every switch statement.**
@@ -1348,7 +1355,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ emits (TS errors TBD) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
-| Dead Estate | `data.win` 192MB | ⚠️ 16 TS errors + 1 translation error (2026-03-13) |
+| Dead Estate | `data.win` 192MB | ⚠️ 15 TS errors + 1 translation error (2026-03-13) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ✅ emits (TS errors TBD) |
