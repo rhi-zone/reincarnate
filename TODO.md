@@ -412,28 +412,31 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
 
 ### Critical
 
-- [ ] **tsconfig strictness retreat (commits `941feb5`, `7c42296`, `73df2b1`).**
-  `strictNullChecks: false`, `noImplicitReturns: false`, `allowUnreachableCode: true` all
-  disabled in `scaffold.rs` to reduce error counts. Law 4 violation (suppression, not fix).
-  **File:** `crates/backends/reincarnate-backend-typescript/src/scaffold.rs:335-341`
-  **Investigation (2026-03-13):**
-  - `noImplicitReturns`: 0 GML impact, 8 Flash TS7030 (bare `return;` in non-void functions).
-    Fix: emit `T | undefined` return type when code paths fall off without value.
-  - `allowUnreachableCode: false`: 0 Bounty, 1 Dead Estate (genuine infinite loop), 1 Flash
-    (game-author `&& false`). `game_end(): never` → `void` in runtime fixed 3 false TS7027s.
-  - `strictNullChecks`: 0 Bounty, +49 Dead Estate (48 from `getInstanceField` not accepting
-    `null`), +87 Flash (null field initializers, DOM API nullability). Phase A: widen
-    `getInstanceField`/`setInstanceField` to accept `null` (−48 DE errors). Phase B: Flash
-    null initializer + DOM API fix.
-  **Re-enable order:** noImplicitReturns (easy) → allowUnreachableCode (easy) → strictNullChecks
-  (medium, phased).
+- [x] **`noImplicitReturns: true`** — re-enabled 2026-03-13. `effective_return_type()` detects
+  non-void functions with bare `return;` and widens to `T | undefined`, emits `return undefined;`.
+  Eliminates 8 Flash TS7030 errors. 0 GML impact.
+- [x] **`allowUnreachableCode: false`** — re-enabled 2026-03-13. +1 correct TS7027 per game
+  (DiavolaEye infinite loop, HelFollower `&& false`).
+- [ ] **`strictNullChecks: false`** — still disabled. **Phase A done:** GML runtime widened
+  (`getInstanceField`/`setInstanceField`/`setInstanceFieldIndex` accept `null`). With
+  strictNullChecks, Dead Estate = 18 (+1), Bounty = 0, Flash = 95 (+80).
+  **Remaining Flash work:**
+  - `this.field = null` assignments where zero-initialized fields use `T!` (~40 errors).
+    Widening ALL zero-init reference fields to `T | null` causes 12K+ cascading errors.
+    Needs targeted analysis: track which fields are assigned `null` in method bodies and
+    widen only those fields' types.
+  - Nullable return propagation from Flash runtime methods like `getChildByName` (~7 TS2531).
+  - `null` passed as function argument to non-nullable params (~10 TS2345).
+  **File:** `scaffold.rs:336`
 
 - [ ] **`switch (x as any)` on every switch statement.**
-  `ast_printer.rs:658` wraps every switch discriminant with `as any` to suppress TS2678.
-  Defeats TypeScript exhaustiveness checking and hides genuine type mismatches. The correct
-  fix is to ensure discriminant and case label types are compatible upstream (type inference
-  or lowering). Law 4 violation.
-  **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs:658`
+  `ast_printer.rs` wraps every switch discriminant with `as any` to suppress TS2678.
+  Defeats TypeScript exhaustiveness checking and hides genuine type mismatches. Law 4 violation.
+  **Investigation (2026-03-13):** Only ~0.05% of switches (2-3 out of ~3900) actually need
+  `as any` — degenerate switches where constant folding replaced the discriminant with a literal
+  (`switch (0.0) { case 1: ... }`). Two-layer fix: (1) selective `as any` only on literal
+  discriminants (trivial, ~30 min), (2) dead switch elimination in constant folding (medium).
+  **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs`
 
 - [x] **Return type inference keeps `Dynamic` for no-return functions — GML-specific in core.**
   `type_infer.rs:888-894` skips return-type narrowing for functions with no value-bearing
@@ -452,10 +455,12 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
   **File:** `crates/reincarnate-core/src/transforms/call_site_arity_widen.rs`
 
 - [ ] **`Object.values()/keys()` cast to `any[]` in printer.**
-  `ast_printer.rs:540-552` pattern-matches `Object.values()`/`Object.keys()` inside `for..of`
+  `ast_printer.rs` pattern-matches `Object.values()`/`Object.keys()` inside `for..of`
   loops and wraps with `(... as any[])`. Content-aware hack in the printer — should fix types
-  upstream.
-  **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs:540-552`
+  upstream. **Investigation (2026-03-13):** 42 instances in Flash CC, 0 in GML (Flash-only
+  pattern from AVM2 `hasnext2`/`nextvalue`/`nextname`). Correct fix: add `ty: Option<Type>` to
+  `ForOf` AST node; `control_flow.rs` sets it to `Dynamic`; printer emits `for (const x: any
+  of ...)`. ~5 files, low difficulty.
 
 - [x] **`is_gml_numeric_field` hardcodes 20+ field names.** (2026-03-13)
   Replaced with `build_external_numeric_fields()` reading from `module.external_type_defs`.
