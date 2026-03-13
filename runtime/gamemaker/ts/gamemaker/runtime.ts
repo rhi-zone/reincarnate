@@ -1921,11 +1921,12 @@ export class GameRuntime {
   }
 
   // ---- String helpers ----
-  string_width(_str: string): number {
+  string_width(_str: number | string): number {
     // Approximate — requires canvas font metrics for accuracy
-    return (_str?.length ?? 0) * 8;
+    const s = String(_str ?? "");
+    return s.length * 8;
   }
-  string_height(_str: string): number {
+  string_height(_str: number | string): number {
     // Approximate — requires canvas font metrics for accuracy
     return 16;
   }
@@ -2799,7 +2800,7 @@ export class GameRuntime {
   }
 
   // ---- More Steam API ----
-  steam_activate_overlay(_type: string): void { /* no-op — no Steam overlay in browser */ }
+  steam_activate_overlay(_type: number | string): void { /* no-op — no Steam overlay in browser */ }
   steam_activate_overlay_user(_type: string, _steamid: number): void { /* no-op */ }
   steam_get_app_id(): number { return 0; }
   steam_get_user_persona_name_sync(_steamid?: number): string { return ""; }
@@ -3217,9 +3218,9 @@ export class GameRuntime {
   gpu_set_texfilter(enable: boolean): void { this._gfx.ctx.imageSmoothingEnabled = enable; }
 
   // ---- Texture extras ----
-  texture_prefetch(_tex: number): void { /* no-op: textures preloaded */ }
+  texture_prefetch(_tex: number | string): void { /* no-op: textures preloaded */ }
   texture_set_stage(_stage: number, _tex: number): void { /* no-op: 2D canvas has no texture stages */ }
-  texture_is_ready(_tex: number): boolean { return true; }
+  texture_is_ready(_tex: number | string): boolean { return true; }
   texture_get_texel_height(tex: number): number {
     const t = this.textures[tex]; if (!t) return 1;
     const sheet = this.textureSheets[t.sheetId]; return sheet ? 1 / sheet.naturalHeight : 1;
