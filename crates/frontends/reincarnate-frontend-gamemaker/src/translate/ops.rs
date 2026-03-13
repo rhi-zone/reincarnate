@@ -202,6 +202,18 @@ fn translate_push_instruction(
         *global_scope_on_stack = false;
     }
 
+    // Check if the preceding instruction was a normal Dup (not swap).
+    // This signals a compound 2D assignment pattern (e.g. `arr[i,j] += x`):
+    //   push dim2, push dim1, Dup(normal), VARI-read (← here), arith, VARI-write
+    // The Dup leaves original indices below the copies; after the VARI-read
+    // pops the copies, the originals remain for the VARI-write.
+    let preceded_by_dup = inst_idx > 0
+        && instructions[inst_idx - 1].opcode == Opcode::Dup
+        && match instructions[inst_idx - 1].operand {
+            Operand::Dup(n) => (n >> 8) & 0xFF == 0, // dup_extra == 0 → normal dup
+            _ => true,                               // non-Dup(n) form is always normal
+        };
+
     let depth_before = stack.len();
     translate_push(
         inst,
@@ -212,6 +224,7 @@ fn translate_push_instruction(
         ctx,
         compound_2d_pending,
         global_arg_count,
+        preceded_by_dup,
     )?;
     // Annotate newly pushed value with its GML type size.
     if stack.len() > depth_before {

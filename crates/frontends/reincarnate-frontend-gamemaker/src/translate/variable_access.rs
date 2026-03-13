@@ -22,6 +22,7 @@ pub(super) fn translate_push(
     ctx: &TranslateCtx,
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
+    preceded_by_dup: bool,
 ) -> Result<(), String> {
     match &inst.operand {
         Operand::Int16(v) => stack.push(fb.const_int(*v as i64)),
@@ -52,6 +53,7 @@ pub(super) fn translate_push(
                 *instance,
                 compound_2d_pending,
                 global_arg_count,
+                preceded_by_dup,
             )?;
         }
         _ => {
@@ -77,6 +79,7 @@ pub(super) fn translate_push_variable(
     instance: i16,
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
+    preceded_by_dup: bool,
 ) -> Result<(), String> {
     let var_name = resolve_variable_name(inst, ctx);
 
@@ -185,14 +188,15 @@ pub(super) fn translate_push_variable(
         // ref_type and is NOT the object type — dim2 carries the scope.
         let dim1 = pop(stack, inst)?;
         let dim2 = pop(stack, inst)?;
-        // If the stack still has 2+ items after popping the indices, those are
-        // the original (pre-Dup) copies left by a compound assignment pattern:
+        // A normal Dup immediately before this VARI-read signals a compound
+        // assignment pattern (e.g. `arr[i,j] += x`):
         //   push dim2, push dim1, Dup, VARI-read (← here), arithmetic, VARI-write
+        // The Dup left original indices below the copies we just popped.
         // The subsequent Pop must use reversed order: new_value=top, dim1, dim2.
         // Only applies to ref_type==0 (self-context 2D arrays) — GMS2.3+ cross-object
         // accesses (ref_type=0x10, 0x90, etc.) use Dup(swap)+popaf instead and must
         // never set this flag.
-        if var_ref.ref_type == 0 && stack.len() >= 2 {
+        if var_ref.ref_type == 0 && preceded_by_dup {
             *compound_2d_pending = true;
         }
         if var_name == "argument" {
