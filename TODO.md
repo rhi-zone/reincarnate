@@ -421,15 +421,25 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   instead of `string[]`. `steam_music_set_volume` returns `number` (GML functions always
   return a value). Dead Estate 13→8.
 
+**Session 20 changes:**
+- [x] **Type-width-aware block depth computation**: Rewrote `compute_block_stack_depths` in
+  `cfg.rs` to use `Vec<u8>` width stack instead of scalar `stack_effect` counter. Tracks
+  per-item byte widths for Dup backward-walk, `pushac_pending` for popaf pop count,
+  `global_scope_on_stack` for `@@Global@@` sentinel handling. Depth mismatches reduced
+  182→78 across Dead Estate. All 78 are GMS2.3+-specific (Bounty/GMS1 = 0). No TS error
+  count change (the 5 shared-blob errors' functions still have mismatches among the 78).
+
 **Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 8.
 
-**Root cause of remaining shared blob errors:** `compute_block_stack_depths` uses
+**Root cause of remaining shared blob errors:** `compute_block_stack_depths` formerly used
 `stack_effect` which counts logical items, but `Dup` translation uses `gml_sizes` to
-count byte-width-aware items. When stack items have smaller gml_sizes than Dup expects
-(e.g. `Dup.v` over Int32-sized items), the actual translation pushes more/fewer items
-than predicted, causing block param depth mismatches. Fix requires either making
-`compute_block_stack_depths` type-width-aware (mini-emulator) or unifying the depth
-prediction with actual translation logic.
+count byte-width-aware items. Session 20 rewrote `compute_block_stack_depths` to use a
+`Vec<u8>` width stack (mini-emulator) tracking per-item byte widths, added `pushac_pending`
+state for correct popaf pop count, and aligned `@@Global@@` sentinel handling with
+`is_next_stacktop_ref_access`. This reduced depth mismatches from 182→78 across Dead Estate.
+All 78 remaining mismatches are GMS2.3+-specific (Bounty/GMS1 has 0). Distribution:
+46 off-by-1, 28 off-by-2, 1 off-by-3, 3 off-by-4. Further reduction may require
+fixpoint iteration or tracing which specific opcodes cause divergence in specific functions.
 
 ---
 
