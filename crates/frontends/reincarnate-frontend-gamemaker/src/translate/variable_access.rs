@@ -728,7 +728,7 @@ pub(super) fn translate_pop(
                                 fb.call("arrayLocalSet", &[arr, dim1, value], Type::Dynamic);
                             fb.store(slot, result);
                         }
-                    } else {
+                    } else if ctx.has_self {
                         let self_param = fb.param(0);
                         if is_scalar {
                             fb.set_field(self_param, &var_name, value);
@@ -736,6 +736,16 @@ pub(super) fn translate_pop(
                             let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
                             fb.set_index(field_val, dim1, value);
                         }
+                    } else {
+                        // No self param (e.g. room creation code): use setField syscall.
+                        let self_id = fb.const_int(-1);
+                        let name_val = fb.const_string(&var_name);
+                        let args: Vec<ValueId> = if is_scalar {
+                            vec![self_id, name_val, value]
+                        } else {
+                            vec![self_id, name_val, dim1, value]
+                        };
+                        fb.system_call("GameMaker.Instance", "setOn", &args, Type::Void);
                     }
                 } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
                     // Cross-object: dim2 is the OBJT index of the target object.
