@@ -387,26 +387,29 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   `instance_exists` to accept `number` (object indices, sentinels like -4/noone).
   Resolves numeric indices via `this.classes[target]`. −2 errors.
 
-**GML remaining errors (Dead Estate 15, session 17):**
-- Shared blob decompilation (11 TS2345): _init.ts:7757,8767,8768,8781,8782,18289; ObjSteamSetVolume.ts:22; DoctorMenu.ts:76; ObjSteamStorageInfo.ts:29x2; AchievementTester.ts:43
+**GML remaining errors (Dead Estate 15, session 18):**
+- Shared blob decompilation (10 TS2345): _init.ts:8767,8768,8781,8782; ObjSteamSetVolume.ts:22;
+  DoctorMenu.ts:76; ObjSteamStorageInfo.ts:29x2; ObjSteamMusic.ts:12,29
 - Shared blob type inference (2 TS7053): OAnyaDoppelganger.ts:62,113
 - Shared blob `.length` (1 TS2339): _init.ts:7757 (argument1 inferred as number, should be array)
+- strictNullChecks artifact (1 TS2345): OBossRushController.ts:278 (`[].push()` on `never[]`)
 - Unreachable code (1 TS7027): DiavolaEye.ts:81 (game-author infinite loop, wontfix)
 - [x] **TS2349 `int` shadows import** — fixed: `rename_shadowing_locals` in backend sanitize pass
   renames local variables that collide with imported function names. Dead Estate 17→16.
 - [x] **TS2362 `instance_create_depth` return type** — fixed: method overloads with `any`
   catch-all signature. `cls: any` (from `Foo as any`) resolves to `any` return, not `T`.
   Dead Estate 16→15.
-- [ ] **Bool-to-number coercion in call args**: GmlBoolArithCoerce only handles arithmetic ops
-  (Add/Sub/Mul/Div/Rem), not function call arguments where a boolean is passed as number.
-  AchievementTester.ts:43 passes `this.selected === i` (boolean) where number expected.
-  Investigation (2026-03-13): naive approach blocked because (1) `sig.params` stays Dynamic
-  after type inference (only entry block params are narrowed, not sig), (2) CmpEq results
-  get widened to Dynamic through block parameter coalescing. Fix requires either reading
-  entry block param types for callee lookup, or detecting CmpEq-produced values regardless
-  of `value_types` widening.
+- [x] **Bool-to-number coercion in call args** — fixed: Pass 4 in GmlBoolArithCoerce coerces
+  effectively-boolean call args to Float(64) when callee entry block param is numeric.
+  Uses `is_effectively_bool` to look through `Cast(Bool, Dynamic, Coerce)` chains.
+  AchievementTester.ts:43 fixed. Dead Estate 16→15 (net: compensates strictNullChecks +1).
 
-**Baselines:** Flash 15, Bounty 0, Dead Estate 15.
+**Session 18 changes:**
+- [x] **strictNullChecks enabled**: `RegExp.exec()![i]` non-null assertion in Flash rewrite.
+  Flash 15→18 (+3 game-author), Dead Estate 15→16 (+1 shared blob `[].push(never[])`).
+- [x] **Bool-to-number call args**: GmlBoolArithCoerce Pass 4. Dead Estate 16→15 (−1).
+
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 15.
 
 ---
 
