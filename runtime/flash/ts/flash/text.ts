@@ -285,7 +285,7 @@ export class TextField extends InteractiveObject {
   set multiline(v: boolean) { this._multiline = v; }
   get numLines() { return this._numLines; }
   set numLines(v: number) { this._numLines = v; }
-  get restrict() { return this._restrict; }
+  get restrict(): string { return this._restrict ?? ""; }
   set restrict(v: string | null) { this._restrict = v; }
   get scrollH() { return this._scrollH; }
   set scrollH(v: number) { this._scrollH = v; }

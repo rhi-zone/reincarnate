@@ -231,7 +231,7 @@ export class DisplayObject extends EventDispatcher {
   set name(v: string) { this._name = v; }
   get opaqueBackground() { return this._opaqueBackground; }
   set opaqueBackground(v: number | null) { this._opaqueBackground = v; }
-  get parent() { return this._parent; }
+  get parent(): DisplayObjectContainer { return this._parent!; }
   set parent(v: DisplayObjectContainer | null) { this._parent = v; }
   get root() { return this._root; }
   set root(v: DisplayObject | null) { this._root = v; }
@@ -507,8 +507,8 @@ export class DisplayObjectContainer extends InteractiveObject {
     return this._children[index]!;
   }
 
-  getChildByName(name: string): DisplayObject | null {
-    return this._children.find((c) => c.name === name) ?? null;
+  getChildByName(name: string): DisplayObject {
+    return this._children.find((c) => c.name === name)!;
   }
 
   getChildIndex(child: DisplayObject): number {
@@ -1070,9 +1070,9 @@ export class LoaderInfo extends EventDispatcher {
 
   get actionScriptVersion() { return this._actionScriptVersion; }
   set actionScriptVersion(v: number) { this._actionScriptVersion = v; }
-  get applicationDomain() { return this._applicationDomain; }
+  get applicationDomain(): ApplicationDomain { return this._applicationDomain!; }
   set applicationDomain(v: ApplicationDomain | null) { this._applicationDomain = v; }
-  get bytes() { return this._bytes; }
+  get bytes(): ByteArray { return this._bytes!; }
   set bytes(v: ByteArray | null) { this._bytes = v; }
   get bytesLoaded() { return this._bytesLoaded; }
   set bytesLoaded(v: number) { this._bytesLoaded = v; }
@@ -1080,7 +1080,7 @@ export class LoaderInfo extends EventDispatcher {
   set bytesTotal(v: number) { this._bytesTotal = v; }
   get childAllowsParent() { return this._childAllowsParent; }
   set childAllowsParent(v: boolean) { this._childAllowsParent = v; }
-  get content() { return this._content; }
+  get content(): DisplayObject { return this._content!; }
   set content(v: DisplayObject | null) { this._content = v; }
   get contentType() { return this._contentType; }
   set contentType(v: string) { this._contentType = v; }
@@ -1088,7 +1088,7 @@ export class LoaderInfo extends EventDispatcher {
   set frameRate(v: number) { this._frameRate = v; }
   get height() { return this._height; }
   set height(v: number) { this._height = v; }
-  get loader() { return this._loader; }
+  get loader(): Loader { return this._loader!; }
   set loader(v: Loader | null) { this._loader = v; }
   get loaderURL() { return this._loaderURL; }
   set loaderURL(v: string) { this._loaderURL = v; }
@@ -1119,7 +1119,7 @@ export class Loader extends DisplayObjectContainer {
   uncaughtErrorEvents: EventDispatcher = new EventDispatcher();
   private _abortController: AbortController | null = null;
 
-  get content() { return this._content; }
+  get content(): DisplayObject { return this._content!; }
   set content(v: DisplayObject | null) { this._content = v; }
   get contentLoaderInfo() { return this._contentLoaderInfo; }
   set contentLoaderInfo(v: LoaderInfo) { this._contentLoaderInfo = v; }
@@ -1286,7 +1286,7 @@ export class Stage extends DisplayObjectContainer {
   set frameRate(v: number) { this._frameRate = v; }
   get quality() { return this._quality; }
   set quality(v: string) { this._quality = v; }
-  get focus() { return this._focus; }
+  get focus(): InteractiveObject { return this._focus!; }
   set focus(v: InteractiveObject | null) { this._focus = v; }
   get align() { return this._align; }
   set align(v: string) { this._align = v; }
