@@ -395,6 +395,11 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
 - [ ] **Bool-to-number coercion in call args**: GmlBoolArithCoerce only handles arithmetic ops
   (Add/Sub/Mul/Div/Rem), not function call arguments where a boolean is passed as number.
   AchievementTester.ts:43 passes `this.selected === i` (boolean) where number expected.
+  Investigation (2026-03-13): naive approach blocked because (1) `sig.params` stays Dynamic
+  after type inference (only entry block params are narrowed, not sig), (2) CmpEq results
+  get widened to Dynamic through block parameter coalescing. Fix requires either reading
+  entry block param types for callee lookup, or detecting CmpEq-produced values regardless
+  of `value_types` widening.
 
 **Baselines:** Flash 14, Bounty 0, Dead Estate 16.
 
@@ -409,10 +414,19 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
 
 - [ ] **tsconfig strictness retreat (commits `941feb5`, `7c42296`, `73df2b1`).**
   `strictNullChecks: false`, `noImplicitReturns: false`, `allowUnreachableCode: true` all
-  disabled in `scaffold.rs` to reduce error counts. This permanently weakens output for ALL
-  games across ALL engines. Law 4 violation (suppression, not fix). The emitter should produce
-  code that passes strict checks. Track: every tsconfig relaxation is a regression.
+  disabled in `scaffold.rs` to reduce error counts. Law 4 violation (suppression, not fix).
   **File:** `crates/backends/reincarnate-backend-typescript/src/scaffold.rs:335-341`
+  **Investigation (2026-03-13):**
+  - `noImplicitReturns`: 0 GML impact, 8 Flash TS7030 (bare `return;` in non-void functions).
+    Fix: emit `T | undefined` return type when code paths fall off without value.
+  - `allowUnreachableCode: false`: 0 Bounty, 1 Dead Estate (genuine infinite loop), 1 Flash
+    (game-author `&& false`). `game_end(): never` → `void` in runtime fixed 3 false TS7027s.
+  - `strictNullChecks`: 0 Bounty, +49 Dead Estate (48 from `getInstanceField` not accepting
+    `null`), +87 Flash (null field initializers, DOM API nullability). Phase A: widen
+    `getInstanceField`/`setInstanceField` to accept `null` (−48 DE errors). Phase B: Flash
+    null initializer + DOM API fix.
+  **Re-enable order:** noImplicitReturns (easy) → allowUnreachableCode (easy) → strictNullChecks
+  (medium, phased).
 
 - [ ] **`switch (x as any)` on every switch statement.**
   `ast_printer.rs:658` wraps every switch discriminant with `as any` to suppress TS2678.
@@ -443,10 +457,11 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
   upstream.
   **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs:540-552`
 
-- [ ] **`is_gml_numeric_field` hardcodes 20+ field names.**
-  `bool_arith_coerce.rs:317-341` maintains a static list of GML built-in fields. Should read
-  from `external_type_defs` on the Module instead.
-  **File:** `crates/frontends/reincarnate-frontend-gamemaker/src/bool_arith_coerce.rs:317-341`
+- [x] **`is_gml_numeric_field` hardcodes 20+ field names.** (2026-03-13)
+  Replaced with `build_external_numeric_fields()` reading from `module.external_type_defs`.
+  Also fixed runtime.json: `visible`, `solid`, `persistent` changed from `"number"` to `"*"`
+  to match the `number | boolean` class declarations — prevents TS2322 regressions.
+  **File:** `crates/frontends/reincarnate-frontend-gamemaker/src/bool_arith_coerce.rs`
 
 - [ ] **Accumulated guards in PushI -9 skip (3 commits widening same guard).**
   `ops.rs:168-203` has 8 preceding-opcode variants, 2 conditions, and a state flag. The
