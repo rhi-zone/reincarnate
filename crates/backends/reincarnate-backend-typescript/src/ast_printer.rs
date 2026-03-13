@@ -19,6 +19,12 @@ thread_local! {
     /// When true, bare `return;` is printed as `return undefined;` to satisfy
     /// `noImplicitReturns` in non-void functions (AS3 `returnvoid` in typed functions).
     static BARE_RETURN_UNDEFINED: Cell<bool> = const { Cell::new(false) };
+
+    /// When true, `null` literals in value positions are printed as `null!` to
+    /// satisfy `strictNullChecks`.  In AS3, null is valid for any reference type;
+    /// `null!` (type: `never`, assignable to everything) preserves runtime behavior.
+    /// Comparison operands use `print_expr_operand` which bypasses this.
+    pub(crate) static NULL_ASSERT: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Unwrap nested `Cast(x, T, Coerce)` when the inner is also a Coerce to the
@@ -433,8 +439,11 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                 (Some(ty), Some(init)) => {
                     // Null literal init with non-nullable type: widen to `T | null`
                     // so `strictNullChecks` accepts the assignment.
+                    // When NULL_ASSERT is active, null prints as `null!` (type `never`)
+                    // which is assignable to any type — no widening needed.
                     let is_null_init = matches!(init, JsExpr::Literal(Constant::Null))
-                        && !matches!(ty, Type::Dynamic | Type::Option(_));
+                        && !matches!(ty, Type::Dynamic | Type::Option(_))
+                        && !NULL_ASSERT.get();
                     let type_str = if is_null_init {
                         format!("{} | null", ts_type(ty))
                     } else {
@@ -822,7 +831,18 @@ fn print_for_update(stmt: &JsStmt) -> Option<String> {
 
 fn print_expr(expr: &JsExpr) -> String {
     match expr {
-        JsExpr::Literal(c) => emit_constant(c),
+        JsExpr::Literal(c) => {
+            let s = emit_constant(c);
+            // In NULL_ASSERT mode, wrap `null` as `null!` so it's assignable to any
+            // non-null type under strictNullChecks.  Comparison operands go through
+            // `print_expr_operand` which calls `emit_constant` directly for literals,
+            // bypassing this branch.
+            if matches!(c, Constant::Null) && NULL_ASSERT.get() {
+                format!("{s}!")
+            } else {
+                s
+            }
+        }
 
         JsExpr::Var(name) => sanitize_ident(name),
 
@@ -856,11 +876,17 @@ fn print_expr(expr: &JsExpr) -> String {
             } else {
                 cmp_str(*kind)
             };
-            format!(
+            // Suppress NULL_ASSERT for comparison operands — `x === null!` would
+            // give TS2367 "no overlap" since `null!` is type `never`.
+            let saved = NULL_ASSERT.get();
+            NULL_ASSERT.set(false);
+            let result = format!(
                 "{} {op_str} {}",
                 print_expr_operand(lhs),
                 print_expr_operand(rhs),
-            )
+            );
+            NULL_ASSERT.set(saved);
+            result
         }
 
         JsExpr::Field { object, field } => {

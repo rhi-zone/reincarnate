@@ -257,7 +257,9 @@ pub(super) fn emit_function(
         None
     };
     ensure_trailing_unreachable(func, &mut js_func);
+    crate::ast_printer::NULL_ASSERT.set(engine == EngineKind::Flash);
     crate::ast_printer::print_function(&js_func, preamble.as_deref(), out);
+    crate::ast_printer::NULL_ASSERT.set(false);
     Ok(())
 }
 
@@ -361,14 +363,15 @@ pub(super) fn emit_class(
         // causes TS2540 when game code does reassign them, so we omit it.
         let ro = "";
         if let Some(val) = &f.default {
-            if matches!(val, Constant::Null) {
+            if matches!(val, Constant::Null) && engine != EngineKind::Flash {
                 widen_type_for_null(&f.ty, &mut ts);
             }
-            let _ = writeln!(
-                out,
-                "  static {ov}{ro}{ident}: {ts} = {};",
+            let val_str = if matches!(val, Constant::Null) && engine == EngineKind::Flash {
+                "null!".to_string()
+            } else {
                 crate::ast_printer::emit_constant(val)
-            );
+            };
+            let _ = writeln!(out, "  static {ov}{ro}{ident}: {ts} = {val_str};");
         } else {
             let _ = writeln!(out, "  static {ov}{ident}: {ts};");
         }
@@ -389,18 +392,22 @@ pub(super) fn emit_class(
             ""
         };
         if let Some(val) = &field.default {
-            if matches!(val, Constant::Null) {
+            if matches!(val, Constant::Null) && engine != EngineKind::Flash {
+                // Non-Flash: widen type to T | null for strictNullChecks.
+                // Flash uses null! instead (see below), avoiding cascading errors.
                 widen_type_for_null(&field.ty, &mut ts);
             }
             if let Some(resolved) = resolve_sprite_constant(&field.name, val, &module.sprite_names)
             {
                 let _ = writeln!(out, "  {ov}{ident}: {ts} = {resolved};");
             } else {
-                let _ = writeln!(
-                    out,
-                    "  {ov}{ident}: {ts} = {};",
+                // Flash: emit null! so the field type stays non-null (no cascading).
+                let val_str = if matches!(val, Constant::Null) && engine == EngineKind::Flash {
+                    "null!".to_string()
+                } else {
                     crate::ast_printer::emit_constant(val)
-                );
+                };
+                let _ = writeln!(out, "  {ov}{ident}: {ts} = {val_str};");
             }
         } else {
             // AS3 instance fields with no initializer are semantically zero-initialized,
@@ -934,6 +941,9 @@ fn emit_class_method(
     // but TypeScript cannot prove all paths return (e.g. exhaustive switch without default).
     // Silences TS2366 without changing observable behaviour.
     ensure_trailing_unreachable(func, &mut js_func);
+    // Flash/AS3: null is valid for any reference type. Under strictNullChecks,
+    // bare `null` causes TS2322/TS2345. Enable null! assertion for Flash output.
+    crate::ast_printer::NULL_ASSERT.set(engine == EngineKind::Flash);
     crate::ast_printer::print_class_method(
         &js_func,
         &raw_name,
@@ -943,6 +953,7 @@ fn emit_class_method(
         flash_ctor_extra_param.as_deref(),
         out,
     );
+    crate::ast_printer::NULL_ASSERT.set(false);
     Ok(())
 }
 
