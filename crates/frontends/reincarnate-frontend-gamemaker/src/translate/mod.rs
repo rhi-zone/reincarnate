@@ -511,6 +511,21 @@ fn is_stacktop_ref(var_ref: &VariableRef, instance: i16) -> bool {
     instance >= 0 && var_ref.ref_type == 0x80
 }
 
+/// Check if the next instruction is a stacktop variable access (ref_type=0x80).
+///
+/// Used by `stack_effect` and `translate_push_instruction` to identify
+/// `PushI -9` sentinels that precede stacktop accesses.
+fn is_next_stacktop_access(rest: &[Instruction]) -> bool {
+    if let Some(next) = rest.first() {
+        if matches!(next.opcode, Opcode::Push | Opcode::Pop) {
+            if let Operand::Variable { var_ref, instance } = &next.operand {
+                return is_stacktop_ref(var_ref, *instance);
+            }
+        }
+    }
+    false
+}
+
 /// Resolve a branch target offset to (target_offset, BlockId).
 fn resolve_branch_target(
     inst: &Instruction,

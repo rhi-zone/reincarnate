@@ -8,7 +8,7 @@ use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::value::ValueId;
 
-use super::{is_2d_array_access, is_cross_obj_2d_read, is_stacktop_ref};
+use super::{is_2d_array_access, is_cross_obj_2d_read, is_next_stacktop_access, is_stacktop_ref};
 
 /// Filter instructions to only those reachable from the entry point.
 ///
@@ -201,6 +201,12 @@ pub(super) fn stack_effect(inst: &Instruction, rest: &[Instruction]) -> (usize, 
                 } else {
                     (0, 1)
                 }
+            } else if matches!(inst.operand, datawin::bytecode::decode::Operand::Int16(-9))
+                && is_next_stacktop_access(rest)
+            {
+                // PushI -9 sentinel before stacktop access — skipped at
+                // translation time for cross-object, net-zero for self-access.
+                (0, 0)
             } else {
                 (0, 1)
             }

@@ -12,8 +12,8 @@ use reincarnate_core::ir::value::ValueId;
 use super::cfg::{get_branch_args, gml_slot_units};
 use super::variable_access::{translate_pop, translate_push};
 use super::{
-    comparison_to_cmp_kind, datatype_to_ir_type, pop, resolve_branch_target, resolve_fallthrough,
-    TranslateCtx,
+    comparison_to_cmp_kind, datatype_to_ir_type, is_next_stacktop_access, pop,
+    resolve_branch_target, resolve_fallthrough, TranslateCtx,
 };
 
 /// Translate a single instruction — thin dispatcher to themed helpers.
@@ -163,6 +163,21 @@ fn translate_push_instruction(
     compound_2d_pending: &mut bool,
     global_arg_count: u16,
 ) -> Result<(), String> {
+    // Skip PushI -9 sentinel for cross-object stacktop field access.
+    // Pattern: PushLoc/PushGlb/Push target → PushI -9 → Push.v/Pop.v [ref_type=0x80]
+    // The -9 is a redundant sentinel; skipping it lets the stacktop handler
+    // pop the actual target instance instead of the useless -9.
+    if matches!(inst.operand, Operand::Int16(-9))
+        && is_next_stacktop_access(&instructions[inst_idx + 1..])
+        && inst_idx > 0
+        && matches!(
+            instructions[inst_idx - 1].opcode,
+            Opcode::PushLoc | Opcode::PushGlb | Opcode::Push | Opcode::PushBltn
+        )
+    {
+        return Ok(());
+    }
+
     let depth_before = stack.len();
     translate_push(
         inst,
