@@ -429,16 +429,13 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
   - `null` passed as function argument to non-nullable params (~10 TS2345).
   **File:** `scaffold.rs:336`
 
-- [ ] **`switch (x as any)` on every switch statement.**
+- [x] **`switch (x as any)` on every switch statement.**
   `ast_printer.rs` wraps every switch discriminant with `as any` to suppress TS2678.
   Defeats TypeScript exhaustiveness checking and hides genuine type mismatches. Law 4 violation.
-  **Investigation (2026-03-13):** Removing `as any` from non-literal discriminants was attempted
-  but reverted — it reveals hidden issues: (1) +4 Flash TS7027 from exhaustive switches where
-  the emitter adds safety `throw new Error("unreachable")` after the switch (fix: don't emit
-  unreachable throws), (2) +2 Dead Estate TS2678 from `video_get_format()` returning `string`
-  in runtime but game code using numeric case labels (fix: correct runtime return type or type
-  inference). **Prerequisites:** fix exhaustive-switch dead throws + runtime type mismatches,
-  THEN selectively remove `as any`.
+  **Fixed (2026-03-13):** `as any` now only emitted for literal discriminants (constant folding
+  artifacts like `switch (0.0) { case 1: ... }`). Non-literal switches get full TS type checking.
+  Fixes: (1) `ensure_trailing_unreachable` injects throw into switch default body instead of
+  after switch, preventing TS7027. (2) `video_get_format` runtime type corrected to `number`.
   **File:** `crates/backends/reincarnate-backend-typescript/src/ast_printer.rs`
 
 - [x] **Return type inference keeps `Dynamic` for no-return functions — GML-specific in core.**
@@ -457,13 +454,11 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
   a bad precedent.
   **File:** `crates/reincarnate-core/src/transforms/call_site_arity_widen.rs`
 
-- [ ] **`Object.values()/keys()` cast to `any[]` in printer.**
-  `ast_printer.rs` pattern-matches `Object.values()`/`Object.keys()` inside `for..of`
-  loops and wraps with `(... as any[])`. Content-aware hack in the printer — should fix types
-  upstream. **Investigation (2026-03-13):** 42 instances in Flash CC, 0 in GML (Flash-only
-  pattern from AVM2 `hasnext2`/`nextvalue`/`nextname`). Correct fix: add `ty: Option<Type>` to
-  `ForOf` AST node; `control_flow.rs` sets it to `Dynamic`; printer emits `for (const x: any
-  of ...)`. ~5 files, low difficulty.
+- [x] **`Object.values()/keys()` cast to `any[]` in printer.** (2026-03-13)
+  Fixed: added `binding_ty: Option<Type>` to `Stmt::ForOf` and `JsStmt::ForOf`.
+  `control_flow.rs` sets to `Some(Dynamic)` for AVM2 for-each-in. Printer casts iterable
+  to `any[]` when `binding_ty` is Dynamic (TS doesn't allow type annotations on for-of
+  bindings — TS2483). Replaced fragile `Object.values`/`Object.keys` pattern-matching hack.
 
 - [x] **`is_gml_numeric_field` hardcodes 20+ field names.** (2026-03-13)
   Replaced with `build_external_numeric_fields()` reading from `module.external_type_defs`.
