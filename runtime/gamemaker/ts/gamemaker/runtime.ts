@@ -3537,7 +3537,7 @@ export class GameRuntime {
   steam_music_pause(): void { /* no-op */ }
   steam_music_play_next(): void { /* no-op */ }
   steam_music_play_previous(): void { /* no-op */ }
-  steam_music_set_volume(_vol: number): void { /* no-op */ }
+  steam_music_set_volume(_vol: number): number { return 0; /* no-op */ }
   steam_music_is_playing(): boolean { return false; }
   steam_user_cancel_auth_ticket(_ticket: number): void { /* no-op */ }
   steam_user_installed_dlc(_appId: number): boolean { return true; /* assume all DLC available when running from extracted files */ }
