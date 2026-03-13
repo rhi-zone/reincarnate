@@ -172,7 +172,14 @@ fn translate_push_instruction(
         && inst_idx > 0
         && matches!(
             instructions[inst_idx - 1].opcode,
-            Opcode::PushLoc | Opcode::PushGlb | Opcode::Push | Opcode::PushBltn
+            Opcode::PushLoc
+                | Opcode::PushGlb
+                | Opcode::Push
+                | Opcode::PushBltn
+                | Opcode::PushI
+                | Opcode::Call
+                | Opcode::CallV
+                | Opcode::Break
         )
     {
         return Ok(());
