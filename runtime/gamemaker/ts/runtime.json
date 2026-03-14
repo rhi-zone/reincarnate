@@ -283,8 +283,8 @@
     },
     "action_if_variable": {
       "params": [
-        "string",
-        "any",
+        "*",
+        "*",
         "number"
       ],
       "returns": "boolean"

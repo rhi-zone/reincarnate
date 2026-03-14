@@ -1679,12 +1679,10 @@ of emitting `Number(x)`.
 - **`Int(64)` cast emission gap**: `Cast(x, Int(64), Coerce)` in the IR fell through to the
   catch-all passthrough in `ast_printer.rs` (only `Float(_)` and `Int(32)` had explicit arms).
   Added `Int(64) → Number(x)` arm.
-- **`action_if_variable` translator bug**: GML spec says first param is the variable NAME
-  (string), and the runtime looks it up via `this._self[name]`. But the GML translator
-  emits the variable's VALUE (e.g. `action_if_variable(this.room, 3, 0)` instead of
-  `action_if_variable("room", 3, 0)`). The TS2345 errors are CORRECT — they surface the
-  translator bug. Fix belongs in the GML translator's DnD action handling, not the runtime.
-  ~26 errors in 10SecNinjaX from this root cause.
+- [x] **`action_if_variable` runtime signature wrong** (2026-03-15): Runtime took `name: string`
+  and did `this._self[name]` lookup, but GML DnD compiles to push the variable VALUE directly.
+  Fixed runtime to take `(variable: unknown, value: unknown, op: number)` with full 6-op switch
+  (equal/less/greater/notEqual/lteq/gteq). 10SecNinjaX: ~60 → 35 errors (−25).
 
 ### 2. Linearizer scoping bugs (TS2304 `v*` variables) — ~25 errors in Schism/MaxManos2
 Variables like `v17`, `v23`, `v48` appear as TS2304 "Cannot find name". These are SSA values

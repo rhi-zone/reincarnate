@@ -4434,10 +4434,18 @@ export class GameRuntime {
   action_inherited(): void {
     throw Error("action_inherited: not yet implemented");
   }
-  action_if_variable(name: string, value: unknown, op: number): boolean {
-    if (!this._self) return false;
-    const v = (this._self as unknown as Record<string, unknown>)[name];
-    return op === 0 ? v === value : (v as number) < (value as number);
+  action_if_variable(variable: unknown, value: unknown, op: number): boolean {
+    const v = variable as number;
+    const r = value as number;
+    switch (op) {
+      case 0: return v === r;
+      case 1: return v < r;
+      case 2: return v > r;
+      case 3: return v !== r;
+      case 4: return v <= r;
+      case 5: return v >= r;
+      default: return false;
+    }
   }
   action_set_alarm(steps: number, alarm: number): void {
     if (!this._self) return;
