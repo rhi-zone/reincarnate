@@ -3970,7 +3970,7 @@ export class GameRuntime {
   /** Load trophy unlock state from storage into the in-memory set. */
   psn_init_np_libs(_titleId: string, _titleSecret: string, _passphrase: string): void { /* no-op — PSN not available in browser */ }
   psn_setup_trophies(): number { return 0; /* no-op — PSN not available in browser; trophy init via psn_init_trophy */ }
-  psn_check_np_availability(): boolean { return false; /* no-op — PSN not available in browser */ }
+  psn_check_np_availability(_pad: number, _refresh: number): boolean { return false; /* no-op — PSN not available in browser */ }
   psn_name_for_pad(_pad: number): string { return ""; /* no-op — PSN not available in browser */ }
   psn_init_trophy(_pad_index: number, _count?: number): void {
     const gameName = this._storage.gameName;
@@ -4952,27 +4952,27 @@ export class GameRuntime {
   action_current_room(): number { return this.room; }
 
   // ---- Platform stubs (PSN) ----
-  psn_get_leaderboard_score_range(_board: string, _start: number, _count: number): number { return -1; }
+  psn_get_leaderboard_score_range(_board: string, _start: number, _count: number, _end: number): number { return -1; }
   psn_get_leaderboard_score(_user: number, _boardIndex: number): number { return 0; }
-  psn_get_friends_scores(_board: string): number { return -1; }
+  psn_get_friends_scores(_board: string, _boardIndex: number, _start: number, _end: number): number { return -1; }
   psn_np_status(_user: number): number { return 0; }
   psn_net_check(_mode: number): boolean { return false; }
   psn_default_user(): number { return 0; }
   psn_set_content_restriction(_age: number): void { /* no-op */ }
   psn_post_leaderboard_score(_board: number, _idx: number, _score: number): void { /* no-op */ }
   psn_name_for_user(_user: number): string { return ""; }
-  psn_load_modules(_slot: number): void { /* no-op */ }
+  psn_load_modules(): void { /* no-op */ }
   psn_user_for_pad(_pad: number): number { return -1; }
 
   // ---- Platform stubs (Xbox One) ----
-  xboxone_read_player_leaderboard(_stat: string, _start: number, _count: number, _filter: number, _userId: number): number { return -1; }
+  xboxone_read_player_leaderboard(_stat: string, _start: number, _count: number, _filter: number): number { return -1; }
   xboxone_show_account_picker(_pad: number, _allowGuests: number): void { /* no-op */ }
   xboxone_show_profile_card_for_user(_userId: number, _pad: number): void { /* no-op */ }
   xboxone_set_rich_presence(_presence: string, _presenceDetail: number, _context: any): void { /* no-op */ }
   xboxone_user_is_signed_in(_userId: number): boolean { return false; }
   xboxone_suspend(): void { /* no-op */ }
   xboxone_stats_setup(_userId: number, _scid: string, _titleId: number): void { /* no-op */ }
-  xboxone_show_help(): void { /* no-op */ }
+  xboxone_show_help(_userId: number): void { /* no-op */ }
   xboxone_set_savedata_user(_userId: number): void { /* no-op */ }
   xboxone_is_suspending(): boolean { return false; }
 

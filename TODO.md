@@ -1926,6 +1926,16 @@ Discovered via Bounty reference comparison (2026-02-22). Fixed 2026-02-22.
 All previously listed functions have been implemented. Check `function_modules`
 in runtime.json for any newly referenced but unimplemented functions.
 
+## Custom Type Checker
+
+Currently `reincarnate check` shells out to `tsc`. We want a high-quality, general-purpose type checker that operates on the IR (not emitted code), since TypeScript is not our only backend:
+- Catch arity mismatches, missing functions, and type errors before emission
+- Backend-agnostic — validates IR-level types, works regardless of target language
+- Engine-agnostic — engine-specific coercion belongs in IR transforms, not the checker
+- Already have half the story (type inference in IR passes); need the checking/validation half
+
+Prior art: [crescent](https://github.com/rhi-zone/crescent) (`~/git/rhizone/crescent/`) — our own Lua type checker (useful reference for type-checking algorithms and infrastructure).
+
 ## IR Architecture
 
 ### Class Representation Audit (HIGH PRIORITY)

@@ -4834,7 +4834,10 @@
       "returns": "void"
     },
     "psn_check_np_availability": {
-      "params": [],
+      "params": [
+        "number",
+        "number"
+      ],
       "returns": "boolean"
     },
     "psn_communication_restriction_status": {
@@ -7710,6 +7713,7 @@
       "params": [
         "string",
         "number",
+        "number",
         "number"
       ],
       "returns": "number"
@@ -7723,7 +7727,10 @@
     },
     "psn_get_friends_scores": {
       "params": [
-        "string"
+        "string",
+        "number",
+        "number",
+        "number"
       ],
       "returns": "number"
     },
@@ -7764,9 +7771,7 @@
       "returns": "string"
     },
     "psn_load_modules": {
-      "params": [
-        "number"
-      ],
+      "params": [],
       "returns": "void"
     },
     "psn_user_for_pad": {
@@ -7778,7 +7783,6 @@
     "xboxone_read_player_leaderboard": {
       "params": [
         "string",
-        "number",
         "number",
         "number",
         "number"
@@ -7826,7 +7830,9 @@
       "returns": "void"
     },
     "xboxone_show_help": {
-      "params": [],
+      "params": [
+        "number"
+      ],
       "returns": "void"
     },
     "xboxone_set_savedata_user": {
