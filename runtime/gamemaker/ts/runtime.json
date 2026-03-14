@@ -283,7 +283,7 @@
     },
     "action_if_variable": {
       "params": [
-        "any",
+        "string",
         "any",
         "number"
       ],
