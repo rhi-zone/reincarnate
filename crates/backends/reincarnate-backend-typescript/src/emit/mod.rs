@@ -337,11 +337,23 @@ impl ClassRegistry {
     }
 
     pub(crate) fn lookup(&self, name: &str) -> Option<&ClassEntry> {
-        self.classes.get(name).or_else(|| {
-            // Try extracting the short name after `::`
-            let short = name.rsplit("::").next()?;
-            self.classes.get(short)
-        })
+        self.classes
+            .get(name)
+            .or_else(|| {
+                // Try extracting the short name after `::`
+                let short = name.rsplit("::").next()?;
+                self.classes.get(short)
+            })
+            .or_else(|| {
+                // Try sanitized form — raw GML names like "6parent" need the
+                // underscore prefix added by sanitize_ident → "_6parent".
+                let sanitized = sanitize_ident(name);
+                if sanitized != name {
+                    self.classes.get(&sanitized)
+                } else {
+                    None
+                }
+            })
     }
 }
 
