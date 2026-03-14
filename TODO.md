@@ -2444,31 +2444,36 @@ documented design decision about why `unknown` + narrowing is genuinely unworkab
 - [x] `withInstances<T>(…, callback: (inst: T) => any): any` → callback return `unknown`, outer `unknown`
 
 **Flash `amf.ts` — serialization:**
-- [ ] `readValue(ba: ByteArray): any` → `unknown`; `objects: any[]` → `unknown[]`
-  Callers must narrow before use — that is the correct design for deserialized data.
+- [x] `readValue(ba: ByteArray): any` → `unknown`; `objects: any[]` → `unknown[]`
 
 **Flash `xml.ts` — E4X:**
-- [ ] `escapeAttribute(value: any)` → `unknown`; `checkFilter(value: any): any` → `(value: unknown): unknown`
+- [x] `escapeAttribute(value: any)` → `unknown`; `checkFilter(value: any): any` → `(value: unknown): unknown`
 
 **Flash `events.ts` — covariance workaround:**
-- [ ] `listener: (event: any) => void` → `(event: Event) => void`
-  The existing comment claims TypeScript requires `any` for covariance — this is incorrect.
-  `(event: Event) => void` is a contravariant supertype compatible with handlers taking specific
-  event subtypes. The `any` is not needed.
+- [~] `listener: (event: any) => void` — `any` is REQUIRED here. TypeScript's strict function
+  type checking (`strictFunctionTypes`) makes parameter types contravariant for function literals.
+  `(event: MouseEvent) => void` is NOT assignable to `(event: Event) => void` or
+  `(event: unknown) => void`. The only option that accepts typed AS3 handlers without TS2345 is
+  `any`. Verified experimentally: changing to `unknown` causes ~191 new errors in Flash CC.
+  Fix requires either generics (loses ability to store heterogeneous listeners in a Map) or
+  living with `any` on the parameter. The comment in events.ts now explains this correctly.
 
 **Flash `utils.ts`:**
-- [ ] `cachedBind<T extends (...args: any[]) => any>(thisArg: any, fn: T)` →
-  `thisArg: unknown`; preserve arg types via `Parameters<T>` / `ReturnType<T>`
+- [x] `asType<T>(value, type): T | null` — changed from `any` return to generic `{ prototype: T }`
+  constraint + `T | null` return. Now surfaces ~186 AS3 null-safety bugs in Flash CC (game-author
+  bugs: unguarded `as` casts that could NPE at runtime — 103 TS2531, 69 TS2322, 17 TS2345).
+  Flash CC error count: 18 → 204.
+- [ ] `cachedBind<T extends (...args: any[]) => any>` — `any[]` is the accepted TypeScript idiom
+  for generic higher-order function constraints; return type could be improved to `Parameters<T>`.
 
 **Harlowe `engine.ts` / `context.ts` — story variables:**
-- [ ] `get(name: string): any` / `set(name: string, value: any)` → `unknown`
-- [ ] `Changer.args: any[]` → `unknown[]`
-- [ ] `printVal(v: any): Node` → `v: unknown`
-- [ ] `plus(a: any, b: any): any` / `minus(a: any, b: any): any` → `(a: unknown, b: unknown): unknown`
-  Harlowe's operator overloading; inputs and output are genuinely unknown; callers narrow.
+- [x] `get(name: string): any` / `set(name: string, value: any)` → `unknown`
+- [x] `Changer.args: any[]` → `unknown[]`
+- [x] `printVal(v: any): Node` → `v: unknown`
+- [x] `plus(a: any, b: any): any` / `minus(a: any, b: any): any` → `(a: unknown, b: unknown): unknown`
 
 **SugarCube `extensions.ts` — prototype extensions:**
-- [ ] `Array.prototype.delete(...items: any[])` → `...items: unknown[]`
+- [x] `Array.prototype.delete(...items: any[])` → `...items: unknown[]`
 
 ---
 

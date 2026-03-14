@@ -109,8 +109,8 @@ export function isType(value: unknown, type: Function): boolean {
 }
 
 /** AS3 `as` operator — returns value cast to T if it matches, null otherwise. */
-export function asType(value: unknown, type: Function): any {
-  return isType(value, type) ? value : null;
+export function asType<T>(value: unknown, type: { prototype: T }): T | null {
+  return (isType(value, type as unknown as Function) ? value : null) as T | null;
 }
 
 // ---------------------------------------------------------------------------

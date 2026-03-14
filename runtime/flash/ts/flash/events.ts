@@ -13,8 +13,10 @@ import type { URLRequestHeader } from "./net";
 /** AS3 `flash.events.IEventDispatcher` — event-dispatching capability. */
 export abstract class IEventDispatcher {
   // AS3 event handlers are covariant on the event parameter (e.g. MouseEvent, FocusEvent).
-  // TypeScript's strict function-type checking requires contravariance, so we use `any`
-  // to allow the full range of AS3-style typed event listeners without TS2345 errors.
+  // TypeScript's strict function-type checking requires contravariance for function types, so
+  // `(event: MouseEvent) => void` is NOT assignable to `(event: Event) => void` or
+  // `(event: unknown) => void`. `any` is the only type that bypasses this and allows typed
+  // AS3-style handlers. See TODO.md "Flash events.ts listener covariance" for details.
   abstract addEventListener(type: string, listener: (event: any) => void, useCapture?: boolean, priority?: number, useWeakReference?: boolean): void;
   abstract dispatchEvent(event: Event): boolean;
   abstract hasEventListener(type: string): boolean;
