@@ -1648,18 +1648,22 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 After runtime function coverage is comprehensive, remaining errors fall into these categories.
 These need compiler/emitter/IR fixes, not runtime additions.
 
-### 1. GML auto-coercion (TS2345, TS2322) — ~140 errors across games
+### 1. GML auto-coercion (TS2345, TS2322) — partially fixed, ~50 remaining across games
 GML silently coerces between types: `bool→number`, `number→string`, `string→number`,
 `GMLObject→number` (instance ID). The emitted TypeScript has strict types, so these produce
-TS2345 "argument not assignable" errors. Examples:
-- `audio_play_sound(snd, 0, true)` where `loop` param is typed `number` but GML passes `boolean`
-- `draw_text(x, y, 42)` where `text` param is typed `string` but GML passes a number
-- `instance_create(x, y, obj)` returns `GMLObject` but game assigns to `number` variable
+TS2345 "argument not assignable" errors.
 
-**Fix**: A `GmlAutoCoerce` IR pass that inserts `Number()`, `String()`, or `Boolean()` casts
-at call sites when the argument type doesn't match the parameter type. Must run after
-ConstraintSolve (needs final types). Different from `GmlBoolArithCoerce` which handles
-arithmetic operators, not call sites.
+**Status**: Phase 4b in `GmlBoolArithCoerce` handles call-site coercion using both internal
+(`callee_param_types`) and external (`external_function_sigs`) param types. This fixed many
+errors. Remaining issues:
+- **ConstraintSolve type pollution**: `get_field v0, "room"` gets type `string` (from callee
+  sig back-propagation), but emitter outputs `this.room` which TS knows is `number` from the
+  class definition. The coercion pass sees matching types (both string) and skips. ~26 errors
+  in 10SecNinjaX from `action_if_variable` calls.
+- **GMLObject→number** (instance ID): `this.id` returns `GMLObject` but callees expect `number`.
+  ~8 errors in 10SecNinjaX. Needs dedicated InstanceId type or `as any` cast.
+- **Script calls with wrong arg types**: `SpriteFromName(rt, self, 531)` where param is `string`
+  but caller passes number. ~6 errors in 10SecNinjaX.
 
 ### 2. Linearizer scoping bugs (TS2304 `v*` variables) — ~25 errors in Schism/MaxManos2
 Variables like `v17`, `v23`, `v48` appear as TS2304 "Cannot find name". These are SSA values
@@ -1679,7 +1683,7 @@ return), using it as `arr[id]` produces TS7053 "can't index type Number".
 `InstanceId` type in the IR or widening to `any` when a value flows through both
 instance-ID and number contexts.
 
-### 4. Duplicate identifiers (TS2300, TS1117) — ~4 errors in 12BetterThan6
+### 4. Duplicate identifiers (TS2300, TS1117) — ~4 errors in 12BetterThan6, ~24 in 10SecNinjaX
 Object literal duplicate keys and duplicate variable names from name collisions in the
 emitter's sanitization pass.
 
@@ -1700,9 +1704,8 @@ These are `func_ref_unknown_0x...` identifiers.
 **Fix**: Better function pointer resolution in the GML translator, or generate stub
 declarations for unresolved references.
 
-### 7. Read-only property assignment (TS2540) — 1 error in 12BetterThan6
-GML allows `room = next_room` to change rooms. Our `GMLObject.room` is a getter (read-only).
-Need a setter that delegates to `_rt.room_goto()`.
+### 7. Read-only property assignment (TS2540) — FIXED
+Room setter added to GMLObject (commit `b825e00`).
 
 ---
 
