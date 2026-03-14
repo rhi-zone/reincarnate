@@ -1619,8 +1619,8 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 
 | Game | Source | Status |
 |------|--------|--------|
-| 10 Second Ninja X | `data.win` 134MB | ⚠️ 379 TS errors (2026-03-14) |
-| 12 is Better Than 6 | `game.unx` 179MB | ⚠️ 41 TS errors (2026-03-14, was panicking) |
+| 10 Second Ninja X | `data.win` 134MB | ⚠️ 338 TS errors (2026-03-14) |
+| 12 is Better Than 6 | `game.unx` 179MB | ⚠️ 22 TS errors (2026-03-14, was panicking) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
 | Dead Estate | `data.win` 192MB | ⚠️ 5 TS errors + 1 translation error (2026-03-14) |
@@ -1628,14 +1628,14 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ⚠️ 2 TS errors (2026-03-14) |
 | Max Manos | `data.win` 47MB | ⚠️ 7 TS errors (2026-03-14) |
-| Max Manos 2 | `data.win` 10MB | ⚠️ 52 TS errors (tilemap/skeleton stubs, vNN scoping) |
+| Max Manos 2 | `data.win` 10MB | ⚠️ 31 TS errors (tilemap/skeleton stubs, vNN scoping) |
 | MINDWAVE Demo | `data.win` 324MB | ⚠️ ~26k TS errors (runtime API gaps) |
 | Momodora RUtM | `.exe` 36MB | ❌ PE-embedded FORM |
 | Nova Drift | `data.win` 415MB | ❌ YYC |
 | Nubby's Number Factory | `data.win` 66MB | ⚠️ ~77k TS errors (runtime API gaps) |
 | Risk of Rain | `game.unx` 34MB | ❌ YYC (empty CODE chunk) |
 | Rocket Rats | `data.win` 2MB | ❌ YYC |
-| Schism | `data.win` 77MB | ⚠️ 452 TS errors (2026-03-14, was 793) |
+| Schism | `data.win` 77MB | ⚠️ 369 TS errors (2026-03-14, was 793) |
 | Shelldiver | `data.win` 2MB | ❌ YYC |
 | Soulknight Survivor | `data.win` 35MB | ❌ YYC |
 | Undertale | `data.win` 5MB | ⚠️ 8 TS errors (6 unreachable + 2 game-author — all wontfix) |
