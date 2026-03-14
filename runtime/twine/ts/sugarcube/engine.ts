@@ -34,7 +34,7 @@ export class SCEngine {
     if (this.globalsInitialized) return;
     this.globalsInitialized = true;
 
-    const g = globalThis as any;
+    const g = globalThis as typeof globalThis & Record<string, unknown>;
     const rt = this.rt;
     const Platform = rt.Platform;
     const State = rt.State;
@@ -131,7 +131,7 @@ export class SCEngine {
       get turns() { return State.historyLength(); },
       get passage() { return Navigation.current(); },
       getVar(name: string) { return State.get(name); },
-      setVar(name: string, value: any) { State.set(name, value); },
+      setVar(name: string, value: unknown) { State.set(name, value); },
       prng,
     };
 
@@ -156,7 +156,7 @@ export class SCEngine {
             Navigation.goto(title);
           }
         },
-        save(i: number, _title?: string, _metadata?: any) {
+        save(i: number, _title?: string, _metadata?: unknown) {
           for (const cb of onSaveCallbacks) cb();
           Platform.saveSlot(String(i));
         },
@@ -176,7 +176,7 @@ export class SCEngine {
             Navigation.goto(title);
           }
         },
-        save(_title?: string, _metadata?: any) { Platform.saveSlot("auto"); },
+        save(_title?: string, _metadata?: unknown) { Platform.saveSlot("auto"); },
         delete() { Platform.deleteSlot("auto"); },
         ok() { return true; },
       },
@@ -258,7 +258,7 @@ export class SCEngine {
     g.Passage = PassageShim;
 
     g.Scripting = {
-      evalJavaScript(expr: string): any {
+      evalJavaScript(expr: string): unknown {
         return new Function(`return (${expr})`)();
       },
       evalTwineScript(code: string, _output?: DocumentFragment): void {
@@ -478,12 +478,12 @@ export class SCEngine {
         return dialogBody;
       },
       isOpen() { return Platform.isDialogOpen(); },
-      open(_options?: any, _closeFn?: Function) {
+      open(_options?: unknown, _closeFn?: Function) {
         Platform.showDialog(dialogTitle, dialogBody);
       },
       close() { Platform.closeDialog(); },
       body() { return dialogBody; },
-      append(...content: any[]) {
+      append(...content: unknown[]) {
         for (const c of content) {
           if (c instanceof Node) dialogBody.appendChild(c);
           else dialogBody.appendChild(Output.doc.createTextNode(String(c)));
@@ -542,8 +542,8 @@ export class SCEngine {
   }
 
   /** Resolve a bare name (used for function lookups in expression context). */
-  resolve(name: string): any {
-    const g = (globalThis as any)[name];
+  resolve(name: string): unknown {
+    const g = (globalThis as typeof globalThis & Record<string, unknown>)[name];
     if (g !== undefined) return g;
     return this.rt.Navigation.getPassage(name);
   }
@@ -623,82 +623,82 @@ const BREAK_SENTINEL = Symbol("break");
 const CONTINUE_SENTINEL = Symbol("continue");
 
 /** Deep clone a value (SugarCube's clone() function). */
-export function clone(value: any): any {
+export function clone(value: unknown): unknown {
   if (value === null || value === undefined) return value;
   if (typeof value !== "object") return value;
 
-  if (typeof (value as any).clone === "function") {
-    return (value as any).clone(true);
+  if (typeof (value as Record<string, unknown>)["clone"] === "function") {
+    return (value as { clone(deep: boolean): unknown }).clone(true);
   }
 
   if (value instanceof Array) {
-    const copy = new Array(value.length);
+    const copy: unknown[] = new Array(value.length);
     for (const key of Object.keys(value)) {
-      (copy as any)[key] = clone((value as any)[key]);
+      (copy as Record<string, unknown>)[key] = clone((value as Record<string, unknown>)[key]);
     }
     return copy;
   }
 
   if (value instanceof Date) return new Date(value.getTime());
   if (value instanceof Map) {
-    const copy = new Map();
+    const copy = new Map<unknown, unknown>();
     value.forEach((val, key) => copy.set(clone(key), clone(val)));
     return copy;
   }
   if (value instanceof RegExp) return new RegExp(value);
   if (value instanceof Set) {
-    const copy = new Set();
+    const copy = new Set<unknown>();
     value.forEach((val) => copy.add(clone(val)));
     return copy;
   }
 
-  const copy = Object.create(Object.getPrototypeOf(value));
+  const copy = Object.create(Object.getPrototypeOf(value)) as Record<string, unknown>;
   for (const key of Object.keys(value)) {
-    copy[key] = clone(value[key]);
+    copy[key] = clone((value as Record<string, unknown>)[key]);
   }
   return copy;
 }
 
 /** Create an iterator over a collection (for <<for _v range collection>>). */
-export function iterate(collection: any): { entries: [any, any][]; index: number } {
-  const entries: [any, any][] = [];
+export function iterate(collection: unknown): { entries: [unknown, unknown][]; index: number } {
+  const entries: [unknown, unknown][] = [];
   if (Array.isArray(collection)) {
     for (let i = 0; i < collection.length; i++) {
       entries.push([i, collection[i]]);
     }
   } else if (collection && typeof collection === "object") {
     for (const key of Object.keys(collection)) {
-      entries.push([key, (collection as any)[key]]);
+      entries.push([key, (collection as Record<string, unknown>)[key]]);
     }
   }
   return { entries, index: 0 };
 }
 
 /** Check if an iterator has more elements. */
-export function iterator_has_next(iter: { entries: [any, any][]; index: number }): boolean {
+export function iterator_has_next(iter: { entries: [unknown, unknown][]; index: number }): boolean {
   return iter.index < iter.entries.length;
 }
 
 /** Get the next value from an iterator. */
-export function iterator_next_value(iter: { entries: [any, any][]; index: number }): any {
+export function iterator_next_value(iter: { entries: [unknown, unknown][]; index: number }): unknown {
   const entry = iter.entries[iter.index];
   iter.index++;
   return entry ? entry[1] : undefined;
 }
 
 /** Get the next key from an iterator. */
-export function iterator_next_key(iter: { entries: [any, any][]; index: number }): any {
+export function iterator_next_key(iter: { entries: [unknown, unknown][]; index: number }): unknown {
   const entry = iter.entries[iter.index - 1];
   return entry ? entry[0] : undefined;
 }
 
 /** Unsigned right shift (>>>). */
-export function ushr(a: any, b: any): number {
+export function ushr(a: unknown, b: unknown): number {
   return (a as number) >>> (b as number);
 }
 
 /** instanceof check. */
-export function instanceof_(value: any, type_: any): boolean {
-  return value instanceof type_;
+export function instanceof_(value: unknown, type_: unknown): boolean {
+  return value instanceof (type_ as new (...args: unknown[]) => unknown);
 }
 export { instanceof_ as instanceof };

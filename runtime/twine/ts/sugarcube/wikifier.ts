@@ -224,12 +224,12 @@ export class Wikifier {
   }
 
   /** Get a story variable value. */
-  static getValue(name: string): any {
+  static getValue(name: string): unknown {
     return Wikifier.rt.State.get(name);
   }
 
   /** Set a story variable value. */
-  static setValue(name: string, value: any): void {
+  static setValue(name: string, value: unknown): void {
     Wikifier.rt.State.set(name, value);
   }
 
@@ -445,10 +445,10 @@ export class Wikifier {
   // --- Expression evaluation helpers ---
 
   /** Evaluate a JavaScript expression in the SugarCube context. */
-  static evalExpression(expr: string): any {
-    const g = globalThis as any;
+  static evalExpression(expr: string): unknown {
+    const g = globalThis as typeof globalThis & Record<string, unknown>;
     return new Function("State", "setup", "Config", "settings", `return (${expr})`)(
-      g.State, g.setup, g.Config, g.settings,
+      g["State"], g["setup"], g["Config"], g["settings"],
     );
   }
 
@@ -974,8 +974,8 @@ _addParser(registry, {
     if (macroDef) {
       // Parse arguments
       const parsedArgs = macroDef.skipArgs ? [] : parseMacroArgs(rawArgs);
-      (parsedArgs as any).raw = rawArgs;
-      (parsedArgs as any).full = rawArgs;
+      (parsedArgs as unknown[] & { raw?: string; full?: string }).raw = rawArgs;
+      (parsedArgs as unknown[] & { raw?: string; full?: string }).full = rawArgs;
 
       // Check if this is a block macro (has tags)
       const isBlock = macroDef.tags != null && Array.isArray(macroDef.tags);
@@ -1030,7 +1030,7 @@ _addParser(registry, {
 
 interface MacroPayloadEntry {
   name: string;
-  args: any[];
+  args: unknown[];
   contents: string;
   output: DocumentFragment;
 }
@@ -1047,7 +1047,7 @@ function collectMacroPayload(
 
   // First payload entry is for the main macro body
   let currentName = macroName;
-  let currentArgs: any[] = [];
+  let currentArgs: unknown[] = [];
   let bodyStart = w.nextMatch;
 
   // Scan for clause tags and closing tag
@@ -1144,10 +1144,10 @@ class BodyWikifier {
  *  Handles quoted strings, numbers, booleans, null, undefined,
  *  and bare expressions.
  */
-function parseMacroArgs(raw: string): any[] {
+function parseMacroArgs(raw: string): unknown[] {
   if (!raw) return [];
 
-  const args: any[] = [];
+  const args: unknown[] = [];
   const re = /(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|`((?:\\.|[^`\\])*)`|\[(?:img)??\[|(?:[^\s"'`\[\]]+))/g;
   let match;
 

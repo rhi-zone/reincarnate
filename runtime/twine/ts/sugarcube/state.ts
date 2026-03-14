@@ -9,9 +9,9 @@ import { type SaveableState, type HistoryStrategy, snapshotHistory } from "../pl
 
 export class SCState implements SaveableState {
   /** Story ($) variables — exposed for `State.variables` global alias. */
-  readonly storyVars: Record<string, any> = {};
+  readonly storyVars: Record<string, unknown> = {};
   /** Temporary (_) variables — exposed for `State.temporary` global alias. */
-  readonly tempVars: Record<string, any> = {};
+  readonly tempVars: Record<string, unknown> = {};
   private history: HistoryStrategy;
 
   constructor(history?: HistoryStrategy) {
@@ -19,7 +19,7 @@ export class SCState implements SaveableState {
   }
 
   /** Get a story or temp variable. */
-  get(name: string): any {
+  get(name: string): unknown {
     if (name.startsWith("_")) {
       return this.tempVars[name];
     }
@@ -27,7 +27,7 @@ export class SCState implements SaveableState {
   }
 
   /** Set a story or temp variable. */
-  set(name: string, value: any): void {
+  set(name: string, value: unknown): void {
     if (name.startsWith("_")) {
       this.tempVars[name] = value;
     } else {

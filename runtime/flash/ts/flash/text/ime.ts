@@ -15,5 +15,5 @@ export abstract class IIMEClient {
   abstract getTextBounds(startIndex: number, endIndex: number): Rectangle;
   abstract getTextInRange(startIndex: number, endIndex: number): string;
   abstract selectRange(anchorIndex: number, activeIndex: number): void;
-  abstract updateComposition(text: string, attributes: any[], compositionStartIndex: number, compositionEndIndex: number): void;
+  abstract updateComposition(text: string, attributes: unknown[], compositionStartIndex: number, compositionEndIndex: number): void;
 }

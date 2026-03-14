@@ -36,6 +36,9 @@ export abstract class IGraphicsStroke {}
 // Graphics
 // ---------------------------------------------------------------------------
 
+// `args` is typed `any[]` rather than `unknown[]` because the renderer (replay loop)
+// accesses individual args by index with implicit type expectations per command kind.
+// A proper fix would use a tagged union per command kind. See TODO.md Track 2.
 interface DrawCommand {
   kind: string;
   args: any[];
@@ -852,7 +855,7 @@ export class MovieClip extends Sprite {
     _initTimelineChildren(this);
   }
 
-  addFrameScript(...args: any[]): void {
+  addFrameScript(...args: unknown[]): void {
     // Arguments are pairs: (0-based frameIndex, callback | null)
     for (let i = 0; i < args.length - 1; i += 2) {
       const frameIndex = args[i] as number;
