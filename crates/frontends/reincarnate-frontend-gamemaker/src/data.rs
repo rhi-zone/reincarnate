@@ -421,7 +421,12 @@ fn generate_rooms(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]
             .resolve_string(entry.name)
             .unwrap_or_else(|_| format!("room_{i}"));
         let key = naming::room_name_to_pascal(&raw);
-        let _ = writeln!(out, "  {key}: {i},");
+        let key_token = if is_valid_js_ident(&key) {
+            key
+        } else {
+            serde_json::to_string(&key).expect("string serialization cannot fail")
+        };
+        let _ = writeln!(out, "  {key_token}: {i},");
     }
     out.push_str("} as const;\n");
 
