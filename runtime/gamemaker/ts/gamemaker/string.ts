@@ -25,5 +25,6 @@ export function string_delete(s: string, index: number, count: number): string {
 export function string_count(sub: string, s: string): number {
   return s.split(sub).length - 1;
 }
+export function string_trim(s: string): string { return s.trim(); }
 
 // GML's string() is just String() — emitted code calls String() directly.

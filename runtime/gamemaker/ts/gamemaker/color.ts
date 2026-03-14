@@ -43,6 +43,10 @@ export function make_color_rgb(r: number, g: number, b: number): number {
   return (b << 16) | (g << 8) | r;
 }
 
+export function make_colour_rgb(r: number, g: number, b: number): number {
+  return make_color_rgb(r, g, b);
+}
+
 export function merge_color(col1: number, col2: number, amount: number): number {
   return make_color_rgb(
     Math.round(color_get_red(col1) * (1 - amount) + color_get_red(col2) * amount),

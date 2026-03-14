@@ -1167,6 +1167,9 @@ export class GameRuntime {
     }
   }
   array_shuffle_ext(arr: any[], _start?: number, _count?: number): void { this.array_shuffle(arr, _start, _count); }
+  array_get_index(arr: any[], value: any): number { return arr.indexOf(value); }
+  array_contains(arr: any[], value: any): boolean { return arr.indexOf(value) !== -1; }
+  array_resize(arr: any[], newSize: number): void { arr.length = newSize; }
 
   // ---- Type-check functions ----
 
@@ -1455,7 +1458,9 @@ export class GameRuntime {
   audio_sound_get_track_position(handle: number): number { return audioGetPosition(this._audio, handle); }
   audio_exists(sound: number): boolean { return sound >= 0 && sound < this.sounds.length && this.sounds[sound]!.url !== ""; }
   audio_get_name(sound: number): string { return this.sounds[sound]?.name ?? ""; }
+  audio_group_is_loaded(_group: number): boolean { return true; /* all audio loaded at startup */ }
   audio_group_load(_group: number): void { /* no-op — all audio loaded at startup */ }
+  audio_group_unload(_group: number): void { /* no-op */ }
   audio_group_stop_all(_group: number): void { audioStopAll(this._audio); }
   audio_group_set_gain(_group: number, gain: number, timeMs: number): void { audioSetNodeParam(this._audio, 0, "gain", gain, timeMs); }
   audio_channel_num(_num: number): void { /* no-op — browser audio has no fixed channel limit */ }
@@ -1679,6 +1684,14 @@ export class GameRuntime {
   ds_list_exists(list: number): boolean { return this._dsLists.has(list); }
   ds_list_find_index(list: number, val: any): number { return this._dsLists.get(list)?.indexOf(val) ?? -1; }
   ds_list_sort(list: number, ascending: boolean): void { this._dsLists.get(list)?.sort((a, b) => ascending ? a - b : b - a); }
+  ds_list_shuffle(list: number): void {
+    const l = this._dsLists.get(list);
+    if (!l) return;
+    for (let i = l.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [l[i], l[j]] = [l[j], l[i]];
+    }
+  }
 
   ds_map_create(): number { const id = this._dsNextId++; this._dsMaps.set(id, new Map()); return id; }
   ds_map_destroy(map: number): void { this._dsMaps.delete(map); }
@@ -1942,6 +1955,7 @@ export class GameRuntime {
     const s = n.toFixed(dec);
     return s.length < tot ? s.padStart(tot) : s;
   }
+  font_add(_name: string, _size: number, _bold: boolean, _italic: boolean, _first: number, _last: number): number { throw new Error("font_add: not yet implemented"); }
   font_get_name(font: number): string { return this.fonts[font]?.name ?? ""; }
   font_exists(font: number): boolean { return font >= 0 && font < this.fonts.length && this.fonts[font] != null; }
 
@@ -1949,6 +1963,7 @@ export class GameRuntime {
   camera_get_view_x(cam: number): number { return this._cameras.get(cam)?.x ?? 0; }
   camera_get_view_y(cam: number): number { return this._cameras.get(cam)?.y ?? 0; }
   camera_set_view_pos(cam: number, x: number, y: number): void { const c = this._cameras.get(cam); if (c) { c.x = x; c.y = y; } }
+  camera_set_view_size(cam: number, w: number, h: number): void { const c = this._cameras.get(cam); if (c) { c.w = w; c.h = h; } }
   camera_get_view_width(cam: number): number { return this._cameras.get(cam)?.w ?? 0; }
   camera_get_view_height(cam: number): number { return this._cameras.get(cam)?.h ?? 0; }
 
@@ -2802,6 +2817,7 @@ export class GameRuntime {
 
   // ---- Tags / misc ----
   tag_get_assets(_tag: string, _kind?: number): any[] { return []; /* no tag data available */ }
+  url_get_domain(): string { return "localhost"; }
   url_open_ext(url: string, _target: string): void { window.open(url, "_blank"); }
 
   // ---- View extras ----
@@ -3035,6 +3051,7 @@ export class GameRuntime {
   }
 
   // ---- More Steam ----
+  steam_init(): boolean { return false; }
   steam_initialised(): boolean { return false; }
   steam_indicate_achievement_progress(_name: string, _cur: number, _max: number): void { /* no-op — progress display only */ }
   steam_get_user_steam_id(): number { return 0; }
@@ -3156,8 +3173,10 @@ export class GameRuntime {
   // ---- View helpers ----
   view_set_visible(_view: number, _vis: boolean): void { /* no-op */ }
   view_set_camera(_view: number, _cam: number): void { /* no-op */ }
+  view_set_surface_id(_view: number, _surface: number): void { /* no-op */ }
 
   // ---- Display extras ----
+  display_set_gui_maximize(_xscale: number, _yscale: number, _xoffset: number, _yoffset: number): void { /* no-op */ }
   display_set_gui_size(_w: number, _h: number): void { /* no-op */ }
 
   // ---- Room extras ----
@@ -3475,6 +3494,7 @@ export class GameRuntime {
 
   // ---- More Steam ----
   steam_utils_enable_callbacks(_enable?: boolean): void { /* no-op */ }
+  steam_upload_score(_leaderboard: string, _score: number): void { /* no-op — Steam leaderboards not available in browser */ }
   steam_upload_score_buffer_ext(_name: string, _score: number, _buf: number, ..._args: any[]): void { /* no-op — Steam leaderboards not available in browser */ }
   steam_upload_score_ext(_name: string, _score: number, ..._args: any[]): void { /* no-op — Steam leaderboards not available in browser */ }
   steam_ugc_start_item_update(_appId: number, _fileId: number): number { return -1; /* no-op — Steam UGC not available in browser */ }
@@ -3635,6 +3655,7 @@ export class GameRuntime {
 
   // ---- Layer extras ----
   layer_get_depth(_layer: any): number { return 0; }
+  layer_get_visible(_layer: any): boolean { return true; }
   layer_set_visible(_layer: any, _visible: boolean): void { /* no-op */ }
   layer_x(_layer: any, _x?: number): any { if (_x !== undefined) return; return 0; }
   layer_y(_layer: any, _y?: number): any { if (_y !== undefined) return; return 0; }
@@ -4487,6 +4508,7 @@ export class GameRuntime {
   os_get_language(): string { return navigator?.language?.split("-")[0] ?? "en"; }
   os_get_region(): string { return navigator?.language?.split("-")[1]?.toUpperCase() ?? "US"; }
   extension_stubfunc_real(): number { return 0; }
+  extension_stubfunc_string(): string { return ""; }
 
   // ---- Tile extras ----
   tile_layer_show(_layer: number): void { /* no-op */ }

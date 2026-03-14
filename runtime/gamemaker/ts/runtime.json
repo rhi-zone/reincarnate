@@ -500,6 +500,13 @@
       ],
       "returns": "*"
     },
+    "array_contains": {
+      "params": [
+        "any",
+        "any"
+      ],
+      "returns": "boolean"
+    },
     "array_copy": {
       "params": [
         "any[]",
@@ -538,6 +545,13 @@
       ],
       "returns": "*"
     },
+    "array_get_index": {
+      "params": [
+        "any",
+        "any"
+      ],
+      "returns": "number"
+    },
     "array_insert": {
       "params": [
         "any[]",
@@ -563,6 +577,13 @@
         "int"
       ],
       "returns": "int"
+    },
+    "array_resize": {
+      "params": [
+        "any",
+        "number"
+      ],
+      "returns": "void"
     },
     "array_set": {
       "params": [
@@ -630,6 +651,12 @@
       ],
       "returns": "string"
     },
+    "audio_group_is_loaded": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
     "audio_group_load": {
       "params": [
         "number"
@@ -645,6 +672,12 @@
       "returns": "void"
     },
     "audio_group_stop_all": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_group_unload": {
       "params": [
         "number"
       ],
@@ -951,6 +984,14 @@
       ],
       "returns": "void"
     },
+    "camera_set_view_size": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "ceil": {
       "params": [
         "number"
@@ -1207,6 +1248,15 @@
       "params": [
         "number",
         "boolean"
+      ],
+      "returns": "void"
+    },
+    "display_set_gui_maximize": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
       ],
       "returns": "void"
     },
@@ -2093,6 +2143,12 @@
       ],
       "returns": "int"
     },
+    "ds_list_shuffle": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
     "ds_list_sort": {
       "params": [
         "number",
@@ -2406,6 +2462,10 @@
       "params": [],
       "returns": "number"
     },
+    "extension_stubfunc_string": {
+      "params": [],
+      "returns": "string"
+    },
     "execute_string": {
       "params": [
         "string"
@@ -2518,6 +2578,17 @@
     },
     "floor": {
       "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "font_add": {
+      "params": [
+        "string",
+        "number",
+        "boolean",
+        "boolean",
+        "number",
         "number"
       ],
       "returns": "number"
@@ -3259,6 +3330,12 @@
         "string"
       ],
       "returns": "number"
+    },
+    "layer_get_visible": {
+      "params": [
+        "any"
+      ],
+      "returns": "boolean"
     },
     "layer_get_x": {
       "params": [
@@ -4966,6 +5043,10 @@
       ],
       "returns": "void"
     },
+    "steam_init": {
+      "params": [],
+      "returns": "boolean"
+    },
     "steam_initialised": {
       "params": [],
       "returns": "boolean"
@@ -5496,6 +5577,13 @@
       "params": [],
       "returns": "void"
     },
+    "steam_upload_score": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
     "steam_upload_score_buffer_ext": {
       "params": [
         "string",
@@ -5682,6 +5770,12 @@
       "params": [
         "string",
         "string",
+        "string"
+      ],
+      "returns": "string"
+    },
+    "string_trim": {
+      "params": [
         "string"
       ],
       "returns": "string"
@@ -5960,6 +6054,10 @@
       ],
       "returns": "number"
     },
+    "url_get_domain": {
+      "params": [],
+      "returns": "string"
+    },
     "url_open_ext": {
       "params": [
         "string",
@@ -6176,6 +6274,13 @@
       ],
       "returns": "void"
     },
+    "view_set_surface_id": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "view_set_visible": {
       "params": [
         "number",
@@ -6341,7 +6446,8 @@
         "string_char_at",
         "string_pos",
         "string_delete",
-        "string_count"
+        "string_count",
+        "string_trim"
       ],
       "path": "gamemaker/string"
     },
@@ -6380,6 +6486,7 @@
         "color_get_green",
         "color_get_blue",
         "make_color_rgb",
+        "make_colour_rgb",
         "merge_color",
         "color_get_hue"
       ],
@@ -6429,6 +6536,7 @@
         "instance_position_list",
         "object_is_ancestor",
         "layer_get_id",
+        "layer_get_visible",
         "room_goto",
         "room_goto_next",
         "room_goto_previous",
@@ -6462,6 +6570,9 @@
         "array_sort",
         "array_shuffle",
         "array_shuffle_ext",
+        "array_get_index",
+        "array_contains",
+        "array_resize",
         "is_array",
         "is_string",
         "is_real",
@@ -6513,7 +6624,9 @@
         "audio_sound_get_gain",
         "audio_sound_pitch",
         "audio_master_gain",
+        "audio_group_is_loaded",
         "audio_group_load",
+        "audio_group_unload",
         "audio_group_stop_all",
         "audio_group_set_gain",
         "part_system_create",
@@ -6549,6 +6662,7 @@
         "ds_list_clear",
         "ds_list_exists",
         "ds_list_find_index",
+        "ds_list_shuffle",
         "ds_list_sort",
         "ds_map_create",
         "ds_map_destroy",
@@ -6631,6 +6745,7 @@
         "camera_get_view_x",
         "camera_get_view_y",
         "camera_set_view_pos",
+        "camera_set_view_size",
         "camera_get_view_width",
         "camera_get_view_height",
         "layer_background_get_id",
@@ -6725,6 +6840,7 @@
         "steam_input_run_frame",
         "steam_file_write",
         "steam_file_exists",
+        "steam_init",
         "steam_initialised",
         "steam_indicate_achievement_progress",
         "steam_get_user_steam_id",
@@ -6765,6 +6881,8 @@
         "window_set_position",
         "view_set_visible",
         "view_set_camera",
+        "view_set_surface_id",
+        "display_set_gui_maximize",
         "display_set_gui_size",
         "room_get_name",
         "font_get_size",
@@ -6825,6 +6943,7 @@
         "buffer_peek",
         "steam_utils_enable_callbacks",
         "steam_upload_score_buffer_ext",
+        "steam_upload_score",
         "steam_upload_score_ext",
         "steam_ugc_start_item_update",
         "steam_ugc_set_item_description",
@@ -6894,6 +7013,7 @@
         "display_get_gui_width",
         "display_get_gui_height",
         "display_reset",
+        "font_add",
         "font_add_sprite_ext",
         "string_byte_length",
         "string_digits",
@@ -6902,6 +7022,7 @@
         "struct_get_from_hash",
         "surface_copy",
         "tag_get_assets",
+        "url_get_domain",
         "url_open_ext",
         "view_set_hport",
         "view_set_wport",
@@ -7190,6 +7311,7 @@
         "os_get_language",
         "os_get_region",
         "extension_stubfunc_real",
+        "extension_stubfunc_string",
         "tile_layer_show",
         "action_move_point"
       ],
