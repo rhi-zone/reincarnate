@@ -32,6 +32,7 @@ use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
 use reincarnate_core::ir::module::StructDef;
 use reincarnate_core::ir::ty::Type;
+use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{Function, Module, ValueId};
 use reincarnate_core::pipeline::{Transform, TransformResult};
 
@@ -479,15 +480,66 @@ fn coerce_bool_call_args(
 // Pass 5 — Bool operand in Cmp with numeric other side (TS2367)
 // ---------------------------------------------------------------------------
 
-/// Coerce Bool operands in comparison ops when the other side is numeric.
+/// Try to resolve a ValueId to its compile-time constant (following Copy chains).
+fn try_get_const(func: &Function, v: ValueId) -> Option<Constant> {
+    for inst in func.insts.values() {
+        if inst.result == Some(v) {
+            match &inst.op {
+                Op::Const(c) => return Some(c.clone()),
+                Op::Copy(src) => return try_get_const(func, *src),
+                _ => return None,
+            }
+        }
+    }
+    None
+}
+
+/// Convert a numeric constant to its boolean equivalent (0→false, 1→true).
+/// Returns None for non-0/1 values.
+fn numeric_const_to_bool(c: &Constant) -> Option<bool> {
+    match c {
+        Constant::Int(0) | Constant::UInt(0) => Some(false),
+        Constant::Int(1) | Constant::UInt(1) => Some(true),
+        Constant::Float(f) if *f == 0.0 => Some(false),
+        Constant::Float(f) if *f == 1.0 => Some(true),
+        _ => None,
+    }
+}
+
+/// Insert a `Const(Bool(val))` before `before_inst_id` and return the new ValueId.
+fn insert_bool_const_before(func: &mut Function, val: bool, before_inst_id: InstId) -> ValueId {
+    let vid = func.value_types.push(Type::Bool);
+    let iid = func.insts.push(Inst {
+        op: Op::Const(Constant::Bool(val)),
+        result: Some(vid),
+        span: None,
+    });
+    'outer: for block in func.blocks.values_mut() {
+        for (pos, &existing) in block.insts.iter().enumerate() {
+            if existing == before_inst_id {
+                block.insts.insert(pos, iid);
+                break 'outer;
+            }
+        }
+    }
+    vid
+}
+
+/// Coerce Bool-vs-numeric comparisons so TypeScript doesn't flag TS2367.
 ///
 /// GML treats booleans as numbers, so `(x > y) === 0` is valid GML.
-/// TypeScript with strict mode flags this: "types 'boolean' and 'number'
-/// have no overlap" (TS2367).  We insert Cast(Bool→Float(64)) on the Bool
-/// side so TypeScript sees `Number(x > y) === 0`.
+/// Instead of `Number(x > y) === 0` (which is a suppression), we replace
+/// the numeric constant with its boolean equivalent:
+///   - `bool === 0` → `bool === false`
+///   - `bool === 1` → `bool === true`
+///   - `bool !== 0` → `bool !== false`
+///
+/// For non-constant numeric operands or values other than 0/1, falls back
+/// to `Cast(Bool→Float(64))` (emits `Number(expr)`).
 fn coerce_bool_cmp_operands(func: &mut Function, bool_returning: &HashSet<String>) -> bool {
     let result_map = result_inst_map(func);
 
+    // Each entry: (inst_id, lhs, rhs, lhs_is_bool, rhs_is_bool)
     let targets: Vec<(InstId, ValueId, ValueId, bool, bool)> = func
         .insts
         .iter()
@@ -500,7 +552,7 @@ fn coerce_bool_cmp_operands(func: &mut Function, bool_returning: &HashSet<String
             let b_bool = needs_arith_coerce(func, b, &result_map, bool_returning);
             let a_num = is_numeric(&func.value_types[a]);
             let b_num = is_numeric(&func.value_types[b]);
-            // Coerce when one side is bool and the other is numeric.
+            // Only when one side is bool and the other is numeric.
             let coerce_a = a_bool && b_num;
             let coerce_b = b_bool && a_num;
             if coerce_a || coerce_b {
@@ -515,20 +567,39 @@ fn coerce_bool_cmp_operands(func: &mut Function, bool_returning: &HashSet<String
         return false;
     }
 
-    for (inst_id, lhs, rhs, lhs_coerce, rhs_coerce) in targets {
-        let new_lhs = if lhs_coerce {
-            insert_cast_before(func, lhs, inst_id, Type::Float(64))
-        } else {
-            lhs
-        };
-        let new_rhs = if rhs_coerce {
-            insert_cast_before(func, rhs, inst_id, Type::Float(64))
-        } else {
-            rhs
-        };
-        if let Op::Cmp(_, a, b) = &mut func.insts[inst_id].op {
-            *a = new_lhs;
-            *b = new_rhs;
+    for (inst_id, lhs, rhs, lhs_is_bool, rhs_is_bool) in targets {
+        // Strategy: prefer replacing the numeric side with a bool constant.
+        // Fall back to Cast(Bool→Float(64)) only if the numeric side isn't 0 or 1.
+        if lhs_is_bool {
+            // lhs is Bool, rhs is numeric — try to replace rhs with bool const
+            if let Some(bool_val) = try_get_const(func, rhs).and_then(|c| numeric_const_to_bool(&c))
+            {
+                let new_rhs = insert_bool_const_before(func, bool_val, inst_id);
+                if let Op::Cmp(_, _, b) = &mut func.insts[inst_id].op {
+                    *b = new_rhs;
+                }
+            } else {
+                // Non-constant or not 0/1 — cast the bool side to number
+                let new_lhs = insert_cast_before(func, lhs, inst_id, Type::Float(64));
+                if let Op::Cmp(_, a, _) = &mut func.insts[inst_id].op {
+                    *a = new_lhs;
+                }
+            }
+        } else if rhs_is_bool {
+            // rhs is Bool, lhs is numeric — try to replace lhs with bool const
+            if let Some(bool_val) = try_get_const(func, lhs).and_then(|c| numeric_const_to_bool(&c))
+            {
+                let new_lhs = insert_bool_const_before(func, bool_val, inst_id);
+                if let Op::Cmp(_, a, _) = &mut func.insts[inst_id].op {
+                    *a = new_lhs;
+                }
+            } else {
+                // Non-constant or not 0/1 — cast the bool side to number
+                let new_rhs = insert_cast_before(func, rhs, inst_id, Type::Float(64));
+                if let Op::Cmp(_, _, b) = &mut func.insts[inst_id].op {
+                    *b = new_rhs;
+                }
+            }
         }
     }
 

@@ -1027,6 +1027,42 @@ The rule: never widen types to accommodate buggy game code — TypeScript catchi
 
 ---
 
+## GML Runtime Stub Remediation — Critical
+
+Audit all `throw Error("X: not yet implemented")` stubs in the GML runtime. For each:
+1. **Implement fully** if the function is straightforward (math, string, data structure ops).
+2. **Categorize by system** if the function needs design work before implementation.
+
+### Systems requiring design before stubs can be implemented
+
+- **Particles** — `part_system_*`, `part_type_*`, `part_emitter_*`. Needs a particle system
+  architecture (emitter/type/system hierarchy, integration with draw loop).
+- **Surfaces** — `surface_*`. Needs offscreen canvas management, texture lifecycle.
+- **Networking** — `network_*`. Needs socket abstraction, async integration.
+- **Physics** — `physics_*`. Needs physics engine integration (Box2D equivalent).
+- **Shaders** — `shader_*`. Needs WebGL shader pipeline.
+- **Buffers** — `buffer_*`. Needs typed ArrayBuffer wrapper with GML's type system (u8/s8/u16/s16/u32/s32/f16/f32/f64/bool/string).
+- **Cameras** — `camera_*`. Needs camera/viewport matrix system.
+- **Tiles** — `tile_*`, `tilemap_*`. Needs tile layer rendering system.
+- **Paths** — `path_*`. Needs path point/interpolation system.
+- **Timelines** — `timeline_*`. Needs timeline moment scheduling.
+- **Steam API** — `steam_*`. Needs platform-specific integration strategy (stub vs skip).
+- **OS/Platform** — `os_*`, `file_*`, `ini_*`, `directory_*`. Needs platform abstraction (browser vs native).
+- **3D / Primitives** — `d3d_*`, `vertex_*`, `matrix_*`. Needs WebGL 3D pipeline.
+
+### Straightforward stubs (implement immediately when encountered)
+
+These need no design — just correct GML semantics → TypeScript translation:
+- Math functions (`point_direction`, `lengthdir_x/y`, `dot_product`, etc.)
+- String functions (`string_count`, `string_pos`, `string_delete`, etc.)
+- Data structure operations (`ds_list_*`, `ds_map_*`, `ds_grid_*`, `ds_stack_*`, `ds_queue_*`, `ds_priority_*`)
+- Array functions (`array_length`, `array_copy`, `array_sort`, etc.)
+- Color/drawing utility (`merge_colour`, `make_colour_*`, `colour_get_*`)
+- Instance queries (`instance_nearest`, `instance_furthest`, `instance_position`)
+- Room/view queries (`room_get_name`, `room_goto_next`, `room_goto_previous`)
+
+---
+
 ## Runtime Architecture — High Priority
 
 ### Flash runtime: module-level singletons (multi-instance blocker)
