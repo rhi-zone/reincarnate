@@ -31,15 +31,21 @@ export interface PartInst {
   sizeWiggle: number; angleWiggle: number; speedWiggle: number;
 }
 
+export interface PartEmitter {
+  x1: number; y1: number; x2: number; y2: number; shape: number; dist: number;
+  /** Stream config set by `part_emitter_stream`; emitted each step. */
+  stream?: { typeId: number; num: number };
+}
+
 export interface PartSystem {
   particles: PartInst[];
   autoDraw: boolean;
   autoUpdate: boolean;
+  /** Draw order: true = oldest first, false = newest first. */
+  drawOrder?: boolean;
   depth: number;
   pos: [number, number];
-  emitters: Map<number, {
-    x1: number; y1: number; x2: number; y2: number; shape: number; dist: number;
-  }>;
+  emitters: Map<number, PartEmitter>;
   nextEmitId: number;
 }
 

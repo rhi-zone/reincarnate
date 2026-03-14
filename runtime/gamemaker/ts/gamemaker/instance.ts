@@ -5,41 +5,41 @@ import { GMLObject } from "./object";
 
 export function createInstanceAPI(rt: GameRuntime) {
   /** Get a field value from the first instance of a given object type. */
-  function getInstanceField(cls: typeof GMLObject | number, field: string): any {
+  function getInstanceField(cls: typeof GMLObject | number, field: string): unknown {
     const clazz = typeof cls === 'function' ? cls : rt.classes[cls];
     if (!clazz) return undefined;
     const inst = rt.roomVariables.find((o) => o instanceof clazz);
-    return inst ? (inst as any)[field] : undefined;
+    return inst ? (inst as unknown as Record<string, unknown>)[field] : undefined;
   }
 
   /** Set a field value on the first instance of a given object type. */
-  function setInstanceField(cls: typeof GMLObject | number, field: string, value: any): void {
+  function setInstanceField(cls: typeof GMLObject | number, field: string, value: unknown): void {
     const clazz = typeof cls === 'function' ? cls : rt.classes[cls];
     if (!clazz) return;
     const inst = rt.roomVariables.find((o) => o instanceof clazz);
-    if (inst) (inst as any)[field] = value;
+    if (inst) (inst as unknown as Record<string, unknown>)[field] = value;
   }
 
   /** Set an indexed element of a field on the first instance of a given object type. */
-  function setInstanceFieldIndex(cls: typeof GMLObject | number, field: string, index: number, value: any): void {
+  function setInstanceFieldIndex(cls: typeof GMLObject | number, field: string, index: number, value: unknown): void {
     const clazz = typeof cls === 'function' ? cls : rt.classes[cls];
     if (!clazz) return;
     const inst = rt.roomVariables.find((o) => o instanceof clazz);
-    if (inst) (inst as any)[field][index] = value;
+    if (inst) (inst as unknown as Record<string, unknown[]>)[field][index] = value;
   }
 
   /** Get a field value from ALL instances. */
-  function getAllField(field: string): any {
+  function getAllField(field: string): unknown {
     for (const inst of rt.roomVariables) {
-      return (inst as any)[field];
+      return (inst as unknown as Record<string, unknown>)[field];
     }
     return undefined;
   }
 
   /** Set a field value on ALL instances. */
-  function setAllField(field: string, value: any): void {
+  function setAllField(field: string, value: unknown): void {
     for (const inst of rt.roomVariables) {
-      (inst as any)[field] = value;
+      (inst as unknown as Record<string, unknown>)[field] = value;
     }
   }
 
@@ -47,11 +47,11 @@ export function createInstanceAPI(rt: GameRuntime) {
    * Sets rt._self to the current with-target so alarm_set/event_user work correctly.
    * Returns the last callback return value (supports GML `return X` inside `with`). */
   function withInstances<T extends GMLObject>(
-    target: (new(...args: any[]) => T) | T | number,
-    callback: (inst: T) => any,
-  ): any {
+    target: (new(...args: unknown[]) => T) | T | number,
+    callback: (inst: T) => unknown,
+  ): unknown {
     const prevSelf = rt._self;
-    let result: any;
+    let result: unknown;
     if (typeof target === 'function') {
       // class constructor — iterate all instances of this class
       for (const inst of rt.roomVariables.slice()) {

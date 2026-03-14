@@ -54,10 +54,15 @@ declare global {
 
 export function installSugarCubeExtensions(): void {
   // --- Array ---
-  const ap = Array.prototype as any;
+  // `as unknown as Record<string, unknown>` is required: TypeScript does not allow
+  // assigning properties to typed prototype objects without bypassing the type system.
+  const ap = Array.prototype as unknown as Record<string, unknown>;
 
   if (!ap.delete) {
-    ap.delete = function (this: any[], ...items: any[]): any[] {
+    // `this: unknown[]` cannot be used directly in prototype assignments since TypeScript
+    // doesn't track the receiver type through `Array.prototype as any` assignment.
+    // The cast to `unknown[]` inside the body is sufficient for type safety.
+    ap.delete = function (this: unknown[], ...items: unknown[]): unknown[] {
       for (const item of items) {
         let i = 0;
         while (i < this.length) {
@@ -69,12 +74,12 @@ export function installSugarCubeExtensions(): void {
   }
 
   if (!ap.deleteAt) {
-    ap.deleteAt = function (this: any[], ...indices: number[]): any[] {
+    ap.deleteAt = function (this: unknown[], ...indices: number[]): unknown[] {
       if (this.length === 0 || indices.length === 0) return [];
       const normalized = indices
         .map(i => i < 0 ? Math.max(0, this.length + i) : Math.min(i, this.length - 1))
         .sort((a, b) => b - a);
-      const removed: any[] = [];
+      const removed: unknown[] = [];
       const seen = new Set<number>();
       for (const idx of normalized) {
         if (!seen.has(idx)) {
@@ -87,13 +92,13 @@ export function installSugarCubeExtensions(): void {
   }
 
   if (!ap.last) {
-    ap.last = function (this: any[]): any {
+    ap.last = function (this: unknown[]): unknown {
       return this.length > 0 ? this[this.length - 1] : undefined;
     };
   }
 
   if (!ap.pluck) {
-    ap.pluck = function (this: any[]): any {
+    ap.pluck = function (this: unknown[]): unknown {
       if (this.length === 0) return undefined;
       const idx = Math.floor(Math.random() * this.length);
       return this.splice(idx, 1)[0];
@@ -101,9 +106,9 @@ export function installSugarCubeExtensions(): void {
   }
 
   if (!ap.pluckMany) {
-    ap.pluckMany = function (this: any[], n: number): any[] {
+    ap.pluckMany = function (this: unknown[], n: number): unknown[] {
       const copy = this.slice();
-      const result: any[] = [];
+      const result: unknown[] = [];
       const count = Math.min(n, copy.length);
       for (let i = 0; i < count; i++) {
         const idx = Math.floor(Math.random() * copy.length);
@@ -114,7 +119,7 @@ export function installSugarCubeExtensions(): void {
   }
 
   if (!ap.pushUnique) {
-    ap.pushUnique = function (this: any[], ...items: any[]): number {
+    ap.pushUnique = function (this: unknown[], ...items: unknown[]): number {
       for (const item of items) {
         if (!this.includes(item)) this.push(item);
       }
@@ -123,16 +128,16 @@ export function installSugarCubeExtensions(): void {
   }
 
   if (!ap.random) {
-    ap.random = function (this: any[]): any {
+    ap.random = function (this: unknown[]): unknown {
       return this.length > 0 ? this[Math.floor(Math.random() * this.length)] : undefined;
     };
   }
 
   if (!ap.randomMany) {
-    ap.randomMany = function (this: any[], n: number): any[] {
+    ap.randomMany = function (this: unknown[], n: number): unknown[] {
       if (this.length === 0 || n <= 0) return [];
       const indices = Array.from({ length: this.length }, (_, i) => i);
-      const result: any[] = [];
+      const result: unknown[] = [];
       const count = Math.min(n, this.length);
       for (let i = 0; i < count; i++) {
         const pick = Math.floor(Math.random() * indices.length);
@@ -143,7 +148,7 @@ export function installSugarCubeExtensions(): void {
   }
 
   if (!ap.shuffle) {
-    ap.shuffle = function (this: any[]): any[] {
+    ap.shuffle = function (this: unknown[]): unknown[] {
       for (let i = this.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [this[i], this[j]] = [this[j], this[i]];
@@ -153,44 +158,45 @@ export function installSugarCubeExtensions(): void {
   }
 
   if (!ap.toShuffled) {
-    ap.toShuffled = function (this: any[]): any[] {
-      return this.slice().shuffle();
+    ap.toShuffled = function (this: unknown[]): unknown[] {
+      return (this.slice() as unknown[] & { shuffle(): unknown[] }).shuffle();
     };
   }
 
   if (!ap.count) {
-    ap.count = function (this: any[], item: any): number {
+    ap.count = function (this: unknown[], item: unknown): number {
       return this.filter(el => el === item).length;
     };
   }
 
   if (!ap.countWith) {
-    ap.countWith = function (this: any[], predicate: (item: any) => boolean): number {
+    ap.countWith = function (this: unknown[], predicate: (item: unknown) => boolean): number {
       return this.filter(predicate).length;
     };
   }
 
   if (!ap.includesAll) {
-    ap.includesAll = function (this: any[], ...items: any[]): boolean {
+    ap.includesAll = function (this: unknown[], ...items: unknown[]): boolean {
       return items.every(item => this.includes(item));
     };
   }
 
   if (!ap.includesAny) {
-    ap.includesAny = function (this: any[], ...items: any[]): boolean {
+    ap.includesAny = function (this: unknown[], ...items: unknown[]): boolean {
       return items.some(item => this.includes(item));
     };
   }
 
   if (!ap.select) {
-    ap.select = function (this: any[], n: number): any {
+    ap.select = function (this: unknown[], n: number): unknown {
       // DoL uses 1-based indexing for select()
       return this[n - 1];
     };
   }
 
   // --- String ---
-  const sp = String.prototype as any;
+  // Same bypass needed as for Array.prototype above.
+  const sp = String.prototype as unknown as Record<string, unknown>;
 
   if (!sp.toUpperFirst) {
     sp.toUpperFirst = function (this: string): string {

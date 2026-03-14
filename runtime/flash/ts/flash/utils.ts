@@ -18,7 +18,7 @@ const _bindCache = new WeakMap<Function, WeakMap<object, Function>>();
  *  Returns a variadic function so callers may pass extra arguments (AS3
  *  silently ignores surplus arguments; TypeScript would otherwise TS2554). */
 export function cachedBind<T extends (...args: any[]) => any>(
-  thisArg: any,
+  thisArg: unknown,
   fn: T,
 ): (...args: any[]) => ReturnType<T> {
     let fnCache = _bindCache.get(fn);
@@ -26,10 +26,11 @@ export function cachedBind<T extends (...args: any[]) => any>(
         fnCache = new WeakMap();
         _bindCache.set(fn, fnCache);
     }
-    let bound = fnCache.get(thisArg) as T | undefined;
+    const thisObj = thisArg as object;
+    let bound = fnCache.get(thisObj) as T | undefined;
     if (!bound) {
         bound = fn.bind(thisArg) as T;
-        fnCache.set(thisArg, bound);
+        fnCache.set(thisObj, bound);
     }
     return bound;
 }
@@ -39,7 +40,7 @@ export function cachedBind<T extends (...args: any[]) => any>(
 // ---------------------------------------------------------------------------
 
 /** AS3 `int()` — truncate to signed 32-bit integer. */
-export function int(x: any): number { return x | 0; }
+export function int(x: unknown): number { return (x as number) | 0; }
 export namespace int {
   export const MAX_VALUE = 2147483647;
   export const MIN_VALUE = -2147483648;
@@ -85,13 +86,13 @@ export function registerInterface(ctor: Function, ...ifaces: Function[]): void {
 // AS3 `Class(x)` is a cast — returns its argument as a class reference.
 // Called with no args it's not a meaningful construct; return undefined rather
 // than throwing so Class-as-type-assert call sites don't crash at runtime.
-export function Class(v?: any): any { return v; }
+export function Class(v?: unknown): unknown { return v; }
 Object.defineProperty(Class, Symbol.hasInstance, {
   value: (instance: unknown) => typeof instance === "function" && QN_KEY in (instance as object),
 });
 
 /** AS3 `is` operator — works for both classes and interfaces. */
-export function isType(value: any, type: Function): boolean {
+export function isType(value: unknown, type: Function): boolean {
   if (value == null) return false;
   if (value instanceof type) return true;
   // Walk prototype chain checking interface registry.
@@ -107,8 +108,8 @@ export function isType(value: any, type: Function): boolean {
   return false;
 }
 
-/** AS3 `as` operator — returns value if it matches, null otherwise. */
-export function asType(value: any, type: Function): any {
+/** AS3 `as` operator — returns value cast to T if it matches, null otherwise. */
+export function asType(value: unknown, type: Function): any {
   return isType(value, type) ? value : null;
 }
 
@@ -131,22 +132,28 @@ export function registerClass(ctor: Function): void {
   if (typeof name === "string") _classRegistry.set(name, ctor);
 }
 
-export function getQualifiedClassName(value: any): string {
+export function getQualifiedClassName(value: unknown): string {
   if (value == null) return "null";
-  const ctor = typeof value === "function" ? value : value.constructor;
+  type Reflectable = { constructor?: Reflectable; [QN_KEY]?: string; name?: string };
+  const ctor = typeof value === "function"
+    ? (value as Reflectable)
+    : (value as Reflectable).constructor;
   return ctor?.[QN_KEY] ?? ctor?.name ?? typeof value;
 }
 
-export function getQualifiedSuperclassName(value: any): string | null {
+export function getQualifiedSuperclassName(value: unknown): string | null {
   if (value == null) return null;
-  const ctor = typeof value === "function" ? value : value.constructor;
+  type Reflectable = { constructor?: Reflectable; [QN_KEY]?: string; name?: string; prototype?: Reflectable };
+  const ctor = typeof value === "function"
+    ? (value as Reflectable)
+    : (value as Reflectable).constructor;
   if (!ctor) return null;
-  const parent = Object.getPrototypeOf(ctor.prototype)?.constructor;
-  if (!parent || parent === Object) return null;
+  const parent: Reflectable | undefined = Object.getPrototypeOf(ctor.prototype)?.constructor;
+  if (!parent || (parent as unknown) === Object) return null;
   return parent[QN_KEY] ?? parent.name ?? null;
 }
 
-export function getDefinitionByName(name: string): any {
+export function getDefinitionByName(name: string): unknown {
   const cls = _classRegistry.get(name);
   if (cls) return cls;
   // Fall back: strip package prefix and try as global.
@@ -197,23 +204,23 @@ class TraitTypeName {
   valueOf(): string { return this._value; }
 }
 
-function traitNode(name: string, type?: string, meta?: any): any {
-  const node: any = { name };
-  if (type !== undefined) node.type = new TraitTypeName(type);
-  node.metadata = meta ?? xmlList([]);
+function traitNode(name: string, type?: string, meta?: unknown): Record<string, unknown> {
+  const node: Record<string, unknown> = { name };
+  if (type !== undefined) node["type"] = new TraitTypeName(type);
+  node["metadata"] = meta ?? xmlList([]);
   return node;
 }
 
-export function describeType(value: any): any {
+export function describeType(value: unknown): unknown {
   if (value == null) return { constant: xmlList([]) };
 
   if (typeof value === "function") {
     // Class constructor — top-level = static traits, factory = instance traits
     const registered = _traitRegistry.get(value);
-    const constants: any[] = [];
-    const variables: any[] = [];
-    const methods: any[] = [];
-    const accessors: any[] = [];
+    const constants: Record<string, unknown>[] = [];
+    const variables: Record<string, unknown>[] = [];
+    const methods: Record<string, unknown>[] = [];
+    const accessors: Record<string, unknown>[] = [];
 
     // Static traits from registry
     if (registered) {
@@ -233,7 +240,7 @@ export function describeType(value: any): any {
           || name === "arguments" || name === "caller" || name === QN_KEY.toString()) continue;
       if (typeof name === "symbol") continue;
       if (registeredNames.has(name)) continue;
-      if (typeof value[name] === "function") {
+      if (typeof (value as Record<string, unknown>)[name] === "function") {
         methods.push(traitNode(name));
       } else {
         constants.push(traitNode(name));
@@ -241,10 +248,10 @@ export function describeType(value: any): any {
     }
 
     // Instance traits from registry (exposed via factory)
-    const iConstants: any[] = [];
-    const iVariables: any[] = [];
-    const iMethods: any[] = [];
-    const iAccessors: any[] = [];
+    const iConstants: Record<string, unknown>[] = [];
+    const iVariables: Record<string, unknown>[] = [];
+    const iMethods: Record<string, unknown>[] = [];
+    const iAccessors: Record<string, unknown>[] = [];
     if (registered) {
       for (const t of registered.instanceTraits) {
         const node = traitNode(t.name, t.type);
@@ -270,12 +277,12 @@ export function describeType(value: any): any {
   }
 
   // Instance — describe its class's instance traits directly
-  const ctor = value.constructor;
+  const ctor = (value as { constructor?: Function }).constructor;
   const registered = ctor ? _traitRegistry.get(ctor) : undefined;
-  const constants: any[] = [];
-  const variables: any[] = [];
-  const methods: any[] = [];
-  const accessors: any[] = [];
+  const constants: Record<string, unknown>[] = [];
+  const variables: Record<string, unknown>[] = [];
+  const methods: Record<string, unknown>[] = [];
+  const accessors: Record<string, unknown>[] = [];
   if (registered) {
     for (const t of registered.instanceTraits) {
       const node = traitNode(t.name, t.type);
@@ -305,7 +312,7 @@ export abstract class IDataInput {
   abstract readFloat(): number;
   abstract readInt(): number;
   abstract readMultiByte(length: number, charSet: string): string;
-  abstract readObject(): any;
+  abstract readObject(): unknown;
   abstract readShort(): number;
   abstract readUTF(): string;
   abstract readUTFBytes(length: number): string;
@@ -321,12 +328,12 @@ export abstract class IDataInput {
 export abstract class IDataOutput {
   abstract writeBoolean(value: boolean): void;
   abstract writeByte(value: number): void;
-  abstract writeBytes(bytes: any, offset?: number, length?: number): void;
+  abstract writeBytes(bytes: ByteArray, offset?: number, length?: number): void;
   abstract writeDouble(value: number): void;
   abstract writeFloat(value: number): void;
   abstract writeInt(value: number): void;
   abstract writeMultiByte(value: string, charSet: string): void;
-  abstract writeObject(object: any): void;
+  abstract writeObject(object: unknown): void;
   abstract writeShort(value: number): void;
   abstract writeUTF(value: string): void;
   abstract writeUTFBytes(value: string): void;
@@ -475,7 +482,8 @@ export class ByteArray {
     }
   }
 
-  readObject(): any {
+  readObject(): unknown {
+    // readAMF3 returns unknown; callers must narrow to their expected type.
     return readAMF3(this);
   }
 
@@ -566,7 +574,7 @@ export class ByteArray {
     }
   }
 
-  writeObject(object: any): void {
+  writeObject(object: unknown): void {
     writeAMF3(this, object);
   }
 
@@ -664,7 +672,7 @@ export class Timer extends EventDispatcher {
   private _repeatCount: number;
   private _currentCount = 0;
   private _running = false;
-  private _intervalId: any = null;
+  private _intervalId: number | null = null;
 
   constructor(delay: number, repeatCount = 0) {
     super();
@@ -808,7 +816,7 @@ export class Dictionary extends Map<unknown, any> {
 // ---------------------------------------------------------------------------
 
 export class Proxy {
-  callProperty(_name: string, ..._rest: any[]): any {
+  callProperty(_name: string, ..._rest: unknown[]): unknown {
     return undefined;
   }
 
@@ -816,11 +824,11 @@ export class Proxy {
     return false;
   }
 
-  getDescendants(_name: string): any {
+  getDescendants(_name: string): unknown {
     return undefined;
   }
 
-  getProperty(_name: string): any {
+  getProperty(_name: string): unknown {
     return undefined;
   }
 
@@ -840,9 +848,9 @@ export class Proxy {
     return 0;
   }
 
-  nextValue(_index: number): any {
+  nextValue(_index: number): unknown {
     return undefined;
   }
 
-  setProperty(_name: string, _value: any): void {}
+  setProperty(_name: string, _value: unknown): void {}
 }

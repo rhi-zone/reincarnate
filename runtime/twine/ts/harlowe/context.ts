@@ -344,6 +344,12 @@ export class HarloweContext {
     }
   }
 
+  /** Replace the container stack entirely (used by columns layout to set up nested columns). */
+  setContainerStack(stack: (Element | DocumentFragment)[]): void {
+    this.containerStack.length = 0;
+    for (const el of stack) this.containerStack.push(el);
+  }
+
   // --- Child processing ---
 
   /** Append children to an element. */

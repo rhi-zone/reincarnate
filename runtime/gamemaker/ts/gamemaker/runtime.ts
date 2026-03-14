@@ -45,7 +45,7 @@ import type { ShaderProgram } from "./webgl";
 import { GMLObject, __baseproto } from "./object";
 import { GMLRoom } from "./room";
 import {
-  type PartTypeConfig, type PartInst, type PartSystem,
+  type PartTypeConfig, type PartInst, type PartSystem, type PartEmitter,
   defaultPartType, randf, hsv2rgb, lerpColor, bufferTypeSize,
   _UINT32_MAX, _UINT32_OFFSET,
 } from "./particles";
@@ -754,8 +754,9 @@ export class GameRuntime {
   private _dispatchKeyPress(keyCode: number): void {
     const id = "keypress" + keyCode;
     for (const obj of this.roomVariables) {
-      if ((obj as any)[id] !== noop) {
-        (obj as any)[id]();
+      const handler = (obj as unknown as Record<string, unknown>)[id];
+      if (handler !== noop) {
+        (handler as () => void).call(obj);
       }
     }
   }
@@ -906,51 +907,51 @@ export class GameRuntime {
   // ---- Instance field helpers ----
 
   /** Get a field value from a specific instance or the first instance of a given class. */
-  getInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string): any {
-    if (cls instanceof GMLObject) return (cls as any)[field];
+  getInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string): unknown {
+    if (cls instanceof GMLObject) return (cls as unknown as Record<string, unknown>)[field];
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return undefined;
     const inst = this.roomVariables.find((o) => o instanceof clazz);
-    return inst ? (inst as any)[field] : undefined;
+    return inst ? (inst as unknown as Record<string, unknown>)[field] : undefined;
   }
 
   /** Set a field value on a specific instance or the first instance of a given class. */
   setInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string, value: unknown): void {
-    if (cls instanceof GMLObject) { (cls as any)[field] = value; return; }
+    if (cls instanceof GMLObject) { (cls as unknown as Record<string, unknown>)[field] = value; return; }
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return;
     const inst = this.roomVariables.find((o) => o instanceof clazz);
-    if (inst) (inst as any)[field] = value;
+    if (inst) (inst as unknown as Record<string, unknown>)[field] = value;
   }
 
   /** Set an indexed element of a field on a specific instance or the first instance of a given class. */
   setInstanceFieldIndex(cls: GMLObject | typeof GMLObject | number | null, field: string, index: number, value: unknown): void {
-    if (cls instanceof GMLObject) { (cls as any)[field][index] = value; return; }
+    if (cls instanceof GMLObject) { (cls as unknown as Record<string, unknown[]>)[field][index] = value; return; }
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return;
     const inst = this.roomVariables.find((o) => o instanceof clazz);
-    if (inst) (inst as any)[field][index] = value;
+    if (inst) (inst as unknown as Record<string, unknown[]>)[field][index] = value;
   }
 
   /** Get a field value from ALL instances. */
-  getAllField(field: string): any {
+  getAllField(field: string): unknown {
     for (const inst of this.roomVariables) {
-      return (inst as any)[field];
+      return (inst as unknown as Record<string, unknown>)[field];
     }
     return undefined;
   }
 
   /** Set a field value on ALL instances. */
-  setAllField(field: string, value: any): void {
+  setAllField(field: string, value: unknown): void {
     for (const inst of this.roomVariables) {
-      (inst as any)[field] = value;
+      (inst as unknown as Record<string, unknown>)[field] = value;
     }
   }
 
   /** Execute a block for each instance of a given type (or all).
    * Sets _self to the current with-target so alarm_set/event_user work correctly. */
   withInstances<T extends GMLObject>(
-    target: (new(...args: any[]) => T) | T | number,
+    target: (new(...args: unknown[]) => T) | T | number,
     callback: (inst: T) => void,
   ): void {
     const prevSelf = this._self;
@@ -987,14 +988,14 @@ export class GameRuntime {
 
   // ---- Instance management (internal) ----
 
-  _instanceCreate<T extends GMLObject>(x: number, y: number, cls: new(...args: any[]) => T, roomStart = false): T {
+  _instanceCreate<T extends GMLObject>(x: number, y: number, cls: new(...args: unknown[]) => T, roomStart = false): T {
     const instance = new cls();
     instance._rt = this;
     // Walk prototype chain and push to per-runtime instance tracking
-    let c: any = instance.constructor;
+    let c: Function = instance.constructor as Function;
     while (c !== __baseproto) {
       this._getInstances(c).push(instance);
-      c = Object.getPrototypeOf(c);
+      c = Object.getPrototypeOf(c) as Function;
     }
     instance.xstart = instance.x = x;
     instance.ystart = instance.y = y;
@@ -1002,7 +1003,7 @@ export class GameRuntime {
     if (!roomStart) {
       this._self = instance; instance.create(); this._self = null;
     }
-    if (!this._drawguiUsed && (instance as any).drawgui !== noop) {
+    if (!this._drawguiUsed && (instance as unknown as Record<string, unknown>).drawgui !== noop) {
       this._drawguiUsed = true;
     }
     if (this._isStepping) {
@@ -1013,12 +1014,12 @@ export class GameRuntime {
 
   _instanceDestroy(instance: GMLObject): void {
     instance.destroy();
-    let c: any = instance.constructor;
+    let c: Function = instance.constructor as Function;
     while (c !== __baseproto) {
       const arr = this._getInstances(c);
       const idx = arr.indexOf(instance);
       if (idx > -1) arr.splice(idx, 1);
-      c = Object.getPrototypeOf(c);
+      c = Object.getPrototypeOf(c) as Function;
     }
     const idx = this.roomVariables.indexOf(instance);
     if (idx > -1) this.roomVariables.splice(idx, 1);
@@ -1217,12 +1218,12 @@ export class GameRuntime {
     if (!canvas) return;
     this._surfaceCtxStack.push(this._gfx.ctx);
     this._surfaceIdStack.push(surf);
-    (this._gfx as any).ctx = canvas.getContext("2d")!;
+    this._gfx.ctx = canvas.getContext("2d")!;
   }
   surface_reset_target(): void {
     const prev = this._surfaceCtxStack.pop();
     this._surfaceIdStack.pop();
-    if (prev !== undefined) (this._gfx as any).ctx = prev;
+    if (prev !== undefined) this._gfx.ctx = prev;
   }
   surface_get_width(surf: number): number { return this._surfaces.get(surf)?.width ?? 0; }
   surface_get_height(surf: number): number { return this._surfaces.get(surf)?.height ?? 0; }
@@ -1524,7 +1525,7 @@ export class GameRuntime {
   part_system_destroy(sys: number): void { this._partSystems.delete(sys); }
   part_system_exists(sys: number): boolean { return this._partSystems.has(sys); }
   part_system_position(sys: number, x: number, y: number): void { const s = this._partSystems.get(sys); if (s) s.pos = [x, y]; }
-  part_system_draw_order(sys: number, order: boolean): void { const s = this._partSystems.get(sys); if (s) (s as any).drawOrder = order; }
+  part_system_draw_order(sys: number, order: boolean): void { const s = this._partSystems.get(sys); if (s) s.drawOrder = order; }
   part_system_automatic_draw(sys: number, on: boolean): void { const s = this._partSystems.get(sys); if (s) s.autoDraw = on; }
   part_system_automatic_update(sys: number, on: boolean): void { const s = this._partSystems.get(sys); if (s) s.autoUpdate = on; }
   part_system_depth(sys: number, depth: number): void { const s = this._partSystems.get(sys); if (s) s.depth = depth; }
@@ -1593,7 +1594,7 @@ export class GameRuntime {
     // Called each step (auto-update); we handle it inside _partUpdate instead.
     // Store stream config on the emitter.
     const e = this._partSystems.get(sys)?.emitters.get(emit); if (!e) return;
-    (e as any).stream = { typeId, num };
+    e.stream = { typeId, num };
   }
 
   // ---- Particle internals ----
@@ -1634,7 +1635,7 @@ export class GameRuntime {
   _partUpdate(s: PartSystem): void {
     // Stream emitters
     for (const [, e] of s.emitters) {
-      const st = (e as any).stream;
+      const st = e.stream;
       if (st && st.num > 0) {
         for (let i = 0; i < st.num; i++) {
           const [px, py] = this._emitterPoint(e);
@@ -2231,7 +2232,7 @@ export class GameRuntime {
     this._surfaces.set(surf, newCanvas);
     // Update active ctx if this surface is on top of the stack
     if (this._surfaceIdStack[this._surfaceIdStack.length - 1] === surf) {
-      (this._gfx as any).ctx = newCanvas.getContext("2d")!;
+      this._gfx.ctx = newCanvas.getContext("2d")!;
     }
   }
   surface_get_target(): number {
@@ -2249,8 +2250,8 @@ export class GameRuntime {
   show_debug_message(msg: any): void { console.log(msg); }
   event_user(n: number): void {
     if (!this._self) return;
-    const method = (this._self as any)["user" + n];
-    if (method && method !== noop) { const prev = this._self; method.call(prev); this._self = prev; }
+    const method = (this._self as unknown as Record<string, unknown>)["user" + n];
+    if (method && method !== noop) { const prev = this._self; (method as () => void).call(prev); this._self = prev; }
   }
   sprite_create_from_surface(srf: number, x: number, y: number, w: number, h: number, _removeback: boolean, _smooth: boolean, xorig: number, yorig: number): number {
     const canvas = this._surfaces.get(srf); if (!canvas) return -1;
@@ -2856,7 +2857,7 @@ export class GameRuntime {
     const fontIdx = this.fonts.length;
     // Use the first texture's sheet as the font texture (they should all share a sheet)
     const firstTex = sprite.textures[0] !== undefined ? this.textures[sprite.textures[0]] : undefined;
-    this.fonts.push({ name: `__sprite_font_${spr}`, texture: sprite.textures[0] ?? 0, chars } as any);
+    this.fonts.push({ name: `__sprite_font_${spr}`, size: 0, texture: sprite.textures[0] ?? 0, chars });
     return fontIdx;
   }
 
@@ -3015,8 +3016,8 @@ export class GameRuntime {
   event_perform(type: number, n: number): void {
     // type 10 = user event; type 7 = alarm — dispatch on _self if available
     if (!this._self) return;
-    if (type === 10) { const m = (this._self as any)["user" + n]; if (m && m !== noop) m.call(this._self); }
-    else if (type === 7) { const m = (this._self as any)["alarm" + n]; if (m && m !== noop) m.call(this._self); }
+    if (type === 10) { const m = (this._self as unknown as Record<string, unknown>)["user" + n]; if (m && m !== noop) (m as () => void).call(this._self); }
+    else if (type === 7) { const m = (this._self as unknown as Record<string, unknown>)["alarm" + n]; if (m && m !== noop) (m as () => void).call(this._self); }
   }
   event_inherited(): void {
     throw new Error("event_inherited: not yet implemented (should be rewritten to super call at compile time)");
@@ -4246,7 +4247,7 @@ export class GameRuntime {
     }
     // Set up collision stubs (need class count)
     for (let i = 0; i < config.classes.length; i++) {
-      (GMLObject.prototype as any)["collision" + i] = noop;
+      (GMLObject.prototype as unknown as Record<string, unknown>)["collision" + i] = noop;
     }
 
     // Create room instances
@@ -4425,14 +4426,14 @@ export class GameRuntime {
   action_inherited(): void {
     throw Error("action_inherited: not yet implemented");
   }
-  action_if_variable(name: string, value: any, op: number): boolean {
+  action_if_variable(name: string, value: unknown, op: number): boolean {
     if (!this._self) return false;
-    const v = (this._self as any)[name];
-    return op === 0 ? v === value : v < value;
+    const v = (this._self as unknown as Record<string, unknown>)[name];
+    return op === 0 ? v === value : (v as number) < (value as number);
   }
   action_set_alarm(steps: number, alarm: number): void {
     if (!this._self) return;
-    (this._self as any)["alarm" + alarm] = steps;
+    (this._self as unknown as Record<string, unknown>)["alarm" + alarm] = steps;
   }
   action_execute_script(script_id: number, ...args: any[]): any {
     return this.script_execute(script_id, ...args);
@@ -4723,7 +4724,7 @@ export class GameRuntime {
     return Boolean(this.place_meeting(this._self.x + xoffset, this._self.y + yoffset, obj));
   }
   action_if_empty(x: number, y: number, _appliesTo: number = 0): boolean {
-    return !this.place_meeting(x, y, -1 as any);
+    return !this.place_meeting(x, y, -1);
   }
   action_if_number(val: number, number: number, operation: number): boolean {
     if (operation === 0) return val === number;
@@ -4750,7 +4751,7 @@ export class GameRuntime {
   action_color(color: number): void { this.draw_set_color(color); }
 
   // ---- Script / shader / draw misc ----
-  script_exists(name: string): boolean { return typeof (this as any)[name] === "function"; }
+  script_exists(name: string): boolean { return typeof (this as unknown as Record<string, unknown>)[name] === "function"; }
   shader_current(): number { return -1; /* no shader support in 2D canvas */ }
   draw_texture_flush(): void { /* no-op in canvas mode */ }
   make_colour_hsv(h: number, s: number, v: number): number { return this.make_color_hsv(h, s, v); }

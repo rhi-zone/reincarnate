@@ -119,7 +119,7 @@ class ReadContext {
       return this.objects[ref >> 1];
     }
     const denseCount = ref >> 1;
-    const result: unknown[] & { [key: string]: unknown } = [] as unknown[] & { [key: string]: unknown };
+    const result: unknown[] & { [key: string]: unknown } = [] as unknown as unknown[] & { [key: string]: unknown };
     this.objects.push(result);
 
     // Read associative (string-keyed) portion first.

@@ -21,7 +21,7 @@ import type { DocumentFactory } from "../render-root";
 
 export class GraphicsContext {
   canvas!: HTMLCanvasElement;
-  ctx!: CanvasRenderingContext2D;
+  ctx!: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
   /** Permanent reference to the main 2D context; never reassigned after init. */
   mainCtx!: CanvasRenderingContext2D;
   tcanvas!: OffscreenCanvas | HTMLCanvasElement;

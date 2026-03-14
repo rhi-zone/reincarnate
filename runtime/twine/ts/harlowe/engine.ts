@@ -137,17 +137,17 @@ export class HarloweEngine {
   // --- Collection operations ---
 
   /** `contains` operator: checks if a collection contains a value. */
-  contains(collection: any, value: any): boolean {
+  contains(collection: unknown, value: unknown): boolean {
     return contains(collection, value);
   }
 
   /** `is in` operator: checks if a value is in a collection. */
-  is_in(value: any, collection: any): boolean {
+  is_in(value: unknown, collection: unknown): boolean {
     return contains(collection, value);
   }
 
   /** `is a TYPE` / `is an TYPE` type-check operator. */
-  is_a(value: any, type: string): boolean {
+  is_a(value: unknown, type: string): boolean {
     switch (type) {
       case "boolean": return typeof value === "boolean";
       case "number": return typeof value === "number";
@@ -167,8 +167,8 @@ export class HarloweEngine {
 
   /** `(for: each _item, ...iterable)[hook]` — iterate over items, calling `cb(h, item)` for each.
    *  The context `h` is passed through so the callback can emit content. */
-  for_each(iterable: any, cb: (h: HarloweContext, item: any) => void, h: HarloweContext): void {
-    const arr: any[] = Array.isArray(iterable) ? iterable
+  for_each(iterable: unknown, cb: (h: HarloweContext, item: unknown) => void, h: HarloweContext): void {
+    const arr: unknown[] = Array.isArray(iterable) ? iterable
       : iterable instanceof Set ? Array.from(iterable)
       : iterable instanceof Map ? Array.from(iterable.values())
       : [];
@@ -180,7 +180,7 @@ export class HarloweEngine {
   // --- Value macros ---
 
   /** `(random: min, max)` */
-  random(...args: any[]): number {
+  random(...args: unknown[]): number {
     if (args.length >= 2) {
       const min = Math.floor(Number(args[0]));
       const max = Math.floor(Number(args[1]));
@@ -193,28 +193,28 @@ export class HarloweEngine {
   }
 
   /** `(either: ...values)` — pick one at random. */
-  either(...args: any[]): any {
+  either(...args: unknown[]): unknown {
     return args[Math.floor(Math.random() * args.length)];
   }
 
   /** `(str: value)` / `(string: value)` */
-  str(...args: any[]): string {
+  str(...args: unknown[]): string {
     return args.map(String).join("");
   }
 
   /** `(num: value)` / `(number: value)` */
-  num(value: any): number {
+  num(value: unknown): number {
     return Number(value);
   }
 
   /** `(a: ...values)` / `(array: ...values)` */
-  array(...args: any[]): any[] {
+  array(...args: unknown[]): unknown[] {
     return [...args];
   }
 
   /** `(dm: key, value, ...)` / `(datamap: key, value, ...)` */
-  datamap(...args: any[]): Map<any, any> {
-    const m = new Map();
+  datamap(...args: unknown[]): Map<unknown, unknown> {
+    const m = new Map<unknown, unknown>();
     for (let i = 0; i + 1 < args.length; i += 2) {
       m.set(args[i], args[i + 1]);
     }
@@ -222,19 +222,19 @@ export class HarloweEngine {
   }
 
   /** `(ds: ...values)` / `(dataset: ...values)` */
-  dataset(...args: any[]): Set<any> {
+  dataset(...args: unknown[]): Set<unknown> {
     return new Set(args);
   }
 
   // --- Property access ---
 
   /** `$var's property` or `(nth: n) of $arr` */
-  get_property(obj: any, prop: any): any {
+  get_property(obj: unknown, prop: unknown): unknown {
     return get_property(obj, prop);
   }
 
   /** `$var's property to value` */
-  set_property(obj: any, prop: any, value: any): void {
+  set_property(obj: unknown, prop: unknown, value: unknown): void {
     set_property(obj, prop, value);
   }
 
@@ -246,13 +246,13 @@ export class HarloweEngine {
   // --- Math ---
 
   /** `(lerp: a, b, t)` */
-  lerp(a: any, b: any, t: any): number {
+  lerp(a: unknown, b: unknown, t: unknown): number {
     const na = Number(a), nb = Number(b), nt = Number(t);
     return na + (nb - na) * nt;
   }
 
   /** Math functions dispatched by name (fallback for unknown ops). */
-  math(name: string, ...args: any[]): number {
+  math(name: string, ...args: unknown[]): number {
     const nums = args.map(Number);
     switch (name) {
       case "round": return Math.round(nums[0]!);
@@ -281,13 +281,13 @@ export class HarloweEngine {
   }
 
   /** Collection operations (fallback for unknown ops). */
-  collection_op(name: string, ...args: any[]): any {
+  collection_op(name: string, ...args: unknown[]): unknown {
     const kebabMap: Record<string, string> = {
       "some-pass": "somePass", "all-pass": "allPass", "none-pass": "nonePass",
       "sorted-by": "sortedBy", "rotated-to": "rotatedTo",
     };
     const key = kebabMap[name] ?? name;
-    const fn = (Collections as any)[key];
+    const fn = (Collections as Record<string, ((...a: unknown[]) => unknown) | undefined>)[key];
     if (fn) return fn(...args);
     console.warn(`[harlowe] unknown collection op: ${name}`);
     return undefined;
@@ -295,7 +295,7 @@ export class HarloweEngine {
 
   /** String operations dispatched by name. Delegates to `StringOps` namespace.
    *  Compile-time call sites are rewritten by the backend to call StringOps directly. */
-  str_op(name: string, ...args: any[]): any {
+  str_op(name: string, ...args: unknown[]): unknown {
     // Alias map: Harlowe kebab-case names → StringOps camelCase method names
     const aliases: Record<string, keyof typeof StringOps> = {
       "string-reversed": "strReversed",
@@ -312,14 +312,14 @@ export class HarloweEngine {
       "str-replaced": "strReplaced",
     };
     const key = (aliases[name] ?? name) as keyof typeof StringOps;
-    const fn = StringOps[key] as ((...args: any[]) => any) | undefined;
+    const fn = StringOps[key] as ((...args: unknown[]) => unknown) | undefined;
     if (fn) return fn(...args);
     console.warn(`[harlowe] unknown str_op: ${name}`);
     return String(args[0] ?? "");
   }
 
   /** Generic value macro dispatcher — covers all Harlowe value macros. */
-  value_macro(name: string, ...args: any[]): any {
+  value_macro(name: string, ...args: unknown[]): unknown {
     switch (name) {
       // Primitive constructors
       case "str": case "string": return this.str(...args);
@@ -354,14 +354,14 @@ export class HarloweEngine {
       case "permutations": case "pass":
         return this.collection_op(name, ...args);
       // Passage queries
-      case "passage": return this.current_passage(args[0]);
+      case "passage": return this.current_passage(args[0] as string | undefined);
       case "passages": {
         // `(passages:)` — returns array of all passage info, optionally filtered by lambda.
-        const filter = args[0] && typeof args[0] === "function" ? args[0] : null;
-        const result = Array.from(this.rt.Navigation.passages.keys()).map(name => ({
+        const filter = args[0] && typeof args[0] === "function" ? args[0] as (p: PassageInfo) => boolean : null;
+        const result: PassageInfo[] = Array.from(this.rt.Navigation.passages.keys()).map(name => ({
           name, source: this.passageSources.get(name) ?? "", tags: this.rt.Navigation.passageTags.get(name) ?? [],
         }));
-        return filter ? result.filter((p: any) => filter(p)) : result;
+        return filter ? result.filter(filter) : result;
       }
       // Saved games map
       case "saved-games": return this.saved_games();
@@ -435,7 +435,7 @@ export class HarloweEngine {
   }
 
   /** `(passage:)` — returns the current (or named) passage info. */
-  current_passage(name?: string): any {
+  current_passage(name?: string): PassageInfo {
     const title = name ?? this.rt.Navigation.current();
     const tags = this.rt.Navigation.passageTags.get(title) ?? [];
     return { name: title, source: this.passageSources.get(title) ?? "", tags };
@@ -444,7 +444,7 @@ export class HarloweEngine {
   // --- Meta queries ---
 
   /** `(visits:)`, `(turns:)`, `(time:)`, `(history:)` */
-  meta(name: string): any {
+  meta(name: string): unknown {
     switch (name) {
       case "visits": return this.rt.State.current_visits();
       case "turns": return this.rt.State.turns();
@@ -457,8 +457,8 @@ export class HarloweEngine {
   }
 
   /** Color manipulation functions (fallback for unknown ops). */
-  color_op(name: string, ...args: any[]): string {
-    const fn = (Colors as any)[name];
+  color_op(name: string, ...args: unknown[]): string {
+    const fn = (Colors as Record<string, ((...a: unknown[]) => string) | undefined>)[name];
     if (fn) return fn(...args);
     console.warn(`[harlowe] unknown color op: ${name}`);
     return String(args[0] ?? "");
@@ -467,7 +467,7 @@ export class HarloweEngine {
   // --- DOM macros ---
 
   /** `(replace:)`, `(append:)`, `(prepend:)`, `(show:)`, `(hide:)`, `(rerun:)` */
-  dom_macro(method: string, ...args: any[]): void {
+  dom_macro(method: string, ...args: unknown[]): void {
     const selector = args.length > 0 ? String(args[0]) : "";
     const callback = args.length > 1 && typeof args[args.length - 1] === "function"
       ? args[args.length - 1] as (h: HarloweContext) => void
@@ -535,7 +535,7 @@ export class HarloweEngine {
   // --- Click macros ---
 
   /** `(click:)`, `(click-replace:)`, `(click-append:)`, `(click-prepend:)` */
-  click_macro(method: string, ...args: any[]): void {
+  click_macro(method: string, ...args: unknown[]): void {
     const selector = args.length > 0 ? String(args[0]) : "";
     const callback = args.length > 1 && typeof args[args.length - 1] === "function"
       ? args[args.length - 1] as (h: HarloweContext) => void
@@ -579,7 +579,7 @@ export class HarloweEngine {
   // --- State management ---
 
   /** `(forget-undos: n)` — forget the n most recent undos. -1 forgets all. */
-  forget_undos(n: any): void {
+  forget_undos(n: unknown): void {
     this.rt.State.forgetUndos(Number(n));
   }
 
@@ -591,9 +591,9 @@ export class HarloweEngine {
   // --- Meter ---
 
   /** `(meter: $var, max, label, color)` — progress meter element. */
-  meter_macro(value: any, max: any, ...rest: any[]): void {
-    const label: any = rest[rest.length - 2] ?? rest[0];
-    const color: any = rest[rest.length - 1] ?? rest[0];
+  meter_macro(value: unknown, max: unknown, ...rest: unknown[]): void {
+    const label: unknown = rest[rest.length - 2] ?? rest[0];
+    const color: unknown = rest[rest.length - 1] ?? rest[0];
     const container = this.passage();
     if (!container) return;
     const doc = this.doc();
@@ -632,7 +632,7 @@ export class HarloweEngine {
   // --- Enchant ---
 
   /** `(enchant: selector, changer)` — wraps matching elements in tw-enchantment. */
-  enchant(selector: any, changer: any): void {
+  enchant(selector: unknown, changer: unknown): void {
     const storyEl = this.story();
     if (!storyEl) return;
     const css = resolveHookSelector(selector);
@@ -640,7 +640,7 @@ export class HarloweEngine {
   }
 
   /** `(enchant-in: selector, changer)` — like enchant but scoped to current passage. */
-  enchant_in(selector: any, changer: any): void {
+  enchant_in(selector: unknown, changer: unknown): void {
     const passageEl = this.passage();
     if (!passageEl) return;
     const css = resolveHookSelector(selector);
@@ -650,7 +650,7 @@ export class HarloweEngine {
   // --- Dialog ---
 
   /** `(dialog: title, closeLabel)[hook]` — modal dialog. */
-  dialog_macro(...args: any[]): void {
+  dialog_macro(...args: unknown[]): void {
     const callback = args.length > 0 && typeof args[args.length - 1] === "function"
       ? args.pop() as (h: HarloweContext) => void
       : undefined;
@@ -714,7 +714,7 @@ export class HarloweEngine {
   // --- Columns ---
 
   /** `(columns: "1fr", "2fr", ...)[hook]` — flex row with column widths. */
-  columns_macro(...args: any[]): void {
+  columns_macro(...args: unknown[]): void {
     const callback = args.length > 0 && typeof args[args.length - 1] === "function"
       ? args.pop() as (h: HarloweContext) => void
       : undefined;
@@ -737,7 +737,7 @@ export class HarloweEngine {
 
     const h = new HarloweContext(columns, this.rt, doc);
     // Push the first column as the current container
-    (h as any).containerStack = [columns, firstCol];
+    h.setContainerStack([columns, firstCol]);
     try {
       callback(h);
     } finally {
@@ -759,7 +759,7 @@ export class HarloweEngine {
   }
 
   /** `(scroll:)` — scroll to a named hook or the top of the page. */
-  scroll_macro(selector?: string, _durationOrHideTarget?: any): void {
+  scroll_macro(selector?: string, _durationOrHideTarget?: unknown): void {
     const container = this.story();
     if (!container) return;
     if (selector) {
@@ -888,19 +888,20 @@ export class HarloweEngine {
   // --- Input macros ---
 
   /** `(checkbox:)`, `(dropdown:)`, `(input-box:)` — interactive form elements. */
-  input_macro(name: string, ...args: any[]): void {
+  input_macro(name: string, ...args: unknown[]): void {
     const container = this.passage();
     if (!container) return;
     const doc = this.doc();
-    const bindRef = args.length > 0 ? args[0] : undefined;
-    const hasRef = bindRef != null && typeof bindRef === "object" && typeof bindRef.set === "function";
+    const rawRef = args.length > 0 ? args[0] : undefined;
+    const hasRef = rawRef != null && typeof rawRef === "object" && typeof (rawRef as { set?: unknown }).set === "function";
+    const bindRef = hasRef ? rawRef as { get: () => unknown; set: (v: unknown) => void; twoWay: boolean } : undefined;
     const options = args.slice(1);
     if (name === "checkbox") {
       const falseVal = options[0] ?? "false";
       const trueVal = options[1] ?? "true";
       const input = doc.createElement("input") as HTMLInputElement;
       input.type = "checkbox";
-      if (hasRef) {
+      if (bindRef) {
         if (bindRef.twoWay) {
           input.checked = bindRef.get() === trueVal;
         }
@@ -917,7 +918,7 @@ export class HarloweEngine {
         option.value = String(opt);
         select.appendChild(option);
       }
-      if (hasRef) {
+      if (bindRef) {
         if (bindRef.twoWay) {
           select.value = String(bindRef.get());
         }
@@ -930,8 +931,8 @@ export class HarloweEngine {
       const input = (String(lines) === "oneline"
         ? doc.createElement("input")
         : doc.createElement("textarea")) as HTMLInputElement | HTMLTextAreaElement;
-      input.value = hasRef && bindRef.twoWay ? String(bindRef.get()) : defaultVal;
-      if (hasRef) {
+      input.value = bindRef?.twoWay ? String(bindRef.get()) : defaultVal;
+      if (bindRef) {
         input.addEventListener("input", () => bindRef.set(input.value));
       }
       container.appendChild(input);
@@ -943,16 +944,16 @@ export class HarloweEngine {
    * Args: `cycling: boolean, [bindRef?,] opt1, opt2, ...`
    * If the first content arg is a bind-ref, clicking also sets the variable.
    */
-  cycling_link(cycling: boolean, ...args: any[]): void {
+  cycling_link(cycling: boolean, ...args: unknown[]): void {
     const container = this.passage();
     if (!container) return;
     const doc = this.doc();
 
     // Detect optional bind-ref as first arg (has .get and .set methods).
-    let bindRef: { get: () => any; set: (v: any) => void } | undefined;
+    let bindRef: { get: () => unknown; set: (v: unknown) => void } | undefined;
     let opts: string[];
-    if (args.length > 0 && args[0] != null && typeof args[0] === "object" && typeof args[0].set === "function") {
-      bindRef = args[0];
+    if (args.length > 0 && args[0] != null && typeof args[0] === "object" && typeof (args[0] as { set?: unknown }).set === "function") {
+      bindRef = args[0] as { get: () => unknown; set: (v: unknown) => void };
       opts = args.slice(1).map(String);
     } else {
       opts = args.map(String);
@@ -989,7 +990,7 @@ export class HarloweEngine {
   // --- Unknown macro fallback ---
 
   /** Handle unknown macros gracefully. */
-  unknown_macro(name: string, ...args: any[]): any {
+  unknown_macro(name: string, ...args: unknown[]): unknown {
     console.warn(`[harlowe] unknown macro: (${name}:)`, args);
     return undefined;
   }
@@ -997,7 +998,7 @@ export class HarloweEngine {
   // --- Generic call fallback ---
 
   /** Handle unknown function calls in expressions. */
-  call(name: string, ...args: any[]): any {
+  call(name: string, ...args: unknown[]): unknown {
     console.warn(`[harlowe] unknown function call: ${name}`, args);
     return undefined;
   }
@@ -1006,7 +1007,7 @@ export class HarloweEngine {
 // --- Pure utility functions (no state) ---
 
 /** Check if a value is a Changer object. */
-function isChanger(v: any): v is Changer {
+function isChanger(v: unknown): v is Changer {
   return v != null && typeof v === "object" && "name" in v && "args" in v;
 }
 
@@ -1016,12 +1017,12 @@ function composeChangers(a: Changer | Changer[], b: Changer): Changer[] {
 }
 
 /** `contains` operator: checks if a collection contains a value. */
-function contains(collection: any, value: any): boolean {
+function contains(collection: unknown, value: unknown): boolean {
   if (typeof collection === "string") return collection.includes(String(value));
-  if (Array.isArray(collection)) return collection.includes(value);
+  if (Array.isArray(collection)) return (collection as unknown[]).includes(value);
   if (collection instanceof Set) return collection.has(value);
   if (collection instanceof Map) return collection.has(value);
-  if (typeof collection === "object" && collection !== null) return value in collection;
+  if (typeof collection === "object" && collection !== null) return (value as string) in collection;
   return false;
 }
 
@@ -1038,7 +1039,7 @@ function make_range(first: number, last: number): HarloweRange {
 }
 
 /** Apply a range to a sequential collection. */
-function apply_range(obj: any[], range: HarloweRange): any[] {
+function apply_range(obj: unknown[], range: HarloweRange): unknown[] {
   const len = obj.length;
   const from = resolve_index(range.first, len);
   const to = resolve_index(range.last, len);
@@ -1046,9 +1047,9 @@ function apply_range(obj: any[], range: HarloweRange): any[] {
 }
 
 /** `$var's property` or `(nth: n) of $arr` */
-function get_property(obj: any, prop: any): any {
+function get_property(obj: unknown, prop: unknown): unknown {
   if (obj instanceof Map) return obj.get(prop);
-  const arr_like = obj instanceof Set ? Array.from(obj)
+  const arr_like: unknown[] | string | null = obj instanceof Set ? Array.from(obj)
     : Array.isArray(obj) ? obj
     : typeof obj === "string" ? obj
     : null;
@@ -1056,37 +1057,38 @@ function get_property(obj: any, prop: any): any {
     const len = arr_like.length;
     if (typeof prop === "number") {
       // positive = 1-based forward, negative = from end (-1 = last, -2 = 2ndlast)
-      return arr_like[resolve_index(prop, len)];
+      return (arr_like as unknown[])[resolve_index(prop, len)];
     }
     if (prop === "length") return len;
     if (typeof prop === "object" && prop !== null && "first" in prop) {
       // Range slice: return sub-array/string
       if (typeof arr_like === "string") {
-        const from = resolve_index(prop.first, len);
-        const to = resolve_index(prop.last, len);
+        const range = prop as HarloweRange;
+        const from = resolve_index(range.first, len);
+        const to = resolve_index(range.last, len);
         return arr_like.slice(from, to + 1);
       }
-      return apply_range(arr_like as any[], prop);
+      return apply_range(arr_like as unknown[], prop as HarloweRange);
     }
-    if (Array.isArray(arr_like)) return arr_like[prop];
+    if (Array.isArray(arr_like)) return (arr_like as unknown[])[prop as number];
     return undefined;
   }
-  if (typeof obj === "object" && obj !== null) return obj[prop];
+  if (typeof obj === "object" && obj !== null) return (obj as Record<string, unknown>)[prop as string];
   return undefined;
 }
 
 /** `$var's property to value` */
-function set_property(obj: any, prop: any, value: any): void {
+function set_property(obj: unknown, prop: unknown, value: unknown): void {
   if (obj instanceof Map) {
     obj.set(prop, value);
   } else if (Array.isArray(obj)) {
     if (typeof prop === "number") {
-      obj[resolve_index(prop, obj.length)] = value;
+      (obj as unknown[])[resolve_index(prop, obj.length)] = value;
     } else {
-      obj[prop] = value;
+      (obj as Record<string, unknown>)[prop as string] = value;
     }
   } else if (typeof obj === "object" && obj !== null) {
-    obj[prop] = value;
+    (obj as Record<string, unknown>)[prop as string] = value;
   }
 }
 
@@ -1220,11 +1222,11 @@ function splitStr(sep: string, str: string): string[] {
   return sep === "" ? [...str] : str.split(sep);
 }
 
-function dmAltered(fn: any, map: any): Map<any, any> {
+function dmAltered(fn: unknown, map: unknown): Map<unknown, unknown> {
   if (!(map instanceof Map) || typeof fn !== "function") return new Map();
-  const result = new Map();
-  for (const [k, v] of map) {
-    result.set(k, fn(v));
+  const result = new Map<unknown, unknown>();
+  for (const [k, v] of map as Map<unknown, unknown>) {
+    result.set(k, (fn as (v: unknown) => unknown)(v));
   }
   return result;
 }
@@ -1262,34 +1264,34 @@ export const Colors = { rgb, rgba, hsl, hsla } as const;
 
 // --- String operations (pure) ---
 
-function upperfirst(s: any): string {
+function upperfirst(s: unknown): string {
   const str = String(s);
   return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
 }
-function lowerfirst(s: any): string {
+function lowerfirst(s: unknown): string {
   const str = String(s);
   return str ? str.charAt(0).toLowerCase() + str.slice(1) : str;
 }
-function strReversed(s: any): string { return [...String(s)].reverse().join(""); }
+function strReversed(s: unknown): string { return [...String(s)].reverse().join(""); }
 function trimmed(s: unknown): string;
 function trimmed(pattern: unknown, s: unknown): string;
 function trimmed(sOrPattern: unknown, s?: unknown): string {
   // (trimmed: str) or (trimmed: datatype_pattern, str) — pattern trimming not yet implemented
   return String(s !== undefined ? s : sOrPattern).trim();
 }
-function words(s: any): string[] {
+function words(s: unknown): string[] {
   const str = String(s).trim();
   return str.length === 0 ? [] : str.split(/\s+/);
 }
-function strNth(n: any, s: any): string {
+function strNth(n: unknown, s: unknown): string {
   const str = String(s);
   const i = Math.floor(Number(n)) - 1; // Harlowe is 1-indexed
   return i >= 0 && i < str.length ? str[i]! : "";
 }
-function strRepeated(n: any, s: any): string {
+function strRepeated(n: unknown, s: unknown): string {
   return String(s).repeat(Math.max(0, Math.floor(Number(n))));
 }
-function strFind(pattern: any, s: any): number[] {
+function strFind(pattern: unknown, s: unknown): number[] {
   const str = String(s);
   if (typeof pattern !== "string") return [];
   const positions: number[] = [];
@@ -1333,7 +1335,7 @@ function strReplaced(...args: unknown[]): string {
   }
   return s.split(searchFor).join(replacement);
 }
-function digitFormat(fmt: any, num: any): string {
+function digitFormat(fmt: unknown, num: unknown): string {
   const n = Number(num);
   const format = String(fmt);
   const dotIdx = format.indexOf(".");
@@ -1343,7 +1345,7 @@ function digitFormat(fmt: any, num: any): string {
     maximumFractionDigits: decimals,
   });
 }
-function plural(n: any, singular: any, pluralForm?: any): string {
+function plural(n: unknown, singular: unknown, pluralForm?: unknown): string {
   return Number(n) === 1 ? String(singular)
     : pluralForm !== undefined ? String(pluralForm) : String(singular) + "s";
 }
@@ -1356,7 +1358,7 @@ export const StringOps = {
 // --- Enchantment helpers (pure) ---
 
 /** Resolve a Harlowe hook selector to a CSS selector string. */
-function resolveHookSelector(selector: any): string {
+function resolveHookSelector(selector: unknown): string {
   const s = String(selector);
   if (s.startsWith("?")) return `tw-hook[name="${s.slice(1)}"]`;
   return s;

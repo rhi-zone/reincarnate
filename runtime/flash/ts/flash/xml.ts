@@ -39,7 +39,7 @@ export function xmlList(items: unknown[]): unknown {
 }
 
 function isXmlList(v: unknown): boolean {
-  return Array.isArray(v) && (v as Record<symbol, unknown>)[XML_LIST_TAG] === true;
+  return Array.isArray(v) && (v as unknown as Record<symbol, unknown>)[XML_LIST_TAG] === true;
 }
 
 const xmlListHandler: ProxyHandler<any[]> = {
@@ -98,19 +98,19 @@ const xmlListHandler: ProxyHandler<any[]> = {
 // Descendant access
 // ---------------------------------------------------------------------------
 
-export function getDescendants(obj: any, name: string): any {
+export function getDescendants(obj: unknown, name: string): unknown {
   if (obj === null || obj === undefined) return xmlList([]);
   // Strip namespace prefix: "ns::localname" → "localname"
   const local = name.includes("::") ? name.split("::").pop()! : name;
   // If the object has the property (e.g. describeType result), return it
-  const val = obj[local];
+  const val = (obj as Record<string, unknown>)[local];
   if (val !== undefined) {
     return isXmlList(val) ? val : xmlList(Array.isArray(val) ? val : [val]);
   }
   return xmlList([]);
 }
 
-export function setDefaultNamespace(ns: any): void {
+export function setDefaultNamespace(ns: unknown): void {
   // In AVM2 this sets the default XML namespace for the current scope.
   // No-op in lifted code — E4X is rarely used in practice.
 }
@@ -123,7 +123,7 @@ export function setDefaultNamespace(ns: any): void {
 export class XML {
   private _source: string;
 
-  constructor(value?: any) {
+  constructor(value?: unknown) {
     this._source = value == null ? "" : String(value);
   }
 
