@@ -18,8 +18,8 @@ isolation, no circular dependencies. Ready for a second backend without major re
 - ⚠️ IR completeness: aggregate constants missing (tracked below). Data files bypass IR.
 - ⚠️ Type system: no generics, no flow-sensitive narrowing, Dynamic conflation. Sufficient
   for current engines but will need expansion.
-- ⚠️ Law compliance: Law 1 (aggregate constant bypass), Law 2 (1 remaining violation —
-  type_infer.rs Flash/GML dispatch). Laws 3-5 clean.
+- ⚠️ Law compliance: Law 1 (aggregate constant bypass — `Constant` enum lacks Array/Map).
+  Law 2 all named violations fixed. Laws 3-5 clean.
 - ⚠️ Module struct: 8 engine-specific fields (kitchen sink). Fix via aggregate constants.
 - ⚠️ Abstraction gaps: `abstract_members` tuple, `StructDef.fields` tuple (tracked in
   IR Class Representation section below).
