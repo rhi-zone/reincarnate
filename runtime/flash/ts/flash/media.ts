@@ -94,9 +94,9 @@ export class Sound extends EventDispatcher {
     return new SoundChannel();
   }
 
-  load(_stream: any, _context?: SoundLoaderContext): void {}
+  load(_stream: unknown, _context?: SoundLoaderContext): void {}
 
-  extract(_target: any, _length: number, _startPosition = -1): number {
+  extract(_target: unknown, _length: number, _startPosition = -1): number {
     return 0;
   }
 }
@@ -116,7 +116,7 @@ export class SoundMixer {
   static stopAll(): void {}
 
   static computeSpectrum(
-    _outputArray: any,
+    _outputArray: unknown,
     _FFTMode = false,
     _stretchFactor = 0,
   ): void {}
@@ -163,6 +163,6 @@ export class Video extends EventDispatcher {
     super();
   }
 
-  attachNetStream(_netStream: any): void {}
+  attachNetStream(_netStream: unknown): void {}
   clear(): void {}
 }

@@ -10,5 +10,5 @@ export abstract class IFilePromise {
   abstract get relativePath(): string;
   abstract close(): void;
   abstract open(): IDataInput;
-  abstract reportError(e: any): void;
+  abstract reportError(e: unknown): void;
 }

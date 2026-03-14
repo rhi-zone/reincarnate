@@ -542,7 +542,7 @@ export class Font {
     return [...Font._registry];
   }
 
-  static registerFont(fontClass: any): void {
+  static registerFont(fontClass: new() => Font): void {
     const instance = new fontClass();
     Font._registry.push(instance);
   }
