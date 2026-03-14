@@ -4217,11 +4217,11 @@
       "returns": "number"
     },
     "psn_init_np_libs": {
-      "params": [],
+      "params": ["string", "string", "string"],
       "returns": "void"
     },
     "psn_init_trophy": {
-      "params": [],
+      "params": ["number", "number?"],
       "returns": "void"
     },
     "psn_np_commerce_dialog_tick": {

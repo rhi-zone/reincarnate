@@ -3845,9 +3845,9 @@ export class GameRuntime {
   // Communication restrictions and commerce dialogs have no browser equivalent.
 
   /** Load trophy unlock state from storage into the in-memory set. */
-  psn_init_np_libs(): void { /* no-op — PSN not available in browser */ }
+  psn_init_np_libs(_titleId: string, _titleSecret: string, _passphrase: string): void { /* no-op — PSN not available in browser */ }
   psn_setup_trophies(): void { /* no-op — PSN not available in browser; trophy init via psn_init_trophy */ }
-  psn_init_trophy(_pad_index?: number): void {
+  psn_init_trophy(_pad_index: number, _count?: number): void {
     const gameName = this._storage.gameName;
     const raw = fetchItem(this._persistence, "__psn_trophy_" + gameName);
     if (raw) {

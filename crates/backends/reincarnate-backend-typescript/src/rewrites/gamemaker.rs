@@ -98,7 +98,8 @@ fn instances_0(obj_name: String) -> JsExpr {
 pub fn rewrite_introduced_direct_calls(func_name: &str) -> &'static [&'static str] {
     match func_name {
         "@@Global@@" => &["global"],
-        "@@Other@@" => &["other"],
+        // @@Other@@ rewrites to Var("other") — a param reference, not an import.
+        "@@Other@@" => &[],
         _ => &[],
     }
 }
@@ -116,9 +117,11 @@ pub fn rewrite_introduced_calls(system: &str, method: &str) -> &'static [&'stati
         ("GameMaker.Instance", "getField") => &["getInstanceField"],
         ("GameMaker.Instance", "setField") => &["setInstanceField"],
         ("GameMaker.Instance", "withInstances") => &["withInstances"],
-        // getOther/setOther rewrite to expressions using `other` (the collision partner).
-        ("GameMaker.Instance", "getOther") => &["other"],
-        ("GameMaker.Instance", "setOther") => &["other", "setOtherField"],
+        // getOther/setOther rewrite to expressions using `other` (the collision partner
+        // param). `other` itself is a param reference, not an import — only `setOtherField`
+        // needs importing.
+        ("GameMaker.Instance", "getOther") => &[],
+        ("GameMaker.Instance", "setOther") => &["setOtherField"],
         _ => &[],
     }
 }
@@ -557,12 +560,18 @@ fn rewrite_expr(
                     *expr = JsExpr::Var("other".into());
                     return;
                 }
-                // event_inherited() → super.eventName()
+                // event_inherited() → super.eventName(args...)
+                // Collision events have an `other` param that must be forwarded.
                 "event_inherited" => {
                     if let Some(method) = event_name {
+                        let super_args = if method.starts_with("collision") {
+                            vec![JsExpr::Var("other".into())]
+                        } else {
+                            vec![]
+                        };
                         *expr = JsExpr::SuperMethodCall {
                             method: method.to_string(),
-                            args: vec![],
+                            args: super_args,
                         };
                         return;
                     }
