@@ -4,7 +4,7 @@
  */
 
 /** AS3 global `trace()` — debug logging, equivalent to console.log(). */
-declare function trace(...args: any[]): void;
+declare function trace(...args: unknown[]): void;
 
 // AS3 Error augmentations:
 // - Constructor accepts an optional error ID as second arg
@@ -19,7 +19,7 @@ interface Error {
 }
 interface ErrorConstructor {
   // AS3 Error.throwError(type, id, ...args) — throws a new error of the given type.
-  throwError(type: new(...args: any[]) => Error, id: number, ...args: any[]): void;
+  throwError(type: new(...args: any[]) => Error, id: number, ...args: unknown[]): void;
 }
 
 // AS3 Array sort flag constants (not present in TypeScript's ArrayConstructor).

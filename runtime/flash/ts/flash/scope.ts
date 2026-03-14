@@ -13,7 +13,7 @@
  * objects used as closure capture containers.
  */
 
-export function getOuterScope(): any {
+export function getOuterScope(): typeof globalThis {
   return globalThis;
 }
 
@@ -38,6 +38,6 @@ export function findDef(name: string): never {
   );
 }
 
-export function newActivation(): Record<string, any> {
+export function newActivation(): Record<string, unknown> {
   return {};
 }
