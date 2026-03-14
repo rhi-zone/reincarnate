@@ -18,8 +18,8 @@ isolation, no circular dependencies. Ready for a second backend without major re
 - ⚠️ IR completeness: aggregate constants missing (tracked below). Data files bypass IR.
 - ⚠️ Type system: no generics, no flow-sensitive narrowing, Dynamic conflation. Sufficient
   for current engines but will need expansion.
-- ⚠️ Law compliance: Law 1 (aggregate constant bypass), Law 2 (3 remaining violations —
-  Harlowe.H in core, Flash Dictionary in core, Flash.Iterator gated). Laws 3-5 clean.
+- ⚠️ Law compliance: Law 1 (aggregate constant bypass), Law 2 (2 remaining violations —
+  Harlowe.H in core, type_infer.rs Flash/GML dispatch). Laws 3-5 clean.
 - ⚠️ Module struct: 8 engine-specific fields (kitchen sink). Fix via aggregate constants.
 - ⚠️ Abstraction gaps: `abstract_members` tuple, `StructDef.fields` tuple (tracked in
   IR Class Representation section below).
@@ -118,9 +118,10 @@ All of the following violate it and need to move to the respective frontend crat
 - [x] **`linear.rs` line ~1454–1465: GML `ClassRef as any` widening in the shared linearizer.** (2026-03-11)
   Now gated on `LoweringConfig::wrap_class_refs_as_any` (GML backend sets `true`). Law 2 satisfied.
 
-- [x] **`ast_passes.rs` lines 1804–2140: Flash `ForOfRewrite` / `HasNext2` pattern in shared AST passes.** (2026-03-11)
-  Gated behind `LoweringConfig::foreach_rewrite` (Flash backend sets `true`; other engines skip).
-  Code stays in shared `ast_passes.rs` but is inert unless opted in — Law 2 satisfied.
+- [x] **`ast_passes.rs` lines 1804–2140: Flash `ForOfRewrite` / `HasNext2` pattern in shared AST passes.** (2026-03-15)
+  `foreach_rewrite: bool` → `foreach_iterator_system: Option<String>`. The system name (`"Flash.Iterator"`)
+  now lives in the Flash backend config; `control_flow.rs` matches against the config value, not a
+  hardcoded string. Law 2 satisfied.
 
 - [ ] **`control_flow.rs` line 164: Harlowe-specific `Harlowe.H` → `h.method()` rewrite in core.**
   Previously marked as removed (2026-03-11) but still present in `ast_passes/control_flow.rs:164`.

@@ -199,11 +199,11 @@ pub struct LoweringConfig {
     pub wrap_class_refs_as_any: bool,
     /// Rewrite `while(true) { hasNext2 ... }` loops to `for (const x of ...)`.
     ///
-    /// This pattern is specific to Flash's `HasNext2` opcode. Other engines
-    /// never produce it, so the rewrite is skipped by default.
+    /// Set to the `SystemCall` system name that provides `hasNext2`, `nextValue`,
+    /// and `nextName` (e.g. `"Flash.Iterator"`).  `None` disables the rewrite.
     ///
-    /// Flash sets this to `true`; all other engines leave it `false`.
-    pub foreach_rewrite: bool,
+    /// Flash sets this to `Some("Flash.Iterator")`; all other engines leave it `None`.
+    pub foreach_iterator_system: Option<String>,
     /// Insert `.toString()` on `SystemCall` construct ops that produce a String
     /// result type.  In AS3, constructing `XML`/`XMLList` from a string
     /// implicitly coerces the result to a string, but the TypeScript backend
@@ -242,7 +242,7 @@ impl LoweringConfig {
             while_condition_hoisting: true,
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
-            foreach_rewrite: false,
+            foreach_iterator_system: None,
             construct_string_coerce: false,
             coerce_index_types: false,
         }
@@ -256,7 +256,7 @@ impl LoweringConfig {
             while_condition_hoisting: true,
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
-            foreach_rewrite: false,
+            foreach_iterator_system: None,
             construct_string_coerce: false,
             coerce_index_types: false,
         }

@@ -522,10 +522,10 @@ fn simplify_ternary_in_expr(expr: &mut Expr) {
 /// Rewrite `while (true) { hasNext2 boilerplate ... }` loops into `for (const x of ...)`.
 ///
 /// Recurses into all nested statement bodies.
-pub fn rewrite_foreach_loops(body: &mut [Stmt]) {
+pub fn rewrite_foreach_loops(body: &mut [Stmt], iterator_system: &str) {
     let mut i = 0;
     while i < body.len() {
-        if let Some(for_of) = try_rewrite_foreach(&body[i]) {
+        if let Some(for_of) = try_rewrite_foreach(&body[i], iterator_system) {
             body[i] = for_of;
         }
         i += 1;
@@ -537,22 +537,22 @@ pub fn rewrite_foreach_loops(body: &mut [Stmt]) {
                 else_body,
                 ..
             } => {
-                rewrite_foreach_loops(then_body);
-                rewrite_foreach_loops(else_body);
+                rewrite_foreach_loops(then_body, iterator_system);
+                rewrite_foreach_loops(else_body, iterator_system);
             }
             Stmt::While { body, .. } | Stmt::Loop { body } | Stmt::ForOf { body, .. } => {
-                rewrite_foreach_loops(body);
+                rewrite_foreach_loops(body, iterator_system);
             }
             Stmt::For {
                 init, update, body, ..
             } => {
-                rewrite_foreach_loops(init);
-                rewrite_foreach_loops(update);
-                rewrite_foreach_loops(body);
+                rewrite_foreach_loops(init, iterator_system);
+                rewrite_foreach_loops(update, iterator_system);
+                rewrite_foreach_loops(body, iterator_system);
             }
             Stmt::Dispatch { blocks, .. } => {
                 for (_, block_body) in blocks {
-                    rewrite_foreach_loops(block_body);
+                    rewrite_foreach_loops(block_body, iterator_system);
                 }
             }
             Stmt::Switch {
@@ -561,16 +561,16 @@ pub fn rewrite_foreach_loops(body: &mut [Stmt]) {
                 ..
             } => {
                 for (_, case_body) in cases {
-                    rewrite_foreach_loops(case_body);
+                    rewrite_foreach_loops(case_body, iterator_system);
                 }
-                rewrite_foreach_loops(default_body);
+                rewrite_foreach_loops(default_body, iterator_system);
             }
             _ => {}
         }
     }
 }
 
-fn try_rewrite_foreach(stmt: &Stmt) -> Option<Stmt> {
+fn try_rewrite_foreach(stmt: &Stmt, iterator_system: &str) -> Option<Stmt> {
     let loop_body = match stmt {
         Stmt::Loop { body } => body,
         _ => return None,
@@ -582,7 +582,7 @@ fn try_rewrite_foreach(stmt: &Stmt) -> Option<Stmt> {
             Stmt::VarDecl {
                 init: Some(Expr::SystemCall { system, method, .. }),
                 ..
-            } if system == "Flash.Iterator" && method == "hasNext2"
+            } if system == iterator_system && method == "hasNext2"
         )
     })?;
 
@@ -622,7 +622,8 @@ fn try_rewrite_foreach(stmt: &Stmt) -> Option<Stmt> {
     }
 
     let remaining = &loop_body[hn2_idx + 4..];
-    let (next_method, next_stmt_idx) = find_next_call(remaining, &obj_name, &idx_name)?;
+    let (next_method, next_stmt_idx) =
+        find_next_call(remaining, &obj_name, &idx_name, iterator_system)?;
 
     let wrapper = match next_method {
         "nextValue" => "Object.values",
@@ -636,8 +637,13 @@ fn try_rewrite_foreach(stmt: &Stmt) -> Option<Stmt> {
     };
 
     let mut new_body: Vec<Stmt> = remaining.to_vec();
-    let (binding, declare) =
-        extract_binding_and_replace(&mut new_body, next_stmt_idx, &obj_name, &idx_name)?;
+    let (binding, declare) = extract_binding_and_replace(
+        &mut new_body,
+        next_stmt_idx,
+        &obj_name,
+        &idx_name,
+        iterator_system,
+    )?;
 
     Some(Stmt::ForOf {
         binding,
@@ -670,32 +676,47 @@ fn find_next_call<'a>(
     body: &'a [Stmt],
     obj_name: &str,
     idx_name: &str,
+    iterator_system: &str,
 ) -> Option<(&'a str, usize)> {
     for (i, stmt) in body.iter().enumerate() {
-        if let Some(method) = stmt_contains_next_call(stmt, obj_name, idx_name) {
+        if let Some(method) = stmt_contains_next_call(stmt, obj_name, idx_name, iterator_system) {
             return Some((method, i));
         }
     }
     None
 }
 
-fn stmt_contains_next_call<'a>(stmt: &'a Stmt, obj_name: &str, idx_name: &str) -> Option<&'a str> {
+fn stmt_contains_next_call<'a>(
+    stmt: &'a Stmt,
+    obj_name: &str,
+    idx_name: &str,
+    iterator_system: &str,
+) -> Option<&'a str> {
     match stmt {
-        Stmt::VarDecl { init: Some(e), .. } => expr_contains_next_call(e, obj_name, idx_name),
-        Stmt::Assign { value, .. } => expr_contains_next_call(value, obj_name, idx_name),
-        Stmt::Expr(e) => expr_contains_next_call(e, obj_name, idx_name),
-        Stmt::If { cond, .. } => expr_contains_next_call(cond, obj_name, idx_name),
+        Stmt::VarDecl { init: Some(e), .. } => {
+            expr_contains_next_call(e, obj_name, idx_name, iterator_system)
+        }
+        Stmt::Assign { value, .. } => {
+            expr_contains_next_call(value, obj_name, idx_name, iterator_system)
+        }
+        Stmt::Expr(e) => expr_contains_next_call(e, obj_name, idx_name, iterator_system),
+        Stmt::If { cond, .. } => expr_contains_next_call(cond, obj_name, idx_name, iterator_system),
         _ => None,
     }
 }
 
-fn expr_contains_next_call<'a>(expr: &'a Expr, obj_name: &str, idx_name: &str) -> Option<&'a str> {
+fn expr_contains_next_call<'a>(
+    expr: &'a Expr,
+    obj_name: &str,
+    idx_name: &str,
+    iterator_system: &str,
+) -> Option<&'a str> {
     match expr {
         Expr::SystemCall {
             system,
             method,
             args,
-        } if system == "Flash.Iterator"
+        } if system == iterator_system
             && (method == "nextValue" || method == "nextName")
             && args.len() == 2
             && matches!(&args[0], Expr::Var(v) if v == obj_name)
@@ -703,38 +724,45 @@ fn expr_contains_next_call<'a>(expr: &'a Expr, obj_name: &str, idx_name: &str) -
         {
             Some(method.as_str())
         }
-        Expr::Cast { expr, .. } => expr_contains_next_call(expr, obj_name, idx_name),
+        Expr::Cast { expr, .. } => {
+            expr_contains_next_call(expr, obj_name, idx_name, iterator_system)
+        }
         Expr::Call { args, .. } | Expr::SystemCall { args, .. } => args
             .iter()
-            .find_map(|a| expr_contains_next_call(a, obj_name, idx_name)),
-        Expr::CallIndirect { callee, args } => expr_contains_next_call(callee, obj_name, idx_name)
-            .or_else(|| {
+            .find_map(|a| expr_contains_next_call(a, obj_name, idx_name, iterator_system)),
+        Expr::CallIndirect { callee, args } => {
+            expr_contains_next_call(callee, obj_name, idx_name, iterator_system).or_else(|| {
                 args.iter()
-                    .find_map(|a| expr_contains_next_call(a, obj_name, idx_name))
-            }),
+                    .find_map(|a| expr_contains_next_call(a, obj_name, idx_name, iterator_system))
+            })
+        }
         Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
-            expr_contains_next_call(lhs, obj_name, idx_name)
-                .or_else(|| expr_contains_next_call(rhs, obj_name, idx_name))
+            expr_contains_next_call(lhs, obj_name, idx_name, iterator_system)
+                .or_else(|| expr_contains_next_call(rhs, obj_name, idx_name, iterator_system))
         }
         Expr::Unary { expr, .. } | Expr::Not(expr) => {
-            expr_contains_next_call(expr, obj_name, idx_name)
+            expr_contains_next_call(expr, obj_name, idx_name, iterator_system)
         }
         Expr::Index { collection, index } => {
-            expr_contains_next_call(collection, obj_name, idx_name)
-                .or_else(|| expr_contains_next_call(index, obj_name, idx_name))
+            expr_contains_next_call(collection, obj_name, idx_name, iterator_system)
+                .or_else(|| expr_contains_next_call(index, obj_name, idx_name, iterator_system))
         }
-        Expr::Field { object, .. } => expr_contains_next_call(object, obj_name, idx_name),
+        Expr::Field { object, .. } => {
+            expr_contains_next_call(object, obj_name, idx_name, iterator_system)
+        }
         Expr::Ternary {
             cond,
             then_val,
             else_val,
-        } => expr_contains_next_call(cond, obj_name, idx_name)
-            .or_else(|| expr_contains_next_call(then_val, obj_name, idx_name))
-            .or_else(|| expr_contains_next_call(else_val, obj_name, idx_name)),
+        } => expr_contains_next_call(cond, obj_name, idx_name, iterator_system)
+            .or_else(|| expr_contains_next_call(then_val, obj_name, idx_name, iterator_system))
+            .or_else(|| expr_contains_next_call(else_val, obj_name, idx_name, iterator_system)),
         Expr::ArrayInit(elems) => elems
             .iter()
-            .find_map(|e| expr_contains_next_call(e, obj_name, idx_name)),
-        Expr::TypeCheck { expr, .. } => expr_contains_next_call(expr, obj_name, idx_name),
+            .find_map(|e| expr_contains_next_call(e, obj_name, idx_name, iterator_system)),
+        Expr::TypeCheck { expr, .. } => {
+            expr_contains_next_call(expr, obj_name, idx_name, iterator_system)
+        }
         _ => None,
     }
 }
@@ -744,6 +772,7 @@ fn extract_binding_and_replace(
     idx: usize,
     obj_name: &str,
     idx_name: &str,
+    iterator_system: &str,
 ) -> Option<(String, bool)> {
     if let Stmt::VarDecl {
         name,
@@ -751,9 +780,11 @@ fn extract_binding_and_replace(
         ..
     } = &body[idx]
     {
-        let is_direct = is_next_call(init, obj_name, idx_name);
-        let is_cast_wrapped =
-            matches!(init, Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name));
+        let is_direct = is_next_call(init, obj_name, idx_name, iterator_system);
+        let is_cast_wrapped = matches!(
+            init,
+            Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name, iterator_system)
+        );
         if is_direct || is_cast_wrapped {
             let binding = name.clone();
             body.remove(idx);
@@ -766,9 +797,11 @@ fn extract_binding_and_replace(
         value,
     } = &body[idx]
     {
-        let is_direct = is_next_call(value, obj_name, idx_name);
-        let is_cast_wrapped =
-            matches!(value, Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name));
+        let is_direct = is_next_call(value, obj_name, idx_name, iterator_system);
+        let is_cast_wrapped = matches!(
+            value,
+            Expr::Cast { expr, .. } if is_next_call(expr, obj_name, idx_name, iterator_system)
+        );
         if is_direct || is_cast_wrapped {
             let binding = name.clone();
             body.remove(idx);
@@ -777,7 +810,13 @@ fn extract_binding_and_replace(
     }
 
     let binding = "$item".to_string();
-    let replaced = replace_next_call_in_stmt(&mut body[idx], obj_name, idx_name, &binding);
+    let replaced = replace_next_call_in_stmt(
+        &mut body[idx],
+        obj_name,
+        idx_name,
+        &binding,
+        iterator_system,
+    );
     if replaced {
         Some((binding, true))
     } else {
@@ -785,11 +824,11 @@ fn extract_binding_and_replace(
     }
 }
 
-fn is_next_call(expr: &Expr, obj_name: &str, idx_name: &str) -> bool {
+fn is_next_call(expr: &Expr, obj_name: &str, idx_name: &str, iterator_system: &str) -> bool {
     matches!(
         expr,
         Expr::SystemCall { system, method, args }
-            if system == "Flash.Iterator"
+            if system == iterator_system
             && (method == "nextValue" || method == "nextName")
             && args.len() == 2
             && matches!(&args[0], Expr::Var(v) if v == obj_name)
@@ -802,17 +841,22 @@ fn replace_next_call_in_stmt(
     obj_name: &str,
     idx_name: &str,
     binding: &str,
+    iterator_system: &str,
 ) -> bool {
     match stmt {
         Stmt::VarDecl { init: Some(e), .. } => {
-            replace_next_call_in_expr(e, obj_name, idx_name, binding)
+            replace_next_call_in_expr(e, obj_name, idx_name, binding, iterator_system)
         }
-        Stmt::Assign { value, .. } => replace_next_call_in_expr(value, obj_name, idx_name, binding),
-        Stmt::Expr(e) => replace_next_call_in_expr(e, obj_name, idx_name, binding),
+        Stmt::Assign { value, .. } => {
+            replace_next_call_in_expr(value, obj_name, idx_name, binding, iterator_system)
+        }
+        Stmt::Expr(e) => replace_next_call_in_expr(e, obj_name, idx_name, binding, iterator_system),
         Stmt::CompoundAssign { value, .. } => {
-            replace_next_call_in_expr(value, obj_name, idx_name, binding)
+            replace_next_call_in_expr(value, obj_name, idx_name, binding, iterator_system)
         }
-        Stmt::If { cond, .. } => replace_next_call_in_expr(cond, obj_name, idx_name, binding),
+        Stmt::If { cond, .. } => {
+            replace_next_call_in_expr(cond, obj_name, idx_name, binding, iterator_system)
+        }
         _ => false,
     }
 }
@@ -822,61 +866,64 @@ fn replace_next_call_in_expr(
     obj_name: &str,
     idx_name: &str,
     binding: &str,
+    iterator_system: &str,
 ) -> bool {
-    if is_next_call(expr, obj_name, idx_name) {
+    if is_next_call(expr, obj_name, idx_name, iterator_system) {
         *expr = Expr::Var(binding.to_string());
         return true;
     }
     if let Expr::Cast { expr: inner, .. } = expr {
-        if is_next_call(inner, obj_name, idx_name) {
+        if is_next_call(inner, obj_name, idx_name, iterator_system) {
             *expr = Expr::Var(binding.to_string());
             return true;
         }
     }
 
     match expr {
-        Expr::Cast { expr, .. } => replace_next_call_in_expr(expr, obj_name, idx_name, binding),
+        Expr::Cast { expr, .. } => {
+            replace_next_call_in_expr(expr, obj_name, idx_name, binding, iterator_system)
+        }
         Expr::Call { args, .. } | Expr::SystemCall { args, .. } => args
             .iter_mut()
-            .any(|a| replace_next_call_in_expr(a, obj_name, idx_name, binding)),
+            .any(|a| replace_next_call_in_expr(a, obj_name, idx_name, binding, iterator_system)),
         Expr::CallIndirect { callee, args } => {
-            replace_next_call_in_expr(callee, obj_name, idx_name, binding)
-                || args
-                    .iter_mut()
-                    .any(|a| replace_next_call_in_expr(a, obj_name, idx_name, binding))
+            replace_next_call_in_expr(callee, obj_name, idx_name, binding, iterator_system)
+                || args.iter_mut().any(|a| {
+                    replace_next_call_in_expr(a, obj_name, idx_name, binding, iterator_system)
+                })
         }
         Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
-            replace_next_call_in_expr(lhs, obj_name, idx_name, binding)
-                || replace_next_call_in_expr(rhs, obj_name, idx_name, binding)
+            replace_next_call_in_expr(lhs, obj_name, idx_name, binding, iterator_system)
+                || replace_next_call_in_expr(rhs, obj_name, idx_name, binding, iterator_system)
         }
         Expr::Unary { expr, .. } | Expr::Not(expr) => {
-            replace_next_call_in_expr(expr, obj_name, idx_name, binding)
+            replace_next_call_in_expr(expr, obj_name, idx_name, binding, iterator_system)
         }
         Expr::Index { collection, index } => {
-            replace_next_call_in_expr(collection, obj_name, idx_name, binding)
-                || replace_next_call_in_expr(index, obj_name, idx_name, binding)
+            replace_next_call_in_expr(collection, obj_name, idx_name, binding, iterator_system)
+                || replace_next_call_in_expr(index, obj_name, idx_name, binding, iterator_system)
         }
         Expr::Field { object, .. } => {
-            replace_next_call_in_expr(object, obj_name, idx_name, binding)
+            replace_next_call_in_expr(object, obj_name, idx_name, binding, iterator_system)
         }
         Expr::Ternary {
             cond,
             then_val,
             else_val,
         } => {
-            replace_next_call_in_expr(cond, obj_name, idx_name, binding)
-                || replace_next_call_in_expr(then_val, obj_name, idx_name, binding)
-                || replace_next_call_in_expr(else_val, obj_name, idx_name, binding)
+            replace_next_call_in_expr(cond, obj_name, idx_name, binding, iterator_system)
+                || replace_next_call_in_expr(then_val, obj_name, idx_name, binding, iterator_system)
+                || replace_next_call_in_expr(else_val, obj_name, idx_name, binding, iterator_system)
         }
         Expr::ArrayInit(elems) => elems
             .iter_mut()
-            .any(|e| replace_next_call_in_expr(e, obj_name, idx_name, binding)),
+            .any(|e| replace_next_call_in_expr(e, obj_name, idx_name, binding, iterator_system)),
         Expr::TypeCheck { expr, .. } => {
-            replace_next_call_in_expr(expr, obj_name, idx_name, binding)
+            replace_next_call_in_expr(expr, obj_name, idx_name, binding, iterator_system)
         }
         Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
-            replace_next_call_in_expr(lhs, obj_name, idx_name, binding)
-                || replace_next_call_in_expr(rhs, obj_name, idx_name, binding)
+            replace_next_call_in_expr(lhs, obj_name, idx_name, binding, iterator_system)
+                || replace_next_call_in_expr(rhs, obj_name, idx_name, binding, iterator_system)
         }
         _ => false,
     }

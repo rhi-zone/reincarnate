@@ -187,8 +187,8 @@ pub fn lower_function_linear(
     // (not inside if/loop bodies) to avoid making calls conditional.
     ast_passes::inline_ordered_single_use(&mut full_body);
 
-    if config.foreach_rewrite {
-        ast_passes::rewrite_foreach_loops(&mut full_body);
+    if let Some(iterator_system) = config.foreach_iterator_system.as_deref() {
+        ast_passes::rewrite_foreach_loops(&mut full_body, iterator_system);
         // Clean up dead variables left by the foreach rewrite
         // (e.g., the index register decl, single-use collection var).
         ast_passes::narrow_var_scope(&mut full_body);
