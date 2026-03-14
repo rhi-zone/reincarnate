@@ -126,12 +126,21 @@ fn generate_sprites(dw: &DataWin, catalog: &mut AssetCatalog) {
     // Sprites enum: PascalCase name → index.
     // Use `as const` (no explicit type) so property access returns the exact literal
     // type (e.g. `322`) rather than `number | undefined` under noUncheckedIndexedAccess.
+    // Deduplicate keys: if two sprites strip to the same PascalCase name, append _2, _3…
     out.push_str("export const Sprites = {\n");
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (i, sprite) in sprt.sprites.iter().enumerate() {
         let raw = dw
             .resolve_string(sprite.name)
             .unwrap_or_else(|_| format!("spr_{i}"));
-        let key = naming::sprite_name_to_pascal(&raw);
+        let base_key = naming::sprite_name_to_pascal(&raw);
+        let count = seen.entry(base_key.clone()).or_insert(0);
+        *count += 1;
+        let key = if *count > 1 {
+            format!("{base_key}_{count}")
+        } else {
+            base_key
+        };
         // Emit as a plain identifier when valid, otherwise as a quoted string key.
         // A valid JS identifier starts with [a-zA-Z_$] and continues with [a-zA-Z0-9_$].
         // serde_json::to_string provides correct JSON string escaping for quoted keys.
@@ -415,12 +424,21 @@ fn generate_rooms(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]
     out.push_str("];\n\n");
 
     // Rooms enum: PascalCase name → index (as const for exact literal types).
+    // Deduplicate keys: if two rooms strip to the same PascalCase name, append _2, _3…
     out.push_str("export const Rooms = {\n");
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (i, entry) in room.rooms.iter().enumerate() {
         let raw = dw
             .resolve_string(entry.name)
             .unwrap_or_else(|_| format!("room_{i}"));
-        let key = naming::room_name_to_pascal(&raw);
+        let base_key = naming::room_name_to_pascal(&raw);
+        let count = seen.entry(base_key.clone()).or_insert(0);
+        *count += 1;
+        let key = if *count > 1 {
+            format!("{base_key}_{count}")
+        } else {
+            base_key
+        };
         let key_token = if is_valid_js_ident(&key) {
             key
         } else {
