@@ -287,13 +287,21 @@ pub(super) fn emit_class(
     out: &mut String,
     traits_out: &mut String,
     diagnostics: &mut Vec<Diagnostic>,
+    override_class_name: Option<&str>,
 ) -> Result<(), CoreError> {
     let qualified = qualified_class_name(&group.class_def);
     // Use the (possibly disambiguated) TypeScript class identifier.
-    let class_name = class_names
-        .get(&qualified)
-        .cloned()
-        .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
+    // `override_class_name` is set when two classes in the same namespace share
+    // the same sanitized name — the second one gets a unique suffix assigned by
+    // the caller.
+    let class_name = override_class_name
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            class_names
+                .get(&qualified)
+                .cloned()
+                .unwrap_or_else(|| sanitize_ident(&group.class_def.name))
+        });
     let vis = rewrites::visibility_prefix(group.class_def.visibility);
 
     let extends = match &group.class_def.super_class {

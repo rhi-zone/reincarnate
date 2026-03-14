@@ -462,14 +462,28 @@ fn generate_main(
     for module in modules {
         emit_module_imports(module, &mut out, &mut heuristic_entry);
         // Collect all public class names for the {classes} placeholder.
+        // Use the same collision-resolution logic as emit_class_file: when two
+        // classes in the same namespace share the same sanitized name they both
+        // map to the same qualified_class_name key, so the map only stores one
+        // entry.  Track seen ts_names and apply a numeric suffix (_2, _3, …)
+        // for subsequent collisions, mirroring the file-name dedup in the emitter.
         let class_name_map = build_class_names(module);
+        let mut seen_ts_names: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for class in &module.classes {
             if class.visibility == Visibility::Public {
                 let qualified = qualified_class_name(class);
-                let ts_name = class_name_map
+                let base_ts = class_name_map
                     .get(&qualified)
                     .cloned()
                     .unwrap_or_else(|| sanitize_ident(&class.name));
+                let count = seen_ts_names.entry(base_ts.clone()).or_insert(0);
+                *count += 1;
+                let ts_name = if *count > 1 {
+                    format!("{base_ts}_{count}")
+                } else {
+                    base_ts
+                };
                 class_names.push(ts_name);
             }
         }
@@ -559,15 +573,27 @@ fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut 
         }
     } else {
         // Class-based module — import from barrel file.
+        // Apply the same collision-resolution logic as the emitter: when two
+        // classes share the same qualified_class_name (same namespace + sanitized
+        // name), the second one gets a numeric suffix (_2, _3, …).
         let class_name_map = build_class_names(module);
         let mut imports = Vec::new();
+        let mut seen_ts_names: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for class in &module.classes {
             if class.visibility == Visibility::Public {
                 let qualified = qualified_class_name(class);
-                let ts_name = class_name_map
+                let base_ts = class_name_map
                     .get(&qualified)
                     .cloned()
                     .unwrap_or_else(|| sanitize_ident(&class.name));
+                let count = seen_ts_names.entry(base_ts.clone()).or_insert(0);
+                *count += 1;
+                let ts_name = if *count > 1 {
+                    format!("{base_ts}_{count}")
+                } else {
+                    base_ts
+                };
                 imports.push(ts_name);
             }
         }

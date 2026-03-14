@@ -246,6 +246,7 @@ pub fn emit_module_to_string(
                 &mut out,
                 &mut traits_buf,
                 diagnostics,
+                None,
             )?;
             // In string mode (tests), append traits inline.
             out.push_str(&traits_buf);
@@ -664,6 +665,7 @@ fn emit_class_file(
     engine: EngineKind,
     debug: &DebugConfig,
     barrel_exports: &mut Vec<String>,
+    seen_paths: &mut HashMap<String, usize>,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
     let class_def = &group.class_def;
@@ -676,6 +678,33 @@ fn emit_class_file(
         .map(|s| sanitize_ident(s))
         .collect();
     segments.push(short_name.clone());
+
+    // Detect file-path collisions: two classes in the same namespace with the
+    // same sanitized name (e.g., a game OBJT chunk with duplicate object names).
+    // When a collision is detected, append a numeric suffix (_2, _3, …) to the
+    // last segment so each class gets a unique file and unique export identifier.
+    let base_export_path = segments.join("/");
+    let collision_n = {
+        let count = seen_paths.entry(base_export_path).or_insert(0);
+        *count += 1;
+        *count
+    };
+    let ts_name_override: Option<String>;
+    if collision_n > 1 {
+        // Derive the ts_name from class_names (same qualified key, first one wins).
+        let qualified = qualified_class_name(class_def);
+        let base_ts = class_names
+            .get(&qualified)
+            .cloned()
+            .unwrap_or_else(|| short_name.clone());
+        let unique_suffix = format!("{base_ts}_{collision_n}");
+        if let Some(last) = segments.last_mut() {
+            *last = format!("{last}_{collision_n}");
+        }
+        ts_name_override = Some(unique_suffix);
+    } else {
+        ts_name_override = None;
+    }
 
     // Depth = number of namespace segments (directories below module_dir).
     let depth = class_def.namespace.len();
@@ -809,10 +838,13 @@ fn emit_class_file(
         &mut out,
         &mut traits_buf,
         diagnostics,
+        ts_name_override.as_deref(),
     )?;
 
     strip_unused_namespace_imports(&mut out);
-    let path = file_dir.join(format!("{short_name}.ts"));
+    // File name: use the last segment of `segments` (may have a collision suffix).
+    let file_name = segments.last().map(|s| s.as_str()).unwrap_or(&short_name);
+    let path = file_dir.join(format!("{file_name}.ts"));
     fs::write(&path, &out).map_err(CoreError::Io)?;
 
     // Write companion _traits.ts file for Flash registration calls.
@@ -1191,6 +1223,7 @@ pub fn emit_module_to_dir(
     );
 
     // Emit one .ts file per class.
+    let mut seen_paths: HashMap<String, usize> = HashMap::new();
     for group in &class_groups {
         emit_class_file(
             group,
@@ -1213,6 +1246,7 @@ pub fn emit_module_to_dir(
             engine,
             debug,
             &mut barrel_exports,
+            &mut seen_paths,
             diagnostics,
         )?;
     }

@@ -1086,7 +1086,7 @@ Audit all `throw Error("X: not yet implemented")` stubs in the GML runtime. For 
 - **Tiles** — `tile_*`, `tilemap_*`. Needs tile layer rendering system.
 - **Paths** — `path_*`. Needs path point/interpolation system.
 - **Timelines** — `timeline_*`. Needs timeline moment scheduling.
-- **Steam API** — `steam_*`. **~50 functions silently return falsy values** (`0`, `false`, `""`, `[]`) instead of throwing. Introduced in `0cdb548` and `2b0e170`. This violates "implement fully or throw — never stub silently." These silent stubs hide missing functionality and produce incorrect behavior in games that check Steam state. Fix: revert to `throw new Error("steam_*: not yet implemented")` for all functions that aren't backed by real persistence (the `steam_file_*` and `steam_get/set_stat_*` persistence-backed ones are OK). Long-term: proper extension/adapter interface where browser adapter returns appropriate no-op values *opt-in*, not by default.
+- ~~**Steam API** — `steam_*`. **~50 functions silently return falsy values** (`0`, `false`, `""`, `[]`) instead of throwing.~~ **FIXED 2026-03-15 (`410bb4a`)**: ~119 stubs converted to `throw new Error("funcname: not yet implemented")`. Persistence-backed functions kept: `steam_file_*`, `steam_get/set_stat_*`, `steam_get/set_achievement`, `steam_store_stats`. Long-term: proper extension/adapter interface where browser adapter returns appropriate no-op values *opt-in*, not by default.
 - **OS/Platform** — `os_*`, `file_*`, `ini_*`, `directory_*`. Needs platform abstraction (browser vs native).
 - **3D / Primitives** — `d3d_*`, `vertex_*`, `matrix_*`. Needs WebGL 3D pipeline.
 
@@ -1702,12 +1702,16 @@ return), using it as `arr[id]` produces TS7053 "can't index type Number".
 `InstanceId` type in the IR or widening to `any` when a value flows through both
 instance-ID and number contexts.
 
-### 4. Duplicate identifiers (TS2300, TS1117) — ~4 errors in 12BetterThan6, ~24 in 10SecNinjaX
-Object literal duplicate keys and duplicate variable names from name collisions in the
-emitter's sanitization pass.
+### 4. Duplicate identifiers (TS2300, TS1117) — ~2 errors in 12BetterThan6, ~2 in 10SecNinjaX
+Object literal duplicate keys from name collisions in the emitter.
 
-**Fix**: Audit `rename_shadowing_locals` in `emit/sanitize.rs` and object literal key
-dedup in `ast_passes`.
+**TS2300 FIXED 2026-03-15**: `emit_class_file`, `generate_main`, and `emit_module_imports`
+in the TypeScript backend now apply collision-suffix logic (_2, _3, …) when two GML objects
+in the same namespace share the same sanitized name (e.g., a game OBJT chunk with duplicate
+object names like `TOTCLeaderboard`×2 in 10SecNinjaX, `OFloor2`×2 in 12BetterThan6).
+
+**TS1117 remaining**: `data/objects.ts` object literal duplicate keys — different root cause.
+Fix: audit GML object-type data generation for duplicate keys.
 
 ### 5. Extension function auto-stubbing — ~56 errors in VA-11 HALL-A, ~4 in Schism
 Games with extension DLLs (FS_*, NSP_*) produce TS2304 for every extension function call.
