@@ -145,9 +145,11 @@ pub fn lower_function_linear(
     }
 
     // AST-to-AST rewrite passes.
-    // Lower Harlowe.H.* SystemCalls to h.method() MethodCall nodes before
+    // Lower engine-specific output-node SystemCalls to MethodCall nodes before
     // optimization, so passes see them as regular method calls.
-    ast_passes::lower_output_nodes(&mut full_body);
+    if let Some((sys, recv)) = config.output_node_system.as_ref() {
+        ast_passes::lower_output_nodes(&mut full_body, sys, recv);
+    }
     // Cleanup first: self-assigns and stubs block ternary detection by adding
     // extra statements to if/else branches.
     ast_passes::eliminate_self_assigns(&mut full_body);

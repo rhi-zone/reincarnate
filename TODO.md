@@ -18,8 +18,8 @@ isolation, no circular dependencies. Ready for a second backend without major re
 - ⚠️ IR completeness: aggregate constants missing (tracked below). Data files bypass IR.
 - ⚠️ Type system: no generics, no flow-sensitive narrowing, Dynamic conflation. Sufficient
   for current engines but will need expansion.
-- ⚠️ Law compliance: Law 1 (aggregate constant bypass), Law 2 (2 remaining violations —
-  Harlowe.H in core, type_infer.rs Flash/GML dispatch). Laws 3-5 clean.
+- ⚠️ Law compliance: Law 1 (aggregate constant bypass), Law 2 (1 remaining violation —
+  type_infer.rs Flash/GML dispatch). Laws 3-5 clean.
 - ⚠️ Module struct: 8 engine-specific fields (kitchen sink). Fix via aggregate constants.
 - ⚠️ Abstraction gaps: `abstract_members` tuple, `StructDef.fields` tuple (tracked in
   IR Class Representation section below).
@@ -123,11 +123,10 @@ All of the following violate it and need to move to the respective frontend crat
   now lives in the Flash backend config; `control_flow.rs` matches against the config value, not a
   hardcoded string. Law 2 satisfied.
 
-- [ ] **`control_flow.rs` line 164: Harlowe-specific `Harlowe.H` → `h.method()` rewrite in core.**
-  Previously marked as removed (2026-03-11) but still present in `ast_passes/control_flow.rs:164`.
-  `SystemCall("Harlowe.H", method, args)` is rewritten to `MethodCall(h, method, args)` inside the
-  shared `rewrite_output_nodes` pass. Should be either gated behind a `LoweringConfig` flag
-  (like `foreach_rewrite`) or moved to a Twine frontend extra_pass.
+- [x] **`control_flow.rs` line 164: Harlowe-specific `Harlowe.H` → `h.method()` rewrite in core.** (2026-03-15)
+  Added `LoweringConfig::output_node_system: Option<(String, String)>`. Twine backend sets
+  `("Harlowe.H", "h")`; `lower_output_nodes` uses the config value instead of hardcoded strings.
+  Law 2 satisfied.
 
 - [x] **`CastKind::AsType` in core IR is AS3-specific.** (2026-03-11)
   Already renamed to `CastKind::NullableCoerce` with language-agnostic doc: "Nullable cast —

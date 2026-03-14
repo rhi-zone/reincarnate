@@ -14,43 +14,42 @@ use super::{count_var_reads_in_stmt, recurse_into_stmt, strip_as_type, substitut
 // Lower synthetic output SystemCalls to native AST nodes
 // ---------------------------------------------------------------------------
 
-/// Rewrite `Harlowe.H.*` SystemCalls to `MethodCall` on the `h` parameter:
-/// `SystemCall("Harlowe.H", method, args)` -> `h.method(args...)`
+/// Rewrite `SystemCall(system, method, args)` to `MethodCall(receiver_var, method, args)`.
 ///
-/// Doing this early in the core AST (before the backend) lets optimization
-/// passes see them as regular method calls.
-pub fn lower_output_nodes(body: &mut [Stmt]) {
+/// `system` and `receiver_var` come from `LoweringConfig::output_node_system`.
+/// Doing this early lets optimization passes see them as regular method calls.
+pub fn lower_output_nodes(body: &mut [Stmt], system: &str, receiver_var: &str) {
     for stmt in body.iter_mut() {
-        lower_output_nodes_in_stmt(stmt);
+        lower_output_nodes_in_stmt(stmt, system, receiver_var);
     }
 }
 
-fn lower_output_nodes_in_stmt(stmt: &mut Stmt) {
+fn lower_output_nodes_in_stmt(stmt: &mut Stmt, system: &str, receiver_var: &str) {
     match stmt {
         Stmt::VarDecl { init: Some(e), .. } => {
-            lower_output_nodes_in_expr(e);
+            lower_output_nodes_in_expr(e, system, receiver_var);
         }
         Stmt::Assign { target, value } => {
-            lower_output_nodes_in_expr(target);
-            lower_output_nodes_in_expr(value);
+            lower_output_nodes_in_expr(target, system, receiver_var);
+            lower_output_nodes_in_expr(value, system, receiver_var);
         }
         Stmt::CompoundAssign { target, value, .. } => {
-            lower_output_nodes_in_expr(target);
-            lower_output_nodes_in_expr(value);
+            lower_output_nodes_in_expr(target, system, receiver_var);
+            lower_output_nodes_in_expr(value, system, receiver_var);
         }
-        Stmt::Expr(e) => lower_output_nodes_in_expr(e),
+        Stmt::Expr(e) => lower_output_nodes_in_expr(e, system, receiver_var),
         Stmt::If {
             cond,
             then_body,
             else_body,
         } => {
-            lower_output_nodes_in_expr(cond);
-            lower_output_nodes(then_body);
-            lower_output_nodes(else_body);
+            lower_output_nodes_in_expr(cond, system, receiver_var);
+            lower_output_nodes(then_body, system, receiver_var);
+            lower_output_nodes(else_body, system, receiver_var);
         }
         Stmt::While { cond, body } => {
-            lower_output_nodes_in_expr(cond);
-            lower_output_nodes(body);
+            lower_output_nodes_in_expr(cond, system, receiver_var);
+            lower_output_nodes(body, system, receiver_var);
         }
         Stmt::For {
             init,
@@ -58,75 +57,75 @@ fn lower_output_nodes_in_stmt(stmt: &mut Stmt) {
             update,
             body,
         } => {
-            lower_output_nodes(init);
-            lower_output_nodes_in_expr(cond);
-            lower_output_nodes(update);
-            lower_output_nodes(body);
+            lower_output_nodes(init, system, receiver_var);
+            lower_output_nodes_in_expr(cond, system, receiver_var);
+            lower_output_nodes(update, system, receiver_var);
+            lower_output_nodes(body, system, receiver_var);
         }
         Stmt::Loop { body } | Stmt::ForOf { body, .. } => {
-            lower_output_nodes(body);
+            lower_output_nodes(body, system, receiver_var);
         }
-        Stmt::Return(Some(e)) => lower_output_nodes_in_expr(e),
+        Stmt::Return(Some(e)) => lower_output_nodes_in_expr(e, system, receiver_var),
         Stmt::Switch {
             value,
             cases,
             default_body,
         } => {
-            lower_output_nodes_in_expr(value);
+            lower_output_nodes_in_expr(value, system, receiver_var);
             for (_, case_body) in cases {
-                lower_output_nodes(case_body);
+                lower_output_nodes(case_body, system, receiver_var);
             }
-            lower_output_nodes(default_body);
+            lower_output_nodes(default_body, system, receiver_var);
         }
         Stmt::Dispatch { blocks, .. } => {
             for (_, block_body) in blocks {
-                lower_output_nodes(block_body);
+                lower_output_nodes(block_body, system, receiver_var);
             }
         }
         _ => {}
     }
 }
 
-fn lower_output_nodes_in_expr(expr: &mut Expr) {
+fn lower_output_nodes_in_expr(expr: &mut Expr, system: &str, receiver_var: &str) {
     // Post-order: recurse first, then try to rewrite this node.
     match expr {
         Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
-            lower_output_nodes_in_expr(lhs);
-            lower_output_nodes_in_expr(rhs);
+            lower_output_nodes_in_expr(lhs, system, receiver_var);
+            lower_output_nodes_in_expr(rhs, system, receiver_var);
         }
         Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
-            lower_output_nodes_in_expr(lhs);
-            lower_output_nodes_in_expr(rhs);
+            lower_output_nodes_in_expr(lhs, system, receiver_var);
+            lower_output_nodes_in_expr(rhs, system, receiver_var);
         }
         Expr::Unary { expr: inner, .. }
         | Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::Spread(inner) => {
-            lower_output_nodes_in_expr(inner);
+            lower_output_nodes_in_expr(inner, system, receiver_var);
         }
-        Expr::Field { object, .. } => lower_output_nodes_in_expr(object),
+        Expr::Field { object, .. } => lower_output_nodes_in_expr(object, system, receiver_var),
         Expr::Index { collection, index } => {
-            lower_output_nodes_in_expr(collection);
-            lower_output_nodes_in_expr(index);
+            lower_output_nodes_in_expr(collection, system, receiver_var);
+            lower_output_nodes_in_expr(index, system, receiver_var);
         }
         Expr::Call { args, .. }
         | Expr::CoroutineCreate { args, .. }
         | Expr::SystemCall { args, .. } => {
             for a in args {
-                lower_output_nodes_in_expr(a);
+                lower_output_nodes_in_expr(a, system, receiver_var);
             }
         }
         Expr::CallIndirect { callee, args } => {
-            lower_output_nodes_in_expr(callee);
+            lower_output_nodes_in_expr(callee, system, receiver_var);
             for a in args {
-                lower_output_nodes_in_expr(a);
+                lower_output_nodes_in_expr(a, system, receiver_var);
             }
         }
         Expr::MethodCall { receiver, args, .. } => {
-            lower_output_nodes_in_expr(receiver);
+            lower_output_nodes_in_expr(receiver, system, receiver_var);
             for a in args {
-                lower_output_nodes_in_expr(a);
+                lower_output_nodes_in_expr(a, system, receiver_var);
             }
         }
         Expr::Ternary {
@@ -134,39 +133,39 @@ fn lower_output_nodes_in_expr(expr: &mut Expr) {
             then_val,
             else_val,
         } => {
-            lower_output_nodes_in_expr(cond);
-            lower_output_nodes_in_expr(then_val);
-            lower_output_nodes_in_expr(else_val);
+            lower_output_nodes_in_expr(cond, system, receiver_var);
+            lower_output_nodes_in_expr(then_val, system, receiver_var);
+            lower_output_nodes_in_expr(else_val, system, receiver_var);
         }
         Expr::ArrayInit(elems) | Expr::TupleInit(elems) => {
             for e in elems {
-                lower_output_nodes_in_expr(e);
+                lower_output_nodes_in_expr(e, system, receiver_var);
             }
         }
         Expr::StructInit { fields, .. } => {
             for (_, v) in fields {
-                lower_output_nodes_in_expr(v);
+                lower_output_nodes_in_expr(v, system, receiver_var);
             }
         }
         Expr::PostIncrement(inner) | Expr::CoroutineResume(inner) => {
-            lower_output_nodes_in_expr(inner);
+            lower_output_nodes_in_expr(inner, system, receiver_var);
         }
         Expr::Yield(Some(e)) => {
-            lower_output_nodes_in_expr(e);
+            lower_output_nodes_in_expr(e, system, receiver_var);
         }
         _ => {} // Literal, Var, GlobalRef -- no children
     }
 
-    // Rewrite Harlowe.H.* SystemCalls -> h.method(args...)
+    // Rewrite SystemCall(system, method, args) -> MethodCall(receiver_var, method, args).
     if let Expr::SystemCall {
-        system,
+        system: s,
         method,
         args,
     } = expr
     {
-        if system == "Harlowe.H" {
+        if s == system {
             *expr = Expr::MethodCall {
-                receiver: Box::new(Expr::Var("h".into())),
+                receiver: Box::new(Expr::Var(receiver_var.into())),
                 method: std::mem::take(method),
                 args: std::mem::take(args),
             };
@@ -1974,7 +1973,7 @@ mod tests {
             method: "text".into(),
             args: vec![str_lit("hello")],
         })];
-        lower_output_nodes(&mut body);
+        lower_output_nodes(&mut body, "Harlowe.H", "h");
         match &body[0] {
             Stmt::Expr(Expr::MethodCall {
                 receiver,
@@ -1997,7 +1996,7 @@ mod tests {
             method: "br".into(),
             args: vec![],
         })];
-        lower_output_nodes(&mut body);
+        lower_output_nodes(&mut body, "Harlowe.H", "h");
         match &body[0] {
             Stmt::Expr(Expr::MethodCall {
                 receiver,
@@ -2019,7 +2018,7 @@ mod tests {
             method: "get".into(),
             args: vec![str_lit("x")],
         })];
-        lower_output_nodes(&mut body);
+        lower_output_nodes(&mut body, "Harlowe.H", "h");
         match &body[0] {
             Stmt::Expr(Expr::SystemCall { system, method, .. }) => {
                 assert_eq!(system, "Harlowe.State");

@@ -197,6 +197,13 @@ pub struct LoweringConfig {
     ///
     /// GML sets this to `true`; Flash and other engines leave it `false`.
     pub wrap_class_refs_as_any: bool,
+    /// Rewrite `SystemCall(system, method, args)` to `MethodCall(receiver, method, args)`
+    /// when `system` matches.  Used to lower engine-specific output-node calls to regular
+    /// method calls before optimization passes run.
+    ///
+    /// Stored as `Some((system_name, receiver_var_name))`.
+    /// Twine sets this to `Some(("Harlowe.H", "h"))`; all other engines leave it `None`.
+    pub output_node_system: Option<(String, String)>,
     /// Rewrite `while(true) { hasNext2 ... }` loops to `for (const x of ...)`.
     ///
     /// Set to the `SystemCall` system name that provides `hasNext2`, `nextValue`,
@@ -242,6 +249,7 @@ impl LoweringConfig {
             while_condition_hoisting: true,
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
+            output_node_system: None,
             foreach_iterator_system: None,
             construct_string_coerce: false,
             coerce_index_types: false,
@@ -256,6 +264,7 @@ impl LoweringConfig {
             while_condition_hoisting: true,
             scope_lookup_systems: vec![],
             wrap_class_refs_as_any: false,
+            output_node_system: None,
             foreach_iterator_system: None,
             construct_string_coerce: false,
             coerce_index_types: false,

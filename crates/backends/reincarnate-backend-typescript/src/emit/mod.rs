@@ -72,6 +72,8 @@ fn detect_engine(runtime_config: Option<&RuntimeConfig>) -> EngineKind {
 ///   Also sets `foreach_iterator_system = "Flash.Iterator"` (HasNext2 for-of pattern).
 /// - GML: sets `wrap_class_refs_as_any = true` so that `ClassRef`-typed GlobalRef
 ///   values get `as any` at each use site (GML object names double as integer indices).
+/// - Twine: sets `output_node_system = ("Harlowe.H", "h")` so that Harlowe output-node
+///   SystemCalls are lowered to `h.method()` MethodCalls before optimization.
 fn lowering_config_for_engine(
     config: &LoweringConfig,
     engine: EngineKind,
@@ -82,7 +84,8 @@ fn lowering_config_for_engine(
             || !config.construct_string_coerce
             || !config.coerce_index_types);
     let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
-    if needs_flash || needs_gml {
+    let needs_twine = engine == EngineKind::Twine && config.output_node_system.is_none();
+    if needs_flash || needs_gml || needs_twine {
         let mut c = config.clone();
         if needs_flash {
             c.scope_lookup_systems = vec!["Flash.Scope".to_string()];
@@ -92,6 +95,9 @@ fn lowering_config_for_engine(
         }
         if needs_gml {
             c.wrap_class_refs_as_any = true;
+        }
+        if needs_twine {
+            c.output_node_system = Some(("Harlowe.H".to_string(), "h".to_string()));
         }
         std::borrow::Cow::Owned(c)
     } else {
