@@ -491,6 +491,77 @@ coerce fix (Pass 5 in GmlBoolArithCoerce): 3078.
 
 ---
 
+## Adversarial Commit Audit (2026-03-14)
+
+Automated review of 366 commits (2026-03-01 to 2026-03-14) by 6 parallel haiku auditors.
+Each commit diff was read and evaluated against project principles. Findings below.
+
+### Suppressions (cast/widen to hide type errors)
+
+- [ ] **`5788533` — `coerce_bool_cmp_operands` inserts `Number(x) === 0`**
+  Instead of `=== false`. Known issue; rework to `bool === 0` → `=== false`, `bool === true` → `bool`,
+  `bool === false` → `!bool`.
+
+- [ ] **`72cd19e` — instance_create_depth/layer overloads with `any` catch-all**
+  Silences TS2362 from `Cls as any` arguments. Root cause: emitter passes class refs as `any`.
+
+- [ ] **`23bf784` — Object.values/keys cast to `any[]` in ForOf**
+  Suppresses TS18046 by widening. Should fix element type propagation or add index signatures.
+
+- [ ] **`9f8a89c` — addEventListener event type widened to `any`**
+  AS3 events are covariant; TypeScript function params are contravariant. Needs proper typing.
+
+- [ ] **`a329a8e` — `null as unknown as Type` for null→struct casts**
+  Double cast hides that the IR produces invalid `Coerce(null, Struct)`.
+
+- [ ] **`9419220` + `763c745` — param type widened to `any` for default value mismatch**
+  Two commits generalizing "if param type doesn't match default, use any". Root cause: type inference
+  doesn't account for GML's variadic calling convention default values.
+
+- [ ] **`b7d8c57` — `(target as unknown) === -4` in instance_exists**
+  Suppresses TS2367. Should fix the type of the GML `noone` sentinel (-4) in the IR.
+
+- [ ] **`f9b5159` — `(expr as any) instanceof T` to prevent TS never-narrowing**
+  Hides that `this instanceof OwnClass` narrows to `never` in else-branch. Should fix type hierarchy.
+
+- [ ] **`7b74dc9` — void conditions wrapped in `as any` cast**
+  Game-author bug (void call in if-condition) should surface as TS error, not be suppressed.
+
+### Workarounds (narrow fix instead of root cause)
+
+- [ ] **`8ca4fff` — trailing `throw` for TS2366 non-void functions**
+  Injects synthetic `throw new Error("unreachable")`. Root cause: structurizer/control flow doesn't
+  prove exhaustiveness to TypeScript's satisfaction.
+
+- [ ] **`ee0a98c` — `null as any` shims placeholder in static construct calls**
+  Static methods have no `this` for shims. Should make shims optional or thread through properly.
+
+- [ ] **`59c4c93` — downgraded debug_assert to warning for block arg count mismatch**
+  Hides a real bug in `compute_block_stack_depths`. Should fix the CFG analysis.
+
+### strictNullChecks preparation (debatable)
+
+- [ ] **`2167f85` — Flash getters widened to non-nullable**
+  AS3 properties can genuinely be null; widening to non-nullable loses information. May be acceptable
+  if AS3 semantics guarantee non-null in practice.
+
+- [ ] **`d9477bd` — null-initialized fields widened to `T | null`**
+  May be correct (fields ARE nullable) or may be hiding wrong zero-initialization inference.
+
+- [ ] **`16f6696` — `!` definite assignment assertion on Flash instance fields**
+  AS3 zero-initializes all fields; TS doesn't know this. Debatable whether `!` or explicit init is better.
+
+### Silent stubs
+
+- [ ] **`5c2bb7e` — `irandom` silently returns 0 for negative/NaN input**
+  Violates "stubs must throw". GML behavior on invalid input should be replicated or error thrown.
+
+### Already fixed
+
+- [x] **`26708e7` — Bool→Number coercion in arithmetic (reverted in `c9e5096`)**
+
+---
+
 ## Adversarial Architecture Audit (2026-03-13)
 
 Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction campaign
