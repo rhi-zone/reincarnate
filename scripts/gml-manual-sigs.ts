@@ -85,6 +85,29 @@ const TYPE_MAP: Record<string, string> = {
 
   // Struct types
   Type_Struct: "any", // TODO: could be more specific
+  Type_Struct_WeakRef: "any",
+  Type_Struct_Font_Info: "any",
+
+  // Function/method types — all opaque at runtime
+  Type_Function: "any",
+  Type_Function_Script: "any",
+  Type_Method: "any",
+
+  // Pointer types — numeric handles
+  Type_Pointer: "number",
+  Type_Pointer_Texture: "number",
+  Type_Handle_Shader_Uniform: "number",
+  Type_Handle_Shader_Sampler: "number",
+
+  // Misc numeric types
+  Type_Real_Datetime: "number",
+  Type_Real_int64: "number",
+  Type_Real_Tile_Data: "number",
+  Type_Array_Matrix: "any[]",
+  Type_Asset: "number",
+  Type_Constant: "number",
+  Type_Enum_ColSpace: "number",
+  Collision_obj_type: "number",
 };
 
 function resolveType(keyref: string): string {
@@ -273,10 +296,31 @@ async function main() {
     const runtimeJson = JSON.parse(await readFile(RUNTIME_JSON, "utf-8"));
     const currentSigs = runtimeJson.function_signatures || {};
 
-    let matches = 0;
-    let mismatches = 0;
+    // Normalize a type for comparison
+    // - int and number are both GML Real
+    // - classref is a numeric object index at runtime
+    // - * and dynamic are our names for "any"
+    const normalize = (t: string): string => {
+      if (t === "int") return "number";
+      if (t === "classref") return "number";
+      if (t === "*" || t === "dynamic") return "any";
+      return t;
+    };
+
+    const typesEquiv = (a: string, b: string): boolean =>
+      normalize(a) === normalize(b);
+
+    let exactMatches = 0;
+    let equivMatches = 0; // match after int/number normalization
+    let arityMismatches = 0;
+    let typeMismatches = 0;
+    let anyInRuntime = 0; // runtime.json has `any` where manual has a concrete type
     let missing = 0;
     let extra = 0;
+
+    const arityErrors: string[] = [];
+    const typeErrors: string[] = [];
+    const anyErrors: string[] = [];
 
     for (const [name, current] of Object.entries(currentSigs) as [
       string,
@@ -284,7 +328,6 @@ async function main() {
     ][]) {
       const manual = sigs[name];
       if (!manual) {
-        // Not in manual — might be platform-specific or DnD
         extra++;
         continue;
       }
@@ -294,36 +337,66 @@ async function main() {
       const currentReturns: string = current.returns || "void";
       const manualReturns = manual.returns;
 
-      const paramCountMatch = currentParams.length === manualParams.length;
-      const returnsMatch = currentReturns === manualReturns;
+      // Check for optional params — if manual has optional_from, runtime may
+      // have fewer params (only the required ones)
+      const requiredManualCount = manual.optional_from ?? manualParams.length;
+      const arityOk =
+        currentParams.length === manualParams.length ||
+        (manual.optional_from !== undefined &&
+          currentParams.length >= requiredManualCount &&
+          currentParams.length <= manualParams.length);
 
-      if (paramCountMatch && returnsMatch) {
-        // Check param types
-        let typesMatch = true;
-        for (let i = 0; i < currentParams.length; i++) {
-          if (currentParams[i] !== manualParams[i]) {
-            typesMatch = false;
-            break;
+      if (!arityOk) {
+        arityMismatches++;
+        arityErrors.push(
+          `ARITY: ${name}` +
+            `\n  runtime.json: (${currentParams.join(", ")}) → ${currentReturns}  [${currentParams.length} params]` +
+            `\n  manual:       (${manualParams.join(", ")}) → ${manualReturns}  [${manualParams.length} params${manual.optional_from !== undefined ? `, optional from ${manual.optional_from}` : ""}]`
+        );
+        continue;
+      }
+
+      // Check types (with normalization)
+      let exact = true;
+      let equiv = true;
+      let hasAnyMismatch = false;
+      const compareLen = Math.min(currentParams.length, manualParams.length);
+
+      for (let i = 0; i < compareLen; i++) {
+        if (currentParams[i] !== manualParams[i]) exact = false;
+        if (!typesEquiv(currentParams[i], manualParams[i])) {
+          equiv = false;
+          // Check if runtime has `any` where manual has a concrete type
+          if (currentParams[i] === "any" && manualParams[i] !== "any") {
+            hasAnyMismatch = true;
           }
         }
-        if (typesMatch) {
-          matches++;
-        } else {
-          mismatches++;
-          console.log(
-            `TYPE MISMATCH: ${name}` +
-              `\n  runtime.json: (${currentParams.join(", ")}) → ${currentReturns}` +
-              `\n  manual:       (${manualParams.join(", ")}) → ${manualReturns}`
-          );
+      }
+      if (currentReturns !== manualReturns) exact = false;
+      if (!typesEquiv(currentReturns, manualReturns)) {
+        equiv = false;
+        if (currentReturns === "any" && manualReturns !== "any") {
+          hasAnyMismatch = true;
         }
-      } else {
-        mismatches++;
-        console.log(
-          `MISMATCH: ${name}` +
+      }
+
+      if (exact) {
+        exactMatches++;
+      } else if (equiv) {
+        equivMatches++;
+      } else if (hasAnyMismatch) {
+        anyInRuntime++;
+        anyErrors.push(
+          `ANY: ${name}` +
             `\n  runtime.json: (${currentParams.join(", ")}) → ${currentReturns}` +
-            `\n       ${currentParams.length} params` +
-            `\n  manual:       (${manualParams.join(", ")}) → ${manualReturns}` +
-            `\n       ${manualParams.length} params`
+            `\n  manual:       (${manualParams.join(", ")}) → ${manualReturns}`
+        );
+      } else {
+        typeMismatches++;
+        typeErrors.push(
+          `TYPE: ${name}` +
+            `\n  runtime.json: (${currentParams.join(", ")}) → ${currentReturns}` +
+            `\n  manual:       (${manualParams.join(", ")}) → ${manualReturns}`
         );
       }
     }
@@ -335,10 +408,34 @@ async function main() {
       }
     }
 
-    console.log(`\n--- Summary ---`);
-    console.log(`Matches:    ${matches}`);
-    console.log(`Mismatches: ${mismatches}`);
-    console.log(`In runtime.json but not manual: ${extra} (platform/DnD/custom)`);
+    // Print grouped output
+    if (arityErrors.length > 0) {
+      console.log("=== ARITY MISMATCHES (wrong param count) ===\n");
+      arityErrors.forEach((e) => console.log(e));
+      console.log();
+    }
+    if (typeErrors.length > 0) {
+      console.log("=== TYPE MISMATCHES (same arity, different types) ===\n");
+      typeErrors.forEach((e) => console.log(e));
+      console.log();
+    }
+    if (anyErrors.length > 0) {
+      console.log(
+        "=== ANY IN RUNTIME (runtime.json uses `any` where manual has a concrete type) ===\n"
+      );
+      anyErrors.forEach((e) => console.log(e));
+      console.log();
+    }
+
+    console.log(`--- Summary ---`);
+    console.log(`Exact matches:      ${exactMatches}`);
+    console.log(`Equiv matches:      ${equivMatches} (int≡number)`);
+    console.log(`Arity mismatches:   ${arityMismatches}`);
+    console.log(`Type mismatches:    ${typeMismatches}`);
+    console.log(`\`any\` in runtime:   ${anyInRuntime}`);
+    console.log(
+      `In runtime.json but not manual: ${extra} (platform/DnD/custom)`
+    );
     console.log(`In manual but not runtime.json: ${missing}`);
   }
 }
