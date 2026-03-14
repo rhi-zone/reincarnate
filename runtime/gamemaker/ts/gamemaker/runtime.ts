@@ -4325,6 +4325,140 @@ export class GameRuntime {
   mp_potential_step_object(_x: number, _y: number, _speed: number, _obj: any): boolean {
     throw Error("mp_potential_step_object: not yet implemented");
   }
+  mp_potential_settings(_maxrot: number, _rotstep: number, _ahead: number, _onspot: boolean): void {
+    /* no-op: potential field settings not yet supported */
+  }
+
+  // ---- Legacy D&D actions (batch 2) ----
+  action_set_relative(_relative: boolean): void {
+    /* no-op: relative mode flag not tracked */
+  }
+  action_move(_dir: string, _speed: number): void {
+    throw Error("action_move: not yet implemented");
+  }
+
+  // ---- Keyboard extras ----
+  keyboard_check_direct(key: number): boolean {
+    return this._input.keysDown.has(key);
+  }
+  keyboard_clear(key: number): void {
+    this._input.keysDown.delete(key);
+    this._input.keysPressed.delete(key);
+    this._input.keysReleased.delete(key);
+  }
+  keyboard_key_press(key: number): void {
+    this._input.keysDown.add(key);
+    this._input.keysPressed.add(key);
+  }
+  keyboard_key_release(key: number): void {
+    this._input.keysDown.delete(key);
+    this._input.keysReleased.add(key);
+  }
+
+  // ---- Draw extras (batch 2) ----
+  draw_background(_bg: number, _x: number, _y: number): void {
+    /* no-op: background drawing not supported in Canvas 2D renderer */
+  }
+  draw_background_ext(_bg: number, _x: number, _y: number, _xscale: number, _yscale: number, _rot: number, _col: number, _alpha: number): void {
+    /* no-op */
+  }
+  draw_background_part_ext(_bg: number, _left: number, _top: number, _w: number, _h: number, _x: number, _y: number, _xscale: number, _yscale: number, _col: number, _alpha: number): void {
+    /* no-op */
+  }
+  draw_background_tiled(_bg: number, _x: number, _y: number): void {
+    /* no-op */
+  }
+  draw_background_stretched(_bg: number, _x: number, _y: number, _w: number, _h: number): void {
+    /* no-op */
+  }
+  draw_line_width_color(x1: number, y1: number, x2: number, y2: number, _w: number, _c1: number, _c2: number): void {
+    const ctx = this._gfx.ctx;
+    ctx.strokeStyle = gmlColorToCss(_c1);
+    ctx.lineWidth = _w;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+  draw_enable_alphablend(_enable: boolean): void {
+    /* no-op: alpha blending always enabled in Canvas 2D */
+  }
+  background_get_width(_bg: number): number { return 0; }
+  background_get_height(_bg: number): number { return 0; }
+
+  // ---- Joystick API (legacy) ----
+  joystick_buttons(_id: number): number { return 0; }
+  joystick_check_button(_id: number, _btn: number): boolean { return false; }
+  joystick_xpos(_id: number): number { return 0; }
+  joystick_ypos(_id: number): number { return 0; }
+  joystick_exists(_id: number): boolean { return false; }
+
+  // ---- File extras (batch 2) ----
+  file_text_readln(file: number): string {
+    const f = this._textFiles.get(file); if (!f || f.mode !== 'r') return "";
+    const nl = f.content.indexOf('\n', f.pos);
+    const line = nl === -1 ? f.content.slice(f.pos) : f.content.slice(f.pos, nl);
+    f.pos = nl === -1 ? f.content.length : nl + 1;
+    return line;
+  }
+
+  // ---- Tile API (legacy GMS1) ----
+  tile_layer_hide(_layer: number): void { /* no-op */ }
+  tile_layer_find(_depth: number, _x: number, _y: number): number { return -1; }
+  tile_layer_delete(_layer: number): void { /* no-op */ }
+  tile_layer_depth(_layer: number, _depth: number): void { /* no-op */ }
+  tile_set_position(_tile: number, _x: number, _y: number): void { /* no-op */ }
+  tile_get_x(_tile: number): number { return 0; }
+  tile_get_y(_tile: number): number { return 0; }
+  tile_exists(_tile: number): boolean { return false; }
+  tile_delete(_tile: number): void { /* no-op */ }
+  tile_add(_bg: number, _left: number, _top: number, _w: number, _h: number, _x: number, _y: number, _depth: number): number { return -1; }
+
+  // ---- Room navigation extras ----
+  room_next(room: number): number {
+    return room + 1 < this._roomDatas.length ? room + 1 : -1;
+  }
+  room_previous(room: number): number {
+    return room > 0 ? room - 1 : -1;
+  }
+
+  // ---- Legacy D&D actions (batch 3) ----
+  action_move_point(x: number, y: number, speed: number): void {
+    this.move_towards_point(x, y, speed);
+  }
+
+  // ---- Draw extras (batch 3) ----
+  draw_getpixel(_x: number, _y: number): number {
+    throw Error("draw_getpixel: not yet implemented");
+  }
+  draw_set_colour(col: number): void {
+    this.draw_set_color(col);
+  }
+
+  // ---- Window extras (batch 2) ----
+  window_center(): void { /* no-op in browser */ }
+
+  // ---- File extras (batch 3) ----
+  file_rename(_oldname: string, _newname: string): void {
+    throw Error("file_rename: not yet implemented");
+  }
+
+  // ---- Joystick extras ----
+  joystick_has_pov(_id: number): boolean { return false; }
+
+  // ---- OS extras ----
+  os_is_paused(): boolean { return false; }
+
+  // ---- Tile extras ----
+  tile_layer_show(_layer: number): void { /* no-op */ }
+
+  // ---- Motion extras ----
+  motion_add(dir: number, speed: number): void {
+    if (!this._self) return;
+    const rad = (dir * Math.PI) / 180;
+    this._self.hspeed += Math.cos(rad) * speed;
+    this._self.vspeed -= Math.sin(rad) * speed;
+  }
 }
 
 // ---- Game config ----
