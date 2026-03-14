@@ -353,7 +353,7 @@ export class GameRuntime {
 
   // ---- Text drawing ----
 
-  draw_text(x: number, y: number, text: any): void {
+  draw_text(x: number, y: number, text: string): void {
     const ctx = this._gfx.ctx;
     const draw = this._draw;
     const font = this.fonts[draw.config.font];
@@ -419,7 +419,7 @@ export class GameRuntime {
     }
   }
 
-  draw_text_ext(x: number, y: number, text: any, sep: number, w: number): void {
+  draw_text_ext(x: number, y: number, text: string, sep: number, w: number): void {
     const old = this._draw.config.ext;
     this._draw.config.ext = { sep, w };
     this.draw_text(x, y, text);
@@ -427,7 +427,7 @@ export class GameRuntime {
   }
 
   draw_text_color(
-    x: number, y: number, text: any,
+    x: number, y: number, text: string,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
     const oldColor = this._draw.config.color;
@@ -440,7 +440,7 @@ export class GameRuntime {
   }
 
   draw_text_transformed(
-    x: number, y: number, text: any,
+    x: number, y: number, text: string,
     xscale: number, yscale: number, angle: number,
   ): void {
     const ctx = this._gfx.ctx;
@@ -453,7 +453,7 @@ export class GameRuntime {
   }
 
   draw_text_ext_color(
-    x: number, y: number, text: any, sep: number, w: number,
+    x: number, y: number, text: string, sep: number, w: number,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
     const oldColor = this._draw.config.color;
@@ -469,17 +469,17 @@ export class GameRuntime {
   }
 
   draw_text_colour(
-    x: number, y: number, text: any,
+    x: number, y: number, text: string,
     c1: number, c2: number, c3: number, c4: number, alpha: number,
   ): void { this.draw_text_color(x, y, text, c1, c2, c3, c4, alpha); }
 
   draw_text_ext_colour(
-    x: number, y: number, text: any, sep: number, w: number,
+    x: number, y: number, text: string, sep: number, w: number,
     c1: number, c2: number, c3: number, c4: number, alpha: number,
   ): void { this.draw_text_ext_color(x, y, text, sep, w, c1, c2, c3, c4, alpha); }
 
   draw_text_ext_transformed(
-    x: number, y: number, text: any, sep: number, w: number,
+    x: number, y: number, text: string, sep: number, w: number,
     xscale: number, yscale: number, angle: number,
   ): void {
     const ctx = this._gfx.ctx;
@@ -495,7 +495,7 @@ export class GameRuntime {
   }
 
   draw_text_transformed_color(
-    x: number, y: number, text: any,
+    x: number, y: number, text: string,
     xscale: number, yscale: number, angle: number,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
@@ -515,13 +515,13 @@ export class GameRuntime {
   }
 
   draw_text_transformed_colour(
-    x: number, y: number, text: any,
+    x: number, y: number, text: string,
     xscale: number, yscale: number, angle: number,
     c1: number, c2: number, c3: number, c4: number, alpha: number,
   ): void { this.draw_text_transformed_color(x, y, text, xscale, yscale, angle, c1, c2, c3, c4, alpha); }
 
   draw_text_ext_transformed_color(
-    x: number, y: number, text: any, sep: number, w: number,
+    x: number, y: number, text: string, sep: number, w: number,
     xscale: number, yscale: number, angle: number,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
@@ -2879,7 +2879,7 @@ export class GameRuntime {
   }
 
   // ---- Tags / misc ----
-  tag_get_assets(_tag: string, _kind?: number): any[] { return []; /* no tag data available */ }
+  tag_get_assets(_tag: string): any[] { return []; /* no tag data available */ }
   url_get_domain(): string { return "localhost"; }
   url_open_ext(url: string, _target: string): void { window.open(url, "_blank"); }
 
@@ -2963,7 +2963,7 @@ export class GameRuntime {
   // ---- Array helpers ----
   array_length(arr: any[]): number { return arr?.length ?? 0; }
   array_length_1d(arr: any): number { return Array.isArray(arr) ? arr.length : 0; }
-  array_height_2d(arr: any): number { return Array.isArray(arr) ? arr.length : 0; }
+  array_height_2d(arr: any[]): number { return arr.length; }
   array_length_2d(arr: any, n: number): number {
     if (!Array.isArray(arr)) return 0;
     const row = arr[n];
@@ -3954,7 +3954,7 @@ export class GameRuntime {
   show_debug_overlay(_enable: boolean): void { /* no-op */ }
 
   // ---- More async ----
-  get_string(message: string, defaultVal: any): string { const r = prompt(message, String(defaultVal)); return r ?? String(defaultVal); }
+  get_string(message: string, defaultVal: string): string { const r = prompt(message, defaultVal); return r ?? defaultVal; }
   get_string_async(_message: string, _default: string): string { return _default; }
 
   // ---- Video extras ----
@@ -4775,7 +4775,7 @@ export class GameRuntime {
   d3d_model_save(_id: number, _fname: string): boolean { throw new Error("d3d_model_save: not yet implemented"); }
 
   // ---- Platform stubs ----
-  ptr(val: any): any { return val; }
+  ptr(val: number): number { return val; }
   achievement_load_leaderboard(_name: string, _start: number, _count: number, _filter: number): void { /* no-op — leaderboards not available in browser */ }
   xboxone_gamedisplayname_for_user(_user: number): string { return ""; /* no-op — Xbox not available in browser */ }
 
@@ -4856,7 +4856,7 @@ export class GameRuntime {
   // ---- Particles ----
   part_type_colour1(pt: number, col: number): void { this.part_type_color1(pt, col); }
   part_type_blend(_pt: number, _additive: boolean): void { /* no-op — blend mode for particles not implemented */ }
-  part_particles_count(_ps: number, _pt: number): number { throw new Error("part_particles_count: not yet implemented"); }
+  part_particles_count(_ps: number): number { throw new Error("part_particles_count: not yet implemented"); }
   effect_create_above(_kind: number, _x: number, _y: number, _size: number, _color: number): void { /* no-op — effect system not implemented */ }
   effect_create_below(_kind: number, _x: number, _y: number, _size: number, _color: number): void { /* no-op — effect system not implemented */ }
 
@@ -4864,8 +4864,8 @@ export class GameRuntime {
   layer_create(_depth: number, _name?: string): number { return _depth; }
   layer_destroy(_layerId: number): void { /* no-op */ }
   layer_force_draw_depth(_force: boolean, _depth: number): void { /* no-op */ }
-  layer_sequence_x(_seqElId: number): number { return 0; }
-  layer_sequence_y(_seqElId: number): number { return 0; }
+  layer_sequence_x(_seqElId: number, _x: number): void { /* no-op — sequence layer position not tracked */ }
+  layer_sequence_y(_seqElId: number, _y: number): void { /* no-op — sequence layer position not tracked */ }
   layer_sequence_pause(_seqElId: number): void { /* no-op */ }
   layer_sequence_play(_seqElId: number): void { /* no-op */ }
   layer_tilemap_get_id(layerId: number): number { return layerId; }

@@ -660,7 +660,7 @@
     },
     "array_height_2d": {
       "params": [
-        "any"
+        "any[]"
       ],
       "returns": "int"
     },
@@ -692,7 +692,7 @@
     },
     "array_resize": {
       "params": [
-        "any",
+        "any[]",
         "number"
       ],
       "returns": "void"
@@ -1091,10 +1091,7 @@
     },
     "buffer_load": {
       "params": [
-        "string",
-        "int",
-        "int",
-        "int"
+        "string"
       ],
       "returns": "int"
     },
@@ -1855,8 +1852,6 @@
         "number",
         "number",
         "number",
-        "number",
-        "number",
         "boolean"
       ],
       "returns": "void"
@@ -2112,7 +2107,7 @@
       "params": [
         "number",
         "number",
-        "any"
+        "string"
       ],
       "returns": "void"
     },
@@ -2120,7 +2115,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "int"
       ],
       "returns": "void"
@@ -2129,7 +2124,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "int",
         "int",
         "int",
@@ -2142,7 +2137,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number"
       ],
@@ -2152,7 +2147,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number",
         "int"
@@ -2163,7 +2158,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number",
         "int",
@@ -2178,7 +2173,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number",
         "number",
@@ -2191,7 +2186,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number",
         "number",
@@ -2205,7 +2200,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number",
         "number"
@@ -2216,7 +2211,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number",
         "number",
@@ -2232,7 +2227,7 @@
       "params": [
         "number",
         "number",
-        "any",
+        "string",
         "number",
         "number",
         "number",
@@ -3233,7 +3228,7 @@
     "get_string": {
       "params": [
         "string",
-        "any"
+        "string"
       ],
       "returns": "string"
     },
@@ -4008,10 +4003,6 @@
       "returns": "void"
     },
     "max": {
-      "params": [
-        "number",
-        "number"
-      ],
       "returns": "number"
     },
     "mean": {
@@ -4050,10 +4041,6 @@
       "returns": "*"
     },
     "min": {
-      "params": [
-        "number",
-        "number"
-      ],
       "returns": "number"
     },
     "motion_add": {
@@ -4908,9 +4895,9 @@
     },
     "ptr": {
       "params": [
-        "any"
+        "number"
       ],
-      "returns": "any"
+      "returns": "number"
     },
     "radtodeg": {
       "params": [
@@ -4948,7 +4935,6 @@
     },
     "rectangle_in_rectangle": {
       "params": [
-        "number",
         "number",
         "number",
         "number",
@@ -6554,8 +6540,7 @@
     },
     "tag_get_assets": {
       "params": [
-        "string",
-        "number"
+        "string"
       ],
       "returns": "*"
     },
@@ -6852,7 +6837,6 @@
     "vertex_position": {
       "params": [
         "*",
-        "number",
         "number",
         "number"
       ],
@@ -7282,7 +7266,6 @@
     },
     "part_particles_count": {
       "params": [
-        "number",
         "number"
       ],
       "returns": "number"
@@ -7329,15 +7312,17 @@
     },
     "layer_sequence_x": {
       "params": [
+        "number",
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
     "layer_sequence_y": {
       "params": [
+        "number",
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
     "layer_sequence_pause": {
       "params": [

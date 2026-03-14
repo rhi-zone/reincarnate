@@ -2344,7 +2344,7 @@ Five parallel audit tracks run against the full codebase. Findings documented be
 
 ---
 
-### Track 1: Silent Stubs — New Findings (62 undocumented)
+### Track 1: Silent Stubs — New Findings (62 undocumented) — partial fix in 00dffe5
 
 All functions below silently return `0`, `false`, `""`, or `-1` without throwing, hiding missing
 functionality. Per CLAUDE.md: "implement fully or throw — never stub silently."
@@ -2411,7 +2411,7 @@ functionality. Per CLAUDE.md: "implement fully or throw — never stub silently.
 
 ---
 
-### Track 2: Type Looseness — `any` Is Never Acceptable
+### Track 2: Type Looseness — `any` Is Never Acceptable — draw.ts/fontLookups/colorFontCache fixed in 00dffe5
 
 Per CLAUDE.md: "`any` in emitted TypeScript or runtime code is never acceptable — use specific types,
 `unknown`, union types, or generics." Every `any` below is either a bug to fix or requires a
@@ -2485,7 +2485,7 @@ No new bypass categories found. Root causes:
 
 ---
 
-### Track 4: Law Violations — New Finding
+### Track 4: Law Violations — New Finding — fixed in 00dffe5
 
 **`FrontendOutput.extra_passes` — Law 1 design tension (not previously in TODO.md)**
 
