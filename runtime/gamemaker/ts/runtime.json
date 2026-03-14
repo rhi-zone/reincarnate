@@ -2737,12 +2737,26 @@
       ],
       "returns": "string"
     },
+    "get_integer": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "number"
+    },
     "get_integer_async": {
       "params": [
         "string",
         "number"
       ],
       "returns": "number"
+    },
+    "get_string": {
+      "params": [
+        "string",
+        "any"
+      ],
+      "returns": "string"
     },
     "get_string_async": {
       "params": [
@@ -5776,7 +5790,8 @@
     },
     "string_trim": {
       "params": [
-        "string"
+        "string",
+        "any"
       ],
       "returns": "string"
     },
@@ -6937,6 +6952,7 @@
         "camera_create_view",
         "gc_collect",
         "screen_save",
+        "get_integer",
         "get_integer_async",
         "show_message",
         "chr",
@@ -7120,6 +7136,7 @@
         "path_start",
         "show_debug_log",
         "show_debug_overlay",
+        "get_string",
         "get_string_async",
         "video_get_format",
         "psn_init_trophy",

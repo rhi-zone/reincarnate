@@ -3454,7 +3454,8 @@ export class GameRuntime {
     } catch { /* ignore: may fail in non-browser environments */ }
   }
 
-  // ---- Async dialogs ----
+  // ---- Dialogs ----
+  get_integer(message: string, defaultVal: number): number { const r = prompt(message, String(defaultVal)); return r != null ? parseInt(r, 10) || 0 : defaultVal; }
   get_integer_async(_message: string, _default: number): number { return _default; }
   show_message(_str: string): void { console.log("GML show_message:", _str); }
 
@@ -3855,6 +3856,7 @@ export class GameRuntime {
   show_debug_overlay(_enable: boolean): void { /* no-op */ }
 
   // ---- More async ----
+  get_string(message: string, defaultVal: any): string { const r = prompt(message, String(defaultVal)); return r ?? String(defaultVal); }
   get_string_async(_message: string, _default: string): string { return _default; }
 
   // ---- Video extras ----
@@ -4507,8 +4509,8 @@ export class GameRuntime {
   os_is_paused(): boolean { return false; }
   os_get_language(): string { return navigator?.language?.split("-")[0] ?? "en"; }
   os_get_region(): string { return navigator?.language?.split("-")[1]?.toUpperCase() ?? "US"; }
-  extension_stubfunc_real(): number { return 0; }
-  extension_stubfunc_string(): string { return ""; }
+  extension_stubfunc_real(..._args: any[]): number { return 0; }
+  extension_stubfunc_string(..._args: any[]): string { return ""; }
 
   // ---- Tile extras ----
   tile_layer_show(_layer: number): void { /* no-op */ }
