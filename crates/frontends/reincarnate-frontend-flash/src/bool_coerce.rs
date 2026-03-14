@@ -27,7 +27,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{Function, Module, ValueId};
-use reincarnate_core::pipeline::{Transform, TransformResult};
+use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 pub struct FlashBoolCoerce;
 
@@ -49,6 +49,8 @@ impl Transform for FlashBoolCoerce {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for FlashBoolCoerce {}
 
 // ---------------------------------------------------------------------------
 // Helpers

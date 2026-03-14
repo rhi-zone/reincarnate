@@ -34,7 +34,7 @@ use reincarnate_core::ir::module::StructDef;
 use reincarnate_core::ir::ty::{parse_type_notation, Type};
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{Function, Module, ValueId};
-use reincarnate_core::pipeline::{Transform, TransformResult};
+use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 pub struct GmlBoolArithCoerce;
 
@@ -106,6 +106,8 @@ impl Transform for GmlBoolArithCoerce {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for GmlBoolArithCoerce {}
 
 // ---------------------------------------------------------------------------
 // Helpers

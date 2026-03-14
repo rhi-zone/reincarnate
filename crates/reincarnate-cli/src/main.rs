@@ -551,8 +551,8 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let config = PassConfig::from_skip_list(&skip_refs);
     let mut pipeline = default_pipeline(&config);
-    for extra in output.extra_passes {
-        pipeline.add(extra);
+    for extra in output.frontend_passes {
+        pipeline.add_pure(extra);
     }
     for module in output.modules {
         let module = pipeline.run(module)?;
@@ -604,8 +604,8 @@ fn cmd_emit(
         pass_config.fixpoint = true;
     }
     let mut pipeline = default_pipeline(&pass_config);
-    for extra in output.extra_passes {
-        pipeline.add(extra);
+    for extra in output.frontend_passes {
+        pipeline.add_pure(extra);
     }
 
     let mut modules = Vec::new();
@@ -1813,11 +1813,11 @@ fn cmd_stress(
         .map(|m| m.name.clone())
         .collect();
     let mut initial_modules: Vec<Module> = initial_output.modules;
-    // extra_passes from the initial extraction are consumed by run 0's pipeline.
-    // For runs 1+, we re-extract to obtain fresh Box<dyn Transform> instances
+    // frontend_passes from the initial extraction are consumed by run 0's pipeline.
+    // For runs 1+, we re-extract to obtain fresh Box<dyn PureIrPass> instances
     // (they are not Clone).  We discard the re-extracted modules.
-    let mut first_extra_passes: Option<Vec<Box<dyn reincarnate_core::pipeline::Transform>>> =
-        Some(initial_output.extra_passes);
+    let mut first_extra_passes: Option<Vec<Box<dyn reincarnate_core::pipeline::PureIrPass>>> =
+        Some(initial_output.frontend_passes);
 
     for module in &mut initial_modules {
         module.external_type_defs = external_type_defs.clone();
@@ -1842,10 +1842,10 @@ fn cmd_stress(
         for run_idx in 0..runs {
             let run_num = run_idx + 1;
 
-            // Obtain extra_passes for this run.  On the very first module's first
+            // Obtain frontend_passes for this run.  On the very first module's first
             // run we use the pool from the initial extract; on every other run we
-            // re-extract to get fresh Box<dyn Transform> instances.
-            let extra_passes: Vec<Box<dyn reincarnate_core::pipeline::Transform>> =
+            // re-extract to get fresh Box<dyn PureIrPass> instances.
+            let frontend_passes: Vec<Box<dyn reincarnate_core::pipeline::PureIrPass>> =
                 if run_idx == 0 && mod_idx == 0 {
                     first_extra_passes.take().unwrap_or_default()
                 } else {
@@ -1854,13 +1854,13 @@ fn cmd_stress(
                         engine: manifest.engine.clone(),
                         options: manifest.frontend_options.clone(),
                     };
-                    frontend.extract(re_input)?.extra_passes
+                    frontend.extract(re_input)?.frontend_passes
                 };
 
             // Build a fresh pipeline for this run.
             let mut pipeline = reincarnate_core::transforms::default_pipeline(&pass_config);
-            for extra in extra_passes {
-                pipeline.add(extra);
+            for extra in frontend_passes {
+                pipeline.add_pure(extra);
             }
 
             let PipelineOutput {

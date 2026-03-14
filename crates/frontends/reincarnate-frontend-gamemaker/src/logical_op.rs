@@ -22,7 +22,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::Block;
 use reincarnate_core::ir::inst::Inst;
 use reincarnate_core::ir::{BlockId, Constant, Function, InstId, Module, Op, ValueId};
-use reincarnate_core::pipeline::{Transform, TransformResult};
+use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 pub struct GmlLogicalOpNormalize;
 
@@ -39,6 +39,8 @@ impl Transform for GmlLogicalOpNormalize {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for GmlLogicalOpNormalize {}
 
 fn normalize_logical_ops(func: &mut Function) -> bool {
     let mut changed = false;

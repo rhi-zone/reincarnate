@@ -246,7 +246,7 @@ impl Frontend for GameMakerFrontend {
             modules: vec![module],
             assets,
             runtime_variant: None,
-            extra_passes: vec![
+            frontend_passes: vec![
                 Box::new(call_site_arity_widen::CallSiteArityWiden),
                 Box::new(default_arg::GmlDefaultArgRecovery),
                 Box::new(reincarnate_core::transforms::IntToBoolPromotion),

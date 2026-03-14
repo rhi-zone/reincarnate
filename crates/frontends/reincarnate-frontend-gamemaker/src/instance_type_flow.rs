@@ -21,7 +21,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::inst::{CmpKind, Inst, InstId, Op};
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{Function, Module, ValueId};
-use reincarnate_core::pipeline::{Transform, TransformResult};
+use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 /// GML instance type propagation pass.
 ///
@@ -59,6 +59,8 @@ impl Transform for GmlInstanceTypeFlow {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for GmlInstanceTypeFlow {}
 
 impl GmlInstanceTypeFlow {
     fn process_function(&self, func: &mut Function) -> bool {

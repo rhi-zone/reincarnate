@@ -37,6 +37,32 @@ pub trait Transform {
     }
 }
 
+/// Marker trait for transforms that are provably IR-only: stateless, no external I/O,
+/// IR in → IR out. Required for passes injected by frontends via
+/// `FrontendOutput::frontend_passes` to enforce Law 1 (Pipeline Stage Isolation) at the
+/// type level.
+///
+/// Implementing this trait is a contract: the pass may only read and write IR data
+/// structures. It must not access filesystem, network, global mutable state, or any
+/// non-IR channel.
+pub trait PureIrPass: Transform {}
+
+/// Allow `Box<dyn PureIrPass>` to be used wherever `Box<dyn Transform>` is expected
+/// by forwarding all `Transform` method calls through the inner trait object.
+impl Transform for Box<dyn PureIrPass> {
+    fn name(&self) -> &str {
+        (**self).name()
+    }
+
+    fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
+        (**self).apply(module)
+    }
+
+    fn run_once(&self) -> bool {
+        (**self).run_once()
+    }
+}
+
 /// Maximum number of fixpoint iterations before giving up.
 const MAX_FIXPOINT_ITERATIONS: usize = 100;
 
@@ -76,6 +102,14 @@ impl TransformPipeline {
 
     pub fn add(&mut self, transform: Box<dyn Transform>) {
         self.transforms.push(transform);
+    }
+
+    /// Add a [`PureIrPass`] to the pipeline.
+    ///
+    /// `Box<dyn PureIrPass>` implements `Transform` via the blanket impl above,
+    /// so we wrap it in a second box to satisfy `Box<dyn Transform>`.
+    pub fn add_pure(&mut self, pass: Box<dyn PureIrPass>) {
+        self.transforms.push(Box::new(pass));
     }
 
     /// Enable fixpoint iteration: re-run the entire pipeline until no pass

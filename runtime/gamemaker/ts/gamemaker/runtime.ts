@@ -36,7 +36,7 @@ import { MathState, XorGen } from "./math";
 import { ACTIVE, noop } from "./constants";
 import type { Sprite } from "../../data/sprites";
 import type { Texture } from "../../data/textures";
-import type { Font } from "../../data/fonts";
+import type { Font, FontGlyph } from "../../data/fonts";
 import type { Room } from "../../data/rooms";
 import type { Sound } from "../../data/sounds";
 import type { GmlShader } from "../../data/shaders";
@@ -176,10 +176,10 @@ export class GameRuntime {
 
   // ---- Draw API helpers ----
 
-  private _getFontLookup(fontIdx: number): Map<number, any> {
+  private _getFontLookup(fontIdx: number): Map<number, FontGlyph> {
     const draw = this._draw;
     if (!draw.fontLookups[fontIdx]) {
-      const map = new Map<number, any>();
+      const map = new Map<number, FontGlyph>();
       const font = this.fonts[fontIdx];
       if (font) {
         for (const c of font.chars) {
@@ -191,7 +191,7 @@ export class GameRuntime {
     return draw.fontLookups[fontIdx]!;
   }
 
-  private _wrapLines(lines: string[], lookup: Map<number, any>, maxWidth: number): void {
+  private _wrapLines(lines: string[], lookup: Map<number, FontGlyph>, maxWidth: number): void {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
       let j = 0;
@@ -213,19 +213,19 @@ export class GameRuntime {
 
   private _getCachedColorFont(
     fontIdx: number, color: number,
-    sheet: CanvasImageSource, tex: any,
+    sheet: CanvasImageSource, tex: Texture,
   ): ImageBitmap | null {
     const draw = this._draw;
-    if (!draw.colorFontCache[fontIdx]) draw.colorFontCache[fontIdx] = [];
-    const cached = draw.colorFontCache[fontIdx]![color as any] as ImageBitmap | undefined;
+    if (!draw.colorFontCache[fontIdx]) draw.colorFontCache[fontIdx] = new Map();
+    const cached = draw.colorFontCache[fontIdx]!.get(color);
     if (cached) return cached;
 
     const tc = this._gfx.tcanvas;
     const tcx = this._gfx.tctx;
-    const w = (sheet as any).width ?? tex.src.w;
-    const h = (sheet as any).height ?? tex.src.h;
-    if ("width" in tc) (tc as any).width = w;
-    if ("height" in tc) (tc as any).height = h;
+    const w = "width" in sheet ? (sheet as { width: number }).width : tex.src.w;
+    const h = "height" in sheet ? (sheet as { height: number }).height : tex.src.h;
+    tc.width = w;
+    tc.height = h;
     tcx.clearRect(0, 0, w, h);
     tcx.drawImage(
       sheet, tex.src.x, tex.src.y, tex.src.w, tex.src.h,
@@ -245,7 +245,7 @@ export class GameRuntime {
     tcx.putImageData(imageData, 0, 0);
     if ("transferToImageBitmap" in tc) {
       const bm = (tc as OffscreenCanvas).transferToImageBitmap();
-      (draw.colorFontCache[fontIdx] as any)[color] = bm;
+      draw.colorFontCache[fontIdx]!.set(color, bm);
       return bm;
     }
     return null;
@@ -3012,7 +3012,7 @@ export class GameRuntime {
     throw new Error("event_inherited: not yet implemented (should be rewritten to super call at compile time)");
   }
   is_debug_overlay_open(): boolean { return false; }
-  path_exists(_path: number): boolean { return false; }
+  path_exists(_path: number): boolean { throw new Error("path_exists: not yet implemented"); }
   path_delete(_path: number): void { /* no-op */ }
   layer_background_visible(_bg: number, _visible: boolean): void { /* no-op */ }
   layer_sequence_create(_layer: any, _x: number, _y: number, _seq: number): number { return -1; }
@@ -3073,9 +3073,9 @@ export class GameRuntime {
   buffer_exists(bufId: number): boolean { return this._buffers.has(bufId); }
 
   // ---- Layer extras ----
-  layer_get_x(_layer: any): number { return 0; }
-  layer_get_y(_layer: any): number { return 0; }
-  layer_depth(_layer: any, _depth?: number): number { return 0; }
+  layer_get_x(_layer: any): number { throw new Error("layer_get_x: not yet implemented"); }
+  layer_get_y(_layer: any): number { throw new Error("layer_get_y: not yet implemented"); }
+  layer_depth(_layer: any, _depth?: number): number { throw new Error("layer_depth: not yet implemented"); }
   layer_sequence_destroy(_seq: number): void { /* no-op */ }
 
   // ---- More collision ----
@@ -3261,8 +3261,8 @@ export class GameRuntime {
   json_decode(str: string): any { try { return JSON.parse(str); } catch { return undefined; } }
 
   // ---- Game lifecycle ----
-  parameter_count(): number { return 0; }
-  parameter_string(_n: number): string { return ""; }
+  parameter_count(): number { throw new Error("parameter_count: not yet implemented"); }
+  parameter_string(_n: number): string { throw new Error("parameter_string: not yet implemented"); }
 
   game_end(): void {
     // Stop the game loop and close the window (if allowed).
@@ -3328,12 +3328,12 @@ export class GameRuntime {
   }
 
   // ---- Path ----
-  path_end(): void { /* no-op */ }
+  path_end(): void { throw new Error("path_end: not yet implemented"); }
 
   // ---- Layer extras ----
-  layer_exists(_layer: any): boolean { return false; }
-  layer_vspeed(_layer: any, _speed?: number): any { if (_speed !== undefined) return; return 0; }
-  layer_background_sprite(_bg: number, _spr?: number): any { if (_spr !== undefined) return; return -1; }
+  layer_exists(_layer: any): boolean { throw new Error("layer_exists: not yet implemented"); }
+  layer_vspeed(_layer: any, _speed?: number): any { if (_speed !== undefined) return; throw new Error("layer_vspeed: not yet implemented"); }
+  layer_background_sprite(_bg: number, _spr?: number): any { if (_spr !== undefined) return; throw new Error("layer_background_sprite: not yet implemented"); }
   layer_background_index(_bg: number, _sprite: number): void { /* no-op */ }
   layer_background_get_index(bg: number): number { return this._layerBackgroundSprites.get(bg) ?? -1; }
 
@@ -3688,9 +3688,7 @@ export class GameRuntime {
     } catch { /* ignore */ }
   }
   sprite_add(_path: string, _frames: number, _removebg: boolean, _smooth: boolean, _xorig: number, _yorig: number): number {
-    // Loading runtime sprites from URLs requires async fetch — not implementable synchronously.
-    // Return -1 to signal "sprite not loaded", game code typically checks for -1.
-    console.warn("sprite_add: runtime sprite loading not supported"); return -1;
+    throw new Error("sprite_add: not yet implemented");
   }
   sprite_get_uvs(spr: number, sub: number): number[] {
     const sprite = this.sprites[spr]; if (!sprite) return [0, 0, 1, 1, 0, 0, 1, 1];
@@ -3729,11 +3727,11 @@ export class GameRuntime {
   game_get_speed(_type: number): number { return this.room_speed; }
 
   // ---- Layer extras ----
-  layer_get_depth(_layer: any): number { return 0; }
-  layer_get_visible(_layer: any): boolean { return true; }
+  layer_get_depth(_layer: any): number { throw new Error("layer_get_depth: not yet implemented"); }
+  layer_get_visible(_layer: any): boolean { throw new Error("layer_get_visible: not yet implemented"); }
   layer_set_visible(_layer: any, _visible: boolean): void { /* no-op */ }
-  layer_x(_layer: any, _x?: number): any { if (_x !== undefined) return; return 0; }
-  layer_y(_layer: any, _y?: number): any { if (_y !== undefined) return; return 0; }
+  layer_x(_layer: any, _x?: number): any { if (_x !== undefined) return; throw new Error("layer_x: not yet implemented"); }
+  layer_y(_layer: any, _y?: number): any { if (_y !== undefined) return; throw new Error("layer_y: not yet implemented"); }
 
   // ---- More instance ----
   instance_deactivate_all(notme: boolean): void {
@@ -4543,17 +4541,17 @@ export class GameRuntime {
   draw_enable_alphablend(_enable: boolean): void {
     /* no-op: alpha blending always enabled in Canvas 2D */
   }
-  background_get_width(_bg: number): number { return 0; }
-  background_get_height(_bg: number): number { return 0; }
+  background_get_width(_bg: number): number { throw new Error("background_get_width: not yet implemented"); }
+  background_get_height(_bg: number): number { throw new Error("background_get_height: not yet implemented"); }
 
   // ---- Joystick API (legacy) ----
   joystick_buttons(_id: number): number { return 0; }
-  joystick_check_button(_id: number, _btn: number): boolean { return false; }
-  joystick_xpos(_id: number): number { return 0; }
-  joystick_ypos(_id: number): number { return 0; }
-  joystick_exists(_id: number): boolean { return false; }
-  joystick_direction(_id: number): number { return 0; }
-  joystick_pov(_id: number): number { return -1; }
+  joystick_check_button(_id: number, _btn: number): boolean { throw new Error("joystick_check_button: not yet implemented"); }
+  joystick_xpos(_id: number): number { throw new Error("joystick_xpos: not yet implemented"); }
+  joystick_ypos(_id: number): number { throw new Error("joystick_ypos: not yet implemented"); }
+  joystick_exists(_id: number): boolean { throw new Error("joystick_exists: not yet implemented"); }
+  joystick_direction(_id: number): number { throw new Error("joystick_direction: not yet implemented"); }
+  joystick_pov(_id: number): number { throw new Error("joystick_pov: not yet implemented"); }
 
   // ---- File extras (batch 2) ----
   file_text_readln(file: number): string {
@@ -4566,16 +4564,16 @@ export class GameRuntime {
 
   // ---- Tile API (legacy GMS1) ----
   tile_layer_hide(_layer: number): void { /* no-op */ }
-  tile_layer_find(_depth: number, _x: number, _y: number): number { return -1; }
+  tile_layer_find(_depth: number, _x: number, _y: number): number { throw new Error("tile_layer_find: not yet implemented"); }
   tile_layer_delete(_layer: number): void { /* no-op */ }
   tile_layer_depth(_layer: number, _depth: number): void { /* no-op */ }
   tile_set_position(_tile: number, _x: number, _y: number): void { /* no-op */ }
   tile_set_scale(_tile: number, _xscale: number, _yscale: number): void { /* no-op */ }
-  tile_get_x(_tile: number): number { return 0; }
-  tile_get_y(_tile: number): number { return 0; }
-  tile_exists(_tile: number): boolean { return false; }
+  tile_get_x(_tile: number): number { throw new Error("tile_get_x: not yet implemented"); }
+  tile_get_y(_tile: number): number { throw new Error("tile_get_y: not yet implemented"); }
+  tile_exists(_tile: number): boolean { throw new Error("tile_exists: not yet implemented"); }
   tile_delete(_tile: number): void { /* no-op */ }
-  tile_add(_bg: number, _left: number, _top: number, _w: number, _h: number, _x: number, _y: number, _depth: number): number { return -1; }
+  tile_add(_bg: number, _left: number, _top: number, _w: number, _h: number, _x: number, _y: number, _depth: number): number { throw new Error("tile_add: not yet implemented"); }
 
   // ---- Room navigation extras ----
   room_next(room: number): number {
@@ -4607,14 +4605,14 @@ export class GameRuntime {
   }
 
   // ---- Joystick extras ----
-  joystick_has_pov(_id: number): boolean { return false; }
+  joystick_has_pov(_id: number): boolean { throw new Error("joystick_has_pov: not yet implemented"); }
 
   // ---- OS extras ----
   os_is_paused(): boolean { return false; }
   os_get_language(): string { return navigator?.language?.split("-")[0] ?? "en"; }
   os_get_region(): string { return navigator?.language?.split("-")[1]?.toUpperCase() ?? "US"; }
-  extension_stubfunc_real(..._args: any[]): number { return 0; }
-  extension_stubfunc_string(..._args: any[]): string { return ""; }
+  extension_stubfunc_real(..._args: any[]): number { throw new Error("extension_stubfunc_real: not yet implemented"); }
+  extension_stubfunc_string(..._args: any[]): string { throw new Error("extension_stubfunc_string: not yet implemented"); }
 
   // ---- Tile extras ----
   tile_layer_show(_layer: number): void { /* no-op */ }
@@ -4809,7 +4807,7 @@ export class GameRuntime {
   display_set_gui_maximise(_xscale: number, _yscale: number, _xoffset: number, _yoffset: number): void { /* no-op */ }
   display_set_windows_alternate_sync(_enable: boolean): void { /* no-op */ }
   os_is_network_connected(): boolean { return navigator.onLine; }
-  os_get_info(): any { return {}; }
+  os_get_info(): any { throw new Error("os_get_info: not yet implemented"); }
 
   // ---- Input ----
   keyboard_set_map(_key1: number, _key2: number): void { /* no-op */ }
@@ -4858,7 +4856,7 @@ export class GameRuntime {
   // ---- Particles ----
   part_type_colour1(pt: number, col: number): void { this.part_type_color1(pt, col); }
   part_type_blend(_pt: number, _additive: boolean): void { /* no-op — blend mode for particles not implemented */ }
-  part_particles_count(_ps: number, _pt: number): number { return 0; }
+  part_particles_count(_ps: number, _pt: number): number { throw new Error("part_particles_count: not yet implemented"); }
   effect_create_above(_kind: number, _x: number, _y: number, _size: number, _color: number): void { /* no-op — effect system not implemented */ }
   effect_create_below(_kind: number, _x: number, _y: number, _size: number, _color: number): void { /* no-op — effect system not implemented */ }
 
@@ -4882,15 +4880,15 @@ export class GameRuntime {
     this._cameras.set(id, { x: 0, y: 0, w: 1024, h: 768 });
     return id;
   }
-  camera_get_view_angle(_cam: number): number { return 0; }
+  camera_get_view_angle(_cam: number): number { throw new Error("camera_get_view_angle: not yet implemented"); }
   camera_set_view_angle(_cam: number, _angle: number): void { /* no-op */ }
   camera_get_view_border_x(_cam: number): number { return 32; }
   camera_get_view_border_y(_cam: number): number { return 32; }
   camera_set_view_border(_cam: number, _x: number, _y: number): void { /* no-op */ }
-  camera_get_view_speed_x(_cam: number): number { return -1; }
-  camera_get_view_speed_y(_cam: number): number { return -1; }
+  camera_get_view_speed_x(_cam: number): number { throw new Error("camera_get_view_speed_x: not yet implemented"); }
+  camera_get_view_speed_y(_cam: number): number { throw new Error("camera_get_view_speed_y: not yet implemented"); }
   camera_set_view_speed(_cam: number, _x: number, _y: number): void { /* no-op */ }
-  camera_get_view_target(_cam: number): number { return -4; }
+  camera_get_view_target(_cam: number): number { throw new Error("camera_get_view_target: not yet implemented"); }
   camera_set_view_target(_cam: number, _target: any): void { /* no-op */ }
 
   // ---- View (GMS1 legacy) ----
@@ -4901,7 +4899,7 @@ export class GameRuntime {
   view_set_xport(_view: number, _val: number): void { /* no-op */ }
   view_set_yport(_view: number, _val: number): void { /* no-op */ }
   view_get_visible(view: number): boolean { return view === 0; }
-  view_get_surface_id(_view: number): number { return -1; }
+  view_get_surface_id(_view: number): number { throw new Error("view_get_surface_id: not yet implemented"); }
 
   // ---- GPU ----
   gpu_get_tex_filter(): boolean { return false; }
@@ -4915,11 +4913,11 @@ export class GameRuntime {
 
   // ---- Font/Sprite ----
   font_add_sprite(_spr: number, _first: number, _prop: boolean, _sep: number): number { throw new Error("font_add_sprite: not yet implemented"); }
-  font_get_info(_font: number): any { return {}; }
-  font_get_texture(_font: number): number { return -1; }
+  font_get_info(_font: number): any { throw new Error("font_get_info: not yet implemented"); }
+  font_get_texture(_font: number): number { throw new Error("font_get_texture: not yet implemented"); }
   font_get_uvs(_font: number): number[] { return [0, 0, 1, 1]; }
-  sprite_get_info(_spr: number): any { return {}; }
-  sprite_get_speed_type(_spr: number): number { return 0; }
+  sprite_get_info(_spr: number): any { throw new Error("sprite_get_info: not yet implemented"); }
+  sprite_get_speed_type(_spr: number): number { throw new Error("sprite_get_speed_type: not yet implemented"); }
 
   // ---- Array (GMS2) ----
   array_pop(arr: any[]): any { return arr.pop(); }
@@ -4944,7 +4942,7 @@ export class GameRuntime {
   // ---- Skeleton/Spine ----
   skeleton_skin_set(_skin: string): void { /* no-op — Spine not implemented */ }
   skeleton_animation_set(_anim: string): void { /* no-op — Spine not implemented */ }
-  skeleton_animation_get(): string { return ""; }
+  skeleton_animation_get(): string { throw new Error("skeleton_animation_get: not yet implemented"); }
 
   // ---- GMS1 action functions ----
   action_sound(snd: number, loop: boolean): void { this.audio_play_sound(snd, 0, loop); }

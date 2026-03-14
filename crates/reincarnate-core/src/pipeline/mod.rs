@@ -14,5 +14,5 @@ pub use config::{resolve_preset, DebugConfig, LoweringConfig, PassConfig};
 pub use frontend::{Frontend, FrontendInput, FrontendOutput};
 pub use linker::{link_modules, SymbolTable};
 pub use transform::{
-    PipelineOutput, Transform, TransformPipeline, TransformResult, VALID_PASS_NAMES,
+    PipelineOutput, PureIrPass, Transform, TransformPipeline, TransformResult, VALID_PASS_NAMES,
 };

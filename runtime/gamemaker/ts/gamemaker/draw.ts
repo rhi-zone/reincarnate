@@ -3,6 +3,20 @@
 import type { GameRuntime } from "./runtime";
 import { Colors, HAligns, VAligns, gmlColorToCss } from "./color";
 
+/** Shape of a single font glyph, matching the FontGlyph interface emitted by the GML backend. */
+interface FontGlyph {
+  char: number;
+  frame: { x: number; y: number; width: number; height: number };
+  shift: number;
+  offset: number;
+}
+
+/** Texture region descriptor, matching the Texture interface emitted by the GML backend. */
+interface TextureInfo {
+  src: { x: number; y: number; w: number; h: number };
+  dest: { w: number; h: number };
+}
+
 export class DrawState {
   alpha = 1;
   config: { color: number; font: number; valign: number; halign: number; ext: { sep: number; w: number }; transform: { xscale: number; yscale: number; angle: number } } = {
@@ -13,8 +27,8 @@ export class DrawState {
     ext: { sep: -1, w: -1 },
     transform: { xscale: 1, yscale: 1, angle: 0 },
   };
-  fontLookups: Map<number, any>[] = [];
-  colorFontCache: ImageBitmap[][] = [];
+  fontLookups: Map<number, FontGlyph>[] = [];
+  colorFontCache: Map<number, ImageBitmap>[] = [];
   // Current vertex-buffer color/alpha (updated by vertex_colour)
   _vbufColor = 0xffffff;
   _vbufAlpha = 1;
@@ -25,9 +39,9 @@ export function createDrawAPI(rt: GameRuntime) {
 
   // ---- Helpers ----
 
-  function getFontLookup(fontIdx: number): Map<number, any> {
+  function getFontLookup(fontIdx: number): Map<number, FontGlyph> {
     if (!draw.fontLookups[fontIdx]) {
-      const map = new Map<number, any>();
+      const map = new Map<number, FontGlyph>();
       const font = rt.fonts[fontIdx];
       if (font) {
         for (const c of font.chars) {
@@ -39,7 +53,7 @@ export function createDrawAPI(rt: GameRuntime) {
     return draw.fontLookups[fontIdx]!;
   }
 
-  function wrapLines(lines: string[], lookup: Map<number, any>, maxWidth: number): void {
+  function wrapLines(lines: string[], lookup: Map<number, FontGlyph>, maxWidth: number): void {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i]!;
       let j = 0;
@@ -61,18 +75,18 @@ export function createDrawAPI(rt: GameRuntime) {
 
   function getCachedColorFont(
     fontIdx: number, color: number,
-    sheet: CanvasImageSource, tex: any,
+    sheet: CanvasImageSource, tex: TextureInfo,
   ): ImageBitmap | null {
-    if (!draw.colorFontCache[fontIdx]) draw.colorFontCache[fontIdx] = [];
-    const cached = draw.colorFontCache[fontIdx]![color as any] as ImageBitmap | undefined;
+    if (!draw.colorFontCache[fontIdx]) draw.colorFontCache[fontIdx] = new Map();
+    const cached = draw.colorFontCache[fontIdx]!.get(color);
     if (cached) return cached;
 
     const tc = rt._gfx.tcanvas;
     const tcx = rt._gfx.tctx;
-    const w = (sheet as any).width ?? tex.src.w;
-    const h = (sheet as any).height ?? tex.src.h;
-    if ("width" in tc) (tc as any).width = w;
-    if ("height" in tc) (tc as any).height = h;
+    const w = "width" in sheet ? (sheet as { width: number }).width : tex.src.w;
+    const h = "height" in sheet ? (sheet as { height: number }).height : tex.src.h;
+    tc.width = w;
+    tc.height = h;
     tcx.clearRect(0, 0, w, h);
     tcx.drawImage(
       sheet, tex.src.x, tex.src.y, tex.src.w, tex.src.h,
@@ -92,7 +106,7 @@ export function createDrawAPI(rt: GameRuntime) {
     tcx.putImageData(imageData, 0, 0);
     if ("transferToImageBitmap" in tc) {
       const bm = (tc as OffscreenCanvas).transferToImageBitmap();
-      (draw.colorFontCache[fontIdx] as any)[color] = bm;
+      draw.colorFontCache[fontIdx]!.set(color, bm);
       return bm;
     }
     return null;

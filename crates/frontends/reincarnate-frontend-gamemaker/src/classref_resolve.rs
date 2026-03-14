@@ -17,7 +17,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{Constant, Function, Module, ValueId};
-use reincarnate_core::pipeline::{Transform, TransformResult};
+use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 /// GML class-reference resolution pass.
 ///
@@ -80,6 +80,8 @@ impl Transform for GmlClassRefResolve {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for GmlClassRefResolve {}
 
 /// Process a single function: find call sites with "classref" params whose
 /// argument is a plain integer constant (or a Coerce cast thereof), and

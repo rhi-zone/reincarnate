@@ -33,7 +33,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{BlockId, Constant, Function, Module, Op, ValueId};
-use reincarnate_core::pipeline::{Transform, TransformResult};
+use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 pub struct GmlDefaultArgRecovery;
 
@@ -51,6 +51,8 @@ impl Transform for GmlDefaultArgRecovery {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for GmlDefaultArgRecovery {}
 
 /// Try to recover default argument values from the entry block chain.
 fn recover_defaults(func: &mut Function) -> bool {

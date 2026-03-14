@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::error::CoreError;
 use crate::ir::ty::parse_type_notation;
 use crate::ir::{Constant, Function, Module, Op, Type, ValueId};
-use crate::pipeline::{Transform, TransformResult};
+use crate::pipeline::{PureIrPass, Transform, TransformResult};
 use crate::project::ExternalMethodSig;
 
 /// Demand-driven boolean promotion — identifies Int(0/1) values used in
@@ -530,6 +530,8 @@ impl Transform for IntToBoolPromotion {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for IntToBoolPromotion {}
 
 #[cfg(test)]
 mod tests {

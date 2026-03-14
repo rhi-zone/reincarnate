@@ -193,7 +193,7 @@ impl TwineFrontend {
             modules: vec![module],
             assets,
             runtime_variant: None,
-            extra_passes: vec![],
+            frontend_passes: vec![],
         })
     }
 
@@ -368,7 +368,7 @@ impl TwineFrontend {
             modules: vec![module],
             assets,
             runtime_variant: Some("harlowe".to_string()),
-            extra_passes: vec![],
+            frontend_passes: vec![],
         })
     }
 }

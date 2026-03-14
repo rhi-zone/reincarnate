@@ -134,9 +134,9 @@ impl PassConfig {
     /// - `"dead-code-elimination"`
     /// - `"fixpoint"` — toggles pipeline fixpoint iteration
     ///
-    /// Note: `"int-to-bool-promotion"` is an engine-specific extra pass injected
-    /// by frontends (e.g. GameMaker) via `extra_passes` and cannot be skipped
-    /// through `PassConfig`.
+    /// Note: `"int-to-bool-promotion"` is an engine-specific pass injected
+    /// by frontends (e.g. GameMaker) via `FrontendOutput::frontend_passes` and
+    /// cannot be skipped through `PassConfig`.
     pub fn from_skip_list(skip: &[&str]) -> Self {
         let mut config = Self::default();
         for name in skip {

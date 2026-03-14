@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::error::CoreError;
 use crate::ir::Module;
-use crate::pipeline::Transform;
+use crate::pipeline::PureIrPass;
 use crate::project::{AssetCatalog, EngineOrigin};
 
 /// Input to a frontend.
@@ -33,7 +33,10 @@ pub struct FrontendOutput {
     /// These run after DCE (the last standard pass) but before structurization.
     /// Use this to inject engine-specific IR normalizations that the shared
     /// pipeline doesn't know about (e.g. GML logical-op pattern restoration).
-    pub extra_passes: Vec<Box<dyn Transform>>,
+    ///
+    /// All passes must implement [`PureIrPass`], which enforces Law 1 (Pipeline
+    /// Stage Isolation) at the type level: injected passes are stateless and IR-only.
+    pub frontend_passes: Vec<Box<dyn PureIrPass>>,
 }
 
 /// Frontend trait — parses engine-specific formats and emits IR.

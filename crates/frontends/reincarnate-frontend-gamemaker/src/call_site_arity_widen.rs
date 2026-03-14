@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockParam;
 use reincarnate_core::ir::{Module, Op, Type};
-use reincarnate_core::pipeline::{Transform, TransformResult};
+use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 /// Interprocedural call-site arity widening — appends optional `Dynamic`
 /// parameters to functions that are called with more arguments than they
@@ -145,6 +145,8 @@ impl Transform for CallSiteArityWiden {
         Ok(TransformResult { module, changed })
     }
 }
+
+impl PureIrPass for CallSiteArityWiden {}
 
 #[cfg(test)]
 mod tests {
