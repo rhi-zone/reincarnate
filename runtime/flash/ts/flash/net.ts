@@ -19,12 +19,12 @@ import {
 
 /** AS3 `flash.net.IDynamicPropertyOutput` — receives dynamic property key/value pairs during serialization. */
 export abstract class IDynamicPropertyOutput {
-  abstract writeDynamicProperty(name: string, value: any): void;
+  abstract writeDynamicProperty(name: string, value: unknown): void;
 }
 
 /** AS3 `flash.net.IDynamicPropertyWriter` — controls serialization of dynamic properties. */
 export abstract class IDynamicPropertyWriter {
-  abstract writeDynamicProperties(obj: any, output: IDynamicPropertyOutput): void;
+  abstract writeDynamicProperties(obj: unknown, output: IDynamicPropertyOutput): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -104,15 +104,15 @@ export class URLLoaderDataFormat {
 export class URLLoader extends EventDispatcher {
   _bytesLoaded = 0;
   _bytesTotal = 0;
-  _data: any = null;
+  _data: string | ArrayBuffer | null = null;
   _dataFormat: string = URLLoaderDataFormat.TEXT;
 
   get bytesLoaded() { return this._bytesLoaded; }
   set bytesLoaded(v: number) { this._bytesLoaded = v; }
   get bytesTotal() { return this._bytesTotal; }
   set bytesTotal(v: number) { this._bytesTotal = v; }
-  get data() { return this._data; }
-  set data(v: any) { this._data = v; }
+  get data(): string | ArrayBuffer | null { return this._data; }
+  set data(v: string | ArrayBuffer | null) { this._data = v; }
   get dataFormat() { return this._dataFormat; }
   set dataFormat(v: string) { this._dataFormat = v; }
 
@@ -160,7 +160,7 @@ export class URLLoader extends EventDispatcher {
 export class FileReference extends EventDispatcher {
   _creationDate: Date | null = null;
   _creator: string | null = null;
-  _data: any = null;
+  _data: ArrayBuffer | null = null;
   _extension: string | null = null;
   _modificationDate: Date | null = null;
   _name: string | null = null;
@@ -171,8 +171,8 @@ export class FileReference extends EventDispatcher {
   set creationDate(v: Date | null) { this._creationDate = v; }
   get creator() { return this._creator; }
   set creator(v: string | null) { this._creator = v; }
-  get data() { return this._data; }
-  set data(v: any) { this._data = v; }
+  get data(): ArrayBuffer | null { return this._data; }
+  set data(v: ArrayBuffer | null) { this._data = v; }
   get extension() { return this._extension; }
   set extension(v: string | null) { this._extension = v; }
   get modificationDate() { return this._modificationDate; }
@@ -196,7 +196,7 @@ export class FileReference extends EventDispatcher {
     this.dispatchEvent(new Event(Event.COMPLETE));
   }
 
-  save(data: any, defaultFileName?: string): void {
+  save(data: unknown, defaultFileName?: string): void {
     // Best-effort download via platform API.
     try {
       const blob = new Blob([typeof data === "string" ? data : JSON.stringify(data)]);
@@ -220,19 +220,19 @@ const SHARED_OBJECT_PREFIX = "flash_so_";
 
 export class SharedObject {
   private _name = "";
-  private _data: Record<string, any> = {};
+  private _data: Record<string, unknown> = {};
   _size = 0;
-  _client: any = null;
+  _client: object | null = null;
   _objectEncoding = 3;
 
   get size() { return this._size; }
   set size(v: number) { this._size = v; }
-  get client() { return this._client; }
-  set client(v: any) { this._client = v; }
+  get client(): object | null { return this._client; }
+  set client(v: object | null) { this._client = v; }
   get objectEncoding() { return this._objectEncoding; }
   set objectEncoding(v: number) { this._objectEncoding = v; }
 
-  get data(): Record<string, any> {
+  get data(): Record<string, unknown> {
     return this._data;
   }
 
@@ -255,7 +255,7 @@ export class SharedObject {
     void propertyName;
   }
 
-  setProperty(propertyName: string, value: any): void {
+  setProperty(propertyName: string, value: unknown): void {
     this._data[propertyName] = value;
   }
 
