@@ -2336,6 +2336,223 @@ and add it to `~/reincarnate/twine/`.
 
 **Data (extraction input only):** `tw-storydata`, `tw-passagedata`, `tw-tag`
 
+---
+
+## Codebase-Wide Correctness Audit — 2026-03-15
+
+Five parallel audit tracks run against the full codebase. Findings documented below; fixes come after the full picture is clear.
+
+---
+
+### Track 1: Silent Stubs — New Findings (62 undocumented)
+
+All functions below silently return `0`, `false`, `""`, or `-1` without throwing, hiding missing
+functionality. Per CLAUDE.md: "implement fully or throw — never stub silently."
+
+**Layer system** (`runtime.ts`):
+- [ ] `layer_get_x`, `layer_get_y` — return `0` (no layer state tracking)
+- [ ] `layer_depth` — returns `0` (getter side; setter side exists)
+- [ ] `layer_exists` — always `false`
+- [ ] `layer_vspeed` — returns `0` for query
+- [ ] `layer_background_sprite` — returns `-1` for query
+- [ ] `layer_get_depth` — returns `0`
+- [ ] `layer_get_visible` — always `true`
+- [ ] `layer_x`, `layer_y` — return `0` for query
+
+**Tile system** (`runtime.ts`):
+- [ ] `tile_layer_find` — returns `-1` (no tile layer query)
+- [ ] `tile_get_x`, `tile_get_y` — return `0`
+- [ ] `tile_exists` — always `false`
+- [ ] `tile_add` — returns `-1` (tile creation not implemented)
+
+**Camera system** (`runtime.ts`):
+- [ ] `camera_get_view_angle` — returns `0`
+- [ ] `camera_get_view_speed_x`, `camera_get_view_speed_y` — return `-1`
+- [ ] `camera_get_view_target` — returns `-4` (GML noone sentinel, not the actual target)
+- [ ] `view_get_surface_id` — always `-1`
+
+**Joystick input** (`runtime.ts`):
+- [ ] `joystick_check_button` — always `false`
+- [ ] `joystick_xpos`, `joystick_ypos` — return `0` (wrong; axes should return −1..1)
+- [ ] `joystick_exists` — always `false`
+- [ ] `joystick_direction` — returns `0`
+- [ ] `joystick_pov` — returns `-1`
+- [ ] `joystick_has_pov` — always `false`
+
+**Path system** (`runtime.ts`):
+- [ ] `path_exists` — always `false` (contradicts `path_add` which creates paths)
+- [ ] `path_end` — empty no-op (path system nonfunctional)
+
+**Particles** (`runtime.ts`):
+- [ ] `part_particles_count` — returns `0` (see also Track 5 for arity mismatch)
+
+**Background / sprite / font info** (`runtime.ts`):
+- [ ] `background_get_width`, `background_get_height` — return `0`
+- [ ] `os_get_info` — returns `{}` (empty object)
+- [ ] `font_get_info` — returns `{}` (empty object)
+- [ ] `sprite_get_info` — returns `{}` (empty object)
+- [ ] `font_get_texture` — returns `-1`
+- [ ] `sprite_get_speed_type` — returns `0`
+
+**Command-line parameters** (`runtime.ts`):
+- [ ] `parameter_count` — always `0` (no URL/launch arg parsing)
+- [ ] `parameter_string` — always `""` (see also Track 5 for arity mismatch)
+
+**Skeleton / Spine** (`runtime.ts`):
+- [ ] `skeleton_animation_get` — returns `""` (Spine animation system not implemented)
+
+**Extension stubs** (`runtime.ts`):
+- [ ] `extension_stubfunc_real`, `extension_stubfunc_string` — generic fallbacks that silently
+  return `0`/`""` for ALL missing extension functions; callers cannot detect the stub fired
+
+---
+
+### Track 2: Type Looseness — `any` Is Never Acceptable
+
+Per CLAUDE.md: "`any` in emitted TypeScript or runtime code is never acceptable — use specific types,
+`unknown`, union types, or generics." Every `any` below is either a bug to fix or requires a
+documented design decision about why `unknown` + narrowing is genuinely unworkable.
+
+**GML `draw.ts` — inference gaps:**
+- [ ] `tex: any` in `getCachedColorFont()` → define `TextureInfo` interface
+  `{ src: { x: number; y: number; w: number; h: number }; dest: { w: number; h: number } }`
+- [ ] `color as any` for color-keyed array indexing in `colorFontCache` →
+  use `Map<number, ImageBitmap>` to eliminate the cast
+- [ ] `(tc as any).width` / `(sheet as any).width` → use a type guard or explicit union
+
+**GML `runtime.ts` — inference gaps:**
+- [ ] `fontLookups: Map<number, any>[]` → define `FontCharacter` interface and use throughout
+- [ ] `(inst as any)[field]` at reflection sites →
+  `(inst as unknown as Record<string, unknown>)[field]`; casting through `unknown` first is explicit
+- [ ] `(obj as any)[id]()` for event dispatch → typed event dispatch table
+  `Map<number, (self: GMLObject) => void>`
+
+**GML `instance.ts`:**
+- [ ] `getInstanceField(…): any`, `setInstanceField(…, value: any)` → `unknown`
+- [ ] `withInstances<T>(…, callback: (inst: T) => any): any` → callback return `unknown`, outer `unknown`
+
+**Flash `amf.ts` — serialization:**
+- [ ] `readValue(ba: ByteArray): any` → `unknown`; `objects: any[]` → `unknown[]`
+  Callers must narrow before use — that is the correct design for deserialized data.
+
+**Flash `xml.ts` — E4X:**
+- [ ] `escapeAttribute(value: any)` → `unknown`; `checkFilter(value: any): any` → `(value: unknown): unknown`
+
+**Flash `events.ts` — covariance workaround:**
+- [ ] `listener: (event: any) => void` → `(event: Event) => void`
+  The existing comment claims TypeScript requires `any` for covariance — this is incorrect.
+  `(event: Event) => void` is a contravariant supertype compatible with handlers taking specific
+  event subtypes. The `any` is not needed.
+
+**Flash `utils.ts`:**
+- [ ] `cachedBind<T extends (...args: any[]) => any>(thisArg: any, fn: T)` →
+  `thisArg: unknown`; preserve arg types via `Parameters<T>` / `ReturnType<T>`
+
+**Harlowe `engine.ts` / `context.ts` — story variables:**
+- [ ] `get(name: string): any` / `set(name: string, value: any)` → `unknown`
+- [ ] `Changer.args: any[]` → `unknown[]`
+- [ ] `printVal(v: any): Node` → `v: unknown`
+- [ ] `plus(a: any, b: any): any` / `minus(a: any, b: any): any` → `(a: unknown, b: unknown): unknown`
+  Harlowe's operator overloading; inputs and output are genuinely unknown; callers narrow.
+
+**SugarCube `extensions.ts` — prototype extensions:**
+- [ ] `Array.prototype.delete(...items: any[])` → `...items: unknown[]`
+
+---
+
+### Track 3: Platform Bypass — Refined Counts
+
+Already documented in the "Platform Interface Redesign" section above. Precise counts from 2026-03-15 audit:
+- localStorage: **28** sites (25 in `runtime.ts`, 3 in `storage.ts`) — previously estimated 15+
+- `navigator.*`: **11** sites — previously estimated 6+
+  (includes `navigator.language`, `navigator.onLine`, `navigator.clipboard`)
+- `document.*`: **12** sites — previously estimated 20+
+  (title, fullscreen, createElement×4, body.appendChild, hasFocus)
+- `performance.now()` / `Date.now()`: **6** sites — previously 3
+  (also `Date.now()` in randomize + `get_timer`)
+- `fetch()`: **1** site (`buffer_load_async`)
+- `new Image()`: **1** site (module-level `loadImage`)
+- `setTimeout()`: **1** site (`buffer_load_async`) — not previously counted separately
+
+No new bypass categories found. Root causes:
+1. `storage.ts` uses localStorage in module-level functions — needs `GameRuntime` ref plumbed through
+2. Gamepad state queried live from `navigator` instead of reading cached `InputState`
+3. No `WindowState` platform abstraction exists yet for title/fullscreen/video/download operations
+
+---
+
+### Track 4: Law Violations — New Finding
+
+**`FrontendOutput.extra_passes` — Law 1 design tension (not previously in TODO.md)**
+
+- [ ] `FrontendOutput.extra_passes: Vec<Box<dyn Transform>>` in
+  `crates/reincarnate-core/src/pipeline/frontend.rs:36` creates a tension with Law 1.
+  Frontends inject engine-specific IR transform passes that run inside the pipeline — the
+  pipeline's behavior is controlled by the frontend pass list, not solely by IR content.
+
+  This is a real design tradeoff: frontends legitimately need to define engine-specific IR
+  rewrites (e.g. `GmlLogicalOpNormalize`, `GmlBoolArithCoerce`) that only make sense given
+  source-language semantics. The alternative — encoding all pass-selection logic via
+  `LoweringConfig` flags in core — gives core knowledge of every frontend-specific pass,
+  which also violates Law 2.
+
+  Current injected passes only read/write IR ops and carry no non-IR state, so the practical
+  violation is limited. But the mechanism allows future passes to introduce real side-channels.
+
+  **Fix:** Add a `PureIrPass` marker trait bound on `extra_passes` entries: stateless,
+  no external I/O, IR in → IR out. Enforced at compile time. This turns the implicit
+  assumption into a compile-time invariant — frontends can inject passes, but only passes
+  that are provably IR-only. Also rename field to `frontend_passes` for clarity.
+
+---
+
+### Track 5: Signature Arity Bugs — 10 Genuine Fixes Required
+
+From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual. Fix in `runtime.json` + `runtime.ts`.
+
+**Wrong parameter count:**
+- [ ] `audio_emitter_velocity` — 4 params, manual: 3
+- [ ] `buffer_load` — 4 params, manual: 1 (likely conflated with `buffer_load_async`)
+- [ ] `draw_roundrect` — 7 params, manual: 5
+- [ ] `parameter_string` — 1 param, manual: 0 (takes no arguments per GML spec)
+- [ ] `rectangle_in_rectangle` — 9 params, manual: 8
+- [ ] `tag_get_assets` — 2 params, manual: 1
+- [ ] `vertex_position` — 4 params, manual: 3
+- [ ] `part_particles_count` — 2 params, manual: 1 (also silent stub per Track 1)
+
+**Wrong kind (getter vs setter):**
+- [ ] `layer_sequence_x` — runtime: `(seqElId: number): number` (getter); manual: `(seqElId, x): void` (setter only)
+- [ ] `layer_sequence_y` — same issue (also silent stub per Track 1)
+
+**Variadic functions treated as fixed-arity:**
+- [ ] `choose(v1, v2, ...)` → `<T>(...vals: T[]): T`
+- [ ] `max(v1, v2, ...)`, `min(v1, v2, ...)` → `(...vals: number[]): number`
+- [ ] `mean(...)`, `median(...)` → `(...vals: number[]): number`
+- [ ] `script_execute(script, arg1, arg2, ...)` → `(script: number, ...args: unknown[]): unknown`
+
+**22 `any` entries in `runtime.json`** (honest representation violation):
+- [ ] `draw_text` and all 6 `draw_text_*` variants — third param `any` → `string`
+- [ ] `array_contains`, `array_get_index` — params `any` → `unknown[]` + `unknown`
+- [ ] `array_height_2d`, `array_resize` — first param `any` → `unknown[]`
+- [ ] `ptr` — `(any): any` → `(number): number`
+- [ ] `buffer_write` — third param `any`; return `void` not `number`
+- [ ] `get_string` — second param `any` → `string` (default value)
+- [ ] `ini_close` — return `any` → `string` or `void` (verify against spec)
+- [ ] `string_trim` — second param `any` → `string[]`
+- [ ] `variable_instance_set`, `texture_prefetch`, `layer_get_visible`,
+  `buffer_async_group_option`, `mp_linear_step_object`, `mp_potential_step_object`
+
+**Notable return type mismatches:**
+- [ ] `ds_map_add`, `ds_map_replace` — return `void`, manual: `boolean`
+- [ ] `file_delete`, `file_rename` — return `void`, manual: `boolean`
+- [ ] `display_reset`, `surface_reset_target` — return `void`, manual: `number`/`boolean`
+- [ ] `buffer_peek`, `buffer_read` — return type depends on `buffer_type` runtime param;
+  known limitation requiring dependent types to express precisely — document as such
+- [ ] Layer name vs ID: several layer functions accept `string` (layer name) per manual but
+  our sigs show `*` or `number` — layer names and IDs are distinct; audit which is which
+
+---
+
 ### Harlowe Phase 2 (Advanced Features)
 
 - [x] **`(for: each _item, ...$arr)[hook]`** — Loop lowering (done)
