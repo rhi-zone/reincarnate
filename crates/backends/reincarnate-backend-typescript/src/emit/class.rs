@@ -20,6 +20,83 @@ use super::sanitize::resolve_sprite_constant;
 use super::scaffold::ClassMeta;
 use super::{lowering_config_for_engine, qualified_class_name, sanitize_ident, EngineKind};
 
+/// Rename Struct/Enum/ClassRef types in a `Type` using a raw-name → ts-name map.
+///
+/// Used to fix up function param and return types after `lower_function` produces
+/// IR types that still use raw GML names (e.g. `objects::TOTCLeaderboard`) when
+/// the emitted TypeScript identifier is disambiguated (e.g. `objects_TOTCLeaderboard`).
+fn rename_type_with_map(ty: &mut Type, name_map: &HashMap<String, String>) {
+    match ty {
+        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
+            let short = name
+                .rsplit("::")
+                .next()
+                .unwrap_or(name.as_str())
+                .to_string();
+            if let Some(ts_name) = name_map.get(&short) {
+                *name = ts_name.clone();
+            }
+        }
+        Type::Option(inner) | Type::Array(inner) => rename_type_with_map(inner, name_map),
+        Type::Map(k, v) => {
+            rename_type_with_map(k, name_map);
+            rename_type_with_map(v, name_map);
+        }
+        Type::Tuple(elems) | Type::Union(elems) => {
+            for elem in elems {
+                rename_type_with_map(elem, name_map);
+            }
+        }
+        Type::Function(sig) => {
+            rename_type_with_map(&mut sig.return_ty, name_map);
+            for p in &mut sig.params {
+                rename_type_with_map(p, name_map);
+            }
+        }
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => {
+            rename_type_with_map(yield_ty, name_map);
+            rename_type_with_map(return_ty, name_map);
+        }
+        // Primitive and leaf types — nothing to rename.
+        Type::Void
+        | Type::Bool
+        | Type::Int(_)
+        | Type::UInt(_)
+        | Type::Float(_)
+        | Type::String
+        | Type::Var(_)
+        | Type::Dynamic
+        | Type::Unknown => {}
+    }
+}
+
+/// Map raw GML object names (indexed by OBJT index) to their disambiguated
+/// TypeScript class identifiers.  When two objects share the same sanitized
+/// name (e.g. two `TOTCLeaderboard` entries in the OBJT chunk), both indexes
+/// resolve to the first object's ts_name rather than the raw name that no
+/// longer matches any exported identifier.
+///
+/// For non-GML modules `object_names` is empty and an empty vec is returned.
+pub(super) fn resolve_object_ts_names(
+    object_names: &[String],
+    class_names: &HashMap<String, String>,
+) -> Vec<String> {
+    object_names
+        .iter()
+        .map(|name| {
+            // GML frontend always places objects in the "objects" namespace.
+            let qualified = format!("objects::{name}");
+            class_names
+                .get(&qualified)
+                .cloned()
+                .unwrap_or_else(|| name.clone())
+        })
+        .collect()
+}
+
 pub(crate) struct ClassGroup {
     pub(crate) class_def: ClassDef,
     pub(crate) struct_def: StructDef,
@@ -92,6 +169,14 @@ pub(super) fn emit_functions(
         .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
         .collect();
     let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
+    let object_ts_names = resolve_object_ts_names(&module.object_names, class_names);
+    let name_map: HashMap<String, String> = module
+        .object_names
+        .iter()
+        .zip(object_ts_names.iter())
+        .filter(|(raw, ts)| raw != ts)
+        .map(|(raw, ts)| (raw.clone(), ts.clone()))
+        .collect();
     for id in all_ids {
         if module.functions[id].method_kind != MethodKind::Closure {
             let no_stateful = BTreeSet::new();
@@ -104,13 +189,14 @@ pub(super) fn emit_functions(
                 lowering_config,
                 engine,
                 &module.sprite_names,
-                &module.object_names,
+                &object_ts_names,
                 &closure_bodies,
                 &no_stateful,
                 &no_free_fns,
                 stateful_system_aliases,
                 runtime_config,
                 unique_static_fields,
+                &name_map,
                 debug,
                 out,
                 diagnostics,
@@ -136,6 +222,7 @@ pub(super) fn emit_function(
     stateful_system_aliases: &BTreeMap<String, String>,
     runtime_config: Option<&RuntimeConfig>,
     unique_static_fields: &HashMap<String, String>,
+    name_map: &HashMap<String, String>,
     debug: &DebugConfig,
     out: &mut String,
     diagnostics: &mut Vec<Diagnostic>,
@@ -161,6 +248,7 @@ pub(super) fn emit_function(
             object_names,
             closure_bodies,
             None,
+            name_map,
         ),
         EngineKind::Flash => {
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
@@ -192,6 +280,14 @@ pub(super) fn emit_function(
             crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies)
         }
     };
+    // Rename Struct/ClassRef param and return types to use disambiguated TypeScript
+    // identifiers (e.g. `objects::TOTCLeaderboard` → `objects_TOTCLeaderboard`).
+    if !name_map.is_empty() {
+        for (_, ty) in js_func.params.iter_mut() {
+            rename_type_with_map(ty, name_map);
+        }
+        rename_type_with_map(&mut js_func.return_ty, name_map);
+    }
     // Coerce numeric arguments to boolean at call sites where the signature expects boolean.
     if engine == EngineKind::GameMaker {
         let empty_sigs = BTreeMap::new();
@@ -548,6 +644,14 @@ pub(super) fn emit_class(
 
     // Compile closure bodies for inlining as arrow functions.
     let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
+    let object_ts_names = resolve_object_ts_names(&module.object_names, class_names);
+    let name_map: HashMap<String, String> = module
+        .object_names
+        .iter()
+        .zip(object_ts_names.iter())
+        .filter(|(raw, ts)| raw != ts)
+        .map(|(raw, ts)| (raw.clone(), ts.clone()))
+        .collect();
 
     // Detect getter overrides without matching setter overrides (TS2540 fix).
     // Flash-specific: relies on `get_`/`set_` naming convention.
@@ -589,10 +693,11 @@ pub(super) fn emit_class(
             lowering_config,
             engine,
             &module.sprite_names,
-            &module.object_names,
+            &object_ts_names,
             stateful_names,
             free_func_names,
             func_sigs,
+            &name_map,
             debug,
             out,
             diagnostics,
@@ -777,6 +882,7 @@ fn emit_class_method(
     stateful_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
+    name_map: &HashMap<String, String>,
     debug: &DebugConfig,
     out: &mut String,
     diagnostics: &mut Vec<Diagnostic>,
@@ -830,6 +936,7 @@ fn emit_class_method(
             object_names,
             closure_bodies,
             Some(&raw_name),
+            name_map,
         ),
         EngineKind::Flash => {
             let is_constructor = matches!(func.method_kind, MethodKind::Constructor);

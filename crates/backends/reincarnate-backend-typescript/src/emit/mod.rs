@@ -258,6 +258,14 @@ pub fn emit_module_to_string(
             .collect();
         let closure_bodies =
             compile_closures(&closure_fids, module, lowering_config, engine, debug);
+        let object_ts_names = class::resolve_object_ts_names(&module.object_names, &class_names);
+        let name_map: HashMap<String, String> = module
+            .object_names
+            .iter()
+            .zip(object_ts_names.iter())
+            .filter(|(raw, ts)| raw != ts)
+            .map(|(raw, ts)| (raw.clone(), ts.clone()))
+            .collect();
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
                 emit_function(
@@ -268,13 +276,14 @@ pub fn emit_module_to_string(
                     lowering_config,
                     engine,
                     &module.sprite_names,
-                    &module.object_names,
+                    &object_ts_names,
                     &closure_bodies,
                     &no_stateful,
                     &no_free_fns,
                     &no_sys_aliases,
                     runtime_config,
                     &class_meta.unique_static_field_map,
+                    &name_map,
                     debug,
                     &mut out,
                     diagnostics,
@@ -336,6 +345,13 @@ impl ClassRegistry {
             // `or_insert` ensures the first class wins when two classes share the
             // same ts_name (shouldn't happen after disambiguation, but safe).
             classes.entry(ts_name.clone()).or_insert(ClassEntry {
+                short_name: ts_name.clone(),
+                path_segments: segments.clone(),
+            });
+            // Also key by the sanitized short name so that raw GML names
+            // (e.g. "TOTCLeaderboard") resolve to the disambiguated ts_name
+            // even when the file-system name has a namespace prefix.
+            classes.entry(base_short.clone()).or_insert(ClassEntry {
                 short_name: ts_name,
                 path_segments: segments,
             });
@@ -620,6 +636,11 @@ fn collect_transitive_imports(
             .static_field_owner_map
             .get(&qualified)
             .unwrap_or(&empty_smo);
+        let qualified = qualified_class_name(&group.class_def);
+        let ts_name = class_names
+            .get(&qualified)
+            .cloned()
+            .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
         let refs = collect_class_references(
             group,
             module,
@@ -630,12 +651,8 @@ fn collect_transitive_imports(
             global_names,
             &class_meta.unique_static_field_map,
             engine,
+            &ts_name,
         );
-        let qualified = qualified_class_name(&group.class_def);
-        let ts_name = class_names
-            .get(&qualified)
-            .cloned()
-            .unwrap_or_else(|| sanitize_ident(&group.class_def.name));
         direct_value_imports.insert(ts_name, refs.value_refs);
     }
     compute_transitive_value_imports(&direct_value_imports)
@@ -781,6 +798,19 @@ fn emit_class_file(
         .static_field_owner_map
         .get(&qualified)
         .unwrap_or(&empty_smo);
+    // Compute the disambiguated TypeScript identifier for self (used by
+    // emit_intra_imports to avoid false self-import matches when two classes
+    // share the same raw GML name).
+    let self_ts_name_owned;
+    let self_ts_name = if let Some(ov) = ts_name_override.as_deref() {
+        ov
+    } else {
+        self_ts_name_owned = class_names
+            .get(&qualified)
+            .cloned()
+            .unwrap_or_else(|| short_name.clone());
+        &self_ts_name_owned
+    };
     let late_bound = emit_intra_imports(
         group,
         module,
@@ -796,6 +826,7 @@ fn emit_class_file(
         short_to_qualified,
         depth,
         engine,
+        self_ts_name,
         &mut out,
     );
 
@@ -984,6 +1015,14 @@ fn emit_free_functions_file(
     }
     let mut out = String::new();
     let free_fn_iter = || free_funcs.iter().map(|&fid| &module.functions[fid]);
+    let object_ts_names = class::resolve_object_ts_names(&module.object_names, class_names);
+    let name_map: HashMap<String, String> = module
+        .object_names
+        .iter()
+        .zip(object_ts_names.iter())
+        .filter(|(raw, ts)| raw != ts)
+        .map(|(raw, ts)| (raw.clone(), ts.clone()))
+        .collect();
     let all_free_systems = collect_system_names_from_funcs(free_fn_iter());
     // Flash.Memory is per-instance (accessed via _shims) — no module-level import.
     let systems = if engine == EngineKind::Flash {
@@ -1045,13 +1084,14 @@ fn emit_free_functions_file(
         collect_type_refs_from_function(
             func,
             "",
+            "",
             registry,
             &module.external_imports,
             &HashMap::new(),
             &HashMap::new(),
             global_names,
             &HashMap::new(),
-            &module.object_names,
+            &object_ts_names,
             engine,
             &mut refs,
         );
@@ -1117,13 +1157,14 @@ fn emit_free_functions_file(
                 lowering_config,
                 engine,
                 &module.sprite_names,
-                &module.object_names,
+                &object_ts_names,
                 &closure_bodies,
                 &free_stateful_names,
                 free_func_names,
                 &no_sys_aliases,
                 runtime_config,
                 &class_meta.unique_static_field_map,
+                &name_map,
                 debug,
                 &mut out,
                 diagnostics,

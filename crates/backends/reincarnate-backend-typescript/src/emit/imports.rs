@@ -459,6 +459,7 @@ pub(super) fn collect_class_references(
     global_names: &HashSet<String>,
     unique_static_field_map: &HashMap<String, String>,
     engine: EngineKind,
+    self_ts_name: &str,
 ) -> RefSets {
     let self_name = &group.class_def.name;
     let mut refs = RefSets::default();
@@ -492,6 +493,7 @@ pub(super) fn collect_class_references(
         collect_type_ref(
             &field.ty,
             self_name,
+            self_ts_name,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -504,6 +506,7 @@ pub(super) fn collect_class_references(
         collect_type_ref(
             &f.ty,
             self_name,
+            self_ts_name,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -518,6 +521,7 @@ pub(super) fn collect_class_references(
         collect_type_ref(
             &m.return_ty,
             self_name,
+            self_ts_name,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -527,6 +531,7 @@ pub(super) fn collect_class_references(
             collect_type_ref(
                 param_ty,
                 self_name,
+                self_ts_name,
                 registry,
                 external_imports,
                 &mut refs.type_refs,
@@ -541,6 +546,7 @@ pub(super) fn collect_class_references(
         collect_type_refs_from_function(
             func,
             self_name,
+            self_ts_name,
             registry,
             external_imports,
             static_method_owners,
@@ -561,6 +567,7 @@ pub(super) fn collect_class_references(
 pub(super) fn collect_type_refs_from_function(
     func: &Function,
     self_name: &str,
+    self_ts_name: &str,
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     static_method_owners: &HashMap<String, String>,
@@ -577,6 +584,7 @@ pub(super) fn collect_type_refs_from_function(
     collect_type_ref(
         &func.sig.return_ty,
         self_name,
+        self_ts_name,
         registry,
         external_imports,
         &mut refs.type_refs,
@@ -586,6 +594,7 @@ pub(super) fn collect_type_refs_from_function(
         collect_type_ref(
             ty,
             self_name,
+            self_ts_name,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -642,6 +651,7 @@ pub(super) fn collect_type_refs_from_function(
                     collect_type_ref(
                         ty,
                         self_name,
+                        self_ts_name,
                         registry,
                         external_imports,
                         &mut refs.typecheck_value_refs,
@@ -651,6 +661,7 @@ pub(super) fn collect_type_refs_from_function(
                     collect_type_ref(
                         ty,
                         self_name,
+                        self_ts_name,
                         registry,
                         external_imports,
                         &mut refs.value_refs,
@@ -663,6 +674,7 @@ pub(super) fn collect_type_refs_from_function(
                 collect_type_ref(
                     ty,
                     self_name,
+                    self_ts_name,
                     registry,
                     external_imports,
                     &mut refs.type_refs,
@@ -677,6 +689,7 @@ pub(super) fn collect_type_refs_from_function(
                     collect_type_ref(
                         ty,
                         self_name,
+                        self_ts_name,
                         registry,
                         external_imports,
                         &mut refs.typecheck_value_refs,
@@ -686,6 +699,7 @@ pub(super) fn collect_type_refs_from_function(
                     collect_type_ref(
                         ty,
                         self_name,
+                        self_ts_name,
                         registry,
                         external_imports,
                         &mut refs.type_refs,
@@ -699,6 +713,7 @@ pub(super) fn collect_type_refs_from_function(
                     collect_type_ref(
                         &Type::Struct(field.clone()),
                         self_name,
+                        self_ts_name,
                         registry,
                         external_imports,
                         &mut refs.value_refs,
@@ -789,6 +804,7 @@ pub(super) fn collect_type_refs_from_function(
                                 args,
                                 &const_strings,
                                 self_name,
+                                self_ts_name,
                                 registry,
                                 external_imports,
                                 refs,
@@ -825,6 +841,7 @@ pub(super) fn collect_type_refs_from_function(
                 collect_type_ref(
                     &Type::ClassRef(name.clone()),
                     self_name,
+                    self_ts_name,
                     registry,
                     external_imports,
                     &mut refs.value_refs,
@@ -882,6 +899,7 @@ pub(super) fn collect_type_refs_from_function(
         collect_type_ref(
             ty,
             self_name,
+            self_ts_name,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -892,9 +910,15 @@ pub(super) fn collect_type_refs_from_function(
 
 /// If a type references a class in the registry, add its short name.
 /// If not in the registry but in `external_imports`, add to `ext_refs`.
+///
+/// `self_name` is the raw GML class name (for short-name collision check).
+/// `self_ts_name` is the disambiguated TypeScript identifier for the current
+/// class — used to prevent false self-import matches when two classes share the
+/// same raw name (the second class gets a `_2` suffix ts_name).
 pub(super) fn collect_type_ref(
     ty: &Type,
     self_name: &str,
+    self_ts_name: &str,
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     refs: &mut BTreeSet<String>,
@@ -903,10 +927,15 @@ pub(super) fn collect_type_ref(
     match ty {
         Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
-            if short != self_name {
-                if let Some(entry) = registry.lookup(name) {
+            if let Some(entry) = registry.lookup(name) {
+                // Skip self-imports: compare ts_names so that two classes with
+                // the same raw name (e.g. duplicate OBJT entries) are distinguished.
+                if entry.short_name != self_ts_name {
                     refs.insert(entry.short_name.clone());
-                } else if external_imports.contains_key(name.as_str()) {
+                }
+            } else if short != self_name {
+                // Not in the intra-module registry — check external imports.
+                if external_imports.contains_key(name.as_str()) {
                     ext_refs.insert(name.to_string());
                 } else {
                     warn_unmapped_reference(name);
@@ -914,7 +943,15 @@ pub(super) fn collect_type_ref(
             }
         }
         Type::Array(inner) | Type::Option(inner) => {
-            collect_type_ref(inner, self_name, registry, external_imports, refs, ext_refs);
+            collect_type_ref(
+                inner,
+                self_name,
+                self_ts_name,
+                registry,
+                external_imports,
+                refs,
+                ext_refs,
+            );
         }
         Type::Map(k, v) => {
             // AS3 Dictionary (Map<Dynamic, _>) → Flash-specific `Dictionary` class.
@@ -924,26 +961,59 @@ pub(super) fn collect_type_ref(
             {
                 ext_refs.insert("flash.utils::Dictionary".to_string());
             } else {
-                collect_type_ref(k, self_name, registry, external_imports, refs, ext_refs);
-                collect_type_ref(v, self_name, registry, external_imports, refs, ext_refs);
+                collect_type_ref(
+                    k,
+                    self_name,
+                    self_ts_name,
+                    registry,
+                    external_imports,
+                    refs,
+                    ext_refs,
+                );
+                collect_type_ref(
+                    v,
+                    self_name,
+                    self_ts_name,
+                    registry,
+                    external_imports,
+                    refs,
+                    ext_refs,
+                );
             }
         }
         Type::Tuple(elems) => {
             for elem in elems {
-                collect_type_ref(elem, self_name, registry, external_imports, refs, ext_refs);
+                collect_type_ref(
+                    elem,
+                    self_name,
+                    self_ts_name,
+                    registry,
+                    external_imports,
+                    refs,
+                    ext_refs,
+                );
             }
         }
         Type::Function(sig) => {
             collect_type_ref(
                 &sig.return_ty,
                 self_name,
+                self_ts_name,
                 registry,
                 external_imports,
                 refs,
                 ext_refs,
             );
             for p in &sig.params {
-                collect_type_ref(p, self_name, registry, external_imports, refs, ext_refs);
+                collect_type_ref(
+                    p,
+                    self_name,
+                    self_ts_name,
+                    registry,
+                    external_imports,
+                    refs,
+                    ext_refs,
+                );
             }
         }
         Type::Coroutine {
@@ -953,6 +1023,7 @@ pub(super) fn collect_type_ref(
             collect_type_ref(
                 yield_ty,
                 self_name,
+                self_ts_name,
                 registry,
                 external_imports,
                 refs,
@@ -961,6 +1032,7 @@ pub(super) fn collect_type_ref(
             collect_type_ref(
                 return_ty,
                 self_name,
+                self_ts_name,
                 registry,
                 external_imports,
                 refs,
@@ -969,7 +1041,15 @@ pub(super) fn collect_type_ref(
         }
         Type::Union(types) => {
             for t in types {
-                collect_type_ref(t, self_name, registry, external_imports, refs, ext_refs);
+                collect_type_ref(
+                    t,
+                    self_name,
+                    self_ts_name,
+                    registry,
+                    external_imports,
+                    refs,
+                    ext_refs,
+                );
             }
         }
         // Primitive and leaf types — no type references to collect.
@@ -1225,6 +1305,7 @@ pub(super) fn emit_intra_imports(
     short_to_qualified: &HashMap<String, String>,
     depth: usize,
     engine: EngineKind,
+    self_ts_name: &str,
     out: &mut String,
 ) -> HashSet<String> {
     let refs = collect_class_references(
@@ -1237,19 +1318,21 @@ pub(super) fn emit_intra_imports(
         global_names,
         unique_static_field_map,
         engine,
+        self_ts_name,
     );
 
     // Compute late-bound set: typecheck refs whose targets transitively import
     // this class (i.e. adding a static import would create a cycle), and that
     // are NOT also referenced as regular value refs (e.g. `new X()` or `extends X`).
-    let self_short = sanitize_ident(&group.class_def.name);
+    // Use self_ts_name for cycle detection since transitive_value_imports is keyed
+    // by disambiguated TypeScript identifier.
     let mut late_bound: HashSet<String> = HashSet::new();
     for name in &refs.typecheck_value_refs {
         if !refs.value_refs.contains(name) {
             // Target T transitively imports self → adding self→T would be circular.
             let target_imports_self = transitive_value_imports
                 .get(name.as_str())
-                .is_some_and(|reachable| reachable.contains(&self_short));
+                .is_some_and(|reachable| reachable.contains(self_ts_name));
             if target_imports_self {
                 // Only late-bind if we have a qualified name to resolve at runtime.
                 if short_to_qualified.contains_key(name.as_str()) {
