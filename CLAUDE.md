@@ -24,6 +24,8 @@ These are invariant. When a violation appears, adjust the law — don't add a co
 
 **`Dynamic` is a type inference failure, not a valid result.** Every value in the source program has a concrete type — the source language's runtime knows it, and so should we. `Dynamic` in the IR means our inference wasn't good enough. TypeScript is not the only backend; `Dynamic` maps to `Box<dyn Any>` in Rust (runtime cost, no safety) or worse. Never treat `Dynamic` as acceptable — always ask what the real type is and fix the inference to recover it. The same applies to `any` in emitted TypeScript and runtime code: it is never acceptable. Use specific types, `unknown`, union types, or generics. Existing `any`/`Dynamic` is tech debt, not a pattern.
 
+**Preserve integer vs float distinction.** GML's `Real` conflates integers and floats, but many functions semantically expect integers (array indices, resource IDs, enum constants, boolean flags). The IR distinguishes `Int(32)` from `Float(64)` — maintain this distinction in `runtime.json` function signatures. Use `"int"` for parameters that are indices, IDs, counts, flags, or enum values; use `"number"` for parameters that are continuous values (coordinates, scales, speeds, angles). This matters for backends with integer types (Rust) and for the type checker.
+
 **5. Instantiability.** All mutable runtime state lives on root runtime instances threaded through generated code. No module-level mutable variables. Multiple game instances must be able to coexist on one page.
 
 ## Core Rule
