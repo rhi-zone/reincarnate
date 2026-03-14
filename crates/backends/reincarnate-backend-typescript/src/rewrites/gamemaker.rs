@@ -14,6 +14,29 @@ use crate::emit::{ClassRegistry, RefSets};
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 use crate::rewrites::take_arg;
 
+/// Event method names that have explicit typed declarations on GMLObject.
+///
+/// GML separates event handlers and instance variables, but TypeScript classes
+/// share a single namespace. When a game uses a variable name matching one of
+/// these (e.g. `self.create = 10`), the typed method declaration shadows the
+/// `[key: string]: any` index signature, causing spurious type errors.
+fn is_event_method_name(name: &str) -> bool {
+    matches!(
+        name,
+        "create"
+            | "destroy"
+            | "draw"
+            | "step"
+            | "beginstep"
+            | "endstep"
+            | "drawgui"
+            | "mouseenter"
+            | "mouseleave"
+            | "roomstart"
+            | "roomend"
+    )
+}
+
 /// Strip coerce wrappers from an instance-field target expression.
 ///
 /// GML bytecode emits `Conv.v.i32` before cross-instance field operands,
@@ -718,13 +741,29 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
         ),
-        JsExpr::Field { object, .. } => rewrite_expr(
-            object,
-            sprite_names,
-            object_names,
-            closure_bodies,
-            event_name,
-        ),
+        JsExpr::Field { object, field } => {
+            // GML separates event handlers and instance variables into different
+            // namespaces, but TypeScript doesn't. When a game uses a variable name
+            // that matches an event method (e.g. `self.create = 10`), the typed
+            // method declaration on GMLObject shadows the `[key: string]: any`
+            // index signature, causing type errors. Wrap such accesses with
+            // `(this as any).field` so the index signature applies.
+            if matches!(object.as_ref(), JsExpr::This) && is_event_method_name(field) {
+                *object = Box::new(JsExpr::Cast {
+                    expr: Box::new(JsExpr::This),
+                    ty: Type::Dynamic,
+                    kind: CastKind::NullableCoerce,
+                });
+            } else {
+                rewrite_expr(
+                    object,
+                    sprite_names,
+                    object_names,
+                    closure_bodies,
+                    event_name,
+                );
+            }
+        }
         JsExpr::Index { collection, index } => {
             rewrite_expr(
                 collection,
