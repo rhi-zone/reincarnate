@@ -563,7 +563,7 @@ Each commit diff was read and evaluated against project principles. Findings bel
 ### Conversation-log audit (2026-03-14)
 
 Second pass: 10 parallel haiku auditors reviewed ~950KB of assistant messages from 40 sessions
-(last 2 weeks). Extracts from `normalize sessions messages --days 14 --role assistant`.
+(last 2 weeks). Extracts from `~/git/rhizone/normalize/target/debug/normalize sessions messages --days 14 --role assistant --limit 0`.
 Items below are NEW findings not in the commit-diff audit above.
 
 **tsconfig flag suppressions** — disabling TS strictness flags instead of fixing the emitter:

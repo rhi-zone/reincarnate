@@ -75,6 +75,17 @@ Always pass `--include-ignored`. After editing multiple files, run the full chec
 
 **Use subagents to protect the main context window.** Research tasks, >5 files, >3 grep rounds → subagent. Single targeted lookup → inline is fine.
 
+## Adversarial Audits
+
+Periodically audit recent work for suppressions, workarounds, and silent stubs. Two complementary methods:
+
+1. **Commit-diff audit**: `git log --oneline --since="2 weeks ago"`, batch ~60 commits per haiku agent, each reads diffs with `git show <hash>` and flags violations.
+2. **Conversation-log audit**: `~/git/rhizone/normalize/target/debug/normalize sessions messages --days 14 --role assistant --limit 0`, split output into ~700-line batches, dispatch to haiku agents looking for suppression patterns in assistant reasoning ("widening to any", "casting to suppress", "silences the error").
+
+The conversation-log audit catches things invisible in diffs: proposed-then-reverted approaches that survived in adjacent code, self-corrections that didn't propagate, and explicit admissions of suppression.
+
+Record findings as checklist items in TODO.md under "Adversarial Commit/Conversation-log Audit".
+
 ## Session Handoff
 
 Use plan mode as a handoff when a task is complete, the session has drifted, or context is heavy. Write a short plan pointing at TODO.md and ExitPlanMode — **do not investigate first**. Update TODO.md and memory files before handing off.
