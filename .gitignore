@@ -24,5 +24,8 @@ docs/.vitepress/dist/
 !.normalize/large-files-allow
 !.normalize/memory/
 
+# Cloned reference repos
+.gml-manual/
+
 # Worktrees
 /worktrees/
