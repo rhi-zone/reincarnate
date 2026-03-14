@@ -185,7 +185,7 @@ export class Event {
   }
 
   formatToString(className: string, ...args: string[]): string {
-    const props = args.map((p) => `${p}=${(this as any)[p]}`).join(", ");
+    const props = args.map((p) => `${p}=${(this as Record<string, unknown>)[p]}`).join(", ");
     return `[${className}${props ? " " + props : ""}]`;
   }
 

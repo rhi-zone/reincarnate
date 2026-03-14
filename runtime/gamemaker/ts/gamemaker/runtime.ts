@@ -906,8 +906,14 @@ export class GameRuntime {
 
   // ---- Instance field helpers ----
 
-  /** Get a field value from a specific instance or the first instance of a given class. */
-  getInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string): unknown {
+  /** Get a field value from a specific instance or the first instance of a given class.
+   * TODO: change return type to `unknown` once the emitter generates type params at call sites.
+   * The return type is `any` here because the GML backend calls this with a string field name
+   * and assigns the result to typed variables without a cast — the emitter needs to emit
+   * `getInstanceField<FieldType>(cls, field)` or `getInstanceField(cls, field) as FieldType`
+   * using the IR type info for the field. Until then, `any` is required to avoid ~1000 TS18046. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string): any {
     if (cls instanceof GMLObject) return (cls as unknown as Record<string, unknown>)[field];
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return undefined;
@@ -926,15 +932,17 @@ export class GameRuntime {
 
   /** Set an indexed element of a field on a specific instance or the first instance of a given class. */
   setInstanceFieldIndex(cls: GMLObject | typeof GMLObject | number | null, field: string, index: number, value: unknown): void {
-    if (cls instanceof GMLObject) { (cls as unknown as Record<string, unknown[]>)[field][index] = value; return; }
+    if (cls instanceof GMLObject) { (cls as unknown as Record<string, unknown[]>)[field]![index] = value; return; }
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return;
     const inst = this.roomVariables.find((o) => o instanceof clazz);
-    if (inst) (inst as unknown as Record<string, unknown[]>)[field][index] = value;
+    if (inst) (inst as unknown as Record<string, unknown[]>)[field]![index] = value;
   }
 
-  /** Get a field value from ALL instances. */
-  getAllField(field: string): unknown {
+  /** Get a field value from ALL instances.
+   * TODO: same emitter gap as getInstanceField — return `unknown` once emitter casts results. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  getAllField(field: string): any {
     for (const inst of this.roomVariables) {
       return (inst as unknown as Record<string, unknown>)[field];
     }
@@ -951,7 +959,7 @@ export class GameRuntime {
   /** Execute a block for each instance of a given type (or all).
    * Sets _self to the current with-target so alarm_set/event_user work correctly. */
   withInstances<T extends GMLObject>(
-    target: (new(...args: unknown[]) => T) | T | number,
+    target: (new(...args: any[]) => T) | T | number,
     callback: (inst: T) => void,
   ): void {
     const prevSelf = this._self;
@@ -988,7 +996,7 @@ export class GameRuntime {
 
   // ---- Instance management (internal) ----
 
-  _instanceCreate<T extends GMLObject>(x: number, y: number, cls: new(...args: unknown[]) => T, roomStart = false): T {
+  _instanceCreate<T extends GMLObject>(x: number, y: number, cls: new(...args: any[]) => T, roomStart = false): T {
     const instance = new cls();
     instance._rt = this;
     // Walk prototype chain and push to per-runtime instance tracking

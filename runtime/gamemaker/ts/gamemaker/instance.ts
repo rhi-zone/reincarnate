@@ -25,7 +25,7 @@ export function createInstanceAPI(rt: GameRuntime) {
     const clazz = typeof cls === 'function' ? cls : rt.classes[cls];
     if (!clazz) return;
     const inst = rt.roomVariables.find((o) => o instanceof clazz);
-    if (inst) (inst as unknown as Record<string, unknown[]>)[field][index] = value;
+    if (inst) (inst as unknown as Record<string, unknown[]>)[field]![index] = value;
   }
 
   /** Get a field value from ALL instances. */
