@@ -55,6 +55,10 @@ export function merge_color(col1: number, col2: number, amount: number): number 
   );
 }
 
+export function merge_colour(col1: number, col2: number, amount: number): number {
+  return merge_color(col1, col2, amount);
+}
+
 export function color_get_hue(color: number): number {
   const r = (color & 0xff) / 255;
   const g = ((color >> 8) & 0xff) / 255;

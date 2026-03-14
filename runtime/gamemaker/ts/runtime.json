@@ -552,6 +552,12 @@
       ],
       "returns": "number"
     },
+    "array_height_2d": {
+      "params": [
+        "any"
+      ],
+      "returns": "int"
+    },
     "array_insert": {
       "params": [
         "any[]",
@@ -1161,6 +1167,12 @@
       ],
       "returns": "int"
     },
+    "color_get_saturation": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
     "cos": {
       "params": [
         "number"
@@ -1422,6 +1434,22 @@
       ],
       "returns": "number"
     },
+    "draw_healthbar": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
     "draw_line": {
       "params": [
         "number",
@@ -1565,6 +1593,19 @@
     },
     "draw_set_alpha": {
       "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_set_blend_mode": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_set_blend_mode_ext": {
+      "params": [
+        "number",
         "number"
       ],
       "returns": "void"
@@ -2113,6 +2154,14 @@
         "int"
       ],
       "returns": "*"
+    },
+    "ds_list_insert": {
+      "params": [
+        "int",
+        "int",
+        "any"
+      ],
+      "returns": "void"
     },
     "ds_list_read": {
       "params": [
@@ -3483,6 +3532,27 @@
       ],
       "returns": "int"
     },
+    "matrix_build": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "any[]"
+    },
+    "matrix_set": {
+      "params": [
+        "number",
+        "any[]"
+      ],
+      "returns": "void"
+    },
     "max": {
       "params": [
         "number",
@@ -3808,6 +3878,16 @@
     "other": {
       "params": [],
       "returns": "any"
+    },
+    "parameter_count": {
+      "params": [],
+      "returns": "int"
+    },
+    "parameter_string": {
+      "params": [
+        "int"
+      ],
+      "returns": "string"
     },
     "part_emitter_burst": {
       "params": [
@@ -4293,6 +4373,10 @@
       ],
       "returns": "void"
     },
+    "psn_check_np_availability": {
+      "params": [],
+      "returns": "boolean"
+    },
     "psn_communication_restriction_status": {
       "params": [
         "number"
@@ -4306,12 +4390,25 @@
       "returns": "number"
     },
     "psn_init_np_libs": {
-      "params": ["string", "string", "string"],
+      "params": [
+        "string",
+        "string",
+        "string"
+      ],
       "returns": "void"
     },
     "psn_init_trophy": {
-      "params": ["number", "number?"],
+      "params": [
+        "number",
+        "number?"
+      ],
       "returns": "void"
+    },
+    "psn_name_for_pad": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
     },
     "psn_np_commerce_dialog_tick": {
       "params": [],
@@ -4833,6 +4930,14 @@
     "steam_clear_achievement": {
       "params": [
         "string"
+      ],
+      "returns": "void"
+    },
+    "steam_create_leaderboard": {
+      "params": [
+        "string",
+        "number",
+        "number"
       ],
       "returns": "void"
     },
@@ -5718,6 +5823,12 @@
       ],
       "returns": "string"
     },
+    "string_hash_to_newline": {
+      "params": [
+        "string"
+      ],
+      "returns": "string"
+    },
     "string_height": {
       "params": [
         "string"
@@ -6063,6 +6174,14 @@
       ],
       "returns": "void"
     },
+    "tile_set_scale": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "uint": {
       "params": [
         "any"
@@ -6275,6 +6394,12 @@
       ],
       "returns": "void"
     },
+    "view_get_camera": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
     "view_set_camera": {
       "params": [
         "number",
@@ -6483,8 +6608,10 @@
         "draw_text",
         "draw_text_ext",
         "draw_text_color",
+        "draw_text_colour",
         "draw_text_transformed",
         "draw_text_ext_color",
+        "draw_text_ext_colour",
         "draw_text_ext_transformed",
         "draw_text_transformed_color",
         "draw_text_ext_transformed_color",
@@ -6502,6 +6629,7 @@
         "color_get_blue",
         "make_color_rgb",
         "make_colour_rgb",
+        "merge_colour",
         "merge_color",
         "color_get_hue"
       ],
@@ -6626,6 +6754,7 @@
         "audio_play_sound",
         "audio_play_sound_at",
         "audio_is_playing",
+        "audio_is_paused",
         "audio_stop_sound",
         "audio_stop_all",
         "audio_pause_sound",
@@ -6637,6 +6766,7 @@
         "audio_get_name",
         "audio_sound_gain",
         "audio_sound_get_gain",
+        "audio_sound_get_pan",
         "audio_sound_pitch",
         "audio_master_gain",
         "audio_group_is_loaded",
@@ -6732,6 +6862,7 @@
         "__throw__",
         "method",
         "variable_struct_exists",
+        "variable_get_hash",
         "variable_struct_set",
         "variable_struct_get",
         "variable_struct_remove",
@@ -6740,6 +6871,7 @@
         "variable_instance_set",
         "is_instanceof",
         "point_in_rectangle",
+        "point_in_triangle",
         "distance_to_object",
         "position_meeting",
         "collision_line",
@@ -6779,6 +6911,7 @@
         "draw_vertex",
         "draw_primitive_end",
         "draw_rectangle_color",
+        "draw_rectangle_colour",
         "draw_sprite_tiled_ext",
         "draw_vertex_texture",
         "vertex_position",
@@ -6790,8 +6923,10 @@
         "part_type_gravity",
         "part_system_depth",
         "show_error",
+        "show_debug_message",
         "event_user",
         "event_perform",
+        "event_inherited",
         "sprite_create_from_surface",
         "sprite_delete",
         "vertex_normal",
@@ -6801,6 +6936,8 @@
         "buffer_read",
         "buffer_delete",
         "buffer_seek",
+        "buffer_tell",
+        "buffer_base64_encode",
         "buffer_async_group_option",
         "file_text_write_string",
         "file_text_write_real",
@@ -6808,6 +6945,7 @@
         "file_text_close",
         "file_exists",
         "file_text_open_write",
+        "file_text_open_append",
         "room_duplicate",
         "room_set_persistent",
         "is_debug_overlay_open",

@@ -464,6 +464,16 @@ export class GameRuntime {
     this._draw.config.ext = oldExt;
   }
 
+  draw_text_colour(
+    x: number, y: number, text: any,
+    c1: number, c2: number, c3: number, c4: number, alpha: number,
+  ): void { this.draw_text_color(x, y, text, c1, c2, c3, c4, alpha); }
+
+  draw_text_ext_colour(
+    x: number, y: number, text: any, sep: number, w: number,
+    c1: number, c2: number, c3: number, c4: number, alpha: number,
+  ): void { this.draw_text_ext_color(x, y, text, sep, w, c1, c2, c3, c4, alpha); }
+
   draw_text_ext_transformed(
     x: number, y: number, text: any, sep: number, w: number,
     xscale: number, yscale: number, angle: number,
@@ -1796,6 +1806,14 @@ export class GameRuntime {
   point_in_rectangle(px: number, py: number, x1: number, y1: number, x2: number, y2: number): boolean {
     return px >= x1 && px <= x2 && py >= y1 && py <= y2;
   }
+  point_in_triangle(px: number, py: number, x1: number, y1: number, x2: number, y2: number, x3: number, y3: number): boolean {
+    // Barycentric coordinate method
+    const d = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3);
+    const a = ((y2 - y3) * (px - x3) + (x3 - x2) * (py - y3)) / d;
+    const b = ((y3 - y1) * (px - x3) + (x1 - x3) * (py - y3)) / d;
+    const c = 1 - a - b;
+    return a >= 0 && b >= 0 && c >= 0;
+  }
   distance_to_object(cls: typeof GMLObject | GMLObject | null): number {
     if (cls === null) return 0;
     if (!this._self) return 0;
@@ -2084,6 +2102,9 @@ export class GameRuntime {
       ctx.fillRect(x1, y1, x2 - x1 + 1, y2 - y1 + 1);
     }
   }
+  draw_rectangle_colour(x1: number, y1: number, x2: number, y2: number, c1: number, c2: number, c3: number, c4: number, outline: boolean): void {
+    this.draw_rectangle_color(x1, y1, x2, y2, c1, c2, c3, c4, outline);
+  }
   draw_sprite_tiled_ext(spr: number, sub: number, x: number, y: number, xscale: number, yscale: number, _col: number, alpha: number): void {
     const ctx = this._gfx.ctx;
     ctx.save();
@@ -2179,6 +2200,7 @@ export class GameRuntime {
 
   // ---- Misc ----
   show_error(str: string, _abort: boolean): void { console.error("GML show_error:", str); }
+  show_debug_message(msg: any): void { console.log(msg); }
   event_user(n: number): void {
     if (!this._self) return;
     const method = (this._self as any)["user" + n];
@@ -2943,6 +2965,9 @@ export class GameRuntime {
     if (!this._self) return;
     if (type === 10) { const m = (this._self as any)["user" + n]; if (m && m !== noop) m.call(this._self); }
     else if (type === 7) { const m = (this._self as any)["alarm" + n]; if (m && m !== noop) m.call(this._self); }
+  }
+  event_inherited(): void {
+    throw new Error("event_inherited: not yet implemented (should be rewritten to super call at compile time)");
   }
   is_debug_overlay_open(): boolean { return false; }
   path_exists(_path: number): boolean { return false; }

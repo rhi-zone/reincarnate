@@ -248,7 +248,7 @@ pub(super) fn translate_push_variable(
                         let indexed = fb.get_index(arr, dim1, Type::Dynamic);
                         stack.push(indexed);
                     }
-                } else {
+                } else if fb.param_count() > 0 {
                     let self_param = fb.param(0);
                     if is_scalar {
                         let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
@@ -256,6 +256,18 @@ pub(super) fn translate_push_variable(
                     } else {
                         let field_val = fb.get_field(self_param, &var_name, Type::Dynamic);
                         let indexed = fb.get_index(field_val, dim1, Type::Dynamic);
+                        stack.push(indexed);
+                    }
+                } else {
+                    // No self param (e.g. room creation scripts) — treat as local.
+                    let slot = *locals
+                        .entry(var_name.clone())
+                        .or_insert_with(|| fb.alloc(Type::Dynamic));
+                    if is_scalar {
+                        stack.push(fb.load(slot, Type::Dynamic));
+                    } else {
+                        let arr = fb.load(slot, Type::Dynamic);
+                        let indexed = fb.get_index(arr, dim1, Type::Dynamic);
                         stack.push(indexed);
                     }
                 }

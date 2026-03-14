@@ -1062,6 +1062,9 @@ Audit all `throw Error("X: not yet implemented")` stubs in the GML runtime. For 
 1. **Implement fully** if the function is straightforward (math, string, data structure ops).
 2. **Categorize by system** if the function needs design work before implementation.
 
+### Throw-stubs added
+- `event_inherited()` — runtime fallback; normally rewritten to `super.eventName()` at compile time. Only hit if backend rewrite doesn't fire (e.g. arrow function context). See `rewrites/gamemaker.rs`.
+
 ### Systems requiring design before stubs can be implemented
 
 - **Particles** — `part_system_*`, `part_type_*`, `part_emitter_*`. Needs a particle system
