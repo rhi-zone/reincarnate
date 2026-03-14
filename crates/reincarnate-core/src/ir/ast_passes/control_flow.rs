@@ -2,6 +2,8 @@
 //! for promotion, post-increment, logical operator simplification, and
 //! Harlowe output node lowering.
 
+use std::collections::HashSet;
+
 use super::super::ast::{BinOp, Expr, Stmt};
 use super::super::inst::CmpKind;
 use super::super::ty::Type;
@@ -1291,6 +1293,25 @@ fn expr_references_for_promote(expr: &Expr, name: &str) -> bool {
     }
 }
 
+/// Collect variable names declared at the top level of a statement list.
+fn collect_top_level_decls(stmts: &[Stmt]) -> HashSet<&str> {
+    stmts
+        .iter()
+        .filter_map(|s| {
+            if let Stmt::VarDecl { name, .. } = s {
+                Some(name.as_str())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Check if a statement references any variable in the given set.
+fn stmt_references_any(stmt: &Stmt, names: &HashSet<&str>) -> bool {
+    names.iter().any(|n| stmt_references_for_promote(stmt, n))
+}
+
 fn is_var_update(stmt: &Stmt, name: &str) -> bool {
     match stmt {
         Stmt::CompoundAssign { target, .. } => matches!(target, Expr::Var(n) if n == name),
@@ -1320,6 +1341,12 @@ fn try_promote_while(var_name: &str, init_stmt: &mut Stmt, while_stmt: &mut Stmt
 
     // Pattern 1: tail increment.
     if body.len() >= 2 && is_var_update(body.last().unwrap(), var_name) {
+        // Guard: if the update references a variable declared in the body,
+        // extracting it into the for-header would reference it before declaration.
+        let body_decls = collect_top_level_decls(&body[..body.len() - 1]);
+        if !body_decls.is_empty() && stmt_references_any(body.last().unwrap(), &body_decls) {
+            return None;
+        }
         let update_stmt = body.pop().unwrap();
         let init = extract_init(init_stmt);
         let cond = std::mem::replace(cond, Expr::Literal(Constant::Null));

@@ -294,16 +294,37 @@ pub(super) fn rewrite_late_bound_expr(
 /// ES modules make `import { x }` a read-only binding. To write to `x` from
 /// another module, the exporting module provides `$set_x(v)`. This pass
 /// rewrites `x = v` → `$set_x(v)` and `x op= v` → `$set_x(x op v)`.
+///
+/// Skips variables that have a local `VarDecl` in an enclosing or current scope,
+/// since those shadow the global name.
 pub(super) fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &HashSet<String>) {
     if mutable_globals.is_empty() {
         return;
     }
+    rewrite_global_assignments_inner(body, mutable_globals, &HashSet::new());
+}
+
+fn rewrite_global_assignments_inner(
+    body: &mut [JsStmt],
+    mutable_globals: &HashSet<String>,
+    parent_locals: &HashSet<String>,
+) {
+    // Accumulate local declarations from this scope and parent scopes.
+    let mut local_decls = parent_locals.clone();
+    for s in body.iter() {
+        if let JsStmt::VarDecl { name, .. } = s {
+            local_decls.insert(name.clone());
+        }
+    }
+
     for stmt in body.iter_mut() {
         match stmt {
             JsStmt::Assign {
                 target: JsExpr::Var(name),
                 ..
-            } if mutable_globals.contains(name.as_str()) => {
+            } if mutable_globals.contains(name.as_str())
+                && !local_decls.contains(name.as_str()) =>
+            {
                 // Replace: `name = value` → `$set_name(value)`
                 let setter = format!("$set_{name}");
                 let dummy = JsExpr::Literal(Constant::Null);
@@ -319,7 +340,9 @@ pub(super) fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &
             JsStmt::CompoundAssign {
                 target: JsExpr::Var(name),
                 ..
-            } if mutable_globals.contains(name.as_str()) => {
+            } if mutable_globals.contains(name.as_str())
+                && !local_decls.contains(name.as_str()) =>
+            {
                 // Replace: `name op= value` → `$set_name(name op value)`
                 let var_name = name.clone();
                 let setter = format!("$set_{var_name}");
@@ -343,22 +366,22 @@ pub(super) fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &
                 else_body,
                 ..
             } => {
-                rewrite_global_assignments(then_body, mutable_globals);
-                rewrite_global_assignments(else_body, mutable_globals);
+                rewrite_global_assignments_inner(then_body, mutable_globals, &local_decls);
+                rewrite_global_assignments_inner(else_body, mutable_globals, &local_decls);
             }
             JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
-                rewrite_global_assignments(body, mutable_globals);
+                rewrite_global_assignments_inner(body, mutable_globals, &local_decls);
             }
             JsStmt::For {
                 init, body, update, ..
             } => {
-                rewrite_global_assignments(init, mutable_globals);
-                rewrite_global_assignments(body, mutable_globals);
-                rewrite_global_assignments(update, mutable_globals);
+                rewrite_global_assignments_inner(init, mutable_globals, &local_decls);
+                rewrite_global_assignments_inner(body, mutable_globals, &local_decls);
+                rewrite_global_assignments_inner(update, mutable_globals, &local_decls);
             }
             JsStmt::Dispatch { blocks, .. } => {
                 for (_, stmts) in blocks {
-                    rewrite_global_assignments(stmts, mutable_globals);
+                    rewrite_global_assignments_inner(stmts, mutable_globals, &local_decls);
                 }
             }
             JsStmt::Switch {
@@ -367,9 +390,9 @@ pub(super) fn rewrite_global_assignments(body: &mut [JsStmt], mutable_globals: &
                 ..
             } => {
                 for (_, body) in cases {
-                    rewrite_global_assignments(body, mutable_globals);
+                    rewrite_global_assignments_inner(body, mutable_globals, &local_decls);
                 }
-                rewrite_global_assignments(default_body, mutable_globals);
+                rewrite_global_assignments_inner(default_body, mutable_globals, &local_decls);
             }
             // Leaf statements and non-matching forms — no nested assignments to rewrite.
             JsStmt::VarDecl { .. }

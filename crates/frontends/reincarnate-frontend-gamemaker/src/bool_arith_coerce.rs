@@ -29,7 +29,7 @@ use std::collections::{HashMap, HashSet};
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockId;
-use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
+use reincarnate_core::ir::inst::{CastKind, CmpKind, Inst, InstId, Op};
 use reincarnate_core::ir::module::StructDef;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::value::Constant;
@@ -87,6 +87,7 @@ impl Transform for GmlBoolArithCoerce {
             changed |= coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
             changed |= coerce_bool_call_args(func, &callee_param_types);
             changed |= coerce_bool_cmp_operands(func, &bool_returning);
+            changed |= coerce_noone_sentinel(func);
         }
         Ok(TransformResult { module, changed })
     }
@@ -599,6 +600,119 @@ fn coerce_bool_cmp_operands(func: &mut Function, bool_returning: &HashSet<String
                 if let Op::Cmp(_, _, b) = &mut func.insts[inst_id].op {
                     *b = new_rhs;
                 }
+            }
+        }
+    }
+
+    true
+}
+
+// ---------------------------------------------------------------------------
+// Pass 6 — Noone sentinel translation (TS2367)
+// ---------------------------------------------------------------------------
+
+/// GML uses `-4` as the `noone` sentinel; our runtime uses `null`.
+/// In equality comparisons (`==`/`!=`) where one side is the constant `-4`,
+/// replace it with `null` so that:
+///   (a) `instance_find() !== null` is semantically correct (our runtime
+///       returns null, not -4), and
+///   (b) TypeScript doesn't flag TS2367 for comparing an object/null type
+///       against a number literal.
+///
+/// Only fires for equality comparisons where the other operand originates
+/// from a function call (which could return an object-or-noone), preventing
+/// false positives on genuine `counter === -4` patterns.
+fn coerce_noone_sentinel(func: &mut Function) -> bool {
+    fn is_noone_const(c: &Constant) -> bool {
+        match c {
+            Constant::Float(f) => *f == -4.0,
+            Constant::Int(n) => *n == -4,
+            _ => false,
+        }
+    }
+
+    /// Check if a value originates from a Call/SystemCall/MethodCall instruction.
+    fn is_call_result(func: &Function, v: ValueId) -> bool {
+        for inst in func.insts.values() {
+            if inst.result == Some(v) {
+                return matches!(
+                    &inst.op,
+                    Op::Call { .. } | Op::SystemCall { .. } | Op::MethodCall { .. }
+                );
+            }
+        }
+        false
+    }
+
+    let targets: Vec<(InstId, bool, bool)> = func
+        .insts
+        .iter()
+        .filter_map(|(id, inst)| {
+            let (kind, a, b) = match &inst.op {
+                Op::Cmp(kind, a, b) => (kind, *a, *b),
+                _ => return None,
+            };
+            // Only equality comparisons — noone checks are always == or !=.
+            if !matches!(kind, CmpKind::Eq | CmpKind::Ne) {
+                return None;
+            }
+            let a_noone = try_get_const(func, a).is_some_and(|c| is_noone_const(&c));
+            let b_noone = try_get_const(func, b).is_some_and(|c| is_noone_const(&c));
+            if !a_noone && !b_noone {
+                return None;
+            }
+            // Only replace when the OTHER side comes from a function call.
+            let replace_a = a_noone && is_call_result(func, b);
+            let replace_b = b_noone && is_call_result(func, a);
+            if replace_a || replace_b {
+                Some((id, replace_a, replace_b))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if targets.is_empty() {
+        return false;
+    }
+
+    for (inst_id, replace_a, replace_b) in targets {
+        if replace_a {
+            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Dynamic)));
+            let null_iid = func.insts.push(Inst {
+                op: Op::Const(Constant::Null),
+                result: Some(null_vid),
+                span: None,
+            });
+            'outer_a: for block in func.blocks.values_mut() {
+                for (pos, &existing) in block.insts.iter().enumerate() {
+                    if existing == inst_id {
+                        block.insts.insert(pos, null_iid);
+                        break 'outer_a;
+                    }
+                }
+            }
+            if let Op::Cmp(_, a, _) = &mut func.insts[inst_id].op {
+                *a = null_vid;
+            }
+        }
+        if replace_b {
+            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Dynamic)));
+            let null_iid = func.insts.push(Inst {
+                op: Op::Const(Constant::Null),
+                result: Some(null_vid),
+                span: None,
+            });
+            'outer_b: for block in func.blocks.values_mut() {
+                for (pos, &existing) in block.insts.iter().enumerate() {
+                    if existing == inst_id {
+                        block.insts.insert(pos, null_iid);
+                        break 'outer_b;
+                    }
+                }
+            }
+            if let Op::Cmp(_, _, b) = &mut func.insts[inst_id].op {
+                *b = null_vid;
             }
         }
     }
