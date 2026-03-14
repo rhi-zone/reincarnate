@@ -4874,7 +4874,7 @@ export class GameRuntime {
 
   // ---- Tilemap (GMS2) ----
   tilemap_set(_tilemapId: number, _data: number, _cellX: number, _cellY: number): void { /* no-op — tilemap editing not implemented */ }
-  tilemap_tileset(_tilemapId: number, _tileset?: number): number { return -1; }
+  tilemap_tileset(_tilemapId: number, _tileset: number): void { /* sets tileset for tilemap element */ }
 
   // ---- Camera (GMS2) ----
   camera_create(): number {

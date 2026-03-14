@@ -7371,7 +7371,7 @@
         "number",
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
     "camera_create": {
       "params": [],

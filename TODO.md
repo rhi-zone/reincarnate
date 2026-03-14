@@ -1951,11 +1951,23 @@ known to be wrong (e.g. `action_if_variable` translator passes value instead of 
 `psn_*` and `xboxone_*` param counts were guessed). Need a systematic way to verify all
 signatures en masse.
 
-**Approach**: Script that extracts all function names from `runtime.json`, fetches the
-corresponding GML manual page, and compares param count/types. Flag discrepancies for
-manual review. Could use manual.gamemaker.io URL patterns:
-- `GameMaker_Language/GML_Reference/{category}/{function_name}.htm`
-- `Drag_And_Drop/Drag_And_Drop_Reference/{category}/{action_name}.htm`
+**Approach**: Codegen `runtime.json` function signatures from the GML manual source.
+
+The manual is on GitHub: https://github.com/YoYoGames/GameMaker-Manual
+HTML files have consistent, parseable structure:
+- `<h4>Syntax:</h4>` → `<p class="code">func_name(param1, param2, ...)</p>`
+- Parameter table: `Argument | Type | Description` with `data-keyref="Type_*"` attributes
+- `<h4>Returns:</h4>` → `<span data-keyref="Type_Real">` etc.
+
+`data-keyref` type mapping needed: `Type_Real` → `number`, `Type_String` → `string`,
+`Type_Bool` → `boolean`, `Type_Void` → `void`, `Type_ID_*` → `number`, etc.
+
+Script should:
+1. Clone/fetch the manual repo
+2. Walk `Manual/contents/GameMaker_Language/GML_Reference/` for .htm files
+3. Parse each function page: extract name, params (names + types), return type
+4. Output a verified `runtime.json` `function_signatures` section
+5. Diff against current `runtime.json` and flag discrepancies
 
 Platform functions (psn_*, xboxone_*, uwp_*) may not have public docs — flag those
 separately for manual triage.
