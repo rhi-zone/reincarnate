@@ -402,11 +402,14 @@ async function main() {
     }
 
     // Check for functions in manual but not in runtime.json
+    const missingNames: string[] = [];
     for (const name of Object.keys(sigs)) {
       if (!currentSigs[name]) {
         missing++;
+        missingNames.push(name);
       }
     }
+    missingNames.sort();
 
     // Print grouped output
     if (arityErrors.length > 0) {
@@ -424,6 +427,19 @@ async function main() {
         "=== ANY IN RUNTIME (runtime.json uses `any` where manual has a concrete type) ===\n"
       );
       anyErrors.forEach((e) => console.log(e));
+      console.log();
+    }
+
+    if (missingNames.length > 0) {
+      console.log(
+        "=== MISSING FROM RUNTIME.JSON (in manual but not runtime.json) ===\n"
+      );
+      for (const name of missingNames) {
+        const sig = sigs[name];
+        console.log(
+          `  ${name}(${sig.params.join(", ")}) → ${sig.returns}`
+        );
+      }
       console.log();
     }
 
