@@ -4663,6 +4663,82 @@ export class GameRuntime {
   action_end_game(): void { this.game_end(); }
   action_restart_game(): void { this.game_restart(); }
 
+  // ---- Action library (GMS1 drag-and-drop) ----
+  action_if_object(obj: typeof GMLObject | any): boolean {
+    if (!this._self) throw new Error("action_if_object: no current instance");
+    return Boolean(this.place_meeting(this._self.x, this._self.y, obj));
+  }
+  action_if_empty(x: number, y: number): boolean {
+    return !this.place_meeting(x, y, -1 as any);
+  }
+  action_if_number(val: number, number: number, operation: number): boolean {
+    if (operation === 0) return val === number;
+    if (operation === 1) return val < number;
+    return val > number;
+  }
+  action_if_collision(x: number, y: number, obj: any): boolean {
+    return Boolean(this.place_meeting(x, y, obj));
+  }
+  action_bounce(_precise: boolean, _against: number): void { /* no-op — needs physics */ }
+  action_move_contact(dir: number, maxdist: number): void {
+    this.move_contact_solid(dir, maxdist);
+  }
+  action_change_object(_obj: typeof GMLObject | any, _performEvents: boolean): void {
+    throw new Error("action_change_object: not yet implemented");
+  }
+  action_path(_path: number, _speed: number, _endaction: number, _relative: boolean): void {
+    throw new Error("action_path: not yet implemented");
+  }
+  action_draw_sprite(sprite: number, x: number, y: number, subimage: number): void {
+    this.draw_sprite(sprite, subimage, x, y);
+  }
+
+  // ---- Script / shader / draw misc ----
+  script_exists(name: string): boolean { return typeof (this as any)[name] === "function"; }
+  shader_current(): number { return -1; /* no shader support in 2D canvas */ }
+  draw_texture_flush(): void { /* no-op in canvas mode */ }
+  make_colour_hsv(h: number, s: number, v: number): number { return this.make_color_hsv(h, s, v); }
+
+  // ---- Vertex color and primitive (no-ops / extensions of existing prim support) ----
+  draw_vertex_color(x: number, y: number, _col: number, _alpha: number): void { this._primVerts.push({ x, y }); }
+  draw_vertex_begin(mode: number): void { this._primKind = mode; this._primVerts = []; }
+  draw_vertex_end(): void { this.draw_primitive_end(); }
+  draw_vertex_texture_color(x: number, y: number, _u: number, _v: number, _col: number, _alpha: number): void { this._primVerts.push({ x, y }); }
+
+  matrix_transform_vertex(m: any[], x: number, y: number, z: number): any[] {
+    return [
+      m[0] * x + m[4] * y + m[8] * z + m[12],
+      m[1] * x + m[5] * y + m[9] * z + m[13],
+      m[2] * x + m[6] * y + m[10] * z + m[14],
+    ];
+  }
+
+  // ---- Buffer save/load ext ----
+  buffer_save_ext(buf: number, fname: string, offset: number, size: number): void {
+    const b = this._buffers.get(buf); if (!b) return;
+    const slice = size > 0 ? b.data.slice(offset, offset + size) : b.data.slice(offset);
+    let binary = ""; for (const byte of slice) binary += String.fromCharCode(byte);
+    try { localStorage.setItem(this._fileKey(fname), btoa(binary)); } catch { /* storage full */ }
+  }
+  buffer_load_ext(buf: number, fname: string, offset: number): void {
+    const b = this._buffers.get(buf); if (!b) return;
+    const raw = localStorage.getItem(this._fileKey(fname)); if (!raw) return;
+    const binary = atob(raw);
+    const src = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) src[i] = binary.charCodeAt(i);
+    if (offset + src.length > b.data.length) this._bufferGrow(b, offset + src.length);
+    b.data.set(src, offset);
+  }
+
+  // ---- D3D model stubs ----
+  d3d_model_load(_id: number, _fname: string): boolean { throw new Error("d3d_model_load: not yet implemented"); }
+  d3d_model_save(_id: number, _fname: string): boolean { throw new Error("d3d_model_save: not yet implemented"); }
+
+  // ---- Platform stubs ----
+  ptr(val: any): any { return val; }
+  achievement_load_leaderboard(_name: string, _start: number, _count: number, _filter: number): void { /* no-op — leaderboards not available in browser */ }
+  xboxone_gamedisplayname_for_user(_user: number): string { return ""; /* no-op — Xbox not available in browser */ }
+
   // ---- Surface/background save stubs ----
   background_save(_bg: number, _fname: string): void { throw new Error("background_save: not yet implemented"); }
   surface_save(_id: number, _fname: string): void { throw new Error("surface_save: not yet implemented"); }

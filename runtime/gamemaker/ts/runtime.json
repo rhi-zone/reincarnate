@@ -447,6 +447,83 @@
       ],
       "returns": "void"
     },
+    "action_bounce": {
+      "params": [
+        "boolean",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_change_object": {
+      "params": [
+        "any",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "action_draw_sprite": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_if_collision": {
+      "params": [
+        "number",
+        "number",
+        "any"
+      ],
+      "returns": "boolean"
+    },
+    "action_if_empty": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "action_if_number": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "action_if_object": {
+      "params": [
+        "any"
+      ],
+      "returns": "boolean"
+    },
+    "action_move_contact": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_path": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "achievement_load_leaderboard": {
+      "params": [
+        "string",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "alarm_get": {
       "params": [
         "int"
@@ -943,6 +1020,14 @@
       ],
       "returns": "number"
     },
+    "buffer_load_ext": {
+      "params": [
+        "number",
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
     "buffer_peek": {
       "params": [
         "number",
@@ -966,6 +1051,15 @@
         "number"
       ],
       "returns": "number"
+    },
+    "buffer_save_ext": {
+      "params": [
+        "number",
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "void"
     },
     "buffer_seek": {
       "params": [
@@ -1293,6 +1387,20 @@
         "number"
       ],
       "returns": "number"
+    },
+    "d3d_model_load": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "d3d_model_save": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "boolean"
     },
     "date_current_date": {
       "params": [],
@@ -2070,6 +2178,40 @@
         "number",
         "number"
       ],
+      "returns": "void"
+    },
+    "draw_vertex_begin": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_vertex_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_vertex_end": {
+      "params": [],
+      "returns": "void"
+    },
+    "draw_vertex_texture_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_texture_flush": {
+      "params": [],
       "returns": "void"
     },
     "ds_exists": {
@@ -3713,6 +3855,14 @@
       ],
       "returns": "int"
     },
+    "make_colour_hsv": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
     "matrix_build": {
       "params": [
         "number",
@@ -3731,6 +3881,15 @@
       "params": [
         "any[]",
         "any[]"
+      ],
+      "returns": "any[]"
+    },
+    "matrix_transform_vertex": {
+      "params": [
+        "any[]",
+        "number",
+        "number",
+        "number"
       ],
       "returns": "any[]"
     },
@@ -4631,6 +4790,12 @@
       ],
       "returns": "void"
     },
+    "ptr": {
+      "params": [
+        "any"
+      ],
+      "returns": "any"
+    },
     "radtodeg": {
       "params": [
         "number"
@@ -4762,6 +4927,12 @@
     "script_execute": {
       "returns": "*"
     },
+    "script_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
     "setAllField": {
       "params": [
         "string",
@@ -4813,6 +4984,10 @@
         "number"
       ],
       "returns": "boolean"
+    },
+    "shader_current": {
+      "params": [],
+      "returns": "number"
     },
     "shader_reset": {
       "params": [],
@@ -6765,6 +6940,12 @@
         "number"
       ],
       "returns": "string"
+    },
+    "xboxone_gamedisplayname_for_user": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
     }
   },
   "function_modules": [
@@ -7770,7 +7951,32 @@
         "screen_save_part",
         "sprite_save_strip",
         "background_add",
-        "background_replace"
+        "background_replace",
+        "action_if_object",
+        "action_if_empty",
+        "action_if_number",
+        "action_if_collision",
+        "action_bounce",
+        "action_move_contact",
+        "action_change_object",
+        "action_path",
+        "action_draw_sprite",
+        "script_exists",
+        "shader_current",
+        "draw_texture_flush",
+        "make_colour_hsv",
+        "draw_vertex_color",
+        "draw_vertex_begin",
+        "draw_vertex_end",
+        "draw_vertex_texture_color",
+        "matrix_transform_vertex",
+        "buffer_save_ext",
+        "buffer_load_ext",
+        "d3d_model_load",
+        "d3d_model_save",
+        "ptr",
+        "achievement_load_leaderboard",
+        "xboxone_gamedisplayname_for_user"
       ],
       "path": "gamemaker/runtime",
       "stateful": true
