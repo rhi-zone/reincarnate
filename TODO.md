@@ -449,7 +449,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   CsCharacter::draw (1), DevTool::step (2), DiavolaEye::step_with (1),
   FinalLock::step_with (1), Player::step (1) — all off by 1-3.
 
-**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 3078.
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 80.
 
 ### Undertale quality sweep (2026-03-14)
 
@@ -472,9 +472,22 @@ coerce fix (Pass 5 in GmlBoolArithCoerce): 3078.
 
 **Chronicon**: YYC compiled (no CODE chunk). Cannot process — same as Katana Zero, Risk of Rain.
 
+**Session 23 progress (3078→80):**
+- Added 332 missing `function_signatures` entries to `runtime.json` (enables IntToBoolPromotion)
+- Fixed ClassRegistry::lookup to try sanitize_ident fallback (digit-prefix names like "6parent")
+- Added `RuntimeConfig::validate()` (RC0003 diagnostic) — hard-fails on function_modules/function_signatures mismatch
+- Fixed `parse_type_notation` to handle `"any[]"`, `"string[]"` array notation
+- Added ~300 runtime function implementations/stubs
+
+**Remaining 80 errors (by category):**
+- TS2304 "Cannot find name" — remaining missing GML built-ins not yet in function_modules
+- TS2339 "Property does not exist" — `_rt` property access / instance ID → class type limitation
+- TS2362/TS2365 — bool-in-arithmetic (session 22 coerce_bool_cmp_operands needs rework)
+
 **Actionable next steps for Undertale:**
-1. Add missing GML runtime stubs (biggest bang: `script_execute` alone = 673 errors)
-2. Investigate TS2339 `_rt` pattern — may be solvable with better instance ID → class type mapping
+1. Add remaining missing GML built-ins (TS2304 functions)
+2. Rework `coerce_bool_cmp_operands` — `bool === 0` should become `=== false`, not `Number(bool) === 0`
+3. Investigate TS2339 `_rt` pattern — may be solvable with better instance ID → class type mapping
 
 ---
 
@@ -1438,7 +1451,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Schism | `data.win` 77MB | ⚠️ emits (TS errors TBD) |
 | Shelldiver | `data.win` 2MB | ❌ YYC |
 | Soulknight Survivor | `data.win` 35MB | ❌ YYC |
-| Undertale | `data.win` 5MB | ⚠️ 3078 TS errors (runtime API gaps + class type resolution) |
+| Undertale | `data.win` 5MB | ⚠️ 80 TS errors (down from 3078; remaining: missing builtins, bool-cmp, instance ID types) |
 | VA-11 HALL-A | `game.unx` 212MB | ⚠️ emits (TS errors TBD) |
 
 ---
