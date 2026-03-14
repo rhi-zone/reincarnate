@@ -449,7 +449,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   CsCharacter::draw (1), DevTool::step (2), DiavolaEye::step_with (1),
   FinalLock::step_with (1), Player::step (1) — all off by 1-3.
 
-**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 11.
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 8.
 
 ### Undertale quality sweep (2026-03-14)
 
@@ -495,28 +495,21 @@ Session 24 fixes:
   (GML separates event handlers and instance variables into different namespaces,
   TypeScript doesn't — typed method declaration shadows index signature)
 
-**Remaining errors (11):**
-- TS7027 (6): unreachable code — game-author bugs (wontfix)
-- TS2304 (1): `len` for-loop scoping bug (linearizer)
-- TS2345 (1): `$set_confirm(bool)` — global `confirm` inferred as `string`, should be `any`
-  (ConstraintSolve narrowed too aggressively from one assignment type)
-- TS2322 (2): Sansshadowgen `y = comparison` (game-author `===` instead of `=` — wontfix),
-  UndergroundExit `z = instance_create()` (game-author using built-in `z` to store instance — wontfix)
-- TS2367 (1): Discoball `instance_find(obj, 1) !== (-4)` — runtime returns `T | null`,
-  game compares to GML `noone` sentinel (-4). Root cause: GML uses `-4` for noone,
-  our runtime uses `null`. Need noone-sentinel translation in emitter.
+**Remaining errors (8) — all wontfix:**
+- TS7027 (6): unreachable code — game-author bugs
+- TS2322 (2): Sansshadowgen `y = comparison` (game-author `===` instead of `=`),
+  UndergroundExit `z = instance_create()` (game-author using built-in `z` to store instance)
 
-**Linearizer for-loop scoping bug:**
-`for (let i = 0; i < n; i += len)` where `let len` is declared INSIDE the loop body.
-The for-increment expression `i += len` accesses `len` before its block-scoped declaration.
-Root cause: linearizer places variable declarations at first assignment site, but doesn't check
-if the variable is referenced in the for-loop header (condition or increment). Fix: when a
-variable is used in a for-loop header, hoist its declaration to before the for statement.
-
-**Actionable next steps for Undertale:**
-1. Fix for-loop scoping bug in linearizer (TS2304 `len`)
-2. Fix global variable type inference — `$set_confirm` should accept `any`
-3. Implement noone-sentinel translation (GML `-4` ↔ runtime `null`) in emitter
+**Session 25 fixes (11→8):**
+- For-loop scoping (TS2304 `len`): guard in `try_promote_while` prevents promotion when
+  update expression references variables declared in the loop body.
+- Local/global name collision (TS2345 `$set_confirm`): `rewrite_global_assignments` now
+  tracks local VarDecl names through recursive scope traversal, skipping shadowed names.
+  Root cause was NOT type inference — it was the rewrite incorrectly treating a local
+  `confirm` assignment as a global setter call.
+- Noone sentinel (TS2367 Discoball): `coerce_noone_sentinel` pass replaces `-4` with `null`
+  in equality comparisons where the other operand is a call result. Fixes both the TS error
+  and a behavioral bug (our runtime returns null, so `null !== -4` was always true).
 
 ---
 
@@ -1634,7 +1627,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Schism | `data.win` 77MB | ⚠️ emits (TS errors TBD) |
 | Shelldiver | `data.win` 2MB | ❌ YYC |
 | Soulknight Survivor | `data.win` 35MB | ❌ YYC |
-| Undertale | `data.win` 5MB | ⚠️ 11 TS errors (6 unreachable/wontfix, 2 game-author bugs, 3 fixable) |
+| Undertale | `data.win` 5MB | ⚠️ 8 TS errors (6 unreachable + 2 game-author — all wontfix) |
 | VA-11 HALL-A | `game.unx` 212MB | ⚠️ emits (TS errors TBD) |
 
 ---
