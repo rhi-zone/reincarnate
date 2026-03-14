@@ -540,8 +540,9 @@ Each commit diff was read and evaluated against project principles. Findings bel
   Two commits generalizing "if param type doesn't match default, use any". Root cause: type inference
   doesn't account for GML's variadic calling convention default values.
 
-- [ ] **`b7d8c57` — `(target as unknown) === -4` in instance_exists**
-  Suppresses TS2367. Should fix the type of the GML `noone` sentinel (-4) in the IR.
+- [x] **`b7d8c57` — `(target as unknown) === -4` in instance_exists**
+  Addressed: `coerce_noone_sentinel` pass (e5916d4) translates `-4` → `null` at call sites.
+  Runtime still accepts both null and -4 for safety. The `as unknown` cast was already removed.
 
 - [ ] **`f9b5159` — `(expr as any) instanceof T` to prevent TS never-narrowing**
   Hides that `this instanceof OwnClass` narrows to `never` in else-branch. Should fix type hierarchy.
