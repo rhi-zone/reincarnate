@@ -298,11 +298,11 @@ async function main() {
 
     // Normalize a type for comparison
     // - int and number are both GML Real
-    // - classref is a numeric object index at runtime
     // - * and dynamic are our names for "any"
+    // NOTE: classref is NOT normalized to number — our rewrite passes
+    // lift numeric object indices into class references intentionally
     const normalize = (t: string): string => {
       if (t === "int") return "number";
-      if (t === "classref") return "number";
       if (t === "*" || t === "dynamic") return "any";
       return t;
     };
