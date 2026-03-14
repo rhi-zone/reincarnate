@@ -447,11 +447,21 @@ fn generate_rooms(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]
 fn generate_objects(catalog: &mut AssetCatalog, obj_names: &[String]) {
     let mut out = String::new();
     out.push_str("export const Classes = {\n");
+    // Deduplicate keys: if the OBJT chunk contains two objects with the same
+    // name, append _2, _3, … to the second and subsequent occurrences.  The
+    // first occurrence keeps the original GML name so lookups by the canonical
+    // name still resolve correctly.
+    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for (i, name) in obj_names.iter().enumerate() {
+        let count = seen.entry(name.clone()).or_insert(0);
+        *count += 1;
+        let key = if *count > 1 {
+            format!("{name}_{count}")
+        } else {
+            name.clone()
+        };
         // Use quoted string keys so names like "3platgen" are valid TypeScript.
-        // The runtime looks up classes by the original GML name, so the key
-        // must be the unsanitized name.
-        let escaped = name.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped = key.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(out, "  \"{escaped}\": {i},");
     }
     out.push_str("} as const;\n");
