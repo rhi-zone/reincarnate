@@ -1619,7 +1619,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 
 | Game | Source | Status |
 |------|--------|--------|
-| 10 Second Ninja X | `data.win` 134MB | ⚠️ 546 TS errors (2026-03-14) |
+| 10 Second Ninja X | `data.win` 134MB | ⚠️ 496 TS errors (2026-03-14) |
 | 12 is Better Than 6 | `game.unx` 179MB | ⚠️ 190 TS errors (2026-03-14, was panicking) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
@@ -1635,11 +1635,11 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Nubby's Number Factory | `data.win` 66MB | ⚠️ ~77k TS errors (runtime API gaps) |
 | Risk of Rain | `game.unx` 34MB | ❌ YYC (empty CODE chunk) |
 | Rocket Rats | `data.win` 2MB | ❌ YYC |
-| Schism | `data.win` 77MB | ⚠️ 793 TS errors (2026-03-14) |
+| Schism | `data.win` 77MB | ⚠️ 662 TS errors (2026-03-14) |
 | Shelldiver | `data.win` 2MB | ❌ YYC |
 | Soulknight Survivor | `data.win` 35MB | ❌ YYC |
 | Undertale | `data.win` 5MB | ⚠️ 8 TS errors (6 unreachable + 2 game-author — all wontfix) |
-| VA-11 HALL-A | `game.unx` 212MB | ⚠️ 105 TS errors (2026-03-14) |
+| VA-11 HALL-A | `game.unx` 212MB | ⚠️ 74 TS errors (2026-03-14) |
 
 ---
 
