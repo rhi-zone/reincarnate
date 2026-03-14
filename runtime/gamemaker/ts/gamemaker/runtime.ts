@@ -3828,7 +3828,7 @@ export class GameRuntime {
   matrix_set(_type: number, _matrix: any[]): void { /* no-op in 2D canvas mode */ }
 
   // ---- Xbox One (platform stubs) ----
-  xboxone_fire_event(_event: string): void { /* no-op — Xbox not available in browser */ }
+  xboxone_fire_event(_event: string, _uid: string, _data: string, _extra0?: any, _extra1?: any): void { /* no-op — Xbox not available in browser */ }
   xboxone_user_for_pad(_pad: number): number { return -1; /* no-op — Xbox not available in browser */ }
   xboxone_user_id_for_user(_user: number): string { return ""; /* no-op — Xbox not available in browser */ }
 
@@ -4423,7 +4423,7 @@ export class GameRuntime {
   action_execute_script(script_id: number, ...args: any[]): any {
     return this.script_execute(script_id, ...args);
   }
-  action_another_room(room: number, transition: number): void {
+  action_another_room(room: number): void {
     this.room_goto(room);
   }
   action_previous_room(): void {
@@ -4704,11 +4704,11 @@ export class GameRuntime {
   action_restart_game(): void { this.game_restart(); }
 
   // ---- Action library (GMS1 drag-and-drop) ----
-  action_if_object(obj: typeof GMLObject | any): boolean {
+  action_if_object(obj: typeof GMLObject | any, xoffset: number, yoffset: number): boolean {
     if (!this._self) throw new Error("action_if_object: no current instance");
-    return Boolean(this.place_meeting(this._self.x, this._self.y, obj));
+    return Boolean(this.place_meeting(this._self.x + xoffset, this._self.y + yoffset, obj));
   }
-  action_if_empty(x: number, y: number): boolean {
+  action_if_empty(x: number, y: number, _appliesTo: number = 0): boolean {
     return !this.place_meeting(x, y, -1 as any);
   }
   action_if_number(val: number, number: number, operation: number): boolean {
@@ -4720,7 +4720,7 @@ export class GameRuntime {
     return Boolean(this.place_meeting(x, y, obj));
   }
   action_bounce(_precise: boolean, _against: number): void { /* no-op — needs physics */ }
-  action_move_contact(dir: number, maxdist: number): void {
+  action_move_contact(dir: number, maxdist: number, _against: number = 0): void {
     this.move_contact_solid(dir, maxdist);
   }
   action_change_object(_obj: typeof GMLObject | any, _performEvents: boolean): void {
@@ -4953,25 +4953,25 @@ export class GameRuntime {
 
   // ---- Platform stubs (PSN) ----
   psn_get_leaderboard_score_range(_board: string, _start: number, _count: number): number { return -1; }
-  psn_get_leaderboard_score(_board: string): number { return 0; }
+  psn_get_leaderboard_score(_user: number, _boardIndex: number): number { return 0; }
   psn_get_friends_scores(_board: string): number { return -1; }
-  psn_np_status(): number { return 0; }
-  psn_net_check(): boolean { return false; }
+  psn_np_status(_user: number): number { return 0; }
+  psn_net_check(_mode: number): boolean { return false; }
   psn_default_user(): number { return 0; }
   psn_set_content_restriction(_age: number): void { /* no-op */ }
-  psn_post_leaderboard_score(_board: string, _score: number): void { /* no-op */ }
+  psn_post_leaderboard_score(_board: number, _idx: number, _score: number): void { /* no-op */ }
   psn_name_for_user(_user: number): string { return ""; }
   psn_load_modules(_slot: number): void { /* no-op */ }
   psn_user_for_pad(_pad: number): number { return -1; }
 
   // ---- Platform stubs (Xbox One) ----
   xboxone_read_player_leaderboard(_stat: string, _start: number, _count: number, _filter: number, _userId: number): number { return -1; }
-  xboxone_show_account_picker(): void { /* no-op */ }
-  xboxone_show_profile_card_for_user(_userId: number): void { /* no-op */ }
-  xboxone_set_rich_presence(_presence: string): void { /* no-op */ }
+  xboxone_show_account_picker(_pad: number, _allowGuests: number): void { /* no-op */ }
+  xboxone_show_profile_card_for_user(_userId: number, _pad: number): void { /* no-op */ }
+  xboxone_set_rich_presence(_presence: string, _presenceDetail: number, _context: any): void { /* no-op */ }
   xboxone_user_is_signed_in(_userId: number): boolean { return false; }
   xboxone_suspend(): void { /* no-op */ }
-  xboxone_stats_setup(_userId: number): void { /* no-op */ }
+  xboxone_stats_setup(_userId: number, _scid: string, _titleId: number): void { /* no-op */ }
   xboxone_show_help(): void { /* no-op */ }
   xboxone_set_savedata_user(_userId: number): void { /* no-op */ }
   xboxone_is_suspending(): boolean { return false; }

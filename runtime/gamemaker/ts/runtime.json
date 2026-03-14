@@ -220,7 +220,6 @@
     },
     "action_another_room": {
       "params": [
-        "number",
         "number"
       ],
       "returns": "void"
@@ -493,6 +492,7 @@
     "action_if_empty": {
       "params": [
         "number",
+        "number",
         "number"
       ],
       "returns": "boolean"
@@ -507,12 +507,15 @@
     },
     "action_if_object": {
       "params": [
-        "any"
+        "any",
+        "number",
+        "number"
       ],
       "returns": "boolean"
     },
     "action_move_contact": {
       "params": [
+        "number",
         "number",
         "number"
       ],
@@ -7035,7 +7038,11 @@
     },
     "xboxone_fire_event": {
       "params": [
-        "string"
+        "string",
+        "string",
+        "string",
+        "any",
+        "any"
       ],
       "returns": "void"
     },
@@ -7709,7 +7716,8 @@
     },
     "psn_get_leaderboard_score": {
       "params": [
-        "string"
+        "number",
+        "number"
       ],
       "returns": "number"
     },
@@ -7720,11 +7728,15 @@
       "returns": "number"
     },
     "psn_np_status": {
-      "params": [],
+      "params": [
+        "number"
+      ],
       "returns": "number"
     },
     "psn_net_check": {
-      "params": [],
+      "params": [
+        "number"
+      ],
       "returns": "boolean"
     },
     "psn_default_user": {
@@ -7739,7 +7751,8 @@
     },
     "psn_post_leaderboard_score": {
       "params": [
-        "string",
+        "number",
+        "number",
         "number"
       ],
       "returns": "void"
@@ -7773,18 +7786,24 @@
       "returns": "number"
     },
     "xboxone_show_account_picker": {
-      "params": [],
+      "params": [
+        "number",
+        "number"
+      ],
       "returns": "void"
     },
     "xboxone_show_profile_card_for_user": {
       "params": [
+        "number",
         "number"
       ],
       "returns": "void"
     },
     "xboxone_set_rich_presence": {
       "params": [
-        "string"
+        "string",
+        "number",
+        "any"
       ],
       "returns": "void"
     },
@@ -7800,6 +7819,8 @@
     },
     "xboxone_stats_setup": {
       "params": [
+        "number",
+        "string",
         "number"
       ],
       "returns": "void"
