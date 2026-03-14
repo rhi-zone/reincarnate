@@ -1619,7 +1619,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Game | Source | Status |
 |------|--------|--------|
 | 10 Second Ninja X | `data.win` 134MB | ⚠️ 546 TS errors (2026-03-14) |
-| 12 is Better Than 6 | `game.unx` 179MB | ❌ panic in builder.rs (index OOB) |
+| 12 is Better Than 6 | `game.unx` 179MB | ⚠️ 190 TS errors (2026-03-14, was panicking) |
 | Cauldron | `data.win` 169MB | ❌ YYC |
 | CookServeDelicious2 | `game.unx` 805MB | ❌ EOF parse error in CODE (same as Forager) |
 | Dead Estate | `data.win` 192MB | ⚠️ 5 TS errors + 1 translation error (2026-03-14) |

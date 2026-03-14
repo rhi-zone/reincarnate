@@ -6506,12 +6506,42 @@
       ],
       "returns": "void"
     },
+    "weak_ref_alive": {
+      "params": [
+        "any"
+      ],
+      "returns": "boolean"
+    },
+    "weak_ref_create": {
+      "params": [
+        "any"
+      ],
+      "returns": "any"
+    },
     "withInstances": {
       "params": [
         "any",
         "any"
       ],
       "returns": "any"
+    },
+    "xboxone_fire_event": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "xboxone_user_for_pad": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "xboxone_user_id_for_user": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
     }
   },
   "function_modules": [
@@ -6587,6 +6617,7 @@
         "string_pos",
         "string_delete",
         "string_count",
+        "string_hash_to_newline",
         "string_trim"
       ],
       "path": "gamemaker/string"
@@ -6631,7 +6662,8 @@
         "make_colour_rgb",
         "merge_colour",
         "merge_color",
-        "color_get_hue"
+        "color_get_hue",
+        "color_get_saturation"
       ],
       "path": "gamemaker/color"
     },
@@ -6807,6 +6839,7 @@
         "ds_list_clear",
         "ds_list_exists",
         "ds_list_find_index",
+        "ds_list_insert",
         "ds_list_shuffle",
         "ds_list_sort",
         "ds_map_create",
@@ -7033,6 +7066,7 @@
         "window_set_size",
         "window_set_position",
         "view_set_visible",
+        "view_get_camera",
         "view_set_camera",
         "view_set_surface_id",
         "display_set_gui_maximize",
