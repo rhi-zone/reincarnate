@@ -141,6 +141,31 @@ fn is_numeric(ty: &Type) -> bool {
     matches!(ty, Type::Int(_) | Type::Float(_))
 }
 
+/// Look through a `Cast(src, Dynamic, Coerce)` to recover the underlying type.
+///
+/// GML translates most call arguments as `coerce val, dyn` before passing them,
+/// which hides the real type from the auto-coercion pass.  This helper peels off
+/// that wrapper so we can see the original type and insert the right coercion.
+fn peel_dynamic_coerce<'a>(
+    func: &'a Function,
+    v: ValueId,
+    result_map: &HashMap<ValueId, InstId>,
+) -> &'a Type {
+    let ty = &func.value_types[v];
+    if !matches!(ty, Type::Dynamic) {
+        return ty;
+    }
+    if let Some(&inst_id) = result_map.get(&v) {
+        if let Op::Cast(source, _, CastKind::Coerce) = &func.insts[inst_id].op {
+            let src_ty = &func.value_types[*source];
+            if !matches!(src_ty, Type::Dynamic) {
+                return src_ty;
+            }
+        }
+    }
+    ty
+}
+
 /// Build a reverse map: ValueId → InstId (the instruction that produces it).
 fn result_inst_map(func: &Function) -> HashMap<ValueId, InstId> {
     func.insts
@@ -557,6 +582,7 @@ fn coerce_call_args_general(
     callee_param_types: &HashMap<String, Vec<Type>>,
     external_param_types: &HashMap<String, Vec<Type>>,
 ) -> bool {
+    let result_map = result_inst_map(func);
     let mut casts: Vec<(InstId, usize, ValueId, Type)> = Vec::new();
 
     for (inst_id, inst) in func.insts.iter() {
@@ -573,7 +599,8 @@ fn coerce_call_args_general(
             if let Some(param_tys) = param_tys {
                 for (i, &arg_v) in args.iter().enumerate() {
                     if let Some(pty) = param_tys.get(i) {
-                        let arg_ty = &func.value_types[arg_v];
+                        // Look through coerce-to-Dynamic to recover the real arg type.
+                        let arg_ty = peel_dynamic_coerce(func, arg_v, &result_map);
                         if let Some(target) = needs_coerce(arg_ty, pty) {
                             casts.push((inst_id, i, arg_v, target));
                         }

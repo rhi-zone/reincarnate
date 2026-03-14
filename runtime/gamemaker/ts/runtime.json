@@ -7368,6 +7368,7 @@
     },
     "tilemap_tileset": {
       "params": [
+        "number",
         "number"
       ],
       "returns": "number"

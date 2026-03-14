@@ -978,6 +978,10 @@ fn print_expr(expr: &JsExpr) -> String {
                 (CastKind::Coerce, Type::Float(_)) => {
                     format!("Number({})", print_expr(unwrap_coerce(inner, ty)))
                 }
+                // Coerce + Int(64) → Number(x).  GML's i64 maps to TS `number`.
+                (CastKind::Coerce, Type::Int(64)) => {
+                    format!("Number({})", print_expr(unwrap_coerce(inner, ty)))
+                }
                 // Coerce + Int(32) → int(x).
                 (CastKind::Coerce, Type::Int(32)) => {
                     format!("int({})", print_expr(unwrap_coerce(inner, ty)))
@@ -1195,7 +1199,12 @@ fn needs_parens(expr: &JsExpr) -> bool {
             (CastKind::Coerce, Type::Struct(_) | Type::Enum(_)) => true, // `x as Foo`
             (
                 CastKind::Coerce,
-                Type::Float(_) | Type::Int(32) | Type::UInt(32) | Type::String | Type::Bool,
+                Type::Float(_)
+                | Type::Int(32)
+                | Type::Int(64)
+                | Type::UInt(32)
+                | Type::String
+                | Type::Bool,
             ) => false,
             (CastKind::Coerce, _) => false,        // passthrough
             (CastKind::NullableCoerce, _) => true, // `x as T` / `x as any`
