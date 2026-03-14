@@ -2475,6 +2475,33 @@ documented design decision about why `unknown` + narrowing is genuinely unworkab
 **SugarCube `extensions.ts` — prototype extensions:**
 - [x] `Array.prototype.delete(...items: any[])` → `...items: unknown[]`
 
+**SugarCube `state.ts` / `engine.ts` / `wikifier.ts`:**
+- [x] All `any` types replaced: storyVars/tempVars → `Record<string, unknown>`, clone/iterate/ushr/
+  instanceof_/evalJavaScript/resolve params and returns → `unknown`, parseMacroArgs → `unknown[]`
+
+**Flash `iterator.ts` / `class.ts` / `object.ts` / `scope.ts` / `globals.d.ts`:**
+- [x] hasNext/nextValue/getSuper/callSuper/construct/deleteProperty etc. obj/params → `unknown`
+- [x] getOuterScope(): any → `typeof globalThis`; newActivation value: any → `unknown`
+- [x] trace ...args: any[] → `unknown[]`
+
+**Flash `net.ts` / `text.ts` / `media.ts` / `ui.ts` / `desktop.ts` / `text/ime.ts`:**
+- [x] URLLoader._data: string|ArrayBuffer|null; SharedObject._data: Record<string,unknown>
+- [x] IDynamic* params: unknown; FileReference.save data: unknown
+- [x] registerFont(fontClass: new()=>Font); Sound/Video params: unknown
+- [x] Keyboard index: number; registerCursor: unknown; IFilePromise.reportError: unknown
+- [x] updateComposition attributes: unknown[]
+
+**Flash remaining `any` — documented design decisions:**
+- [~] `DrawCommand.args: any[]` — renderer reads per-command-kind at specific indices;
+  proper fix is a tagged union per command kind. Not done.
+- [~] `Sprite/MovieClip [key: string]: any` — AS3 dynamic classes; TypeScript index signatures
+  with `unknown` interact poorly with declared properties; not changed.
+- [~] `platform/input.ts` listener `(e: any) => void` — same covariance as events.ts.
+  `(e: MouseEvent) => void` NOT assignable to `(e: Event) => void` in strict mode.
+
+Flash CC error count: 18 → 209 (186 from asType null-safety, ~5 from net/ui/iterator changes).
+All new errors are game-author type violations (unguarded `as` casts, untyped property access).
+
 ---
 
 ### Track 3: Platform Bypass — Refined Counts
