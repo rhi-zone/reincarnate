@@ -1624,7 +1624,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
 | Just Hit The Button | `data.win` 1MB | ⚠️ 4 TS errors (2026-03-14) |
 | Max Manos | `data.win` 47MB | ⚠️ 7 TS errors (2026-03-14) |
-| Max Manos 2 | `data.win` 10MB | ⚠️ 4 TS errors (local var pop raw index) |
+| Max Manos 2 | `data.win` 10MB | ⚠️ 52 TS errors (tilemap/skeleton stubs, vNN scoping) |
 | MINDWAVE Demo | `data.win` 324MB | ⚠️ ~26k TS errors (runtime API gaps) |
 | Momodora RUtM | `.exe` 36MB | ❌ PE-embedded FORM |
 | Nova Drift | `data.win` 415MB | ❌ YYC |

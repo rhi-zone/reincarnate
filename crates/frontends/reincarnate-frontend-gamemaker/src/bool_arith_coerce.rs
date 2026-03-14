@@ -63,6 +63,9 @@ impl Transform for GmlBoolArithCoerce {
         // GMLObject.x, GMLObject.depth) so we don't hardcode field names.
         let external_numeric_fields = build_external_numeric_fields(&module);
 
+        // Collect "number | boolean" fields (declared as "*" in external type defs).
+        let dynamic_declared_fields = build_dynamic_declared_fields(&module);
+
         // Pre-collect entry block param types for call-arg coercion (Pass 4).
         // Maps function name → vec of entry block param value_types (skipping
         // the first param which is `self` for instance methods).
@@ -82,11 +85,11 @@ impl Transform for GmlBoolArithCoerce {
 
         let mut changed = false;
         for func in module.functions.values_mut() {
-            changed |= coerce_bool_arithmetic(func, &bool_returning);
+            changed |= coerce_bool_arithmetic(func, &bool_returning, &dynamic_declared_fields);
             changed |= coerce_bool_br_args(func);
             changed |= coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
             changed |= coerce_bool_call_args(func, &callee_param_types);
-            changed |= coerce_bool_cmp_operands(func, &bool_returning);
+            changed |= coerce_bool_cmp_operands(func, &bool_returning, &dynamic_declared_fields);
             changed |= coerce_noone_sentinel(func);
         }
         Ok(TransformResult { module, changed })
@@ -168,29 +171,48 @@ fn insert_cast_before(
 /// Returns true if `v` needs a Bool→numeric coercion before use in arithmetic.
 /// Direct Bool values (value_types == Bool) and Call results from Bool-returning
 /// callees (Fix A: ConstraintSolve may have widened the result type) both qualify.
+///
+/// Also coerces Dynamic-typed GetField results for fields declared as `"*"` in
+/// external type definitions (e.g. `visible`, `persistent`).  These fields are
+/// `number | boolean` in the TypeScript runtime class; TypeScript rejects
+/// `number | boolean` in arithmetic, so we wrap them in `Number()`.
 fn needs_arith_coerce(
     func: &Function,
     v: ValueId,
     result_map: &HashMap<ValueId, InstId>,
     bool_returning: &HashSet<String>,
+    dynamic_declared_fields: &HashSet<String>,
 ) -> bool {
     if is_bool(func, v) {
         return true;
     }
-    // Fix A: value_types[v] was widened by ConstraintSolve, but the callee
-    // sig still says Bool — the emitter will emit a boolean-typed expression.
     if let Some(&inst_id) = result_map.get(&v) {
+        // Fix A: value_types[v] was widened by ConstraintSolve, but the callee
+        // sig still says Bool — the emitter will emit a boolean-typed expression.
         if let Op::Call {
             func: callee_name, ..
         } = &func.insts[inst_id].op
         {
-            return bool_returning.contains(callee_name);
+            if bool_returning.contains(callee_name) {
+                return true;
+            }
+        }
+        // GetField on a "number | boolean" declared field (e.g. visible, solid,
+        // persistent) — TypeScript can't do arithmetic on `number | boolean`.
+        if let Op::GetField { field, .. } = &func.insts[inst_id].op {
+            if dynamic_declared_fields.contains(field.as_str()) {
+                return true;
+            }
         }
     }
     false
 }
 
-fn coerce_bool_arithmetic(func: &mut Function, bool_returning: &HashSet<String>) -> bool {
+fn coerce_bool_arithmetic(
+    func: &mut Function,
+    bool_returning: &HashSet<String>,
+    dynamic_declared_fields: &HashSet<String>,
+) -> bool {
     let result_map = result_inst_map(func);
 
     // Collect all arithmetic ops where at least one operand needs coercion.
@@ -204,8 +226,20 @@ fn coerce_bool_arithmetic(func: &mut Function, bool_returning: &HashSet<String>)
                 }
                 _ => return None,
             };
-            let a_coerce = needs_arith_coerce(func, a, &result_map, bool_returning);
-            let b_coerce = needs_arith_coerce(func, b, &result_map, bool_returning);
+            let a_coerce = needs_arith_coerce(
+                func,
+                a,
+                &result_map,
+                bool_returning,
+                dynamic_declared_fields,
+            );
+            let b_coerce = needs_arith_coerce(
+                func,
+                b,
+                &result_map,
+                bool_returning,
+                dynamic_declared_fields,
+            );
             if a_coerce || b_coerce {
                 Some((id, a, b, a_coerce, b_coerce))
             } else {
@@ -367,6 +401,24 @@ fn build_external_numeric_fields(module: &Module) -> HashSet<String> {
         for (field_name, type_str) in &ext.fields {
             let ty = parse_type_notation(type_str);
             if is_numeric(&ty) {
+                result.insert(field_name.clone());
+            }
+        }
+    }
+    result
+}
+
+/// Build a set of field names declared as `"*"` (Dynamic) in external type
+/// definitions.  These are GML properties like `visible`, `solid`,
+/// `persistent` that accept both `number` and `boolean`.  The TypeScript
+/// runtime class declares them as `number | boolean`, which TypeScript
+/// rejects in arithmetic contexts.  We need to coerce these with `Number()`
+/// when they appear as operands in arithmetic expressions.
+fn build_dynamic_declared_fields(module: &Module) -> HashSet<String> {
+    let mut result = HashSet::new();
+    for ext in module.external_type_defs.values() {
+        for (field_name, type_str) in &ext.fields {
+            if type_str == "*" {
                 result.insert(field_name.clone());
             }
         }
@@ -537,8 +589,14 @@ fn insert_bool_const_before(func: &mut Function, val: bool, before_inst_id: Inst
 ///
 /// For non-constant numeric operands or values other than 0/1, falls back
 /// to `Cast(Bool→Float(64))` (emits `Number(expr)`).
-fn coerce_bool_cmp_operands(func: &mut Function, bool_returning: &HashSet<String>) -> bool {
+fn coerce_bool_cmp_operands(
+    func: &mut Function,
+    bool_returning: &HashSet<String>,
+    _dynamic_declared_fields: &HashSet<String>,
+) -> bool {
     let result_map = result_inst_map(func);
+    // For comparisons, don't coerce Dynamic GetField results — only Bool operands.
+    let cmp_fields = &HashSet::new();
 
     // Each entry: (inst_id, lhs, rhs, lhs_is_bool, rhs_is_bool)
     let targets: Vec<(InstId, ValueId, ValueId, bool, bool)> = func
@@ -549,8 +607,8 @@ fn coerce_bool_cmp_operands(func: &mut Function, bool_returning: &HashSet<String
                 Op::Cmp(_, a, b) => (*a, *b),
                 _ => return None,
             };
-            let a_bool = needs_arith_coerce(func, a, &result_map, bool_returning);
-            let b_bool = needs_arith_coerce(func, b, &result_map, bool_returning);
+            let a_bool = needs_arith_coerce(func, a, &result_map, bool_returning, cmp_fields);
+            let b_bool = needs_arith_coerce(func, b, &result_map, bool_returning, cmp_fields);
             let a_num = is_numeric(&func.value_types[a]);
             let b_num = is_numeric(&func.value_types[b]);
             // Only when one side is bool and the other is numeric.
