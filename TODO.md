@@ -2440,8 +2440,8 @@ documented design decision about why `unknown` + narrowing is genuinely unworkab
 - [ ] `getAllField(field): any` — same emitter gap.
 
 **GML `instance.ts`:**
-- [ ] `getInstanceField(…): any`, `setInstanceField(…, value: any)` → `unknown`
-- [ ] `withInstances<T>(…, callback: (inst: T) => any): any` → callback return `unknown`, outer `unknown`
+- [x] `getInstanceField(…): any`, `setInstanceField(…, value: any)` → `unknown`
+- [x] `withInstances<T>(…, callback: (inst: T) => any): any` → callback return `unknown`, outer `unknown`
 
 **Flash `amf.ts` — serialization:**
 - [ ] `readValue(ba: ByteArray): any` → `unknown`; `objects: any[]` → `unknown[]`
