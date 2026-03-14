@@ -67,7 +67,7 @@ export class HarloweEngine {
   // --- Changers ---
 
   /** Create a changer value from a macro name and arguments. */
-  create_changer(name: string, ...args: any[]): Changer {
+  create_changer(name: string, ...args: unknown[]): Changer {
     return { name, args };
   }
 
@@ -75,30 +75,30 @@ export class HarloweEngine {
 
   /** Harlowe `+` operator — composes changers, concatenates arrays/maps/sets,
    *  or falls back to JS `+` for other types. */
-  plus(a: any, b: any): any {
+  plus(a: unknown, b: unknown): unknown {
     if (isChanger(a) && isChanger(b)) return composeChangers(a, b);
-    if (Array.isArray(a) && isChanger(b)) return composeChangers(a as any, b);
+    if (Array.isArray(a) && isChanger(b)) return composeChangers(a as Changer[], b);
     if (Array.isArray(a) && Array.isArray(b)) return [...a, ...b];
     if (a instanceof Map && b instanceof Map) return new Map([...a, ...b]);
     if (a instanceof Set && b instanceof Set) return new Set([...a, ...b]);
-    return a + b;
+    return (a as number) + (b as number);
   }
 
   /** Harlowe `-` operator — removes elements from arrays/sets, or falls back
    *  to JS `-` for numbers. */
-  minus(a: any, b: any): any {
+  minus(a: unknown, b: unknown): unknown {
     if (Array.isArray(a) && Array.isArray(b)) {
       const remove = new Set(b);
-      return (a as any[]).filter((x) => !remove.has(x));
+      return (a as unknown[]).filter((x) => !remove.has(x));
     }
-    if (a instanceof Set && Array.isArray(b)) return new Set([...a].filter((x) => !b.includes(x)));
-    return a - b;
+    if (a instanceof Set && Array.isArray(b)) return new Set([...a].filter((x) => !(b as unknown[]).includes(x)));
+    return (a as number) - (b as number);
   }
 
   // --- Boolean/logic ---
 
   /** Harlowe `not` operator. */
-  not(val: any): boolean {
+  not(val: unknown): boolean {
     return !val;
   }
 
@@ -120,17 +120,17 @@ export class HarloweEngine {
   // --- Dialogs ---
 
   /** `(alert: message)` */
-  alert(message: any): void {
+  alert(message: unknown): void {
     window.alert(String(message));
   }
 
   /** `(prompt: message, default?)` */
-  prompt(message: any, defaultValue?: any): string | null {
+  prompt(message: unknown, defaultValue?: unknown): string | null {
     return window.prompt(String(message), defaultValue != null ? String(defaultValue) : undefined);
   }
 
   /** `(confirm: message)` */
-  confirm(message: any): boolean {
+  confirm(message: unknown): boolean {
     return window.confirm(String(message));
   }
 

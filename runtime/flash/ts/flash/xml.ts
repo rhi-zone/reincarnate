@@ -1,6 +1,6 @@
 /** Flash.XML — E4X / XML operations. */
 
-export function escapeAttribute(value: any): string {
+export function escapeAttribute(value: unknown): string {
   return String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -9,14 +9,14 @@ export function escapeAttribute(value: any): string {
     .replace(/'/g, "&apos;");
 }
 
-export function escapeElement(value: any): string {
+export function escapeElement(value: unknown): string {
   return String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
 
-export function checkFilter(value: any): any {
+export function checkFilter(value: unknown): unknown {
   // E4X filtering predicate check. If the value is XML, return it;
   // otherwise throw a TypeError like AVM2 does.
   if (value === null || value === undefined) {
@@ -32,14 +32,14 @@ export function checkFilter(value: any): any {
 const XML_LIST_TAG = Symbol("xmlList");
 
 /** Create a Proxy-backed array that behaves like an AS3 XMLList. */
-export function xmlList(items: any[]): any {
+export function xmlList(items: unknown[]): unknown {
   const arr = [...items];
-  (arr as any)[XML_LIST_TAG] = true;
+  (arr as unknown as Record<symbol, unknown>)[XML_LIST_TAG] = true;
   return new Proxy(arr, xmlListHandler);
 }
 
-function isXmlList(v: any): boolean {
-  return Array.isArray(v) && (v as any)[XML_LIST_TAG] === true;
+function isXmlList(v: unknown): boolean {
+  return Array.isArray(v) && (v as Record<symbol, unknown>)[XML_LIST_TAG] === true;
 }
 
 const xmlListHandler: ProxyHandler<any[]> = {
@@ -54,7 +54,7 @@ const xmlListHandler: ProxyHandler<any[]> = {
     }
     // contains(value) — checks if any item matches
     if (prop === "contains") {
-      return (value: any) => target.some((item) => item === value || String(item) === String(value));
+      return (value: unknown) => target.some((item) => item === value || String(item) === String(value));
     }
     // toString() — join item string representations
     if (prop === "toString") {

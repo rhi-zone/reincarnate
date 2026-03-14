@@ -20,7 +20,7 @@ import type { DocumentFactory } from "../shared/render-root";
 // Re-export Changer type so engine.ts and other modules can import from here.
 export interface Changer {
   name: string;
-  args: any[];
+  args: unknown[];
 }
 
 /** A child argument to an element method. */
@@ -509,12 +509,12 @@ export class HarloweContext {
   }
 
   /** Print a value as text, or as a tw-colour swatch for color changers. */
-  printVal(v: any): Node {
+  printVal(v: unknown): Node {
     if (v != null && typeof v === "object" && "name" in v && "args" in v) {
-      const name = (v as { name: string }).name;
-      if (name === "color" || name === "colour" || name === "text-colour" || name === "text-color") {
+      const changer = v as Changer;
+      if (changer.name === "color" || changer.name === "colour" || changer.name === "text-colour" || changer.name === "text-color") {
         const el = this.doc.createElement("tw-colour") as HTMLElement;
-        el.style.backgroundColor = resolveColor(String((v as { args: any[] }).args[0]));
+        el.style.backgroundColor = resolveColor(String(changer.args[0]));
         el.style.display = "inline-block";
         el.style.width = "1em";
         el.style.height = "1em";
@@ -632,7 +632,7 @@ export class HarloweContext {
     this.prevBr = false;
     return el;
   }
-  hoverStyle(v: any, ...children: Child[]): Node {
+  hoverStyle(v: Changer, ...children: Child[]): Node {
     return this.styled({ name: "hover-style", args: [v] }, ...children);
   }
 
@@ -656,17 +656,17 @@ export class HarloweContext {
   // --- State ---
 
   /** Get a story variable. */
-  get(name: string): any {
+  get(name: string): unknown {
     return this.rt.State.get(name);
   }
 
   /** Set a story variable. */
-  set(name: string, value: any): void {
+  set(name: string, value: unknown): void {
     this.rt.State.set(name, value);
   }
 
   /** Get the `it` keyword value. */
-  get_it(): any {
+  get_it(): unknown {
     return this.rt.State.get_it();
   }
 

@@ -68,7 +68,7 @@ function readU29(ba: ByteArray): number {
 
 class ReadContext {
   strings: string[] = [];
-  objects: any[] = [];
+  objects: unknown[] = [];
 
   readString(ba: ByteArray): string {
     const ref = readU29(ba);
@@ -83,7 +83,7 @@ class ReadContext {
     return str;
   }
 
-  readValue(ba: ByteArray): any {
+  readValue(ba: ByteArray): unknown {
     const marker = ba.readUnsignedByte();
     switch (marker) {
       case AMF3_UNDEFINED:
@@ -113,13 +113,13 @@ class ReadContext {
     }
   }
 
-  readArray(ba: ByteArray): any {
+  readArray(ba: ByteArray): unknown {
     const ref = readU29(ba);
     if ((ref & 1) === 0) {
       return this.objects[ref >> 1];
     }
     const denseCount = ref >> 1;
-    const result: any = [];
+    const result: unknown[] & { [key: string]: unknown } = [] as unknown[] & { [key: string]: unknown };
     this.objects.push(result);
 
     // Read associative (string-keyed) portion first.
@@ -136,7 +136,7 @@ class ReadContext {
     return result;
   }
 
-  readObject(ba: ByteArray): any {
+  readObject(ba: ByteArray): unknown {
     const ref = readU29(ba);
     if ((ref & 1) === 0) {
       return this.objects[ref >> 1];
@@ -162,7 +162,7 @@ class ReadContext {
       for (let i = 0; i < sealedCount; i++) {
         sealedNames.push(this.readString(ba));
       }
-      const obj: any = {};
+      const obj: Record<string, unknown> = {};
       this.objects.push(obj);
       // Read sealed member values.
       for (let i = 0; i < sealedCount; i++) {
@@ -181,7 +181,7 @@ class ReadContext {
     } else {
       // Traits reference to a previously seen class — we don't track trait definitions
       // separately in this minimal implementation; treat as empty dynamic object.
-      const obj: any = {};
+      const obj: Record<string, unknown> = {};
       this.objects.push(obj);
       // Read dynamic members.
       for (;;) {
@@ -200,7 +200,7 @@ class ReadContext {
 
 class WriteContext {
   strings: Map<string, number> = new Map();
-  objects: Map<any, number> = new Map();
+  objects: Map<object, number> = new Map();
 
   writeString(ba: ByteArray, str: string): void {
     if (str === "") {
@@ -220,7 +220,7 @@ class WriteContext {
     }
   }
 
-  writeValue(ba: ByteArray, value: any): void {
+  writeValue(ba: ByteArray, value: unknown): void {
     if (value === undefined) {
       ba.writeByte(AMF3_UNDEFINED);
       return;
@@ -266,7 +266,7 @@ class WriteContext {
     this.writeString(ba, String(value));
   }
 
-  writeArray(ba: ByteArray, arr: any[]): void {
+  writeArray(ba: ByteArray, arr: unknown[]): void {
     const ref = this.objects.get(arr);
     if (ref !== undefined) {
       ba.writeByte(AMF3_ARRAY);
@@ -281,11 +281,12 @@ class WriteContext {
     writeU29(ba, (denseCount << 1) | 1); // Inline
 
     // Write associative (non-index) keys first.
+    const arrAsRecord = arr as unknown as Record<string, unknown>;
     for (const key of Object.keys(arr)) {
       const idx = Number(key);
       if (Number.isInteger(idx) && idx >= 0 && idx < denseCount) continue;
       this.writeString(ba, key);
-      this.writeValue(ba, arr[key as any]);
+      this.writeValue(ba, arrAsRecord[key]);
     }
     this.writeString(ba, ""); // End of associative portion.
 
@@ -295,7 +296,7 @@ class WriteContext {
     }
   }
 
-  writeObject(ba: ByteArray, obj: any): void {
+  writeObject(ba: ByteArray, obj: object): void {
     const ref = this.objects.get(obj);
     if (ref !== undefined) {
       ba.writeByte(AMF3_OBJECT);
@@ -312,9 +313,10 @@ class WriteContext {
     this.writeString(ba, ""); // Empty class name (anonymous).
 
     // Write dynamic key-value pairs.
+    const objAsRecord = obj as Record<string, unknown>;
     for (const key of Object.keys(obj)) {
       this.writeString(ba, key);
-      this.writeValue(ba, obj[key]);
+      this.writeValue(ba, objAsRecord[key]);
     }
     this.writeString(ba, ""); // End of dynamic members.
   }
@@ -324,12 +326,12 @@ class WriteContext {
 // Public API
 // ---------------------------------------------------------------------------
 
-export function readAMF3(ba: ByteArray): any {
+export function readAMF3(ba: ByteArray): unknown {
   const ctx = new ReadContext();
   return ctx.readValue(ba);
 }
 
-export function writeAMF3(ba: ByteArray, value: any): void {
+export function writeAMF3(ba: ByteArray, value: unknown): void {
   const ctx = new WriteContext();
   ctx.writeValue(ba, value);
 }

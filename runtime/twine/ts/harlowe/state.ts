@@ -8,9 +8,9 @@
 import { type SaveableState, type HistoryStrategy, snapshotHistory, saveSlot, loadSlot, hasSlot } from "../platform";
 
 export class HarloweState implements SaveableState {
-  storyVars: Record<string, any> = {};
-  tempVars: Record<string, any> = {};
-  itValue: any = undefined;
+  storyVars: Record<string, unknown> = {};
+  tempVars: Record<string, unknown> = {};
+  itValue: unknown = undefined;
   private history: HistoryStrategy;
 
   constructor(history?: HistoryStrategy) {
@@ -21,18 +21,18 @@ export class HarloweState implements SaveableState {
 
   /** Get a story variable by name (without the $ prefix).
    *  Uninitialized variables default to 0, matching Harlowe 2.x behavior. */
-  get(name: string): any {
+  get(name: string): unknown {
     return name in this.storyVars ? this.storyVars[name] : 0;
   }
 
   /** Set a story variable by name (without the $ prefix). */
-  set(name: string, value: any): void {
+  set(name: string, value: unknown): void {
     this.storyVars[name] = value;
     this.itValue = value;
   }
 
   /** Get the `it` keyword value (result of most recent expression). */
-  get_it(): any {
+  get_it(): unknown {
     return this.itValue;
   }
 
@@ -42,11 +42,11 @@ export class HarloweState implements SaveableState {
    * `isStory` = true for `$var`, false for `_var`.
    * `twoWay` = true for `2bind` (input pre-populated from current variable value).
    */
-  bind_ref(name: string, isStory: boolean, twoWay: boolean): { get: () => any; set: (v: any) => void; twoWay: boolean } {
+  bind_ref(name: string, isStory: boolean, twoWay: boolean): { get: () => unknown; set: (v: unknown) => void; twoWay: boolean } {
     const store = isStory ? this.storyVars : this.tempVars;
     return {
       get: () => (isStory ? this.get(name) : (store[name] ?? 0)),
-      set: (v: any) => {
+      set: (v: unknown) => {
         if (isStory) { this.set(name, v); } else { store[name] = v; }
       },
       twoWay,

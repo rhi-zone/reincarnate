@@ -660,7 +660,7 @@
     },
     "array_height_2d": {
       "params": [
-        "any[]"
+        "unknown[]"
       ],
       "returns": "int"
     },
@@ -692,7 +692,7 @@
     },
     "array_resize": {
       "params": [
-        "any[]",
+        "unknown[]",
         "number"
       ],
       "returns": "void"
@@ -2642,7 +2642,7 @@
         "*",
         "*"
       ],
-      "returns": "void"
+      "returns": "boolean"
     },
     "ds_map_clear": {
       "params": [
@@ -2718,7 +2718,7 @@
         "dynamic",
         "dynamic"
       ],
-      "returns": "void"
+      "returns": "boolean"
     },
     "ds_map_secure_load": {
       "params": [
@@ -2956,7 +2956,7 @@
       "params": [
         "string"
       ],
-      "returns": "void"
+      "returns": "boolean"
     },
     "file_exists": {
       "params": [
@@ -2980,7 +2980,7 @@
         "string",
         "string"
       ],
-      "returns": "void"
+      "returns": "boolean"
     },
     "file_text_close": {
       "params": [

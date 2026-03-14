@@ -1189,7 +1189,7 @@ export class GameRuntime {
   array_shuffle_ext(arr: any[], _start?: number, _count?: number): void { this.array_shuffle(arr, _start, _count); }
   array_get_index(arr: any[], value: any): number { return arr.indexOf(value); }
   array_contains(arr: any[], value: any): boolean { return arr.indexOf(value) !== -1; }
-  array_resize(arr: any[], newSize: number): void { arr.length = newSize; }
+  array_resize(arr: unknown[], newSize: number): void { arr.length = newSize; }
 
   // ---- Type-check functions ----
 
@@ -1746,7 +1746,12 @@ export class GameRuntime {
 
   ds_map_create(): number { const id = this._dsNextId++; this._dsMaps.set(id, new Map()); return id; }
   ds_map_destroy(map: number): void { this._dsMaps.delete(map); }
-  ds_map_add(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
+  ds_map_add(map: number, key: any, val: any): boolean {
+    const m = this._dsMaps.get(map);
+    if (!m || m.has(key)) return false;
+    m.set(key, val);
+    return true;
+  }
   ds_map_set(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
   ds_map_set_post(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
   ds_map_find_value(map: number, key: any): any { return this._dsMaps.get(map)?.get(key); }
@@ -2716,7 +2721,12 @@ export class GameRuntime {
   file_text_eof(file: number): boolean {
     const f = this._textFiles.get(file); return !f || f.pos >= f.content.length;
   }
-  file_delete(path: string): void { localStorage.removeItem(this._fileKey(path)); }
+  file_delete(path: string): boolean {
+    const key = this._fileKey(path);
+    const existed = localStorage.getItem(key) !== null;
+    localStorage.removeItem(key);
+    return existed;
+  }
   file_find_first(_mask: string, _attr: number): string { throw Error("file_find_first: not yet implemented"); /* no filesystem enumeration in browser */ }
   file_find_next(): string { throw Error("file_find_next: not yet implemented"); }
   file_find_close(): void { /* no-op */ }
@@ -2963,7 +2973,7 @@ export class GameRuntime {
   // ---- Array helpers ----
   array_length(arr: any[]): number { return arr?.length ?? 0; }
   array_length_1d(arr: any): number { return Array.isArray(arr) ? arr.length : 0; }
-  array_height_2d(arr: any[]): number { return arr.length; }
+  array_height_2d(arr: unknown[]): number { return arr.length; }
   array_length_2d(arr: any, n: number): number {
     if (!Array.isArray(arr)) return 0;
     const row = arr[n];
@@ -3289,7 +3299,13 @@ export class GameRuntime {
   ds_priority_destroy(id: number): void { this._dsMaps.delete(id); }
   ds_map_write(map: number): string { const m = this._dsMaps.get(map); return m ? JSON.stringify(Object.fromEntries(m)) : "{}"; }
   ds_map_keys_to_array(map: number): any[] { return [...(this._dsMaps.get(map)?.keys() ?? [])]; }
-  ds_map_replace(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
+  ds_map_replace(map: number, key: any, val: any): boolean {
+    const m = this._dsMaps.get(map);
+    if (!m) return false;
+    const existed = m.has(key);
+    m.set(key, val);
+    return existed;
+  }
   ds_map_secure_save(map: number, filename: string): void {
     // "Secure" save in GML just writes an encoded file — use same localStorage approach as ds_map_write.
     const m = this._dsMaps.get(map); if (!m) return;
@@ -4600,7 +4616,7 @@ export class GameRuntime {
   window_center(): void { /* no-op in browser */ }
 
   // ---- File extras (batch 3) ----
-  file_rename(_oldname: string, _newname: string): void {
+  file_rename(_oldname: string, _newname: string): boolean {
     throw Error("file_rename: not yet implemented");
   }
 
