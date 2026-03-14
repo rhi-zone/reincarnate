@@ -1648,22 +1648,40 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 After runtime function coverage is comprehensive, remaining errors fall into these categories.
 These need compiler/emitter/IR fixes, not runtime additions.
 
-### 1. GML auto-coercion (TS2345, TS2322) — partially fixed, ~50 remaining across games
+### 1. GML auto-coercion (TS2345, TS2322) — partially fixed, ~20 remaining across games
 GML silently coerces between types: `bool→number`, `number→string`, `string→number`,
 `GMLObject→number` (instance ID). The emitted TypeScript has strict types, so these produce
 TS2345 "argument not assignable" errors.
 
 **Status**: Phase 4b in `GmlBoolArithCoerce` handles call-site coercion using both internal
-(`callee_param_types`) and external (`external_function_sigs`) param types. This fixed many
-errors. Remaining issues:
-- **ConstraintSolve type pollution**: `get_field v0, "room"` gets type `string` (from callee
-  sig back-propagation), but emitter outputs `this.room` which TS knows is `number` from the
-  class definition. The coercion pass sees matching types (both string) and skips. ~26 errors
-  in 10SecNinjaX from `action_if_variable` calls.
+(`callee_param_types`) and external (`external_function_sigs`) param types. Session 26 added
+`peel_dynamic_coerce` to look through `coerce(val, dyn)` wrappers that hid the real arg type.
+Also fixed `Cast(x, Int(64), Coerce)` emission — was falling through to passthrough instead
+of emitting `Number(x)`.
+
+**Remaining issues**:
 - **GMLObject→number** (instance ID): `this.id` returns `GMLObject` but callees expect `number`.
-  ~8 errors in 10SecNinjaX. Needs dedicated InstanceId type or `as any` cast.
+  ~8 errors in 10SecNinjaX. Needs dedicated InstanceId type.
 - **Script calls with wrong arg types**: `SpriteFromName(rt, self, 531)` where param is `string`
   but caller passes number. ~6 errors in 10SecNinjaX.
+
+**Key discoveries (session 26)**:
+- **`coerce(val, dyn)` hides real types**: GML translator wraps most call args in
+  `coerce(val, dyn)` before passing. The auto-coercion pass saw `dyn` and skipped.
+  Fix: `peel_dynamic_coerce()` looks through the wrapper. This fixed ~21 errors across games.
+- **`Int(64)` cast emission gap**: `Cast(x, Int(64), Coerce)` in the IR fell through to the
+  catch-all passthrough in `ast_printer.rs` (only `Float(_)` and `Int(32)` had explicit arms).
+  Added `Int(64) → Number(x)` arm.
+- **ConstraintSolve back-propagation vs emitter types**: ConstraintSolve can narrow a
+  `get_field v0, "room"` result to `string` (from callee sig), but the emitter outputs
+  `this.room` which TypeScript knows as `number` from the class definition. The IR type and
+  TS type diverge. Fixed for `action_if_variable` by correcting its param type to `any`
+  (was `string` but actually receives the variable's VALUE, not its name). This is a general
+  problem: ConstraintSolve back-propagation can set IR types that disagree with what the
+  emitter actually outputs for class properties.
+- **`action_if_variable` runtime bug**: implementation was doing `this._self[name]` (property
+  lookup by name), but the translator passes the variable's VALUE directly. Fixed to do
+  direct `variable == value` comparison.
 
 ### 2. Linearizer scoping bugs (TS2304 `v*` variables) — ~25 errors in Schism/MaxManos2
 Variables like `v17`, `v23`, `v48` appear as TS2304 "Cannot find name". These are SSA values
