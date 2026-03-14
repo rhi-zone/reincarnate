@@ -560,6 +560,53 @@ Each commit diff was read and evaluated against project principles. Findings bel
 
 - [x] **`26708e7` — Bool→Number coercion in arithmetic (reverted in `c9e5096`)**
 
+### Conversation-log audit (2026-03-14)
+
+Second pass: 10 parallel haiku auditors reviewed ~950KB of assistant messages from 40 sessions
+(last 2 weeks). Extracts from `normalize sessions messages --days 14 --role assistant`.
+Items below are NEW findings not in the commit-diff audit above.
+
+**tsconfig flag suppressions** — disabling TS strictness flags instead of fixing the emitter:
+- [ ] `noUncheckedIndexedAccess: false` — AS3 arrays don't have `| undefined`, but the fix should
+  be in the emitter (emit non-nullable array types), not globally disable the check.
+- [ ] `noImplicitReturns: false` — later re-enabled in `a085631`, but the initial approach was to
+  disable rather than ensure all code paths have explicit returns.
+- [ ] `allowUnreachableCode: true` — later re-enabled. Same pattern: suppress then fix.
+
+**Index signatures on non-dynamic AS3 classes** — `[key: string]: any` added to TimeModel,
+MainView, Player etc. that are NOT dynamic in AS3. The real issue is the emitter generating
+dynamic property access on statically-typed objects. Need to audit which classes genuinely need
+index signatures vs. which got them as suppressions.
+
+**`null!` / NULL_ASSERT thread-local** [883fa191] — Flash strictNullChecks: a thread-local flag
+makes all `null` literals print as `null!`. This is a blanket suppression across all Flash null
+assignments. Should instead: (a) emit explicit field initialization, or (b) use AS3-aware nullable
+type inference.
+
+**ClassRef → `any` in `ts_type`** [8823a47c] — `Type::ClassRef` emits `any` in function signatures
+(was `typeof ClassName`). The `typeof` was wrong (propagated constructor type to callers), but `any`
+is also wrong — it loses all type information. Root cause: ClassRef values are GML integer object
+indices that should resolve to class types in the IR, not be carried as ClassRef to the backend.
+
+**Runtime field accessor widening** [6099df2c] — `getInstanceField`/`setInstanceField`/
+`setInstanceFieldIndex` accept `number` (object type index). 32 errors suppressed. The real fix:
+resolve integer object indices to class references in the IR (partially done in `f3d3915`).
+
+**`undefined as unknown as FlashShims`** [b1df458e] — double cast in static/cinit context where
+there's no `this._shims`. Should make shims optional or thread it through properly (same root
+cause as `ee0a98c` above).
+
+**XML/XMLList → `any`** [cebbfa87] — both `ts_type` and `flash_ts_type` map XML/XMLList to `any`
+to avoid TS2538 (can't use as index) and TS2322 (not assignable to string). Should define proper
+XML type with index signature and toString() coercion.
+
+**AS3 `Class` → `any`** [b1df458e] — `Type::Struct("Class")` mapped to `any` because `Function`
+doesn't have index signatures. Should use a proper Class interface with index signature.
+
+**`return 0 as any` implicit returns** [c5f8f8fd] — catch-all trailing return for GML implicit-0
+semantics. Later self-corrected to type-appropriate returns (`return false` for bool, `return 0`
+for number). The fix in `051e5a9` addressed this.
+
 ---
 
 ## Adversarial Architecture Audit (2026-03-13)
