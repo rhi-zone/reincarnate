@@ -1929,6 +1929,31 @@ Discovered via Bounty reference comparison (2026-02-22). Fixed 2026-02-22.
 All previously listed functions have been implemented. Check `function_modules`
 in runtime.json for any newly referenced but unimplemented functions.
 
+## Eliminate `any` from Emitted Code and Runtime (HIGH PRIORITY)
+
+`any` is unacceptable in emitted TypeScript and runtime code per CLAUDE.md.
+Current `any` usage is extensive tech debt. Key areas to address:
+
+### Runtime (`runtime.ts`, `object.ts`, etc.)
+- `GMLObject.[key: string]: any` — dynamic field access index signature
+- Many function params/returns typed `any` (especially `action_*` functions)
+- `runtime.json` `function_signatures` entries using `"any"` param types
+- `global` object typed with `any`
+- Event handler return types (`create(): any`, `step(): any`)
+
+### Emitted Code
+- GML script params default to `any` when type inference can't narrow
+- `argument0: any = 0.0` patterns
+- Cross-object field access via `(this as any)`
+- `withInstances` callback return type
+
+### Strategy
+Replace `any` with:
+- Specific types where inference can determine them
+- `unknown` where the value truly is unknown (requires narrowing at use sites)
+- Union types for known finite sets of types (e.g. `number | string | boolean`)
+- Generics for container patterns (e.g. `ds_map`, `ds_list`)
+
 ## Custom Type Checker
 
 Currently `reincarnate check` shells out to `tsc`. We want a high-quality, general-purpose type checker that operates on the IR (not emitted code), since TypeScript is not our only backend:
