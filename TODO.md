@@ -1064,6 +1064,7 @@ Audit all `throw Error("X: not yet implemented")` stubs in the GML runtime. For 
 
 ### Throw-stubs added
 - `event_inherited()` — runtime fallback; normally rewritten to `super.eventName()` at compile time. Only hit if backend rewrite doesn't fire (e.g. arrow function context). See `rewrites/gamemaker.rs`.
+- `draw_healthbar()` — needs proper canvas 2D rendering with gradient interpolation between mincol/maxcol, background/border drawing, and directional fill.
 
 ### Systems requiring design before stubs can be implemented
 

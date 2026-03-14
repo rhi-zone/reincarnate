@@ -1693,6 +1693,7 @@ export class GameRuntime {
   ds_list_clear(list: number): void { const l = this._dsLists.get(list); if (l) l.length = 0; }
   ds_list_exists(list: number): boolean { return this._dsLists.has(list); }
   ds_list_find_index(list: number, val: any): number { return this._dsLists.get(list)?.indexOf(val) ?? -1; }
+  ds_list_insert(list: number, pos: number, val: any): void { const l = this._dsLists.get(list); if (l) l.splice(pos, 0, val); }
   ds_list_sort(list: number, ascending: boolean): void { this._dsLists.get(list)?.sort((a, b) => ascending ? a - b : b - a); }
   ds_list_shuffle(list: number): void {
     const l = this._dsLists.get(list);
@@ -2922,6 +2923,7 @@ export class GameRuntime {
   // ---- Array helpers ----
   array_length(arr: any[]): number { return arr?.length ?? 0; }
   array_length_1d(arr: any): number { return Array.isArray(arr) ? arr.length : 0; }
+  array_height_2d(arr: any): number { return Array.isArray(arr) ? arr.length : 0; }
   array_length_2d(arr: any, n: number): number {
     if (!Array.isArray(arr)) return 0;
     const row = arr[n];
@@ -3142,6 +3144,9 @@ export class GameRuntime {
     if (outline) { ctx.strokeStyle = gmlColorToCss(col1); ctx.stroke(); }
     else { ctx.fillStyle = gmlColorToCss(col1); ctx.fill(); }
   }
+  draw_healthbar(_x1: number, _y1: number, _x2: number, _y2: number, _amount: number, _backcol: number, _mincol: number, _maxcol: number, _direction: number, _showback: boolean, _showborder: boolean): void {
+    throw new Error("draw_healthbar: not yet implemented");
+  }
   draw_sprite_stretched(spr: number, sub: number, x: number, y: number, w: number, h: number): void {
     const sprite = this.sprites[spr];
     if (!sprite) return;
@@ -3197,6 +3202,7 @@ export class GameRuntime {
 
   // ---- View helpers ----
   view_set_visible(_view: number, _vis: boolean): void { /* no-op */ }
+  view_get_camera(view: number): number { return view; }
   view_set_camera(_view: number, _cam: number): void { /* no-op */ }
   view_set_surface_id(_view: number, _surface: number): void { /* no-op */ }
 
@@ -3215,6 +3221,9 @@ export class GameRuntime {
   json_decode(str: string): any { try { return JSON.parse(str); } catch { return undefined; } }
 
   // ---- Game lifecycle ----
+  parameter_count(): number { return 0; }
+  parameter_string(_n: number): string { return ""; }
+
   game_end(): void {
     // Stop the game loop and close the window (if allowed).
     clearTimeout(this._drawHandle);
@@ -3747,6 +3756,8 @@ export class GameRuntime {
     // Canvas 2D cannot separate alpha blend modes; approximate with the color channels
     this.gpu_set_blendmode_ext(src, dest);
   }
+  draw_set_blend_mode(mode: number): void { this.gpu_set_blendmode(mode); }
+  draw_set_blend_mode_ext(src: number, dest: number): void { this.gpu_set_blendmode_ext(src, dest); }
 
   // ---- Gamepad extras ----
   gamepad_get_description(device: number): string { return navigator.getGamepads()[device]?.id ?? ""; }
@@ -3756,6 +3767,30 @@ export class GameRuntime {
 
   // ---- GC extras ----
   gc_enable(_enable: boolean): void { /* no-op */ }
+
+  // ---- Weak references ----
+  weak_ref_create(target: any): any { return target; }
+  weak_ref_alive(ref: any): boolean { return ref != null; }
+
+  // ---- Matrix ----
+  matrix_build(x: number, y: number, z: number, xrotation: number, yrotation: number, zrotation: number, xscale: number, yscale: number, zscale: number): any[] {
+    // Build a 4x4 transformation matrix (TRS order, column-major)
+    const cx = Math.cos(xrotation * Math.PI / 180), sx = Math.sin(xrotation * Math.PI / 180);
+    const cy = Math.cos(yrotation * Math.PI / 180), sy = Math.sin(yrotation * Math.PI / 180);
+    const cz = Math.cos(zrotation * Math.PI / 180), sz = Math.sin(zrotation * Math.PI / 180);
+    return [
+      cy*cz*xscale, cy*sz*xscale, -sy*xscale, 0,
+      (sx*sy*cz - cx*sz)*yscale, (sx*sy*sz + cx*cz)*yscale, sx*cy*yscale, 0,
+      (cx*sy*cz + sx*sz)*zscale, (cx*sy*sz - sx*cz)*zscale, cx*cy*zscale, 0,
+      x, y, z, 1,
+    ];
+  }
+  matrix_set(_type: number, _matrix: any[]): void { /* no-op in 2D canvas mode */ }
+
+  // ---- Xbox One (platform stubs) ----
+  xboxone_fire_event(_event: string): void { /* no-op — Xbox not available in browser */ }
+  xboxone_user_for_pad(_pad: number): number { return -1; /* no-op — Xbox not available in browser */ }
+  xboxone_user_id_for_user(_user: number): string { return ""; /* no-op — Xbox not available in browser */ }
 
   // ---- MP grid (A* pathfinding) ----
   mp_grid_create(left: number, top: number, hcells: number, vcells: number, cellw: number, cellh: number): number {
@@ -3895,6 +3930,8 @@ export class GameRuntime {
   /** Load trophy unlock state from storage into the in-memory set. */
   psn_init_np_libs(_titleId: string, _titleSecret: string, _passphrase: string): void { /* no-op — PSN not available in browser */ }
   psn_setup_trophies(): number { return 0; /* no-op — PSN not available in browser; trophy init via psn_init_trophy */ }
+  psn_check_np_availability(): boolean { return false; /* no-op — PSN not available in browser */ }
+  psn_name_for_pad(_pad: number): string { return ""; /* no-op — PSN not available in browser */ }
   psn_init_trophy(_pad_index: number, _count?: number): void {
     const gameName = this._storage.gameName;
     const raw = fetchItem(this._persistence, "__psn_trophy_" + gameName);
@@ -3967,6 +4004,7 @@ export class GameRuntime {
 
 
   // ---- More Steam ----
+  steam_create_leaderboard(_name: string, _sortOrder: number, _displayType: number): void { /* leaderboard creation is a no-op in browser; scores stored locally */ }
   steam_activate_overlay_browser(_url: string): void { window.open(_url, "_blank"); }
   steam_clear_achievement(_name: string): void {
     const set = this._steamAchSet();
@@ -4492,6 +4530,7 @@ export class GameRuntime {
   tile_layer_delete(_layer: number): void { /* no-op */ }
   tile_layer_depth(_layer: number, _depth: number): void { /* no-op */ }
   tile_set_position(_tile: number, _x: number, _y: number): void { /* no-op */ }
+  tile_set_scale(_tile: number, _xscale: number, _yscale: number): void { /* no-op */ }
   tile_get_x(_tile: number): number { return 0; }
   tile_get_y(_tile: number): number { return 0; }
   tile_exists(_tile: number): boolean { return false; }
@@ -4547,6 +4586,7 @@ export class GameRuntime {
     this._self.hspeed += Math.cos(rad) * speed;
     this._self.vspeed -= Math.sin(rad) * speed;
   }
+
 }
 
 // ---- Game config ----

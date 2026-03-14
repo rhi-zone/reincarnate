@@ -76,6 +76,16 @@ export function color_get_hue(color: number): number {
   return h;
 }
 
+export function color_get_saturation(color: number): number {
+  const r = (color & 0xff) / 255;
+  const g = ((color >> 8) & 0xff) / 255;
+  const b = (color >> 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max === 0) return 0;
+  return Math.round(((max - min) / max) * 255);
+}
+
 export function make_color_hsv(h: number, s: number, v: number): number {
   const hf = (h / 255) * 6;
   const sf = s / 255;

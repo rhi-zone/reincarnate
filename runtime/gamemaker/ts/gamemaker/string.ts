@@ -34,4 +34,6 @@ export function string_trim(s: string, chars?: string[]): string {
   return s.slice(start, end);
 }
 
+export function string_hash_to_newline(s: string): string { return s.replace(/#/g, "\n"); }
+
 // GML's string() is just String() — emitted code calls String() directly.
