@@ -1622,7 +1622,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Dead Estate | `data.win` 192MB | ⚠️ 5 TS errors + 1 translation error (2026-03-14) |
 | Downwell | `data.win` 27MB | ❌ TXTR external textures |
 | Forager | `game.unx` 78MB | ❌ EOF parse error in CODE |
-| Just Hit The Button | `data.win` 1MB | ⚠️ 4 TS errors (2026-03-14) |
+| Just Hit The Button | `data.win` 1MB | ⚠️ 2 TS errors (2026-03-14) |
 | Max Manos | `data.win` 47MB | ⚠️ 7 TS errors (2026-03-14) |
 | Max Manos 2 | `data.win` 10MB | ⚠️ 52 TS errors (tilemap/skeleton stubs, vNN scoping) |
 | MINDWAVE Demo | `data.win` 324MB | ⚠️ ~26k TS errors (runtime API gaps) |
