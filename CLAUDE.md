@@ -105,6 +105,7 @@ Do not:
 - Use DOM data attributes as a state-passing mechanism
 - **Widen runtime types to match wrong emitter output.** If emitted code passes `number` where the runtime declares `boolean`, the emitter is wrong — fix the type inference (e.g. ensure `function_signatures` has correct param types so `IntToBoolPromotion` can promote constants). Widening runtime types is a suppression that hides the real problem.
 - **Add `function_modules` entries without corresponding `function_signatures` entries.** Every function registered in `function_modules` must also have param/return types in `function_signatures` so the type inference pipeline can do its job.
+- **Use `any` in emitted TypeScript or runtime code.** `any` is unacceptable — it defeats the purpose of type-safe emitted code. Use specific types, generics, `unknown`, or union types instead. Where GML or Flash semantics require dynamic dispatch, express it with the narrowest type that captures the actual usage. Existing `any` is tech debt to be eliminated, not a pattern to follow.
 
 ## Crate Structure
 
