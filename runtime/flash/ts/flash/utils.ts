@@ -15,8 +15,8 @@ import { scheduleInterval, cancelScheduledInterval } from "./platform";
 const _bindCache = new WeakMap<Function, WeakMap<object, Function>>();
 
 /** Cache-backed method bind — identity-stable so removeEventListener works.
- *  Returns a variadic function so callers may pass extra arguments (AS3
- *  silently ignores surplus arguments; TypeScript would otherwise TS2554). */
+ *  `(...args: any[]) => ReturnType<T>` return type is intentional: AS3 silently ignores
+ *  surplus arguments; using `Parameters<T>` instead causes one TS2322 in Flash CC. */
 export function cachedBind<T extends (...args: any[]) => any>(
   thisArg: unknown,
   fn: T,
