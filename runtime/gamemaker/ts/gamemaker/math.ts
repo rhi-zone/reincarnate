@@ -146,4 +146,5 @@ export function median(...nums: number[]): number {
   const mid = sorted.length >> 1;
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
+export function arctan(x: number): number { return Math.atan(x) * 180 / Math.PI; }
 export function arctan2(y: number, x: number): number { return Math.atan2(y, x); }

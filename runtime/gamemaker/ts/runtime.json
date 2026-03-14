@@ -290,6 +290,18 @@
       ],
       "returns": "boolean"
     },
+    "action_if": {
+      "params": [
+        "any"
+      ],
+      "returns": "boolean"
+    },
+    "action_color": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
     "action_inherited": {
       "params": [],
       "returns": "void"
@@ -564,6 +576,12 @@
       ],
       "returns": "number"
     },
+    "arctan": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
     "arctan2": {
       "params": [
         "number",
@@ -732,6 +750,72 @@
     },
     "audio_channel_num": {
       "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_emitter_create": {
+      "params": [],
+      "returns": "number"
+    },
+    "audio_emitter_free": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_emitter_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "audio_emitter_position": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_emitter_velocity": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_emitter_falloff": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_play_sound_on": {
+      "params": [
+        "number",
+        "number",
+        "boolean",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "audio_emitter_gain": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_emitter_pitch": {
+      "params": [
+        "number",
         "number"
       ],
       "returns": "void"
@@ -2133,7 +2217,27 @@
         "number",
         "number",
         "number",
-        "int"
+        "int",
+        "int",
+        "int",
+        "int",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_text_transformed_colour": {
+      "params": [
+        "number",
+        "number",
+        "any",
+        "number",
+        "number",
+        "number",
+        "int",
+        "int",
+        "int",
+        "int",
+        "number"
       ],
       "returns": "void"
     },
@@ -4342,6 +4446,12 @@
       "params": [
         "number",
         "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_system_clear": {
+      "params": [
+        "number"
       ],
       "returns": "void"
     },
@@ -6964,6 +7074,7 @@
         "sin",
         "cos",
         "tan",
+        "arctan",
         "arctan2",
         "ln",
         "log2",
@@ -7049,6 +7160,7 @@
         "draw_text_ext_colour",
         "draw_text_ext_transformed",
         "draw_text_transformed_color",
+        "draw_text_transformed_colour",
         "draw_text_ext_transformed_color",
         "draw_rectangle",
         "draw_set_ext",
@@ -7217,6 +7329,15 @@
         "audio_group_unload",
         "audio_group_stop_all",
         "audio_group_set_gain",
+        "audio_emitter_create",
+        "audio_emitter_free",
+        "audio_emitter_exists",
+        "audio_emitter_position",
+        "audio_emitter_velocity",
+        "audio_emitter_falloff",
+        "audio_play_sound_on",
+        "audio_emitter_gain",
+        "audio_emitter_pitch",
         "part_system_create",
         "part_system_destroy",
         "part_type_create",
@@ -7718,6 +7839,7 @@
         "part_particles_clear",
         "part_system_automatic_update",
         "part_system_drawit",
+        "part_system_clear",
         "path_get_length",
         "path_start",
         "show_debug_log",
@@ -7961,6 +8083,8 @@
         "action_change_object",
         "action_path",
         "action_draw_sprite",
+        "action_if",
+        "action_color",
         "script_exists",
         "shader_current",
         "draw_texture_flush",

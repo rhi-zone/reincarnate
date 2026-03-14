@@ -126,6 +126,10 @@ export class GameRuntime {
   private _partTypes = new Map<number, PartTypeConfig>();
   private _nextPartId = 1;
 
+  // Audio emitter state
+  private _audioEmitters = new Map<number, { x: number; y: number; z: number; vx: number; vy: number; vz: number; falloff_ref: number; falloff_max: number; falloff_factor: number }>();
+  private _nextEmitterId = 1;
+
   // MP grid (pathfinding) state
   private _mpGrids = new Map<number, { left: number; top: number; hcells: number; vcells: number; cellw: number; cellh: number; blocked: Uint8Array }>();
   private _nextMpGridId = 1;
@@ -509,6 +513,12 @@ export class GameRuntime {
     this._draw.config.color = oldColor;
     this._draw.alpha = oldAlpha;
   }
+
+  draw_text_transformed_colour(
+    x: number, y: number, text: any,
+    xscale: number, yscale: number, angle: number,
+    c1: number, c2: number, c3: number, c4: number, alpha: number,
+  ): void { this.draw_text_transformed_color(x, y, text, xscale, yscale, angle, c1, c2, c3, c4, alpha); }
 
   draw_text_ext_transformed_color(
     x: number, y: number, text: any, sep: number, w: number,
@@ -1475,6 +1485,35 @@ export class GameRuntime {
   audio_group_set_gain(_group: number, gain: number, timeMs: number): void { audioSetNodeParam(this._audio, 0, "gain", gain, timeMs); }
   audio_channel_num(_num: number): void { /* no-op — browser audio has no fixed channel limit */ }
 
+  // ---- Audio Emitter API ----
+
+  audio_emitter_create(): number {
+    const id = this._nextEmitterId++;
+    this._audioEmitters.set(id, { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, falloff_ref: 100, falloff_max: 300, falloff_factor: 1 });
+    return id;
+  }
+  audio_emitter_free(id: number): void { this._audioEmitters.delete(id); }
+  audio_emitter_exists(id: number): boolean { return this._audioEmitters.has(id); }
+  audio_emitter_position(id: number, x: number, y: number, z: number): void {
+    const e = this._audioEmitters.get(id);
+    if (e) { e.x = x; e.y = y; e.z = z; }
+  }
+  audio_emitter_velocity(id: number, vx: number, vy: number, vz: number): void {
+    const e = this._audioEmitters.get(id);
+    if (e) { e.vx = vx; e.vy = vy; e.vz = vz; }
+  }
+  audio_emitter_falloff(id: number, falloff_ref: number, falloff_max: number, falloff_factor: number): void {
+    const e = this._audioEmitters.get(id);
+    if (e) { e.falloff_ref = falloff_ref; e.falloff_max = falloff_max; e.falloff_factor = falloff_factor; }
+  }
+  audio_play_sound_on(emitter: number, sound: number, loop: boolean, priority: number): number {
+    // Emitter-based spatial audio — play without spatial positioning until WebAudio panner is wired up
+    void emitter;
+    return this.audio_play_sound(sound, priority, loop);
+  }
+  audio_emitter_gain(_id: number, _gain: number): void { /* no-op until spatial audio is implemented */ }
+  audio_emitter_pitch(_id: number, _pitch: number): void { /* no-op until spatial audio is implemented */ }
+
   // ---- Particle API ----
 
   part_system_create(): number {
@@ -1490,6 +1529,7 @@ export class GameRuntime {
   part_system_automatic_update(sys: number, on: boolean): void { const s = this._partSystems.get(sys); if (s) s.autoUpdate = on; }
   part_system_depth(sys: number, depth: number): void { const s = this._partSystems.get(sys); if (s) s.depth = depth; }
   part_system_drawit(sys: number): void { const s = this._partSystems.get(sys); if (s) this._partDraw(s); }
+  part_system_clear(sys: number): void { const s = this._partSystems.get(sys); if (s) s.particles = []; }
   part_type_create(): number {
     const id = this._nextPartId++;
     this._partTypes.set(id, defaultPartType());
@@ -4692,6 +4732,8 @@ export class GameRuntime {
   action_draw_sprite(sprite: number, x: number, y: number, subimage: number): void {
     this.draw_sprite(sprite, subimage, x, y);
   }
+  action_if(expression: any): boolean { return Boolean(expression); }
+  action_color(color: number): void { this.draw_set_color(color); }
 
   // ---- Script / shader / draw misc ----
   script_exists(name: string): boolean { return typeof (this as any)[name] === "function"; }
