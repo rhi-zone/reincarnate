@@ -2510,23 +2510,23 @@ No new bypass categories found. Root causes:
 
 ---
 
-### Track 5: Signature Arity Bugs — 10 Genuine Fixes Required
+### Track 5: Signature Arity Bugs — fixed in 00dffe5 / verified
 
-From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual. Fix in `runtime.json` + `runtime.ts`.
+From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
 
-**Wrong parameter count:**
-- [ ] `audio_emitter_velocity` — 4 params, manual: 3
-- [ ] `buffer_load` — 4 params, manual: 1 (likely conflated with `buffer_load_async`)
-- [ ] `draw_roundrect` — 7 params, manual: 5
-- [ ] `parameter_string` — 1 param, manual: 0 (takes no arguments per GML spec)
-- [ ] `rectangle_in_rectangle` — 9 params, manual: 8
-- [ ] `tag_get_assets` — 2 params, manual: 1
-- [ ] `vertex_position` — 4 params, manual: 3
-- [ ] `part_particles_count` — 2 params, manual: 1 (also silent stub per Track 1)
+**Fixed:**
+- [x] `buffer_load` — was conflating with `buffer_load_ext` params; now 1 param (`string`)
+- [x] `draw_roundrect` — was using `draw_roundrect_ext` signature; now 5 params
+- [x] `rectangle_in_rectangle` — spurious extra `number` removed; now 8 params
+- [x] `tag_get_assets` — removed spurious `kind` param; now 1 param
+- [x] `vertex_position` — was including `z` (belongs to `vertex_position_3d`); now 3 params
+- [x] `part_particles_count` — now 1 param
+- [x] `layer_sequence_x`, `layer_sequence_y` — now setters `(seqElId, val): void`
+- [x] `max`, `min`, `mean`, `median` — variadic (no fixed params)
 
-**Wrong kind (getter vs setter):**
-- [ ] `layer_sequence_x` — runtime: `(seqElId: number): number` (getter); manual: `(seqElId, x): void` (setter only)
-- [ ] `layer_sequence_y` — same issue (also silent stub per Track 1)
+**Verified correct (audit was wrong):**
+- `audio_emitter_velocity` — manual says `(emitter, vx, vy, vz)` — 4 params ✓
+- `parameter_string` — manual says `parameter_string(n)` — 1 param ✓
 
 **Variadic functions treated as fixed-arity:**
 - [ ] `choose(v1, v2, ...)` → `<T>(...vals: T[]): T`
