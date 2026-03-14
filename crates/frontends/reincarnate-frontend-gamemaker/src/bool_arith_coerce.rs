@@ -31,7 +31,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::inst::{CastKind, CmpKind, Inst, InstId, Op};
 use reincarnate_core::ir::module::StructDef;
-use reincarnate_core::ir::ty::Type;
+use reincarnate_core::ir::ty::{parse_type_notation, Type};
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{Function, Module, ValueId};
 use reincarnate_core::pipeline::{Transform, TransformResult};
@@ -83,12 +83,23 @@ impl Transform for GmlBoolArithCoerce {
             })
             .collect();
 
+        // Pre-collect external (runtime) function param types for call-arg coercion.
+        let external_param_types: HashMap<String, Vec<Type>> = module
+            .external_function_sigs
+            .iter()
+            .map(|(name, sig)| {
+                let tys: Vec<Type> = sig.params.iter().map(|p| parse_type_notation(p)).collect();
+                (name.clone(), tys)
+            })
+            .collect();
+
         let mut changed = false;
         for func in module.functions.values_mut() {
             changed |= coerce_bool_arithmetic(func, &bool_returning, &dynamic_declared_fields);
             changed |= coerce_bool_br_args(func);
             changed |= coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
             changed |= coerce_bool_call_args(func, &callee_param_types);
+            changed |= coerce_call_args_general(func, &callee_param_types, &external_param_types);
             changed |= coerce_bool_cmp_operands(func, &bool_returning, &dynamic_declared_fields);
             changed |= coerce_noone_sentinel(func);
         }
@@ -527,6 +538,95 @@ fn coerce_bool_call_args(
     }
 
     true
+}
+
+// ---------------------------------------------------------------------------
+// Pass 4b — General call-arg type coercion (TS2345)
+// ---------------------------------------------------------------------------
+
+/// GML auto-coerces between types at call sites: numbers become strings,
+/// strings become numbers, booleans become numbers.  TypeScript doesn't.
+/// Insert explicit `Cast(..., Coerce)` when arg type ≠ param type and both
+/// are concrete (non-Dynamic).
+///
+/// Covers: number→string, string→number, bool→string.
+/// Does NOT coerce: Dynamic→anything (already compatible), struct→number
+/// (instance ID problem — different root cause).
+fn coerce_call_args_general(
+    func: &mut Function,
+    callee_param_types: &HashMap<String, Vec<Type>>,
+    external_param_types: &HashMap<String, Vec<Type>>,
+) -> bool {
+    let mut casts: Vec<(InstId, usize, ValueId, Type)> = Vec::new();
+
+    for (inst_id, inst) in func.insts.iter() {
+        if let Op::Call {
+            func: callee_name,
+            args,
+        } = &inst.op
+        {
+            // Look up param types from internal functions first, then external.
+            let param_tys = callee_param_types
+                .get(callee_name)
+                .or_else(|| external_param_types.get(callee_name.as_str()));
+
+            if let Some(param_tys) = param_tys {
+                for (i, &arg_v) in args.iter().enumerate() {
+                    if let Some(pty) = param_tys.get(i) {
+                        let arg_ty = &func.value_types[arg_v];
+                        if let Some(target) = needs_coerce(arg_ty, pty) {
+                            casts.push((inst_id, i, arg_v, target));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if casts.is_empty() {
+        return false;
+    }
+
+    for (inst_id, arg_idx, old_v, to_type) in casts {
+        let new_v = insert_cast_before(func, old_v, inst_id, to_type);
+        if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+            args[arg_idx] = new_v;
+        }
+    }
+
+    true
+}
+
+/// Determine if a GML auto-coercion is needed from `arg_ty` to `param_ty`.
+/// Returns `Some(target_type)` if a cast should be inserted, `None` otherwise.
+fn needs_coerce(arg_ty: &Type, param_ty: &Type) -> Option<Type> {
+    // Skip if types already match or either side is Dynamic (compatible with anything).
+    if arg_ty == param_ty {
+        return None;
+    }
+    if matches!(arg_ty, Type::Dynamic) || matches!(param_ty, Type::Dynamic) {
+        return None;
+    }
+    // Skip Void args (shouldn't happen but guard).
+    if matches!(arg_ty, Type::Void) || matches!(param_ty, Type::Void) {
+        return None;
+    }
+
+    match (arg_ty, param_ty) {
+        // number → string: GML does `string(val)` automatically
+        (Type::Float(_) | Type::Int(_) | Type::UInt(_), Type::String) => Some(Type::String),
+        // string → number: GML does `real(val)` automatically
+        (Type::String, Type::Float(64)) => Some(Type::Float(64)),
+        (Type::String, Type::Int(w)) => Some(Type::Int(*w)),
+        // bool → string: GML converts to "0"/"1"
+        (Type::Bool, Type::String) => Some(Type::String),
+        // bool → number: already handled by coerce_bool_call_args,
+        // but catch any stragglers
+        (Type::Bool, Type::Float(64) | Type::Int(_)) => Some(Type::Float(64)),
+        // number → bool: GML treats 0 as false, nonzero as true
+        (Type::Float(_) | Type::Int(_), Type::Bool) => Some(Type::Bool),
+        _ => None,
+    }
 }
 
 // ---------------------------------------------------------------------------
