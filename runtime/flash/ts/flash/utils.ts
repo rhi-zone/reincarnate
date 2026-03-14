@@ -240,7 +240,7 @@ export function describeType(value: unknown): unknown {
           || name === "arguments" || name === "caller" || name === QN_KEY.toString()) continue;
       if (typeof name === "symbol") continue;
       if (registeredNames.has(name)) continue;
-      if (typeof (value as Record<string, unknown>)[name] === "function") {
+      if (typeof (value as unknown as Record<string, unknown>)[name] === "function") {
         methods.push(traitNode(name));
       } else {
         constants.push(traitNode(name));

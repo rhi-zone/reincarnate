@@ -2424,12 +2424,20 @@ documented design decision about why `unknown` + narrowing is genuinely unworkab
   use `Map<number, ImageBitmap>` to eliminate the cast
 - [ ] `(tc as any).width` / `(sheet as any).width` → use a type guard or explicit union
 
-**GML `runtime.ts` — inference gaps:**
-- [ ] `fontLookups: Map<number, any>[]` → define `FontCharacter` interface and use throughout
-- [ ] `(inst as any)[field]` at reflection sites →
-  `(inst as unknown as Record<string, unknown>)[field]`; casting through `unknown` first is explicit
-- [ ] `(obj as any)[id]()` for event dispatch → typed event dispatch table
-  `Map<number, (self: GMLObject) => void>`
+**GML `draw.ts` / `runtime.ts` — fixed in 00dffe5 / 34f5824:**
+- [x] `fontLookups: Map<number, any>[]` → `Map<number, FontGlyph>` (`FontGlyph` interface defined)
+- [x] `colorFontCache: ImageBitmap[][]` → `Map<number, ImageBitmap>[]`
+- [x] `(inst as any)[field]` → `(inst as unknown as Record<string, unknown>)[field]` (internal casts)
+- [x] `(obj as any)[id]()` event dispatch → typed intermediate variable
+
+**GML `runtime.ts` `getInstanceField`/`getAllField` — blocked on emitter:**
+- [ ] `getInstanceField(cls, field): any` → should be `getInstanceField<T = unknown>(cls, field): T`
+  Requires the GML backend emitter to generate `rt.getInstanceField<FieldType>(cls, field)`
+  or `rt.getInstanceField(cls, field) as FieldType` at each call site, using the IR type
+  of the assigned value. Without this, changing to `unknown` causes ~1110 TS18046 in
+  emitted Dead Estate code (every `const x = rt.getInstanceField(...)` → `x.field` fails).
+  Current state: returns `any` with a TODO comment; internal implementation uses `Record<string, unknown>`.
+- [ ] `getAllField(field): any` — same emitter gap.
 
 **GML `instance.ts`:**
 - [ ] `getInstanceField(…): any`, `setInstanceField(…, value: any)` → `unknown`
