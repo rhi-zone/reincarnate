@@ -86,10 +86,17 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 
 **Design phase complete** (2026-03-04 through 2026-03-04 follow-up). Canonical interface for all concerns is now in `architecture.md`: Timing, Input, Persistence, Images, Graphics 2D, Graphics 3D, Audio, Window, Clipboard, Network. Three audit rounds (consistency, gaps, devil's advocate × 2) applied.
 
-**Implementation complete** (2026-03-04). Both runtimes updated:
-- GML: all six platform concerns rewritten to canonical API; shims updated (requestFrame, per-sound loadAudio, bufferDuration, codeToGmlKeyCode)
-- Flash: all six platform concern modules added to `runtime/flash/ts/shared/platform/`; audio aligned (bufferDuration, onVoiceEnd, groups, lazy init); shims converted to classes in `FlashShims` container; `initFlash(canvas)` replaces hardcoded `document.getElementById` at import time
-- Flash emitter now threads `FlashShims` through all class constructors (2026-03-04): `_shims` param on every constructor, generic shim system calls rewritten to `this._shims.<system>.<method>()`, `Flash.Object.construct` injects `this._shims`, `Flash.Class.constructSuper` injects `_shims`; backward-compat `export let` bindings and `initFlash()` removed from `runtime/flash/ts/index.ts`
+**Implementation incomplete** (marked complete 2026-03-04, audit 2026-03-15 found extensive bypasses).
+
+GML runtime (`runtime.ts`, `draw.ts`, `storage.ts`) extensively bypasses platform abstractions:
+- [ ] **localStorage** (15+ sites) — `ini_open/close`, `file_text_*`, `buffer_load/save`, `ds_map_secure_save`, steam stats — should use `platform/persistence.ts` OPFS-backed `PersistenceState`
+- [ ] **document/window** (20+ sites) — `document.createElement`, `window.innerWidth/innerHeight`, `document.title`, `document.fullscreenElement`, `window.open`, `window.close`, `navigator.clipboard` — violates Law 5 (Instantiability), two game instances on one page would collide
+- [ ] **navigator.getGamepads()** (6+ sites) — duplicates `platform/input.ts` gamepad API
+- [ ] **Canvas2D** (57 sites) — `this._gfx.ctx` raw `CanvasRenderingContext2D` access instead of platform `GraphicsState` handle-based API
+- [ ] **fetch/Image** — `loadImage()` module-level function uses bare `new Image()` instead of `platform/images.ts` `loadImageUrl`
+- [ ] **performance.now()** (3 sites in `_runFrame`) — should use `platform/timing.ts` `currentTimeMs()`
+
+Flash runtime: platform threading via `FlashShims` was completed correctly.
 
 ---
 
@@ -1079,7 +1086,7 @@ Audit all `throw Error("X: not yet implemented")` stubs in the GML runtime. For 
 - **Tiles** — `tile_*`, `tilemap_*`. Needs tile layer rendering system.
 - **Paths** — `path_*`. Needs path point/interpolation system.
 - **Timelines** — `timeline_*`. Needs timeline moment scheduling.
-- **Steam API** — `steam_*`. Needs platform-specific integration strategy (stub vs skip).
+- **Steam API** — `steam_*`. **~50 functions silently return falsy values** (`0`, `false`, `""`, `[]`) instead of throwing. Introduced in `0cdb548` and `2b0e170`. This violates "implement fully or throw — never stub silently." These silent stubs hide missing functionality and produce incorrect behavior in games that check Steam state. Fix: revert to `throw new Error("steam_*: not yet implemented")` for all functions that aren't backed by real persistence (the `steam_file_*` and `steam_get/set_stat_*` persistence-backed ones are OK). Long-term: proper extension/adapter interface where browser adapter returns appropriate no-op values *opt-in*, not by default.
 - **OS/Platform** — `os_*`, `file_*`, `ini_*`, `directory_*`. Needs platform abstraction (browser vs native).
 - **3D / Primitives** — `d3d_*`, `vertex_*`, `matrix_*`. Needs WebGL 3D pipeline.
 
