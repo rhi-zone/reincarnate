@@ -1,143 +1,95 @@
 # CLAUDE.md
 
-Behavioral rules for Claude Code in this repository.
+## Goal
 
-## Overview
+Reincarnate is a decompiler that produces working, type-safe, maintainable code from legacy game binaries. The emitted code (TypeScript, Rust, etc.) is the artifact — it compiles, runs, and is as editable as any normal codebase.
 
-Reincarnate is a **decompiler that produces working, type-safe, maintainable code** from legacy game binaries (Flash, Director, VB6, HyperCard, RPG Maker, GameMaker, etc.). The emitted TypeScript (or Rust) is the artifact — it compiles, runs, and is as editable as any normal codebase. See `docs/architecture.md` and [ADR 003](docs/adr/003-project-identity-and-mod-surface.md) for design rationale.
+**Design target:** arbitrary source languages, arbitrary target languages, zero coupling between them, state-of-the-art type inference and static analysis, high-quality codebase architecture. Every decision is evaluated against this bar.
 
 **Never suggest bundling an existing interpreter.** inkjs, Parchment, renpyweb, libqsp-WASM produce running games but not emitted code. Note them as "quick deploy" alternatives — not the goal.
 
-**The emitted TypeScript is the mod surface.** If someone wants to mod a lifted game, they edit the output. No IR mutation API is needed for this. Lift once, edit the TypeScript, forward-port via cherry-pick if the upstream game updates.
+**The emitted code is the mod surface.** Lift once, edit the output, forward-port via cherry-pick if the upstream game updates. No IR mutation API needed.
+
+## Quality
+
+**Sloppiness is not excusable.** There is no pressure, deadline, or metric that justifies a sloppy fix. The most common form of sloppiness in this codebase is treating TypeScript error counts as a goal — they are not. A change that reduces errors by widening a type, silencing a diagnostic, or guessing at correct behavior is a regression. The only valid reason to make a change is that it is correct.
+
+**The delta between "compiles" and "correct" lives in TODO.md.** Every known gap, unverified assumption, silent limitation, and unimplemented behavior must be tracked there. Not adding a TODO entry is an implicit claim of correctness. Growing TODO.md as scope grows is fine; gaps missing from TODO.md are not.
+
+**Implement fully or throw — never stub silently.** `throw Error("name: not yet implemented")` is always correct when a function isn't implemented. Silent returns (`0`, `""`, `false`, `null`, `{}`) hide missing functionality. If a function needs design work first, add it to TODO.md and throw.
+
+**Look up the spec; don't guess from call sites.** GML: docs.yoyogames.com (source: github.com/YoYoGames/GameMaker-Manual). Flash: AS3 API reference. A decompiled call site may be wrong; the spec is authoritative.
+
+**Fix the real problem.** A workaround avoids fixing the actual cause. Narrow guards on symptoms indicate wrong core logic. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both in TODO.md and leave the code unchanged.
+
+**Conversation is not memory.** Write behavior changes to CLAUDE.md or a memory file immediately. A statement made only in conversation evaporates at session end. Any correction → update CLAUDE.md now.
+
+**Good tooling is a high priority.** When a task is tedious and error-prone, automate it.
 
 ## Fundamental Laws
 
 These are invariant. When a violation appears, adjust the law — don't add a corollary.
 
-**1. Pipeline Stage Isolation.** The IR is the only channel between pipeline stages. Everything a backend needs — types, constants, class registries, control flow — must be in the IR. Side channels (metadata fields, raw source blobs in `AssetCatalog`, engine-specific callbacks) mean the IR is incomplete. Extend the IR; don't route around it.
+**1. Pipeline Stage Isolation.** The IR is the only channel between pipeline stages. Everything a backend needs must be in the IR. Side channels mean the IR is incomplete — extend it; don't route around it.
 
-**2. Engine Specificity at Boundaries.** Engine-specific knowledge belongs only in the stage that interfaces with that engine. Frontends know the source engine. Backends know the target language. Core (IR, transforms) knows neither. If core contains logic that only one engine needs, that logic is in the wrong place.
+**2. Engine Specificity at Boundaries.** Frontends know the source engine. Backends know the target language. Core (IR, transforms) knows neither. Engine-specific logic in core is in the wrong place.
 
-**3. Behavioral Equivalence.** Emitted code produces identical observable output for any input. This includes preserving source-language bugs — if GML uses `|` where `||` was intended, the emitted code uses `|`. Never add special-case guards to "fix" source bugs. The only exception: if the fidelity gap stems from our type inference being wrong, fix the inference.
+**3. Behavioral Equivalence.** Emitted code produces identical observable output for any input. Preserve source-language bugs. Never add guards to "fix" source bugs — fix the inference instead.
 
-**4. Honest Representation.** IR types reflect source-language semantics, not VM storage format. A GML boolean is `Bool`, not `Float`. A GML object is its class type, not a numeric ID. Source-level semantic violations (wrong operator, wrong type) surface as target-language type errors — that is correct behavior. When a type error appears in emitted code, ask *why is the type wrong?* — the answer is one of: (a) game-author bug, leave it; (b) our inference is wrong, fix the inference; (c) the emitter reads a stale type (use `value_types[v]`), fix it. The distinction between "acceptable fix" and "suppression": a fix is acceptable when it makes the emitted code more faithful to source semantics (e.g. inserting `Cast(Bool→Float)` when GML treats bool as number in arithmetic — this IS the right representation); a suppression is a workaround that hides a diagnostic without improving accuracy (e.g. widening a type to `any` to silence an error that reflects a real type mismatch). When in doubt: does the change make the output more accurate, or just less noisy?
+**4. Honest Representation.** IR types reflect source-language semantics, not VM storage format. A GML boolean is `Bool`, not `Float`. Source-level type violations surface as target-language type errors — that is correct behavior.
 
-**`Dynamic` is a type inference failure, not a valid result.** Every value in the source program has a concrete type — the source language's runtime knows it, and so should we. `Dynamic` in the IR means our inference wasn't good enough. TypeScript is not the only backend; `Dynamic` maps to `Box<dyn Any>` in Rust (runtime cost, no safety) or worse. Never treat `Dynamic` as acceptable — always ask what the real type is and fix the inference to recover it. The same applies to `any` in emitted TypeScript and runtime code: it is never acceptable. Use specific types, `unknown`, union types, or generics. Existing `any`/`Dynamic` is tech debt, not a pattern.
+- **`Dynamic` is a type inference failure.** Every value has a concrete type. `Dynamic` in the IR means inference wasn't good enough. `any` in emitted TypeScript or runtime code is never acceptable — use specific types, `unknown`, union types, or generics.
+- **Preserve integer vs float distinction.** Use `"int"` for indices, IDs, counts, flags, enum values; `"number"` for continuous values (coordinates, scales, angles). Matters for non-TS backends and the type checker.
 
-**Preserve integer vs float distinction.** GML's `Real` conflates integers and floats, but many functions semantically expect integers (array indices, resource IDs, enum constants, boolean flags). The IR distinguishes `Int(32)` from `Float(64)` — maintain this distinction in `runtime.json` function signatures. Use `"int"` for parameters that are indices, IDs, counts, flags, or enum values; use `"number"` for parameters that are continuous values (coordinates, scales, speeds, angles). This matters for backends with integer types (Rust) and for the type checker.
-
-**5. Instantiability.** All mutable runtime state lives on root runtime instances threaded through generated code. No module-level mutable variables. Multiple game instances must be able to coexist on one page.
-
-## Core Rule
-
-**Document before acting:**
-- Bugs/issues → fix or add to TODO.md
-- Design decisions → docs/ or code comments
-- Future work → TODO.md
-- Key insights → this file
-
-**Conversation is not memory.** If a statement implies future behavior change, write it to CLAUDE.md or a memory file immediately. A statement like "I won't do X again" made only in conversation evaporates at session end.
-
-**Every observed problem goes to TODO.md. No exceptions.** Code comments, commit messages, and conversation are not tracked items. If you write a `// TODO` in source code, open TODO.md next.
-
-**Any correction means update CLAUDE.md now.** Ask: what rule would have prevented this? A correction without a rule change will repeat. If corrected twice on the same topic, write a broader principle covering the entire class.
-
-**Do the work properly.** When asked to analyze X, actually read X — don't synthesize from conversation.
-
-## How to Think and Act
-
-**Good tooling is a high priority.** Build tools that make doing the right thing easy. Scripts that generate boilerplate, validators that catch mismatches at startup, CLI helpers that automate repetitive steps — these pay for themselves immediately by reducing friction and preventing mistakes. `RuntimeConfig::validate()` is one example: it catches `function_modules`/`function_signatures` mismatches at startup. A script that extracts TypeScript signatures into `runtime.json` entries is another. When a task is tedious and error-prone, automate it.
-
-These principles govern judgment. Individual rules follow from them.
-
-- **Fix the real problem.** A workaround is any change that avoids fixing the actual cause. "Special handling in the emitter" is a workaround; "fix the pass that produces wrong output" is a fix. A narrow guard added to one case often means the pass's core logic is wrong — fix the assumption, not the symptom. Use `git blame` to check for accumulated guards; that pattern indicates a design gap. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both layers in TODO.md and leave the code unchanged. The test: does the change make the system more correct, or hide that the system is wrong?
-- **Effort is not an objection; design is.** The right fix touches however many files it touches. "That's a large refactor" is never a valid objection — "that's the wrong design" is. Never optimize for ease of implementation or add complexity for its own sake. The axis of quality is correctness, not simplicity or scope.
-- **Friction is information.** When a fix is awkward, the awkwardness reveals a design problem. A type that's `Vec<(String, Type, Option<Constant>, bool)>` instead of a struct, or engine-specific logic in engine-agnostic code, is a bug — not a constraint to work within. Ask *what is wrong with the design that makes this hard?* Fix that, or document it.
-- **Question existing code.** Code from last session is not more trustworthy than code from a stranger. Before building on an abstraction, ask whether it's correct. "It already works this way" is not evidence that it should.
-- **Implement fully.** Test projects are examples, not the spec — fix the entire class, not just the case that blew up. Check all pipeline stages before closing a task. Every API method belongs in the runtime.
-- **Verify before stating.** Don't assert API behavior or codebase facts without checking. Check what the original engine actually does. If no authoritative source exists, record the assumption in TODO.md.
-- **Look up the spec, don't guess from call sites.** When adding or fixing a runtime function signature, check the engine's official documentation first. GML has a comprehensive online reference (docs.yoyogames.com). Flash has the AS3 API reference. Never infer parameter counts or types solely from how decompiled code calls a function — the decompiled call site may be wrong, and the spec is authoritative.
-- **Write regression tests for reproducible compiler bugs.** Assert correct externally-observable behavior — not implementation details. If the correct assertion fails, mark `#[ignore = "known bug: ..."]` and add to TODO.md; never adjust the assertion to match broken behavior.
-- **Implement fully or throw — never stub silently.** When adding a runtime function: implement it completely, OR `throw Error("name: not yet implemented")` + add a TODO.md entry. Silent returns (`0`, `""`, `false`, `null`, `{}`) are always wrong — they hide missing functionality and produce incorrect behavior. If a function requires design work before it can be implemented (e.g. needs a new subsystem like particles, surfaces, or networking), categorize it in TODO.md under the appropriate system heading so the design dependency is visible. Never write a throw-stub for something you could implement in the same session.
-- **Don't hand-roll what a library does.** JS identifier validity → `unicode_ident::is_xid_start`/`is_xid_continue` (plus `$`); JS string escaping → `serde_json::to_string`.
-- **Before removing a mechanism, read why it was added.**
-- **Correctness over error counts.** Reducing TS error counts is not the goal — producing correct, type-safe code is. A change that silences 20 errors by widening types to `any` or `Dynamic` is a regression, not progress. Every change must be evaluated: does this make the output more correct, or just quieter? If unsure, don't make the change.
-- **Velocity without verification is reckless.** High commit rate means nothing if the commits aren't correct. Before making a change, understand what the correct behavior is. After making a change, verify it produces the right output — not just fewer errors. When in doubt about a change's correctness, don't commit it; document the question in TODO.md instead.
+**5. Instantiability.** All mutable runtime state lives on root runtime instances. No module-level mutable variables. Multiple game instances must coexist on one page.
 
 ## Workflow
 
-**Batch cargo commands** to minimize round-trips:
+**Batch cargo commands:**
 ```bash
 cargo clippy --all-targets --all-features -- -D warnings && cargo test -- --include-ignored
 ```
-Always pass `--include-ignored`. After editing multiple files, run the full check once — not after each edit.
+Always pass `--include-ignored`. Edit all files first, then build once.
 
-**When making the same change across multiple crates**, edit all files first, then build once.
+**Commit after every phase.** Each commit = one logical unit of progress. Conventional commits: `type(scope): message`. Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
 
-**Minimize file churn.** Read once, plan all changes, apply in one pass.
+**Use `bun`** for JavaScript/TypeScript scripting tasks.
 
-**Commit after every phase.** Each commit = one logical unit of progress. No exceptions.
+**Use subagents** for research tasks, >5 files, or >3 grep rounds.
 
-**Use `bun`** for JavaScript/TypeScript scripting tasks instead of `node` or `python3`.
+**Session handoff:** plan mode → short plan pointing at TODO.md → update memory files → ExitPlanMode.
 
-**Use subagents to protect the main context window.** Research tasks, >5 files, >3 grep rounds → subagent. Single targeted lookup → inline is fine.
+**Adversarial audits:** periodically audit for suppressions, workarounds, and silent stubs.
+1. Commit-diff: `git log --oneline --since="2 weeks ago"`, batch ~60 commits per haiku agent, flag violations.
+2. Conversation-log: `~/git/rhizone/normalize/target/debug/normalize sessions messages --days 14 --role assistant --limit 0`, split into ~700-line batches, flag suppression patterns.
 
-## Adversarial Audits
+## Constraints
 
-Periodically audit recent work for suppressions, workarounds, and silent stubs. Two complementary methods:
-
-1. **Commit-diff audit**: `git log --oneline --since="2 weeks ago"`, batch ~60 commits per haiku agent, each reads diffs with `git show <hash>` and flags violations.
-2. **Conversation-log audit**: `~/git/rhizone/normalize/target/debug/normalize sessions messages --days 14 --role assistant --limit 0`, split output into ~700-line batches, dispatch to haiku agents looking for suppression patterns in assistant reasoning ("widening to any", "casting to suppress", "silences the error").
-
-The conversation-log audit catches things invisible in diffs: proposed-then-reverted approaches that survived in adjacent code, self-corrections that didn't propagate, and explicit admissions of suppression.
-
-Record findings as checklist items in TODO.md under "Adversarial Commit/Conversation-log Audit".
-
-## Session Handoff
-
-Use plan mode as a handoff when a task is complete, the session has drifted, or context is heavy. Write a short plan pointing at TODO.md and ExitPlanMode — **do not investigate first**. Update TODO.md and memory files before handing off.
-
-## Commit Convention
-
-Conventional commits: `type(scope): message`. Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
-
-## Negative Constraints
-
-Do not:
-- Announce actions ("I will now...") — just do them
-- Add to the monolith — split by domain into sub-crates
-- Use path dependencies in Cargo.toml — causes clippy to stash changes across repos
-- Use `--no-verify` — fix the issue or fix the hook
-- Use interactive git commands (`git rebase -i`, `git add -i`, `git add -p`) — they hang waiting for stdin. Stage files by name: `git add <file1> <file2>`.
-- Use DOM data attributes as a state-passing mechanism
-- **Widen runtime types to match wrong emitter output.** If emitted code passes `number` where the runtime declares `boolean`, the emitter is wrong — fix the type inference (e.g. ensure `function_signatures` has correct param types so `IntToBoolPromotion` can promote constants). Widening runtime types is a suppression that hides the real problem.
-- **Add `function_modules` entries without corresponding `function_signatures` entries.** Every function registered in `function_modules` must also have param/return types in `function_signatures` so the type inference pipeline can do its job.
-- **Use `any` in emitted TypeScript or runtime code.** `any` is unacceptable — it defeats the purpose of type-safe emitted code. Use specific types, generics, `unknown`, or union types instead. Where GML or Flash semantics require dynamic dispatch, express it with the narrowest type that captures the actual usage. Existing `any` is tech debt to be eliminated, not a pattern to follow.
+- No engine-specific logic in `reincarnate-core`
+- No path dependencies in Cargo.toml
+- No `--no-verify`
+- No interactive git commands (`git rebase -i`, `git add -i`, `git add -p`) — stage by name
+- No DOM data attributes as state-passing mechanism
+- No `function_modules` entry without a corresponding `function_signatures` entry
+- No widening runtime types to match wrong emitter output — fix the inference
+- No `any` in emitted TypeScript or runtime code
 
 ## Crate Structure
 
 All crates use the `reincarnate-` prefix:
 - `reincarnate-core` — Core types and traits
-- `reincarnate-cli` — CLI binary (named `reincarnate`)
-- `reincarnate-frontend-flash` — Flash/SWF frontend (in `crates/frontends/`)
-- `reincarnate-frontend-gamemaker` — GML/GameMaker frontend (in `crates/frontends/`)
-- etc.
+- `reincarnate-cli` — CLI binary (`reincarnate`)
+- `reincarnate-frontend-flash` — Flash/SWF (in `crates/frontends/`)
+- `reincarnate-frontend-gamemaker` — GML/GameMaker (in `crates/frontends/`)
 
-## CLI Usage
-
-Run via cargo from the repo root:
+## CLI
 
 ```bash
-# Full pipeline: extract → IR → transform → emit TypeScript
 cargo run -p reincarnate-cli -- emit --manifest ~/reincarnate/<engine>/<game>/reincarnate.json
-
-# Check TypeScript output (error counts + summary):
 cargo run -p reincarnate-cli -- check --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json
-
-# Print human-readable IR:
 cargo run -p reincarnate-cli -- print-ir <ir-json-file>
 ```
 
 Debug flags on `emit`: `--dump-ir`, `--dump-ast`, `--dump-function <pattern>`, `--dump-ir-after <pass>`.
 
-Additional subcommands: `list-functions`, `disasm`, `stress`.
+Subcommands: `list-functions`, `disasm`, `stress`.
