@@ -36,4 +36,6 @@ export function string_trim(s: string, chars?: string[]): string {
 
 export function string_hash_to_newline(s: string): string { return s.replace(/#/g, "\n"); }
 
+export function string_ord_at(str: string, pos: number): number { return str.charCodeAt(pos - 1) || 0; }
+
 // GML's string() is just String() — emitted code calls String() directly.

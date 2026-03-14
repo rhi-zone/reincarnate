@@ -4790,6 +4790,192 @@ export class GameRuntime {
   background_add(_fname: string, _removeback: boolean, _smooth: boolean): number { throw new Error("background_add: not yet implemented"); }
   background_replace(_bg: number, _fname: string, _removeback: boolean, _smooth: boolean): void { throw new Error("background_replace: not yet implemented"); }
 
+  // ---- Audio (GMS1 legacy + 3D) ----
+  sound_isplaying(snd: number): boolean { return this.audio_is_playing(snd); }
+  sound_stop(snd: number): void { this.audio_stop_sound(snd); }
+  sound_volume(_snd: number, _vol: number): void { /* no-op — legacy API, use audio_sound_gain */ }
+  audio_set_master_gain(_listenerIndex: number, _gain: number): void { /* no-op until audio system is implemented */ }
+  audio_group_get_gain(_groupId: number): number { return 1; }
+  audio_listener_position(_x: number, _y: number, _z: number): void { /* no-op — 3D audio not supported in 2D canvas */ }
+  audio_listener_orientation(_lookat_x: number, _lookat_y: number, _lookat_z: number, _up_x: number, _up_y: number, _up_z: number): void { /* no-op */ }
+  audio_falloff_set_model(_model: number): void { /* no-op */ }
+
+  // ---- Draw ----
+  draw_enable_drawevent(_enable: boolean): void { /* no-op */ }
+  draw_set_alpha_test(_enable: boolean): void { /* no-op — canvas 2D doesn't support alpha test */ }
+  draw_set_alpha_test_ref_value(_val: number): void { /* no-op */ }
+
+  // ---- Display/OS ----
+  display_set_gui_maximise(_xscale: number, _yscale: number, _xoffset: number, _yoffset: number): void { /* no-op */ }
+  display_set_windows_alternate_sync(_enable: boolean): void { /* no-op */ }
+  os_is_network_connected(): boolean { return navigator.onLine; }
+  os_get_info(): any { return {}; }
+
+  // ---- Input ----
+  keyboard_set_map(_key1: number, _key2: number): void { /* no-op */ }
+  gamepad_set_button_threshold(_device: number, _threshold: number): void { /* no-op */ }
+
+  // ---- Data structures ----
+  ds_map_empty(map: number): boolean { const m = this._dsMaps.get(map); return !m || m.size === 0; }
+  ds_map_copy(dest: number, src: number): void {
+    const s = this._dsMaps.get(src);
+    const d = this._dsMaps.get(dest);
+    if (s && d) { d.clear(); for (const [k, v] of s) d.set(k, v); }
+  }
+  ds_grid_add_grid_region(id: number, src: number, x1: number, y1: number, x2: number, y2: number, xpos: number, ypos: number): void {
+    const g = this._dsGrids.get(id);
+    const s = this._dsGrids.get(src);
+    if (!g || !s) return;
+    for (let yy = y1; yy <= y2; yy++) for (let xx = x1; xx <= x2; xx++) {
+      const dx = xpos + (xx - x1), dy = ypos + (yy - y1);
+      if (dx >= 0 && dx < g.w && dy >= 0 && dy < g.h && xx >= 0 && xx < s.w && yy >= 0 && yy < s.h) {
+        g.data[dy * g.w + dx] = (g.data[dy * g.w + dx] || 0) + (s.data[yy * s.w + xx] || 0);
+      }
+    }
+  }
+  ds_priority_delete_min(id: number): any {
+    const m = this._dsMaps.get(id);
+    if (!m || m.size === 0) return undefined;
+    let worst: any, worstPri = Infinity;
+    for (const [k, v] of m) { if (v < worstPri) { worstPri = v; worst = k; } }
+    m.delete(worst);
+    return worst;
+  }
+  mp_grid_add_cell(id: number, x: number, y: number): void {
+    const g = this._mpGrids.get(id);
+    if (g && x >= 0 && x < g.hcells && y >= 0 && y < g.vcells) g.blocked[y * g.hcells + x] = 1;
+  }
+  mp_grid_to_ds_grid(_mpId: number, _dsId: number): void { throw new Error("mp_grid_to_ds_grid: not yet implemented"); }
+
+  // ---- Date/Time ----
+  date_second_span(date1: number, date2: number): number { return (date2 - date1) * 86400; }
+  date_datetime_string(date: number): string { return new Date(Math.round((date - 25569) * 86400000)).toLocaleString(); }
+  get_timer(): number { return Math.floor(performance.now() * 1000); }
+
+  // ---- Tiles (GMS1) ----
+  tile_set_blend(_tile: number, _col: number): void { /* no-op */ }
+
+  // ---- Particles ----
+  part_type_colour1(pt: number, col: number): void { this.part_type_color1(pt, col); }
+  part_type_blend(_pt: number, _additive: boolean): void { /* no-op — blend mode for particles not implemented */ }
+  part_particles_count(_ps: number, _pt: number): number { return 0; }
+  effect_create_above(_kind: number, _x: number, _y: number, _size: number, _color: number): void { /* no-op — effect system not implemented */ }
+  effect_create_below(_kind: number, _x: number, _y: number, _size: number, _color: number): void { /* no-op — effect system not implemented */ }
+
+  // ---- Layer system (GMS2) ----
+  layer_create(_depth: number, _name?: string): number { return _depth; }
+  layer_destroy(_layerId: number): void { /* no-op */ }
+  layer_force_draw_depth(_force: boolean, _depth: number): void { /* no-op */ }
+  layer_sequence_x(_seqElId: number): number { return 0; }
+  layer_sequence_y(_seqElId: number): number { return 0; }
+  layer_sequence_pause(_seqElId: number): void { /* no-op */ }
+  layer_sequence_play(_seqElId: number): void { /* no-op */ }
+  layer_tilemap_get_id(layerId: number): number { return layerId; }
+
+  // ---- Tilemap (GMS2) ----
+  tilemap_set(_tilemapId: number, _data: number, _cellX: number, _cellY: number): void { /* no-op — tilemap editing not implemented */ }
+  tilemap_tileset(_tilemapId: number): number { return -1; }
+
+  // ---- Camera (GMS2) ----
+  camera_create(): number {
+    const id = this._nextCamId++;
+    this._cameras.set(id, { x: 0, y: 0, w: 1024, h: 768 });
+    return id;
+  }
+  camera_get_view_angle(_cam: number): number { return 0; }
+  camera_set_view_angle(_cam: number, _angle: number): void { /* no-op */ }
+  camera_get_view_border_x(_cam: number): number { return 32; }
+  camera_get_view_border_y(_cam: number): number { return 32; }
+  camera_set_view_border(_cam: number, _x: number, _y: number): void { /* no-op */ }
+  camera_get_view_speed_x(_cam: number): number { return -1; }
+  camera_get_view_speed_y(_cam: number): number { return -1; }
+  camera_set_view_speed(_cam: number, _x: number, _y: number): void { /* no-op */ }
+  camera_get_view_target(_cam: number): number { return -4; }
+  camera_set_view_target(_cam: number, _target: any): void { /* no-op */ }
+
+  // ---- View (GMS1 legacy) ----
+  view_get_wport(_view: number): number { return this._gfx?.canvas?.width ?? 1024; }
+  view_get_hport(_view: number): number { return this._gfx?.canvas?.height ?? 768; }
+  view_get_xport(_view: number): number { return 0; }
+  view_get_yport(_view: number): number { return 0; }
+  view_set_xport(_view: number, _val: number): void { /* no-op */ }
+  view_set_yport(_view: number, _val: number): void { /* no-op */ }
+  view_get_visible(view: number): boolean { return view === 0; }
+  view_get_surface_id(_view: number): number { return -1; }
+
+  // ---- GPU ----
+  gpu_get_tex_filter(): boolean { return false; }
+  gpu_set_tex_filter(_linear: boolean): void { /* no-op */ }
+
+  // ---- Matrix ----
+  matrix_get(_type: number): any[] { return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; }
+
+  // ---- Script/Reflection ----
+  script_get_name(script: any): string { return typeof script === "function" ? (script.name || "unknown") : "unknown"; }
+
+  // ---- Font/Sprite ----
+  font_add_sprite(_spr: number, _first: number, _prop: boolean, _sep: number): number { throw new Error("font_add_sprite: not yet implemented"); }
+  font_get_info(_font: number): any { return {}; }
+  font_get_texture(_font: number): number { return -1; }
+  font_get_uvs(_font: number): number[] { return [0, 0, 1, 1]; }
+  sprite_get_info(_spr: number): any { return {}; }
+  sprite_get_speed_type(_spr: number): number { return 0; }
+
+  // ---- Array (GMS2) ----
+  array_pop(arr: any[]): any { return arr.pop(); }
+  array_shift(arr: any[]): any { return arr.shift(); }
+  array_unique(arr: any[]): any[] { return [...new Set(arr)]; }
+
+  // ---- Buffer ----
+  buffer_resize(buf: number, newSize: number): void {
+    const b = this._buffers.get(buf);
+    if (!b) return;
+    const nb = new Uint8Array(newSize);
+    nb.set(b.data.subarray(0, Math.min(b.data.length, newSize)));
+    b.data = nb;
+  }
+  buffer_get_surface(_buf: number, _surface: number, _offset: number): void { /* no-op — surface pixel readback not implemented */ }
+
+  // ---- Misc ----
+  url_open(url: string): void { window.open(url, "_blank"); }
+  window_has_focus(): boolean { return document.hasFocus(); }
+  file_copy(_src: string, _dest: string): void { throw new Error("file_copy: not yet implemented"); }
+
+  // ---- Skeleton/Spine ----
+  skeleton_skin_set(_skin: string): void { /* no-op — Spine not implemented */ }
+  skeleton_animation_set(_anim: string): void { /* no-op — Spine not implemented */ }
+  skeleton_animation_get(): string { return ""; }
+
+  // ---- GMS1 action functions ----
+  action_sound(snd: number, loop: boolean): void { this.audio_play_sound(snd, 0, loop); }
+  action_snap(_hsnap: number, _vsnap: number): void { /* no-op — snaps current instance to grid */ }
+  action_current_room(): number { return this.room; }
+
+  // ---- Platform stubs (PSN) ----
+  psn_get_leaderboard_score_range(_board: string, _start: number, _count: number): number { return -1; }
+  psn_get_leaderboard_score(_board: string): number { return 0; }
+  psn_get_friends_scores(_board: string): number { return -1; }
+  psn_np_status(): number { return 0; }
+  psn_net_check(): boolean { return false; }
+  psn_default_user(): number { return 0; }
+  psn_set_content_restriction(_age: number): void { /* no-op */ }
+  psn_post_leaderboard_score(_board: string, _score: number): void { /* no-op */ }
+  psn_name_for_user(_user: number): string { return ""; }
+  psn_load_modules(_slot: number): void { /* no-op */ }
+  psn_user_for_pad(_pad: number): number { return -1; }
+
+  // ---- Platform stubs (Xbox One) ----
+  xboxone_read_player_leaderboard(_stat: string, _start: number, _count: number, _filter: number, _userId: number): number { return -1; }
+  xboxone_show_account_picker(): void { /* no-op */ }
+  xboxone_show_profile_card_for_user(_userId: number): void { /* no-op */ }
+  xboxone_set_rich_presence(_presence: string): void { /* no-op */ }
+  xboxone_user_is_signed_in(_userId: number): boolean { return false; }
+  xboxone_suspend(): void { /* no-op */ }
+  xboxone_stats_setup(_userId: number): void { /* no-op */ }
+  xboxone_show_help(): void { /* no-op */ }
+  xboxone_set_savedata_user(_userId: number): void { /* no-op */ }
+  xboxone_is_suspending(): boolean { return false; }
+
 }
 
 // ---- Game config ----

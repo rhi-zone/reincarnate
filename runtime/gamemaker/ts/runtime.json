@@ -7056,6 +7056,767 @@
         "number"
       ],
       "returns": "string"
+    },
+    "sound_isplaying": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "sound_stop": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "sound_volume": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_set_master_gain": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_group_get_gain": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "audio_listener_position": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_listener_orientation": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_falloff_set_model": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_enable_drawevent": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_set_alpha_test": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_set_alpha_test_ref_value": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "display_set_gui_maximise": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "display_set_windows_alternate_sync": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "os_is_network_connected": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "os_get_info": {
+      "params": [],
+      "returns": "*"
+    },
+    "keyboard_set_map": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gamepad_set_button_threshold": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "instance_activate_region": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "ds_map_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_map_copy": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_add_grid_region": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_priority_delete_min": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "mp_grid_add_cell": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_to_ds_grid": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "date_second_span": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "date_datetime_string": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "get_timer": {
+      "params": [],
+      "returns": "number"
+    },
+    "tile_set_blend": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_colour1": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_blend": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_particles_count": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "effect_create_above": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "effect_create_below": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "layer_create": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "number"
+    },
+    "layer_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "layer_force_draw_depth": {
+      "params": [
+        "boolean",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "layer_sequence_x": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "layer_sequence_y": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "layer_sequence_pause": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "layer_sequence_play": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "layer_tilemap_get_id": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "tilemap_set": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tilemap_tileset": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_create": {
+      "params": [],
+      "returns": "number"
+    },
+    "camera_get_view_angle": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_set_view_angle": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "camera_get_view_border_x": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_get_view_border_y": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_set_view_border": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "camera_get_view_speed_x": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_get_view_speed_y": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_set_view_speed": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "camera_get_view_target": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_set_view_target": {
+      "params": [
+        "number",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "view_get_wport": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "view_get_hport": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "view_get_xport": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "view_get_yport": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "view_set_xport": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "view_set_yport": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "view_get_visible": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "view_get_surface_id": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "vertex_freeze": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "vertex_format_add_color": {
+      "params": [],
+      "returns": "void"
+    },
+    "vertex_format_add_colour": {
+      "params": [],
+      "returns": "void"
+    },
+    "vertex_format_add_texcoord": {
+      "params": [],
+      "returns": "void"
+    },
+    "vertex_format_add_normal": {
+      "params": [],
+      "returns": "void"
+    },
+    "vertex_format_add_custom": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "vertex_format_add_position": {
+      "params": [],
+      "returns": "void"
+    },
+    "vertex_format_add_position_3d": {
+      "params": [],
+      "returns": "void"
+    },
+    "gpu_get_tex_filter": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "gpu_set_tex_filter": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "matrix_get": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "dot_product": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "math_get_epsilon": {
+      "params": [],
+      "returns": "number"
+    },
+    "is_bool": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "string_ord_at": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "script_get_name": {
+      "params": [
+        "*"
+      ],
+      "returns": "string"
+    },
+    "font_add_sprite": {
+      "params": [
+        "number",
+        "number",
+        "boolean",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "font_get_info": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "font_get_texture": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "font_get_uvs": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "sprite_get_info": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "sprite_get_speed_type": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "array_pop": {
+      "params": [
+        "*"
+      ],
+      "returns": "*"
+    },
+    "array_shift": {
+      "params": [
+        "*"
+      ],
+      "returns": "*"
+    },
+    "array_unique": {
+      "params": [
+        "*"
+      ],
+      "returns": "*"
+    },
+    "buffer_poke": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "buffer_resize": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "buffer_get_surface": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "url_open": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "window_has_focus": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "file_copy": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "skeleton_skin_set": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "skeleton_animation_set": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "skeleton_animation_get": {
+      "params": [],
+      "returns": "string"
+    },
+    "action_sound": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "action_snap": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_current_room": {
+      "params": [],
+      "returns": "number"
+    },
+    "psn_get_leaderboard_score_range": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "psn_get_leaderboard_score": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "psn_get_friends_scores": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "psn_np_status": {
+      "params": [],
+      "returns": "number"
+    },
+    "psn_net_check": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "psn_default_user": {
+      "params": [],
+      "returns": "number"
+    },
+    "psn_set_content_restriction": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "psn_post_leaderboard_score": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "psn_name_for_user": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "psn_load_modules": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "psn_user_for_pad": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "xboxone_read_player_leaderboard": {
+      "params": [
+        "string",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "xboxone_show_account_picker": {
+      "params": [],
+      "returns": "void"
+    },
+    "xboxone_show_profile_card_for_user": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "xboxone_set_rich_presence": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "xboxone_user_is_signed_in": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "xboxone_suspend": {
+      "params": [],
+      "returns": "void"
+    },
+    "xboxone_stats_setup": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "xboxone_show_help": {
+      "params": [],
+      "returns": "void"
+    },
+    "xboxone_set_savedata_user": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "xboxone_is_suspending": {
+      "params": [],
+      "returns": "boolean"
     }
   },
   "function_modules": [
@@ -7103,7 +7864,10 @@
         "int",
         "uint",
         "real",
-        "string"
+        "string",
+        "dot_product",
+        "math_get_epsilon",
+        "is_bool"
       ],
       "path": "gamemaker/math"
     },
@@ -7133,7 +7897,8 @@
         "string_delete",
         "string_count",
         "string_hash_to_newline",
-        "string_trim"
+        "string_trim",
+        "string_ord_at"
       ],
       "path": "gamemaker/string"
     },
@@ -8100,7 +8865,124 @@
         "d3d_model_save",
         "ptr",
         "achievement_load_leaderboard",
-        "xboxone_gamedisplayname_for_user"
+        "xboxone_gamedisplayname_for_user",
+        "sound_isplaying",
+        "sound_stop",
+        "sound_volume",
+        "audio_set_master_gain",
+        "audio_group_get_gain",
+        "audio_listener_position",
+        "audio_listener_orientation",
+        "audio_falloff_set_model",
+        "draw_enable_drawevent",
+        "draw_set_alpha_test",
+        "draw_set_alpha_test_ref_value",
+        "display_set_gui_maximise",
+        "display_set_windows_alternate_sync",
+        "os_is_network_connected",
+        "os_get_info",
+        "keyboard_set_map",
+        "gamepad_set_button_threshold",
+        "instance_activate_region",
+        "ds_map_empty",
+        "ds_map_copy",
+        "ds_grid_add_grid_region",
+        "ds_priority_delete_min",
+        "mp_grid_add_cell",
+        "mp_grid_to_ds_grid",
+        "mp_grid_destroy",
+        "date_second_span",
+        "date_datetime_string",
+        "get_timer",
+        "tile_set_blend",
+        "part_type_colour1",
+        "part_type_blend",
+        "part_particles_count",
+        "effect_create_above",
+        "effect_create_below",
+        "layer_create",
+        "layer_destroy",
+        "layer_force_draw_depth",
+        "layer_sequence_x",
+        "layer_sequence_y",
+        "layer_sequence_pause",
+        "layer_sequence_play",
+        "layer_tilemap_get_id",
+        "tilemap_set",
+        "tilemap_tileset",
+        "camera_create",
+        "camera_get_view_angle",
+        "camera_set_view_angle",
+        "camera_get_view_border_x",
+        "camera_get_view_border_y",
+        "camera_set_view_border",
+        "camera_get_view_speed_x",
+        "camera_get_view_speed_y",
+        "camera_set_view_speed",
+        "camera_get_view_target",
+        "camera_set_view_target",
+        "view_get_wport",
+        "view_get_hport",
+        "view_get_xport",
+        "view_get_yport",
+        "view_set_xport",
+        "view_set_yport",
+        "view_get_visible",
+        "view_get_surface_id",
+        "vertex_freeze",
+        "vertex_format_add_color",
+        "vertex_format_add_colour",
+        "vertex_format_add_texcoord",
+        "vertex_format_add_normal",
+        "vertex_format_add_custom",
+        "vertex_format_add_position",
+        "vertex_format_add_position_3d",
+        "gpu_get_tex_filter",
+        "gpu_set_tex_filter",
+        "matrix_get",
+        "script_get_name",
+        "font_add_sprite",
+        "font_get_info",
+        "font_get_texture",
+        "font_get_uvs",
+        "sprite_get_info",
+        "sprite_get_speed_type",
+        "array_pop",
+        "array_shift",
+        "array_unique",
+        "buffer_poke",
+        "buffer_resize",
+        "buffer_get_surface",
+        "url_open",
+        "window_has_focus",
+        "file_copy",
+        "skeleton_skin_set",
+        "skeleton_animation_set",
+        "skeleton_animation_get",
+        "action_sound",
+        "action_snap",
+        "action_current_room",
+        "psn_get_leaderboard_score_range",
+        "psn_get_leaderboard_score",
+        "psn_get_friends_scores",
+        "psn_np_status",
+        "psn_net_check",
+        "psn_default_user",
+        "psn_set_content_restriction",
+        "psn_post_leaderboard_score",
+        "psn_name_for_user",
+        "psn_load_modules",
+        "psn_user_for_pad",
+        "xboxone_read_player_leaderboard",
+        "xboxone_show_account_picker",
+        "xboxone_show_profile_card_for_user",
+        "xboxone_set_rich_presence",
+        "xboxone_user_is_signed_in",
+        "xboxone_suspend",
+        "xboxone_stats_setup",
+        "xboxone_show_help",
+        "xboxone_set_savedata_user",
+        "xboxone_is_suspending"
       ],
       "path": "gamemaker/runtime",
       "stateful": true
