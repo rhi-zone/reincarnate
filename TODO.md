@@ -1643,6 +1643,69 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 
 ---
 
+## GameMaker — Remaining TS Error Categories (compiler-level)
+
+After runtime function coverage is comprehensive, remaining errors fall into these categories.
+These need compiler/emitter/IR fixes, not runtime additions.
+
+### 1. GML auto-coercion (TS2345, TS2322) — ~140 errors across games
+GML silently coerces between types: `bool→number`, `number→string`, `string→number`,
+`GMLObject→number` (instance ID). The emitted TypeScript has strict types, so these produce
+TS2345 "argument not assignable" errors. Examples:
+- `audio_play_sound(snd, 0, true)` where `loop` param is typed `number` but GML passes `boolean`
+- `draw_text(x, y, 42)` where `text` param is typed `string` but GML passes a number
+- `instance_create(x, y, obj)` returns `GMLObject` but game assigns to `number` variable
+
+**Fix**: A `GmlAutoCoerce` IR pass that inserts `Number()`, `String()`, or `Boolean()` casts
+at call sites when the argument type doesn't match the parameter type. Must run after
+ConstraintSolve (needs final types). Different from `GmlBoolArithCoerce` which handles
+arithmetic operators, not call sites.
+
+### 2. Linearizer scoping bugs (TS2304 `v*` variables) — ~25 errors in Schism/MaxManos2
+Variables like `v17`, `v23`, `v48` appear as TS2304 "Cannot find name". These are SSA values
+that the linearizer placed in a scope where they're not visible at use sites. Root cause:
+variable declaration hoisted to first assignment, but used in a different block scope
+(e.g., for-loop header vs body, or across if/else branches).
+
+**Fix**: In `linear/resolve.rs` or `linear/emit.rs`, hoist variable declarations to the
+nearest common dominator of all uses, not just the first assignment.
+
+### 3. Instance ID as number (TS7053) — ~32 errors in Schism, ~2 in Dead Estate
+GML instance IDs are numbers that can be used to index into instance fields via
+`getInstanceField`. When type inference narrows a variable to `number` (from an instance ID
+return), using it as `arr[id]` produces TS7053 "can't index type Number".
+
+**Fix**: Track instance ID types separately from plain numbers. Requires either a dedicated
+`InstanceId` type in the IR or widening to `any` when a value flows through both
+instance-ID and number contexts.
+
+### 4. Duplicate identifiers (TS2300, TS1117) — ~4 errors in 12BetterThan6
+Object literal duplicate keys and duplicate variable names from name collisions in the
+emitter's sanitization pass.
+
+**Fix**: Audit `rename_shadowing_locals` in `emit/sanitize.rs` and object literal key
+dedup in `ast_passes`.
+
+### 5. Extension function auto-stubbing — ~56 errors in VA-11 HALL-A, ~4 in Schism
+Games with extension DLLs (FS_*, NSP_*) produce TS2304 for every extension function call.
+The extension metadata is in the data.win file (EXTN chunk) but we don't read it.
+
+**Fix**: Parse the EXTN chunk, extract function names and signatures, generate throw-stubs
+automatically. This would eliminate all extension-related TS2304 errors.
+
+### 6. Unresolved function pointers (TS2304 `func_ref_unknown_*`) — ~165 in Schism
+Obfuscated games have function references that can't be resolved to known functions.
+These are `func_ref_unknown_0x...` identifiers.
+
+**Fix**: Better function pointer resolution in the GML translator, or generate stub
+declarations for unresolved references.
+
+### 7. Read-only property assignment (TS2540) — 1 error in 12BetterThan6
+GML allows `room = next_room` to change rooms. Our `GMLObject.room` is a getter (read-only).
+Need a setter that delegates to `_rt.room_goto()`.
+
+---
+
 ## GameMaker — Runtime Platform Layer (HIGH PRIORITY)
 
 The GameMaker runtime has several major API families that need platform-layer implementations:

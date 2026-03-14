@@ -56,6 +56,7 @@ export class GMLObject {
 
   /** GML built-in global `room` — current room index from the runtime. */
   get room(): number { return this._rt.room; }
+  set room(val: number) { this._rt.room_goto(val); }
 
   /** GML built-in global `fps_real` — measured frames per second from the runtime. */
   get fps_real(): number { return this._rt.fps_real; }
