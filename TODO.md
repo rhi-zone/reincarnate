@@ -1672,16 +1672,12 @@ of emitting `Number(x)`.
 - **`Int(64)` cast emission gap**: `Cast(x, Int(64), Coerce)` in the IR fell through to the
   catch-all passthrough in `ast_printer.rs` (only `Float(_)` and `Int(32)` had explicit arms).
   Added `Int(64) → Number(x)` arm.
-- **ConstraintSolve back-propagation vs emitter types**: ConstraintSolve can narrow a
-  `get_field v0, "room"` result to `string` (from callee sig), but the emitter outputs
-  `this.room` which TypeScript knows as `number` from the class definition. The IR type and
-  TS type diverge. Fixed for `action_if_variable` by correcting its param type to `any`
-  (was `string` but actually receives the variable's VALUE, not its name). This is a general
-  problem: ConstraintSolve back-propagation can set IR types that disagree with what the
-  emitter actually outputs for class properties.
-- **`action_if_variable` runtime bug**: implementation was doing `this._self[name]` (property
-  lookup by name), but the translator passes the variable's VALUE directly. Fixed to do
-  direct `variable == value` comparison.
+- **`action_if_variable` translator bug**: GML spec says first param is the variable NAME
+  (string), and the runtime looks it up via `this._self[name]`. But the GML translator
+  emits the variable's VALUE (e.g. `action_if_variable(this.room, 3, 0)` instead of
+  `action_if_variable("room", 3, 0)`). The TS2345 errors are CORRECT — they surface the
+  translator bug. Fix belongs in the GML translator's DnD action handling, not the runtime.
+  ~26 errors in 10SecNinjaX from this root cause.
 
 ### 2. Linearizer scoping bugs (TS2304 `v*` variables) — ~25 errors in Schism/MaxManos2
 Variables like `v17`, `v23`, `v48` appear as TS2304 "Cannot find name". These are SSA values
@@ -1946,6 +1942,23 @@ Discovered via Bounty reference comparison (2026-02-22). Fixed 2026-02-22.
 
 All previously listed functions have been implemented. Check `function_modules`
 in runtime.json for any newly referenced but unimplemented functions.
+
+### Runtime Signature Verification Against GML Docs (HIGH PRIORITY)
+
+~200+ function signatures in `runtime.json` were added by guessing from decompiled call
+sites instead of checking the GML manual (manual.gamemaker.io). Multiple signatures are
+known to be wrong (e.g. `action_if_variable` translator passes value instead of name,
+`psn_*` and `xboxone_*` param counts were guessed). Need a systematic way to verify all
+signatures en masse.
+
+**Approach**: Script that extracts all function names from `runtime.json`, fetches the
+corresponding GML manual page, and compares param count/types. Flag discrepancies for
+manual review. Could use manual.gamemaker.io URL patterns:
+- `GameMaker_Language/GML_Reference/{category}/{function_name}.htm`
+- `Drag_And_Drop/Drag_And_Drop_Reference/{category}/{action_name}.htm`
+
+Platform functions (psn_*, xboxone_*, uwp_*) may not have public docs — flag those
+separately for manual triage.
 
 ## Eliminate `any` from Emitted Code and Runtime (HIGH PRIORITY)
 
