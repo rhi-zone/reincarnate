@@ -349,7 +349,7 @@ export class GameRuntime {
 
   // ---- Text drawing ----
 
-  draw_text(x: number, y: number, text: string): void {
+  draw_text(x: number, y: number, text: any): void {
     const ctx = this._gfx.ctx;
     const draw = this._draw;
     const font = this.fonts[draw.config.font];
@@ -415,7 +415,7 @@ export class GameRuntime {
     }
   }
 
-  draw_text_ext(x: number, y: number, text: string, sep: number, w: number): void {
+  draw_text_ext(x: number, y: number, text: any, sep: number, w: number): void {
     const old = this._draw.config.ext;
     this._draw.config.ext = { sep, w };
     this.draw_text(x, y, text);
@@ -423,7 +423,7 @@ export class GameRuntime {
   }
 
   draw_text_color(
-    x: number, y: number, text: string,
+    x: number, y: number, text: any,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
     const oldColor = this._draw.config.color;
@@ -436,7 +436,7 @@ export class GameRuntime {
   }
 
   draw_text_transformed(
-    x: number, y: number, text: string,
+    x: number, y: number, text: any,
     xscale: number, yscale: number, angle: number,
   ): void {
     const ctx = this._gfx.ctx;
@@ -449,7 +449,7 @@ export class GameRuntime {
   }
 
   draw_text_ext_color(
-    x: number, y: number, text: string, sep: number, w: number,
+    x: number, y: number, text: any, sep: number, w: number,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
     const oldColor = this._draw.config.color;
@@ -465,7 +465,7 @@ export class GameRuntime {
   }
 
   draw_text_ext_transformed(
-    x: number, y: number, text: string, sep: number, w: number,
+    x: number, y: number, text: any, sep: number, w: number,
     xscale: number, yscale: number, angle: number,
   ): void {
     const ctx = this._gfx.ctx;
@@ -481,7 +481,7 @@ export class GameRuntime {
   }
 
   draw_text_transformed_color(
-    x: number, y: number, text: string,
+    x: number, y: number, text: any,
     xscale: number, yscale: number, angle: number,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
@@ -501,7 +501,7 @@ export class GameRuntime {
   }
 
   draw_text_ext_transformed_color(
-    x: number, y: number, text: string, sep: number, w: number,
+    x: number, y: number, text: any, sep: number, w: number,
     xscale: number, yscale: number, angle: number,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
   ): void {
@@ -3846,7 +3846,7 @@ export class GameRuntime {
 
   /** Load trophy unlock state from storage into the in-memory set. */
   psn_init_np_libs(_titleId: string, _titleSecret: string, _passphrase: string): void { /* no-op — PSN not available in browser */ }
-  psn_setup_trophies(): void { /* no-op — PSN not available in browser; trophy init via psn_init_trophy */ }
+  psn_setup_trophies(): number { return 0; /* no-op — PSN not available in browser; trophy init via psn_init_trophy */ }
   psn_init_trophy(_pad_index: number, _count?: number): void {
     const gameName = this._storage.gameName;
     const raw = fetchItem(this._persistence, "__psn_trophy_" + gameName);
@@ -4300,7 +4300,7 @@ export class GameRuntime {
   action_another_room(room: number, transition: number): void {
     this.room_goto(room);
   }
-  action_previous_room(_transition: number): void {
+  action_previous_room(): void {
     this.room_goto_previous();
   }
   action_sleep(_ms: number): void {
