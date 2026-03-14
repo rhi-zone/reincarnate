@@ -4587,6 +4587,91 @@ export class GameRuntime {
     this._self.vspeed -= Math.sin(rad) * speed;
   }
 
+  // ---- DS grid extras ----
+  ds_grid_resize(grid: number, w: number, h: number): void {
+    const g = this._dsGrids.get(grid);
+    if (!g) return;
+    const newData = new Array(w * h).fill(0);
+    for (let y = 0; y < Math.min(g.h, h); y++)
+      for (let x = 0; x < Math.min(g.w, w); x++)
+        newData[y * w + x] = g.data[y * g.w + x];
+    g.w = w; g.h = h; g.data = newData;
+  }
+  ds_grid_set_region(grid: number, x1: number, y1: number, x2: number, y2: number, val: any): void {
+    const g = this._dsGrids.get(grid);
+    if (!g) return;
+    for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) g.data[y * g.w + x] = val;
+  }
+  ds_grid_set_grid_region(grid: number, src: number, x1: number, y1: number, x2: number, y2: number, xpos: number, ypos: number): void {
+    const g = this._dsGrids.get(grid);
+    const s = this._dsGrids.get(src);
+    if (!g || !s) return;
+    for (let dy = 0; dy <= y2 - y1; dy++)
+      for (let dx = 0; dx <= x2 - x1; dx++)
+        g.data[(ypos + dy) * g.w + (xpos + dx)] = s.data[(y1 + dy) * s.w + (x1 + dx)];
+  }
+  ds_grid_add_region(grid: number, x1: number, y1: number, x2: number, y2: number, val: any): void {
+    const g = this._dsGrids.get(grid);
+    if (!g) return;
+    for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) g.data[y * g.w + x] = (g.data[y * g.w + x] ?? 0) + val;
+  }
+  ds_grid_multiply_region(grid: number, x1: number, y1: number, x2: number, y2: number, val: any): void {
+    const g = this._dsGrids.get(grid);
+    if (!g) return;
+    for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) g.data[y * g.w + x] = (g.data[y * g.w + x] ?? 0) * val;
+  }
+  ds_grid_get_max(grid: number, x1: number, y1: number, x2: number, y2: number): number {
+    const g = this._dsGrids.get(grid);
+    if (!g) return 0;
+    let max = -Infinity;
+    for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) { const v = g.data[y * g.w + x] ?? 0; if (v > max) max = v; }
+    return max === -Infinity ? 0 : max;
+  }
+  ds_grid_get_min(grid: number, x1: number, y1: number, x2: number, y2: number): number {
+    const g = this._dsGrids.get(grid);
+    if (!g) return 0;
+    let min = Infinity;
+    for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) { const v = g.data[y * g.w + x] ?? 0; if (v < min) min = v; }
+    return min === Infinity ? 0 : min;
+  }
+  ds_grid_get_sum(grid: number, x1: number, y1: number, x2: number, y2: number): number {
+    const g = this._dsGrids.get(grid);
+    if (!g) return 0;
+    let sum = 0;
+    for (let y = y1; y <= y2; y++) for (let x = x1; x <= x2; x++) sum += g.data[y * g.w + x] ?? 0;
+    return sum;
+  }
+  ds_grid_copy(grid: number, src: number): void {
+    const s = this._dsGrids.get(src);
+    if (!s) return;
+    this._dsGrids.set(grid, { w: s.w, h: s.h, data: [...s.data] });
+  }
+
+  // ---- Asset type query ----
+  asset_get_type(name: string): number { return this.asset_get_index(name) >= 0 ? 0 : -1; }
+
+  // ---- Matrix extras ----
+  matrix_multiply(m1: any[], m2: any[]): any[] {
+    const r: number[] = new Array(16);
+    for (let i = 0; i < 4; i++)
+      for (let j = 0; j < 4; j++)
+        r[i * 4 + j] = m1[i * 4] * m2[j] + m1[i * 4 + 1] * m2[4 + j] + m1[i * 4 + 2] * m2[8 + j] + m1[i * 4 + 3] * m2[12 + j];
+    return r;
+  }
+
+  // ---- Action aliases ----
+  action_end_game(): void { this.game_end(); }
+  action_restart_game(): void { this.game_restart(); }
+
+  // ---- Surface/background save stubs ----
+  background_save(_bg: number, _fname: string): void { throw new Error("background_save: not yet implemented"); }
+  surface_save(_id: number, _fname: string): void { throw new Error("surface_save: not yet implemented"); }
+  surface_save_part(_id: number, _fname: string, _x: number, _y: number, _w: number, _h: number): void { throw new Error("surface_save_part: not yet implemented"); }
+  screen_save_part(_fname: string, _x: number, _y: number, _w: number, _h: number): void { throw new Error("screen_save_part: not yet implemented"); }
+  sprite_save_strip(_spr: number, _fname: string): void { throw new Error("sprite_save_strip: not yet implemented"); }
+  background_add(_fname: string, _removeback: boolean, _smooth: boolean): number { throw new Error("background_add: not yet implemented"); }
+  background_replace(_bg: number, _fname: string, _removeback: boolean, _smooth: boolean): void { throw new Error("background_replace: not yet implemented"); }
+
 }
 
 // ---- Game config ----

@@ -39,6 +39,18 @@ export function color_get_red(color: number): number { return color & 0xff; }
 export function color_get_green(color: number): number { return (color >> 8) & 0xff; }
 export function color_get_blue(color: number): number { return color >> 16; }
 
+export function colour_get_red(color: number): number { return color_get_red(color); }
+export function colour_get_green(color: number): number { return color_get_green(color); }
+export function colour_get_blue(color: number): number { return color_get_blue(color); }
+
+export function color_get_value(color: number): number {
+  const r = (color & 0xff) / 255;
+  const g = ((color >> 8) & 0xff) / 255;
+  const b = (color >> 16) / 255;
+  return Math.round(Math.max(r, g, b) * 255);
+}
+export function colour_get_value(color: number): number { return color_get_value(color); }
+
 export function make_color_rgb(r: number, g: number, b: number): number {
   return (b << 16) | (g << 8) | r;
 }
@@ -85,6 +97,9 @@ export function color_get_saturation(color: number): number {
   if (max === 0) return 0;
   return Math.round(((max - min) / max) * 255);
 }
+
+export function colour_get_hue(color: number): number { return color_get_hue(color); }
+export function colour_get_saturation(color: number): number { return color_get_saturation(color); }
 
 export function make_color_hsv(h: number, s: number, v: number): number {
   const hf = (h / 255) * 6;

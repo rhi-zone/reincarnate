@@ -258,6 +258,10 @@
       ],
       "returns": "void"
     },
+    "action_end_game": {
+      "params": [],
+      "returns": "void"
+    },
     "action_execute_script": {
       "params": [
         "number"
@@ -339,6 +343,10 @@
         "string",
         "number"
       ],
+      "returns": "void"
+    },
+    "action_restart_game": {
+      "params": [],
       "returns": "void"
     },
     "action_reverse_xdir": {
@@ -624,6 +632,12 @@
       ],
       "returns": "number"
     },
+    "asset_get_type": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
     "asset_get_tags": {
       "params": [
         "*",
@@ -809,6 +823,14 @@
       ],
       "returns": "void"
     },
+    "background_add": {
+      "params": [
+        "string",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "number"
+    },
     "background_get_height": {
       "params": [
         "number"
@@ -820,6 +842,22 @@
         "number"
       ],
       "returns": "number"
+    },
+    "background_replace": {
+      "params": [
+        "number",
+        "string",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "background_save": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
     },
     "buffer_async_group_begin": {
       "params": [
@@ -858,6 +896,16 @@
         "number"
       ],
       "returns": "number"
+    },
+    "buffer_copy": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
     },
     "buffer_delete": {
       "params": [
@@ -1172,6 +1220,48 @@
         "int"
       ],
       "returns": "number"
+    },
+    "color_get_value": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "colour_get_blue": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "colour_get_green": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "colour_get_hue": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "colour_get_red": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "colour_get_saturation": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "colour_get_value": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
     },
     "cos": {
       "params": [
@@ -2092,6 +2182,97 @@
         "int"
       ],
       "returns": "string"
+    },
+    "ds_grid_add_region": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_copy": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_get_max": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "number"
+    },
+    "ds_grid_get_min": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "number"
+    },
+    "ds_grid_get_sum": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "number"
+    },
+    "ds_grid_multiply_region": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_resize": {
+      "params": [
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_set_grid_region": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_set_region": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "int",
+        "int",
+        "*"
+      ],
+      "returns": "void"
     },
     "ds_list_add": {
       "params": [
@@ -3546,6 +3727,13 @@
       ],
       "returns": "any[]"
     },
+    "matrix_multiply": {
+      "params": [
+        "any[]",
+        "any[]"
+      ],
+      "returns": "any[]"
+    },
     "matrix_set": {
       "params": [
         "number",
@@ -4561,6 +4749,16 @@
       ],
       "returns": "void"
     },
+    "screen_save_part": {
+      "params": [
+        "string",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "script_execute": {
       "returns": "*"
     },
@@ -4865,6 +5063,13 @@
     "sprite_save": {
       "params": [
         "number",
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "sprite_save_strip": {
+      "params": [
         "number",
         "string"
       ],
@@ -6032,6 +6237,24 @@
       ],
       "returns": "void"
     },
+    "surface_save": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "surface_save_part": {
+      "params": [
+        "number",
+        "string",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "surface_set_target": {
       "params": [
         "int"
@@ -6658,12 +6881,19 @@
         "color_get_red",
         "color_get_green",
         "color_get_blue",
+        "colour_get_red",
+        "colour_get_green",
+        "colour_get_blue",
+        "color_get_value",
+        "colour_get_value",
         "make_color_rgb",
         "make_colour_rgb",
         "merge_colour",
         "merge_color",
         "color_get_hue",
-        "color_get_saturation"
+        "color_get_saturation",
+        "colour_get_hue",
+        "colour_get_saturation"
       ],
       "path": "gamemaker/color"
     },
@@ -7517,9 +7747,30 @@
         "weak_ref_create",
         "matrix_build",
         "matrix_set",
+        "matrix_multiply",
         "xboxone_fire_event",
         "xboxone_user_for_pad",
-        "xboxone_user_id_for_user"
+        "xboxone_user_id_for_user",
+        "ds_grid_resize",
+        "ds_grid_set_region",
+        "ds_grid_set_grid_region",
+        "ds_grid_add_region",
+        "ds_grid_multiply_region",
+        "ds_grid_get_max",
+        "ds_grid_get_min",
+        "ds_grid_get_sum",
+        "ds_grid_copy",
+        "asset_get_type",
+        "buffer_copy",
+        "action_end_game",
+        "action_restart_game",
+        "background_save",
+        "surface_save",
+        "surface_save_part",
+        "screen_save_part",
+        "sprite_save_strip",
+        "background_add",
+        "background_replace"
       ],
       "path": "gamemaker/runtime",
       "stateful": true
