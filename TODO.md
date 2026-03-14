@@ -449,7 +449,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   CsCharacter::draw (1), DevTool::step (2), DiavolaEye::step_with (1),
   FinalLock::step_with (1), Player::step (1) — all off by 1-3.
 
-**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 80.
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 62.
 
 ### Undertale quality sweep (2026-03-14)
 
@@ -479,7 +479,7 @@ coerce fix (Pass 5 in GmlBoolArithCoerce): 3078.
 - Fixed `parse_type_notation` to handle `"any[]"`, `"string[]"` array notation
 - Added ~300 runtime function implementations/stubs
 
-**Session 24 progress: 80→63 errors.**
+**Session 24 progress: 80→62 errors.**
 
 **Remaining errors (by category):**
 - TS2554 (14): arity mismatches — wrong function signatures or missing overloads
