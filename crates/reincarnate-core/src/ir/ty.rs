@@ -104,6 +104,10 @@ pub fn parse_type_notation(s: &str) -> Type {
         // to class-name Var references; in the IR the parameter type is Dynamic.
         "*" | "any" | "dynamic" | "Function" | "Object" | "Class" | "classref" => Type::Dynamic,
         "Array" => Type::Array(Box::new(Type::Dynamic)),
+        name if name.ends_with("[]") => {
+            let elem = &name[..name.len() - 2];
+            Type::Array(Box::new(parse_type_notation(elem)))
+        }
         name => Type::Struct(name.to_string()),
     }
 }

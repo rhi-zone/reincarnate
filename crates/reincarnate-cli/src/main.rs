@@ -476,8 +476,21 @@ fn resolve_runtime(
         source_dir.join("runtime.json")
     };
     let config_file = std::fs::File::open(&config_path).ok()?;
-    let config = serde_json::from_reader(std::io::BufReader::new(config_file))
-        .unwrap_or_else(|e| panic!("failed to parse {}: {e}", config_path.display()));
+    let config: reincarnate_core::project::RuntimeConfig =
+        serde_json::from_reader(std::io::BufReader::new(config_file))
+            .unwrap_or_else(|e| panic!("failed to parse {}: {e}", config_path.display()));
+    let validation_errors = config.validate();
+    if !validation_errors.is_empty() {
+        eprintln!(
+            "runtime.json: {} validation error(s) in {}:",
+            validation_errors.len(),
+            config_path.display()
+        );
+        for d in &validation_errors {
+            eprintln!("  {}: {}", d.code, d.message);
+        }
+        std::process::exit(1);
+    }
     Some(RuntimePackage { source_dir, config })
 }
 

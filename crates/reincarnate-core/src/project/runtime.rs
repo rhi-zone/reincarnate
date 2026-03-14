@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::pipeline::checker::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
+
 /// Describes an engine-specific runtime package.
 ///
 /// Loaded from `runtime.json` inside the runtime source directory.
@@ -56,6 +58,38 @@ pub struct RuntimeConfig {
     /// Used for Harlowe passage functions where `h` is the content-emission context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_type: Option<RuntimeType>,
+}
+
+impl RuntimeConfig {
+    /// Validate internal consistency, returning all diagnostics found.
+    ///
+    /// Uses the pipeline diagnostic system so callers can aggregate these
+    /// with other diagnostics and present them uniformly.
+    pub fn validate(&self) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+
+        if !self.function_signatures.is_empty() {
+            for group in &self.function_modules {
+                for name in &group.names {
+                    if !self.function_signatures.contains_key(name) {
+                        diagnostics.push(Diagnostic {
+                            file: "runtime.json".to_string(),
+                            line: 0,
+                            col: 0,
+                            code: DiagnosticCode::Rc(RcDiagnostic::MissingFunctionSignature),
+                            severity: Severity::Error,
+                            message: format!(
+                                "function `{name}` is in function_modules but has no \
+                                 function_signatures entry (type inference will be incomplete)"
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+
+        diagnostics
+    }
 }
 
 /// A single system module mapping.

@@ -42,6 +42,8 @@ These are invariant. When a violation appears, adjust the law — don't add a co
 
 ## How to Think and Act
 
+**Good tooling is a high priority.** Build tools that make doing the right thing easy. Scripts that generate boilerplate, validators that catch mismatches at startup, CLI helpers that automate repetitive steps — these pay for themselves immediately by reducing friction and preventing mistakes. `RuntimeConfig::validate()` is one example: it catches `function_modules`/`function_signatures` mismatches at startup. A script that extracts TypeScript signatures into `runtime.json` entries is another. When a task is tedious and error-prone, automate it.
+
 These principles govern judgment. Individual rules follow from them.
 
 - **Fix the real problem.** A workaround is any change that avoids fixing the actual cause. "Special handling in the emitter" is a workaround; "fix the pass that produces wrong output" is a fix. A narrow guard added to one case often means the pass's core logic is wrong — fix the assumption, not the symptom. Use `git blame` to check for accumulated guards; that pattern indicates a design gap. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both layers in TODO.md and leave the code unchanged. The test: does the change make the system more correct, or hide that the system is wrong?
@@ -90,6 +92,8 @@ Do not:
 - Use `--no-verify` — fix the issue or fix the hook
 - Use interactive git commands (`git rebase -i`, `git add -i`, `git add -p`) — they hang waiting for stdin. Stage files by name: `git add <file1> <file2>`.
 - Use DOM data attributes as a state-passing mechanism
+- **Widen runtime types to match wrong emitter output.** If emitted code passes `number` where the runtime declares `boolean`, the emitter is wrong — fix the type inference (e.g. ensure `function_signatures` has correct param types so `IntToBoolPromotion` can promote constants). Widening runtime types is a suppression that hides the real problem.
+- **Add `function_modules` entries without corresponding `function_signatures` entries.** Every function registered in `function_modules` must also have param/return types in `function_signatures` so the type inference pipeline can do its job.
 
 ## Crate Structure
 

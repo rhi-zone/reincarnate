@@ -38,6 +38,8 @@ pub enum RcDiagnostic {
     DuplicateCase,
     /// Duplicate key in object literal.
     DuplicateObjectKey,
+    /// Function in `function_modules` without a `function_signatures` entry.
+    MissingFunctionSignature,
 }
 
 impl std::fmt::Display for RcDiagnostic {
@@ -45,6 +47,7 @@ impl std::fmt::Display for RcDiagnostic {
         let code = match self {
             RcDiagnostic::DuplicateCase => "RC0001",
             RcDiagnostic::DuplicateObjectKey => "RC0002",
+            RcDiagnostic::MissingFunctionSignature => "RC0003",
         };
         write!(f, "{code}")
     }

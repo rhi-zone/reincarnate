@@ -172,23 +172,44 @@
     }
   },
   "function_signatures": {
-    "floor": {
+    "__CopyStatic__": {
       "params": [
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
-    "ceil": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
+    "__NewGMLArray__": {
+      "params": [],
+      "returns": "any[]"
     },
-    "round": {
+    "__NewGMLObject__": {
+      "params": [],
+      "returns": "any"
+    },
+    "__NullObject__": {
+      "params": [],
+      "returns": "any"
+    },
+    "__SetStatic__": {
+      "params": [],
+      "returns": "void"
+    },
+    "__This__": {
+      "params": [],
+      "returns": "any"
+    },
+    "__throw__": {
       "params": [
-        "number"
+        "any"
       ],
-      "returns": "number"
+      "returns": "void"
+    },
+    "_instanceof": {
+      "params": [
+        "any",
+        "any"
+      ],
+      "returns": "boolean"
     },
     "abs": {
       "params": [
@@ -196,61 +217,247 @@
       ],
       "returns": "number"
     },
-    "sign": {
+    "action_another_room": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_create_object": {
+      "params": [
+        "any",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_create_object_motion": {
+      "params": [
+        "any",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_create_object_random": {
+      "params": [
+        "any",
+        "any",
+        "any",
+        "any",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_execute_script": {
       "params": [
         "number"
       ],
+      "returns": "any"
+    },
+    "action_if_health": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "action_if_life": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "action_if_variable": {
+      "params": [
+        "string",
+        "any",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "action_inherited": {
+      "params": [],
+      "returns": "void"
+    },
+    "action_kill_object": {
+      "params": [],
+      "returns": "void"
+    },
+    "action_message": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "action_move": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_move_point": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_move_random": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_move_start": {
+      "params": [],
+      "returns": "void"
+    },
+    "action_move_to": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_replace_sprite": {
+      "params": [
+        "number",
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_reverse_xdir": {
+      "params": [],
+      "returns": "void"
+    },
+    "action_reverse_ydir": {
+      "params": [],
+      "returns": "void"
+    },
+    "action_set_alarm": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_friction": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_gravity": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_health": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_hspeed": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_life": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_motion": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_relative": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "action_set_score": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_speed": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_set_vspeed": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_sleep": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_sprite_set": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_wrap": {
+      "params": [
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "alarm_get": {
+      "params": [
+        "int"
+      ],
       "returns": "number"
     },
-    "min": {
+    "alarm_set": {
+      "params": [
+        "int",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "angle_difference": {
       "params": [
         "number",
         "number"
       ],
       "returns": "number"
     },
-    "max": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "clamp": {
+    "approach": {
       "params": [
         "number",
         "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "sqrt": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "power": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "sin": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "cos": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "tan": {
-      "params": [
         "number"
       ],
       "returns": "number"
@@ -262,261 +469,469 @@
       ],
       "returns": "number"
     },
-    "degtorad": {
+    "arrayLocalSet": {
       "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "radtodeg": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "log2": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "log10": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "ln": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "exp": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "sqr": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "point_distance": {
-      "params": [
+        "any",
         "number",
+        "any"
+      ],
+      "returns": "any"
+    },
+    "array_concat": {
+      "params": [
+        "*"
+      ],
+      "returns": "*"
+    },
+    "array_copy": {
+      "params": [
+        "any[]",
         "number",
+        "any[]",
         "number",
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
-    "point_direction": {
+    "array_create": {
       "params": [
-        "number",
-        "number",
+        "int"
+      ],
+      "returns": "*"
+    },
+    "array_delete": {
+      "params": [
+        "any[]",
         "number",
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
-    "point_in_rectangle": {
+    "array_equals": {
       "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number"
+        "*",
+        "*"
       ],
       "returns": "boolean"
     },
-    "point_in_circle": {
+    "array_get": {
       "params": [
-        "number",
-        "number",
-        "number",
-        "number",
+        "*",
         "number"
       ],
-      "returns": "boolean"
+      "returns": "*"
     },
-    "point_in_triangle": {
+    "array_insert": {
       "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
+        "any[]",
         "number"
       ],
-      "returns": "boolean"
+      "returns": "void"
     },
-    "lengthdir_x": {
+    "array_length": {
       "params": [
-        "number",
-        "number"
+        "*"
       ],
       "returns": "number"
     },
-    "lengthdir_y": {
+    "array_length_1d": {
       "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "lerp": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "random": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "random_range": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "irandom": {
-      "params": [
-        "number"
+        "*"
       ],
       "returns": "int"
     },
-    "irandom_range": {
+    "array_length_2d": {
+      "params": [
+        "*",
+        "int"
+      ],
+      "returns": "int"
+    },
+    "array_set": {
+      "params": [
+        "any[]",
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "array_shuffle": {
+      "params": [
+        "any[]"
+      ],
+      "returns": "void"
+    },
+    "array_shuffle_ext": {
+      "params": [
+        "any[]"
+      ],
+      "returns": "void"
+    },
+    "array_sort": {
+      "params": [
+        "any[]",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "asset_get_index": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "asset_get_tags": {
+      "params": [
+        "*",
+        "int"
+      ],
+      "returns": "*"
+    },
+    "asset_has_tags": {
+      "params": [
+        "number",
+        "*",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "audio_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "audio_get_name": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "audio_group_load": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_group_set_gain": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_group_stop_all": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_is_paused": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "audio_is_playing": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "audio_master_gain": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_pause_sound": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_play_sound": {
+      "params": [
+        "int",
+        "number",
+        "boolean"
+      ],
+      "returns": "int"
+    },
+    "audio_play_sound_at": {
+      "params": [
+        "number",
+        "*",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "number"
+    },
+    "audio_resume_all": {
+      "params": [],
+      "returns": "void"
+    },
+    "audio_resume_sound": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_sound_gain": {
+      "params": [
+        "int",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_sound_get_gain": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "audio_sound_get_pan": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "audio_sound_get_pitch": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "audio_sound_get_track_position": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "audio_sound_length": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "audio_sound_pitch": {
       "params": [
         "number",
         "number"
       ],
+      "returns": "void"
+    },
+    "audio_sound_set_track_position": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "audio_stop_all": {
+      "params": [],
+      "returns": "void"
+    },
+    "audio_stop_sound": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "background_get_height": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "background_get_width": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "buffer_async_group_begin": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "buffer_async_group_end": {
       "returns": "int"
+    },
+    "buffer_async_group_option": {
+      "params": [
+        "string",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "buffer_base64_decode": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "buffer_base64_encode": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "string"
+    },
+    "buffer_create": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "buffer_delete": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "buffer_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "buffer_get_size": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "buffer_load": {
+      "params": [
+        "string",
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "int"
+    },
+    "buffer_load_async": {
+      "params": [
+        "number",
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "buffer_peek": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "buffer_read": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "buffer_save_async": {
+      "params": [
+        "number",
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "buffer_seek": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "buffer_set_surface": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "buffer_tell": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "buffer_write": {
+      "params": [
+        "number",
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "camera_create_view": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_get_view_height": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_get_view_width": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_get_view_x": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_get_view_y": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "camera_set_view_pos": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ceil": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
     },
     "choose": {
       "returns": "*"
-    },
-    "string": {
-      "params": [
-        "*"
-      ],
-      "returns": "string"
-    },
-    "string_length": {
-      "params": [
-        "string"
-      ],
-      "returns": "int"
-    },
-    "string_height_ext": {
-      "params": [
-        "string",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "string_width_ext": {
-      "params": [
-        "string",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "string_height": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "string_width": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "string_pos": {
-      "params": [
-        "string",
-        "string"
-      ],
-      "returns": "int"
-    },
-    "string_copy": {
-      "params": [
-        "string",
-        "int",
-        "int"
-      ],
-      "returns": "string"
-    },
-    "string_delete": {
-      "params": [
-        "string",
-        "int",
-        "int"
-      ],
-      "returns": "string"
-    },
-    "string_char_at": {
-      "params": [
-        "string",
-        "int"
-      ],
-      "returns": "string"
-    },
-    "string_upper": {
-      "params": [
-        "string"
-      ],
-      "returns": "string"
-    },
-    "string_lower": {
-      "params": [
-        "string"
-      ],
-      "returns": "string"
-    },
-    "string_count": {
-      "params": [
-        "string",
-        "string"
-      ],
-      "returns": "int"
-    },
-    "string_replace": {
-      "params": [
-        "string",
-        "string",
-        "string"
-      ],
-      "returns": "string"
-    },
-    "string_replace_all": {
-      "params": [
-        "string",
-        "string",
-        "string"
-      ],
-      "returns": "string"
-    },
-    "real": {
-      "params": [
-        "*"
-      ],
-      "returns": "number"
     },
     "chr": {
       "params": [
@@ -524,130 +939,504 @@
       ],
       "returns": "string"
     },
-    "ord": {
+    "clamp": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "clipboard_get_text": {
+      "params": [],
+      "returns": "string"
+    },
+    "clipboard_set_text": {
       "params": [
         "string"
+      ],
+      "returns": "void"
+    },
+    "collision_circle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "*"
+    },
+    "collision_circle_list": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean",
+        "int",
+        "boolean"
       ],
       "returns": "int"
     },
-    "draw_text": {
+    "collision_ellipse": {
       "params": [
         "number",
         "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "*"
+    },
+    "collision_ellipse_list": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean",
+        "int",
+        "boolean"
+      ],
+      "returns": "int"
+    },
+    "collision_line": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "*"
+    },
+    "collision_line_list": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean",
+        "int",
+        "boolean"
+      ],
+      "returns": "int"
+    },
+    "collision_point": {
+      "params": [
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "*"
+    },
+    "collision_rectangle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "*"
+    },
+    "collision_rectangle_list": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "classref",
+        "boolean",
+        "boolean",
+        "int",
+        "boolean"
+      ],
+      "returns": "int"
+    },
+    "color_get_blue": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "color_get_green": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "color_get_hue": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "color_get_red": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "cos": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "darccos": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "darcsin": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "darctan": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "darctan2": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "date_current_date": {
+      "params": [],
+      "returns": "number"
+    },
+    "date_current_datetime": {
+      "params": [],
+      "returns": "number"
+    },
+    "date_current_time": {
+      "params": [],
+      "returns": "number"
+    },
+    "dcos": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "degtorad": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "directory_create": {
+      "params": [
         "string"
       ],
       "returns": "void"
     },
-    "draw_text_ext": {
+    "directory_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "display_get_gui_height": {
+      "params": [],
+      "returns": "number"
+    },
+    "display_get_gui_width": {
+      "params": [],
+      "returns": "number"
+    },
+    "display_get_height": {
+      "params": [],
+      "returns": "number"
+    },
+    "display_get_width": {
+      "params": [],
+      "returns": "number"
+    },
+    "display_reset": {
       "params": [
         "number",
-        "number",
-        "string",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "display_set_gui_size": {
+      "params": [
         "number",
         "number"
       ],
       "returns": "void"
     },
-    "draw_text_colour": {
+    "distance_to_object": {
+      "params": [
+        "classref"
+      ],
+      "returns": "number"
+    },
+    "distance_to_point": {
       "params": [
         "number",
-        "number",
-        "string",
-        "int",
-        "int",
-        "int",
-        "int",
         "number"
       ],
-      "returns": "void"
+      "returns": "number"
     },
-    "draw_text_ext_colour": {
+    "draw_background": {
       "params": [
-        "number",
-        "number",
-        "string",
-        "number",
-        "number",
-        "int",
-        "int",
-        "int",
-        "int",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "draw_text_transformed": {
-      "params": [
-        "number",
-        "number",
-        "string",
         "number",
         "number",
         "number"
       ],
       "returns": "void"
     },
-    "draw_set_color": {
+    "draw_background_ext": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_background_part_ext": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_background_stretched": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_background_tiled": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_circle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_circle_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_clear": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_clear_alpha": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_ellipse": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_ellipse_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "int",
+        "int",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_enable_alphablend": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_get_alpha": {
+      "returns": "number"
+    },
+    "draw_get_color": {
+      "returns": "int"
+    },
+    "draw_get_colour": {
+      "returns": "int"
+    },
+    "draw_get_font": {
+      "params": [],
+      "returns": "number"
+    },
+    "draw_get_halign": {
+      "returns": "int"
+    },
+    "draw_get_valign": {
+      "returns": "int"
+    },
+    "draw_getpixel": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "draw_line": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_line_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_line_width": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_line_width_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_path": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_point_color": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_primitive_begin": {
       "params": [
         "int"
       ],
       "returns": "void"
     },
-    "draw_set_colour": {
+    "draw_primitive_begin_texture": {
       "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_set_font": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_set_halign": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_set_valign": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_set_alpha": {
-      "params": [
-        "number"
-      ],
-      "returns": "void"
-    },
-    "draw_sprite": {
-      "params": [
-        "int",
-        "number",
         "number",
         "number"
       ],
       "returns": "void"
     },
-    "draw_sprite_ext": {
-      "params": [
-        "int",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "int",
-        "number"
-      ],
+    "draw_primitive_end": {
+      "params": [],
       "returns": "void"
     },
     "draw_rectangle": {
       "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_rectangle_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
         "number",
         "number",
         "number",
@@ -682,26 +1471,10 @@
       ],
       "returns": "void"
     },
-    "draw_circle": {
+    "draw_roundrect_color": {
       "params": [
         "number",
         "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "draw_line": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "draw_line_width": {
-      "params": [
         "number",
         "number",
         "number",
@@ -711,6 +1484,170 @@
       "returns": "void"
     },
     "draw_self": {
+      "returns": "void"
+    },
+    "draw_set_alpha": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_set_circle_precision": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_set_color": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_set_colour": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_set_ext": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_set_font": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_set_halign": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_set_valign": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite": {
+      "params": [
+        "int",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_ext": {
+      "params": [
+        "int",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "int",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_part": {
+      "params": [
+        "int",
+        "int",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_part_ext": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_pos": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_stretched": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_stretched_ext": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_tiled": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_sprite_tiled_ext": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
       "returns": "void"
     },
     "draw_surface": {
@@ -734,55 +1671,1126 @@
       ],
       "returns": "void"
     },
-    "make_color_rgb": {
+    "draw_surface_part": {
       "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_surface_stretched": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_surface_stretched_ext": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_text": {
+      "params": [
+        "number",
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "draw_text_color": {
+      "params": [
+        "number",
+        "number",
+        "string",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_text_colour": {
+      "params": [
+        "number",
+        "number",
+        "string",
         "int",
         "int",
-        "int"
-      ],
-      "returns": "int"
-    },
-    "make_colour_rgb": {
-      "params": [
-        "int",
-        "int",
-        "int"
-      ],
-      "returns": "int"
-    },
-    "color_get_red": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "color_get_green": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "color_get_blue": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "merge_color": {
-      "params": [
         "int",
         "int",
         "number"
       ],
-      "returns": "int"
+      "returns": "void"
     },
-    "merge_colour": {
+    "draw_text_ext": {
       "params": [
+        "number",
+        "number",
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_text_ext_color": {
+      "params": [
+        "number",
+        "number",
+        "string",
+        "number",
+        "number",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_text_ext_colour": {
+      "params": [
+        "number",
+        "number",
+        "string",
+        "number",
+        "number",
+        "int",
+        "int",
         "int",
         "int",
         "number"
       ],
+      "returns": "void"
+    },
+    "draw_text_ext_transformed": {
+      "params": [
+        "number",
+        "number",
+        "string",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_text_ext_transformed_color": {
+      "params": [
+        "number",
+        "number",
+        "string",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_text_transformed": {
+      "params": [
+        "number",
+        "number",
+        "string",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_text_transformed_color": {
+      "params": [
+        "number",
+        "number",
+        "string",
+        "number",
+        "number",
+        "number",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "draw_triangle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_triangle_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "draw_vertex": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "draw_vertex_texture": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_exists": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_grid_add": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_clear": {
+      "params": [
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_create": {
+      "params": [
+        "int",
+        "int"
+      ],
       "returns": "int"
+    },
+    "ds_grid_destroy": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_get": {
+      "params": [
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "*"
+    },
+    "ds_grid_height": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "ds_grid_read": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_set": {
+      "params": [
+        "int",
+        "int",
+        "int",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "ds_grid_value_exists": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "ds_grid_value_x": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "*"
+      ],
+      "returns": "number"
+    },
+    "ds_grid_value_y": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "*"
+      ],
+      "returns": "number"
+    },
+    "ds_grid_width": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "ds_grid_write": {
+      "params": [
+        "int"
+      ],
+      "returns": "string"
+    },
+    "ds_list_add": {
+      "params": [
+        "int",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "ds_list_clear": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_list_copy": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_list_create": {
+      "returns": "int"
+    },
+    "ds_list_delete": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_list_destroy": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_list_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_list_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_list_find_index": {
+      "params": [
+        "number",
+        "*"
+      ],
+      "returns": "number"
+    },
+    "ds_list_find_value": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "*"
+    },
+    "ds_list_read": {
+      "params": [
+        "int",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ds_list_replace": {
+      "params": [
+        "number",
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_list_set": {
+      "params": [
+        "number",
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_list_size": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "ds_list_sort": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "ds_list_write": {
+      "params": [
+        "int"
+      ],
+      "returns": "string"
+    },
+    "ds_map_add": {
+      "params": [
+        "int",
+        "*",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "ds_map_clear": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_map_create": {
+      "returns": "int"
+    },
+    "ds_map_delete": {
+      "params": [
+        "int",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "ds_map_destroy": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "ds_map_exists": {
+      "params": [
+        "int",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "ds_map_find_first": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "ds_map_find_next": {
+      "params": [
+        "number",
+        "*"
+      ],
+      "returns": "*"
+    },
+    "ds_map_find_value": {
+      "params": [
+        "int",
+        "*"
+      ],
+      "returns": "*"
+    },
+    "ds_map_is_map": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_map_keys_to_array": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "ds_map_read": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ds_map_replace": {
+      "params": [
+        "int",
+        "dynamic",
+        "dynamic"
+      ],
+      "returns": "void"
+    },
+    "ds_map_secure_load": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "ds_map_secure_save": {
+      "params": [
+        "int",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ds_map_set": {
+      "params": [
+        "number",
+        "any",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_map_size": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "ds_map_values_to_array": {
+      "params": [
+        "int"
+      ],
+      "returns": "dynamic"
+    },
+    "ds_map_write": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "ds_priority_add": {
+      "params": [
+        "number",
+        "any",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_priority_clear": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_priority_create": {
+      "params": [],
+      "returns": "number"
+    },
+    "ds_priority_delete_max": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_priority_delete_value": {
+      "params": [
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_priority_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_priority_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_priority_find_max": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "ds_priority_size": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "ds_queue_create": {
+      "params": [],
+      "returns": "number"
+    },
+    "ds_queue_dequeue": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "ds_queue_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_queue_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_queue_enqueue": {
+      "params": [
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_queue_head": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "ds_queue_size": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "ds_stack_create": {
+      "params": [],
+      "returns": "number"
+    },
+    "ds_stack_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ds_stack_empty": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "ds_stack_pop": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "ds_stack_push": {
+      "params": [
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "ds_stack_size": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "ds_stack_top": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "dsin": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "dtan": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "event_inherited": {
+      "returns": "void"
+    },
+    "event_perform": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "event_user": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "execute_string": {
+      "params": [
+        "string"
+      ],
+      "returns": "any"
+    },
+    "exp": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "file_delete": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "file_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "file_find_first": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "string"
+    },
+    "file_find_next": {
+      "params": [],
+      "returns": "string"
+    },
+    "file_rename": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "file_text_close": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "file_text_eof": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "file_text_open_append": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "file_text_open_read": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "file_text_open_write": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "file_text_read_string": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "file_text_readln": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "file_text_write_string": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "floor": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "font_add_sprite_ext": {
+      "params": [
+        "number",
+        "string",
+        "number",
+        "boolean"
+      ],
+      "returns": "number"
+    },
+    "font_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "font_get_name": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "font_get_size": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "frac": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "game_end": {
+      "returns": "void"
+    },
+    "game_get_speed": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "game_restart": {
+      "returns": "void"
+    },
+    "gamepad_axis_value": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "gamepad_button_check": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_button_check_pressed": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_button_check_released": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_get_description": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "gamepad_get_device_count": {
+      "params": [],
+      "returns": "number"
+    },
+    "gamepad_is_connected": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "gamepad_is_supported": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "gamepad_set_axis_deadzone": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gamepad_set_color": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gamepad_set_vibration": {
+      "params": [
+        "int",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gc_collect": {
+      "params": [],
+      "returns": "void"
+    },
+    "gc_enable": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "getAllField": {
+      "params": [
+        "string"
+      ],
+      "returns": "*"
+    },
+    "getInstanceField": {
+      "params": [
+        "*",
+        "string"
+      ],
+      "returns": "*"
+    },
+    "getObjectName": {
+      "params": [
+        "*"
+      ],
+      "returns": "string"
+    },
+    "get_integer_async": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "get_string_async": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "string"
+    },
+    "global": {
+      "params": [],
+      "returns": "any"
+    },
+    "gpu_get_colorwriteenable": {
+      "params": [],
+      "returns": "*"
+    },
+    "gpu_set_alphatestenable": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_alphatestref": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_blendmode": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_blendmode_ext": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_blendmode_ext_sepalpha": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_colorwriteenable": {
+      "params": [
+        "boolean",
+        "boolean",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_cullmode": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_fog": {
+      "params": [
+        "boolean",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_texfilter": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_ztestenable": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "gpu_set_zwriteenable": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "ini_close": {
+      "returns": "void"
+    },
+    "ini_key_delete": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ini_key_exists": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "ini_open": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ini_open_from_string": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ini_read_real": {
+      "params": [
+        "string",
+        "string",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "ini_read_string": {
+      "params": [
+        "string",
+        "string",
+        "string"
+      ],
+      "returns": "string"
+    },
+    "ini_section_delete": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "ini_section_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "ini_write_real": {
+      "params": [
+        "string",
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ini_write_string": {
+      "params": [
+        "string",
+        "string",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "instance_activate_object": {
+      "params": [
+        "classref"
+      ],
+      "returns": "void"
+    },
+    "instance_change": {
+      "params": [
+        "classref",
+        "boolean"
+      ],
+      "returns": "void"
     },
     "instance_create": {
       "params": [
@@ -810,40 +2818,49 @@
       ],
       "returns": "*"
     },
-    "instance_exists": {
+    "instance_deactivate_all": {
       "params": [
-        "classref"
+        "boolean"
       ],
-      "returns": "boolean"
-    },
-    "instance_number": {
-      "params": [
-        "classref"
-      ],
-      "returns": "int"
-    },
-    "instance_destroy": {
       "returns": "void"
     },
-    "instance_change": {
+    "instance_deactivate_layer": {
+      "params": [
+        "dynamic"
+      ],
+      "returns": "void"
+    },
+    "instance_deactivate_object": {
       "params": [
         "classref",
         "boolean"
       ],
       "returns": "void"
     },
+    "instance_deactivate_region": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "instance_destroy": {
+      "returns": "void"
+    },
+    "instance_exists": {
+      "params": [
+        "classref"
+      ],
+      "returns": "boolean"
+    },
     "instance_find": {
       "params": [
         "classref",
         "int"
-      ],
-      "returns": "*"
-    },
-    "instance_nearest": {
-      "params": [
-        "number",
-        "number",
-        "classref"
       ],
       "returns": "*"
     },
@@ -855,23 +2872,7 @@
       ],
       "returns": "*"
     },
-    "place_meeting": {
-      "params": [
-        "number",
-        "number",
-        "classref"
-      ],
-      "returns": "boolean"
-    },
-    "position_meeting": {
-      "params": [
-        "number",
-        "number",
-        "classref"
-      ],
-      "returns": "boolean"
-    },
-    "instance_place": {
+    "instance_nearest": {
       "params": [
         "number",
         "number",
@@ -879,7 +2880,13 @@
       ],
       "returns": "*"
     },
-    "instance_position": {
+    "instance_number": {
+      "params": [
+        "classref"
+      ],
+      "returns": "int"
+    },
+    "instance_place": {
       "params": [
         "number",
         "number",
@@ -897,6 +2904,14 @@
       ],
       "returns": "int"
     },
+    "instance_position": {
+      "params": [
+        "number",
+        "number",
+        "classref"
+      ],
+      "returns": "*"
+    },
     "instance_position_list": {
       "params": [
         "number",
@@ -907,700 +2922,9 @@
       ],
       "returns": "int"
     },
-    "object_get_name": {
+    "int": {
       "params": [
-        "classref"
-      ],
-      "returns": "string"
-    },
-    "object_exists": {
-      "params": [
-        "classref"
-      ],
-      "returns": "boolean"
-    },
-    "object_get_sprite": {
-      "params": [
-        "classref"
-      ],
-      "returns": "int"
-    },
-    "object_get_parent": {
-      "params": [
-        "classref"
-      ],
-      "returns": "*"
-    },
-    "object_is_ancestor": {
-      "params": [
-        "classref",
-        "classref"
-      ],
-      "returns": "boolean"
-    },
-    "instance_activate_object": {
-      "params": [
-        "classref"
-      ],
-      "returns": "void"
-    },
-    "instance_deactivate_object": {
-      "params": [
-        "classref",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "place_free": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "place_empty": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "collision_point": {
-      "params": [
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "*"
-    },
-    "collision_rectangle": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "*"
-    },
-    "collision_line": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "*"
-    },
-    "collision_circle": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "*"
-    },
-    "room_goto": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "room_goto_next": {
-      "returns": "void"
-    },
-    "room_goto_previous": {
-      "returns": "void"
-    },
-    "room_restart": {
-      "returns": "void"
-    },
-    "game_restart": {
-      "returns": "void"
-    },
-    "game_end": {
-      "returns": "void"
-    },
-    "ds_list_create": {
-      "returns": "int"
-    },
-    "ds_list_destroy": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "ds_list_add": {
-      "params": [
-        "int",
-        "*"
-      ],
-      "returns": "void"
-    },
-    "ds_list_size": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "ds_list_find_value": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "*"
-    },
-    "ds_list_delete": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "ds_list_clear": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "ds_map_create": {
-      "returns": "int"
-    },
-    "ds_map_destroy": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "ds_map_add": {
-      "params": [
-        "int",
-        "*",
-        "*"
-      ],
-      "returns": "void"
-    },
-    "ds_map_find_value": {
-      "params": [
-        "int",
-        "*"
-      ],
-      "returns": "*"
-    },
-    "ds_map_exists": {
-      "params": [
-        "int",
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "ds_map_replace": {
-      "params": [
-        "int",
-        "dynamic",
-        "dynamic"
-      ],
-      "returns": "void"
-    },
-    "ds_map_delete": {
-      "params": [
-        "int",
-        "*"
-      ],
-      "returns": "void"
-    },
-    "ds_map_size": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "ds_grid_create": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "int"
-    },
-    "ds_grid_destroy": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "ds_grid_set": {
-      "params": [
-        "int",
-        "int",
-        "int",
-        "*"
-      ],
-      "returns": "void"
-    },
-    "ds_grid_get": {
-      "params": [
-        "int",
-        "int",
-        "int"
-      ],
-      "returns": "*"
-    },
-    "ds_grid_width": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "ds_grid_height": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "ini_open": {
-      "params": [
-        "string"
-      ],
-      "returns": "void"
-    },
-    "ini_close": {
-      "returns": "void"
-    },
-    "ini_read_string": {
-      "params": [
-        "string",
-        "string",
-        "string"
-      ],
-      "returns": "string"
-    },
-    "ini_read_real": {
-      "params": [
-        "string",
-        "string",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "ini_write_string": {
-      "params": [
-        "string",
-        "string",
-        "string"
-      ],
-      "returns": "void"
-    },
-    "ini_write_real": {
-      "params": [
-        "string",
-        "string",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "show_debug_message": {
-      "params": [
-        "*"
-      ],
-      "returns": "void"
-    },
-    "show_message": {
-      "params": [
-        "string"
-      ],
-      "returns": "void"
-    },
-    "variable_global_set": {
-      "params": [
-        "string",
-        "*"
-      ],
-      "returns": "void"
-    },
-    "variable_global_get": {
-      "params": [
-        "string"
-      ],
-      "returns": "*"
-    },
-    "mouse_check_button": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "mouse_check_button_pressed": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "mouse_check_button_released": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "keyboard_check": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "keyboard_check_pressed": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "keyboard_check_released": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "keyboard_check_direct": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "mouse_wheel_up": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "mouse_wheel_down": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "sprite_get_width": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "sprite_get_height": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "sprite_get_number": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "sprite_get_xoffset": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "sprite_get_yoffset": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "sprite_get_bbox_left": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "sprite_get_bbox_right": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "sprite_get_bbox_top": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "sprite_get_bbox_bottom": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "font_get_size": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "audio_play_sound": {
-      "params": [
-        "int",
-        "number",
-        "boolean"
-      ],
-      "returns": "int"
-    },
-    "audio_stop_sound": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "audio_is_playing": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "audio_sound_gain": {
-      "params": [
-        "int",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "surface_create": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "param_names": [
-        "w",
-        "h",
-        "format"
-      ],
-      "defaults": [
-        null,
-        null,
-        0
-      ],
-      "returns": "int"
-    },
-    "surface_free": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "surface_exists": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "surface_set_target": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "surface_reset_target": {
-      "returns": "void"
-    },
-    "surface_get_width": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "surface_get_height": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "array_length_1d": {
-      "params": [
-        "*"
-      ],
-      "returns": "int"
-    },
-    "array_length_2d": {
-      "params": [
-        "*",
-        "int"
-      ],
-      "returns": "int"
-    },
-    "array_create": {
-      "params": [
-        "int"
-      ],
-      "returns": "*"
-    },
-    "is_string": {
-      "params": [
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "is_real": {
-      "params": [
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "is_undefined": {
-      "params": [
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "is_array": {
-      "params": [
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "script_execute": {
-      "returns": "*"
-    },
-    "alarm_set": {
-      "params": [
-        "int",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "alarm_get": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "motion_set": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "move_towards_point": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "move_wrap": {
-      "params": [
-        "boolean",
-        "boolean",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "distance_to_object": {
-      "params": [
-        "classref"
-      ],
-      "returns": "number"
-    },
-    "distance_to_point": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "event_perform": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "event_user": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "event_inherited": {
-      "returns": "void"
-    },
-    "randomize": {
-      "returns": "void"
-    },
-    "random_set_seed": {
-      "params": [
-        "number"
-      ],
-      "returns": "void"
-    },
-    "frac": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "mean": {
-      "returns": "number"
-    },
-    "median": {
-      "returns": "number"
-    },
-    "dsin": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "dcos": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "dtan": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "darcsin": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "darccos": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "darctan": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "darctan2": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "logn": {
-      "params": [
-        "number",
-        "number"
+        "any"
       ],
       "returns": "number"
     },
@@ -1610,953 +2934,23 @@
       ],
       "returns": "int"
     },
-    "string_insert": {
+    "irandom": {
       "params": [
-        "string",
-        "string",
-        "int"
-      ],
-      "returns": "string"
-    },
-    "ini_open_from_string": {
-      "params": [
-        "string"
-      ],
-      "returns": "void"
-    },
-    "ini_section_exists": {
-      "params": [
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "ini_key_exists": {
-      "params": [
-        "string",
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "ini_section_delete": {
-      "params": [
-        "string"
-      ],
-      "returns": "void"
-    },
-    "ini_key_delete": {
-      "params": [
-        "string",
-        "string"
-      ],
-      "returns": "void"
-    },
-    "draw_text_color": {
-      "params": [
-        "number",
-        "number",
-        "string",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_text_ext_color": {
-      "params": [
-        "number",
-        "number",
-        "string",
-        "number",
-        "number",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_text_ext_transformed": {
-      "params": [
-        "number",
-        "number",
-        "string",
-        "number",
-        "number",
-        "number",
-        "number",
         "number"
       ],
-      "returns": "void"
+      "returns": "int"
     },
-    "draw_text_transformed_color": {
-      "params": [
-        "number",
-        "number",
-        "string",
-        "number",
-        "number",
-        "number",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_text_ext_transformed_color": {
-      "params": [
-        "number",
-        "number",
-        "string",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "draw_set_ext": {
+    "irandom_range": {
       "params": [
         "number",
         "number"
       ],
-      "returns": "void"
-    },
-    "draw_get_alpha": {
-      "returns": "number"
-    },
-    "draw_get_colour": {
       "returns": "int"
     },
-    "draw_get_color": {
-      "returns": "int"
-    },
-    "draw_get_halign": {
-      "returns": "int"
-    },
-    "draw_get_valign": {
-      "returns": "int"
-    },
-    "draw_ellipse_color": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "int",
-        "int",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "draw_sprite_part": {
-      "params": [
-        "int",
-        "int",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "draw_primitive_begin": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "sprite_set_offset": {
-      "params": [
-        "int",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "sprite_get_texture": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "int"
-    },
-    "sprite_add_from_surface": {
-      "params": [
-        "int",
-        "int",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "surface_resize": {
-      "params": [
-        "int",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "surface_get_target": {
-      "returns": "int"
-    },
-    "shader_set_uniform_f_array": {
-      "params": [
-        "int",
-        "dynamic"
-      ],
-      "returns": "void"
-    },
-    "instance_deactivate_layer": {
-      "params": [
-        "dynamic"
-      ],
-      "returns": "void"
-    },
-    "instance_deactivate_region": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "layer_background_index": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "layer_background_get_index": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "part_type_shape": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "part_type_death": {
-      "params": [
-        "int",
-        "int",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "part_type_color_hsv": {
-      "params": [
-        "int",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "part_type_clear": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "part_type_size_x": {
-      "params": [
-        "int",
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "part_type_size_y": {
-      "params": [
-        "int",
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "ds_map_secure_save": {
-      "params": [
-        "int",
-        "string"
-      ],
-      "returns": "void"
-    },
-    "ds_map_values_to_array": {
-      "params": [
-        "int"
-      ],
-      "returns": "dynamic"
-    },
-    "ds_list_read": {
-      "params": [
-        "int",
-        "string"
-      ],
-      "returns": "void"
-    },
-    "ds_list_write": {
-      "params": [
-        "int"
-      ],
-      "returns": "string"
-    },
-    "ds_grid_write": {
-      "params": [
-        "int"
-      ],
-      "returns": "string"
-    },
-    "variable_instance_get": {
-      "params": [
-        "dynamic",
-        "string"
-      ],
-      "returns": "dynamic"
-    },
-    "variable_instance_exists": {
-      "params": [
-        "dynamic",
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "audio_sound_get_pitch": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "buffer_load": {
-      "params": [
-        "string",
-        "int",
-        "int",
-        "int"
-      ],
-      "returns": "int"
-    },
-    "buffer_async_group_begin": {
-      "params": [
-        "string"
-      ],
-      "returns": "void"
-    },
-    "buffer_async_group_end": {
-      "returns": "int"
-    },
-    "gamepad_is_connected": {
-      "params": [
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "gamepad_set_vibration": {
-      "params": [
-        "int",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "color_get_hue": {
-      "params": [
-        "int"
-      ],
-      "returns": "number"
-    },
-    "steam_is_cloud_enabled_for_account": {
-      "returns": "boolean"
-    },
-    "steam_inventory_result_get_items": {
-      "params": [
-        "int"
-      ],
-      "returns": "*"
-    },
-    "steam_lobby_get_member_id": {
-      "params": [
-        "int"
-      ],
-      "returns": "int"
-    },
-    "steam_input_get_action_set_handle": {
-      "params": [
-        "string"
-      ],
-      "returns": "int"
-    },
-    "steam_get_stat_float": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "steam_get_global_stat_int": {
-      "params": [
-        "string"
-      ],
-      "returns": "int"
-    },
-    "steam_get_user_account_id": {
-      "returns": "int"
-    },
-    "steam_image_get_rgba": {
-      "params": [
-        "int",
-        "int",
-        "int"
-      ],
-      "returns": "boolean"
-    },
-    "steam_input_enable_device_callbacks": {
-      "returns": "void"
-    },
-    "steam_lobby_get_chat_message_text": {
-      "params": [
-        "int"
-      ],
-      "returns": "string"
-    },
-    "steam_lobby_get_owner_id": {
-      "returns": "int"
-    },
-    "steam_request_friend_rich_presence": {
-      "params": [
-        "int"
-      ],
-      "returns": "void"
-    },
-    "steam_ugc_get_item_update_info": {
-      "params": [
-        "int",
-        "dynamic"
-      ],
-      "returns": "boolean"
-    },
-    "steam_ugc_submit_item_update": {
-      "params": [
-        "int",
-        "string"
-      ],
-      "returns": "void"
-    },
-    "variable_global_exists": {
-      "params": [
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "mouse_x": {
-      "returns": "number"
-    },
-    "mouse_y": {
-      "returns": "number"
-    },
-    "collision_ellipse_list": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean",
-        "int",
-        "boolean"
-      ],
-      "returns": "int"
-    },
-    "collision_rectangle_list": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean",
-        "int",
-        "boolean"
-      ],
-      "returns": "int"
-    },
-    "layer_background_get_id": {
+    "is_array": {
       "params": [
         "*"
       ],
-      "returns": "int"
-    },
-    "collision_circle_list": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean",
-        "int",
-        "boolean"
-      ],
-      "returns": "int"
-    },
-    "asset_get_tags": {
-      "params": [
-        "*",
-        "int"
-      ],
-      "returns": "*"
-    },
-    "layer_depth": {
-      "params": [
-        "*",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "psn_unlock_trophy": {
-      "params": [
-        "int",
-        "int"
-      ],
-      "returns": "void"
-    },
-    "vertex_position": {
-      "params": [
-        "*",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "gpu_set_colorwriteenable": {
-      "params": [
-        "boolean",
-        "boolean",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "gpu_set_fog": {
-      "params": [
-        "boolean",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "part_type_sprite": {
-      "params": [
-        "number",
-        "number",
-        "boolean",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "part_system_automatic_draw": {
-      "params": [
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "part_type_orientation": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "room_set_persistent": {
-      "params": [
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "sprite_create_from_surface": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean",
-        "boolean",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "draw_path": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "draw_triangle": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "draw_circle_color": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "draw_ellipse": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "part_system_draw_order": {
-      "params": [
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "gpu_set_texfilter": {
-      "params": [
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "window_set_fullscreen": {
-      "params": [
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "mp_grid_add_instances": {
-      "params": [
-        "int",
-        "classref",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "path_start": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "sprite_add": {
-      "params": [
-        "string",
-        "number",
-        "boolean",
-        "boolean",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "view_set_visible": {
-      "params": [
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "show_debug_overlay": {
-      "params": [
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "steam_input_init": {
-      "params": [
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "draw_rectangle_color": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "sprite_collision_mask": {
-      "params": [
-        "number",
-        "boolean",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "void"
-    },
-    "mp_grid_path": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "boolean"
-    },
-    "collision_ellipse": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean"
-      ],
-      "returns": "*"
-    },
-    "show_error": {
-      "params": [
-        "string",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "collision_line_list": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "classref",
-        "boolean",
-        "boolean",
-        "int",
-        "boolean"
-      ],
-      "returns": "int"
-    },
-    "layer_set_visible": {
-      "params": [
-        "*",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "draw_triangle_color": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "layer_background_visible": {
-      "params": [
-        "number",
-        "boolean"
-      ],
-      "returns": "void"
-    },
-    "array_equals": {
-      "params": [
-        "*",
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "asset_has_tags": {
-      "params": [
-        "number",
-        "*",
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "audio_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "audio_is_paused": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "buffer_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "directory_exists": {
-      "params": [
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "ds_exists": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "ds_grid_value_exists": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "ds_list_empty": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "ds_list_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "ds_map_is_map": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "ds_priority_empty": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "ds_queue_empty": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "ds_stack_empty": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "file_exists": {
-      "params": [
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "file_text_eof": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "font_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "gamepad_button_check": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "gamepad_button_check_pressed": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "gamepad_button_check_released": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "gamepad_is_supported": {
-      "params": [],
       "returns": "boolean"
     },
     "is_debug_overlay_open": {
@@ -2594,506 +2988,191 @@
       ],
       "returns": "boolean"
     },
+    "is_real": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "is_string": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
     "is_struct": {
       "params": [
         "*"
       ],
       "returns": "boolean"
     },
-    "layer_exists": {
+    "is_undefined": {
       "params": [
         "*"
       ],
       "returns": "boolean"
     },
-    "layer_sequence_is_finished": {
+    "joystick_buttons": {
       "params": [
         "number"
-      ],
-      "returns": "boolean"
-    },
-    "part_system_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "part_type_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "path_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "room_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "shader_is_compiled": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "sprite_exists": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "steam_file_exists": {
-      "params": [
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "steam_file_persisted": {
-      "params": [
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "steam_file_read_buffer": {
-      "params": [
-        "string"
       ],
       "returns": "number"
     },
-    "steam_file_write": {
+    "joystick_check_button": {
       "params": [
-        "string",
-        "string",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "steam_file_write_buffer": {
-      "params": [
-        "string",
         "number",
         "number"
       ],
       "returns": "boolean"
     },
-    "steam_file_write_file": {
+    "joystick_exists": {
       "params": [
-        "string",
-        "string"
+        "number"
       ],
       "returns": "boolean"
     },
-    "steam_get_achievement": {
+    "joystick_has_pov": {
       "params": [
-        "string"
+        "number"
       ],
       "returns": "boolean"
     },
-    "steam_get_most_achieved_achievement_info": {
+    "joystick_xpos": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "joystick_ypos": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "json_decode": {
+      "params": [
+        "string"
+      ],
+      "returns": "*"
+    },
+    "json_encode": {
       "params": [
         "*"
       ],
-      "returns": "boolean"
+      "returns": "string"
     },
-    "steam_initialised": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_input_get_digital_action_data": {
+    "json_parse": {
       "params": [
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "steam_is_cloud_enabled_for_app": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_is_overlay_activated": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_is_overlay_enabled": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_is_screenshot_requested": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_is_subscribed": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_is_user_logged_on": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_lobby_is_owner": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "steam_lobby_send_chat_message_buffer": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "steam_music_is_enabled": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_music_is_playing": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_net_packet_receive": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_stats_ready": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "steam_ugc_get_item_install_info": {
-      "params": [
-        "number",
-        "*"
-      ],
-      "returns": "boolean"
-    },
-    "steam_user_installed_dlc": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "steam_user_owns_dlc": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "steam_utils_is_steam_running_on_steam_deck": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "struct_exists": {
-      "params": [
-        "*",
         "string"
       ],
-      "returns": "boolean"
+      "returns": "*"
     },
-    "texture_is_ready": {
-      "params": [
-        "number"
-      ],
-      "returns": "boolean"
-    },
-    "variable_struct_exists": {
-      "params": [
-        "*",
-        "string"
-      ],
-      "returns": "boolean"
-    },
-    "window_get_fullscreen": {
-      "params": [],
-      "returns": "boolean"
-    },
-    "angle_difference": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "approach": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "array_length": {
+    "json_stringify": {
       "params": [
         "*"
       ],
-      "returns": "number"
+      "returns": "string"
     },
-    "asset_get_index": {
+    "keyboard_check": {
       "params": [
-        "string"
+        "int"
       ],
-      "returns": "number"
+      "returns": "boolean"
     },
-    "audio_play_sound_at": {
+    "keyboard_check_direct": {
       "params": [
-        "number",
-        "*",
-        "number",
-        "number",
-        "number",
-        "number",
-        "boolean"
+        "int"
       ],
-      "returns": "number"
+      "returns": "boolean"
     },
-    "audio_sound_get_gain": {
+    "keyboard_check_pressed": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "keyboard_check_released": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "keyboard_clear": {
       "params": [
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
-    "audio_sound_get_pan": {
+    "keyboard_key_press": {
       "params": [
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
-    "audio_sound_get_track_position": {
+    "keyboard_key_release": {
       "params": [
         "number"
       ],
-      "returns": "number"
+      "returns": "void"
     },
-    "audio_sound_length": {
+    "layer_background_get_id": {
       "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "buffer_base64_decode": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "buffer_create": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "buffer_get_size": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "buffer_load_async": {
-      "params": [
-        "number",
-        "string",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "buffer_save_async": {
-      "params": [
-        "number",
-        "string",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "buffer_tell": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "camera_create_view": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "camera_get_view_height": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "camera_get_view_width": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "camera_get_view_x": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "camera_get_view_y": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "display_get_gui_height": {
-      "params": [],
-      "returns": "number"
-    },
-    "display_get_gui_width": {
-      "params": [],
-      "returns": "number"
-    },
-    "display_get_height": {
-      "params": [],
-      "returns": "number"
-    },
-    "display_get_width": {
-      "params": [],
-      "returns": "number"
-    },
-    "draw_get_font": {
-      "params": [],
-      "returns": "number"
-    },
-    "ds_grid_value_x": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
         "*"
       ],
-      "returns": "number"
+      "returns": "int"
     },
-    "ds_grid_value_y": {
+    "layer_background_get_index": {
       "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "*"
+        "int"
       ],
-      "returns": "number"
-    },
-    "ds_list_find_index": {
-      "params": [
-        "number",
-        "*"
-      ],
-      "returns": "number"
-    },
-    "ds_map_secure_load": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "ds_priority_create": {
-      "params": [],
-      "returns": "number"
-    },
-    "ds_priority_size": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "ds_queue_create": {
-      "params": [],
-      "returns": "number"
-    },
-    "ds_queue_size": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "ds_stack_create": {
-      "params": [],
-      "returns": "number"
-    },
-    "ds_stack_size": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "file_text_open_append": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "file_text_open_read": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "file_text_open_write": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "font_add_sprite_ext": {
-      "params": [
-        "number",
-        "string",
-        "number",
-        "boolean"
-      ],
-      "returns": "number"
-    },
-    "game_get_speed": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "gamepad_axis_value": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "gamepad_get_device_count": {
-      "params": [],
-      "returns": "number"
-    },
-    "get_integer_async": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "number"
+      "returns": "int"
     },
     "layer_background_get_sprite": {
       "params": [
         "number"
       ],
       "returns": "number"
+    },
+    "layer_background_index": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "layer_background_set_sprite": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "layer_background_sprite": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "layer_background_visible": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "layer_depth": {
+      "params": [
+        "*",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "layer_exists": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
     },
     "layer_get_depth": {
       "params": [
@@ -3128,6 +3207,93 @@
       ],
       "returns": "number"
     },
+    "layer_sequence_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "layer_sequence_is_finished": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "layer_set_visible": {
+      "params": [
+        "*",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "layer_vspeed": {
+      "params": [
+        "*",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "layer_x": {
+      "params": [
+        "*",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "layer_y": {
+      "params": [
+        "*",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "lengthdir_x": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "lengthdir_y": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "lerp": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "ln": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "log10": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "log2": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "logn": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
     "make_color_hsv": {
       "params": [
         "number",
@@ -3135,6 +3301,221 @@
         "number"
       ],
       "returns": "number"
+    },
+    "make_color_rgb": {
+      "params": [
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "int"
+    },
+    "make_colour_rgb": {
+      "params": [
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "int"
+    },
+    "max": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "mean": {
+      "returns": "number"
+    },
+    "median": {
+      "returns": "number"
+    },
+    "merge_color": {
+      "params": [
+        "int",
+        "int",
+        "number"
+      ],
+      "returns": "int"
+    },
+    "merge_colour": {
+      "params": [
+        "int",
+        "int",
+        "number"
+      ],
+      "returns": "int"
+    },
+    "method": {
+      "params": [
+        "*",
+        "*"
+      ],
+      "returns": "*"
+    },
+    "method_get_self": {
+      "params": [
+        "*"
+      ],
+      "returns": "*"
+    },
+    "min": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "motion_add": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "motion_set": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mouse_check_button": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "mouse_check_button_pressed": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "mouse_check_button_released": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "mouse_wheel_down": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "mouse_wheel_up": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "mouse_x": {
+      "returns": "number"
+    },
+    "mouse_y": {
+      "returns": "number"
+    },
+    "move_bounce_all": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "move_bounce_solid": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "move_contact_all": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "move_contact_solid": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "move_outside_all": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "move_outside_solid": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "move_random": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "move_snap": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "move_towards_point": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "move_wrap": {
+      "params": [
+        "boolean",
+        "boolean",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_add_instances": {
+      "params": [
+        "int",
+        "classref",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_add_rectangle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_clear_all": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_clear_rectangle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
     },
     "mp_grid_create": {
       "params": [
@@ -3147,26 +3528,517 @@
       ],
       "returns": "number"
     },
+    "mp_grid_draw": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "mp_grid_path": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "boolean"
+    },
+    "mp_linear_step": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "boolean"
+    },
+    "mp_linear_step_object": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "any"
+      ],
+      "returns": "boolean"
+    },
+    "mp_potential_settings": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "mp_potential_step": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "boolean"
+    },
+    "mp_potential_step_object": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "any"
+      ],
+      "returns": "boolean"
+    },
+    "object_exists": {
+      "params": [
+        "classref"
+      ],
+      "returns": "boolean"
+    },
+    "object_get_name": {
+      "params": [
+        "classref"
+      ],
+      "returns": "string"
+    },
+    "object_get_parent": {
+      "params": [
+        "classref"
+      ],
+      "returns": "*"
+    },
+    "object_get_sprite": {
+      "params": [
+        "classref"
+      ],
+      "returns": "int"
+    },
+    "object_is_ancestor": {
+      "params": [
+        "classref",
+        "classref"
+      ],
+      "returns": "boolean"
+    },
+    "ord": {
+      "params": [
+        "string"
+      ],
+      "returns": "int"
+    },
+    "os_is_paused": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "other": {
+      "params": [],
+      "returns": "any"
+    },
+    "part_emitter_burst": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "part_emitter_create": {
       "params": [
         "number"
       ],
       "returns": "number"
     },
+    "part_emitter_destroy": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_emitter_region": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_emitter_stream": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_particles_clear": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_particles_create": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_particles_create_color": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_system_automatic_draw": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_system_automatic_update": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
     "part_system_create": {
       "params": [],
       "returns": "number"
+    },
+    "part_system_depth": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_system_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_system_draw_order": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_system_drawit": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_system_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "part_system_position": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_alpha1": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_alpha2": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_alpha3": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_clear": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "part_type_color1": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_color2": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_color3": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_color_hsv": {
+      "params": [
+        "int",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
     },
     "part_type_create": {
       "params": [],
       "returns": "number"
     },
+    "part_type_death": {
+      "params": [
+        "int",
+        "int",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_direction": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "part_type_gravity": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_life": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_orientation": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "part_type_scale": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_shape": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "part_type_size": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_size_x": {
+      "params": [
+        "int",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_size_y": {
+      "params": [
+        "int",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_speed": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "part_type_sprite": {
+      "params": [
+        "number",
+        "number",
+        "boolean",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "pass": {
+      "params": [],
+      "returns": "void"
+    },
     "path_add": {
       "params": [],
       "returns": "number"
     },
+    "path_delete": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "path_end": {
+      "params": [],
+      "returns": "void"
+    },
+    "path_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
     "path_get_length": {
       "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "path_start": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "place_empty": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "place_free": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "place_meeting": {
+      "params": [
+        "number",
+        "number",
+        "classref"
+      ],
+      "returns": "boolean"
+    },
+    "place_snapped": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "point_direction": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "point_distance": {
+      "params": [
+        "number",
+        "number",
+        "number",
         "number"
       ],
       "returns": "number"
@@ -3179,6 +4051,151 @@
         "number",
         "number",
         "number"
+      ],
+      "returns": "number"
+    },
+    "point_in_circle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "point_in_rectangle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "point_in_triangle": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "position_meeting": {
+      "params": [
+        "number",
+        "number",
+        "classref"
+      ],
+      "returns": "boolean"
+    },
+    "power": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "ps5_gamepad_set_trigger_effect_vibration": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "ps5_gamepad_set_vibration_mode": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "psn_communication_restriction_status": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "psn_get_trophy_unlock_state": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "psn_init_trophy": {
+      "params": [],
+      "returns": "void"
+    },
+    "psn_np_commerce_dialog_tick": {
+      "params": [],
+      "returns": "void"
+    },
+    "psn_post_uds_event": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "psn_save_data_backup": {
+      "params": [],
+      "returns": "void"
+    },
+    "psn_tick": {
+      "params": [],
+      "returns": "void"
+    },
+    "psn_tick_error_dialog": {
+      "params": [],
+      "returns": "void"
+    },
+    "psn_unlock_trophy": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "void"
+    },
+    "radtodeg": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "random": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "random_range": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "random_set_seed": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "randomize": {
+      "returns": "void"
+    },
+    "real": {
+      "params": [
+        "*"
       ],
       "returns": "number"
     },
@@ -3202,6 +4219,105 @@
       ],
       "returns": "number"
     },
+    "room_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "room_get_name": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "room_goto": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "room_goto_next": {
+      "returns": "void"
+    },
+    "room_goto_previous": {
+      "returns": "void"
+    },
+    "room_instance_clear": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "room_next": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "room_previous": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "room_restart": {
+      "returns": "void"
+    },
+    "room_set_persistent": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "round": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "screen_save": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "script_execute": {
+      "returns": "*"
+    },
+    "setAllField": {
+      "params": [
+        "string",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "setInstanceField": {
+      "params": [
+        "any",
+        "string",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "setInstanceFieldIndex": {
+      "params": [
+        "any",
+        "string",
+        "number",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "setOtherField": {
+      "params": [
+        "any",
+        "string",
+        "any"
+      ],
+      "returns": "void"
+    },
     "shader_get_sampler_index": {
       "params": [
         "number",
@@ -3216,17 +4332,214 @@
       ],
       "returns": "number"
     },
+    "shader_is_compiled": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "shader_reset": {
+      "params": [],
+      "returns": "void"
+    },
+    "shader_set": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "shader_set_uniform_f": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "shader_set_uniform_f_array": {
+      "params": [
+        "int",
+        "dynamic"
+      ],
+      "returns": "void"
+    },
+    "shader_set_uniform_i": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "show_debug_log": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "show_debug_message": {
+      "params": [
+        "*"
+      ],
+      "returns": "void"
+    },
+    "show_debug_overlay": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "show_error": {
+      "params": [
+        "string",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "show_message": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "show_message_async": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "sign": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "sin": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "sprite_add": {
+      "params": [
+        "string",
+        "number",
+        "boolean",
+        "boolean",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "sprite_add_from_surface": {
+      "params": [
+        "int",
+        "int",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "sprite_collision_mask": {
+      "params": [
+        "number",
+        "boolean",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "sprite_create_from_surface": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "boolean",
+        "boolean",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "sprite_delete": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
     "sprite_duplicate": {
       "params": [
         "number"
       ],
       "returns": "number"
     },
+    "sprite_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "sprite_get_bbox_bottom": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_get_bbox_left": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_get_bbox_right": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_get_bbox_top": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_get_height": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_get_name": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "sprite_get_number": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
     "sprite_get_speed": {
       "params": [
         "number"
       ],
       "returns": "number"
+    },
+    "sprite_get_texture": {
+      "params": [
+        "int",
+        "int"
+      ],
+      "returns": "int"
     },
     "sprite_get_uvs": {
       "params": [
@@ -3235,14 +4548,291 @@
       ],
       "returns": "number"
     },
+    "sprite_get_width": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_get_xoffset": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_get_yoffset": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "sprite_prefetch": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "sprite_replace": {
+      "params": [
+        "number",
+        "string",
+        "number",
+        "boolean",
+        "boolean",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "sprite_save": {
+      "params": [
+        "number",
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "sprite_set_offset": {
+      "params": [
+        "int",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "sprite_set_speed": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "sqr": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "sqrt": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_activate_overlay": {
+      "params": [
+        "any"
+      ],
+      "returns": "void"
+    },
+    "steam_activate_overlay_browser": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_activate_overlay_store": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_activate_overlay_user": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_available_languages": {
+      "params": [],
+      "returns": "string"
+    },
+    "steam_clear_achievement": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_current_game_language": {
+      "params": [],
+      "returns": "string"
+    },
+    "steam_download_friends_scores": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_download_scores": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_download_scores_around_user": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_file_delete": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_file_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_get_list": {
+      "params": [],
+      "returns": "*"
+    },
+    "steam_file_persisted": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_read": {
+      "params": [
+        "string"
+      ],
+      "returns": "string"
+    },
+    "steam_file_read_buffer": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "steam_file_share": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
     "steam_file_size": {
       "params": [
         "string"
       ],
       "returns": "number"
     },
+    "steam_file_write": {
+      "params": [
+        "string",
+        "string",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_write_buffer": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_file_write_file": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_get_achievement": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "steam_get_achievement_progress_limits_int": {
+      "params": [
+        "string"
+      ],
+      "returns": "*"
+    },
     "steam_get_app_id": {
       "params": [],
+      "returns": "number"
+    },
+    "steam_get_app_ownership_ticket_data": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "steam_get_global_stat_history_int": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_get_global_stat_history_real": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_get_global_stat_int": {
+      "params": [
+        "string"
+      ],
+      "returns": "int"
+    },
+    "steam_get_global_stat_real": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "steam_get_local_file_change": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
+    "steam_get_local_file_change_count": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_get_most_achieved_achievement_info": {
+      "params": [
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "steam_get_number_of_current_players": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_get_persona_name": {
+      "params": [],
+      "returns": "string"
+    },
+    "steam_get_quota_free": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_get_quota_total": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_get_stat_float": {
+      "params": [
+        "string"
+      ],
       "returns": "number"
     },
     "steam_get_stat_int": {
@@ -3251,9 +4841,1035 @@
       ],
       "returns": "number"
     },
+    "steam_get_user_account_id": {
+      "returns": "int"
+    },
+    "steam_get_user_persona_name_sync": {
+      "params": [
+        "number"
+      ],
+      "returns": "string"
+    },
     "steam_get_user_steam_id": {
       "params": [],
       "returns": "number"
+    },
+    "steam_image_get_rgba": {
+      "params": [
+        "int",
+        "int",
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "steam_image_get_size": {
+      "params": [
+        "number"
+      ],
+      "returns": "*"
+    },
+    "steam_indicate_achievement_progress": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_initialised": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_input_activate_action_set": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_input_enable_device_callbacks": {
+      "returns": "void"
+    },
+    "steam_input_get_action_origin_from_xbox_origin": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_input_get_action_set_handle": {
+      "params": [
+        "string"
+      ],
+      "returns": "int"
+    },
+    "steam_input_get_analog_action_handle": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "steam_input_get_connected_controllers": {
+      "params": [],
+      "returns": "*"
+    },
+    "steam_input_get_digital_action_data": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_input_get_digital_action_handle": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "steam_input_get_digital_action_origins": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "steam_input_get_glyph_png_for_action_origin": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "string"
+    },
+    "steam_input_init": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "steam_input_run_frame": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_inventory_get_all_items": {
+      "params": [
+        "*"
+      ],
+      "returns": "number"
+    },
+    "steam_inventory_result_destroy": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_inventory_result_get_items": {
+      "params": [
+        "int"
+      ],
+      "returns": "*"
+    },
+    "steam_inventory_trigger_item_drop": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_is_cloud_enabled_for_account": {
+      "returns": "boolean"
+    },
+    "steam_is_cloud_enabled_for_app": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_overlay_activated": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_overlay_enabled": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_screenshot_requested": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_subscribed": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_is_user_logged_on": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_lobby_activate_invite_overlay": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_lobby_create": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_lobby_get_chat_message_data": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_lobby_get_chat_message_text": {
+      "params": [
+        "int"
+      ],
+      "returns": "string"
+    },
+    "steam_lobby_get_data": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "string"
+    },
+    "steam_lobby_get_lobby_id": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_lobby_get_member_count": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_lobby_get_member_id": {
+      "params": [
+        "int"
+      ],
+      "returns": "int"
+    },
+    "steam_lobby_get_owner_id": {
+      "returns": "int"
+    },
+    "steam_lobby_is_owner": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_lobby_join_id": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_lobby_leave": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_lobby_list_add_string_filter": {
+      "params": [
+        "string",
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_lobby_list_get_count": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_lobby_list_get_data": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "string"
+    },
+    "steam_lobby_list_get_lobby_id": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_lobby_list_join": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_lobby_list_request": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_lobby_send_chat_message_buffer": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_lobby_set_data": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_lobby_set_owner_id": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_music_get_status": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_music_is_enabled": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_music_is_playing": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_music_pause": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_music_play": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_music_play_next": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_music_play_previous": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_music_set_volume": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_net_packet_get_data": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_net_packet_get_sender_id": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_net_packet_receive": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_net_packet_send": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_request_friend_rich_presence": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "steam_request_global_achievement_percentages": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_request_global_stats": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_reset_all_stats_achievements": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_send_screenshot": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_set_achievement": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_set_rich_presence": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_set_stat_avg_rate": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_set_stat_float": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_set_stat_int": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_show_floating_gamepad_text_input": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_shutdown": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_stats_ready": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "steam_store_stats": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_ugc_create_item": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_create_query_all": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_ugc_create_query_user": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_ugc_delete_item": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_get_item_install_info": {
+      "params": [
+        "number",
+        "*"
+      ],
+      "returns": "boolean"
+    },
+    "steam_ugc_get_item_update_info": {
+      "params": [
+        "int",
+        "dynamic"
+      ],
+      "returns": "boolean"
+    },
+    "steam_ugc_get_subscribed_items": {
+      "params": [
+        "*"
+      ],
+      "returns": "number"
+    },
+    "steam_ugc_num_subscribed_items": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_ugc_request_item_details": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_send_query": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_set_item_content": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_set_item_description": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_set_item_preview": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_set_item_tags": {
+      "params": [
+        "number",
+        "string[]"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_set_item_title": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_set_item_visibility": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_start_item_update": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "steam_ugc_submit_item_update": {
+      "params": [
+        "int",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_subscribe_item": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_ugc_unsubscribe_item": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_update": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_upload_score_buffer_ext": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_upload_score_ext": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_user_cancel_auth_ticket": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "steam_user_get_auth_session_ticket": {
+      "params": [
+        "*"
+      ],
+      "returns": "number"
+    },
+    "steam_user_installed_dlc": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_user_owns_dlc": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "steam_user_request_encrypted_app_ticket": {
+      "params": [
+        "any"
+      ],
+      "returns": "void"
+    },
+    "steam_utils_enable_callbacks": {
+      "params": [],
+      "returns": "void"
+    },
+    "steam_utils_get_server_real_time": {
+      "params": [],
+      "returns": "number"
+    },
+    "steam_utils_is_steam_running_on_steam_deck": {
+      "params": [],
+      "returns": "boolean"
+    },
+    "string": {
+      "params": [
+        "*"
+      ],
+      "returns": "string"
+    },
+    "string_byte_at": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "string_byte_length": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "string_char_at": {
+      "params": [
+        "string",
+        "int"
+      ],
+      "returns": "string"
+    },
+    "string_copy": {
+      "params": [
+        "string",
+        "int",
+        "int"
+      ],
+      "returns": "string"
+    },
+    "string_count": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "int"
+    },
+    "string_delete": {
+      "params": [
+        "string",
+        "int",
+        "int"
+      ],
+      "returns": "string"
+    },
+    "string_digits": {
+      "params": [
+        "string"
+      ],
+      "returns": "string"
+    },
+    "string_format": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "string"
+    },
+    "string_height": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "string_height_ext": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "string_insert": {
+      "params": [
+        "string",
+        "string",
+        "int"
+      ],
+      "returns": "string"
+    },
+    "string_length": {
+      "params": [
+        "string"
+      ],
+      "returns": "int"
+    },
+    "string_letters": {
+      "params": [
+        "string"
+      ],
+      "returns": "string"
+    },
+    "string_lower": {
+      "params": [
+        "string"
+      ],
+      "returns": "string"
+    },
+    "string_pos": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "int"
+    },
+    "string_repeat": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "string"
+    },
+    "string_replace": {
+      "params": [
+        "string",
+        "string",
+        "string"
+      ],
+      "returns": "string"
+    },
+    "string_replace_all": {
+      "params": [
+        "string",
+        "string",
+        "string"
+      ],
+      "returns": "string"
+    },
+    "string_upper": {
+      "params": [
+        "string"
+      ],
+      "returns": "string"
+    },
+    "string_width": {
+      "params": [
+        "string"
+      ],
+      "returns": "number"
+    },
+    "string_width_ext": {
+      "params": [
+        "string",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "struct_exists": {
+      "params": [
+        "*",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "struct_get": {
+      "params": [
+        "*",
+        "string"
+      ],
+      "returns": "*"
+    },
+    "struct_get_from_hash": {
+      "params": [
+        "*",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "struct_get_names": {
+      "params": [
+        "*"
+      ],
+      "returns": "*"
+    },
+    "surface_copy": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "surface_create": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "param_names": [
+        "w",
+        "h",
+        "format"
+      ],
+      "defaults": [
+        null,
+        null,
+        0
+      ],
+      "returns": "int"
+    },
+    "surface_exists": {
+      "params": [
+        "int"
+      ],
+      "returns": "boolean"
+    },
+    "surface_free": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "surface_get_height": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "surface_get_target": {
+      "returns": "int"
+    },
+    "surface_get_texture": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "surface_get_width": {
+      "params": [
+        "int"
+      ],
+      "returns": "number"
+    },
+    "surface_getpixel": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "surface_reset_target": {
+      "returns": "void"
+    },
+    "surface_resize": {
+      "params": [
+        "int",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "surface_set_target": {
+      "params": [
+        "int"
+      ],
+      "returns": "void"
+    },
+    "tag_get_assets": {
+      "params": [
+        "string",
+        "number"
+      ],
+      "returns": "*"
+    },
+    "tan": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "texture_get_texel_height": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "texture_get_texel_width": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "texture_is_ready": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "texture_prefetch": {
+      "params": [
+        "any"
+      ],
+      "returns": "void"
+    },
+    "texture_set_stage": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tile_add": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "tile_delete": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tile_exists": {
+      "params": [
+        "number"
+      ],
+      "returns": "boolean"
+    },
+    "tile_get_x": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "tile_get_y": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "tile_layer_delete": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tile_layer_depth": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tile_layer_find": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
+    "tile_layer_hide": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tile_layer_shift": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tile_layer_show": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "tile_set_position": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "uint": {
+      "params": [
+        "any"
+      ],
+      "returns": "number"
+    },
+    "url_open_ext": {
+      "params": [
+        "string",
+        "string"
+      ],
+      "returns": "void"
     },
     "variable_get_hash": {
       "params": [
@@ -3261,21 +5877,166 @@
       ],
       "returns": "number"
     },
+    "variable_global_exists": {
+      "params": [
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "variable_global_get": {
+      "params": [
+        "string"
+      ],
+      "returns": "*"
+    },
+    "variable_global_set": {
+      "params": [
+        "string",
+        "*"
+      ],
+      "returns": "void"
+    },
+    "variable_instance_exists": {
+      "params": [
+        "dynamic",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "variable_instance_get": {
+      "params": [
+        "dynamic",
+        "string"
+      ],
+      "returns": "dynamic"
+    },
+    "variable_instance_set": {
+      "params": [
+        "any",
+        "string",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "variable_struct_exists": {
+      "params": [
+        "*",
+        "string"
+      ],
+      "returns": "boolean"
+    },
+    "variable_struct_get": {
+      "params": [
+        "*",
+        "string"
+      ],
+      "returns": "*"
+    },
+    "variable_struct_get_names": {
+      "params": [
+        "*"
+      ],
+      "returns": "string"
+    },
     "variable_struct_names_count": {
       "params": [
         "*"
       ],
       "returns": "number"
     },
+    "variable_struct_remove": {
+      "params": [
+        "any",
+        "string"
+      ],
+      "returns": "void"
+    },
+    "variable_struct_set": {
+      "params": [
+        "any",
+        "string",
+        "any"
+      ],
+      "returns": "void"
+    },
+    "vertex_begin": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "vertex_colour": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "vertex_create_buffer": {
       "params": [],
       "returns": "number"
+    },
+    "vertex_delete_buffer": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "vertex_end": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "vertex_format_begin": {
+      "params": [],
+      "returns": "void"
     },
     "vertex_format_end": {
       "params": [],
       "returns": "number"
     },
+    "vertex_normal": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "vertex_position": {
+      "params": [
+        "*",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "vertex_submit": {
+      "params": [
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "video_close": {
+      "params": [],
+      "returns": "void"
+    },
+    "video_draw": {
+      "params": [],
+      "returns": "any[]"
+    },
     "video_get_duration": {
+      "params": [],
+      "returns": "number"
+    },
+    "video_get_format": {
       "params": [],
       "returns": "number"
     },
@@ -3286,6 +6047,60 @@
     "video_get_status": {
       "params": [],
       "returns": "number"
+    },
+    "video_open": {
+      "params": [
+        "string"
+      ],
+      "returns": "void"
+    },
+    "video_seek_to": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "video_set_volume": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
+    "view_set_camera": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "view_set_hport": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "view_set_visible": {
+      "params": [
+        "number",
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "view_set_wport": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "window_center": {
+      "params": [],
+      "returns": "void"
+    },
+    "window_get_fullscreen": {
+      "params": [],
+      "returns": "boolean"
     },
     "window_get_height": {
       "params": [],
@@ -3311,592 +6126,51 @@
       "params": [],
       "returns": "number"
     },
-    "audio_get_name": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "buffer_base64_encode": {
+    "window_mouse_set": {
       "params": [
         "number",
-        "number",
         "number"
       ],
-      "returns": "string"
+      "returns": "void"
     },
-    "clipboard_get_text": {
-      "params": [],
-      "returns": "string"
-    },
-    "ds_map_write": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "file_find_first": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "string"
-    },
-    "file_find_next": {
-      "params": [],
-      "returns": "string"
-    },
-    "file_text_read_string": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "font_get_name": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "gamepad_get_description": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "get_string_async": {
-      "params": [
-        "string",
-        "string"
-      ],
-      "returns": "string"
-    },
-    "json_encode": {
-      "params": [
-        "*"
-      ],
-      "returns": "string"
-    },
-    "json_stringify": {
-      "params": [
-        "*"
-      ],
-      "returns": "string"
-    },
-    "room_get_name": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "sprite_get_name": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "string_digits": {
+    "window_set_caption": {
       "params": [
         "string"
       ],
-      "returns": "string"
+      "returns": "void"
     },
-    "string_format": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "string"
-    },
-    "string_letters": {
-      "params": [
-        "string"
-      ],
-      "returns": "string"
-    },
-    "string_repeat": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "string"
-    },
-    "variable_struct_get_names": {
-      "params": [
-        "*"
-      ],
-      "returns": "string"
-    },
-    "video_get_format": {
-      "params": [],
-      "returns": "number"
-    },
-    "getInstanceField": {
-      "params": [
-        "*",
-        "string"
-      ],
-      "returns": "*"
-    },
-    "getAllField": {
-      "params": [
-        "string"
-      ],
-      "returns": "*"
-    },
-    "array_concat": {
-      "params": [
-        "*"
-      ],
-      "returns": "*"
-    },
-    "array_get": {
-      "params": [
-        "*",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "surface_getpixel": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "gpu_get_colorwriteenable": {
-      "params": [],
-      "returns": "*"
-    },
-    "ds_map_find_first": {
+    "window_set_cursor": {
       "params": [
         "number"
       ],
-      "returns": "*"
+      "returns": "void"
     },
-    "ds_map_find_next": {
+    "window_set_fullscreen": {
       "params": [
-        "number",
-        "*"
+        "boolean"
       ],
-      "returns": "*"
+      "returns": "void"
     },
-    "ds_stack_pop": {
-      "params": [
-        "number"
-      ],
-      "returns": "*"
-    },
-    "ds_stack_top": {
-      "params": [
-        "number"
-      ],
-      "returns": "*"
-    },
-    "ds_queue_dequeue": {
-      "params": [
-        "number"
-      ],
-      "returns": "*"
-    },
-    "ds_queue_head": {
-      "params": [
-        "number"
-      ],
-      "returns": "*"
-    },
-    "method": {
-      "params": [
-        "*",
-        "*"
-      ],
-      "returns": "*"
-    },
-    "variable_struct_get": {
-      "params": [
-        "*",
-        "string"
-      ],
-      "returns": "*"
-    },
-    "getObjectName": {
-      "params": [
-        "*"
-      ],
-      "returns": "string"
-    },
-    "buffer_read": {
+    "window_set_position": {
       "params": [
         "number",
         "number"
       ],
-      "returns": "*"
+      "returns": "void"
     },
-    "steam_current_game_language": {
-      "params": [],
-      "returns": "string"
-    },
-    "steam_ugc_get_subscribed_items": {
-      "params": [
-        "*"
-      ],
-      "returns": "number"
-    },
-    "steam_lobby_get_lobby_id": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_lobby_get_data": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "string"
-    },
-    "steam_input_get_digital_action_handle": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "string_byte_length": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "struct_get": {
-      "params": [
-        "*",
-        "string"
-      ],
-      "returns": "*"
-    },
-    "struct_get_from_hash": {
-      "params": [
-        "*",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "tag_get_assets": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "steam_get_user_persona_name_sync": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "steam_get_global_stat_history_int": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_image_get_size": {
-      "params": [
-        "number"
-      ],
-      "returns": "*"
-    },
-    "steam_lobby_get_member_count": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_lobby_get_chat_message_data": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "surface_get_texture": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "json_parse": {
-      "params": [
-        "string"
-      ],
-      "returns": "*"
-    },
-    "steam_get_persona_name": {
-      "params": [],
-      "returns": "string"
-    },
-    "steam_net_packet_get_sender_id": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_ugc_create_query_user": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "string_byte_at": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "json_decode": {
-      "params": [
-        "string"
-      ],
-      "returns": "*"
-    },
-    "ds_priority_find_max": {
-      "params": [
-        "number"
-      ],
-      "returns": "*"
-    },
-    "ds_map_keys_to_array": {
-      "params": [
-        "number"
-      ],
-      "returns": "*"
-    },
-    "method_get_self": {
-      "params": [
-        "*"
-      ],
-      "returns": "*"
-    },
-    "layer_vspeed": {
-      "params": [
-        "*",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "layer_background_sprite": {
+    "window_set_size": {
       "params": [
         "number",
         "number"
       ],
-      "returns": "*"
+      "returns": "void"
     },
-    "texture_get_texel_height": {
+    "withInstances": {
       "params": [
-        "number"
+        "any",
+        "any"
       ],
-      "returns": "number"
-    },
-    "texture_get_texel_width": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "struct_get_names": {
-      "params": [
-        "*"
-      ],
-      "returns": "*"
-    },
-    "buffer_peek": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "steam_ugc_start_item_update": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_music_get_status": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_lobby_list_get_lobby_id": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_lobby_list_get_count": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_get_local_file_change_count": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_available_languages": {
-      "params": [],
-      "returns": "string"
-    },
-    "steam_inventory_get_all_items": {
-      "params": [
-        "*"
-      ],
-      "returns": "number"
-    },
-    "steam_get_quota_total": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_get_global_stat_history_real": {
-      "params": [
-        "string",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_file_read": {
-      "params": [
-        "string"
-      ],
-      "returns": "string"
-    },
-    "steam_user_get_auth_session_ticket": {
-      "params": [
-        "*"
-      ],
-      "returns": "number"
-    },
-    "steam_ugc_num_subscribed_items": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_ugc_create_query_all": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_lobby_list_get_data": {
-      "params": [
-        "number",
-        "string"
-      ],
-      "returns": "string"
-    },
-    "steam_get_quota_free": {
-      "params": [],
-      "returns": "number"
-    },
-    "steam_get_app_ownership_ticket_data": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "steam_utils_get_server_real_time": {
-      "params": [],
-      "returns": "number"
-    },
-    "layer_x": {
-      "params": [
-        "*",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "layer_y": {
-      "params": [
-        "*",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "psn_get_trophy_unlock_state": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "psn_communication_restriction_status": {
-      "params": [
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_file_get_list": {
-      "params": [],
-      "returns": "*"
-    },
-    "steam_get_achievement_progress_limits_int": {
-      "params": [
-        "string"
-      ],
-      "returns": "*"
-    },
-    "steam_get_global_stat_real": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "steam_get_local_file_change": {
-      "params": [
-        "number"
-      ],
-      "returns": "string"
-    },
-    "steam_input_get_action_origin_from_xbox_origin": {
-      "params": [
-        "number",
-        "number"
-      ],
-      "returns": "number"
-    },
-    "steam_input_get_analog_action_handle": {
-      "params": [
-        "string"
-      ],
-      "returns": "number"
-    },
-    "steam_input_get_connected_controllers": {
-      "params": [],
-      "returns": "*"
-    },
-    "steam_input_get_digital_action_origins": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "*"
-    },
-    "steam_input_get_glyph_png_for_action_origin": {
-      "params": [
-        "number",
-        "number",
-        "number"
-      ],
-      "returns": "string"
+      "returns": "any"
     }
   },
   "function_modules": [
