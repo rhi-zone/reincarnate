@@ -949,10 +949,13 @@ fn print_expr(expr: &JsExpr) -> String {
             kind,
         } => {
             match (kind, ty) {
-                // NullableCoerce + Struct/Enum → asType(x, Foo) (runtime null-on-failure).
+                // NullableCoerce + Struct/Enum → asType(x, Foo)! (runtime null-on-failure).
+                // The `!` preserves AS3 semantics: accessing null is a runtime crash in AS3,
+                // just as `!` causes a runtime TypeError in TypeScript. Under strictNullChecks
+                // the result type is `T` (non-nullable) so it is usable in all value contexts.
                 (CastKind::NullableCoerce, Type::Struct(name) | Type::Enum(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
-                    format!("asType({}, {})", print_expr(inner), sanitize_ident(short))
+                    format!("asType({}, {})!", print_expr(inner), sanitize_ident(short))
                 }
                 // Coerce + Struct/Enum → TS assertion (compiler-guaranteed).
                 // Special case: `null as Type` is TS2352 because the types don't overlap;
