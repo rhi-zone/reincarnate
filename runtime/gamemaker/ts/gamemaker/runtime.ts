@@ -4411,10 +4411,8 @@ export class GameRuntime {
   action_inherited(): void {
     throw Error("action_inherited: not yet implemented");
   }
-  action_if_variable(name: string, value: any, op: number): boolean {
-    if (!this._self) return false;
-    const v = (this._self as any)[name];
-    return op === 0 ? v === value : v < value;
+  action_if_variable(variable: any, value: any, op: number): boolean {
+    return op === 0 ? variable == value : variable < value;
   }
   action_set_alarm(steps: number, alarm: number): void {
     if (!this._self) return;
