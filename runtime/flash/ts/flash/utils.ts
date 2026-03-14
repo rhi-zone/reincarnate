@@ -123,12 +123,13 @@ const _classRegistry = new Map<string, Function>();
 
 /** AS3 registerClassAlias — registers a string alias for AMF serialization. */
 export function registerClassAlias(alias: string, ctor: Function): void {
-  const name = (ctor as any)[QN_KEY] ?? (ctor as any).name;
+  type WithQN = { [QN_KEY]?: string; name?: string };
+  const name = (ctor as unknown as WithQN)[QN_KEY] ?? (ctor as unknown as WithQN).name;
   if (typeof name === "string") _classRegistry.set(alias, ctor);
 }
 
 export function registerClass(ctor: Function): void {
-  const name = (ctor as any)[QN_KEY];
+  const name = (ctor as unknown as { [QN_KEY]?: string })[QN_KEY];
   if (typeof name === "string") _classRegistry.set(name, ctor);
 }
 
