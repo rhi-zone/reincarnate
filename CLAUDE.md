@@ -2,7 +2,7 @@
 
 ## Goal
 
-Reincarnate is a decompiler that produces working, type-safe, maintainable code from legacy game binaries. The emitted code (TypeScript, Rust, etc.) is the artifact — it compiles, runs, and is as editable as any normal codebase.
+Reincarnate is a decompiler that produces working, type-safe, high-quality code from legacy game binaries. The emitted code (TypeScript, Rust, etc.) is the artifact — it compiles, runs, and is as readable and editable as any well-written codebase.
 
 **Design target:** arbitrary source languages, arbitrary target languages, zero coupling between them, state-of-the-art type inference and static analysis, high-quality codebase architecture. Every decision is evaluated against this bar.
 
