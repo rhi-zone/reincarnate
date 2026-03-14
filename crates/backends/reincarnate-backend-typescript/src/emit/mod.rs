@@ -995,6 +995,11 @@ fn emit_free_functions_file(
         out.push('\n');
     }
 
+    // Sprite enum import for free functions (same as per-class emit).
+    if !module.sprite_names.is_empty() {
+        let _ = writeln!(out, "import {{ Sprites }} from \"../data/sprites\";");
+    }
+
     // Scan free functions for external class references.
     let mut refs = RefSets::default();
     for &fid in free_funcs {

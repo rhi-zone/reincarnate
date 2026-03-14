@@ -21,7 +21,8 @@ import { StorageState } from "./storage";
 import {
   AudioState, loadAudio,
   play as audioPlay, stop as audioStop, stopAll as audioStopAll,
-  pause as audioPause, resume as audioResume, resumeAll as audioResumeAll,
+  pause as audioPause, pauseAll as audioPauseAll,
+  resume as audioResume, resumeAll as audioResumeAll,
   isPlaying as audioIsPlaying, isPaused as audioIsPaused,
   setVoiceGain as audioSetGain, getVoiceGain as audioGetGain,
   setVoicePitch as audioSetPitch, getVoicePitch as audioGetPitch,
@@ -1438,6 +1439,7 @@ export class GameRuntime {
   audio_stop_all(): void { audioStopAll(this._audio); }
   audio_pause_sound(handle: number): void { audioPause(this._audio, handle); }
   audio_resume_sound(handle: number): void { audioResume(this._audio, handle); }
+  audio_pause_all(): void { audioPauseAll(this._audio); }
   audio_resume_all(): void { audioResumeAll(this._audio); }
   audio_is_playing(handle: number): boolean { return audioIsPlaying(this._audio, handle); }
   audio_is_paused(handle: number): boolean { return audioIsPaused(this._audio, handle); }
@@ -1456,6 +1458,7 @@ export class GameRuntime {
   audio_group_load(_group: number): void { /* no-op — all audio loaded at startup */ }
   audio_group_stop_all(_group: number): void { audioStopAll(this._audio); }
   audio_group_set_gain(_group: number, gain: number, timeMs: number): void { audioSetNodeParam(this._audio, 0, "gain", gain, timeMs); }
+  audio_channel_num(_num: number): void { /* no-op — browser audio has no fixed channel limit */ }
 
   // ---- Particle API ----
 
@@ -1681,6 +1684,7 @@ export class GameRuntime {
   ds_map_destroy(map: number): void { this._dsMaps.delete(map); }
   ds_map_add(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
   ds_map_set(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
+  ds_map_set_post(map: number, key: any, val: any): void { this._dsMaps.get(map)?.set(key, val); }
   ds_map_find_value(map: number, key: any): any { return this._dsMaps.get(map)?.get(key); }
   ds_map_exists(map: number, key: any): boolean { return this._dsMaps.get(map)?.has(key) ?? false; }
   ds_map_delete(map: number, key: any): void { this._dsMaps.get(map)?.delete(key); }
@@ -2151,6 +2155,12 @@ export class GameRuntime {
   surface_get_target(): number {
     return this._surfaceIdStack[this._surfaceIdStack.length - 1] ?? -1;
   }
+  application_surface_draw_enable(_enable: boolean): void {
+    /* no-op — the web runtime always draws the application surface automatically */
+  }
+  application_surface_enable(_enable: boolean): void {
+    /* no-op — the web runtime always uses the application surface */
+  }
 
   // ---- Misc ----
   show_error(str: string, _abort: boolean): void { console.error("GML show_error:", str); }
@@ -2608,6 +2618,16 @@ export class GameRuntime {
     this._textFiles.set(id, { path, content, pos: 0, mode: 'r' });
     return id;
   }
+  file_text_read_real(file: number): number {
+    const f = this._textFiles.get(file); if (!f || f.mode !== 'r') return 0;
+    const nl = f.content.indexOf('\n', f.pos);
+    const line = nl === -1 ? f.content.slice(f.pos) : f.content.slice(f.pos, nl);
+    f.pos = nl === -1 ? f.content.length : nl + 1;
+    return parseFloat(line) || 0;
+  }
+  file_text_write_real(file: number, val: number): void {
+    const f = this._textFiles.get(file); if (f && f.mode === 'w') f.content += String(val);
+  }
   file_text_read_string(file: number): string {
     const f = this._textFiles.get(file); if (!f || f.mode !== 'r') return "";
     const nl = f.content.indexOf('\n', f.pos);
@@ -2863,6 +2883,12 @@ export class GameRuntime {
 
   // ---- Array helpers ----
   array_length(arr: any[]): number { return arr?.length ?? 0; }
+  array_length_1d(arr: any): number { return Array.isArray(arr) ? arr.length : 0; }
+  array_length_2d(arr: any, n: number): number {
+    if (!Array.isArray(arr)) return 0;
+    const row = arr[n];
+    return Array.isArray(row) ? row.length : 0;
+  }
 
   // ---- Misc missing built-ins ----
   draw_clear(colour: number): void {
@@ -3223,6 +3249,9 @@ export class GameRuntime {
 
   // ---- Texture extras ----
   texture_prefetch(_tex: number | string): void { /* no-op: textures preloaded */ }
+  texture_set_interpolation(enable: boolean): void {
+    this._gfx.ctx.imageSmoothingEnabled = enable;
+  }
   texture_set_stage(_stage: number, _tex: number): void { /* no-op: 2D canvas has no texture stages */ }
   texture_is_ready(_tex: number | string): boolean { return true; }
   texture_get_texel_height(tex: number): number {
@@ -3816,6 +3845,8 @@ export class GameRuntime {
   // Communication restrictions and commerce dialogs have no browser equivalent.
 
   /** Load trophy unlock state from storage into the in-memory set. */
+  psn_init_np_libs(): void { /* no-op — PSN not available in browser */ }
+  psn_setup_trophies(): void { /* no-op — PSN not available in browser; trophy init via psn_init_trophy */ }
   psn_init_trophy(_pad_index?: number): void {
     const gameName = this._storage.gameName;
     const raw = fetchItem(this._persistence, "__psn_trophy_" + gameName);
@@ -4269,6 +4300,9 @@ export class GameRuntime {
   action_another_room(room: number, transition: number): void {
     this.room_goto(room);
   }
+  action_previous_room(_transition: number): void {
+    this.room_goto_previous();
+  }
   action_sleep(_ms: number): void {
     /* no-op: blocking sleep not possible in browser event loop */
   }
@@ -4392,6 +4426,8 @@ export class GameRuntime {
   joystick_xpos(_id: number): number { return 0; }
   joystick_ypos(_id: number): number { return 0; }
   joystick_exists(_id: number): boolean { return false; }
+  joystick_direction(_id: number): number { return 0; }
+  joystick_pov(_id: number): number { return -1; }
 
   // ---- File extras (batch 2) ----
   file_text_readln(file: number): string {
@@ -4448,6 +4484,9 @@ export class GameRuntime {
 
   // ---- OS extras ----
   os_is_paused(): boolean { return false; }
+  os_get_language(): string { return navigator?.language?.split("-")[0] ?? "en"; }
+  os_get_region(): string { return navigator?.language?.split("-")[1]?.toUpperCase() ?? "US"; }
+  extension_stubfunc_real(): number { return 0; }
 
   // ---- Tile extras ----
   tile_layer_show(_layer: number): void { /* no-op */ }

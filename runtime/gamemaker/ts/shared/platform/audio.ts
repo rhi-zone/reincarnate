@@ -353,6 +353,10 @@ export function resume(state: AudioState, voiceId: VoiceHandle): void {
   v.paused = false;
 }
 
+export function pauseAll(state: AudioState): void {
+  for (const id of state.voices.keys()) pause(state, id);
+}
+
 export function resumeAll(state: AudioState): void {
   for (const id of state.voices.keys()) resume(state, id);
 }

@@ -479,15 +479,31 @@ coerce fix (Pass 5 in GmlBoolArithCoerce): 3078.
 - Fixed `parse_type_notation` to handle `"any[]"`, `"string[]"` array notation
 - Added ~300 runtime function implementations/stubs
 
-**Remaining 80 errors (by category):**
-- TS2304 "Cannot find name" — remaining missing GML built-ins not yet in function_modules
-- TS2339 "Property does not exist" — `_rt` property access / instance ID → class type limitation
-- TS2362/TS2365 — bool-in-arithmetic (session 22 coerce_bool_cmp_operands needs rework)
+**Session 24 progress: 80→63 errors.**
+
+**Remaining errors (by category):**
+- TS2554 (14): arity mismatches — wrong function signatures or missing overloads
+- TS2304 (3): `len` (for-loop scoping bug), `$set_confirm` (globals import bug, FIXED for class
+  files but _init.ts has a different codepath), and residual
+- TS2365/TS2362/TS2363 (18): `() => void` vs `number` — script references used as values
+  (function type instead of numeric instance ID). Deep type inference issue.
+- TS2322 (10): same pattern — `number` assigned to `() => void` typed variable
+- TS2345 (7): argument type mismatches
+- TS2367 (4): `() => void` vs `number` comparison
+- TS7027 (6): unreachable code (game-author bugs — wontfix)
+- TS2551/TS2552 (2): "did you mean" suggestions — residual from import fixes
+
+**Linearizer for-loop scoping bug:**
+`for (let i = 0; i < n; i += len)` where `let len` is declared INSIDE the loop body.
+The for-increment expression `i += len` accesses `len` before its block-scoped declaration.
+Root cause: linearizer places variable declarations at first assignment site, but doesn't check
+if the variable is referenced in the for-loop header (condition or increment). Fix: when a
+variable is used in a for-loop header, hoist its declaration to before the for statement.
 
 **Actionable next steps for Undertale:**
-1. Add remaining missing GML built-ins (TS2304 functions)
-2. Rework `coerce_bool_cmp_operands` — `bool === 0` should become `=== false`, not `Number(bool) === 0`
-3. Investigate TS2339 `_rt` pattern — may be solvable with better instance ID → class type mapping
+1. Fix for-loop scoping bug in linearizer (TS2304 `len`)
+2. Investigate TS2554 arity mismatches — some may be wrong signatures
+3. Investigate TS2365 `() => void` pattern — script references used as values
 
 ---
 
@@ -498,7 +514,7 @@ Each commit diff was read and evaluated against project principles. Findings bel
 
 ### Suppressions (cast/widen to hide type errors)
 
-- [ ] **`5788533` — `coerce_bool_cmp_operands` inserts `Number(x) === 0`**
+- [x] **`5788533` — `coerce_bool_cmp_operands` inserts `Number(x) === 0`** (fixed: replaced numeric const with bool const)
   Instead of `=== false`. Known issue; rework to `bool === 0` → `=== false`, `bool === true` → `bool`,
   `bool === false` → `!bool`.
 

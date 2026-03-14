@@ -795,6 +795,22 @@ pub(super) fn collect_type_refs_from_function(
                             );
                         }
                     }
+                    // GameMaker.Global.get/set → globals_used (the GML rewriter turns
+                    // these into `global_name` / `$set_global_name(val)` references).
+                    // Only add names that are known module-level globals (in _globals.ts);
+                    // other global fields (like GMS2.3+ __class__, __enumIndex__) are
+                    // accessed via the runtime `global` object, not module imports.
+                    EngineKind::GameMaker
+                        if system == "GameMaker.Global"
+                            && (method == "get" || method == "set")
+                            && !args.is_empty() =>
+                    {
+                        if let Some(field_name) = args.first().and_then(|v| const_strings.get(v)) {
+                            if global_names.contains(*field_name) {
+                                refs.globals_used.insert(field_name.to_string());
+                            }
+                        }
+                    }
                     // Flash scope lookups handled above; other Flash/Twine SystemCalls
                     // don't introduce class-constructor imports.
                     EngineKind::Flash | EngineKind::Twine => {}

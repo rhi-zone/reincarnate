@@ -29,7 +29,8 @@
       },
       {
         "names": [
-          "sprites"
+          "sprites",
+          "Sprites"
         ],
         "path": "data/sprites"
       },
@@ -220,6 +221,12 @@
     "action_another_room": {
       "params": [
         "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "action_previous_room": {
+      "params": [
         "number"
       ],
       "returns": "void"
@@ -454,6 +461,18 @@
       ],
       "returns": "number"
     },
+    "application_surface_draw_enable": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
+    "application_surface_enable": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
     "approach": {
       "params": [
         "number",
@@ -595,6 +614,12 @@
       ],
       "returns": "boolean"
     },
+    "audio_channel_num": {
+      "params": [
+        "number"
+      ],
+      "returns": "void"
+    },
     "audio_exists": {
       "params": [
         "number"
@@ -643,6 +668,10 @@
       "params": [
         "number"
       ],
+      "returns": "void"
+    },
+    "audio_pause_all": {
+      "params": [],
       "returns": "void"
     },
     "audio_pause_sound": {
@@ -2184,6 +2213,14 @@
       ],
       "returns": "void"
     },
+    "ds_map_set_post": {
+      "params": [
+        "number",
+        "any",
+        "any"
+      ],
+      "returns": "void"
+    },
     "ds_map_size": {
       "params": [
         "int"
@@ -2367,6 +2404,10 @@
       ],
       "returns": "void"
     },
+    "extension_stubfunc_real": {
+      "params": [],
+      "returns": "number"
+    },
     "execute_string": {
       "params": [
         "string"
@@ -2439,6 +2480,12 @@
       ],
       "returns": "number"
     },
+    "file_text_read_real": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
     "file_text_read_string": {
       "params": [
         "number"
@@ -2451,10 +2498,23 @@
       ],
       "returns": "string"
     },
+    "file_text_write_real": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
     "file_text_write_string": {
       "params": [
         "number",
         "string"
+      ],
+      "returns": "void"
+    },
+    "file_text_writeln": {
+      "params": [
+        "number"
       ],
       "returns": "void"
     },
@@ -2785,6 +2845,10 @@
       ],
       "returns": "void"
     },
+    "instance_activate_all": {
+      "params": [],
+      "returns": "void"
+    },
     "instance_change": {
       "params": [
         "classref",
@@ -3025,11 +3089,23 @@
       ],
       "returns": "boolean"
     },
+    "joystick_direction": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
     "joystick_exists": {
       "params": [
         "number"
       ],
       "returns": "boolean"
+    },
+    "joystick_pov": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
     },
     "joystick_has_pov": {
       "params": [
@@ -3628,6 +3704,14 @@
       ],
       "returns": "int"
     },
+    "os_get_language": {
+      "params": [],
+      "returns": "string"
+    },
+    "os_get_region": {
+      "params": [],
+      "returns": "string"
+    },
     "os_is_paused": {
       "params": [],
       "returns": "boolean"
@@ -4132,6 +4216,10 @@
       ],
       "returns": "number"
     },
+    "psn_init_np_libs": {
+      "params": [],
+      "returns": "void"
+    },
     "psn_init_trophy": {
       "params": [],
       "returns": "void"
@@ -4144,6 +4232,10 @@
       "params": [
         "number"
       ],
+      "returns": "void"
+    },
+    "psn_setup_trophies": {
+      "params": [],
       "returns": "void"
     },
     "psn_save_data_backup": {
@@ -5765,6 +5857,12 @@
       ],
       "returns": "void"
     },
+    "texture_set_interpolation": {
+      "params": [
+        "boolean"
+      ],
+      "returns": "void"
+    },
     "texture_set_stage": {
       "params": [
         "number",
@@ -6409,6 +6507,8 @@
         "audio_pause_sound",
         "audio_resume_sound",
         "audio_resume_all",
+        "audio_pause_all",
+        "audio_channel_num",
         "audio_exists",
         "audio_get_name",
         "audio_sound_gain",
@@ -6456,6 +6556,7 @@
         "ds_map_destroy",
         "ds_map_add",
         "ds_map_set",
+        "ds_map_set_post",
         "ds_map_find_value",
         "ds_map_exists",
         "ds_map_delete",
@@ -6574,6 +6675,8 @@
         "buffer_seek",
         "buffer_async_group_option",
         "file_text_write_string",
+        "file_text_write_real",
+        "file_text_writeln",
         "file_text_close",
         "file_exists",
         "file_text_open_write",
@@ -6584,6 +6687,8 @@
         "path_delete",
         "surface_get_texture",
         "array_length",
+        "array_length_1d",
+        "array_length_2d",
         "gamepad_get_device_count",
         "gamepad_axis_value",
         "gamepad_button_check_pressed",
@@ -6604,6 +6709,7 @@
         "layer_sequence_destroy",
         "collision_ellipse_list",
         "instance_change",
+        "instance_activate_all",
         "steam_activate_overlay",
         "steam_activate_overlay_user",
         "steam_get_app_id",
@@ -6690,6 +6796,7 @@
         "gpu_set_texfilter",
         "texture_prefetch",
         "texture_set_stage",
+        "texture_set_interpolation",
         "texture_is_ready",
         "texture_get_texel_height",
         "texture_get_texel_width",
@@ -6775,6 +6882,7 @@
         "ds_priority_delete_max",
         "file_text_open_read",
         "file_text_read_string",
+        "file_text_read_real",
         "file_delete",
         "file_find_first",
         "file_find_next",
@@ -6903,6 +7011,8 @@
         "psn_np_commerce_dialog_tick",
         "psn_save_data_backup",
         "psn_communication_restriction_status",
+        "psn_init_np_libs",
+        "psn_setup_trophies",
         "steam_activate_overlay_browser",
         "steam_clear_achievement",
         "steam_file_delete",
@@ -6936,6 +7046,8 @@
         "sprite_add_from_surface",
         "surface_resize",
         "surface_get_target",
+        "application_surface_draw_enable",
+        "application_surface_enable",
         "shader_set_uniform_f_array",
         "instance_activate_object",
         "instance_deactivate_object",
@@ -7016,6 +7128,7 @@
         "action_set_alarm",
         "action_execute_script",
         "action_another_room",
+        "action_previous_room",
         "action_sleep",
         "action_message",
         "action_sprite_set",
@@ -7048,6 +7161,8 @@
         "joystick_xpos",
         "joystick_ypos",
         "joystick_exists",
+        "joystick_direction",
+        "joystick_pov",
         "file_text_readln",
         "tile_layer_hide",
         "room_next",
@@ -7074,6 +7189,9 @@
         "file_rename",
         "joystick_has_pov",
         "os_is_paused",
+        "os_get_language",
+        "os_get_region",
+        "extension_stubfunc_real",
         "tile_layer_show",
         "action_move_point"
       ],
