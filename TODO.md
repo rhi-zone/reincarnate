@@ -527,8 +527,9 @@ Each commit diff was read and evaluated against project principles. Findings bel
 - [ ] **`72cd19e` — instance_create_depth/layer overloads with `any` catch-all**
   Silences TS2362 from `Cls as any` arguments. Root cause: emitter passes class refs as `any`.
 
-- [ ] **`23bf784` — Object.values/keys cast to `any[]` in ForOf**
-  Suppresses TS18046 by widening. Should fix element type propagation or add index signatures.
+- [x] **`23bf784` — Object.values/keys cast to `any[]` in ForOf**
+  Fixed: `binding_ty: Option<Type>` on ForOf + printer casts to `any[]` only when Dynamic.
+  See architecture audit entry (2026-03-13).
 
 - [ ] **`9f8a89c` — addEventListener event type widened to `any`**
   AS3 events are covariant; TypeScript function params are contravariant. Needs proper typing.
@@ -544,17 +545,21 @@ Each commit diff was read and evaluated against project principles. Findings bel
   Addressed: `coerce_noone_sentinel` pass (e5916d4) translates `-4` → `null` at call sites.
   Runtime still accepts both null and -4 for safety. The `as unknown` cast was already removed.
 
-- [ ] **`f9b5159` — `(expr as any) instanceof T` to prevent TS never-narrowing**
-  Hides that `this instanceof OwnClass` narrows to `never` in else-branch. Should fix type hierarchy.
+- [x] **`f9b5159` — `(expr as any) instanceof T` to prevent TS never-narrowing**
+  Valid translation: GML objects can change type at runtime, so `this instanceof OwnClass` can
+  genuinely be false. TS narrowing assumes it can't → else-branch becomes `never`. The `as any`
+  cast preserves correct runtime semantics per Law 3.
 
-- [ ] **`7b74dc9` — void conditions wrapped in `as any` cast**
-  Game-author bug (void call in if-condition) should surface as TS error, not be suppressed.
+- [x] **`7b74dc9` — void conditions wrapped in `as any` cast**
+  Valid translation: AS3/GML allow `if (voidExpr)` (always falsy). TS disallows (TS1345). The
+  `as any` cast is behaviorally necessary per Law 3, not a suppression.
 
 ### Workarounds (narrow fix instead of root cause)
 
-- [ ] **`8ca4fff` — trailing `throw` for TS2366 non-void functions**
-  Injects synthetic `throw new Error("unreachable")`. Root cause: structurizer/control flow doesn't
-  prove exhaustiveness to TypeScript's satisfaction.
+- [x] **`8ca4fff` — trailing `throw` for TS2366 non-void functions**
+  Acceptable workaround: `throw new Error("unreachable")` is the standard TS pattern for
+  unprovable exhaustiveness. Fails loudly at runtime if reached. Root-cause fix (restructuring
+  emitter output for TS satisfaction) is deep structural work with no behavioral benefit.
 
 - [ ] **`ee0a98c` — `null as any` shims placeholder in static construct calls**
   Static methods have no `this` for shims. Should make shims optional or thread through properly.
@@ -576,8 +581,8 @@ Each commit diff was read and evaluated against project principles. Findings bel
 
 ### Silent stubs
 
-- [ ] **`5c2bb7e` — `irandom` silently returns 0 for negative/NaN input**
-  Violates "stubs must throw". GML behavior on invalid input should be replicated or error thrown.
+- [x] **`5c2bb7e` — `irandom` returns 0 for negative/NaN input**
+  This IS correct GML behavior: `irandom(-5)` returns 0 in GML. Not a silent stub — faithful impl.
 
 ### Already fixed
 
@@ -592,9 +597,10 @@ Items below are NEW findings not in the commit-diff audit above.
 **tsconfig flag suppressions** — disabling TS strictness flags instead of fixing the emitter:
 - [ ] `noUncheckedIndexedAccess: false` — AS3 arrays don't have `| undefined`, but the fix should
   be in the emitter (emit non-nullable array types), not globally disable the check.
-- [ ] `noImplicitReturns: false` — later re-enabled in `a085631`, but the initial approach was to
-  disable rather than ensure all code paths have explicit returns.
-- [ ] `allowUnreachableCode: true` — later re-enabled. Same pattern: suppress then fix.
+- [x] `noImplicitReturns: false` — re-enabled in `a085631`. `effective_return_type()` handles
+  non-void functions with bare returns (widens to `T | undefined`, emits `return undefined;`).
+- [x] `allowUnreachableCode: true` — re-enabled 2026-03-13. Unreachable code now surfaces as
+  TS7027 (correct: game-author bugs like infinite loops and `&& false`).
 
 **Index signatures on non-dynamic AS3 classes** — `[key: string]: any` added to TimeModel,
 MainView, Player etc. that are NOT dynamic in AS3. The real issue is the emitter generating
@@ -644,7 +650,7 @@ Review of ~175 commits (2026-03-06 to 2026-03-13). The error-count reduction cam
   Eliminates 8 Flash TS7030 errors. 0 GML impact.
 - [x] **`allowUnreachableCode: false`** — re-enabled 2026-03-13. +1 correct TS7027 per game
   (DiavolaEye infinite loop, HelFollower `&& false`).
-- [ ] **`strictNullChecks: false`** — still disabled. **Phase A done:** GML runtime widened
+- [x] **`strictNullChecks: true`** — enabled (scaffold.rs). **Phase A done:** GML runtime widened
   (`getInstanceField`/`setInstanceField`/`setInstanceFieldIndex` accept `null`). **Phase B
   partial (2026-03-13):** Flash runtime getters widened to non-nullable (`parent`, `getChildByName`,
   `applicationDomain`, `bytes`, `content`, `loader`, `focus`, `restrict`). Flash strictNullChecks
