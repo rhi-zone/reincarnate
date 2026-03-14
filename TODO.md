@@ -449,7 +449,7 @@ class coercion rewrite, type inference, XML→any mapping, universal index signa
   CsCharacter::draw (1), DevTool::step (2), DiavolaEye::step_with (1),
   FinalLock::step_with (1), Player::step (1) — all off by 1-3.
 
-**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 62.
+**Baselines (with strictNullChecks):** Flash 18, Bounty 0, Dead Estate 5, Undertale 11.
 
 ### Undertale quality sweep (2026-03-14)
 
@@ -479,19 +479,32 @@ coerce fix (Pass 5 in GmlBoolArithCoerce): 3078.
 - Fixed `parse_type_notation` to handle `"any[]"`, `"string[]"` array notation
 - Added ~300 runtime function implementations/stubs
 
-**Session 24 progress: 80→62 errors.**
+**Session 24 progress: 80→11 errors.**
 
-**Remaining errors (by category):**
-- TS2554 (14): arity mismatches — wrong function signatures or missing overloads
-- TS2304 (3): `len` (for-loop scoping bug), `$set_confirm` (globals import bug, FIXED for class
-  files but _init.ts has a different codepath), and residual
-- TS2365/TS2362/TS2363 (18): `() => void` vs `number` — script references used as values
-  (function type instead of numeric instance ID). Deep type inference issue.
-- TS2322 (10): same pattern — `number` assigned to `() => void` typed variable
-- TS2345 (7): argument type mismatches
-- TS2367 (4): `() => void` vs `number` comparison
-- TS7027 (6): unreachable code (game-author bugs — wontfix)
-- TS2551/TS2552 (2): "did you mean" suggestions — residual from import fixes
+Session 24 fixes:
+- `coerce_bool_cmp_operands` rework: `bool === 0` → `=== false` (not `Number(bool) === 0`)
+- ~20 missing GML built-in function stubs added
+- `_init.ts` import fixes
+- `event_inherited()` → `super.collisionN(other)` forwarding (was missing `other` arg)
+- Removed `"other"` from introduced-names lists (`rename_shadowing_locals` was renaming it to `_other`)
+- `psn_init_np_libs` (0→3 params), `psn_init_trophy` (0→2 params), `action_previous_room` (1→0 params)
+- `draw_text*` text param: `string` → `any` (GML auto-converts to string)
+- `ini_close` return: `void` → `any` (GML allows `return void_expr`)
+- `psn_setup_trophies` return: `void` → `number`
+- Event method/field shadow fix: `this.create = 10` → `(this as any).create = 10`
+  (GML separates event handlers and instance variables into different namespaces,
+  TypeScript doesn't — typed method declaration shadows index signature)
+
+**Remaining errors (11):**
+- TS7027 (6): unreachable code — game-author bugs (wontfix)
+- TS2304 (1): `len` for-loop scoping bug (linearizer)
+- TS2345 (1): `$set_confirm(bool)` — global `confirm` inferred as `string`, should be `any`
+  (ConstraintSolve narrowed too aggressively from one assignment type)
+- TS2322 (2): Sansshadowgen `y = comparison` (game-author `===` instead of `=` — wontfix),
+  UndergroundExit `z = instance_create()` (game-author using built-in `z` to store instance — wontfix)
+- TS2367 (1): Discoball `instance_find(obj, 1) !== (-4)` — runtime returns `T | null`,
+  game compares to GML `noone` sentinel (-4). Root cause: GML uses `-4` for noone,
+  our runtime uses `null`. Need noone-sentinel translation in emitter.
 
 **Linearizer for-loop scoping bug:**
 `for (let i = 0; i < n; i += len)` where `let len` is declared INSIDE the loop body.
@@ -502,8 +515,8 @@ variable is used in a for-loop header, hoist its declaration to before the for s
 
 **Actionable next steps for Undertale:**
 1. Fix for-loop scoping bug in linearizer (TS2304 `len`)
-2. Investigate TS2554 arity mismatches — some may be wrong signatures
-3. Investigate TS2365 `() => void` pattern — script references used as values
+2. Fix global variable type inference — `$set_confirm` should accept `any`
+3. Implement noone-sentinel translation (GML `-4` ↔ runtime `null`) in emitter
 
 ---
 
@@ -1621,7 +1634,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Schism | `data.win` 77MB | ⚠️ emits (TS errors TBD) |
 | Shelldiver | `data.win` 2MB | ❌ YYC |
 | Soulknight Survivor | `data.win` 35MB | ❌ YYC |
-| Undertale | `data.win` 5MB | ⚠️ 80 TS errors (down from 3078; remaining: missing builtins, bool-cmp, instance ID types) |
+| Undertale | `data.win` 5MB | ⚠️ 11 TS errors (6 unreachable/wontfix, 2 game-author bugs, 3 fixable) |
 | VA-11 HALL-A | `game.unx` 212MB | ⚠️ emits (TS errors TBD) |
 
 ---
