@@ -2401,6 +2401,10 @@ functionality. Per CLAUDE.md: "implement fully or throw — never stub silently.
 **Skeleton / Spine** (`runtime.ts`):
 - [ ] `skeleton_animation_get` — returns `""` (Spine animation system not implemented)
 
+**Sprite creation** (`runtime.ts`):
+- [ ] `sprite_add` — returns `-1` silently (sprite loading from URL not implemented);
+  callers that use the returned sprite ID will silently operate on an invalid handle
+
 **Extension stubs** (`runtime.ts`):
 - [ ] `extension_stubfunc_real`, `extension_stubfunc_string` — generic fallbacks that silently
   return `0`/`""` for ALL missing extension functions; callers cannot detect the stub fired
