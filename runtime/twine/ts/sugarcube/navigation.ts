@@ -76,8 +76,12 @@ export class SCNavigation {
     this.rt.Platform.commitSave();
   }
 
-  /** Go back to the previous passage. */
-  back(): void {
+  /** Go back to the previous passage, or to a named passage if provided. */
+  back(passage?: string): void {
+    if (passage !== undefined) {
+      this.goto(passage);
+      return;
+    }
     const title = this.rt.State.popMoment();
     if (title === undefined) {
       console.warn("[navigation] no history to go back to");
@@ -92,8 +96,8 @@ export class SCNavigation {
   }
 
   /** Return to the previous passage (alias for back). */
-  return(): void {
-    this.back();
+  return(passage?: string): void {
+    this.back(passage);
   }
 
   /** Include (embed) another passage inline without navigation. */

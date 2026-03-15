@@ -2599,6 +2599,9 @@ From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
 - [ ] `variable_instance_set`, `texture_prefetch`, `layer_get_visible`,
   `buffer_async_group_option`, `mp_linear_step_object`, `mp_potential_step_object`
 
+**Partial-implementation stubs (behavioral gap — no TODO entry = implicit correctness claim):**
+- [ ] `array_shuffle(arr, start, count)` — `start`/`count` params ignored; always shuffles the entire array. GML spec: only elements `arr[start..start+count)` should be shuffled.
+
 **Notable return type mismatches:**
 - [ ] `ds_map_add`, `ds_map_replace` — return `void`, manual: `boolean`
 - [ ] `file_delete`, `file_rename` — return `void`, manual: `boolean`

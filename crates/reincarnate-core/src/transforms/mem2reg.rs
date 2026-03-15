@@ -238,8 +238,11 @@ fn promote_single_store(func: &mut Function) -> bool {
                             return false;
                         }
                         if store_block == load_block {
-                            let store_pos = inst_pos.get(&store_inst).copied().unwrap_or(0);
-                            let load_pos = inst_pos.get(&inst_id).copied().unwrap_or(0);
+                            let store_pos = *inst_pos
+                                .get(&store_inst)
+                                .expect("store_inst not in inst_pos");
+                            let load_pos =
+                                *inst_pos.get(&inst_id).expect("load inst not in inst_pos");
                             if store_pos > load_pos {
                                 return false;
                             }

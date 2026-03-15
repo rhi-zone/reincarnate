@@ -16,6 +16,7 @@
  */
 
 import type { SugarCubeRuntime } from "./runtime";
+import type { PassageFn } from "./navigation";
 
 // ---------------------------------------------------------------------------
 // Span helpers
@@ -224,12 +225,12 @@ export class Wikifier {
   }
 
   /** Get a story variable value. */
-  static getValue(name: string): unknown {
+  static getValue(name: string): any {
     return Wikifier.rt.State.get(name);
   }
 
   /** Set a story variable value. */
-  static setValue(name: string, value: unknown): void {
+  static setValue(name: string, value: any): void {
     Wikifier.rt.State.set(name, value);
   }
 
@@ -252,7 +253,7 @@ export class Wikifier {
   }
 
   /** Create an internal passage link element. */
-  static createInternalLink(node: Node, passage: string, text?: string, setter?: () => void): HTMLAnchorElement {
+  static createInternalLink(node: Node, passage: string, text?: string, setter?: PassageFn): HTMLAnchorElement {
     const a = Wikifier.rt.Output.doc.createElement("a") as HTMLAnchorElement;
     a.classList.add("link-internal");
     if (text) {
@@ -264,14 +265,14 @@ export class Wikifier {
       }
       a.addEventListener("click", (e) => {
         e.preventDefault();
-        if (setter) setter();
+        if (setter) setter(Wikifier.rt);
         Wikifier.rt.Navigation.goto(passage);
       });
       // Keyboard accessibility
       a.addEventListener("keypress", (e: KeyboardEvent) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          if (setter) setter();
+          if (setter) setter(Wikifier.rt);
           Wikifier.rt.Navigation.goto(passage);
         }
       });
@@ -431,8 +432,8 @@ export class Wikifier {
     },
 
     /** Create a shadow setter callback from setter code. */
-    createShadowSetterCallback(code: string): () => void {
-      return () => {
+    createShadowSetterCallback(code: string): PassageFn {
+      return (_rt) => {
         try {
           Wikifier.evalExpression(code);
         } catch (e) {
@@ -445,8 +446,8 @@ export class Wikifier {
   // --- Expression evaluation helpers ---
 
   /** Evaluate a JavaScript expression in the SugarCube context. */
-  static evalExpression(expr: string): unknown {
-    const g = globalThis as typeof globalThis & Record<string, unknown>;
+  static evalExpression(expr: string): any {
+    const g = globalThis as typeof globalThis & Record<string, any>;
     return new Function("State", "setup", "Config", "settings", `return (${expr})`)(
       g["State"], g["setup"], g["Config"], g["settings"],
     );
@@ -862,7 +863,7 @@ _addParser(registry, {
     const passage = Wikifier.helpers.evalPassageId(parsed.link.trim());
     const displayText = parsed.text != null ? Wikifier.helpers.evalText(parsed.text.trim()) : passage;
 
-    let setter: (() => void) | undefined;
+    let setter: PassageFn | undefined;
     if (parsed.setter) {
       setter = Wikifier.helpers.createShadowSetterCallback(parsed.setter);
     }
@@ -974,8 +975,8 @@ _addParser(registry, {
     if (macroDef) {
       // Parse arguments
       const parsedArgs = macroDef.skipArgs ? [] : parseMacroArgs(rawArgs);
-      (parsedArgs as unknown[] & { raw?: string; full?: string }).raw = rawArgs;
-      (parsedArgs as unknown[] & { raw?: string; full?: string }).full = rawArgs;
+      (parsedArgs as any[] & { raw?: string; full?: string }).raw = rawArgs;
+      (parsedArgs as any[] & { raw?: string; full?: string }).full = rawArgs;
 
       // Check if this is a block macro (has tags)
       const isBlock = macroDef.tags != null && Array.isArray(macroDef.tags);
@@ -1030,7 +1031,7 @@ _addParser(registry, {
 
 interface MacroPayloadEntry {
   name: string;
-  args: unknown[];
+  args: any[];
   contents: string;
   output: DocumentFragment;
 }
@@ -1047,7 +1048,7 @@ function collectMacroPayload(
 
   // First payload entry is for the main macro body
   let currentName = macroName;
-  let currentArgs: unknown[] = [];
+  let currentArgs: any[] = [];
   let bodyStart = w.nextMatch;
 
   // Scan for clause tags and closing tag
@@ -1144,10 +1145,10 @@ class BodyWikifier {
  *  Handles quoted strings, numbers, booleans, null, undefined,
  *  and bare expressions.
  */
-function parseMacroArgs(raw: string): unknown[] {
+function parseMacroArgs(raw: string): any[] {
   if (!raw) return [];
 
-  const args: unknown[] = [];
+  const args: any[] = [];
   const re = /(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|`((?:\\.|[^`\\])*)`|\[(?:img)??\[|(?:[^\s"'`\[\]]+))/g;
   let match;
 

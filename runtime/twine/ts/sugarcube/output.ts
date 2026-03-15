@@ -10,6 +10,7 @@
 import { scheduleTimeout, cancelTimeout, scheduleInterval, cancelInterval } from "../platform";
 import type { DocumentFactory } from "../shared/render-root";
 import type { SugarCubeRuntime } from "./runtime";
+import type { PassageFn } from "./navigation";
 
 // --- Interfaces ---
 
@@ -152,13 +153,13 @@ export class SCOutput {
   // --- Links ---
 
   /** Emit a simple link (no body content). */
-  link(text: string, passage?: string, setter?: () => void): void {
+  link(text: string, passage?: string, setter?: PassageFn): void {
     const a = this.doc.createElement("a");
     a.textContent = text;
     if (passage || setter) {
       a.addEventListener("click", (e) => {
         e.preventDefault();
-        if (setter) setter();
+        if (setter) setter(this.rt);
         if (passage) {
           this.rt.Navigation.goto(passage);
         }

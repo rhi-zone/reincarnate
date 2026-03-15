@@ -34,7 +34,7 @@ export class SCEngine {
     if (this.globalsInitialized) return;
     this.globalsInitialized = true;
 
-    const g = globalThis as typeof globalThis & Record<string, unknown>;
+    const g = globalThis as typeof globalThis & Record<string, any>;
     const rt = this.rt;
     const Platform = rt.Platform;
     const State = rt.State;
@@ -131,7 +131,7 @@ export class SCEngine {
       get turns() { return State.historyLength(); },
       get passage() { return Navigation.current(); },
       getVar(name: string) { return State.get(name); },
-      setVar(name: string, value: unknown) { State.set(name, value); },
+      setVar(name: string, value: any) { State.set(name, value); },
       prng,
     };
 
@@ -258,7 +258,7 @@ export class SCEngine {
     g.Passage = PassageShim;
 
     g.Scripting = {
-      evalJavaScript(expr: string): unknown {
+      evalJavaScript(expr: string): any {
         return new Function(`return (${expr})`)();
       },
       evalTwineScript(code: string, _output?: DocumentFragment): void {
@@ -542,8 +542,8 @@ export class SCEngine {
   }
 
   /** Resolve a bare name (used for function lookups in expression context). */
-  resolve(name: string): unknown {
-    const g = (globalThis as typeof globalThis & Record<string, unknown>)[name];
+  resolve(name: string): any {
+    const g = (globalThis as typeof globalThis & Record<string, any>)[name];
     if (g !== undefined) return g;
     return this.rt.Navigation.getPassage(name);
   }
@@ -623,7 +623,7 @@ const BREAK_SENTINEL = Symbol("break");
 const CONTINUE_SENTINEL = Symbol("continue");
 
 /** Deep clone a value (SugarCube's clone() function). */
-export function clone(value: unknown): unknown {
+export function clone(value: any): any {
   if (value === null || value === undefined) return value;
   if (typeof value !== "object") return value;
 
@@ -632,9 +632,9 @@ export function clone(value: unknown): unknown {
   }
 
   if (value instanceof Array) {
-    const copy: unknown[] = new Array(value.length);
+    const copy: any[] = new Array(value.length);
     for (const key of Object.keys(value)) {
-      (copy as Record<string, unknown>)[key] = clone((value as Record<string, unknown>)[key]);
+      (copy as Record<string, any>)[key] = clone((value as Record<string, any>)[key]);
     }
     return copy;
   }
@@ -660,8 +660,8 @@ export function clone(value: unknown): unknown {
 }
 
 /** Create an iterator over a collection (for <<for _v range collection>>). */
-export function iterate(collection: unknown): { entries: [unknown, unknown][]; index: number } {
-  const entries: [unknown, unknown][] = [];
+export function iterate(collection: any): { entries: [any, any][]; index: number } {
+  const entries: [any, any][] = [];
   if (Array.isArray(collection)) {
     for (let i = 0; i < collection.length; i++) {
       entries.push([i, collection[i]]);

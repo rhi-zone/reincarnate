@@ -40,6 +40,8 @@ declare global {
     includesAny(...items: T[]): boolean;
     /** Returns the element at 1-based index `n` (DoL extension). */
     select(n: number): T | undefined;
+    /** Appends items not already present and returns `this` (DoL/TRC extension). */
+    concatUnique(...items: any[]): this;
   }
 
   interface String {
@@ -191,6 +193,15 @@ export function installSugarCubeExtensions(): void {
     ap.select = function (this: unknown[], n: number): unknown {
       // DoL uses 1-based indexing for select()
       return this[n - 1];
+    };
+  }
+
+  if (!ap.concatUnique) {
+    ap.concatUnique = function (this: unknown[], ...items: unknown[]): unknown[] {
+      for (const item of items) {
+        if (!this.includes(item)) this.push(item);
+      }
+      return this;
     };
   }
 
