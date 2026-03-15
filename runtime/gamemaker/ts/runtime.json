@@ -906,7 +906,9 @@
     "audio_play_sound_at": {
       "params": [
         "number",
-        "*",
+        "number",
+        "number",
+        "number",
         "number",
         "number",
         "number",
@@ -2695,7 +2697,8 @@
     },
     "ds_map_is_map": {
       "params": [
-        "number"
+        "number",
+        "string"
       ],
       "returns": "boolean"
     },
@@ -5103,6 +5106,7 @@
     },
     "shader_set_uniform_f": {
       "params": [
+        "number",
         "number"
       ],
       "returns": "void"
@@ -5116,7 +5120,8 @@
     },
     "shader_set_uniform_i": {
       "params": [
-        "number"
+        "number",
+        "int"
       ],
       "returns": "void"
     },
