@@ -13,7 +13,7 @@ import { requestFrame, cancelFrame } from "../shared/platform";
 import type { FrameHandle } from "../shared/platform";
 import { currentTimeMs, currentWallTimeMs } from "../shared/platform/timing";
 import { systemLanguage, isNetworkConnected, writeClipboard } from "../shared/platform/system";
-import { displayWidth, displayHeight, openUrl, closeWindow, requestFullscreen, exitFullscreen, downloadDataUrl } from "../shared/platform/window";
+import { displayWidth, displayHeight, openUrl, closeWindow, requestFullscreen, exitFullscreen, downloadDataUrl, setWindowTitle, windowHasFocus } from "../shared/platform/window";
 import { PersistenceState, init as initPersistence, store, fetch as fetchItem, remove } from "../shared/platform/persistence";
 import type { RenderRoot } from "../shared/render-root";
 import { DrawState } from "./draw";
@@ -2910,7 +2910,7 @@ export class GameRuntime {
   view_set_wport(_view: number, _w: number): void { /* no-op */ }
 
   // ---- Window extras ----
-  window_set_caption(_caption: string): void { document.title = _caption; }
+  window_set_caption(_caption: string): void { setWindowTitle(_caption); }
   window_set_cursor(cursor: number): void {
     const map: Record<number, string> = {
       [-1]: "none", 0: "default", 1: "default", 2: "crosshair", 3: "text",
@@ -4964,7 +4964,7 @@ export class GameRuntime {
 
   // ---- Misc ----
   url_open(url: string): void { openUrl(url); }
-  window_has_focus(): boolean { return document.hasFocus(); }
+  window_has_focus(): boolean { return windowHasFocus(); }
   file_copy(_src: string, _dest: string): void { throw new Error("file_copy: not yet implemented"); }
 
   // ---- Skeleton/Spine ----

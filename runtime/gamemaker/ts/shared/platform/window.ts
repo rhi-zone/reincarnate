@@ -30,6 +30,16 @@ export function exitFullscreen(): void {
   document.exitFullscreen?.();
 }
 
+/** Set the browser tab/window title. */
+export function setWindowTitle(title: string): void {
+  document.title = title;
+}
+
+/** Whether the document currently has keyboard/input focus. */
+export function windowHasFocus(): boolean {
+  return document.hasFocus();
+}
+
 /**
  * Trigger a browser file download from a data URL.
  * No-op if the Anchor/click API is unavailable (e.g. non-browser context).

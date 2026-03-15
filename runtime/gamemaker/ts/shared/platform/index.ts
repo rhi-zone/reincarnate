@@ -10,7 +10,7 @@ export type { DelayHandle, RecurringHandle, FrameHandle } from "./timing";
 export { scheduleDelayed, cancelDelayed, scheduleRecurring, cancelRecurring, requestFrame, cancelFrame, currentTimeMs, currentWallTimeMs } from "./timing";
 export { PersistenceState, init, store, fetch, remove, list } from "./persistence";
 export { systemLanguage, isNetworkConnected, writeClipboard } from "./system";
-export { displayWidth, displayHeight, openUrl, closeWindow, requestFullscreen, exitFullscreen, downloadDataUrl } from "./window";
+export { displayWidth, displayHeight, openUrl, closeWindow, requestFullscreen, exitFullscreen, downloadDataUrl, setWindowTitle, windowHasFocus } from "./window";
 export type { NodeKind, ParamKind, BufferHandle, NodeHandle, VoiceHandle, GroupHandle } from "./audio";
 export {
   AudioState,
