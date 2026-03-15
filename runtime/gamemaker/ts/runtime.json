@@ -5328,7 +5328,7 @@
         "number",
         "number"
       ],
-      "returns": "number"
+      "returns": "number[]"
     },
     "sprite_get_width": {
       "params": [
@@ -6792,7 +6792,7 @@
       "params": [
         "*"
       ],
-      "returns": "string"
+      "returns": "string[]"
     },
     "variable_struct_names_count": {
       "params": [
