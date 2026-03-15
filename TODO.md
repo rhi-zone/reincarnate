@@ -2135,6 +2135,22 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   (was `checkedValue, uncheckedValue`; SugarCube is `uncheckedValue, checkedValue`) and added
   `...flags` rest param to handle `checked`/`autocheck` bareword flags.
 
+### SugarCube Type Inference (Root Cause of TS2571/TS18046)
+
+- [ ] **Type inference pass for story variables** — `State.get(name): unknown` is correct
+  (story variables are dynamically typed), but emitted passage code accesses `.property`
+  on the returned `unknown` directly, producing ~96K TS2571 ("Object is of type 'unknown'")
+  in DoL and ~27K in TRC. The correct fix is a type inference pass in the Twine frontend
+  (analogous to GML's `TypeInference` pass) that:
+  1. Scans all `State.set(name, value)` call sites across all passages to build a per-variable
+     type map (`$gold: number`, `$inventory: string[]`, etc.)
+  2. Annotates `State.get(name)` return types in the IR so the emitter can insert correct casts
+     or emit typed accessors
+  3. For variables with heterogeneous types across set sites, falls back to `unknown` with an
+     explicit cast at the use site (e.g. `State.get("$gold") as number`)
+  Widening `State.get()` to `any` is NOT acceptable — it violates CLAUDE.md Law 4 and hides
+  real type errors. The TS2571 errors are correct diagnostics for missing inference.
+
 ### SugarCube Type Emission Bugs (DoL)
 
 - **`never[]` errors in DoL (game author errors)** — `[][_namecontroller] = x` (writing
@@ -2143,11 +2159,10 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   `traits: []` in objects with inconsistent shapes. All are game author bugs in the original
   SugarCube source — reincarnate faithfully reproduces them. No fix warranted.
 
-- [x] **`Property '0'/'1' does not exist on type '{}'` — fixed** — `Record<string, unknown>`
-  object literal annotation made field reads return `unknown`; null-check narrowing then
-  produced `{}`, and `{}[numeric]` is TS7053. Fixed by annotating object literals as
-  `Record<string, any>` instead of `Record<string, unknown>`. Game objects are inherently
-  dynamic — `any` is the accurate annotation when no source-level type info exists.
+- **`Property '0'/'1' does not exist on type '{}'`** — `Record<string, unknown>`
+  object literal annotation makes field reads return `unknown`; null-check narrowing then
+  produces `{}`, and `{}[numeric]` is TS7053. Root cause: same as TS2571 below (no type
+  inference for story variables). Will be resolved by the type inference pass.
 
 - [x] **jQuery `@types` missing in DoL runtime** — Already in `dev_dependencies` in `runtime.json`; was a stale entry.
 
