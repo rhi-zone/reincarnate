@@ -16,7 +16,7 @@ import { PersistenceState, init as initPersistence, store, fetch as fetchItem, r
 import type { RenderRoot } from "../shared/render-root";
 import { DrawState } from "./draw";
 import { InputState } from "./input";
-import { InputState as PlatformInputState, onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp, onScroll } from "../shared/platform";
+import { InputState as PlatformInputState, onMouseMove, onMouseDown, onMouseUp, onKeyDown, onKeyUp, onScroll, deviceAxis, deviceButtonPressed, deviceConnected, deviceDescription, deviceCount, snapshotGamepadButtons, gamepadSlotCount } from "../shared/platform";
 import { Colors, HAligns, VAligns, gmlColorToCss } from "./color";
 import { StorageState } from "./storage";
 import {
@@ -62,6 +62,7 @@ export class GameRuntime {
   // Sub-state containers
   _draw = new DrawState();
   _input = new InputState();
+  _platformInput = new PlatformInputState();
   _storage = new StorageState();
   _audio = new AudioState();
   _math = new MathState();
@@ -705,25 +706,24 @@ export class GameRuntime {
 
   setupInput(): void {
     const canvas = this._gfx.canvas;
-    const platformInput = new PlatformInputState();
 
-    onMouseMove(platformInput, canvas, (_device, x, y) => {
+    onMouseMove(this._platformInput, canvas, (_device, x, y) => {
       this._input.mouse.x = x;
       this._input.mouse.y = y;
       this.activateMouse(x, y);
     });
 
-    onMouseDown(platformInput, canvas, (_device, button) => {
+    onMouseDown(this._platformInput, canvas, (_device, button) => {
       const b = this._input.mouse.buttons[this._input.domButtonMap[button]!];
       if (b) { b.pressed = true; b.held = true; }
     });
 
-    onMouseUp(platformInput, canvas, (_device, button) => {
+    onMouseUp(this._platformInput, canvas, (_device, button) => {
       const b = this._input.mouse.buttons[this._input.domButtonMap[button]!];
       if (b) { b.released = true; b.held = false; }
     });
 
-    onKeyDown(platformInput, canvas, (_device, code, key) => {
+    onKeyDown(this._platformInput, canvas, (_device, code, key) => {
       const keyCode = this._codeToGmlKeyCode(code, key);
       this._input.keysPressed.add(keyCode);
       this._input.keysDown.add(keyCode);
@@ -740,13 +740,13 @@ export class GameRuntime {
       this._dispatchKeyPress(keyCode);
     });
 
-    onKeyUp(platformInput, canvas, (_device, code, key) => {
+    onKeyUp(this._platformInput, canvas, (_device, code, key) => {
       const keyCode = this._codeToGmlKeyCode(code, key);
       this._input.keysReleased.add(keyCode);
       this._input.keysDown.delete(keyCode);
     });
 
-    onScroll(platformInput, canvas, (_device, _dx, dy) => {
+    onScroll(this._platformInput, canvas, (_device, _dx, dy) => {
       if (dy < 0) this._input.mouse.wheelUp = true;
       else this._input.mouse.wheelDown = true;
     });
@@ -3039,25 +3039,25 @@ export class GameRuntime {
   layer_sequence_is_finished(_seq: number): boolean { return true; }
   string_repeat(str: string, count: number): string { return str.repeat(count); }
 
-  // ---- Gamepad API (stubs) ----
-  gamepad_get_device_count(): number { return navigator.getGamepads().filter(g => g != null).length; }
+  // ---- Gamepad API ----
+  gamepad_get_device_count(): number { return deviceCount(this._platformInput); }
   gamepad_axis_value(device: number, axis: number): number {
-    const raw = navigator.getGamepads()[device]?.axes[axis] ?? 0;
+    const raw = deviceAxis(this._platformInput, device, axis);
     const dz = this._gamepadDeadzones.get(device) ?? 0;
     return Math.abs(raw) < dz ? 0 : raw;
   }
   gamepad_button_check_pressed(device: number, button: number): boolean {
-    const curr = navigator.getGamepads()[device]?.buttons[button]?.pressed ?? false;
+    const curr = deviceButtonPressed(this._platformInput, device, button);
     const prev = this._gamepadPrev.get(device)?.[button] ?? false;
     return curr && !prev;
   }
   gamepad_button_check_released(device: number, button: number): boolean {
-    const curr = navigator.getGamepads()[device]?.buttons[button]?.pressed ?? false;
+    const curr = deviceButtonPressed(this._platformInput, device, button);
     const prev = this._gamepadPrev.get(device)?.[button] ?? false;
     return !curr && prev;
   }
-  gamepad_button_check(device: number, button: number): boolean { return navigator.getGamepads()[device]?.buttons[button]?.pressed ?? false; }
-  gamepad_is_connected(device: number): boolean { return navigator.getGamepads()[device]?.connected ?? false; }
+  gamepad_button_check(device: number, button: number): boolean { return deviceButtonPressed(this._platformInput, device, button); }
+  gamepad_is_connected(device: number): boolean { return deviceConnected(this._platformInput, device); }
   gamepad_set_vibration(_device: number, _left: number, _right: number): void { /* no-op */ }
 
   // ---- Display ----
@@ -3824,7 +3824,7 @@ export class GameRuntime {
   draw_set_blend_mode_ext(src: number, dest: number): void { this.gpu_set_blendmode_ext(src, dest); }
 
   // ---- Gamepad extras ----
-  gamepad_get_description(device: number): string { return navigator.getGamepads()[device]?.id ?? ""; }
+  gamepad_get_description(device: number): string { return deviceDescription(this._platformInput, device); }
   gamepad_is_supported(): boolean { return "getGamepads" in navigator; }
   gamepad_set_axis_deadzone(device: number, deadzone: number): void { this._gamepadDeadzones.set(device, deadzone); }
   gamepad_set_color(_device: number, _col: number): void { /* no-op */ }
@@ -4197,10 +4197,9 @@ export class GameRuntime {
   private _runFrame(): void {
     // Snapshot current gamepad state into _gamepadPrev before the frame runs
     // so pressed/released queries compare last-frame vs current-frame.
-    const pads = navigator.getGamepads();
-    for (let i = 0; i < pads.length; i++) {
-      const gp = pads[i];
-      this._gamepadPrev.set(i, gp ? gp.buttons.map((b) => b.pressed) : []);
+    const slotCount = gamepadSlotCount(this._platformInput);
+    for (let i = 0; i < slotCount; i++) {
+      this._gamepadPrev.set(i, snapshotGamepadButtons(this._platformInput, i));
     }
 
     const now = currentTimeMs();

@@ -238,7 +238,7 @@ export function touchY(state: InputState, _device: number, id: number): number {
   return state.touches.get(id)?.y ?? 0;
 }
 
-// --- Gamepad (analog) ---
+// --- Gamepad ---
 
 export function deviceAxis(
   _state: InputState,
@@ -246,6 +246,51 @@ export function deviceAxis(
   axis: number,
 ): number {
   return navigator.getGamepads()[device]?.axes[axis] ?? 0;
+}
+
+export function deviceButtonPressed(
+  _state: InputState,
+  device: number,
+  button: number,
+): boolean {
+  return navigator.getGamepads()[device]?.buttons[button]?.pressed ?? false;
+}
+
+export function deviceButtonValue(
+  _state: InputState,
+  device: number,
+  button: number,
+): number {
+  return navigator.getGamepads()[device]?.buttons[button]?.value ?? 0;
+}
+
+export function deviceConnected(
+  _state: InputState,
+  device: number,
+): boolean {
+  return navigator.getGamepads()[device]?.connected ?? false;
+}
+
+export function deviceDescription(
+  _state: InputState,
+  device: number,
+): string {
+  return navigator.getGamepads()[device]?.id ?? "";
+}
+
+export function deviceCount(_state: InputState): number {
+  return navigator.getGamepads().filter(g => g != null).length;
+}
+
+/** Snapshot the pressed state of all buttons for a gamepad (for pressed/released edge detection). */
+export function snapshotGamepadButtons(_state: InputState, device: number): boolean[] {
+  const gp = navigator.getGamepads()[device];
+  return gp ? gp.buttons.map(b => b.pressed) : [];
+}
+
+/** Return the number of gamepad slots (including disconnected). */
+export function gamepadSlotCount(_state: InputState): number {
+  return navigator.getGamepads().length;
 }
 
 // --- Text input ---
