@@ -67,13 +67,17 @@ fn extract_switch_chain(func: &Function, block_id: BlockId) -> Option<SwitchChai
     let mut cases = vec![(case_const, case_target, case_args)];
     let mut intermediate = Vec::new();
     let mut current = next_block;
+    // `incoming_args` are the args passed into `current` from the previous block.
+    // They always reference values in the first (non-cleared) block, so substituting
+    // intermediate block params with them keeps all ValueIds valid after clearing.
+    let mut incoming_args = next_args;
 
     // The switch value is passed to the next block via args. Find which param
     // position it maps to.
-    let param_idx = if next_args.len() == 1 {
+    let param_idx = if incoming_args.len() == 1 {
         0
     } else {
-        next_args.iter().position(|a| *a == switch_value)?
+        incoming_args.iter().position(|a| *a == switch_value)?
     };
 
     loop {
@@ -84,20 +88,40 @@ fn extract_switch_chain(func: &Function, block_id: BlockId) -> Option<SwitchChai
         }
         let next_switch_val = next_block_data.params[param_idx].value;
 
-        if let Some((_, case_const, case_target, case_args, next, _, _)) =
+        // Build a substitution closure: map each param of `current` to the
+        // corresponding value from `incoming_args`. This is required because
+        // `current` will be cleared by `rewrite_to_switch`, so any ValueId
+        // that references one of its params would become undefined.
+        let block_params: Vec<ValueId> = next_block_data.params.iter().map(|p| p.value).collect();
+        let subst = |v: ValueId| -> ValueId {
+            block_params
+                .iter()
+                .position(|&p| p == v)
+                .and_then(|pos| incoming_args.get(pos).copied())
+                .unwrap_or(v)
+        };
+
+        if let Some((_, case_const, case_target, case_args, next, next_incoming, _)) =
             match_switch_block(func, current, Some(next_switch_val))
         {
-            cases.push((case_const, case_target, case_args));
+            // Remap case_args and next_incoming through the substitution so that
+            // after `current` is cleared, all ValueIds trace back to the first block.
+            let mapped_args: Vec<ValueId> = case_args.iter().map(|&v| subst(v)).collect();
+            let mapped_next_incoming: Vec<ValueId> =
+                next_incoming.iter().map(|&v| subst(v)).collect();
+            cases.push((case_const, case_target, mapped_args));
             intermediate.push(current);
+            incoming_args = mapped_next_incoming;
             current = next;
         } else {
             // Check if this block is the default (just a Br).
-            let default = match_default_block(func, current)?;
+            let (def_target, def_args) = match_default_block(func, current)?;
+            let mapped_def_args: Vec<ValueId> = def_args.iter().map(|&v| subst(v)).collect();
             intermediate.push(current);
             return Some(SwitchChain {
                 switch_value,
                 cases,
-                default,
+                default: (def_target, mapped_def_args),
                 intermediate_blocks: intermediate,
                 first_block_remove_insts: remove_insts,
             });
