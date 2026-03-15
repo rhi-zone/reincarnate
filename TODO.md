@@ -2137,19 +2137,22 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
 
 ### SugarCube Type Inference (Root Cause of TS2571/TS18046)
 
-- [ ] **Type inference pass for story variables** — `State.get(name): unknown` is correct
-  (story variables are dynamically typed), but emitted passage code accesses `.property`
-  on the returned `unknown` directly, producing ~96K TS2571 ("Object is of type 'unknown'")
-  in DoL and ~27K in TRC. The correct fix is a type inference pass in the Twine frontend
-  (analogous to GML's `TypeInference` pass) that:
-  1. Scans all `State.set(name, value)` call sites across all passages to build a per-variable
-     type map (`$gold: number`, `$inventory: string[]`, etc.)
-  2. Annotates `State.get(name)` return types in the IR so the emitter can insert correct casts
-     or emit typed accessors
-  3. For variables with heterogeneous types across set sites, falls back to `unknown` with an
-     explicit cast at the use site (e.g. `State.get("$gold") as number`)
-  Widening `State.get()` to `any` is NOT acceptable — it violates CLAUDE.md Law 4 and hides
-  real type errors. The TS2571 errors are correct diagnostics for missing inference.
+- [x] **Phase 1: GlobalStore/ResolveGlobalType cross-passage inference** (commit `184c090`)
+  — Registers `SugarCube.State` get/set as `GlobalStore`/`ResolveGlobalType` rules so
+  `TypeInference::build_global_types` builds a per-variable type map from all `State.set`
+  call sites across all passages. Emitter injects `as number`/`as string`/`as boolean`/
+  `as StructName` casts via `LoweringConfig::cast_narrowed_syscall_results_for`.
+  Results: TRC TS2571 27392→9635 (−65%), DoL ~96K→~53K errors.
+- [ ] **Phase 2: Remaining TS2571 — variables with no set sites or Dynamic stores**
+  — ~9635 remaining in TRC / ~42K in DoL are variables that:
+  (a) have no `State.set` call sites in the IR (read-only vars, set only by game engine),
+  (b) have only Dynamic-typed stores (e.g. storing another State.get result), or
+  (c) have Union types from heterogeneous stores.
+  Root cause: `build_global_types` skips `Dynamic` values, and circular stores (reading
+  then writing the same var) create Dynamic chains.  Next step: multi-pass inference
+  that iterates until the global type map stabilizes, similar to how `TypeInference`
+  itself iterates until fixpoint.  Also: some read-only vars may need to be pre-declared
+  with `State.set` in a `StoryInit` passage — these remain genuinely `unknown`.
 
 ### SugarCube Type Emission Bugs (DoL)
 
