@@ -319,7 +319,7 @@ fn try_recover_sequential_ifs(
             // After splice, the switch is at run_start; advance past it.
             i = run_start + 1;
         } else if cases.len() >= 2 {
-            // Duplicate case values detected — this is a game-author bug.
+            // Duplicate case values detected.
             // The original code has sequential ifs comparing the same expression
             // to the same constant multiple times, which means multiple branches
             // execute for the same value.
@@ -333,7 +333,7 @@ fn try_recover_sequential_ifs(
                     severity: Severity::Warning,
                     message: format!(
                         "duplicate case value {dupe} in sequential if-chain \
-                         (game-author bug: multiple branches execute for same value)"
+                         (multiple branches execute for the same value)"
                     ),
                 });
             }
@@ -668,7 +668,7 @@ fn check_switch_duplicate_cases(
                         severity: Severity::Warning,
                         message: format!(
                             "duplicate case value {dupe} in switch statement \
-                             (game-author bug: unreachable case)"
+                             (unreachable case)"
                         ),
                     });
                 }
@@ -714,7 +714,7 @@ fn check_switch_duplicate_cases(
 /// When the source language allows duplicate keys in struct/object literals
 /// (e.g. AS3 NewObject with repeated keys), the IR faithfully preserves all
 /// entries. This pass deduplicates them for valid TypeScript output and emits
-/// a diagnostic warning for each duplicate (game-author bug signal).
+/// a diagnostic warning for each duplicate.
 pub fn dedup_object_keys(
     func: &mut JsFunction,
     func_name: &str,
@@ -2119,7 +2119,7 @@ mod tests {
     fn sequential_ifs_duplicate_case_emits_warning() {
         // Two if-stmts compare the same discriminant against the same constant.
         // This should NOT be converted to a switch (semantics differ) but SHOULD
-        // produce a diagnostic warning about a game-author bug.
+        // produce a diagnostic warning about duplicate case values.
         let body_a = vec![JsStmt::Expr(var("A"))];
         let body_b = vec![JsStmt::Expr(var("B"))];
         let mut body = vec![

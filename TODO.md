@@ -2569,6 +2569,12 @@ From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
 - [x] `layer_sequence_x`, `layer_sequence_y` — now setters `(seqElId, val): void`
 - [x] `max`, `min`, `mean`, `median` — variadic (no fixed params)
 
+**Also fixed (session 29, commit 029e44a):**
+- [x] `shader_set_uniform_f` — was 1 param (handle only); now 2 (handle + value1)
+- [x] `shader_set_uniform_i` — same fix
+- [x] `ds_map_is_map` — was 1 param; now 2 (map_id + key string) per manual
+- [x] `audio_play_sound_at` — was 7 params; now 9 matching runtime.ts impl
+
 **Verified correct (audit was wrong):**
 - `audio_emitter_velocity` — manual says `(emitter, vx, vy, vz)` — 4 params ✓
 - `parameter_string` — manual says `parameter_string(n)` — 1 param ✓

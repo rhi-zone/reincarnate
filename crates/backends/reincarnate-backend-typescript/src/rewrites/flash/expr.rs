@@ -601,10 +601,21 @@ pub(super) fn rewrite_system_call(
             }]
         };
         new_args.extend(rest);
-        return Some(JsExpr::New {
-            callee: Box::new(callee),
+        let new_expr = JsExpr::New {
+            callee: Box::new(callee.clone()),
             args: new_args,
-        });
+        };
+        // AS3 XML/XMLList have implicit string coercion (toString() on assignment).
+        // TypeScript's XML class has no such coercion; wrap with `as any` so the
+        // constructed value is assignable to string-typed fields (avoids TS2322).
+        if matches!(&callee, JsExpr::Var(n) if matches!(n.as_str(), "XML" | "XMLList")) {
+            return Some(JsExpr::Cast {
+                expr: Box::new(new_expr),
+                ty: Type::Dynamic,
+                kind: CastKind::NullableCoerce,
+            });
+        }
+        return Some(new_expr);
     }
 
     // findPropStrict/findProperty → scope resolution
