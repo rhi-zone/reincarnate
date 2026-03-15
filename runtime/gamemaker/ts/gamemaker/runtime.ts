@@ -1192,13 +1192,14 @@ export class GameRuntime {
     return arr;
   }
   array_sort(arr: any[], ascending: boolean): void { arr.sort((a, b) => ascending ? a - b : b - a); }
-  array_shuffle(arr: any[], _start?: number, _count?: number): void {
+  array_shuffle(arr: any[], _start?: number, _count?: number): any[] {
     for (let i = arr.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
+    return arr;
   }
-  array_shuffle_ext(arr: any[], _start?: number, _count?: number): void { this.array_shuffle(arr, _start, _count); }
+  array_shuffle_ext(arr: any[], _start?: number, _count?: number): any[] { return this.array_shuffle(arr, _start, _count); }
   array_get_index(arr: any[], value: any): number { return arr.indexOf(value); }
   array_contains(arr: any[], value: any): boolean { return arr.indexOf(value) !== -1; }
   array_resize(arr: unknown[], newSize: number): void { arr.length = newSize; }
@@ -3434,6 +3435,7 @@ export class GameRuntime {
     const b = this._vbufs.get(buf); if (!b) return;
     b.recording = false; if (this._vbufCurrent === buf) this._vbufCurrent = -1;
   }
+  vertex_freeze(_buf: number): void { /* no-op: WebGL buffers don't need explicit freeze */ }
   vertex_submit(buf: number, prim: number, _tex: number): void {
     const b = this._vbufs.get(buf); if (!b || b.count === 0) return;
     const gl = this._gfx.gl;
@@ -4833,7 +4835,7 @@ export class GameRuntime {
   draw_set_alpha_test_ref_value(_val: number): void { /* no-op */ }
 
   // ---- Display/OS ----
-  display_set_gui_maximise(_xscale: number, _yscale: number, _xoffset: number, _yoffset: number): void { /* no-op */ }
+  display_set_gui_maximise(): void { /* no-op */ }
   display_set_windows_alternate_sync(_enable: boolean): void { /* no-op */ }
   os_is_network_connected(): boolean { return isNetworkConnected(); }
   os_get_info(): any { throw new Error("os_get_info: not yet implemented"); }

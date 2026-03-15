@@ -726,7 +726,7 @@
       "params": [
         "any[]"
       ],
-      "returns": "void"
+      "returns": "any[]"
     },
     "array_shuffle_ext": {
       "params": [
@@ -7156,12 +7156,7 @@
       "returns": "void"
     },
     "display_set_gui_maximise": {
-      "params": [
-        "number",
-        "number",
-        "number",
-        "number"
-      ],
+      "params": [],
       "returns": "void"
     },
     "display_set_windows_alternate_sync": {
