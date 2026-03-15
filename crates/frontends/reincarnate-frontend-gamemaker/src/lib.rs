@@ -770,16 +770,16 @@ fn strip_script_prefix(name: &str) -> &str {
 ///
 /// The type tag mapping is **version-dependent** (see UndertaleModTool `AdaptAssetType`):
 ///
-/// GM 2024.4+ layout (currently implemented):
+/// GM 2024.4+ layout:
 ///   Type 0  → OBJT objects         Type 1  → SPRT sprites
 ///   Type 2  → SOND sounds          Type 3  → ROOM rooms
 ///   Type 4  → PATH paths           Type 5  → SCPT scripts
 ///   Type 6  → FONT fonts           Type 7  → TMLN timelines
 ///   Type 8  → SHDR shaders         Type 9  → SEQN sequences
 ///   Type 10 → AnimCurve            Type 11 → ParticleSystem
-///   Type 13 → BGND backgrounds     Type 14 → RoomInstance  (13 now implemented)
+///   Type 13 → BGND backgrounds     Type 14 → RoomInstance
 ///
-/// Pre-2024.4 layout (NOT yet implemented — see TODO.md):
+/// Pre-2024.4 layout:
 ///   Type 0  → OBJT objects         Type 1  → SPRT sprites
 ///   Type 2  → SOND sounds          Type 3  → ROOM rooms
 ///   Type 4  → BGND backgrounds     Type 5  → PATH paths
@@ -788,92 +788,105 @@ fn strip_script_prefix(name: &str) -> &str {
 ///   Type 11 → SEQN sequences       Type 12 → AnimCurve
 ///   Type 13 → ParticleSystem       Type 14 → RoomInstance
 ///
-/// Dead Estate (GMS2.3+) uses the 2024.4+ layout empirically:
-///   - type=3 used with room_goto → ROOM
-///   - type=8 used with shader_set → SHDR
+/// The game's IDE version is not trivially extractable from the data file, so
+/// both layouts are registered simultaneously for each chunk. Types 0–3 are
+/// identical across layouts. For types that shift between layouts, both the
+/// old and new type tags are inserted for the same chunk, so games compiled
+/// with either layout resolve correctly. Name collisions are harmless in
+/// practice (AnimCurve/TMLN/PATH assets are rarely referenced via pushref and
+/// have distinct naming conventions from SHDR/FONT/BGND/SEQN).
 ///
 /// Returns a map of `(type_tag << 24) | asset_index → raw GML asset name`.
 fn build_asset_ref_names(dw: &DataWin, scpt: &datawin::chunks::scpt::Scpt) -> HashMap<u32, String> {
     let mut map = HashMap::new();
 
-    // Type 0: objects (OBJT).
+    // Inline helper: insert at (type_tag << 24) | i.
+    macro_rules! reg {
+        ($type_tag:expr, $i:expr, $name:expr) => {
+            map.insert(($type_tag << 24) | $i as u32, $name);
+        };
+    }
+
+    // Type 0: objects (OBJT). Same in both layouts.
     // Use PascalCase names (same as resolve_object_names) so that GlobalRef
     // identifiers match the emitted TypeScript class names.
     if let Ok(objt) = dw.objt() {
         for (i, entry) in objt.objects.iter().enumerate() {
             if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert(i as u32, naming::object_name_to_pascal(&name)); // type_tag=0, so (0 << 24) | i == i
+                // type_tag=0: (0 << 24) | i == i
+                map.insert(i as u32, naming::object_name_to_pascal(&name));
             }
         }
     }
 
-    // Type 1: sprites.
+    // Types 1–3: sprites, sounds, rooms — same in both layouts.
     if let Ok(sprt) = dw.sprt() {
-        for (i, entry) in sprt.sprites.iter().enumerate() {
-            if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert((1u32 << 24) | i as u32, name);
+        for (i, e) in sprt.sprites.iter().enumerate() {
+            if let Ok(n) = dw.resolve_string(e.name) {
+                reg!(1u32, i, n);
             }
         }
     }
-
-    // Type 2: sounds.
     if let Ok(sond) = dw.sond() {
-        for (i, entry) in sond.sounds.iter().enumerate() {
-            if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert((2u32 << 24) | i as u32, name);
+        for (i, e) in sond.sounds.iter().enumerate() {
+            if let Ok(n) = dw.resolve_string(e.name) {
+                reg!(2u32, i, n);
             }
         }
     }
-
-    // Type 3: rooms.
     if let Ok(room) = dw.room() {
-        for (i, entry) in room.rooms.iter().enumerate() {
-            if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert((3u32 << 24) | i as u32, name);
+        for (i, e) in room.rooms.iter().enumerate() {
+            if let Ok(n) = dw.resolve_string(e.name) {
+                reg!(3u32, i, n);
             }
         }
     }
 
-    // Type 5: scripts (referenced as integer IDs, not as function calls).
+    // BGND: type 4 (pre-2024.4) and type 13 (2024.4+).
+    if let Ok(bgnd) = dw.bgnd() {
+        for (i, e) in bgnd.backgrounds.iter().enumerate() {
+            if let Ok(n) = dw.resolve_string(e.name) {
+                reg!(4u32, i, n.clone());
+                reg!(13u32, i, n);
+            }
+        }
+    }
+
+    // SCPT: type 5 (2024.4+) and type 6 (pre-2024.4).
     for (i, entry) in scpt.scripts.iter().enumerate() {
         if let Ok(name) = dw.resolve_string(entry.name) {
             let clean = strip_script_prefix(&name).to_string();
-            map.insert((5u32 << 24) | i as u32, clean);
+            reg!(5u32, i, clean.clone());
+            reg!(6u32, i, clean);
         }
     }
 
-    // Type 6: fonts.
+    // FONT: type 6 (2024.4+) and type 7 (pre-2024.4).
     if let Ok(font) = dw.font() {
-        for (i, entry) in font.fonts.iter().enumerate() {
-            if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert((6u32 << 24) | i as u32, name);
+        for (i, e) in font.fonts.iter().enumerate() {
+            if let Ok(n) = dw.resolve_string(e.name) {
+                reg!(6u32, i, n.clone());
+                reg!(7u32, i, n);
             }
         }
     }
 
-    // Type 8: shaders (confirmed from Dead Estate: shader_set uses type=8).
+    // SHDR: type 8 (2024.4+) and type 10 (pre-2024.4).
     if let Ok(shdr) = dw.shdr() {
-        for (i, entry) in shdr.shaders.iter().enumerate() {
-            if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert((8u32 << 24) | i as u32, name);
+        for (i, e) in shdr.shaders.iter().enumerate() {
+            if let Ok(n) = dw.resolve_string(e.name) {
+                reg!(8u32, i, n.clone());
+                reg!(10u32, i, n);
             }
         }
     }
 
-    // Type 9: sequences (SEQN chunk, GMS2.3+).
+    // SEQN: type 9 (2024.4+) and type 11 (pre-2024.4).
     if let Ok(Some(seqn)) = dw.seqn() {
-        for (i, entry) in seqn.sequences.iter().enumerate() {
-            if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert((9u32 << 24) | i as u32, name);
-            }
-        }
-    }
-
-    // Type 13: backgrounds/tilesets (BGND chunk, 2024.4+ layout).
-    if let Ok(bgnd) = dw.bgnd() {
-        for (i, entry) in bgnd.backgrounds.iter().enumerate() {
-            if let Ok(name) = dw.resolve_string(entry.name) {
-                map.insert((13u32 << 24) | i as u32, name);
+        for (i, e) in seqn.sequences.iter().enumerate() {
+            if let Ok(n) = dw.resolve_string(e.name) {
+                reg!(9u32, i, n.clone());
+                reg!(11u32, i, n);
             }
         }
     }
