@@ -14,7 +14,7 @@ use crate::entity::EntityRef;
 use crate::ir::ast::{BinOp, Expr, Stmt, UnaryOp};
 use crate::ir::block::BlockId;
 use crate::ir::func::{Function, MethodKind};
-use crate::ir::inst::{CastKind, InstId, Op};
+use crate::ir::inst::{CastKind, CmpKind, InstId, Op};
 use crate::ir::ty::Type;
 use crate::ir::value::{Constant, ValueId};
 use crate::pipeline::LoweringConfig;
@@ -580,11 +580,25 @@ impl<'a> EmitCtx<'a> {
                 lhs: Box::new(self.build_val(*a)),
                 rhs: Box::new(self.build_val(*b)),
             },
-            Op::BitXor(a, b) => Expr::Binary {
-                op: BinOp::BitXor,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
+            Op::BitXor(a, b) => {
+                // Boolean XOR is equivalent to `!==`; `^` on booleans is a
+                // TypeScript error (TS2447).
+                if matches!(self.func.value_types[*a], Type::Bool)
+                    || matches!(self.func.value_types[*b], Type::Bool)
+                {
+                    Expr::Cmp {
+                        kind: CmpKind::Ne,
+                        lhs: Box::new(self.build_val(*a)),
+                        rhs: Box::new(self.build_val(*b)),
+                    }
+                } else {
+                    Expr::Binary {
+                        op: BinOp::BitXor,
+                        lhs: Box::new(self.build_val(*a)),
+                        rhs: Box::new(self.build_val(*b)),
+                    }
+                }
+            }
             Op::BitNot(a) => Expr::Unary {
                 op: UnaryOp::BitNot,
                 expr: Box::new(self.build_val(*a)),
