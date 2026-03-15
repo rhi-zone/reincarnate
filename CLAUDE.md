@@ -98,4 +98,8 @@ cargo run -p reincarnate-cli -- print-ir <ir-json-file>
 
 Debug flags on `emit`: `--dump-ir`, `--dump-ast`, `--dump-function <pattern>`, `--dump-ir-after <pass>`.
 
-Subcommands: `list-functions`, `disasm`, `stress`.
+Subcommands: `list-functions`, `disasm`, `stress`, `inspect-runtime [--sig NAME] [--list-sigs] [--validate]`.
+
+`check` flags: `--filter-code TS2304`, `--filter-file foo.ts`, `--filter-message "..."`, `--examples N` (samples per code; -1 = all). One run is sufficient — use these flags instead of piping to grep.
+
+`emit` flags: `--no-emit` (run pipeline, skip file output; useful with `--dump-function`).

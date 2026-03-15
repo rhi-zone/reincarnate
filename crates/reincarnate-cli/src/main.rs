@@ -105,6 +105,11 @@ enum Command {
         /// "mem2reg"). Use "frontend" to dump raw IR before any transforms.
         #[arg(long = "dump-ir-after")]
         dump_ir_after: Option<String>,
+        /// Run the full pipeline but skip writing output files to disk.
+        /// Useful with --dump-function or --dump-ir to inspect IR without
+        /// producing a full emit.
+        #[arg(long)]
+        no_emit: bool,
     },
     /// Emit and type-check the output.
     Check {
@@ -221,6 +226,25 @@ enum Command {
         /// If omitted, lists all CODE entry names and exits.
         #[arg(long)]
         function: Option<String>,
+    },
+    /// Inspect the runtime.json for a project: list signatures, show a specific
+    /// function signature, or validate the runtime config.
+    InspectRuntime {
+        /// Registry name, path to manifest file, or directory containing reincarnate.json.
+        #[arg(conflicts_with = "manifest")]
+        target: Option<String>,
+        /// Path to the project manifest (legacy flag; prefer positional target).
+        #[arg(long, conflicts_with = "target")]
+        manifest: Option<PathBuf>,
+        /// Show the signature for this specific function name.
+        #[arg(long)]
+        sig: Option<String>,
+        /// List all function signatures (name, params, return type).
+        #[arg(long)]
+        list_sigs: bool,
+        /// Validate the runtime config and report any errors.
+        #[arg(long)]
+        validate: bool,
     },
 }
 
@@ -569,17 +593,18 @@ fn cmd_emit(
     skip_passes: &[String],
     preset: &str,
     fixpoint: bool,
+    no_emit: bool,
     debug: &DebugConfig,
 ) -> Result<(Vec<PathBuf>, Vec<Diagnostic>)> {
     let manifest = load_manifest(manifest_path)?;
 
-    // Cache lookup — skip when any debug flag is active (debug runs don't
-    // write normal output and shouldn't pollute the cache).
+    // Cache lookup — skip when no_emit or any debug flag is active (these
+    // runs don't write normal output and shouldn't pollute the cache).
     let debug_active = debug.dump_ir
         || debug.dump_ast
         || debug.dump_ir_after.is_some()
         || debug.function_filter.is_some();
-    let emit_key = if debug_active {
+    let emit_key = if debug_active || no_emit {
         None
     } else {
         Some(cache::emit_cache_key(
@@ -669,6 +694,12 @@ fn cmd_emit(
 
     let mut output_dirs = Vec::new();
     let mut all_diagnostics: Vec<Diagnostic> = Vec::new();
+
+    if no_emit {
+        eprintln!("[emit] --no-emit: skipping file output");
+        return Ok((Vec::new(), Vec::new()));
+    }
+
     for target in &manifest.targets {
         let Some(backend) = find_backend(&target.backend) else {
             bail!("no backend available for {:?}", target.backend);
@@ -799,7 +830,7 @@ fn cmd_emit_all(skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Re
         println!("  manifest: {}", entry.manifest);
 
         let manifest_path = PathBuf::from(&entry.manifest);
-        match cmd_emit(&manifest_path, skip_passes, preset, false, debug) {
+        match cmd_emit(&manifest_path, skip_passes, preset, false, false, debug) {
             Ok((_, pipeline_diags)) => {
                 if !pipeline_diags.is_empty() {
                     eprintln!("  {} pipeline warning(s)", pipeline_diags.len());
@@ -1341,7 +1372,7 @@ fn cmd_check(
     } else {
         let debug = DebugConfig::default();
         let (output_dirs, pipeline_diags) =
-            cmd_emit(manifest_path, skip_passes, preset, false, &debug)?;
+            cmd_emit(manifest_path, skip_passes, preset, false, false, &debug)?;
         try_update_last_emitted(manifest_path);
         // Pair output dirs with backends from the manifest.
         let manifest = load_manifest(manifest_path)?;
@@ -1835,6 +1866,82 @@ fn serialize_functions(module: &Module) -> Result<HashMap<String, String>> {
     Ok(map)
 }
 
+fn cmd_inspect_runtime(
+    manifest_path: &Path,
+    sig: Option<&str>,
+    list_sigs: bool,
+    validate: bool,
+) -> Result<()> {
+    let manifest = load_manifest(manifest_path)?;
+    let first_target = manifest
+        .targets
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("manifest has no targets"))?;
+    let pkg = resolve_runtime(&manifest.engine, &first_target.backend, None)
+        .ok_or_else(|| anyhow::anyhow!("no runtime available for this engine/backend"))?;
+    let config = &pkg.config;
+
+    if validate {
+        let errors = config.validate();
+        if errors.is_empty() {
+            println!("runtime.json: OK");
+        } else {
+            for d in &errors {
+                eprintln!("  {}: {}", d.code, d.message);
+            }
+            anyhow::bail!("{} validation error(s)", errors.len());
+        }
+        return Ok(());
+    }
+
+    if let Some(name) = sig {
+        // Look in function_signatures first, then type method signatures.
+        if let Some(s) = config.function_signatures.get(name) {
+            println!("{}({}) -> {}", name, s.params.join(", "), s.returns);
+        } else {
+            // Search type methods.
+            let mut found = false;
+            for (type_name, def) in &config.type_definitions {
+                if let Some(m) = def.methods.get(name) {
+                    println!(
+                        "{type_name}::{name}({}) -> {}",
+                        m.params.join(", "),
+                        m.returns
+                    );
+                    found = true;
+                }
+            }
+            if !found {
+                anyhow::bail!("no signature found for {:?}", name);
+            }
+        }
+        return Ok(());
+    }
+
+    if list_sigs {
+        let mut sigs: Vec<(&String, &reincarnate_core::project::ExternalMethodSig)> =
+            config.function_signatures.iter().collect();
+        sigs.sort_by_key(|(name, _)| name.as_str());
+        for (name, s) in &sigs {
+            println!("{}({}) -> {}", name, s.params.join(", "), s.returns);
+        }
+        return Ok(());
+    }
+
+    // Default: print summary.
+    println!("function_signatures: {}", config.function_signatures.len());
+    println!("type_definitions:    {}", config.type_definitions.len());
+    println!("function_modules:    {}", config.function_modules.len());
+    println!("system_modules:      {}", config.system_modules.len());
+    let errors = config.validate();
+    if errors.is_empty() {
+        println!("validation:          OK");
+    } else {
+        println!("validation:          {} error(s)", errors.len());
+    }
+    Ok(())
+}
+
 fn cmd_stress(
     manifest_path: &Path,
     runs: usize,
@@ -2219,6 +2326,7 @@ fn main() -> Result<()> {
             dump_ast,
             dump_function,
             dump_ir_after,
+            no_emit,
         } => {
             // Validate --dump-ir-after pass name early so the error is clear.
             if let Some(pass) = dump_ir_after.as_deref() {
@@ -2240,7 +2348,7 @@ fn main() -> Result<()> {
                 cmd_emit_all(skip_passes, preset, &debug)
             } else {
                 let path = resolve_target(target.as_deref(), manifest.as_deref())?;
-                let result = cmd_emit(&path, skip_passes, preset, *fixpoint, &debug);
+                let result = cmd_emit(&path, skip_passes, preset, *fixpoint, *no_emit, &debug);
                 if let Ok((_, pipeline_diags)) = &result {
                     if !pipeline_diags.is_empty() {
                         eprintln!("{} pipeline warning(s)", pipeline_diags.len());
@@ -2312,6 +2420,16 @@ fn main() -> Result<()> {
         } => {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_disasm(&path, function.as_deref())
+        }
+        Command::InspectRuntime {
+            target,
+            manifest,
+            sig,
+            list_sigs,
+            validate,
+        } => {
+            let path = resolve_target(target.as_deref(), manifest.as_deref())?;
+            cmd_inspect_runtime(&path, sig.as_deref(), *list_sigs, *validate)
         }
     }
 }
