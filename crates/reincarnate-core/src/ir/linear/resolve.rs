@@ -310,7 +310,8 @@ fn collect_def_use_depths(
 }
 
 /// Compute the set of values that are defined in a nested scope but used in
-/// an outer scope.
+/// an outer scope, plus values defined in one Dispatch case but used in a
+/// sibling Dispatch case (which has block-scoped `{}`).
 fn compute_cross_scope_defs(
     func: &Function,
     stmts: &[LinearStmt],
@@ -320,7 +321,8 @@ fn compute_cross_scope_defs(
     let mut min_use_depths: HashMap<ValueId, usize> = HashMap::new();
     collect_def_use_depths(func, stmts, 0, &mut defs, &mut min_use_depths);
 
-    defs.iter()
+    let mut result: HashSet<ValueId> = defs
+        .iter()
         .filter(|(&v, &(def_d, inst_id))| {
             let count = use_counts.get(&v).copied().unwrap_or(0);
             if count == 1 && !is_side_effecting_op(&func.insts[inst_id].op) {
@@ -333,7 +335,277 @@ fn compute_cross_scope_defs(
             min_use_d < def_d
         })
         .map(|(&v, _)| v)
-        .collect()
+        .collect();
+
+    // Also detect values defined in one Dispatch case block but used in a
+    // sibling case block.  Dispatch cases are wrapped in `{}` in the TypeScript
+    // printer, so `const` declarations are block-scoped and invisible to sibling
+    // cases.  We need to hoist those declarations before the dispatch switch.
+    collect_dispatch_sibling_defs(func, stmts, use_counts, &mut result);
+
+    result
+}
+
+/// Collect all `Def` results (ValueId → InstId) in a statement tree.
+fn collect_all_defs(stmts: &[LinearStmt], out: &mut HashMap<ValueId, InstId>) {
+    for stmt in stmts {
+        match stmt {
+            LinearStmt::Def { result, inst_id } => {
+                out.entry(*result).or_insert(*inst_id);
+            }
+            LinearStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                collect_all_defs(then_body, out);
+                collect_all_defs(else_body, out);
+            }
+            LinearStmt::While { header, body, .. } => {
+                collect_all_defs(header, out);
+                collect_all_defs(body, out);
+            }
+            LinearStmt::For {
+                init,
+                header,
+                update,
+                body,
+                ..
+            } => {
+                collect_all_defs(init, out);
+                collect_all_defs(header, out);
+                collect_all_defs(update, out);
+                collect_all_defs(body, out);
+            }
+            LinearStmt::Loop { body } => {
+                collect_all_defs(body, out);
+            }
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
+                collect_all_defs(rhs_body, out);
+            }
+            LinearStmt::Dispatch { blocks, .. } => {
+                for (_, block_stmts) in blocks {
+                    collect_all_defs(block_stmts, out);
+                }
+            }
+            LinearStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_stmts) in cases {
+                    collect_all_defs(case_stmts, out);
+                }
+                collect_all_defs(default_body, out);
+            }
+            LinearStmt::Effect { .. }
+            | LinearStmt::Assign { .. }
+            | LinearStmt::Return { .. }
+            | LinearStmt::Break
+            | LinearStmt::Continue
+            | LinearStmt::LabeledBreak { .. } => {}
+        }
+    }
+}
+
+/// Collect all used ValueIds in a statement tree.
+fn collect_all_uses(func: &Function, stmts: &[LinearStmt], out: &mut HashSet<ValueId>) {
+    for stmt in stmts {
+        match stmt {
+            LinearStmt::Def { inst_id, .. } | LinearStmt::Effect { inst_id } => {
+                for v in value_operands(&func.insts[*inst_id].op) {
+                    out.insert(v);
+                }
+            }
+            LinearStmt::Assign { src, .. } => {
+                out.insert(*src);
+            }
+            LinearStmt::Return { value: Some(v) } => {
+                out.insert(*v);
+            }
+            LinearStmt::If {
+                cond,
+                then_body,
+                else_body,
+            } => {
+                out.insert(*cond);
+                collect_all_uses(func, then_body, out);
+                collect_all_uses(func, else_body, out);
+            }
+            LinearStmt::While {
+                header, cond, body, ..
+            } => {
+                collect_all_uses(func, header, out);
+                out.insert(*cond);
+                collect_all_uses(func, body, out);
+            }
+            LinearStmt::For {
+                init,
+                header,
+                cond,
+                update,
+                body,
+                ..
+            } => {
+                collect_all_uses(func, init, out);
+                collect_all_uses(func, header, out);
+                out.insert(*cond);
+                collect_all_uses(func, update, out);
+                collect_all_uses(func, body, out);
+            }
+            LinearStmt::Loop { body } => {
+                collect_all_uses(func, body, out);
+            }
+            LinearStmt::LogicalOr {
+                cond,
+                phi,
+                rhs_body,
+                rhs,
+            }
+            | LinearStmt::LogicalAnd {
+                cond,
+                phi,
+                rhs_body,
+                rhs,
+            } => {
+                out.insert(*cond);
+                collect_all_uses(func, rhs_body, out);
+                if *rhs != *phi {
+                    out.insert(*rhs);
+                }
+            }
+            LinearStmt::Dispatch { blocks, .. } => {
+                for (_, block_stmts) in blocks {
+                    collect_all_uses(func, block_stmts, out);
+                }
+            }
+            LinearStmt::Switch {
+                value,
+                cases,
+                default_body,
+            } => {
+                out.insert(*value);
+                for (_, case_stmts) in cases {
+                    collect_all_uses(func, case_stmts, out);
+                }
+                collect_all_uses(func, default_body, out);
+            }
+            LinearStmt::Return { value: None }
+            | LinearStmt::Break
+            | LinearStmt::Continue
+            | LinearStmt::LabeledBreak { .. } => {}
+        }
+    }
+}
+
+/// Recursively find values defined in one Dispatch case but used in a sibling
+/// case, and add them to `out`.  Dispatch cases use `{}` braces in the emitted
+/// TypeScript, so `const` declarations are block-scoped and not visible to
+/// sibling cases; these values must be hoisted to function scope.
+fn collect_dispatch_sibling_defs(
+    func: &Function,
+    stmts: &[LinearStmt],
+    use_counts: &HashMap<ValueId, usize>,
+    out: &mut HashSet<ValueId>,
+) {
+    for stmt in stmts {
+        match stmt {
+            LinearStmt::Dispatch { blocks, .. } => {
+                // Collect defs and uses per case.
+                let mut per_case_defs: Vec<HashMap<ValueId, InstId>> =
+                    Vec::with_capacity(blocks.len());
+                let mut per_case_uses: Vec<HashSet<ValueId>> = Vec::with_capacity(blocks.len());
+                for (_, case_stmts) in blocks.iter() {
+                    let mut defs = HashMap::new();
+                    collect_all_defs(case_stmts, &mut defs);
+                    per_case_defs.push(defs);
+                    let mut uses = HashSet::new();
+                    collect_all_uses(func, case_stmts, &mut uses);
+                    per_case_uses.push(uses);
+                }
+
+                // For each value defined in case i but used in case j (j != i),
+                // it needs to be hoisted — unless it is a single-use deferrable
+                // value that pending_lazy can handle inline.
+                for (i, defs) in per_case_defs.iter().enumerate() {
+                    for &v in defs.keys() {
+                        let count = use_counts.get(&v).copied().unwrap_or(0);
+                        if count == 0 {
+                            continue;
+                        }
+                        // Note: we do NOT skip count==1 deferrable (lazy_inline)
+                        // values here, unlike compute_cross_scope_defs.  For
+                        // Dispatch sibling scopes the pending_lazy trick does NOT
+                        // reliably work: if the defining case is processed after
+                        // the using case (determined by block ordering in the
+                        // Dispatch), build_val falls through to Expr::Var with
+                        // no declaration → TS2304.  Adding to cross_scope_defs
+                        // (combined with the emit_def override below) forces these
+                        // values to be hoisted to function scope instead.
+                        let used_in_sibling = per_case_uses
+                            .iter()
+                            .enumerate()
+                            .any(|(j, uses)| j != i && uses.contains(&v));
+                        if used_in_sibling {
+                            out.insert(v);
+                        }
+                    }
+                }
+
+                // Recurse into each case body.
+                for (_, case_stmts) in blocks {
+                    collect_dispatch_sibling_defs(func, case_stmts, use_counts, out);
+                }
+            }
+            LinearStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                collect_dispatch_sibling_defs(func, then_body, use_counts, out);
+                collect_dispatch_sibling_defs(func, else_body, use_counts, out);
+            }
+            LinearStmt::While { header, body, .. } => {
+                collect_dispatch_sibling_defs(func, header, use_counts, out);
+                collect_dispatch_sibling_defs(func, body, use_counts, out);
+            }
+            LinearStmt::For {
+                init,
+                header,
+                update,
+                body,
+                ..
+            } => {
+                collect_dispatch_sibling_defs(func, init, use_counts, out);
+                collect_dispatch_sibling_defs(func, header, use_counts, out);
+                collect_dispatch_sibling_defs(func, update, use_counts, out);
+                collect_dispatch_sibling_defs(func, body, use_counts, out);
+            }
+            LinearStmt::Loop { body } => {
+                collect_dispatch_sibling_defs(func, body, use_counts, out);
+            }
+            LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
+                collect_dispatch_sibling_defs(func, rhs_body, use_counts, out);
+            }
+            LinearStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_stmts) in cases {
+                    collect_dispatch_sibling_defs(func, case_stmts, use_counts, out);
+                }
+                collect_dispatch_sibling_defs(func, default_body, use_counts, out);
+            }
+            LinearStmt::Def { .. }
+            | LinearStmt::Effect { .. }
+            | LinearStmt::Assign { .. }
+            | LinearStmt::Return { .. }
+            | LinearStmt::Break
+            | LinearStmt::Continue
+            | LinearStmt::LabeledBreak { .. } => {}
+        }
+    }
 }
 
 // -----------------------------------------------------------------------

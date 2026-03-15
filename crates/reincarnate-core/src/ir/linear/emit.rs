@@ -390,6 +390,24 @@ impl<'a> EmitCtx<'a> {
             }
         }
 
+        // Pre-populate always_inline_map for every always-inline value in the
+        // function.  Without this, a use in Dispatch case A of a value whose
+        // Def instruction is in Dispatch case B (processed later) would fall
+        // through to Expr::Var(name) with no declaration → TS2304.  Pre-populating
+        // ensures build_val can always rebuild the expression regardless of order.
+        let always_inline_map: HashMap<ValueId, InstId> = func
+            .insts
+            .iter()
+            .filter_map(|(inst_id, inst)| {
+                let result = inst.result?;
+                if resolve.always_inlines.contains(&result) {
+                    Some((result, inst_id))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         Self {
             func,
             config,
@@ -400,7 +418,7 @@ impl<'a> EmitCtx<'a> {
             coalesced_decl_types,
             cross_scope_hoisted_types: HashMap::new(),
             pending_lazy: HashMap::new(),
-            always_inline_map: HashMap::new(),
+            always_inline_map,
             side_effecting_inlines: HashMap::new(),
             se_flush_declared: HashSet::new(),
             or_inline_declared: HashSet::new(),
@@ -1241,7 +1259,9 @@ impl<'a> EmitCtx<'a> {
             self.always_inline_map.insert(result, inst_id);
             return;
         }
-        if self.resolve.lazy_inlines.contains(&result) {
+        if self.resolve.lazy_inlines.contains(&result)
+            && !self.resolve.cross_scope_defs.contains(&result)
+        {
             // If any operand is a pending SE inline, eagerly build the
             // expression and store as SE inline. This chains pure wrappers
             // (e.g. Cast) into their SE operand (e.g. Call) so the flush

@@ -1646,7 +1646,7 @@ Reference: UndertaleModTool `AdaptAssetType` / `AdaptAssetTypeId` in `UndertaleC
 | Shelldiver | `data.win` 2MB | ❌ YYC |
 | Soulknight Survivor | `data.win` 35MB | ❌ YYC |
 | Undertale | `data.win` 5MB | ⚠️ 8 TS errors (6 unreachable + 2 game-author — all wontfix) |
-| VA-11 HALL-A | `game.unx` 212MB | ⚠️ 56 TS errors (2026-03-14) |
+| VA-11 HALL-A | `game.unx` 212MB | ⚠️ 5 TS errors (2026-03-15, was 56; −51 FS_* extension stubs fixed) |
 
 ---
 
@@ -1684,14 +1684,18 @@ of emitting `Number(x)`.
   Fixed runtime to take `(variable: unknown, value: unknown, op: number)` with full 6-op switch
   (equal/less/greater/notEqual/lteq/gteq). 10SecNinjaX: ~60 → 35 errors (−25).
 
-### 2. Linearizer scoping bugs (TS2304 `v*` variables) — ~25 errors in Schism/MaxManos2
-Variables like `v17`, `v23`, `v48` appear as TS2304 "Cannot find name". These are SSA values
-that the linearizer placed in a scope where they're not visible at use sites. Root cause:
-variable declaration hoisted to first assignment, but used in a different block scope
-(e.g., for-loop header vs body, or across if/else branches).
+### 2. Dangling SSA references (TS2304 `v*` variables) — ~25 errors in Schism/MaxManos2
+Variables like `v17`, `v23`, `v48` appear as TS2304 "Cannot find name". Investigation
+(MaxManos2 `funcGAMEenemiesAndObjectsCreate`) shows these are **dangling SSA references**:
+values used in block-terminator arguments (e.g. `switch v482, [..., "pentagonFloor" ->
+block33(v48), ...]`) but with NO definition instruction anywhere in the IR function.
+This is a GML frontend translation bug — the translator created a reference to a value
+that was only defined in a different function's scope (or not at all).
 
-**Fix**: In `linear/resolve.rs` or `linear/emit.rs`, hoist variable declarations to the
-nearest common dominator of all uses, not just the first assignment.
+**Fix**: Audit `translate_push_variable` / GML bytecode Br/BrIf/Switch emission in the
+frontend to ensure all block-argument values have definitions in the current function.
+The `v48` in MaxManos2 appears to be a `coerce(1, dyn)` that should be a direct constant,
+suggesting the front end lost track of the value's origin when building block args.
 
 ### 3. Instance ID as number (TS7053) — ~32 errors in Schism, ~2 in Dead Estate
 GML instance IDs are numbers that can be used to index into instance fields via
@@ -1713,12 +1717,11 @@ object names like `TOTCLeaderboard`×2 in 10SecNinjaX, `OFloor2`×2 in 12BetterT
 **TS1117 remaining**: `data/objects.ts` object literal duplicate keys — different root cause.
 Fix: audit GML object-type data generation for duplicate keys.
 
-### 5. Extension function auto-stubbing — ~56 errors in VA-11 HALL-A, ~4 in Schism
-Games with extension DLLs (FS_*, NSP_*) produce TS2304 for every extension function call.
-The extension metadata is in the data.win file (EXTN chunk) but we don't read it.
-
-**Fix**: Parse the EXTN chunk, extract function names and signatures, generate throw-stubs
-automatically. This would eliminate all extension-related TS2304 errors.
+### 5. Extension function auto-stubbing — FIXED 2026-03-15 (`ce7706a`)
+Parsed EXTN chunk, extracted function names and signatures, generated throw-stubs as IR
+free functions that call `extension_stubfunc_real/string` (which throw at runtime).
+VA-11 HALL-A: 56 → 5 errors (−51 TS2304). Remaining 5 are pre-existing wontfix bugs.
+Schism also benefits (NSP_* extension functions will now be stubbed).
 
 ### 6. Unresolved function pointers (TS2304 `func_ref_unknown_*`) — ~165 in Schism
 Obfuscated games have function references that can't be resolved to known functions.
