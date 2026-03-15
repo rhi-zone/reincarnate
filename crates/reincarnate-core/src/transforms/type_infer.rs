@@ -2,7 +2,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
 use crate::ir::ty::parse_type_notation;
-use crate::ir::{BlockId, Constant, Function, Inst, Module, Op, SystemCallTypeRule, Type, ValueId};
+use crate::ir::{
+    BlockId, Constant, Function, FunctionSig, Inst, Module, Op, SystemCallTypeRule, Type, ValueId,
+};
 use crate::pipeline::{Transform, TransformResult};
 
 /// Type inference transform — refines `Dynamic` types to concrete types
@@ -693,6 +695,130 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
             }
         }
     }
+    // Use-site inference: when a ResolveGlobalType result (e.g. State.get /
+    // Setup.get) is accessed via GetField with an array method or property,
+    // infer the variable as Array(Dynamic) if no write-site type was found.
+    //
+    // This handles variables that are initialised in user scripts (old SC1
+    // `state.active.variables.x = []`) and never touched by passage-level
+    // `<<set>>` macros.  Their write sites are invisible to us, but every
+    // `$x.indexOf(...)` or `$x.length` read site tells us they are arrays.
+    {
+        let resolve_rules: HashSet<(&str, &str)> = module
+            .system_call_type_rules
+            .iter()
+            .filter_map(|((sys, meth), rule)| {
+                if matches!(rule, SystemCallTypeRule::ResolveGlobalType) {
+                    Some((sys.as_str(), meth.as_str()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if !resolve_rules.is_empty() {
+            const ARRAY_FIELDS: &[&str] = &[
+                "indexOf",
+                "length",
+                "push",
+                "pop",
+                "splice",
+                "slice",
+                "includes",
+                "filter",
+                "map",
+                "some",
+                "every",
+                "forEach",
+                "concat",
+                "join",
+                "find",
+                "findIndex",
+                "sort",
+                "reverse",
+                "fill",
+                "flat",
+                "shift",
+                "unshift",
+            ];
+            let array_field_set: HashSet<&str> = ARRAY_FIELDS.iter().copied().collect();
+
+            for func in module.functions.values() {
+                let func_const_strings: HashMap<ValueId, &str> = func
+                    .insts
+                    .values()
+                    .filter_map(|inst| {
+                        if let Op::Const(Constant::String(s)) = &inst.op {
+                            Some((inst.result?, s.as_str()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                // result_value → variable_name for all ResolveGlobalType calls.
+                let mut get_results: HashMap<ValueId, &str> = HashMap::new();
+                for inst in func.insts.values() {
+                    if let Op::SystemCall {
+                        system,
+                        method,
+                        args,
+                    } = &inst.op
+                    {
+                        if resolve_rules.contains(&(system.as_str(), method.as_str())) {
+                            if let (Some(&name), Some(result)) = (
+                                args.first().and_then(|a| func_const_strings.get(a)),
+                                inst.result,
+                            ) {
+                                get_results.insert(result, name);
+                            }
+                        }
+                    }
+                }
+
+                // GetField on a ResolveGlobalType result with an array field →
+                // infer the variable as Array(Dynamic) if no write-site type.
+                //
+                // CallIndirect directly on a ResolveGlobalType result →
+                // infer the variable as Function(Dynamic params → Dynamic).
+                for inst in func.insts.values() {
+                    match &inst.op {
+                        Op::GetField { object, field } => {
+                            if array_field_set.contains(field.as_str()) {
+                                if let Some(&var_name) = get_results.get(object) {
+                                    let entry =
+                                        global_stores.entry(var_name.to_string()).or_insert(None);
+                                    if entry.is_none() {
+                                        *entry = Some(Type::Array(Box::new(Type::Dynamic)));
+                                    }
+                                }
+                            }
+                            // Non-array field access omitted: without knowing the struct
+                            // schema, the only emittable type is Record<string, any> which
+                            // violates Law 4.  Tracked in TODO.md under "SugarCube struct
+                            // use-site inference".
+                        }
+                        Op::CallIndirect { callee, args } => {
+                            if let Some(&var_name) = get_results.get(callee) {
+                                let entry =
+                                    global_stores.entry(var_name.to_string()).or_insert(None);
+                                if entry.is_none() {
+                                    let params = vec![Type::Dynamic; args.len()];
+                                    *entry = Some(Type::Function(Box::new(FunctionSig {
+                                        params,
+                                        return_ty: Type::Dynamic,
+                                        ..Default::default()
+                                    })));
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+
     global_stores
         .into_iter()
         .filter_map(|(name, ty)| ty.map(|t| (name, t)))
@@ -918,30 +1044,46 @@ impl Transform for TypeInference {
         }
 
         // Phase 3: cross-function global type inference from write sites.
-        let inferred_globals = build_global_types(&module);
-        let mut globals_changed = false;
-        for g in &mut module.globals {
-            if g.ty == Type::Dynamic {
-                if let Some(inferred) = inferred_globals.get(&g.name) {
-                    g.ty = inferred.clone();
-                    globals_changed = true;
-                    changed = true;
+        //
+        // Iterate up to MAX_GLOBAL_INFERENCE_PASSES times. Each pass may
+        // improve types inferred from arrays/structs whose element types
+        // were themselves inferred in the previous pass.  For example:
+        //   Pass 1: setup.Naked  = Struct("Object")  (direct struct literal)
+        //   Pass 1 re-run: ArrayInit([Struct("Object"), ...]) → Array(Struct)
+        //   Pass 2: setup.OutfitList = Array(Struct("Object"))
+        //   Pass 2 re-run: Setup.get("OutfitList") narrowed to Array(Struct)
+        const MAX_GLOBAL_INFERENCE_PASSES: usize = 4;
+        let mut prev_inferred: HashMap<String, Type> = HashMap::new();
+        for _ in 0..MAX_GLOBAL_INFERENCE_PASSES {
+            let inferred_globals = build_global_types(&module);
+
+            // Check whether this scan produced any improvements over previous.
+            let any_improved = inferred_globals.iter().any(|(k, v)| {
+                v != &Type::Dynamic && prev_inferred.get(k).is_none_or(|pv| pv == &Type::Dynamic)
+            });
+            let has_undeclared = inferred_globals
+                .keys()
+                .any(|k| !module.globals.iter().any(|g| &g.name == k));
+
+            if !any_improved && !has_undeclared && prev_inferred == inferred_globals {
+                break;
+            }
+            prev_inferred = inferred_globals.clone();
+
+            // Update Module::globals entries for declared globals.
+            for g in &mut module.globals {
+                if g.ty == Type::Dynamic {
+                    if let Some(inferred) = inferred_globals.get(&g.name) {
+                        g.ty = inferred.clone();
+                        changed = true;
+                    }
                 }
             }
-        }
 
-        // Re-run per-function inference with updated global types.
-        // Also re-run when `inferred_globals` has entries for variables that
-        // have no pre-declared `Module::globals` entry (e.g. SugarCube story
-        // variables accessed only via State.get/set).  In that case
-        // `globals_changed` is false but `ResolveGlobalType` still needs the
-        // inferred map to narrow `State.get(name)` results.
-        let has_undeclared_inferred = inferred_globals
-            .keys()
-            .any(|k| !module.globals.iter().any(|g| &g.name == k));
-        if globals_changed || has_undeclared_inferred {
+            // Re-run per-function inference so that ResolveGlobalType uses
+            // the newly inferred types (including for undeclared globals like
+            // SugarCube story/setup variables that have no Module::globals entry).
             let mut ctx = ModuleContext::from_module(&module);
-            // Merge inferred types for variables with no Module::globals entry.
             for (name, ty) in &inferred_globals {
                 ctx.global_types
                     .entry(name.clone())

@@ -1348,12 +1348,14 @@ impl<'a> EmitCtx<'a> {
         // Cast kind selection:
         // - Scalar (Float/Int/Bool/String): NullableCoerce → `expr as number/boolean/string`
         // - Struct/Enum: Coerce → `expr as TypeName` (TS assertion, no runtime asType())
+        // - Array: NullableCoerce → `expr as T[]` (propagates through array indexing)
         // Other types (Dynamic, Void, Union, etc.) are skipped — no cast.
         let syscall_cast_kind = match &result_ty {
             Type::Float(_) | Type::Int(_) | Type::UInt(_) | Type::Bool | Type::String => {
                 Some(CastKind::NullableCoerce)
             }
             Type::Struct(_) | Type::Enum(_) => Some(CastKind::Coerce),
+            Type::Array(_) | Type::Function(_) => Some(CastKind::NullableCoerce),
             _ => None,
         };
         let expr = if let (Op::SystemCall { system, method, .. }, Some(cast_kind)) =

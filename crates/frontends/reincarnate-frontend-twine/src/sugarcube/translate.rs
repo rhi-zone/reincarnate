@@ -197,6 +197,22 @@ impl TranslateCtx {
             .system_call("SugarCube.Output", "break", &[], Type::Void);
     }
 
+    // ── setup object helpers ────────────────────────────────────────────
+
+    /// Read `setup.field` as `SugarCube.Setup.get("field")`.
+    fn setup_get(&mut self, field: &str) -> ValueId {
+        let n = self.fb.const_string(field);
+        self.fb
+            .system_call("SugarCube.Setup", "get", &[n], Type::Dynamic)
+    }
+
+    /// Write `setup.field = value` as `SugarCube.Setup.set("field", value)`.
+    fn setup_set(&mut self, field: &str, value: ValueId) {
+        let n = self.fb.const_string(field);
+        self.fb
+            .system_call("SugarCube.Setup", "set", &[n, value], Type::Void);
+    }
+
     // ── Temp variable helpers ──────────────────────────────────────────
 
     fn get_or_create_temp(&mut self, name: &str) -> ValueId {
@@ -318,6 +334,14 @@ impl TranslateCtx {
 
     /// Walk an oxc AST expression and produce IR.
     fn lower_oxc_expr(&mut self, expr: &js::Expression<'_>, pp: &Preprocessed) -> ValueId {
+        // Rewrite `setup.X` → `SugarCube.Setup.get("X")` at the call site rather
+        // than going through `Engine.resolve("setup")` first. This lets type
+        // inference treat each property independently via GlobalStore/ResolveGlobalType.
+        if let js::Expression::StaticMemberExpression(mem) = expr {
+            if is_setup_ident(&mem.object) {
+                return self.setup_get(mem.property.name.as_str());
+            }
+        }
         match expr {
             js::Expression::BooleanLiteral(lit) => self.fb.const_bool(lit.value),
             js::Expression::NullLiteral(_) => self.fb.const_null(),
@@ -579,6 +603,9 @@ impl TranslateCtx {
                 if let Some(member) = target.as_member_expression() {
                     match member {
                         js::MemberExpression::StaticMemberExpression(mem) => {
+                            if is_setup_ident(&mem.object) {
+                                return self.setup_get(mem.property.name.as_str());
+                            }
                             let obj = self.lower_oxc_expr(&mem.object, pp);
                             self.fb
                                 .get_field(obj, mem.property.name.as_str(), Type::Dynamic)
@@ -808,6 +835,9 @@ impl TranslateCtx {
                 }
             }
             js::AssignmentTarget::StaticMemberExpression(mem) => {
+                if is_setup_ident(&mem.object) {
+                    return self.setup_get(mem.property.name.as_str());
+                }
                 let obj = self.lower_oxc_expr(&mem.object, pp);
                 self.fb
                     .get_field(obj, mem.property.name.as_str(), Type::Dynamic)
@@ -845,6 +875,10 @@ impl TranslateCtx {
                 }
             }
             js::AssignmentTarget::StaticMemberExpression(mem) => {
+                if is_setup_ident(&mem.object) {
+                    self.setup_set(mem.property.name.as_str(), value);
+                    return;
+                }
                 let obj = self.lower_oxc_expr(&mem.object, pp);
                 self.fb.set_field(obj, mem.property.name.as_str(), value);
             }
@@ -881,6 +915,10 @@ impl TranslateCtx {
                 }
             }
             js::SimpleAssignmentTarget::StaticMemberExpression(mem) => {
+                if is_setup_ident(&mem.object) {
+                    self.setup_set(mem.property.name.as_str(), value);
+                    return;
+                }
                 let obj = self.lower_oxc_expr(&mem.object, pp);
                 self.fb.set_field(obj, mem.property.name.as_str(), value);
             }
@@ -2243,6 +2281,12 @@ pub struct TranslateResult {
 /// Returns the bare names (without leading `_`) of every `_ident` token found.
 /// This is intentionally over-eager — false positives (e.g. inside string
 /// literals) are harmless: we emit a dead State.get() that DCE removes.
+/// Returns `true` if `expr` is exactly the bare identifier `setup` — not a
+/// `$setup` story var or a `_setup` temp var, just the SugarCube global object.
+fn is_setup_ident(expr: &js::Expression<'_>) -> bool {
+    matches!(expr, js::Expression::Identifier(id) if id.name.as_str() == "setup")
+}
+
 fn scan_temp_var_names(source: &str) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut names: Vec<String> = Vec::new();

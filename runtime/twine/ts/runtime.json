@@ -1,5 +1,6 @@
 {
   "system_modules": {
+    "SugarCube.Setup": { "path": "sugarcube/setup", "stateful": true },
     "SugarCube.State": { "path": "sugarcube/state", "stateful": true },
     "SugarCube.Output": { "path": "sugarcube/output", "stateful": true },
     "SugarCube.Navigation": { "path": "sugarcube/navigation", "stateful": true },

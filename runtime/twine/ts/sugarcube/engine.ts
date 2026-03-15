@@ -542,6 +542,23 @@ export class SCEngine {
   }
 
   /** Resolve a bare name (used for function lookups in expression context). */
+  resolve(name: "Math"): Math;
+  resolve(name: "Number"): NumberConstructor;
+  resolve(name: "String"): StringConstructor;
+  resolve(name: "Array"): ArrayConstructor;
+  resolve(name: "Object"): ObjectConstructor;
+  resolve(name: "JSON"): JSON;
+  resolve(name: "Date"): DateConstructor;
+  resolve(name: "RegExp"): RegExpConstructor;
+  resolve(name: "isNaN"): typeof globalThis.isNaN;
+  resolve(name: "isFinite"): typeof globalThis.isFinite;
+  resolve(name: "parseInt"): typeof globalThis.parseInt;
+  resolve(name: "parseFloat"): typeof globalThis.parseFloat;
+  resolve(name: "visited"): (...passages: string[]) => number;
+  resolve(name: "lastVisited"): (...passages: string[]) => number;
+  resolve(name: "random"): (min: number, max?: number) => number;
+  resolve(name: "either"): <T>(...args: T[]) => T;
+  resolve(name: string): unknown;
   resolve(name: string): unknown {
     const g = (globalThis as typeof globalThis & Record<string, unknown>)[name];
     if (g !== undefined) return g;

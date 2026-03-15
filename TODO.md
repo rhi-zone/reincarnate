@@ -2143,16 +2143,27 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   call sites across all passages. Emitter injects `as number`/`as string`/`as boolean`/
   `as StructName` casts via `LoweringConfig::cast_narrowed_syscall_results_for`.
   Results: TRC TS2571 27392→9635 (−65%), DoL ~96K→~53K errors.
-- [ ] **Phase 2: Remaining TS2571 — variables with no set sites or Dynamic stores**
-  — ~9635 remaining in TRC / ~42K in DoL are variables that:
-  (a) have no `State.set` call sites in the IR (read-only vars, set only by game engine),
-  (b) have only Dynamic-typed stores (e.g. storing another State.get result), or
-  (c) have Union types from heterogeneous stores.
-  Root cause: `build_global_types` skips `Dynamic` values, and circular stores (reading
-  then writing the same var) create Dynamic chains.  Next step: multi-pass inference
-  that iterates until the global type map stabilizes, similar to how `TypeInference`
-  itself iterates until fixpoint.  Also: some read-only vars may need to be pre-declared
-  with `State.set` in a `StoryInit` passage — these remain genuinely `unknown`.
+- [x] **Phase 2: setup inference + multi-pass global inference + use-site inference**
+  - `SugarCube.Setup` get/set as GlobalStore/ResolveGlobalType (setup.X → typed)
+  - Multi-pass Phase 3 (up to 4 iterations): propagates array element types, e.g.
+    `Naked = Struct("Object")` → `OutfitList = Array(Struct("Object"))` in 2 passes
+  - `Array(T)` cast injection in `syscall_cast_kind` so `as T[]` is emitted
+  - `Engine.resolve()` TS overloads for JS globals + SugarCube builtins
+  - **Use-site inference**: when `State.get("x")` result is used with array
+    methods (`indexOf`, `length`, `push`, …) → infer `x: Array(Dynamic)` → `unknown[]`.
+    When used in `CallIndirect(v, args)` → infer as `Function(…) → unknown`.
+  Results: TRC 0 TS2571 (was 9635), DoL 21,709 TS2571 (was ~42K).
+- [ ] **Phase 3: Struct use-site inference** (DoL 21,709 TS2571 remaining)
+  — All remaining TS2571 in DoL come from state variables that are struct-typed objects
+  (e.g. `$navigation`, `$worn`) with nested property chains like `.stack.last()`.
+  These have no `State.set` call sites visible to the IR (set in user scripts via old SC1
+  `state.active.variables.x = {...}` API).
+  **Correct fix**: infer these as `Record<string, unknown>` from use-site GetField
+  accesses on non-array properties, then add further inference to narrow field types.
+  **Blocker**: `Record<string, unknown>` field accesses return `unknown`, pushing the
+  error from TS2571 to TS18046 on every subsequent property/method use.  Requires
+  multi-level struct field inference or explicit per-variable schema declarations to
+  fully eliminate.  Cannot use `Record<string, any>` (violates Law 4).
 
 ### SugarCube Type Emission Bugs (DoL)
 

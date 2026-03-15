@@ -18,11 +18,13 @@ import { SCDOM } from "./dom";
 import { SCInput } from "./input";
 import { SCWidget } from "./widget";
 import { SCNavigation } from "./navigation";
+import { SCSetup } from "./setup";
 import { SCEngine } from "./engine";
 import { Wikifier } from "./wikifier";
 
 export class SugarCubeRuntime {
   readonly Platform: PlatformBundle;
+  readonly Setup: SCSetup;
   readonly State: SCState;
   readonly Events: SCEvents;
   readonly Output: SCOutput;
@@ -37,6 +39,7 @@ export class SugarCubeRuntime {
 
   constructor(persistence?: PersistenceOpts) {
     this.Platform = new PlatformBundle();
+    this.Setup = new SCSetup();
     Wikifier.setRuntime(this);
     const history = persistence?.history === "diff"
       ? diffHistory()

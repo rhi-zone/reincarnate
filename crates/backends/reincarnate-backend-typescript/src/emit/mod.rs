@@ -104,8 +104,10 @@ fn lowering_config_for_engine(
             // narrowed by type inference.  The SugarCube runtime declares
             // `State.get(name): unknown`; type inference can narrow the actual
             // type, and the cast surfaces it in the emitted TypeScript.
-            c.cast_narrowed_syscall_results_for =
-                vec![("SugarCube.State".to_string(), "get".to_string())];
+            c.cast_narrowed_syscall_results_for = vec![
+                ("SugarCube.State".to_string(), "get".to_string()),
+                ("SugarCube.Setup".to_string(), "get".to_string()),
+            ];
         }
         std::borrow::Cow::Owned(c)
     } else {

@@ -206,6 +206,20 @@ impl TwineFrontend {
                 value_arg: 1,
             },
         );
+        // `setup.X` accesses are rewritten by the translator to
+        // `SugarCube.Setup.get/set` SystemCalls, allowing type inference to
+        // infer each property's type from its assignment sites.
+        module.system_call_type_rules.insert(
+            ("SugarCube.Setup".into(), "get".into()),
+            SystemCallTypeRule::ResolveGlobalType,
+        );
+        module.system_call_type_rules.insert(
+            ("SugarCube.Setup".into(), "set".into()),
+            SystemCallTypeRule::GlobalStore {
+                name_arg: 0,
+                value_arg: 1,
+            },
+        );
 
         Ok(FrontendOutput {
             modules: vec![module],
