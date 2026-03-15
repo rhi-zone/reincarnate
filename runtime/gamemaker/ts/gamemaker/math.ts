@@ -1,6 +1,7 @@
 /** GML math functions — PRNG, trig (degrees), standard math. */
 
 import type { GameRuntime } from "./runtime";
+import { currentWallTimeMs } from "../shared/platform/timing";
 
 // ---- Seedable PRNG (xorshift128) ----
 
@@ -56,7 +57,7 @@ export function createMathAPI(rt: GameRuntime) {
   }
 
   function randomize(): void {
-    rt._math.prng = new XorGen(Date.now());
+    rt._math.prng = new XorGen(currentWallTimeMs());
   }
 
   function random(max: number): number {

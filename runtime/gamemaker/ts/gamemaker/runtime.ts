@@ -11,6 +11,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 import { requestFrame, cancelFrame } from "../shared/platform";
 import type { FrameHandle } from "../shared/platform";
+import { currentTimeMs, currentWallTimeMs } from "../shared/platform/timing";
 import { PersistenceState, init as initPersistence, store, fetch as fetchItem, remove } from "../shared/platform/persistence";
 import type { RenderRoot } from "../shared/render-root";
 import { DrawState } from "./draw";
@@ -855,7 +856,7 @@ export class GameRuntime {
   }
 
   randomize(): void {
-    this._math.prng = new XorGen(Date.now());
+    this._math.prng = new XorGen(currentWallTimeMs());
   }
 
   random(max: number): number {
@@ -3692,7 +3693,7 @@ export class GameRuntime {
   steam_user_installed_dlc(_appId: number): boolean { return true; /* assume all DLC available when running from extracted files */ }
   steam_user_owns_dlc(_appId: number): boolean { return true; }
   steam_user_request_encrypted_app_ticket(_extra: any): void { throw new Error("steam_user_request_encrypted_app_ticket: not yet implemented"); }
-  steam_utils_get_server_real_time(): number { return Math.floor(Date.now() / 1000); }
+  steam_utils_get_server_real_time(): number { return Math.floor(currentWallTimeMs() / 1000); }
   steam_utils_is_steam_running_on_steam_deck(): boolean { throw new Error("steam_utils_is_steam_running_on_steam_deck: not yet implemented"); }
 
   // ---- More sprite/font ----
@@ -4202,7 +4203,7 @@ export class GameRuntime {
       this._gamepadPrev.set(i, gp ? gp.buttons.map((b) => b.pressed) : []);
     }
 
-    const now = performance.now();
+    const now = currentTimeMs();
     if (this._lastFrameTime === 0) this._lastFrameTime = now;
     // Compute delta time in seconds; clamp to 100ms to avoid spiral-of-death.
     const dt = Math.min((now - this._lastFrameTime) / 1000, 0.1);
@@ -4211,14 +4212,14 @@ export class GameRuntime {
     const stepInterval = 1 / (this.room_speed || 60);
     this._stepAccumulator += dt;
 
-    const start = performance.now();
+    const start = currentTimeMs();
     this.onTick?.();
     // Run as many game steps as the accumulator has accumulated.
     while (this._stepAccumulator >= stepInterval) {
       if (this._currentRoom) this._currentRoom.draw();
       this._stepAccumulator -= stepInterval;
     }
-    const end = performance.now();
+    const end = currentTimeMs();
     const elapsed = end - start;
     const newfps = 1000 / Math.max(0.01, elapsed);
     this.fps_real = 0.9 * this.fps_real + 0.1 * newfps;
@@ -4881,7 +4882,7 @@ export class GameRuntime {
   // ---- Date/Time ----
   date_second_span(date1: number, date2: number): number { return (date2 - date1) * 86400; }
   date_datetime_string(date: number): string { return new Date(Math.round((date - 25569) * 86400000)).toLocaleString(); }
-  get_timer(): number { return Math.floor(performance.now() * 1000); }
+  get_timer(): number { return Math.floor(currentTimeMs() * 1000); }
 
   // ---- Tiles (GMS1) ----
   tile_set_blend(_tile: number, _col: number): void { /* no-op */ }
