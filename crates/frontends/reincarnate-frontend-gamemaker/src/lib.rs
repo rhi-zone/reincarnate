@@ -777,7 +777,7 @@ fn strip_script_prefix(name: &str) -> &str {
 ///   Type 6  → FONT fonts           Type 7  → TMLN timelines
 ///   Type 8  → SHDR shaders         Type 9  → SEQN sequences
 ///   Type 10 → AnimCurve            Type 11 → ParticleSystem
-///   Type 13 → BGND backgrounds     Type 14 → RoomInstance
+///   Type 13 → BGND backgrounds     Type 14 → RoomInstance  (13 now implemented)
 ///
 /// Pre-2024.4 layout (NOT yet implemented — see TODO.md):
 ///   Type 0  → OBJT objects         Type 1  → SPRT sprites
@@ -865,6 +865,15 @@ fn build_asset_ref_names(dw: &DataWin, scpt: &datawin::chunks::scpt::Scpt) -> Ha
         for (i, entry) in seqn.sequences.iter().enumerate() {
             if let Ok(name) = dw.resolve_string(entry.name) {
                 map.insert((9u32 << 24) | i as u32, name);
+            }
+        }
+    }
+
+    // Type 13: backgrounds/tilesets (BGND chunk, 2024.4+ layout).
+    if let Ok(bgnd) = dw.bgnd() {
+        for (i, entry) in bgnd.backgrounds.iter().enumerate() {
+            if let Ok(name) = dw.resolve_string(entry.name) {
+                map.insert((13u32 << 24) | i as u32, name);
             }
         }
     }

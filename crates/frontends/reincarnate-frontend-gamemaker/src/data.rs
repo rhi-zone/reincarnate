@@ -598,6 +598,50 @@ fn generate_asset_ids(dw: &DataWin, catalog: &mut AssetCatalog) {
         .unwrap_or_default();
     emit_group("Sequences", seqn_names);
 
+    // Backgrounds/tilesets (type=13 in 2024.4+ pushref; BGND chunk).
+    let bgnd_names: Vec<String> = dw
+        .bgnd()
+        .map(|bgnd| {
+            bgnd.backgrounds
+                .iter()
+                .filter_map(|e| dw.resolve_string(e.name).ok())
+                .collect()
+        })
+        .unwrap_or_default();
+    emit_group("Backgrounds/tilesets", bgnd_names);
+
+    // Scripts that are NOT emitted as TypeScript functions (legacy GMS1 scripts
+    // with no gml_Script_* code entry, only a gml_GlobalScript_* stub).
+    // These need a `declare const` so that `script_execute(scrFoo)` compiles.
+    let stub_script_names: Vec<String> = (|| -> Option<Vec<String>> {
+        let scpt = dw.scpt().ok()?;
+        let code = dw.code().ok()?;
+        Some(
+            scpt.scripts
+                .iter()
+                .filter_map(|s| {
+                    let name = dw.resolve_string(s.name).ok()?;
+                    let code_entry = code.entries.get(s.code_id as usize)?;
+                    let code_name = dw.resolve_string(code_entry.name).ok()?;
+                    // Only emit if this is a legacy stub (no modern function body).
+                    if code_name.starts_with("gml_GlobalScript_") {
+                        // Strip the legacy prefix to get the bare script name.
+                        let bare = name
+                            .strip_prefix("gml_Script_")
+                            .or_else(|| name.strip_prefix("gml_GlobalScript_"))
+                            .unwrap_or(&name)
+                            .to_string();
+                        Some(bare)
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
+        )
+    })()
+    .unwrap_or_default();
+    emit_group("Scripts (no function body)", stub_script_names);
+
     catalog.add(Asset {
         id: "data_asset_ids".into(),
         kind: AssetKind::Data,
