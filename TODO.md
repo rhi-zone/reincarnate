@@ -89,12 +89,14 @@ Full roadmaps in `docs/targets/<engine>.md`. Summary of where each stands:
 **Implementation incomplete** (marked complete 2026-03-04, audit 2026-03-15 found extensive bypasses).
 
 GML runtime (`runtime.ts`, `draw.ts`, `storage.ts`) extensively bypasses platform abstractions:
-- [ ] **localStorage** (15+ sites) — `ini_open/close`, `file_text_*`, `buffer_load/save`, `ds_map_secure_save`, steam stats — should use `platform/persistence.ts` OPFS-backed `PersistenceState`
-- [ ] **document/window** (20+ sites) — `document.createElement`, `window.innerWidth/innerHeight`, `document.title`, `document.fullscreenElement`, `window.open`, `window.close`, `navigator.clipboard` — violates Law 5 (Instantiability), two game instances on one page would collide
-- [ ] **navigator.getGamepads()** (6+ sites) — duplicates `platform/input.ts` gamepad API
+- [ ] **localStorage** (28 sites in 2026-03-15 audit) — `ini_open/close`, `file_text_*`, `buffer_load/save`, `ds_map_secure_save`, steam stats — should use `platform/persistence.ts` OPFS-backed `PersistenceState`
+- [ ] **document.createElement** (3 remaining) — `_captureCanvas` (WebGL readback), `<video>` (draw_enable_drawtoblendstate), temp canvas (sprite_save) — part of the Canvas2D refactor
 - [ ] **Canvas2D** (57 sites) — `this._gfx.ctx` raw `CanvasRenderingContext2D` access instead of platform `GraphicsState` handle-based API
 - [ ] **fetch/Image** — `loadImage()` module-level function uses bare `new Image()` instead of `platform/images.ts` `loadImageUrl`
-- [ ] **performance.now()** (3 sites in `_runFrame`) — should use `platform/timing.ts` `currentTimeMs()`
+- [x] **performance.now() / Date.now()** — routed through `platform/timing.ts` `currentTimeMs()` / `currentWallTimeMs()` (session 29)
+- [x] **navigator.getGamepads()** — routed through new `platform/input.ts` gamepad functions (session 29)
+- [x] **navigator.language / onLine / clipboard** — routed through new `platform/system.ts` (session 29)
+- [x] **window.innerWidth/innerHeight, window.open, window.close, document fullscreen, download** — routed through new `platform/window.ts` (session 29)
 
 Flash runtime: platform threading via `FlashShims` was completed correctly.
 

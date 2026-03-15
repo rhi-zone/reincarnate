@@ -13,6 +13,7 @@ import { requestFrame, cancelFrame } from "../shared/platform";
 import type { FrameHandle } from "../shared/platform";
 import { currentTimeMs, currentWallTimeMs } from "../shared/platform/timing";
 import { systemLanguage, isNetworkConnected, writeClipboard } from "../shared/platform/system";
+import { displayWidth, displayHeight, openUrl, closeWindow, requestFullscreen, exitFullscreen, downloadDataUrl } from "../shared/platform/window";
 import { PersistenceState, init as initPersistence, store, fetch as fetchItem, remove } from "../shared/platform/persistence";
 import type { RenderRoot } from "../shared/render-root";
 import { DrawState } from "./draw";
@@ -2844,8 +2845,8 @@ export class GameRuntime {
   buffer_async_group_end(): number { throw Error("buffer_async_group_end: not yet implemented"); }
 
   // ---- Display extras ----
-  display_get_gui_width(): number { return window.innerWidth; }
-  display_get_gui_height(): number { return window.innerHeight; }
+  display_get_gui_width(): number { return displayWidth(); }
+  display_get_gui_height(): number { return displayHeight(); }
   display_reset(_antialias: number, _vsync: boolean): void { /* no-op */ }
 
   // ---- Font extras ----
@@ -2902,7 +2903,7 @@ export class GameRuntime {
   // ---- Tags / misc ----
   tag_get_assets(_tag: string): any[] { return []; /* no tag data available */ }
   url_get_domain(): string { return "localhost"; }
-  url_open_ext(url: string, _target: string): void { window.open(url, "_blank"); }
+  url_open_ext(url: string, _target: string): void { openUrl(url); }
 
   // ---- View extras ----
   view_set_hport(_view: number, _h: number): void { /* no-op */ }
@@ -2919,8 +2920,8 @@ export class GameRuntime {
     this._gfx.canvas.style.cursor = map[cursor] ?? "default";
   }
   window_set_fullscreen(enable: boolean): void {
-    if (enable) { document.documentElement.requestFullscreen?.(); }
-    else { document.exitFullscreen?.(); }
+    if (enable) { requestFullscreen(); }
+    else { exitFullscreen(); }
   }
 
   // ---- More Steam API ----
@@ -3062,8 +3063,8 @@ export class GameRuntime {
   gamepad_set_vibration(_device: number, _left: number, _right: number): void { /* no-op */ }
 
   // ---- Display ----
-  display_get_width(): number { return window.innerWidth; }
-  display_get_height(): number { return window.innerHeight; }
+  display_get_width(): number { return displayWidth(); }
+  display_get_height(): number { return displayHeight(); }
 
   // ---- JSON ----
   json_stringify(val: any): string { return JSON.stringify(val) ?? "undefined"; }
@@ -3289,7 +3290,7 @@ export class GameRuntime {
     // Stop the game loop and close the window (if allowed).
     clearTimeout(this._drawHandle);
     this._drawHandle = 0;
-    try { window.close(); } catch { /* may not be permitted */ }
+    closeWindow();
     // Halt execution: throw a special marker that won't be caught as a game error.
     throw Object.assign(new Error("game_end"), { isGameEnd: true });
   }
@@ -3546,13 +3547,8 @@ export class GameRuntime {
 
   // ---- Screen save ----
   screen_save(filename: string): void {
-    // Trigger a download of the current canvas content.
-    try {
-      const a = document.createElement("a");
-      a.href = this._gfx.canvas.toDataURL("image/png");
-      a.download = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
-      a.click();
-    } catch { /* ignore: may fail in non-browser environments */ }
+    const fname = filename.replace(/\\/g, "/").split("/").pop() ?? filename;
+    downloadDataUrl(this._gfx.canvas.toDataURL("image/png"), fname);
   }
 
   // ---- Dialogs ----
@@ -3708,10 +3704,8 @@ export class GameRuntime {
       const tmp = document.createElement("canvas");
       tmp.width = tex.src.w; tmp.height = tex.src.h;
       tmp.getContext("2d")!.drawImage(sheet, tex.src.x, tex.src.y, tex.src.w, tex.src.h, 0, 0, tex.src.w, tex.src.h);
-      const a = document.createElement("a");
-      a.href = tmp.toDataURL("image/png");
-      a.download = fname.replace(/\\/g, "/").split("/").pop() ?? fname;
-      a.click();
+      const outName = fname.replace(/\\/g, "/").split("/").pop() ?? fname;
+      downloadDataUrl(tmp.toDataURL("image/png"), outName);
     } catch { /* ignore */ }
   }
   sprite_add(_path: string, _frames: number, _removebg: boolean, _smooth: boolean, _xorig: number, _yorig: number): number {
@@ -4070,7 +4064,7 @@ export class GameRuntime {
 
   // ---- More Steam ----
   steam_create_leaderboard(_name: string, _sortOrder: number, _displayType: number): void { throw new Error("steam_create_leaderboard: not yet implemented"); }
-  steam_activate_overlay_browser(_url: string): void { window.open(_url, "_blank"); }
+  steam_activate_overlay_browser(_url: string): void { openUrl(_url); }
   steam_clear_achievement(_name: string): void {
     const set = this._steamAchSet();
     set.delete(_name);
@@ -4969,7 +4963,7 @@ export class GameRuntime {
   buffer_get_surface(_buf: number, _surface: number, _offset: number): void { /* no-op — surface pixel readback not implemented */ }
 
   // ---- Misc ----
-  url_open(url: string): void { window.open(url, "_blank"); }
+  url_open(url: string): void { openUrl(url); }
   window_has_focus(): boolean { return document.hasFocus(); }
   file_copy(_src: string, _dest: string): void { throw new Error("file_copy: not yet implemented"); }
 
