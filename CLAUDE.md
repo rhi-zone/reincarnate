@@ -24,7 +24,11 @@ Reincarnate is a decompiler that produces working, type-safe, high-quality code 
 
 **Conversation is not memory.** Write behavior changes to CLAUDE.md or a memory file immediately. A statement made only in conversation evaporates at session end. Any correction → update CLAUDE.md now.
 
-**Good tooling is a high priority.** When a task is tedious and error-prone, automate it.
+**Good tooling is a high priority.** When a task is tedious and error-prone, automate it. If you find yourself running the same command multiple times to get different views of the output, that is a tooling gap — fix the command's output first, then run it once.
+
+**A correct principle that doesn't prevent bad behavior isn't doing its job.** When a rule fails to stop a mistake, make it more specific until it would have caught it — don't add new rules. More rules dilute attention and make existing rules less effective.
+
+**Repeated pushback means CLAUDE.md is wrong.** If the user corrects the same behavior more than twice, stop guessing and ask directly what's missing. Then fix the principle that failed — not by adding a new rule, but by making the existing one specific enough that it would have caught it.
 
 ## Fundamental Laws
 
@@ -54,6 +58,8 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 **Commit after every phase.** Each commit = one logical unit of progress. Conventional commits: `type(scope): message`. Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
 
 **Use `bun`** for JavaScript/TypeScript scripting tasks.
+
+**Never invoke `tsc` or `tsgo` directly.** Always use `cargo run -p reincarnate-cli -- check --manifest <path>`. Use `--no-emit` to skip re-emission and check existing output (e.g. after a manual output edit or in CI).
 
 **Use subagents** for research tasks, >5 files, or >3 grep rounds.
 
