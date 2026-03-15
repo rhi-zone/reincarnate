@@ -23,6 +23,7 @@ use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, Tar
 use reincarnate_core::transforms::default_pipeline;
 use std::collections::HashMap;
 
+mod cache;
 mod registry;
 use registry::{
     load_registry, now_iso8601, read_engine_from_manifest, save_registry, ProjectEntry,
@@ -571,6 +572,35 @@ fn cmd_emit(
     debug: &DebugConfig,
 ) -> Result<(Vec<PathBuf>, Vec<Diagnostic>)> {
     let manifest = load_manifest(manifest_path)?;
+
+    // Cache lookup — skip when any debug flag is active (debug runs don't
+    // write normal output and shouldn't pollute the cache).
+    let debug_active = debug.dump_ir
+        || debug.dump_ast
+        || debug.dump_ir_after.is_some()
+        || debug.function_filter.is_some();
+    let emit_key = if debug_active {
+        None
+    } else {
+        Some(cache::emit_cache_key(
+            manifest_path,
+            &manifest.source,
+            preset,
+            skip_passes,
+            fixpoint,
+        ))
+    };
+
+    if let Some(ref key) = emit_key {
+        if let Some(entry) = cache::lookup_emit_cache(key) {
+            let dirs: Vec<PathBuf> = entry.output_dirs.iter().map(PathBuf::from).collect();
+            if dirs.iter().all(|d| d.is_dir()) {
+                eprintln!("[emit] cache hit — skipping pipeline");
+                return Ok((dirs, entry.diagnostics));
+            }
+        }
+    }
+
     let Some(frontend) = find_frontend(&manifest.engine) else {
         bail!("no frontend available for engine {:?}", manifest.engine);
     };
@@ -715,6 +745,22 @@ fn cmd_emit(
         output_dirs.push(target.output_dir.clone());
     }
 
+    // Store emit cache entry (best-effort).
+    if let Some(ref key) = emit_key {
+        cache::store_emit_cache(
+            key,
+            &cache::EmitCacheEntry {
+                key: key.clone(),
+                output_dirs: output_dirs
+                    .iter()
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .collect(),
+                diagnostics: all_diagnostics.clone(),
+                created_at: now_iso8601(),
+            },
+        );
+    }
+
     Ok((output_dirs, all_diagnostics))
 }
 
@@ -834,6 +880,20 @@ fn run_checks(
             continue;
         };
 
+        // Check cache: if the output directory contents haven't changed since
+        // the last check, return the cached result without re-running tsgo.
+        let check_key = cache::check_cache_key(output_dir).ok();
+        if let Some(ref key) = check_key {
+            if let Some(entry) = cache::lookup_check_cache(key) {
+                eprintln!("[check] cache hit — skipping type checker");
+                if entry.checker_output.summary.total_errors > 0 {
+                    has_errors = true;
+                }
+                all_outputs.push(entry.checker_output);
+                continue;
+            }
+        }
+
         eprintln!(
             "[check] running {} checker on {}...",
             checker.name(),
@@ -842,6 +902,18 @@ fn run_checks(
         let result = checker.check(CheckerInput {
             output_dir: output_dir.clone(),
         })?;
+
+        // Store check cache entry (best-effort).
+        if let Some(ref key) = check_key {
+            cache::store_check_cache(
+                key,
+                &cache::CheckCacheEntry {
+                    key: key.clone(),
+                    checker_output: result.clone(),
+                    created_at: now_iso8601(),
+                },
+            );
+        }
 
         if result.summary.total_errors > 0 {
             has_errors = true;

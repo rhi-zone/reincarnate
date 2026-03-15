@@ -65,7 +65,7 @@ pub struct CheckerInput {
 }
 
 /// Output from a checker.
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckerOutput {
     pub diagnostics: Vec<Diagnostic>,
     pub summary: CheckSummary,
