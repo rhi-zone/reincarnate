@@ -202,10 +202,17 @@ fn count_uses_in_stmts(
 
 /// Populate def_depths and min_use_depths by recursively walking the
 /// LinearStmt tree.
+/// `depth` records how deep this statement is for *def* scoping (which block
+/// a value is declared in).  `use_depth` records the depth at which operand
+/// *uses* are visible — normally equal to `depth`, but callers can set them
+/// independently for while/for headers: defs inside the header are block-scoped
+/// to the loop (`depth = outer+1`) while operand uses in the header are
+/// accessible from the outer scope (`use_depth = outer`).
 fn collect_def_use_depths(
     func: &Function,
     stmts: &[LinearStmt],
     depth: usize,
+    use_depth: usize,
     defs: &mut HashMap<ValueId, (usize, InstId)>,
     min_use_depths: &mut HashMap<ValueId, usize>,
 ) {
@@ -220,35 +227,47 @@ fn collect_def_use_depths(
             LinearStmt::Def { result, inst_id } => {
                 defs.entry(*result).or_insert((depth, *inst_id));
                 for v in value_operands(&func.insts[*inst_id].op) {
-                    update_use(v, depth, min_use_depths);
+                    update_use(v, use_depth, min_use_depths);
                 }
             }
             LinearStmt::Effect { inst_id } => {
                 for v in value_operands(&func.insts[*inst_id].op) {
-                    update_use(v, depth, min_use_depths);
+                    update_use(v, use_depth, min_use_depths);
                 }
             }
             LinearStmt::Assign { src, .. } => {
-                update_use(*src, depth, min_use_depths);
+                update_use(*src, use_depth, min_use_depths);
             }
             LinearStmt::Return { value: Some(v) } => {
-                update_use(*v, depth, min_use_depths);
+                update_use(*v, use_depth, min_use_depths);
             }
             LinearStmt::If {
                 cond,
                 then_body,
                 else_body,
             } => {
-                update_use(*cond, depth, min_use_depths);
-                collect_def_use_depths(func, then_body, depth + 1, defs, min_use_depths);
-                collect_def_use_depths(func, else_body, depth + 1, defs, min_use_depths);
+                update_use(*cond, use_depth, min_use_depths);
+                collect_def_use_depths(func, then_body, depth + 1, depth + 1, defs, min_use_depths);
+                collect_def_use_depths(func, else_body, depth + 1, depth + 1, defs, min_use_depths);
             }
             LinearStmt::While {
                 header, cond, body, ..
             } => {
-                collect_def_use_depths(func, header, depth, defs, min_use_depths);
-                update_use(*cond, depth, min_use_depths);
-                collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
+                // The while header and body are emitted inside the loop block
+                // in TypeScript (either `loop { header; if (cond) break; body }`
+                // or `while (cond) { body }` when the header is empty).
+                //
+                // The header is special: values DEFINED there are block-scoped
+                // to the loop (def depth = depth+1), but values USED as operands
+                // there are accessible from the outer scope because the header
+                // computes the while condition (use_depth = depth).  This lets
+                // `_region`-style values (defined in header, used after loop) be
+                // detected as cross-scope, while `sarr`-style values (defined in
+                // a sibling if-branch, used in the header's condition computation)
+                // are also detected as cross-scope.
+                collect_def_use_depths(func, header, depth + 1, depth, defs, min_use_depths);
+                update_use(*cond, use_depth, min_use_depths);
+                collect_def_use_depths(func, body, depth + 1, depth + 1, defs, min_use_depths);
             }
             LinearStmt::For {
                 init,
@@ -258,14 +277,17 @@ fn collect_def_use_depths(
                 body,
                 ..
             } => {
-                collect_def_use_depths(func, init, depth, defs, min_use_depths);
-                collect_def_use_depths(func, header, depth, defs, min_use_depths);
-                update_use(*cond, depth, min_use_depths);
-                collect_def_use_depths(func, update, depth, defs, min_use_depths);
-                collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
+                // init is emitted before the loop; same asymmetry as While for
+                // the header (defs at depth+1, uses at depth).  update and body
+                // are fully inside the loop block.
+                collect_def_use_depths(func, init, depth, depth, defs, min_use_depths);
+                collect_def_use_depths(func, header, depth + 1, depth, defs, min_use_depths);
+                update_use(*cond, use_depth, min_use_depths);
+                collect_def_use_depths(func, update, depth + 1, depth + 1, defs, min_use_depths);
+                collect_def_use_depths(func, body, depth + 1, depth + 1, defs, min_use_depths);
             }
             LinearStmt::Loop { body } => {
-                collect_def_use_depths(func, body, depth + 1, defs, min_use_depths);
+                collect_def_use_depths(func, body, depth + 1, depth + 1, defs, min_use_depths);
             }
             LinearStmt::LogicalOr {
                 cond,
@@ -279,10 +301,10 @@ fn collect_def_use_depths(
                 rhs,
                 phi,
             } => {
-                update_use(*cond, depth, min_use_depths);
-                collect_def_use_depths(func, rhs_body, depth + 1, defs, min_use_depths);
+                update_use(*cond, use_depth, min_use_depths);
+                collect_def_use_depths(func, rhs_body, depth + 1, depth + 1, defs, min_use_depths);
                 if *rhs != *phi {
-                    update_use(*rhs, depth, min_use_depths);
+                    update_use(*rhs, use_depth, min_use_depths);
                 }
             }
             LinearStmt::Switch {
@@ -290,15 +312,36 @@ fn collect_def_use_depths(
                 cases,
                 default_body,
             } => {
-                update_use(*value, depth, min_use_depths);
+                update_use(*value, use_depth, min_use_depths);
                 for (_, case_stmts) in cases {
-                    collect_def_use_depths(func, case_stmts, depth + 1, defs, min_use_depths);
+                    collect_def_use_depths(
+                        func,
+                        case_stmts,
+                        depth + 1,
+                        depth + 1,
+                        defs,
+                        min_use_depths,
+                    );
                 }
-                collect_def_use_depths(func, default_body, depth + 1, defs, min_use_depths);
+                collect_def_use_depths(
+                    func,
+                    default_body,
+                    depth + 1,
+                    depth + 1,
+                    defs,
+                    min_use_depths,
+                );
             }
             LinearStmt::Dispatch { blocks, .. } => {
                 for (_, block_stmts) in blocks {
-                    collect_def_use_depths(func, block_stmts, depth + 1, defs, min_use_depths);
+                    collect_def_use_depths(
+                        func,
+                        block_stmts,
+                        depth + 1,
+                        depth + 1,
+                        defs,
+                        min_use_depths,
+                    );
                 }
             }
             LinearStmt::Return { value: None }
@@ -319,7 +362,7 @@ fn compute_cross_scope_defs(
 ) -> HashSet<ValueId> {
     let mut defs: HashMap<ValueId, (usize, InstId)> = HashMap::new();
     let mut min_use_depths: HashMap<ValueId, usize> = HashMap::new();
-    collect_def_use_depths(func, stmts, 0, &mut defs, &mut min_use_depths);
+    collect_def_use_depths(func, stmts, 0, 0, &mut defs, &mut min_use_depths);
 
     let mut result: HashSet<ValueId> = defs
         .iter()
