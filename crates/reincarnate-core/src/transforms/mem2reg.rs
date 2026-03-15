@@ -159,9 +159,12 @@ fn promote_single_store(func: &mut Function) -> bool {
     // move the stored value (defined only inside the loop) to an outer scope
     // where it is not in scope, producing TS2304 "cannot find name" errors.
     let mut inst_block: HashMap<InstId, BlockId> = HashMap::new();
+    // Also track instruction index within its block for same-block ordering checks.
+    let mut inst_pos: HashMap<InstId, usize> = HashMap::new();
     for (block_id, block) in func.blocks.iter() {
-        for &inst_id in &block.insts {
+        for (pos, &inst_id) in block.insts.iter().enumerate() {
             inst_block.insert(inst_id, block_id);
+            inst_pos.insert(inst_id, pos);
         }
     }
     let cfg = build_cfg(func);
@@ -221,6 +224,9 @@ fn promote_single_store(func: &mut Function) -> bool {
                 None => return false,
             };
             // Every load of this alloc must be in a block dominated by store_block.
+            // When store_block == load_block, also require the store comes before
+            // the load in instruction order (block-level dominance is trivially true
+            // for same-block comparisons, but forward references are invalid).
             for (inst_id, inst) in func.insts.iter() {
                 if let Op::Load(p) = &inst.op {
                     if p == ptr {
@@ -230,6 +236,13 @@ fn promote_single_store(func: &mut Function) -> bool {
                         };
                         if !dominates(store_block, load_block, &idom) {
                             return false;
+                        }
+                        if store_block == load_block {
+                            let store_pos = inst_pos.get(&store_inst).copied().unwrap_or(0);
+                            let load_pos = inst_pos.get(&inst_id).copied().unwrap_or(0);
+                            if store_pos > load_pos {
+                                return false;
+                            }
                         }
                     }
                 }
