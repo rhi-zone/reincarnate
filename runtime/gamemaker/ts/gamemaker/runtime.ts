@@ -1170,7 +1170,7 @@ export class GameRuntime {
 
   // ---- Array API (GMS2 style) ----
 
-  array_create(size: number, defaultVal: any = 0): any[] { return new Array(size).fill(defaultVal); }
+  array_create(size: number = 0, defaultVal: any = 0): any[] { return new Array(size).fill(defaultVal); }
   array_copy(dest: any[], destIndex: number, src: any[], srcIndex: number, count: number): void {
     for (let i = 0; i < count; i++) dest[destIndex + i] = src[srcIndex + i];
   }

@@ -140,8 +140,8 @@ export function int(n: unknown): number { return (n as number) | 0; }
 export function uint(n: unknown): number { return (n as number) >>> 0; }
 /** Convert to number (GML real). */
 export function real(n: any): number { return Number(n); }
-/** Convert to string (GML string). */
-export function string(n: any): string { return String(n); }
+/** Convert to string (GML string). Optional second arg is decimal places; extra args ignored. */
+export function string(n: any, ..._rest: any[]): string { return String(n); }
 export function median(...nums: number[]): number {
   const sorted = nums.slice().sort((a, b) => a - b);
   const mid = sorted.length >> 1;
