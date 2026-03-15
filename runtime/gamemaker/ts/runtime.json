@@ -2698,7 +2698,7 @@
     "ds_map_is_map": {
       "params": [
         "number",
-        "string"
+        "*"
       ],
       "returns": "boolean"
     },

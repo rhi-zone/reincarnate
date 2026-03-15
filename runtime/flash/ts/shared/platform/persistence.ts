@@ -48,7 +48,7 @@ function base64ToBytes(b64: string): Uint8Array {
  * Loads all OPFS files into the in-memory cache for subsequent sync reads.
  * Falls back to preloading from localStorage when OPFS is unavailable.
  */
-export async function init(state: PersistenceState): Promise<void> {
+export async function initPersistence(state: PersistenceState): Promise<void> {
   if (typeof navigator === "undefined" || !("storage" in navigator)) return;
   try {
     const dir = await navigator.storage.getDirectory();
@@ -87,7 +87,8 @@ export async function init(state: PersistenceState): Promise<void> {
 export function store(state: PersistenceState, key: string, data: Uint8Array): void {
   state.cache.set(key, data);
   // localStorage is string-based; encode as base64.
-  localStorage.setItem(key, bytesToBase64(data));
+  // Swallow quota errors: data is already in cache, so the session is unaffected.
+  try { localStorage.setItem(key, bytesToBase64(data)); } catch (e) { console.warn("persistence: localStorage write failed", e); }
   if (state.opfsDir) {
     const dir = state.opfsDir;
     const filename = keyToFilename(key);
@@ -148,9 +149,9 @@ export function remove(state: PersistenceState, key: string): void {
 
 /**
  * List all cached keys that start with the given prefix.
- * Only reflects what is in the in-memory cache; call init() first for complete results.
+ * Only reflects what is in the in-memory cache; call initPersistence() first for complete results.
  */
-export function list(state: PersistenceState, prefix: string): string[] {
+export function listPersistenceKeys(state: PersistenceState, prefix: string): string[] {
   const result: string[] = [];
   for (const key of state.cache.keys()) {
     if (key.startsWith(prefix)) result.push(key);

@@ -14,7 +14,7 @@ import type { FrameHandle } from "../shared/platform";
 import { currentTimeMs, currentWallTimeMs } from "../shared/platform/timing";
 import { systemLanguage, isNetworkConnected, writeClipboard } from "../shared/platform/system";
 import { displayWidth, displayHeight, openUrl, closeWindow, requestFullscreen, exitFullscreen, downloadDataUrl, setWindowTitle, windowHasFocus } from "../shared/platform/window";
-import { PersistenceState, init as initPersistence, store, fetch as fetchItem, remove } from "../shared/platform/persistence";
+import { PersistenceState, initPersistence, store, fetch as fetchItem, remove, listPersistenceKeys } from "../shared/platform/persistence";
 import type { RenderRoot } from "../shared/render-root";
 import { DrawState } from "./draw";
 import { InputState } from "./input";
@@ -772,8 +772,8 @@ export class GameRuntime {
 
   ini_open(path: string): void {
     this._storage.iniPath = path;
-    const raw = localStorage.getItem("__gml_fs_" + this._storage.gameName + "_" + path);
-    this.ini_open_from_string(raw);
+    const _iniBytes = fetchItem(this._persistence, "__gml_fs_" + this._storage.gameName + "_" + path);
+    this.ini_open_from_string(_iniBytes ? new TextDecoder().decode(_iniBytes) : null);
   }
 
   ini_open_from_string(str: string | null): void {
@@ -845,7 +845,7 @@ export class GameRuntime {
       }
       result += "\n";
     }
-    localStorage.setItem("__gml_fs_" + this._storage.gameName + "_" + this._storage.iniPath, result);
+    store(this._persistence, "__gml_fs_" + this._storage.gameName + "_" + this._storage.iniPath, new TextEncoder().encode(result));
     this._storage.iniPath = "";
     this._storage.iniContents = {};
     return result;
@@ -2407,7 +2407,7 @@ export class GameRuntime {
     this._buffers.delete(bufId);
   }
 
-  // ---- File API (localStorage-backed text file simulation) ----
+  // ---- File API (persistence-backed text file simulation) ----
   private _fileKey(path: string): string { return `gml_file:${path}`; }
   file_text_write_string(file: number, str: string): void {
     const f = this._textFiles.get(file); if (f && f.mode === 'w') f.content += str;
@@ -2418,12 +2418,12 @@ export class GameRuntime {
   file_text_close(file: number): void {
     const f = this._textFiles.get(file);
     if (f && f.mode === 'w') {
-      try { localStorage.setItem(this._fileKey(f.path), f.content); } catch { /* storage full */ }
+      store(this._persistence, this._fileKey(f.path), new TextEncoder().encode(f.content));
     }
     this._textFiles.delete(file);
   }
   file_exists(path: string): boolean {
-    return localStorage.getItem(this._fileKey(path)) !== null;
+    return fetchItem(this._persistence, this._fileKey(path)) !== null;
   }
 
   // ---- Steam API (platform-provided or no-op) ----
@@ -2708,7 +2708,8 @@ export class GameRuntime {
 
   // ---- File extras ----
   file_text_open_read(path: string): number {
-    const content = localStorage.getItem(this._fileKey(path)) ?? "";
+    const _fileBytes = fetchItem(this._persistence, this._fileKey(path));
+    const content = _fileBytes ? new TextDecoder().decode(_fileBytes) : "";
     const id = this._nextTextFileId++;
     this._textFiles.set(id, { path, content, pos: 0, mode: 'r' });
     return id;
@@ -2735,8 +2736,8 @@ export class GameRuntime {
   }
   file_delete(path: string): boolean {
     const key = this._fileKey(path);
-    const existed = localStorage.getItem(key) !== null;
-    localStorage.removeItem(key);
+    const existed = fetchItem(this._persistence, key) !== null;
+    remove(this._persistence, key);
     return existed;
   }
   file_find_first(_mask: string, _attr: number): string { throw Error("file_find_first: not yet implemented"); /* no filesystem enumeration in browser */ }
@@ -2766,17 +2767,8 @@ export class GameRuntime {
     return btoa(binary);
   }
   buffer_load(filename: string, buf: number = -1, offset: number = 0, _size: number = 0): number {
-    // Load from localStorage (base64-encoded binary written by buffer_save_async).
-    const stored = localStorage.getItem(this._fileKey(filename));
-    if (stored === null) return -1;
-    let data: Uint8Array;
-    try {
-      const bin = atob(stored); data = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) data[i] = bin.charCodeAt(i);
-    } catch {
-      // Fallback: treat as UTF-8 text
-      data = new TextEncoder().encode(stored);
-    }
+    const data = fetchItem(this._persistence, this._fileKey(filename));
+    if (!data) return -1;
     if (buf !== -1) {
       const b = this._buffers.get(buf); if (!b) return -1;
       const end = offset + data.length;
@@ -2790,8 +2782,7 @@ export class GameRuntime {
   }
   buffer_save(buf: number, filename: string): void {
     const b = this._buffers.get(buf); if (!b) return;
-    let binary = ""; for (const byte of b.data) binary += String.fromCharCode(byte);
-    try { localStorage.setItem(this._fileKey(filename), btoa(binary)); } catch { /* storage full */ }
+    store(this._persistence, this._fileKey(filename), b.data);
   }
   buffer_load_async(buf: number, path: string, offset: number, size: number): number {
     // Kick off async fetch; fire ds_map async_load event when done.
@@ -2814,12 +2805,11 @@ export class GameRuntime {
     const b = this._buffers.get(bufId); if (!b) return -1;
     const reqId = this._nextBufferId++;
     const slice = size > 0 ? b.data.slice(offset, offset + size) : b.data.slice(offset);
-    let binary = ""; for (const byte of slice) binary += String.fromCharCode(byte);
     try {
-      localStorage.setItem(this._fileKey(path), btoa(binary));
+      store(this._persistence, this._fileKey(path), slice);
       // Fire async_load on next tick to match GML semantics.
       setTimeout(() => { this.global.async_load = reqId; }, 0);
-    } catch { this.global.async_load = -1; }
+    } catch (e) { console.warn("buffer_save_async: failed", e); this.global.async_load = -1; }
     return reqId;
   }
   buffer_set_surface(bufId: number, surf: number, offset: number): void {
@@ -2955,7 +2945,8 @@ export class GameRuntime {
     return id;
   }
   file_text_open_append(path: string): number {
-    const existing = localStorage.getItem(this._fileKey(path)) ?? "";
+    const _existingBytes = fetchItem(this._persistence, this._fileKey(path));
+    const existing = _existingBytes ? new TextDecoder().decode(_existingBytes) : "";
     const id = this._nextTextFileId++;
     this._textFiles.set(id, { path, content: existing, pos: existing.length, mode: 'w' });
     return id;
@@ -3152,7 +3143,7 @@ export class GameRuntime {
   }
   steam_request_global_achievement_percentages(): void { /* no-op */ }
   steam_get_achievement(_name: string): boolean { return this._steamAchSet().has(_name); }
-  steam_store_stats(): void { /* no-op — stats are already persisted to localStorage immediately */ }
+  steam_store_stats(): void { /* no-op — stats are already persisted to platform persistence immediately */ }
   steam_set_stat_int(_name: string, _val: number): void { store(this._persistence, this._steamStatKey(_name), new TextEncoder().encode(String(Math.trunc(_val)))); }
   steam_net_packet_get_sender_id(): number { throw new Error("steam_net_packet_get_sender_id: not yet implemented"); }
   steam_is_cloud_enabled_for_app(): boolean { throw new Error("steam_is_cloud_enabled_for_app: not yet implemented"); }
@@ -3319,10 +3310,10 @@ export class GameRuntime {
     return existed;
   }
   ds_map_secure_save(map: number, filename: string): void {
-    // "Secure" save in GML just writes an encoded file — use same localStorage approach as ds_map_write.
+    // "Secure" save in GML just writes an encoded file — use same persistence approach as ds_map_write.
     const m = this._dsMaps.get(map); if (!m) return;
     const json = JSON.stringify(Object.fromEntries(m));
-    try { localStorage.setItem(this._fileKey(filename), json); } catch { /* storage full */ }
+    store(this._persistence, this._fileKey(filename), new TextEncoder().encode(json));
   }
   ds_map_values_to_array(map: number): any[] { return [...(this._dsMaps.get(map)?.values() ?? [])]; }
   ds_list_read(list: number, str: string): void {
@@ -3641,14 +3632,10 @@ export class GameRuntime {
   steam_send_screenshot(_path?: string, _w?: number, _h?: number): void { throw new Error("steam_send_screenshot: not yet implemented"); }
   steam_request_global_stats(_days: number): void { throw new Error("steam_request_global_stats: not yet implemented"); }
   steam_reset_all_stats_achievements(_also_achievements?: boolean): void {
-    // Clear all stats: scan localStorage for __steam_stat_<gameName>_ prefix
     const prefix = "__steam_stat_" + this._storage.gameName + "_";
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(prefix)) keysToRemove.push(k);
+    for (const k of listPersistenceKeys(this._persistence, prefix)) {
+      remove(this._persistence, k);
     }
-    for (const k of keysToRemove) localStorage.removeItem(k);
     if (_also_achievements !== false) {
       this._steamAchSave(new Set());
     }
@@ -4785,15 +4772,11 @@ export class GameRuntime {
   buffer_save_ext(buf: number, fname: string, offset: number, size: number): void {
     const b = this._buffers.get(buf); if (!b) return;
     const slice = size > 0 ? b.data.slice(offset, offset + size) : b.data.slice(offset);
-    let binary = ""; for (const byte of slice) binary += String.fromCharCode(byte);
-    try { localStorage.setItem(this._fileKey(fname), btoa(binary)); } catch { /* storage full */ }
+    store(this._persistence, this._fileKey(fname), slice);
   }
   buffer_load_ext(buf: number, fname: string, offset: number): void {
     const b = this._buffers.get(buf); if (!b) return;
-    const raw = localStorage.getItem(this._fileKey(fname)); if (!raw) return;
-    const binary = atob(raw);
-    const src = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) src[i] = binary.charCodeAt(i);
+    const src = fetchItem(this._persistence, this._fileKey(fname)); if (!src) return;
     if (offset + src.length > b.data.length) this._bufferGrow(b, offset + src.length);
     b.data.set(src, offset);
   }

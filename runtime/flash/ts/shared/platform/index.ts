@@ -8,7 +8,7 @@ export type { DeviceKind } from "./input";
 export { InputState, devices, onDeviceConnect, onDeviceDisconnect, onKeyDown, onKeyUp, isKeyDown, onMouseDown, onMouseUp, onMouseMove, onScroll, isMouseDown, mouseX, mouseY, requestPointerLock, releasePointerLock, isPointerLocked, onMouseDelta, onTouchStart, onTouchMove, onTouchEnd, touchCount, touchX, touchY, deviceAxis, onTextInput, onCompositionStart, onCompositionUpdate, onCompositionEnd } from "./input";
 export type { DelayHandle, RecurringHandle, FrameHandle } from "./timing";
 export { scheduleDelayed, cancelDelayed, scheduleRecurring, cancelRecurring, requestFrame, cancelFrame, currentTimeMs, currentWallTimeMs } from "./timing";
-export { PersistenceState, init, store, fetch, remove, list } from "./persistence";
+export { PersistenceState, initPersistence, store, fetch, remove, listPersistenceKeys } from "./persistence";
 export type { NodeKind, ParamKind, BufferHandle, NodeHandle, VoiceHandle, GroupHandle } from "./audio";
 export {
   AudioState,
