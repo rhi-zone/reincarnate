@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::entity::PrimaryMap;
 
@@ -738,6 +738,15 @@ impl ModuleBuilder {
 
     pub fn add_function(&mut self, func: Function) -> FuncId {
         self.module.functions.push(func)
+    }
+
+    /// Return the set of all function names currently in the module.
+    pub fn existing_function_names(&self) -> HashSet<String> {
+        self.module
+            .functions
+            .values()
+            .map(|f| f.name.clone())
+            .collect()
     }
 
     pub fn add_struct(&mut self, def: StructDef) {

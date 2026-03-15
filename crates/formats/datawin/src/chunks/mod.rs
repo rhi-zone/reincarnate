@@ -1,6 +1,7 @@
 pub mod audo;
 pub mod bgnd;
 pub mod code;
+pub mod extn;
 pub mod font;
 pub mod func;
 pub mod gen8;

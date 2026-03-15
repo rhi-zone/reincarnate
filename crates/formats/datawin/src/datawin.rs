@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use crate::chunks::audo::Audo;
 use crate::chunks::bgnd::Bgnd;
 use crate::chunks::code::Code;
+use crate::chunks::extn::Extn;
 use crate::chunks::font::Font;
 use crate::chunks::func::Func;
 use crate::chunks::gen8::Gen8;
@@ -199,6 +200,20 @@ impl DataWin {
             Optn::parse(chunk_data)
         })?;
         Ok(self.cached(b"OPTN"))
+    }
+
+    /// EXTN chunk (extension definitions and exported functions).
+    ///
+    /// Returns `None` when the game has no EXTN chunk.
+    pub fn extn(&self) -> Result<Option<&Extn>> {
+        if !self.has_chunk(b"EXTN") {
+            return Ok(None);
+        }
+        self.get_or_parse(b"EXTN", || {
+            let chunk_data = self.index.chunk_data(&self.data, b"EXTN")?;
+            Extn::parse(chunk_data, &self.data)
+        })?;
+        Ok(Some(self.cached(b"EXTN")))
     }
 
     /// SOND chunk (sound definitions).

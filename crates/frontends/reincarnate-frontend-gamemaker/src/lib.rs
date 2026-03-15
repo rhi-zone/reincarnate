@@ -15,10 +15,10 @@ use std::fs;
 
 use datawin::DataWin;
 use reincarnate_core::error::CoreError;
-use reincarnate_core::ir::builder::ModuleBuilder;
+use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
 use reincarnate_core::ir::func::Visibility;
 use reincarnate_core::ir::module::{Global, SystemCallTypeRule};
-use reincarnate_core::ir::ty::Type;
+use reincarnate_core::ir::ty::{FunctionSig, Type};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
 use reincarnate_core::project::EngineOrigin;
 
@@ -211,6 +211,12 @@ impl Frontend for GameMakerFrontend {
         // Populate initial room name so the scaffold can emit `initialRoom: Rooms.<name>`.
         if let Some(name) = data::extract_initial_room_name(&dw) {
             mb.set_initial_room_name(name);
+        }
+
+        // Generate throw-stubs for extension functions (EXTN chunk).
+        // These resolve TS2304 "Cannot find name 'FS_*'" errors.
+        if let Ok(Some(extn)) = dw.extn() {
+            add_extension_stubs(&dw, extn, &mb.existing_function_names(), &mut mb);
         }
 
         let mut module = mb.build();
@@ -864,4 +870,70 @@ fn build_asset_ref_names(dw: &DataWin, scpt: &datawin::chunks::scpt::Scpt) -> Ha
     }
 
     map
+}
+
+/// Add throw-stub IR functions for each extension function in the EXTN chunk.
+///
+/// Extension functions (e.g. `FS_unique_fname`) are called by name in GML bytecode
+/// as plain function calls without `self`.  They are NOT in the SCPT chunk, so the
+/// translator emits `call "FS_unique_fname"(arg0, arg1)` with no implicit self arg.
+/// Without a declaration, the TypeScript emitter emits the call but no function body,
+/// causing TS2304 "Cannot find name" errors.
+///
+/// This function creates a stub IR function for each extension function that doesn't
+/// already exist in the module.  The stub body calls `extension_stubfunc_real()` or
+/// `extension_stubfunc_string()` (already in the runtime) which throw at runtime.
+///
+/// At emit time:
+/// - The stub uses a stateful call → `_rt: GameRuntime` is prepended to its params.
+/// - Existing call sites get `_rt` prepended by `prepend_rt_arg_to_free_calls`.
+/// - The call site `FS_unique_fname(arg0, arg1)` becomes `FS_unique_fname(_rt, arg0, arg1)`.
+fn add_extension_stubs(
+    dw: &DataWin,
+    extn: &datawin::chunks::extn::Extn,
+    existing_names: &HashSet<String>,
+    mb: &mut ModuleBuilder,
+) {
+    use datawin::chunks::extn::ExtArgType;
+
+    for ext_fn in extn.all_functions() {
+        let name = match dw.resolve_string(ext_fn.name) {
+            Ok(n) if !n.is_empty() => n,
+            _ => continue,
+        };
+
+        // Skip if a function with this name already exists (e.g. a GML script
+        // that wraps the extension call).
+        if existing_names.contains(&name) {
+            continue;
+        }
+
+        let (stub_call, ret_ty) = match ext_fn.return_type {
+            ExtArgType::String => ("extension_stubfunc_string", Type::String),
+            ExtArgType::Real => ("extension_stubfunc_real", Type::Float(64)),
+        };
+
+        // Build IR params matching the extension function's arity.
+        let param_tys: Vec<Type> = ext_fn
+            .args
+            .iter()
+            .map(|a| match a {
+                ExtArgType::String => Type::String,
+                ExtArgType::Real => Type::Float(64),
+            })
+            .collect();
+
+        let sig = FunctionSig {
+            params: param_tys,
+            return_ty: ret_ty.clone(),
+            ..Default::default()
+        };
+
+        let mut fb = FunctionBuilder::new(&name, sig, Visibility::Public);
+        // Call the runtime throw-stub — causes `_rt` to be injected as first param at emit.
+        let result = fb.call(stub_call, &[], ret_ty);
+        fb.ret(Some(result));
+
+        mb.add_function(fb.build());
+    }
 }
