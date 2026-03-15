@@ -9,6 +9,7 @@ export { InputState, devices, onDeviceConnect, onDeviceDisconnect, onKeyDown, on
 export type { DelayHandle, RecurringHandle, FrameHandle } from "./timing";
 export { scheduleDelayed, cancelDelayed, scheduleRecurring, cancelRecurring, requestFrame, cancelFrame, currentTimeMs, currentWallTimeMs } from "./timing";
 export { PersistenceState, init, store, fetch, remove, list } from "./persistence";
+export { systemLanguage, isNetworkConnected, writeClipboard } from "./system";
 export type { NodeKind, ParamKind, BufferHandle, NodeHandle, VoiceHandle, GroupHandle } from "./audio";
 export {
   AudioState,

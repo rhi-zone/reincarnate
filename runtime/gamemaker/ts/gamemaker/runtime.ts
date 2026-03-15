@@ -12,6 +12,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 import { requestFrame, cancelFrame } from "../shared/platform";
 import type { FrameHandle } from "../shared/platform";
 import { currentTimeMs, currentWallTimeMs } from "../shared/platform/timing";
+import { systemLanguage, isNetworkConnected, writeClipboard } from "../shared/platform/system";
 import { PersistenceState, init as initPersistence, store, fetch as fetchItem, remove } from "../shared/platform/persistence";
 import type { RenderRoot } from "../shared/render-root";
 import { DrawState } from "./draw";
@@ -2427,7 +2428,7 @@ export class GameRuntime {
   // ---- Steam API (platform-provided or no-op) ----
 
   steam_current_game_language(): string {
-    const code = (navigator.language ?? "en").split("-")[0]!.toLowerCase();
+    const code = systemLanguage();
     const map: Record<string, string> = {
       en: "english", fr: "french", de: "german", es: "spanish",
       pt: "portuguese", it: "italian", nl: "dutch", ru: "russian",
@@ -3243,7 +3244,7 @@ export class GameRuntime {
 
 
   // ---- Clipboard ----
-  clipboard_set_text(str: string): void { this._clipboardCache = str; navigator.clipboard?.writeText(str); }
+  clipboard_set_text(str: string): void { this._clipboardCache = str; writeClipboard(str); }
   clipboard_get_text(): string {
     // Clipboard API is async; return last known value cached by clipboard_set_text.
     // Games that call get_text after set_text in the same frame will get the correct value.
@@ -4839,7 +4840,7 @@ export class GameRuntime {
   // ---- Display/OS ----
   display_set_gui_maximise(_xscale: number, _yscale: number, _xoffset: number, _yoffset: number): void { /* no-op */ }
   display_set_windows_alternate_sync(_enable: boolean): void { /* no-op */ }
-  os_is_network_connected(): boolean { return navigator.onLine; }
+  os_is_network_connected(): boolean { return isNetworkConnected(); }
   os_get_info(): any { throw new Error("os_get_info: not yet implemented"); }
 
   // ---- Input ----
