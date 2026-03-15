@@ -1129,6 +1129,13 @@
       ],
       "returns": "*"
     },
+    "buffer_save": {
+      "params": [
+        "number",
+        "string"
+      ],
+      "returns": "void"
+    },
     "buffer_save_async": {
       "params": [
         "number",
@@ -8877,6 +8884,7 @@
         "draw_vertex_end",
         "draw_vertex_texture_color",
         "matrix_transform_vertex",
+        "buffer_save",
         "buffer_save_ext",
         "buffer_load_ext",
         "d3d_model_load",
