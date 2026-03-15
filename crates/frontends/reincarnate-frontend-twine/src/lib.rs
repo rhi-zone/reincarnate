@@ -7,6 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use reincarnate_core::error::CoreError;
+use reincarnate_core::ir::module::SystemCallTypeRule;
 use reincarnate_core::ir::{
     EntryPoint, Function, FunctionBuilder, FunctionSig, ModuleBuilder, Type, Visibility,
 };
@@ -187,7 +188,24 @@ impl TwineFrontend {
             mb.set_entry_point(EntryPoint::CallFunction(fid));
         }
 
-        let module = mb.build();
+        let mut module = mb.build();
+
+        // Register SystemCall type inference rules for SugarCube story variables.
+        // `State.set(name, value)` is a global store; `State.get(name)` resolves
+        // the inferred type.  TypeInference::build_global_types scans all set
+        // call sites cross-passage to build the name→type map, then
+        // ResolveGlobalType looks up each get call site in that map.
+        module.system_call_type_rules.insert(
+            ("SugarCube.State".into(), "get".into()),
+            SystemCallTypeRule::ResolveGlobalType,
+        );
+        module.system_call_type_rules.insert(
+            ("SugarCube.State".into(), "set".into()),
+            SystemCallTypeRule::GlobalStore {
+                name_arg: 0,
+                value_arg: 1,
+            },
+        );
 
         Ok(FrontendOutput {
             modules: vec![module],

@@ -1341,6 +1341,41 @@ impl<'a> EmitCtx<'a> {
             &op_clone,
             expr,
         );
+        // Inject `as <type>` cast when type inference has narrowed a SystemCall
+        // result that the runtime still declares as `unknown` in TypeScript.
+        // Controlled by `LoweringConfig::cast_narrowed_syscall_results_for`.
+        //
+        // Cast kind selection:
+        // - Scalar (Float/Int/Bool/String): NullableCoerce → `expr as number/boolean/string`
+        // - Struct/Enum: Coerce → `expr as TypeName` (TS assertion, no runtime asType())
+        // Other types (Dynamic, Void, Union, etc.) are skipped — no cast.
+        let syscall_cast_kind = match &result_ty {
+            Type::Float(_) | Type::Int(_) | Type::UInt(_) | Type::Bool | Type::String => {
+                Some(CastKind::NullableCoerce)
+            }
+            Type::Struct(_) | Type::Enum(_) => Some(CastKind::Coerce),
+            _ => None,
+        };
+        let expr = if let (Op::SystemCall { system, method, .. }, Some(cast_kind)) =
+            (&op_clone, syscall_cast_kind)
+        {
+            if self
+                .config
+                .cast_narrowed_syscall_results_for
+                .iter()
+                .any(|(s, m)| s == system && m == method)
+            {
+                Expr::Cast {
+                    expr: Box::new(expr),
+                    ty: result_ty.clone(),
+                    kind: cast_kind,
+                }
+            } else {
+                expr
+            }
+        } else {
+            expr
+        };
         let side_effecting = is_side_effecting_op(&op_clone);
 
         if count == 0 && side_effecting {

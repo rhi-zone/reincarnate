@@ -931,8 +931,22 @@ impl Transform for TypeInference {
         }
 
         // Re-run per-function inference with updated global types.
-        if globals_changed {
-            let ctx = ModuleContext::from_module(&module);
+        // Also re-run when `inferred_globals` has entries for variables that
+        // have no pre-declared `Module::globals` entry (e.g. SugarCube story
+        // variables accessed only via State.get/set).  In that case
+        // `globals_changed` is false but `ResolveGlobalType` still needs the
+        // inferred map to narrow `State.get(name)` results.
+        let has_undeclared_inferred = inferred_globals
+            .keys()
+            .any(|k| !module.globals.iter().any(|g| &g.name == k));
+        if globals_changed || has_undeclared_inferred {
+            let mut ctx = ModuleContext::from_module(&module);
+            // Merge inferred types for variables with no Module::globals entry.
+            for (name, ty) in &inferred_globals {
+                ctx.global_types
+                    .entry(name.clone())
+                    .or_insert_with(|| ty.clone());
+            }
             for func in module.functions.keys().collect::<Vec<_>>() {
                 changed |= infer_function(&mut module.functions[func], &ctx);
             }

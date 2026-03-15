@@ -84,7 +84,9 @@ fn lowering_config_for_engine(
             || !config.construct_string_coerce
             || !config.coerce_index_types);
     let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
-    let needs_twine = engine == EngineKind::Twine && config.output_node_system.is_none();
+    let needs_twine = engine == EngineKind::Twine
+        && (config.output_node_system.is_none()
+            || config.cast_narrowed_syscall_results_for.is_empty());
     if needs_flash || needs_gml || needs_twine {
         let mut c = config.clone();
         if needs_flash {
@@ -98,6 +100,12 @@ fn lowering_config_for_engine(
         }
         if needs_twine {
             c.output_node_system = Some(("Harlowe.H".to_string(), "h".to_string()));
+            // Inject `as <type>` casts on State.get() results that have been
+            // narrowed by type inference.  The SugarCube runtime declares
+            // `State.get(name): unknown`; type inference can narrow the actual
+            // type, and the cast surfaces it in the emitted TypeScript.
+            c.cast_narrowed_syscall_results_for =
+                vec![("SugarCube.State".to_string(), "get".to_string())];
         }
         std::borrow::Cow::Owned(c)
     } else {

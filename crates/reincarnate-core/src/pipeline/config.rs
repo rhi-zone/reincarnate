@@ -231,6 +231,21 @@ pub struct LoweringConfig {
     ///
     /// Flash sets this to `true`; all other engines leave it `false`.
     pub coerce_index_types: bool,
+    /// Inject `as <type>` casts on `SystemCall` results that have been narrowed
+    /// by type inference.
+    ///
+    /// When a `SystemCall` result type has been inferred to a concrete type
+    /// (e.g. `Float(64)`) but the underlying runtime function returns `unknown`
+    /// in the TypeScript type signature, a cast is needed at every use site to
+    /// surface the inferred type.
+    ///
+    /// Entries are `(system, method)` pairs whose results should be cast when
+    /// the IR result type differs from `Dynamic`.
+    ///
+    /// SugarCube sets this to `[("SugarCube.State", "get")]` so that story
+    /// variables narrowed by `build_global_types` are emitted as typed values
+    /// (e.g. `State.get("gold") as number`) instead of `unknown`.
+    pub cast_narrowed_syscall_results_for: Vec<(String, String)>,
 }
 
 impl Default for LoweringConfig {
@@ -253,6 +268,7 @@ impl LoweringConfig {
             foreach_iterator_system: None,
             construct_string_coerce: false,
             coerce_index_types: false,
+            cast_narrowed_syscall_results_for: vec![],
         }
     }
 
@@ -268,6 +284,7 @@ impl LoweringConfig {
             foreach_iterator_system: None,
             construct_string_coerce: false,
             coerce_index_types: false,
+            cast_narrowed_syscall_results_for: vec![],
         }
     }
 }
