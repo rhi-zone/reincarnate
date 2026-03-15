@@ -1,7 +1,7 @@
 /** GML ini file functions — backed by platform persistence. */
 
 import type { GameRuntime } from "./runtime";
-import { store, fetch as fetchItem } from "../shared/platform/persistence";
+import { storePersistence, fetchPersistence } from "../shared/platform/persistence";
 
 export class StorageState {
   iniPath = "";
@@ -18,7 +18,7 @@ export function createStorageAPI(rt: GameRuntime) {
 
   function ini_open(path: string): void {
     storage.iniPath = path;
-    const _bytes = fetchItem(rt._persistence, "__gml_fs_" + storage.gameName + "_" + path);
+    const _bytes = fetchPersistence(rt._persistence, "__gml_fs_" + storage.gameName + "_" + path);
     ini_open_from_string(_bytes ? new TextDecoder().decode(_bytes) : null);
   }
 
@@ -91,7 +91,7 @@ export function createStorageAPI(rt: GameRuntime) {
       }
       result += "\n";
     }
-    store(rt._persistence, "__gml_fs_" + storage.gameName + "_" + storage.iniPath, new TextEncoder().encode(result));
+    storePersistence(rt._persistence, "__gml_fs_" + storage.gameName + "_" + storage.iniPath, new TextEncoder().encode(result));
     storage.iniPath = "";
     storage.iniContents = {};
     return result;

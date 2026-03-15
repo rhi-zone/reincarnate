@@ -84,7 +84,7 @@ export async function initPersistence(state: PersistenceState): Promise<void> {
  * Throws if localStorage write fails (quota exceeded, permission denied, etc.).
  * OPFS write uses write-to-temp-then-rename for atomicity.
  */
-export function store(state: PersistenceState, key: string, data: Uint8Array): void {
+export function storePersistence(state: PersistenceState, key: string, data: Uint8Array): void {
   state.cache.set(key, data);
   // localStorage is string-based; encode as base64.
   // Swallow quota errors: data is already in cache, so the session is unaffected.
@@ -116,7 +116,7 @@ export function store(state: PersistenceState, key: string, data: Uint8Array): v
  * Read bytes by key. Returns null if not found.
  * All reads are sync after init() has resolved.
  */
-export function fetch(state: PersistenceState, key: string): Uint8Array | null {
+export function fetchPersistence(state: PersistenceState, key: string): Uint8Array | null {
   const cached = state.cache.get(key);
   if (cached !== undefined) return cached;
   // Cache miss: fall back to localStorage (handles data written before OPFS init).
@@ -139,7 +139,7 @@ export function fetch(state: PersistenceState, key: string): Uint8Array | null {
  * Remove a key from all storage layers.
  * Throws if localStorage removal fails (permission denied, etc.).
  */
-export function remove(state: PersistenceState, key: string): void {
+export function removePersistence(state: PersistenceState, key: string): void {
   state.cache.delete(key);
   localStorage.removeItem(key);
   if (state.opfsDir) {

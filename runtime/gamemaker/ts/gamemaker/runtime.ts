@@ -14,7 +14,7 @@ import type { FrameHandle } from "../shared/platform";
 import { currentTimeMs, currentWallTimeMs } from "../shared/platform/timing";
 import { systemLanguage, isNetworkConnected, writeClipboard } from "../shared/platform/system";
 import { displayWidth, displayHeight, openUrl, closeWindow, requestFullscreen, exitFullscreen, downloadDataUrl, setWindowTitle, windowHasFocus } from "../shared/platform/window";
-import { PersistenceState, initPersistence, store, fetch as fetchItem, remove, listPersistenceKeys } from "../shared/platform/persistence";
+import { PersistenceState, initPersistence, storePersistence, fetchPersistence, removePersistence, listPersistenceKeys } from "../shared/platform/persistence";
 import type { RenderRoot } from "../shared/render-root";
 import { DrawState } from "./draw";
 import { InputState } from "./input";
@@ -772,7 +772,7 @@ export class GameRuntime {
 
   ini_open(path: string): void {
     this._storage.iniPath = path;
-    const _iniBytes = fetchItem(this._persistence, "__gml_fs_" + this._storage.gameName + "_" + path);
+    const _iniBytes = fetchPersistence(this._persistence, "__gml_fs_" + this._storage.gameName + "_" + path);
     this.ini_open_from_string(_iniBytes ? new TextDecoder().decode(_iniBytes) : null);
   }
 
@@ -845,7 +845,7 @@ export class GameRuntime {
       }
       result += "\n";
     }
-    store(this._persistence, "__gml_fs_" + this._storage.gameName + "_" + this._storage.iniPath, new TextEncoder().encode(result));
+    storePersistence(this._persistence, "__gml_fs_" + this._storage.gameName + "_" + this._storage.iniPath, new TextEncoder().encode(result));
     this._storage.iniPath = "";
     this._storage.iniContents = {};
     return result;
@@ -2418,12 +2418,12 @@ export class GameRuntime {
   file_text_close(file: number): void {
     const f = this._textFiles.get(file);
     if (f && f.mode === 'w') {
-      store(this._persistence, this._fileKey(f.path), new TextEncoder().encode(f.content));
+      storePersistence(this._persistence, this._fileKey(f.path), new TextEncoder().encode(f.content));
     }
     this._textFiles.delete(file);
   }
   file_exists(path: string): boolean {
-    return fetchItem(this._persistence, this._fileKey(path)) !== null;
+    return fetchPersistence(this._persistence, this._fileKey(path)) !== null;
   }
 
   // ---- Steam API (platform-provided or no-op) ----
@@ -2454,7 +2454,7 @@ export class GameRuntime {
   steam_inventory_result_get_items(_result: number, _arr?: any[]): any[] { throw new Error("steam_inventory_result_get_items: not yet implemented"); }
   steam_lobby_get_member_id(_index: number, _lobby?: number): number { throw new Error("steam_lobby_get_member_id: not yet implemented"); }
   steam_input_get_action_set_handle(_name: string): number { throw new Error("steam_input_get_action_set_handle: not yet implemented"); }
-  steam_get_stat_float(_name: string): number { const d = fetchItem(this._persistence, this._steamStatKey(_name)); return d ? parseFloat(new TextDecoder().decode(d)) : 0; }
+  steam_get_stat_float(_name: string): number { const d = fetchPersistence(this._persistence, this._steamStatKey(_name)); return d ? parseFloat(new TextDecoder().decode(d)) : 0; }
   steam_get_global_stat_int(_name: string): number { throw new Error("steam_get_global_stat_int: not yet implemented"); }
   steam_get_user_account_id(): number { throw new Error("steam_get_user_account_id: not yet implemented"); }
   steam_image_get_rgba(_image: number, _buf: number, _size: number): boolean { throw new Error("steam_image_get_rgba: not yet implemented"); }
@@ -2708,7 +2708,7 @@ export class GameRuntime {
 
   // ---- File extras ----
   file_text_open_read(path: string): number {
-    const _fileBytes = fetchItem(this._persistence, this._fileKey(path));
+    const _fileBytes = fetchPersistence(this._persistence, this._fileKey(path));
     const content = _fileBytes ? new TextDecoder().decode(_fileBytes) : "";
     const id = this._nextTextFileId++;
     this._textFiles.set(id, { path, content, pos: 0, mode: 'r' });
@@ -2736,8 +2736,8 @@ export class GameRuntime {
   }
   file_delete(path: string): boolean {
     const key = this._fileKey(path);
-    const existed = fetchItem(this._persistence, key) !== null;
-    remove(this._persistence, key);
+    const existed = fetchPersistence(this._persistence, key) !== null;
+    removePersistence(this._persistence, key);
     return existed;
   }
   file_find_first(_mask: string, _attr: number): string { throw Error("file_find_first: not yet implemented"); /* no filesystem enumeration in browser */ }
@@ -2767,7 +2767,7 @@ export class GameRuntime {
     return btoa(binary);
   }
   buffer_load(filename: string, buf: number = -1, offset: number = 0, _size: number = 0): number {
-    const data = fetchItem(this._persistence, this._fileKey(filename));
+    const data = fetchPersistence(this._persistence, this._fileKey(filename));
     if (!data) return -1;
     if (buf !== -1) {
       const b = this._buffers.get(buf); if (!b) return -1;
@@ -2782,7 +2782,7 @@ export class GameRuntime {
   }
   buffer_save(buf: number, filename: string): void {
     const b = this._buffers.get(buf); if (!b) return;
-    store(this._persistence, this._fileKey(filename), b.data);
+    storePersistence(this._persistence, this._fileKey(filename), b.data);
   }
   buffer_load_async(buf: number, path: string, offset: number, size: number): number {
     // Kick off async fetch; fire ds_map async_load event when done.
@@ -2806,7 +2806,7 @@ export class GameRuntime {
     const reqId = this._nextBufferId++;
     const slice = size > 0 ? b.data.slice(offset, offset + size) : b.data.slice(offset);
     try {
-      store(this._persistence, this._fileKey(path), slice);
+      storePersistence(this._persistence, this._fileKey(path), slice);
       // Fire async_load on next tick to match GML semantics.
       setTimeout(() => { this.global.async_load = reqId; }, 0);
     } catch (e) { console.warn("buffer_save_async: failed", e); this.global.async_load = -1; }
@@ -2919,7 +2919,7 @@ export class GameRuntime {
   steam_activate_overlay_user(_type: string, _steamid: number): void { throw new Error("steam_activate_overlay_user: not yet implemented"); }
   steam_get_app_id(): number { throw new Error("steam_get_app_id: not yet implemented"); }
   steam_get_user_persona_name_sync(_steamid?: number): string { throw new Error("steam_get_user_persona_name_sync: not yet implemented"); }
-  steam_get_stat_int(_name: string): number { const d = fetchItem(this._persistence, this._steamStatKey(_name)); return d ? parseInt(new TextDecoder().decode(d), 10) : 0; }
+  steam_get_stat_int(_name: string): number { const d = fetchPersistence(this._persistence, this._steamStatKey(_name)); return d ? parseInt(new TextDecoder().decode(d), 10) : 0; }
   steam_get_global_stat_history_int(_name: string, _days?: number): number { throw new Error("steam_get_global_stat_history_int: not yet implemented"); }
   steam_is_overlay_activated(): boolean { throw new Error("steam_is_overlay_activated: not yet implemented"); }
   steam_image_get_size(_image: number): [number, number] { throw new Error("steam_image_get_size: not yet implemented"); }
@@ -2930,11 +2930,11 @@ export class GameRuntime {
   steam_input_run_frame(): void { throw new Error("steam_input_run_frame: not yet implemented"); }
   steam_file_write(_path: string, _data: string, _length?: number): boolean {
     const str = _length !== undefined ? _data.slice(0, _length) : _data;
-    store(this._persistence, this._steamCloudKey(_path), new TextEncoder().encode(str));
+    storePersistence(this._persistence, this._steamCloudKey(_path), new TextEncoder().encode(str));
     this._steamCloudAddToIndex(_path);
     return true;
   }
-  steam_file_exists(_path: string): boolean { return fetchItem(this._persistence, this._steamCloudKey(_path)) !== null; }
+  steam_file_exists(_path: string): boolean { return fetchPersistence(this._persistence, this._steamCloudKey(_path)) !== null; }
   /** UDS (User Data System) is PS4-specific telemetry — no browser equivalent. */
   psn_post_uds_event(_evtype: number, ..._args: any[]): void { /* no-op — PS4 telemetry, no browser equivalent */ }
 
@@ -2945,7 +2945,7 @@ export class GameRuntime {
     return id;
   }
   file_text_open_append(path: string): number {
-    const _existingBytes = fetchItem(this._persistence, this._fileKey(path));
+    const _existingBytes = fetchPersistence(this._persistence, this._fileKey(path));
     const existing = _existingBytes ? new TextDecoder().decode(_existingBytes) : "";
     const id = this._nextTextFileId++;
     this._textFiles.set(id, { path, content: existing, pos: existing.length, mode: 'w' });
@@ -3144,7 +3144,7 @@ export class GameRuntime {
   steam_request_global_achievement_percentages(): void { /* no-op */ }
   steam_get_achievement(_name: string): boolean { return this._steamAchSet().has(_name); }
   steam_store_stats(): void { /* no-op — stats are already persisted to platform persistence immediately */ }
-  steam_set_stat_int(_name: string, _val: number): void { store(this._persistence, this._steamStatKey(_name), new TextEncoder().encode(String(Math.trunc(_val)))); }
+  steam_set_stat_int(_name: string, _val: number): void { storePersistence(this._persistence, this._steamStatKey(_name), new TextEncoder().encode(String(Math.trunc(_val)))); }
   steam_net_packet_get_sender_id(): number { throw new Error("steam_net_packet_get_sender_id: not yet implemented"); }
   steam_is_cloud_enabled_for_app(): boolean { throw new Error("steam_is_cloud_enabled_for_app: not yet implemented"); }
   steam_ugc_create_query_user(_account_id: number, _list_type: number, _matching_type: number, _sort_order: number, _creator_app_id?: number, _consumer_app_id?: number, _page?: number): number { throw new Error("steam_ugc_create_query_user: not yet implemented"); }
@@ -3313,7 +3313,7 @@ export class GameRuntime {
     // "Secure" save in GML just writes an encoded file — use same persistence approach as ds_map_write.
     const m = this._dsMaps.get(map); if (!m) return;
     const json = JSON.stringify(Object.fromEntries(m));
-    store(this._persistence, this._fileKey(filename), new TextEncoder().encode(json));
+    storePersistence(this._persistence, this._fileKey(filename), new TextEncoder().encode(json));
   }
   ds_map_values_to_array(map: number): any[] { return [...(this._dsMaps.get(map)?.values() ?? [])]; }
   ds_list_read(list: number, str: string): void {
@@ -3603,7 +3603,7 @@ export class GameRuntime {
   steam_inventory_get_all_items(_arr?: any): number { throw new Error("steam_inventory_get_all_items: not yet implemented"); }
   steam_get_quota_total(): number { return 104857600; /* 100 MB typical Steam Cloud quota */ }
   steam_get_global_stat_history_real(_name: string, _days?: number): number { throw new Error("steam_get_global_stat_history_real: not yet implemented"); }
-  steam_file_read(_path: string): string { const d = fetchItem(this._persistence, this._steamCloudKey(_path)); return d ? new TextDecoder().decode(d) : ""; }
+  steam_file_read(_path: string): string { const d = fetchPersistence(this._persistence, this._steamCloudKey(_path)); return d ? new TextDecoder().decode(d) : ""; }
   steam_set_rich_presence(_key: string, _val: string): void { throw new Error("steam_set_rich_presence: not yet implemented"); }
   steam_user_get_auth_session_ticket(_arr?: any): number { throw new Error("steam_user_get_auth_session_ticket: not yet implemented"); }
 
@@ -3634,14 +3634,14 @@ export class GameRuntime {
   steam_reset_all_stats_achievements(_also_achievements?: boolean): void {
     const prefix = "__steam_stat_" + this._storage.gameName + "_";
     for (const k of listPersistenceKeys(this._persistence, prefix)) {
-      remove(this._persistence, k);
+      removePersistence(this._persistence, k);
     }
     if (_also_achievements !== false) {
       this._steamAchSave(new Set());
     }
   }
   steam_set_stat_avg_rate(_name: string, _session: number, _session_len: number): void { throw new Error("steam_set_stat_avg_rate: not yet implemented"); }
-  steam_set_stat_float(_name: string, _val: number): void { store(this._persistence, this._steamStatKey(_name), new TextEncoder().encode(String(_val))); }
+  steam_set_stat_float(_name: string, _val: number): void { storePersistence(this._persistence, this._steamStatKey(_name), new TextEncoder().encode(String(_val))); }
   steam_show_floating_gamepad_text_input(_mode: number, _x: number, _y: number, _w: number, _h: number): void { throw new Error("steam_show_floating_gamepad_text_input: not yet implemented"); }
   steam_shutdown(): void { throw new Error("steam_shutdown: not yet implemented"); }
   steam_lobby_set_owner_id(_steamid: number, _lobby?: number): void { throw new Error("steam_lobby_set_owner_id: not yet implemented"); }
@@ -3658,7 +3658,7 @@ export class GameRuntime {
   steam_get_number_of_current_players(): void { throw new Error("steam_get_number_of_current_players: not yet implemented"); }
   steam_get_app_ownership_ticket_data(_appId: number): string { throw new Error("steam_get_app_ownership_ticket_data: not yet implemented"); }
   steam_file_read_buffer(path: string): number {
-    const data = fetchItem(this._persistence, this._steamCloudKey(path)); if (!data) return -1;
+    const data = fetchPersistence(this._persistence, this._steamCloudKey(path)); if (!data) return -1;
     const id = this.buffer_create(data.length, 0, 1);
     const b = this._buffers.get(id)!;
     b.data.set(data, 0);
@@ -3980,7 +3980,7 @@ export class GameRuntime {
   psn_name_for_pad(_pad: number): string { return ""; /* no-op — PSN not available in browser */ }
   psn_init_trophy(_pad_index: number, _count?: number): void {
     const gameName = this._storage.gameName;
-    const raw = fetchItem(this._persistence, "__psn_trophy_" + gameName);
+    const raw = fetchPersistence(this._persistence, "__psn_trophy_" + gameName);
     if (raw) {
       try {
         const ids: number[] = JSON.parse(new TextDecoder().decode(raw));
@@ -3992,7 +3992,7 @@ export class GameRuntime {
   /** Unlock a trophy by ID; persist immediately. */
   psn_unlock_trophy(id: number, _slot: number = 0): void {
     this._psnTrophies.add(id);
-    store(this._persistence, "__psn_trophy_" + this._storage.gameName, new TextEncoder().encode(JSON.stringify([...this._psnTrophies])));
+    storePersistence(this._persistence, "__psn_trophy_" + this._storage.gameName, new TextEncoder().encode(JSON.stringify([...this._psnTrophies])));
   }
 
   /**
@@ -4021,7 +4021,7 @@ export class GameRuntime {
     return "__steam_cloud_" + this._storage.gameName + "_" + path;
   }
   private _steamCloudIndex(): string[] {
-    const raw = fetchItem(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index");
+    const raw = fetchPersistence(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index");
     if (!raw) return [];
     try { return JSON.parse(new TextDecoder().decode(raw)) as string[]; } catch { return []; }
   }
@@ -4029,20 +4029,20 @@ export class GameRuntime {
     const idx = this._steamCloudIndex();
     if (!idx.includes(path)) {
       idx.push(path);
-      store(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index", new TextEncoder().encode(JSON.stringify(idx)));
+      storePersistence(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index", new TextEncoder().encode(JSON.stringify(idx)));
     }
   }
   private _steamCloudRemoveFromIndex(path: string): void {
     const idx = this._steamCloudIndex().filter(p => p !== path);
-    store(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index", new TextEncoder().encode(JSON.stringify(idx)));
+    storePersistence(this._persistence, "__steam_cloud_" + this._storage.gameName + "__index", new TextEncoder().encode(JSON.stringify(idx)));
   }
   private _steamAchSet(): Set<string> {
-    const raw = fetchItem(this._persistence, "__steam_ach_" + this._storage.gameName);
+    const raw = fetchPersistence(this._persistence, "__steam_ach_" + this._storage.gameName);
     if (!raw) return new Set();
     try { return new Set(JSON.parse(new TextDecoder().decode(raw)) as string[]); } catch { return new Set(); }
   }
   private _steamAchSave(set: Set<string>): void {
-    store(this._persistence, "__steam_ach_" + this._storage.gameName, new TextEncoder().encode(JSON.stringify([...set])));
+    storePersistence(this._persistence, "__steam_ach_" + this._storage.gameName, new TextEncoder().encode(JSON.stringify([...set])));
   }
   private _steamStatKey(name: string): string {
     return "__steam_stat_" + this._storage.gameName + "_" + name;
@@ -4058,22 +4058,22 @@ export class GameRuntime {
     this._steamAchSave(set);
   }
   steam_file_delete(_path: string): void {
-    remove(this._persistence, this._steamCloudKey(_path));
+    removePersistence(this._persistence, this._steamCloudKey(_path));
     this._steamCloudRemoveFromIndex(_path);
   }
   steam_file_get_list(): any[] {
     return this._steamCloudIndex().map(name => ({
       file_name: name,
-      file_size: (fetchItem(this._persistence, this._steamCloudKey(name)) ?? "").length,
+      file_size: (fetchPersistence(this._persistence, this._steamCloudKey(name)) ?? "").length,
     }));
   }
   steam_file_share(_path: string): void { throw new Error("steam_file_share: not yet implemented"); }
-  steam_file_size(_path: string): number { return (fetchItem(this._persistence, this._steamCloudKey(_path)) ?? "").length; }
+  steam_file_size(_path: string): number { return (fetchPersistence(this._persistence, this._steamCloudKey(_path)) ?? "").length; }
   steam_file_write_buffer(path: string, buf: number, size?: number): boolean {
     const b = this._buffers.get(buf); if (!b) return false;
     const len = size ?? b.data.length;
     const bytes = b.data.slice(0, len);
-    store(this._persistence, this._steamCloudKey(path), bytes);
+    storePersistence(this._persistence, this._steamCloudKey(path), bytes);
     this._steamCloudAddToIndex(path);
     return true;
   }
@@ -4772,11 +4772,11 @@ export class GameRuntime {
   buffer_save_ext(buf: number, fname: string, offset: number, size: number): void {
     const b = this._buffers.get(buf); if (!b) return;
     const slice = size > 0 ? b.data.slice(offset, offset + size) : b.data.slice(offset);
-    store(this._persistence, this._fileKey(fname), slice);
+    storePersistence(this._persistence, this._fileKey(fname), slice);
   }
   buffer_load_ext(buf: number, fname: string, offset: number): void {
     const b = this._buffers.get(buf); if (!b) return;
-    const src = fetchItem(this._persistence, this._fileKey(fname)); if (!src) return;
+    const src = fetchPersistence(this._persistence, this._fileKey(fname)); if (!src) return;
     if (offset + src.length > b.data.length) this._bufferGrow(b, offset + src.length);
     b.data.set(src, offset);
   }
