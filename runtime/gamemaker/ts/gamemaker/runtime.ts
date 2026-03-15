@@ -1213,6 +1213,24 @@ export class GameRuntime {
   is_infinity(val: any): boolean { return val === Infinity || val === -Infinity; }
   is_numeric(val: any): boolean { return !isNaN(Number(val)); }
 
+  // GML typeof() — returns the GML type name string for a value.
+  // Sanitized to _typeof because `typeof` is a JS/TS reserved word.
+  _typeof(val: any): string {
+    if (val === undefined) return "undefined";
+    if (val === null) return "null";
+    if (typeof val === 'boolean') return "bool";
+    if (typeof val === 'string') return "string";
+    if (Array.isArray(val)) return "array";
+    if (typeof val === 'number') return "number";
+    if (typeof val === 'object') return "struct";
+    return "unknown";
+  }
+
+  // GML try/catch mechanism — stubs; GML try blocks are emitted as plain
+  // sequential code and these hooks have no observable effect in the emitted TS.
+  __try_hook__(_begin: number, _end: number): void { /* no-op */ }
+  __try_unhook__(): void { /* no-op */ }
+
   // ---- Surface API (Canvas 2D offscreen rendering) ----
   // Surfaces are OffscreenCanvas objects. surface_set_target redirects all
   // draw calls by swapping _gfx.ctx; surface_reset_target restores it.

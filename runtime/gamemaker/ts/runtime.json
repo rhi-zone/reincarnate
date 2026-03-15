@@ -205,12 +205,29 @@
       ],
       "returns": "void"
     },
+    "__try_hook__": {
+      "params": [
+        "number",
+        "number"
+      ],
+      "returns": "void"
+    },
+    "__try_unhook__": {
+      "params": [],
+      "returns": "void"
+    },
     "_instanceof": {
       "params": [
         "any",
         "any"
       ],
       "returns": "boolean"
+    },
+    "_typeof": {
+      "params": [
+        "*"
+      ],
+      "returns": "string"
     },
     "abs": {
       "params": [
@@ -9008,7 +9025,10 @@
         "xboxone_stats_setup",
         "xboxone_show_help",
         "xboxone_set_savedata_user",
-        "xboxone_is_suspending"
+        "xboxone_is_suspending",
+        "_typeof",
+        "__try_hook__",
+        "__try_unhook__"
       ],
       "path": "gamemaker/runtime",
       "stateful": true
