@@ -108,6 +108,12 @@ fn lowering_config_for_engine(
                 ("SugarCube.State".to_string(), "get".to_string()),
                 ("SugarCube.Setup".to_string(), "get".to_string()),
             ];
+            // Engine.resolve() is used for bare-identifier lookups in SugarCube
+            // expressions — both story variables and JS builtins (Date, Math, …).
+            // Only inject struct casts so that named TypeScript overloads for
+            // builtins (DateConstructor, etc.) are not shadowed by a wrong type.
+            c.cast_struct_syscall_results_for =
+                vec![("SugarCube.Engine".to_string(), "resolve".to_string())];
         }
         std::borrow::Cow::Owned(c)
     } else {

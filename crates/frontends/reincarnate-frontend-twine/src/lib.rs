@@ -220,6 +220,38 @@ impl TwineFrontend {
                 value_arg: 1,
             },
         );
+        // `Engine.resolve(name)` is generated for bare identifier references in
+        // SugarCube expressions.  Story variables accessed this way should be
+        // narrowed to their inferred struct type, but JS built-in lookups must
+        // not get a Phase 2 (Function/Array) type — that would shadow the named
+        // TypeScript overloads in engine.ts.  ResolveGlobalTypeStructOnly
+        // participates in Phase 3 (struct schemas) but skips Phase 2.
+        //
+        // skip_names mirrors the named overloads declared in engine.ts so that
+        // those names are never typed as `_SC_*` interfaces.
+        module.system_call_type_rules.insert(
+            ("SugarCube.Engine".into(), "resolve".into()),
+            SystemCallTypeRule::ResolveGlobalTypeStructOnly {
+                skip_names: vec![
+                    "Math".into(),
+                    "Number".into(),
+                    "String".into(),
+                    "Array".into(),
+                    "Object".into(),
+                    "JSON".into(),
+                    "Date".into(),
+                    "RegExp".into(),
+                    "isNaN".into(),
+                    "isFinite".into(),
+                    "parseInt".into(),
+                    "parseFloat".into(),
+                    "visited".into(),
+                    "lastVisited".into(),
+                    "random".into(),
+                    "either".into(),
+                ],
+            },
+        );
 
         Ok(FrontendOutput {
             modules: vec![module],

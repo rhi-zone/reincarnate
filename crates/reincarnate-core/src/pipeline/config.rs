@@ -246,6 +246,17 @@ pub struct LoweringConfig {
     /// variables narrowed by `build_global_types` are emitted as typed values
     /// (e.g. `State.get("gold") as number`) instead of `unknown`.
     pub cast_narrowed_syscall_results_for: Vec<(String, String)>,
+
+    /// Like `cast_narrowed_syscall_results_for`, but **only** injects casts
+    /// for `Struct` and `Enum` result types.  Scalar/Array/Function types are
+    /// left as-is so that existing TypeScript overloads (e.g. the named
+    /// overloads on `Engine.resolve`) are not shadowed by a less-precise cast.
+    ///
+    /// SugarCube sets this to `[("SugarCube.Engine", "resolve")]` so that
+    /// story variables inferred as structs (e.g. `$navigation`) are cast to
+    /// their struct type when accessed via a bare identifier expression, while
+    /// built-in global lookups like `Engine.resolve("Date")` are unaffected.
+    pub cast_struct_syscall_results_for: Vec<(String, String)>,
 }
 
 impl Default for LoweringConfig {
@@ -269,6 +280,7 @@ impl LoweringConfig {
             construct_string_coerce: false,
             coerce_index_types: false,
             cast_narrowed_syscall_results_for: vec![],
+            cast_struct_syscall_results_for: vec![],
         }
     }
 
@@ -285,6 +297,7 @@ impl LoweringConfig {
             construct_string_coerce: false,
             coerce_index_types: false,
             cast_narrowed_syscall_results_for: vec![],
+            cast_struct_syscall_results_for: vec![],
         }
     }
 }

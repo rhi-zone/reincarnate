@@ -166,6 +166,16 @@ pub enum SystemCallTypeRule {
     ConstructFromFirstArgType,
     /// First arg is a const string → look up in `Module::globals` → that type.
     ResolveGlobalType,
+    /// Like `ResolveGlobalType` but only participates in Phase 3 struct
+    /// inference.  Phase 2 (Array/Function use-site inference) is skipped so
+    /// that JS built-in lookups (e.g. `Engine.resolve("Date")`) are not
+    /// incorrectly typed as function values.  Struct casts are still injected
+    /// when the inferred type is `Struct(_)`.
+    ///
+    /// `skip_names` lists names that are known JS globals (from the runtime's
+    /// typed overloads) and must never receive struct type inference regardless
+    /// of how their resolve results are used in the IR.
+    ResolveGlobalTypeStructOnly { skip_names: Vec<String> },
     /// This system call stores a value into a global variable.
     /// `name_arg` is the index of the argument containing the global name
     /// (a const string), `value_arg` is the index of the argument containing

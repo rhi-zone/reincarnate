@@ -1358,19 +1358,27 @@ impl<'a> EmitCtx<'a> {
             Type::Array(_) | Type::Function(_) => Some(CastKind::NullableCoerce),
             _ => None,
         };
-        let expr = if let (Op::SystemCall { system, method, .. }, Some(cast_kind)) =
-            (&op_clone, syscall_cast_kind)
-        {
-            if self
+        let expr = if let Op::SystemCall { system, method, .. } = &op_clone {
+            let in_narrowed = self
                 .config
                 .cast_narrowed_syscall_results_for
                 .iter()
-                .any(|(s, m)| s == system && m == method)
-            {
-                Expr::Cast {
-                    expr: Box::new(expr),
-                    ty: result_ty.clone(),
-                    kind: cast_kind,
+                .any(|(s, m)| s == system && m == method);
+            let in_struct_only = matches!(&result_ty, Type::Struct(_) | Type::Enum(_))
+                && self
+                    .config
+                    .cast_struct_syscall_results_for
+                    .iter()
+                    .any(|(s, m)| s == system && m == method);
+            if let Some(cast_kind) = syscall_cast_kind {
+                if in_narrowed || in_struct_only {
+                    Expr::Cast {
+                        expr: Box::new(expr),
+                        ty: result_ty.clone(),
+                        kind: cast_kind,
+                    }
+                } else {
+                    expr
                 }
             } else {
                 expr

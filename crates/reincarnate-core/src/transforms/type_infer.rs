@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use crate::error::CoreError;
 use crate::ir::ty::parse_type_notation;
 use crate::ir::{
-    BlockId, Constant, Function, FunctionSig, Inst, Module, Op, SystemCallTypeRule, Type, ValueId,
+    BlockId, Constant, FieldDef, Function, FunctionSig, Inst, Module, Op, StructDef,
+    SystemCallTypeRule, Type, ValueId, Visibility,
 };
 use crate::pipeline::{Transform, TransformResult};
 
@@ -584,7 +585,10 @@ fn infer_inst_type(
                         return None;
                     }
                 }
-                Some(SystemCallTypeRule::ResolveGlobalType) => {
+                Some(
+                    SystemCallTypeRule::ResolveGlobalType
+                    | SystemCallTypeRule::ResolveGlobalTypeStructOnly { .. },
+                ) => {
                     let first = args.first()?;
                     let name = const_strings.get(first)?;
                     ctx.global_types
@@ -627,10 +631,120 @@ fn infer_common_type<'a>(mut types: impl Iterator<Item = &'a Type>) -> Type {
     result
 }
 
+/// String-only method names (not shared with Array) used to detect string-typed fields.
+const STRING_ONLY_METHODS: &[&str] = &[
+    "toLowerCase",
+    "toUpperCase",
+    "startsWith",
+    "endsWith",
+    "substring",
+    "split",
+    "replace",
+    "replaceAll",
+    "match",
+    "matchAll",
+    "search",
+    "trim",
+    "trimStart",
+    "trimEnd",
+    "trimLeft",
+    "trimRight",
+    "charAt",
+    "charCodeAt",
+    "codePointAt",
+    "repeat",
+    "padStart",
+    "padEnd",
+    "normalize",
+    "localeCompare",
+    "toLocaleLowerCase",
+    "toLocaleUpperCase",
+    // SugarCube string extensions
+    "toUpperFirst",
+    "toProperCase",
+    "link",
+    "format",
+];
+
+/// Infer the type of a struct field value (`vid`) from a single use-site instruction.
+///
+/// Returns `None` when this instruction provides no type information about `vid`.
+/// Used by Phase 3 struct use-site inference in `build_global_types`.
+fn infer_field_use_type(
+    vid: ValueId,
+    inst: &Inst,
+    array_field_set: &HashSet<&str>,
+    func: &Function,
+) -> Option<Type> {
+    match &inst.op {
+        Op::GetField { object, field } if *object == vid => {
+            if array_field_set.contains(field.as_str()) {
+                Some(Type::Array(Box::new(Type::Dynamic)))
+            } else {
+                None
+            }
+        }
+        Op::GetIndex { collection, .. } if *collection == vid => {
+            Some(Type::Array(Box::new(Type::Dynamic)))
+        }
+        Op::SetIndex { collection, .. } if *collection == vid => {
+            Some(Type::Array(Box::new(Type::Dynamic)))
+        }
+        Op::MethodCall {
+            receiver, method, ..
+        } if *receiver == vid => {
+            if array_field_set.contains(method.as_str()) {
+                Some(Type::Array(Box::new(Type::Dynamic)))
+            } else if STRING_ONLY_METHODS.contains(&method.as_str()) {
+                Some(Type::String)
+            } else {
+                None
+            }
+        }
+        Op::CallIndirect { callee, args } if *callee == vid => {
+            let params = vec![Type::Dynamic; args.len()];
+            Some(Type::Function(Box::new(FunctionSig {
+                params,
+                return_ty: Type::Dynamic,
+                ..Default::default()
+            })))
+        }
+        Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b)
+            if *a == vid || *b == vid =>
+        {
+            Some(Type::Float(64))
+        }
+        Op::Neg(v) if *v == vid => Some(Type::Float(64)),
+        Op::BitAnd(a, b) | Op::BitOr(a, b) | Op::BitXor(a, b) | Op::Shl(a, b) | Op::Shr(a, b)
+            if *a == vid || *b == vid =>
+        {
+            Some(Type::Int(64))
+        }
+        Op::Not(v) if *v == vid => Some(Type::Bool),
+        Op::BoolAnd(a, b) | Op::BoolOr(a, b) if *a == vid || *b == vid => Some(Type::Bool),
+        Op::BrIf { cond, .. } if *cond == vid => Some(Type::Bool),
+        Op::Select { cond, .. } if *cond == vid => Some(Type::Bool),
+        // `field == "literal"` — infer field type from the other operand's known type.
+        Op::Cmp(_, a, b) if *a == vid || *b == vid => {
+            let other = if *a == vid { *b } else { *a };
+            let other_ty = &func.value_types[other];
+            match other_ty {
+                Type::String => Some(Type::String),
+                Type::Bool => Some(Type::Bool),
+                Type::Int(w) => Some(Type::Int(*w)),
+                Type::Float(w) => Some(Type::Float(*w)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Cross-function scan: collect value types from all global-store `SystemCall`
 /// instructions (identified via `SystemCallTypeRule::GlobalStore` rules registered
-/// by frontends).  Returns a map from global name → inferred type.
-fn build_global_types(module: &Module) -> HashMap<String, Type> {
+/// by frontends).  Returns a map from global name → inferred type, plus any
+/// struct definitions inferred from use-site field access patterns (Phase 3).
+fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>) {
     use crate::ir::module::SystemCallTypeRule;
 
     // Pre-collect the GlobalStore rules so we can match by (system, method).
@@ -651,7 +765,7 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
         .collect();
 
     if store_rules.is_empty() {
-        return HashMap::new();
+        return (HashMap::new(), Vec::new());
     }
 
     let mut global_stores: HashMap<String, Option<Type>> = HashMap::new();
@@ -695,20 +809,72 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
             }
         }
     }
-    // Use-site inference: when a ResolveGlobalType result (e.g. State.get /
-    // Setup.get) is accessed via GetField with an array method or property,
-    // infer the variable as Array(Dynamic) if no write-site type was found.
+    // Use-site inference: infer global variable types from how they are used.
     //
-    // This handles variables that are initialised in user scripts (old SC1
-    // `state.active.variables.x = []`) and never touched by passage-level
-    // `<<set>>` macros.  Their write sites are invisible to us, but every
-    // `$x.indexOf(...)` or `$x.length` read site tells us they are arrays.
+    // Phase 2 (array/function): when a ResolveGlobalType result is accessed via
+    // GetField with an array method name or called indirectly, infer the variable
+    // as Array(Dynamic) or Function(…→Dynamic).
+    //
+    // Phase 3 (struct): when a ResolveGlobalType result is accessed via GetField
+    // on a non-array field, infer a named struct type `_SC_<varname>` with field
+    // types derived from how each field value is subsequently used.
+    //
+    // Both phases handle variables initialised in user scripts (e.g. old SC1
+    // `state.active.variables.x = {…}`) that are never set via passage-level
+    // `<<set>>` macros — write sites are invisible, but read patterns reveal types.
+
+    // struct_schemas accumulates field type information across all functions.
+    // Outer key: variable name.  Inner key: field name.  Value: inferred type.
+    let mut struct_schemas: HashMap<String, HashMap<String, Type>> = HashMap::new();
+
+    // constructor_names: names whose struct-only resolve results are used as
+    // the callee of `SugarCube.Engine.new`.  These are JS built-in constructors
+    // (Date, RegExp, etc.), not story variables.  They are excluded from
+    // struct_schemas at the end so that no _SC_* interface is generated for them
+    // and no cast is injected for their Engine.resolve results.
+    let mut constructor_names: HashSet<String> = HashSet::new();
+
+    // struct_skip_names: explicitly listed JS globals from ResolveGlobalTypeStructOnly
+    // rules.  These names must never receive struct type inference.
+    let struct_skip_names: HashSet<&str> = module
+        .system_call_type_rules
+        .values()
+        .filter_map(|rule| {
+            if let SystemCallTypeRule::ResolveGlobalTypeStructOnly { skip_names } = rule {
+                Some(skip_names.iter().map(|s| s.as_str()))
+            } else {
+                None
+            }
+        })
+        .flatten()
+        .collect();
+
     {
         let resolve_rules: HashSet<(&str, &str)> = module
             .system_call_type_rules
             .iter()
             .filter_map(|((sys, meth), rule)| {
-                if matches!(rule, SystemCallTypeRule::ResolveGlobalType) {
+                if matches!(
+                    rule,
+                    SystemCallTypeRule::ResolveGlobalType
+                        | SystemCallTypeRule::ResolveGlobalTypeStructOnly { .. }
+                ) {
+                    Some((sys.as_str(), meth.as_str()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Systems/methods that participate in Phase 3 (struct inference) ONLY —
+        // Phase 2 (Array/Function use-site inference) is skipped for these so
+        // that JS built-in lookups (e.g. `Engine.resolve("Date")`) are not
+        // incorrectly typed as function or array values.
+        let struct_only_resolve_rules: HashSet<(&str, &str)> = module
+            .system_call_type_rules
+            .iter()
+            .filter_map(|((sys, meth), rule)| {
+                if matches!(rule, SystemCallTypeRule::ResolveGlobalTypeStructOnly { .. }) {
                     Some((sys.as_str(), meth.as_str()))
                 } else {
                     None
@@ -718,7 +884,9 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
 
         if !resolve_rules.is_empty() {
             const ARRAY_FIELDS: &[&str] = &[
+                // Standard JS Array methods / properties
                 "indexOf",
+                "lastIndexOf",
                 "length",
                 "push",
                 "pop",
@@ -727,6 +895,7 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
                 "includes",
                 "filter",
                 "map",
+                "flatMap",
                 "some",
                 "every",
                 "forEach",
@@ -740,6 +909,33 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
                 "flat",
                 "shift",
                 "unshift",
+                "reduce",
+                "reduceRight",
+                "keys",
+                "values",
+                "entries",
+                "at",
+                // SugarCube Array extensions
+                "last",
+                "first",
+                "append",
+                "prepend",
+                "pluck",
+                "pluckMany",
+                "pushUnique",
+                "delete",
+                "deleteAt",
+                "deleteWith",
+                "random",
+                "randomMany",
+                "shuffle",
+                "count",
+                "countWith",
+                "includesAny",
+                "includesAll",
+                "toShallowClone",
+                "concatUnique",
+                "flatten",
             ];
             let array_field_set: HashSet<&str> = ARRAY_FIELDS.iter().copied().collect();
 
@@ -757,7 +953,10 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
                     .collect();
 
                 // result_value → variable_name for all ResolveGlobalType calls.
+                // struct_only_results: values from ResolveGlobalTypeStructOnly
+                // calls — Phase 2 (Array/Function inference) is skipped for these.
                 let mut get_results: HashMap<ValueId, &str> = HashMap::new();
+                let mut struct_only_results: HashSet<ValueId> = HashSet::new();
                 for inst in func.insts.values() {
                     if let Op::SystemCall {
                         system,
@@ -771,7 +970,65 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
                                 inst.result,
                             ) {
                                 get_results.insert(result, name);
+                                if struct_only_resolve_rules
+                                    .contains(&(system.as_str(), method.as_str()))
+                                {
+                                    struct_only_results.insert(result);
+                                }
                             }
+                        }
+                    }
+                }
+
+                // Extend get_results through Copy and single Alloc/Store/Load levels.
+                //
+                // Before Mem2Reg runs, a State.get result `v0` is often stored into
+                // an Alloc and then Loaded back before use:
+                //   v0 = State.get("x")  → get_results[v0] = "x"
+                //   a  = Alloc(Dynamic)
+                //   Store { ptr: a, value: v0 }
+                //   v1 = Load(a)         → NOT in get_results without this extension
+                //   GetField(v1, "f")    → missed without v1 in get_results
+                {
+                    // Track which allocs hold a State.get result.
+                    let mut alloc_stored: HashMap<ValueId, &str> = HashMap::new();
+                    for inst in func.insts.values() {
+                        if let Op::Store { ptr, value } = &inst.op {
+                            if let Some(&var_name) = get_results.get(value) {
+                                alloc_stored.insert(*ptr, var_name);
+                            }
+                        }
+                    }
+                    // Extend via Copy and via Load-of-tracked-alloc.
+                    let mut extensions: Vec<(ValueId, &str, bool)> = Vec::new();
+                    for inst in func.insts.values() {
+                        match &inst.op {
+                            Op::Copy(src) => {
+                                if let (Some(&var_name), Some(result)) =
+                                    (get_results.get(src), inst.result)
+                                {
+                                    let so = struct_only_results.contains(src);
+                                    extensions.push((result, var_name, so));
+                                }
+                            }
+                            Op::Load(ptr) => {
+                                if let (Some(&var_name), Some(result)) =
+                                    (alloc_stored.get(ptr), inst.result)
+                                {
+                                    // Determine if the alloc's stored source was struct-only.
+                                    // (We only have the alloc ptr, not the original src here;
+                                    // conservatively inherit if ptr is struct-only.)
+                                    let so = struct_only_results.contains(ptr);
+                                    extensions.push((result, var_name, so));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    for (vid, var_name, is_struct_only) in extensions {
+                        get_results.entry(vid).or_insert(var_name);
+                        if is_struct_only {
+                            struct_only_results.insert(vid);
                         }
                     }
                 }
@@ -781,10 +1038,16 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
                 //
                 // CallIndirect directly on a ResolveGlobalType result →
                 // infer the variable as Function(Dynamic params → Dynamic).
+                //
+                // Both are Phase 2 patterns.  Skipped for struct-only resolve
+                // rules (e.g. Engine.resolve) where built-in JS globals like
+                // `Date` or `Math` would otherwise be wrongly typed as Function.
                 for inst in func.insts.values() {
                     match &inst.op {
                         Op::GetField { object, field } => {
-                            if array_field_set.contains(field.as_str()) {
+                            if array_field_set.contains(field.as_str())
+                                && !struct_only_results.contains(object)
+                            {
                                 if let Some(&var_name) = get_results.get(object) {
                                     let entry =
                                         global_stores.entry(var_name.to_string()).or_insert(None);
@@ -793,36 +1056,248 @@ fn build_global_types(module: &Module) -> HashMap<String, Type> {
                                     }
                                 }
                             }
-                            // Non-array field access omitted: without knowing the struct
-                            // schema, the only emittable type is Record<string, any> which
-                            // violates Law 4.  Tracked in TODO.md under "SugarCube struct
-                            // use-site inference".
+                            // Phase 3: non-array GetField — record for struct inference below.
+                        }
+                        // `SugarCube.Engine.new(callee, ...args)` → callee is used
+                        // as a JS constructor.  If the callee came from a struct-only
+                        // resolve rule, the name is a built-in constructor (Date, etc.),
+                        // not a story variable — exclude it from struct_schemas.
+                        Op::SystemCall {
+                            system,
+                            method,
+                            args,
+                        } if system == "SugarCube.Engine"
+                            && method == "new"
+                            && !args.is_empty() =>
+                        {
+                            if struct_only_results.contains(&args[0]) {
+                                if let Some(&var_name) = get_results.get(&args[0]) {
+                                    constructor_names.insert(var_name.to_string());
+                                }
+                            }
                         }
                         Op::CallIndirect { callee, args } => {
-                            if let Some(&var_name) = get_results.get(callee) {
-                                let entry =
-                                    global_stores.entry(var_name.to_string()).or_insert(None);
-                                if entry.is_none() {
-                                    let params = vec![Type::Dynamic; args.len()];
-                                    *entry = Some(Type::Function(Box::new(FunctionSig {
-                                        params,
-                                        return_ty: Type::Dynamic,
-                                        ..Default::default()
-                                    })));
+                            if !struct_only_results.contains(callee) {
+                                if let Some(&var_name) = get_results.get(callee) {
+                                    let entry =
+                                        global_stores.entry(var_name.to_string()).or_insert(None);
+                                    if entry.is_none() {
+                                        let params = vec![Type::Dynamic; args.len()];
+                                        *entry = Some(Type::Function(Box::new(FunctionSig {
+                                            params,
+                                            return_ty: Type::Dynamic,
+                                            ..Default::default()
+                                        })));
+                                    }
                                 }
                             }
                         }
                         _ => {}
                     }
                 }
+
+                // Phase 3: transitive provenance tracking.
+                //
+                // Build a map from each derived ValueId to its "path" from the root
+                // story variable: e.g. State.get("worn") → path=[], GetField(v_worn,
+                // "neck") → path=["neck"], GetField(v_neck, "collar") → path=["neck",
+                // "collar"].  Copy and Load/Store chains are followed so that Alloc-
+                // based temporaries don't break the trace.
+                //
+                // Then infer field types from use-site patterns across the whole tree.
+
+                const MAX_PROV_DEPTH: usize = 4;
+
+                let mut provenance: HashMap<ValueId, (String, Vec<String>)> =
+                    HashMap::with_capacity(get_results.len() * 2);
+                for (&vid, &var_name) in &get_results {
+                    provenance.insert(vid, (var_name.to_string(), vec![]));
+                }
+
+                // Fixed-point: extend provenance one hop per iteration.
+                loop {
+                    let mut new_entries: Vec<(ValueId, String, Vec<String>)> = Vec::new();
+                    for inst in func.insts.values() {
+                        let Some(result) = inst.result else { continue };
+                        if provenance.contains_key(&result) {
+                            continue;
+                        }
+                        match &inst.op {
+                            Op::GetField { object, field }
+                                if !array_field_set.contains(field.as_str()) =>
+                            {
+                                if let Some((root, path)) = provenance.get(object) {
+                                    if path.len() < MAX_PROV_DEPTH {
+                                        let mut p = path.clone();
+                                        p.push(field.clone());
+                                        new_entries.push((result, root.clone(), p));
+                                    }
+                                }
+                            }
+                            Op::Copy(src) => {
+                                if let Some((root, path)) = provenance.get(src) {
+                                    new_entries.push((result, root.clone(), path.clone()));
+                                }
+                            }
+                            Op::Load(ptr) => {
+                                if let Some((root, path)) = provenance.get(ptr) {
+                                    new_entries.push((result, root.clone(), path.clone()));
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    // Store: give the alloc ptr the same provenance as the stored value.
+                    for inst in func.insts.values() {
+                        if let Op::Store { ptr, value } = &inst.op {
+                            if !provenance.contains_key(ptr) {
+                                if let Some((root, path)) = provenance.get(value) {
+                                    new_entries.push((*ptr, root.clone(), path.clone()));
+                                }
+                            }
+                        }
+                    }
+                    if new_entries.is_empty() {
+                        break;
+                    }
+                    for (vid, root, path) in new_entries {
+                        provenance.entry(vid).or_insert((root, path));
+                    }
+                }
+
+                // Values that are the 'object' of a non-array GetField have struct children.
+                let has_struct_children: HashSet<ValueId> = func
+                    .insts
+                    .values()
+                    .filter_map(|inst| {
+                        if let Op::GetField { object, field } = &inst.op {
+                            if !array_field_set.contains(field.as_str())
+                                && provenance.contains_key(object)
+                            {
+                                return Some(*object);
+                            }
+                        }
+                        None
+                    })
+                    .collect();
+
+                // Helper: (root, path) → (schema_key, field_name).
+                // schema_key is the struct name without the "_SC_" prefix:
+                //   path=["neck"]         → key="worn",       field="neck"
+                //   path=["neck","collar"]→ key="worn_neck",  field="collar"
+                let schema_key_field = |root: &str, path: &[String]| -> (String, String) {
+                    let field = path.last().unwrap().clone();
+                    let parent = &path[..path.len() - 1];
+                    let key = if parent.is_empty() {
+                        root.to_string()
+                    } else {
+                        format!("{}_{}", root, parent.join("_"))
+                    };
+                    (key, field)
+                };
+
+                // Collect non-root entries (path non-empty) for schema updates.
+                let non_root: Vec<(ValueId, String, Vec<String>)> = provenance
+                    .iter()
+                    .filter(|(_, (_, path))| !path.is_empty())
+                    .map(|(&vid, (root, path))| (vid, root.clone(), path.clone()))
+                    .collect();
+
+                // Step A: use-site inference for leaf values (no struct children).
+                for inst in func.insts.values() {
+                    for (vid, root, path) in non_root
+                        .iter()
+                        .filter(|(v, _, _)| !has_struct_children.contains(v))
+                    {
+                        if let Some(ty) = infer_field_use_type(*vid, inst, &array_field_set, func) {
+                            let (key, field) = schema_key_field(root, path);
+                            let entry = struct_schemas
+                                .entry(key)
+                                .or_default()
+                                .entry(field)
+                                .or_insert(Type::Dynamic);
+                            if *entry == Type::Dynamic {
+                                *entry = ty;
+                            }
+                        }
+                    }
+                }
+
+                // Step B: parent nodes with struct children → type as nested struct
+                // (only if use-site inference didn't already set a concrete type, so
+                // e.g. an array field with further GetField accesses stays array-typed).
+                for (_vid, root, path) in non_root
+                    .iter()
+                    .filter(|(v, _, _)| has_struct_children.contains(v))
+                {
+                    let (key, field) = schema_key_field(root, path);
+                    let nested = format!("_SC_{}_{}", root, path.join("_"));
+                    let entry = struct_schemas
+                        .entry(key)
+                        .or_default()
+                        .entry(field)
+                        .or_insert(Type::Dynamic);
+                    if *entry == Type::Dynamic {
+                        *entry = Type::Struct(nested);
+                    }
+                }
             }
         }
     }
 
-    global_stores
+    // Remove constructor names from struct_schemas — these are JS built-in
+    // constructors (Date, RegExp, etc.) accessed via Engine.resolve, not story
+    // variables with struct field types.
+    for name in &constructor_names {
+        struct_schemas.remove(name);
+    }
+    // Remove explicitly skip-listed names (known JS globals from runtime overloads)
+    // from struct_schemas only.  We must NOT touch global_stores here: a skip-listed
+    // name like "random" may legitimately have a Float write-site via State.set(),
+    // and removing it from global_stores would break State.get("random") type inference.
+    for name in &struct_skip_names {
+        struct_schemas.remove(*name);
+    }
+
+    // Phase 3: build StructDef instances from the collected field schemas.
+    //
+    // Only create a struct when at least one field has a concrete (non-Dynamic)
+    // inferred type — Dynamic fields are excluded to avoid emitting `any` in
+    // TypeScript interfaces (Law 4).  The variable type is set to
+    // `Type::Struct("_SC_<name>")` only when no write-site type was found.
+    let mut inferred_structs: Vec<StructDef> = Vec::new();
+    for (var_name, field_types) in &struct_schemas {
+        let mut fields: Vec<FieldDef> = field_types
+            .iter()
+            .filter(|(_, ty)| **ty != Type::Dynamic)
+            .map(|(name, ty)| FieldDef {
+                name: name.clone(),
+                ty: ty.clone(),
+                default: None,
+            })
+            .collect();
+        if fields.is_empty() {
+            continue;
+        }
+        fields.sort_by(|a, b| a.name.cmp(&b.name));
+        let struct_name = format!("_SC_{}", var_name);
+        inferred_structs.push(StructDef {
+            name: struct_name.clone(),
+            namespace: vec![],
+            fields,
+            visibility: Visibility::Public,
+        });
+        let entry = global_stores.entry(var_name.clone()).or_insert(None);
+        if entry.is_none() {
+            *entry = Some(Type::Struct(struct_name));
+        }
+    }
+
+    let type_map = global_stores
         .into_iter()
         .filter_map(|(name, ty)| ty.map(|t| (name, t)))
-        .collect()
+        .collect();
+    (type_map, inferred_structs)
 }
 
 /// Run type inference on a single function within the given module context.
@@ -1054,8 +1529,9 @@ impl Transform for TypeInference {
         //   Pass 2 re-run: Setup.get("OutfitList") narrowed to Array(Struct)
         const MAX_GLOBAL_INFERENCE_PASSES: usize = 4;
         let mut prev_inferred: HashMap<String, Type> = HashMap::new();
+        let mut prev_struct_count: usize = 0;
         for _ in 0..MAX_GLOBAL_INFERENCE_PASSES {
-            let inferred_globals = build_global_types(&module);
+            let (inferred_globals, new_structs) = build_global_types(&module);
 
             // Check whether this scan produced any improvements over previous.
             let any_improved = inferred_globals.iter().any(|(k, v)| {
@@ -1064,11 +1540,24 @@ impl Transform for TypeInference {
             let has_undeclared = inferred_globals
                 .keys()
                 .any(|k| !module.globals.iter().any(|g| &g.name == k));
+            let structs_changed = new_structs.len() != prev_struct_count
+                || new_structs.iter().any(|ns| {
+                    module
+                        .structs
+                        .iter()
+                        .find(|s| s.name == ns.name)
+                        .is_none_or(|s| s.fields.len() != ns.fields.len())
+                });
 
-            if !any_improved && !has_undeclared && prev_inferred == inferred_globals {
+            if !any_improved
+                && !has_undeclared
+                && prev_inferred == inferred_globals
+                && !structs_changed
+            {
                 break;
             }
             prev_inferred = inferred_globals.clone();
+            prev_struct_count = new_structs.len();
 
             // Update Module::globals entries for declared globals.
             for g in &mut module.globals {
@@ -1078,6 +1567,14 @@ impl Transform for TypeInference {
                         changed = true;
                     }
                 }
+            }
+
+            // Phase 3: register inferred struct definitions.
+            // Replace any existing _SC_* struct from a prior pass with the updated one.
+            for new_struct in new_structs {
+                module.structs.retain(|s| s.name != new_struct.name);
+                module.structs.push(new_struct);
+                changed = true;
             }
 
             // Re-run per-function inference so that ResolveGlobalType uses

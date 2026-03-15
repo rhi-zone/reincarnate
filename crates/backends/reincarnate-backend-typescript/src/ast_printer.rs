@@ -1091,10 +1091,12 @@ fn print_expr(expr: &JsExpr) -> String {
         // --- JS-specific constructs ---
         JsExpr::New { callee, args } => {
             let args_str: Vec<_> = args.iter().map(print_expr).collect();
-            // Parenthesize call-expression callees: `new (f(a,b))()` not `new f(a,b)()`
-            // because `new f(a,b)()` parses as `(new f(a,b))()` in JS.
+            // Parenthesize call-expression and cast callees to avoid parse
+            // ambiguity:
+            //   `new (f(a,b))()` not `new f(a,b)()`
+            //   `new (x as T)()` not `new x as T()`
             let callee_str = match callee.as_ref() {
-                JsExpr::Call { .. } | JsExpr::SystemCall { .. } => {
+                JsExpr::Call { .. } | JsExpr::SystemCall { .. } | JsExpr::Cast { .. } => {
                     format!("({})", print_expr(callee))
                 }
                 _ => print_expr(callee),
