@@ -457,14 +457,16 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         kind,
                     } = init
                     {
-                        let is_ts_assertion = match kind {
-                            CastKind::NullableCoerce => {
-                                !matches!(ty, Type::Struct(_) | Type::Enum(_))
-                            }
-                            CastKind::Coerce => {
-                                matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic)
-                            }
-                        };
+                        // Only strip NullableCoerce (scalar) casts: `expr as number`
+                        // can safely be replaced by a type annotation when the LHS
+                        // already declares the same type.
+                        //
+                        // Coerce (struct/enum TS assertions) must NOT be stripped:
+                        // the source expression may return `unknown` (e.g. State.get),
+                        // and TypeScript requires an explicit `as T` to assign
+                        // `unknown → T`. A type annotation alone causes TS2322.
+                        let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
+                            && !matches!(ty, Type::Struct(_) | Type::Enum(_));
                         if cast_ty == ty && is_ts_assertion {
                             let _ = writeln!(
                                 out,
@@ -494,14 +496,12 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // Cast → determine if the cast form is a TS assertion (strippable
                     // to type annotation) or a runtime call (must keep in expr).
                     if let JsExpr::Cast { expr, ty, kind } = init {
-                        let is_ts_assertion = match kind {
-                            CastKind::NullableCoerce => {
-                                !matches!(ty, Type::Struct(_) | Type::Enum(_))
-                            }
-                            CastKind::Coerce => {
-                                matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Dynamic)
-                            }
-                        };
+                        // Only strip NullableCoerce (scalar) casts — see comment in
+                        // the (Some(ty), Some(init)) branch above.  Coerce (struct/
+                        // enum TS assertions) must keep the `as T` in the expression
+                        // even when there is no existing type annotation.
+                        let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
+                            && !matches!(ty, Type::Struct(_) | Type::Enum(_));
                         if is_ts_assertion {
                             // Strip TS assertion, use type annotation + inner expr.
                             let _ = writeln!(
@@ -511,7 +511,8 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                                 print_expr(expr),
                             );
                         } else {
-                            // Keep the runtime call (asType/Number/int/etc.), add type annotation.
+                            // Keep the cast form (runtime call or Coerce assertion),
+                            // add type annotation for clarity.
                             let _ = writeln!(
                                 out,
                                 "{indent}{kw} {name_str}: {} = {};",
