@@ -558,6 +558,11 @@ export class SCEngine {
   resolve(name: "lastVisited"): (...passages: string[]) => number;
   resolve(name: "random"): (min: number, max?: number) => number;
   resolve(name: "either"): <T>(...args: T[]) => T;
+  resolve(name: "passage"): () => string;
+  resolve(name: "tags"): (...passages: string[]) => string[];
+  resolve(name: "turns"): () => number;
+  resolve(name: "previous"): () => string;
+  resolve(name: "visitedTags"): (...tags: string[]) => number;
   resolve(name: string): unknown;
   resolve(name: string): unknown {
     const g = (globalThis as typeof globalThis & Record<string, unknown>)[name];
@@ -628,6 +633,69 @@ export class SCEngine {
   /** Check if an error is a continue sentinel. */
   isContinue(e: unknown): boolean {
     return e === CONTINUE_SENTINEL;
+  }
+
+  // --- SugarCube stdlib functions exposed as typed SystemCall targets ---
+
+  /**
+   * Return a random integer in the range [`min`, `max`] (inclusive).
+   *
+   * When called with a single argument, the range is [0, min].
+   * Mirrors SugarCube's global `random(min, max?)` function.
+   */
+  random(min: number, max?: number): number {
+    const lo = max === undefined ? 0 : min;
+    const hi = max === undefined ? min : max;
+    return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+  }
+
+  /**
+   * Return a random element from the supplied arguments.
+   *
+   * Mirrors SugarCube's global `either(...args)` function.
+   */
+  either<T>(...args: T[]): T {
+    return args[Math.floor(Math.random() * args.length)];
+  }
+
+  /**
+   * Test whether a value is NaN (delegates to `globalThis.isNaN`).
+   *
+   * Exposed as a SystemCall so the call site can be typed as `boolean` rather
+   * than going through `Engine.resolve("isNaN")(value)`.
+   */
+  isNaN(value: unknown): boolean {
+    return globalThis.isNaN(value as number);
+  }
+
+  /**
+   * Test whether a value is a finite number (delegates to `globalThis.isFinite`).
+   *
+   * Exposed as a SystemCall so the call site can be typed as `boolean` rather
+   * than going through `Engine.resolve("isFinite")(value)`.
+   */
+  isFinite(value: unknown): boolean {
+    return globalThis.isFinite(value as number);
+  }
+
+  /**
+   * Parse a string as an integer (delegates to `globalThis.parseInt`).
+   *
+   * Exposed as a SystemCall so the call site can be typed as `number` rather
+   * than going through `Engine.resolve("parseInt")(value, radix?)`.
+   */
+  parseInt(string: string, radix?: number): number {
+    return globalThis.parseInt(string, radix);
+  }
+
+  /**
+   * Parse a string as a floating-point number (delegates to `globalThis.parseFloat`).
+   *
+   * Exposed as a SystemCall so the call site can be typed as `number` rather
+   * than going through `Engine.resolve("parseFloat")(value)`.
+   */
+  parseFloat(string: string): number {
+    return globalThis.parseFloat(string);
   }
 }
 

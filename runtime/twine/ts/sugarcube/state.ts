@@ -83,6 +83,22 @@ export class SCState implements SaveableState {
     return this.history.countVisits(title);
   }
 
+  /**
+   * Return the number of turns since `title` was last visited.
+   *
+   * Returns -1 if the passage has never been visited.  The current passage
+   * has a distance of 0 (it is the last entry in history).
+   */
+  sinceLastVisit(title: string): number {
+    const all = this.history.titles();
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i] === title) {
+        return all.length - 1 - i;
+      }
+    }
+    return -1;
+  }
+
   passages(): string[] {
     return this.history.titles();
   }

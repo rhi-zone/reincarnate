@@ -249,6 +249,11 @@ impl TwineFrontend {
                     "lastVisited".into(),
                     "random".into(),
                     "either".into(),
+                    "passage".into(),
+                    "tags".into(),
+                    "turns".into(),
+                    "previous".into(),
+                    "visitedTags".into(),
                 ],
             },
         );
