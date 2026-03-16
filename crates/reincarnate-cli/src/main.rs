@@ -938,6 +938,21 @@ fn run_checks(
             }
         }
 
+        // Cache miss — acquire per-key lock, then re-check (double-checked locking).
+        // Concurrent calls for the same output directory will block here; the second
+        // caller will find a cache hit after the first finishes and drops the lock.
+        let _checker_lock = check_key.as_deref().and_then(cache::acquire_check_lock);
+        if let Some(ref key) = check_key {
+            if let Some(entry) = cache::lookup_check_cache(key) {
+                eprintln!("[check] cache hit (post-lock) — skipping type checker");
+                if entry.checker_output.summary.total_errors > 0 {
+                    has_errors = true;
+                }
+                all_outputs.push(entry.checker_output);
+                continue;
+            }
+        }
+
         eprintln!(
             "[check] running {} checker on {}...",
             checker.name(),

@@ -63,6 +63,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 
 **Never invoke `tsc`, `tsgo`, or `bunx tsc` directly — not even to check a single runtime file.** Always use `cargo run -p reincarnate-cli -- check --manifest <path>`. The emit and check caches make this fast — one command, always correct. When you need more detail: `--filter-code TS2345` (one error code), `--filter-file foo.ts` (one file), `--filter-message "some text"` (message substring), `--examples -1` (all instances instead of 3). These flags compose. Wanting to check a specific runtime file is not an exception — `--filter-file navigation.ts` is the right tool. **Practical enforcement**: running `tsc` on a large game (DoL, TRC) triggers earlyoom and kills other processes. There is no situation where running `tsc` directly gives you something `check` cannot.
 
+
 **Use subagents** for research tasks, >5 files, or >3 grep rounds.
 
 **Session handoff:** plan mode → short plan pointing at TODO.md → update memory files → ExitPlanMode.

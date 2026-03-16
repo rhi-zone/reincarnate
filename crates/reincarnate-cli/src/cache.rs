@@ -14,6 +14,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+use fs2::FileExt;
 use sha2::{Digest, Sha256};
 
 use reincarnate_core::pipeline::{CheckerOutput, Diagnostic};
@@ -186,6 +187,43 @@ pub fn store_emit_cache(key: &str, entry: &EmitCacheEntry) {
     if let Some(path) = cache_path("emit", key) {
         try_write_cache(&path, entry);
     }
+}
+
+// ── Checker lock ──────────────────────────────────────────────────────────────
+
+/// RAII guard that holds an exclusive flock on `check-{key}.lock`.
+///
+/// Callers should use double-checked locking:
+/// 1. Optimistic cache read (no lock).
+/// 2. On miss: `acquire_check_lock(key)` — blocks until exclusive.
+/// 3. Re-read cache — another process may have written it while we waited.
+/// 4. If still a miss: run tsgo, write cache.
+/// 5. Drop guard — lock released.
+///
+/// Per-key lock files mean different output directories don't serialize.
+pub struct CheckerLock(std::fs::File);
+
+impl Drop for CheckerLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+/// Acquire an exclusive lock for the given check cache key.
+/// Returns `None` (best-effort) if the lock file cannot be created.
+pub fn acquire_check_lock(key: &str) -> Option<CheckerLock> {
+    let path = cache_path("check-lock", key)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok()?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+        .ok()?;
+    file.lock_exclusive().ok()?;
+    Some(CheckerLock(file))
 }
 
 pub fn lookup_check_cache(key: &str) -> Option<CheckCacheEntry> {
