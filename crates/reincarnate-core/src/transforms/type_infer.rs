@@ -1241,6 +1241,51 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                         *entry = Type::Struct(nested);
                     }
                 }
+
+                // Step C: write-site inference via SetField.
+                //
+                // When a story variable (or one of its nested fields) is the
+                // `object` of a SetField, record the written field and its value
+                // type in the struct schema.  This captures fields that are
+                // assigned but never read in a way that narrows the type
+                // (e.g. `<<set _modeloptions.animation_speed = "fast">>`).
+                //
+                // Only record concrete (non-Dynamic) types so we don't pollute
+                // the schema with fields whose stored type is still unknown.
+                for inst in func.insts.values() {
+                    if let Op::SetField {
+                        object,
+                        field,
+                        value,
+                    } = &inst.op
+                    {
+                        // The object may be the root (e.g. _modeloptions itself) or a
+                        // nested field — check both provenance roots and non-root entries.
+                        if let Some((root, path)) = provenance.get(object) {
+                            let val_ty = &func.value_types[*value];
+                            if *val_ty != Type::Dynamic {
+                                // Build the schema key at the current path depth.
+                                let (key, schema_field) = if path.is_empty() {
+                                    // Root: e.g. provenance["_modeloptions"] → key="_modeloptions", field=field
+                                    (root.clone(), field.clone())
+                                } else {
+                                    // Nested path: delegate to schema_key_field with path+field appended.
+                                    let mut full_path = path.clone();
+                                    full_path.push(field.clone());
+                                    schema_key_field(root, &full_path)
+                                };
+                                let entry = struct_schemas
+                                    .entry(key)
+                                    .or_default()
+                                    .entry(schema_field)
+                                    .or_insert(Type::Dynamic);
+                                if *entry == Type::Dynamic {
+                                    *entry = val_ty.clone();
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

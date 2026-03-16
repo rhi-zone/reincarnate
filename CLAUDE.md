@@ -59,7 +59,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 
 **Use `bun`** for JavaScript/TypeScript scripting tasks.
 
-**Never invoke `tsc` or `tsgo` directly.** Always use `cargo run -p reincarnate-cli -- check --manifest <path>`. Use `--no-emit` to skip re-emission and check existing output (e.g. after a manual output edit or in CI).
+**Never invoke `tsc` or `tsgo` directly.** Always use `cargo run -p reincarnate-cli -- check --manifest <path>`. The emit and check caches make this fast — one command, always correct.
 
 **Use subagents** for research tasks, >5 files, or >3 grep rounds.
 

@@ -44,6 +44,11 @@ declare global {
     concatUnique(...items: any[]): this;
   }
 
+  interface Math {
+    /** Clamp `num` to the range [`min`, `max`]. */
+    clamp(num: number, min: number, max: number): number;
+  }
+
   interface String {
     /** Uppercase the first character. */
     toUpperFirst(): string;
@@ -202,6 +207,13 @@ export function installSugarCubeExtensions(): void {
         if (!this.includes(item)) this.push(item);
       }
       return this;
+    };
+  }
+
+  // --- Math ---
+  if (!Math.clamp) {
+    (Math as unknown as Record<string, unknown>).clamp = function (num: number, min: number, max: number): number {
+      return Math.min(Math.max(num, min), max);
     };
   }
 
