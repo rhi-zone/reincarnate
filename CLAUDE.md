@@ -10,6 +10,8 @@ Reincarnate is a decompiler that produces working, type-safe, high-quality code 
 
 **The emitted code is the mod surface.** Lift once, edit the output, forward-port via cherry-pick if the upstream game updates. No IR mutation API needed.
 
+**Emitted code is measured against handwritten code.** The bar is not "compiles" or "runs" — it is "indistinguishable from a skilled human port." Runtime name lookup where a direct call is possible, `unknown` where a concrete type is inferrable, or any other indirection that a human would never write are all defects. Closing the gap is always higher priority than adding new features.
+
 ## Quality
 
 **Sloppiness is not excusable.** There is no pressure, deadline, or metric that justifies a sloppy fix. The most common form of sloppiness in this codebase is treating TypeScript error counts as a goal — they are not. A change that reduces errors by widening a type, silencing a diagnostic, or guessing at correct behavior is a regression. The only valid reason to make a change is that it is correct.
@@ -20,7 +22,7 @@ Reincarnate is a decompiler that produces working, type-safe, high-quality code 
 
 **Look up the spec; don't guess from call sites.** GML: docs.yoyogames.com (source: github.com/YoYoGames/GameMaker-Manual). Flash: AS3 API reference. A decompiled call site may be wrong; the spec is authoritative.
 
-**Fix the real problem.** A workaround avoids fixing the actual cause. Narrow guards on symptoms indicate wrong core logic. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both in TODO.md and leave the code unchanged.
+**Fix the real problem.** A workaround avoids fixing the actual cause. Narrow guards on symptoms indicate wrong core logic. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both in TODO.md and leave the code unchanged. Emit-level casts and type widenings that exist only to satisfy the type checker without improving inference are workarounds — they paper over the gap instead of closing it.
 
 **Conversation is not memory.** Write behavior changes to CLAUDE.md or a memory file immediately. A statement made only in conversation evaporates at session end. Any correction → update CLAUDE.md now.
 

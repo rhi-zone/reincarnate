@@ -2165,6 +2165,36 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
   multi-level struct field inference or explicit per-variable schema declarations to
   fully eliminate.  Cannot use `Record<string, any>` (violates Law 4).
 
+### SugarCube Bare Identifier Call Resolution
+
+- [ ] **Bare identifier calls go through Engine.resolve instead of direct dispatch** — In
+  SugarCube scripts, any bare function call (`foo(args)`) is translated as
+  `Engine.resolve("foo")(args)` via `CallIndirect`.  This is wrong in two cases:
+
+  1. **SugarCube stdlib** (`visited`, `random`, `either`, `tags`, etc.) — These should be
+     translated at parse time to typed `SystemCall`s directly.  The translator already has
+     all the information it needs; it just doesn't specialize on known identifier callees.
+
+  2. **Compiled game-author functions** (from `:: JavaScript` passages, `<<widget>>`
+     definitions) — These are IR functions with inferred signatures.  At link time (or in a
+     transform pass), any `SystemCall("SugarCube.Engine", "resolve", [const_string(name)])`
+     whose result feeds a `CallIndirect` should be replaced with `Op::Call(func_id, args)`
+     when `name` resolves to a known IR function.
+
+  **Current workaround**: `LoweringConfig::cast_unknown_indirect_callee` wraps the
+  `Engine.resolve` result in a function-type cast at emit time.  This suppresses TS2571 but
+  loses all argument and return type information — exactly the kind of emit-level cast that
+  masks a real inference gap.
+
+  **Correct fix order**:
+  - Phase A: recognize stdlib identifiers in `lower_oxc_expr` → `Identifier` arm and emit
+    typed `SystemCall`s (no IR changes needed).
+  - Phase B: add a link/transform pass that resolves `Engine.resolve(name) → CallIndirect`
+    to `Op::Call` for all names present in the module's function table.
+  - Phase C: remove `cast_unknown_indirect_callee` once Phase A+B cover all cases in DoL/TRC;
+    remaining genuine unknowns (`globalThis` functions not in IR) are the only legitimate
+    remaining use of Engine.resolve.
+
 ### SugarCube Type Emission Bugs (DoL)
 
 - **`never[]` errors in DoL (game author errors)** — `[][_namecontroller] = x` (writing
