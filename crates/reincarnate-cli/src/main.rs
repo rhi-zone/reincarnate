@@ -146,12 +146,15 @@ enum Command {
         #[arg(long, default_value = "3")]
         examples: i32,
         /// Only show diagnostics with this error code (e.g. TS2345); case-insensitive.
+        /// Comma-separated list accepted (e.g. TS2571,TS2538).
         #[arg(long = "filter-code")]
         filter_code: Option<String>,
         /// Only show diagnostics where the file path contains this substring.
+        /// Comma-separated list accepted (matches any).
         #[arg(long = "filter-file")]
         filter_file: Option<String>,
         /// Only show diagnostics where the message contains this substring; case-insensitive.
+        /// Comma-separated list accepted (matches any).
         #[arg(long = "filter-message")]
         filter_message: Option<String>,
     },
@@ -898,9 +901,19 @@ fn run_checks(
     let save_baseline = cfg.save_baseline;
     let baseline = cfg.baseline;
     let examples = cfg.examples;
-    let filter_code = cfg.filter_code.map(|s| s.to_ascii_lowercase());
-    let filter_file = cfg.filter_file;
-    let filter_message = cfg.filter_message.map(|s| s.to_ascii_lowercase());
+    let filter_code: Option<Vec<String>> = cfg.filter_code.map(|s| {
+        s.split(',')
+            .map(|c| c.trim().to_ascii_lowercase())
+            .collect()
+    });
+    let filter_file: Option<Vec<&str>> = cfg
+        .filter_file
+        .map(|s| s.split(',').map(|f| f.trim()).collect());
+    let filter_message: Option<Vec<String>> = cfg.filter_message.map(|s| {
+        s.split(',')
+            .map(|m| m.trim().to_ascii_lowercase())
+            .collect()
+    });
     let has_filters = filter_code.is_some() || filter_file.is_some() || filter_message.is_some();
     let mut all_outputs: Vec<CheckerOutput> = Vec::new();
     let mut has_errors = false;
@@ -1003,18 +1016,20 @@ fn run_checks(
 
     // Helper: does a diagnostic match all active filters?
     let matches_filters = |d: &Diagnostic| -> bool {
-        if let Some(fc) = &filter_code {
-            if d.code.to_string().to_ascii_lowercase() != *fc {
+        if let Some(codes) = &filter_code {
+            let code = d.code.to_string().to_ascii_lowercase();
+            if !codes.contains(&code) {
                 return false;
             }
         }
-        if let Some(ff) = filter_file {
-            if !d.file.contains(ff) {
+        if let Some(files) = &filter_file {
+            if !files.iter().any(|ff| d.file.contains(ff)) {
                 return false;
             }
         }
-        if let Some(fm) = &filter_message {
-            if !d.message.to_ascii_lowercase().contains(fm.as_str()) {
+        if let Some(messages) = &filter_message {
+            let msg = d.message.to_ascii_lowercase();
+            if !messages.iter().any(|fm| msg.contains(fm.as_str())) {
                 return false;
             }
         }
@@ -1075,7 +1090,7 @@ fn run_checks(
                 if let Some(fc) = cfg.filter_code {
                     filter_desc.push(format!("--filter-code {fc}"));
                 }
-                if let Some(ff) = filter_file {
+                if let Some(ff) = cfg.filter_file {
                     filter_desc.push(format!("--filter-file {ff}"));
                 }
                 if let Some(fm) = cfg.filter_message {
@@ -1093,9 +1108,10 @@ fn run_checks(
                 }
 
                 // Determine whether to show all or apply --examples limit.
-                // When --filter-code is the only active filter (one code), default to showing all.
-                let single_code_filter =
-                    filter_code.is_some() && filter_file.is_none() && filter_message.is_none();
+                // When --filter-code is the only active filter (single code), default to showing all.
+                let single_code_filter = matches!(&filter_code, Some(codes) if codes.len() == 1)
+                    && filter_file.is_none()
+                    && filter_message.is_none();
                 let limit: Option<usize> = if examples == 0 {
                     Some(0) // counts only — but there's no "by code" table here, so just skip bodies
                 } else if examples < 0 || single_code_filter {
