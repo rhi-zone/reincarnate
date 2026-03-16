@@ -15,7 +15,7 @@ use crate::ir::ast::{BinOp, Expr, Stmt, UnaryOp};
 use crate::ir::block::BlockId;
 use crate::ir::func::{Function, MethodKind};
 use crate::ir::inst::{CastKind, CmpKind, InstId, Op};
-use crate::ir::ty::Type;
+use crate::ir::ty::{FunctionSig, Type};
 use crate::ir::value::{Constant, ValueId};
 use crate::pipeline::LoweringConfig;
 use crate::transforms::util::value_operands;
@@ -706,10 +706,37 @@ impl<'a> EmitCtx<'a> {
                 func: fname.clone(),
                 args: args.iter().map(|a| self.build_val(*a)).collect(),
             },
-            Op::CallIndirect { callee, args } => Expr::CallIndirect {
-                callee: Box::new(self.build_val(*callee)),
-                args: args.iter().map(|a| self.build_val(*a)).collect(),
-            },
+            Op::CallIndirect { callee, args } => {
+                let callee_ty = self.func.value_types[*callee].clone();
+                let callee_expr = self.build_val(*callee);
+                // When `cast_unknown_indirect_callee` is enabled and the callee is
+                // `unknown` (Type::Dynamic), calling it directly causes TS2571.
+                // Cast to a typed function with matching arity so the call is valid.
+                // Params and return type remain `unknown`; downstream uses of the
+                // return value that need a concrete type require their own cast.
+                //
+                // Not enabled for Flash/GML: those backends have scope-resolution
+                // rewrites (e.g. findPropStrict → bare name) that run after core emit
+                // and cannot see through a cast wrapper.
+                let callee_expr =
+                    if self.config.cast_unknown_indirect_callee && callee_ty == Type::Dynamic {
+                        Expr::Cast {
+                            expr: Box::new(callee_expr),
+                            ty: Type::Function(Box::new(FunctionSig {
+                                params: vec![Type::Dynamic; args.len()],
+                                return_ty: Type::Dynamic,
+                                ..Default::default()
+                            })),
+                            kind: CastKind::NullableCoerce,
+                        }
+                    } else {
+                        callee_expr
+                    };
+                Expr::CallIndirect {
+                    callee: Box::new(callee_expr),
+                    args: args.iter().map(|a| self.build_val(*a)).collect(),
+                }
+            }
             Op::SystemCall {
                 system,
                 method,

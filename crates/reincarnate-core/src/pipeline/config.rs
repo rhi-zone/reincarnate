@@ -257,6 +257,17 @@ pub struct LoweringConfig {
     /// their struct type when accessed via a bare identifier expression, while
     /// built-in global lookups like `Engine.resolve("Date")` are unaffected.
     pub cast_struct_syscall_results_for: Vec<(String, String)>,
+
+    /// When true, any `CallIndirect` whose callee has `Type::Dynamic` (i.e.
+    /// would be typed `unknown` in TypeScript) is wrapped in a function-type
+    /// cast before emission.  This eliminates TS2571 "Object is of type
+    /// 'unknown'" errors at indirect call sites.
+    ///
+    /// Disabled for Flash/GML because those backends use scope-resolution
+    /// rewrites (e.g. `findPropStrict` → bare name) that run *after* core
+    /// emit and cannot see through a cast wrapper.  SugarCube does not have
+    /// such rewrites, so it is safe to enable there.
+    pub cast_unknown_indirect_callee: bool,
 }
 
 impl Default for LoweringConfig {
@@ -281,6 +292,7 @@ impl LoweringConfig {
             coerce_index_types: false,
             cast_narrowed_syscall_results_for: vec![],
             cast_struct_syscall_results_for: vec![],
+            cast_unknown_indirect_callee: false,
         }
     }
 
@@ -298,6 +310,7 @@ impl LoweringConfig {
             coerce_index_types: false,
             cast_narrowed_syscall_results_for: vec![],
             cast_struct_syscall_results_for: vec![],
+            cast_unknown_indirect_callee: false,
         }
     }
 }

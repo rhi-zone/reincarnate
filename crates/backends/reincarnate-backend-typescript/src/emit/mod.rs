@@ -86,7 +86,8 @@ fn lowering_config_for_engine(
     let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
     let needs_twine = engine == EngineKind::Twine
         && (config.output_node_system.is_none()
-            || config.cast_narrowed_syscall_results_for.is_empty());
+            || config.cast_narrowed_syscall_results_for.is_empty()
+            || !config.cast_unknown_indirect_callee);
     if needs_flash || needs_gml || needs_twine {
         let mut c = config.clone();
         if needs_flash {
@@ -114,6 +115,9 @@ fn lowering_config_for_engine(
             // builtins (DateConstructor, etc.) are not shadowed by a wrong type.
             c.cast_struct_syscall_results_for =
                 vec![("SugarCube.Engine".to_string(), "resolve".to_string())];
+            // Cast Dynamic-typed indirect callees to a function type so that
+            // Engine.resolve("fn")(...) doesn't produce TS2571.
+            c.cast_unknown_indirect_callee = true;
         }
         std::borrow::Cow::Owned(c)
     } else {
