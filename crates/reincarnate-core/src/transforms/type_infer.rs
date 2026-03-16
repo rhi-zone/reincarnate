@@ -826,6 +826,12 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
     // struct_schemas accumulates field type information across all functions.
     // Outer key: variable name.  Inner key: field name.  Value: inferred type.
     let mut struct_schemas: HashMap<String, HashMap<String, Type>> = HashMap::new();
+    // write_site_fields: (struct_key, field_name) pairs confirmed to exist via
+    // SetField write-site inference.  These fields are included in the emitted
+    // struct interface even when their type is Dynamic (unknown → emits as `any`).
+    // Fields from GetField read-site inference are excluded when Dynamic because
+    // we can't distinguish "the field has type any" from "we just haven't typed it".
+    let mut write_site_fields: HashSet<(String, String)> = HashSet::new();
 
     // constructor_names: names whose struct-only resolve results are used as
     // the callee of `SugarCube.Engine.new`.  These are JS built-in constructors
@@ -1144,6 +1150,14 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                                     new_entries.push((result, root.clone(), path.clone()));
                                 }
                             }
+                            // Provenance propagates through Cast so that SetField
+                            // write-site inference can find fields written on cast
+                            // values (e.g. `(Engine.resolve("Foo") as _SC_Foo).bar = v`).
+                            Op::Cast(src, _, _) => {
+                                if let Some((root, path)) = provenance.get(src) {
+                                    new_entries.push((result, root.clone(), path.clone()));
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -1261,28 +1275,37 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                     {
                         // The object may be the root (e.g. _modeloptions itself) or a
                         // nested field — check both provenance roots and non-root entries.
+                        //
+                        // Note: we add the field even when val_ty is Dynamic so that
+                        // fields assigned a Dynamic value (e.g. `Engine.new(...)`) are
+                        // still declared on the struct.  The field EXISTS — omitting it
+                        // causes TS2339 "Property does not exist".  It emits as `any`.
+                        // Concrete types are preferred via `or_insert` (first writer wins).
                         if let Some((root, path)) = provenance.get(object) {
-                            let val_ty = &func.value_types[*value];
-                            if *val_ty != Type::Dynamic {
-                                // Build the schema key at the current path depth.
-                                let (key, schema_field) = if path.is_empty() {
-                                    // Root: e.g. provenance["_modeloptions"] → key="_modeloptions", field=field
-                                    (root.clone(), field.clone())
-                                } else {
-                                    // Nested path: delegate to schema_key_field with path+field appended.
-                                    let mut full_path = path.clone();
-                                    full_path.push(field.clone());
-                                    schema_key_field(root, &full_path)
-                                };
-                                let entry = struct_schemas
-                                    .entry(key)
-                                    .or_default()
-                                    .entry(schema_field)
-                                    .or_insert(Type::Dynamic);
-                                if *entry == Type::Dynamic {
-                                    *entry = val_ty.clone();
-                                }
+                            let val_ty = func.value_types[*value].clone();
+                            // Build the schema key at the current path depth.
+                            let (key, schema_field) = if path.is_empty() {
+                                // Root: e.g. provenance["_modeloptions"] → key="_modeloptions", field=field
+                                (root.clone(), field.clone())
+                            } else {
+                                // Nested path: delegate to schema_key_field with path+field appended.
+                                let mut full_path = path.clone();
+                                full_path.push(field.clone());
+                                schema_key_field(root, &full_path)
+                            };
+                            let entry = struct_schemas
+                                .entry(key.clone())
+                                .or_default()
+                                .entry(schema_field.clone())
+                                .or_insert(Type::Dynamic);
+                            // Prefer concrete types: only update if we have something
+                            // better than what's already recorded.
+                            if *entry == Type::Dynamic && val_ty != Type::Dynamic {
+                                *entry = val_ty;
                             }
+                            // Record that this field was proven to exist (even if type
+                            // remains Dynamic — it will be emitted as `any`).
+                            write_site_fields.insert((key, schema_field));
                         }
                     }
                 }
@@ -1314,7 +1337,12 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
     for (var_name, field_types) in &struct_schemas {
         let mut fields: Vec<FieldDef> = field_types
             .iter()
-            .filter(|(_, ty)| **ty != Type::Dynamic)
+            .filter(|(name, ty)| {
+                // Include field if it has a concrete type, OR if it was proven to
+                // exist by a SetField write-site (field IS real; type is just unknown).
+                **ty != Type::Dynamic
+                    || write_site_fields.contains(&(var_name.clone(), (*name).clone()))
+            })
             .map(|(name, ty)| FieldDef {
                 name: name.clone(),
                 ty: ty.clone(),

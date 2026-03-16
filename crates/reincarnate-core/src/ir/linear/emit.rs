@@ -742,6 +742,29 @@ impl<'a> EmitCtx<'a> {
                 method,
                 args,
             } => {
+                // Cast Dynamic constructor callee for SugarCube.Engine.new so that
+                // `new (Engine.resolve("DateTime"))()` doesn't produce TS2571.
+                // Same flag as cast_unknown_indirect_callee — both are Engine.resolve
+                // patterns that need a cast when the callee is untyped.
+                if system == "SugarCube.Engine"
+                    && method == "new"
+                    && self.config.cast_unknown_indirect_callee
+                    && !args.is_empty()
+                    && self.func.value_types.get(args[0]) == Some(&Type::Dynamic)
+                {
+                    let callee_cast = Expr::Cast {
+                        expr: Box::new(self.build_val(args[0])),
+                        ty: Type::Dynamic,
+                        kind: CastKind::NullableCoerce,
+                    };
+                    let rest: Vec<_> = args[1..].iter().map(|a| self.build_val(*a)).collect();
+                    return Some(Expr::SystemCall {
+                        system: system.clone(),
+                        method: method.clone(),
+                        args: std::iter::once(callee_cast).chain(rest).collect(),
+                    });
+                }
+
                 // Dictionary-specific rewrites for Flash.Object operations.
                 if system == "Flash.Object" && args.len() >= 2 && self.is_dictionary(args[0]) {
                     match method.as_str() {

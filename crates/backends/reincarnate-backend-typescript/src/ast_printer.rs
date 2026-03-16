@@ -465,8 +465,16 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // the source expression may return `unknown` (e.g. State.get),
                         // and TypeScript requires an explicit `as T` to assign
                         // `unknown → T`. A type annotation alone causes TS2322.
+                        //
+                        // SystemCall inits must also NOT be stripped: runtime functions
+                        // like `State.get(name)` return `unknown` in TypeScript regardless
+                        // of what type inference narrowed the IR value to.  Stripping
+                        // `as any[]` or `as string` leaves `unknown` assigned to a typed
+                        // variable → TS2322.
+                        let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_) | Type::Enum(_));
+                            && !matches!(ty, Type::Struct(_) | Type::Enum(_))
+                            && !is_syscall_init;
                         if cast_ty == ty && is_ts_assertion {
                             let _ = writeln!(
                                 out,
@@ -500,8 +508,11 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // the (Some(ty), Some(init)) branch above.  Coerce (struct/
                         // enum TS assertions) must keep the `as T` in the expression
                         // even when there is no existing type annotation.
+                        // SystemCall inits must also NOT be stripped (see above comment).
+                        let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_) | Type::Enum(_));
+                            && !matches!(ty, Type::Struct(_) | Type::Enum(_))
+                            && !is_syscall_init;
                         if is_ts_assertion {
                             // Strip TS assertion, use type annotation + inner expr.
                             let _ = writeln!(
