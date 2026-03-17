@@ -2,6 +2,7 @@ pub mod call_site_flow;
 pub mod call_site_widen;
 pub mod cfg_simplify;
 pub mod const_fold;
+pub mod constraint_collect;
 pub mod constraint_solve;
 pub mod constraint_solve2;
 pub mod coroutine_lower;
