@@ -1601,6 +1601,33 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
         }
     }
 
+    // Emit empty placeholder interfaces for _SC_ struct types that are
+    // referenced as field types in other structs but have no StructDef of
+    // their own (because their schema was empty — no write/read-site evidence
+    // for any fields).  Without this, TypeScript reports TS2304
+    // "Cannot find name '_SC_xxx'" wherever the type appears.
+    {
+        let defined: HashSet<&str> = inferred_structs.iter().map(|s| s.name.as_str()).collect();
+        let mut to_add: HashSet<String> = HashSet::new();
+        for s in &inferred_structs {
+            for f in &s.fields {
+                if let Type::Struct(ref name) = f.ty {
+                    if name.starts_with("_SC_") && !defined.contains(name.as_str()) {
+                        to_add.insert(name.clone());
+                    }
+                }
+            }
+        }
+        for name in to_add {
+            inferred_structs.push(StructDef {
+                name,
+                namespace: vec![],
+                fields: vec![],
+                visibility: Visibility::Public,
+            });
+        }
+    }
+
     let type_map = global_stores
         .into_iter()
         .filter_map(|(name, ty)| ty.map(|t| (name, strip_opaque_array_from_union(t))))
