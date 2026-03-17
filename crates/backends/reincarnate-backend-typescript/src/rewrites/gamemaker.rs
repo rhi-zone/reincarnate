@@ -689,10 +689,6 @@ fn rewrite_expr(
         if let JsExpr::Var(name) = callee.as_ref() {
             match name.as_str() {
                 // @@NewGMLArray@@(v0, v1, ...) → [v0, v1, ...]
-                // Empty case → new Array(): TypeScript infers `[]` as `never[]`
-                // in strict mode, so `[].push(item)` fails (TS2345). `new Array()`
-                // is typed as `any[]` via the `new(arrayLength?: number): any[]`
-                // constructor overload — no cast needed.
                 "@@NewGMLArray@@" => {
                     for arg in args.iter_mut() {
                         rewrite_expr(
@@ -704,15 +700,7 @@ fn rewrite_expr(
                             name_map,
                         );
                     }
-                    let items = std::mem::take(args);
-                    *expr = if items.is_empty() {
-                        JsExpr::New {
-                            callee: Box::new(JsExpr::Var("Array".into())),
-                            args: vec![],
-                        }
-                    } else {
-                        JsExpr::ArrayInit(items)
-                    };
+                    *expr = JsExpr::ArrayInit(std::mem::take(args));
                     return;
                 }
                 // @@NewGMLObject@@() → new GMLObject()
@@ -770,6 +758,9 @@ fn rewrite_expr(
                     return;
                 }
                 // array_push(arr, v0, v1, ...) → arr.push(v0, v1, ...)
+                // When arr is an ArrayInit literal (e.g. from inlined @@NewGMLArray@@),
+                // fold the items in directly: array_push([], x) → [x].
+                // This avoids `[].push(x)` where TypeScript infers [] as never[].
                 "array_push" if !args.is_empty() => {
                     for arg in args.iter_mut() {
                         rewrite_expr(
@@ -783,13 +774,18 @@ fn rewrite_expr(
                     }
                     let mut args = std::mem::take(args);
                     let arr = args.remove(0);
-                    *expr = JsExpr::Call {
-                        callee: Box::new(JsExpr::Field {
-                            object: Box::new(arr),
-                            field: "push".into(),
-                        }),
-                        args,
-                    };
+                    if let JsExpr::ArrayInit(mut existing) = arr {
+                        existing.extend(args);
+                        *expr = JsExpr::ArrayInit(existing);
+                    } else {
+                        *expr = JsExpr::Call {
+                            callee: Box::new(JsExpr::Field {
+                                object: Box::new(arr),
+                                field: "push".into(),
+                            }),
+                            args,
+                        };
+                    }
                     return;
                 }
                 // show_debug_message(msg) → console.log(msg)
