@@ -71,6 +71,38 @@ which is structurally identical to recovering types from untyped bytecode.
    declared phases. Frontend-specific constraint generators (e.g. `GlobalStore`/
    `ResolveGlobalType` rules) plug in at collection time, not via extra pipeline passes.
 
+### Pass Ordering
+
+The structural passes (`Mem2Reg`, `CoroutineLowering`, `CfgSimplify`, `DCE`,
+`ConstantFolding`) are individually fine, but their ordering contracts are implicit:
+
+- "Mem2Reg must run after CoroutineLowering" — CoroutineLowering introduces
+  Alloc/Store/Load chains that Mem2Reg promotes.
+- "ConstantFolding runs twice" — because Mem2Reg creates new folding opportunities;
+  the second run exists only because nothing declares the invalidation.
+- "extra_passes run last and see stale types" — GmlLogicalOpNormalize modifies block
+  args without updating `value_types`, causing a known bug with no enforcement.
+
+None of this is declared or validated anywhere — it's implicit knowledge in CLAUDE.md.
+
+**Solution:** extend `Transform` with dependency declarations:
+
+```rust
+fn requires(&self) -> &[&str] { &[] }    // prerequisite pass names
+fn invalidates(&self) -> &[&str] { &[] } // what must re-run after this pass
+```
+
+The pipeline validates ordering at startup (not derived dynamically — that's LLVM-level
+complexity). If a pass's `requires` aren't satisfied by the declared ordering, it's a
+startup error. If a pass's `invalidates` includes something that runs before it without
+a subsequent re-run, it's a startup error. `ConstantFolding` would declare
+`invalidates: []` but Mem2Reg would declare `invalidates: ["constant-folding"]`,
+causing the framework to schedule a second ConstantFolding run automatically rather
+than requiring it to be hardcoded.
+
+This is the lightweight version of LLVM's analysis manager — no dynamic invalidation
+tracking, just declaration-based validation and ordering derivation.
+
 ### What to Preserve
 
 - The `TransformPipeline` / `Transform` trait structure is fine. Structural passes
