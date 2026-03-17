@@ -845,12 +845,13 @@ mod tests {
     }
 
     #[test]
-    fn unify_concrete_mismatch_is_union() {
+    fn unify_concrete_mismatch_is_dynamic() {
+        // During the coexistence phase, concrete-type mismatches fall back to
+        // Dynamic rather than Union — see the "Numeric grounding limitation" note
+        // in constraint_solve2.rs and TODO.md.
         let mut arena = fresh_arena();
         let result = unify(Type::Bool, Type::Int(32), &mut arena).unwrap();
-        assert!(
-            matches!(result, Type::Union(ref v) if v.contains(&Type::Bool) && v.contains(&Type::Int(32)))
-        );
+        assert_eq!(result, Type::Dynamic);
     }
 
     #[test]

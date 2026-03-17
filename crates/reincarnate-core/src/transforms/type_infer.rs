@@ -741,6 +741,45 @@ fn infer_field_use_type(
 }
 
 /// Cross-function scan: collect value types from all global-store `SystemCall`
+/// Remove `Array(Dynamic)` or `Array(Unknown)` members from a union when the union
+/// also contains at least one concrete non-array type.
+///
+/// Motivation: GlobalStore write-site inference sometimes adds a spurious
+/// `Array(Dynamic)` to a variable's type when one passage wraps the variable in an
+/// array (e.g. `<<set _x to [_x]>>`).  If the variable is genuinely a string,
+/// struct, etc. at all other write sites, the `Array(Dynamic)` member is misleading
+/// and causes TS2367 ("any[] and string have no overlap") and TS2339 ("property
+/// does not exist on type 'any[]'") errors.
+///
+/// This filter is conservative: it only removes `Array(Dynamic|Unknown)` — typed
+/// arrays (`Array(String)`, `Array(Int)`, etc.) are never removed.  Pure-array
+/// variables (no non-array write sites) are unaffected.
+fn strip_opaque_array_from_union(ty: Type) -> Type {
+    let Type::Union(mut variants) = ty else {
+        return ty;
+    };
+    // Does the union contain at least one concrete, non-array, non-opaque type?
+    let has_concrete_non_array = variants.iter().any(|t| {
+        !matches!(
+            t,
+            Type::Array(_) | Type::Dynamic | Type::Unknown | Type::Var(_)
+        )
+    });
+    if !has_concrete_non_array {
+        return Type::Union(variants);
+    }
+    // Strip Array(Dynamic) and Array(Unknown) — these are "opaque array" slots.
+    variants.retain(
+        |v| !matches!(v, Type::Array(elem) if matches!(**elem, Type::Dynamic | Type::Unknown)),
+    );
+    match variants.len() {
+        0 => Type::Dynamic,
+        1 => variants.into_iter().next().unwrap(),
+        _ => Type::Union(variants),
+    }
+}
+
+/// Scan all GlobalStore write-site
 /// instructions (identified via `SystemCallTypeRule::GlobalStore` rules registered
 /// by frontends).  Returns a map from global name → inferred type, plus any
 /// struct definitions inferred from use-site field access patterns (Phase 3).
@@ -1405,7 +1444,7 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
 
     let type_map = global_stores
         .into_iter()
-        .filter_map(|(name, ty)| ty.map(|t| (name, t)))
+        .filter_map(|(name, ty)| ty.map(|t| (name, strip_opaque_array_from_union(t))))
         .collect();
     (type_map, inferred_structs)
 }
