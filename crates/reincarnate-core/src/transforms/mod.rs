@@ -3,6 +3,7 @@ pub mod call_site_widen;
 pub mod cfg_simplify;
 pub mod const_fold;
 pub mod constraint_solve;
+pub mod constraint_solve2;
 pub mod coroutine_lower;
 pub mod dce;
 pub mod int_to_bool;
