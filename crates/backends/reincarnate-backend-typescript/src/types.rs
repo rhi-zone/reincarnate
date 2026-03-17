@@ -83,7 +83,8 @@ pub fn ts_type(ty: &Type) -> String {
             }
             parts.join(" | ")
         }
-        Type::Var(_) | Type::Dynamic => "any".into(),
+        Type::Var(_) => "unknown".into(),
+        Type::Dynamic => "any".into(),
         Type::Unknown => "unknown".into(),
     }
 }
