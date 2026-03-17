@@ -156,13 +156,33 @@ the numeric grounding is deferred to the full constraint solver redesign.
 
 ### Scope and Approach
 
-- Prototype constraint collection + solver for a single engine (SugarCube or GML) to
-  validate the design before committing to a full rewrite.
-- The existing heuristic passes can coexist during the transition; replace them
-  incrementally once the solver produces equivalent or better results.
+Constraint collection is engine-agnostic — it maps to IR ops, which live in
+`reincarnate-core`. No engine-specific prototype is needed. The IR already has the full
+semantic structure; the Crescent mapping is 1:1 with `Op` variants.
+
+**Implementation sequence:**
+
+1. **`ConstraintCollect` pass (core)** — single IR walk, emits typed constraints from
+   every `Op`. Each variant is a generator:
+   - `Op::Add/Sub/Mul/Div` → `C_ARITH(a)`, `C_ARITH(b)`
+   - `Op::GetField/SetField` → `C_HAS_FIELD(object, field, result)`
+   - `Op::GetIndex/SetIndex` → `C_INDEX(collection, index, result)`
+   - `Op::Call/MethodCall` → `C_CALLABLE(func, args, result)`
+   - `Op::Copy`, block args, phi merges → `C_UNIFY(a, b)`
+   - Engine-specific rules (GlobalStore, ClassRef) plug in via `SystemCallTypeRule`,
+     same interface as today.
+
+2. **`ConstraintSolve` pass (core, replacement)** — processes constraint set via
+   HM-style unification. Activates `Type::Var` for unresolved variables. Produces
+   `Type::Unknown` for variables that remain unbound after solving (not `Dynamic`).
+
+3. **Transition** — `ConstraintCollect` + new solver coexist with the old heuristic
+   passes initially. Once solver results match or exceed heuristic quality on all
+   test games, the four old passes are removed.
+
 - Prior art: crescent `lib/type/static/` (constraint.lua, solve.lua, unify.lua).
-- Immediate prerequisite: fix `emit_flash_traits.rs:211` (`any` → `unknown`) and
-  add `Type::Unknown` → `"unknown"` mapping in `types.rs:86` (separate from `Dynamic`).
+- Prerequisites done: `emit_flash_traits.rs:211` fixed; `ConstraintSolve` already
+  treats `Unknown` as an inference target; `GetIndex`/`SetIndex` constraints added.
 
 ---
 

@@ -12,11 +12,37 @@ use crate::pipeline::{Transform, TransformResult};
 /// A type variable index into the union-find.
 type TVar = u32;
 
-/// Error returned when two concrete types conflict during unification.
-#[derive(Debug)]
-struct TypeConflict {
-    _a: Type,
-    _b: Type,
+/// Flatten two concrete types into a union, absorbing `Dynamic`.
+fn make_union_type(a: Type, b: Type) -> Type {
+    // Dynamic absorbs everything.
+    if matches!(a, Type::Dynamic) || matches!(b, Type::Dynamic) {
+        return Type::Dynamic;
+    }
+    // Flatten existing unions.
+    let mut members: Vec<Type> = Vec::new();
+    match a {
+        Type::Union(vs) => members.extend(vs),
+        t => members.push(t),
+    }
+    match b {
+        Type::Union(vs) => {
+            for v in vs {
+                if !members.contains(&v) {
+                    members.push(v);
+                }
+            }
+        }
+        t => {
+            if !members.contains(&t) {
+                members.push(t);
+            }
+        }
+    }
+    if members.len() == 1 {
+        members.remove(0)
+    } else {
+        Type::Union(members)
+    }
 }
 
 /// Union-find with path compression, union-by-rank, and optional type binding.
@@ -71,12 +97,12 @@ impl UnionFind {
     }
 
     /// Unify two type variables. If both are bound to concrete types that
-    /// differ, returns `Err(TypeConflict)`.
-    fn unify(&mut self, a: TVar, b: TVar) -> Result<(), TypeConflict> {
+    /// differ, produces a `Type::Union` instead of failing.
+    fn unify(&mut self, a: TVar, b: TVar) {
         let ra = self.find(a);
         let rb = self.find(b);
         if ra == rb {
-            return Ok(());
+            return;
         }
 
         // Merge resolved types.
@@ -88,10 +114,8 @@ impl UnionFind {
                 if ta == tb {
                     Some(ta)
                 } else {
-                    // Conflict — restore both and return error.
-                    self.resolved[ra as usize] = Some(ta.clone());
-                    self.resolved[rb as usize] = Some(tb.clone());
-                    return Err(TypeConflict { _a: ta, _b: tb });
+                    // Conflict — produce a union instead of an error.
+                    Some(make_union_type(ta, tb))
                 }
             }
             (Some(t), None) | (None, Some(t)) => Some(t),
@@ -109,7 +133,6 @@ impl UnionFind {
                 self.rank[ra as usize] += 1;
             }
         }
-        Ok(())
     }
 
     /// Resolve a type variable to its concrete type, if bound.
@@ -123,12 +146,28 @@ impl UnionFind {
 // FunctionSolver
 // ---------------------------------------------------------------------------
 
+/// Pending constraint: the result of a `GetField` where the object was `Dynamic`/`Unknown`.
+struct HasFieldConstraint {
+    object_var: TVar,
+    field: String,
+    result_var: TVar,
+}
+
+/// Pending constraint: a `CallIndirect` where the callee type was `Dynamic`/`Unknown`.
+struct CallableConstraint {
+    callee_var: TVar,
+    arg_vars: Vec<TVar>,
+    result_var: Option<TVar>,
+}
+
 /// Per-function solver state: maps IR values to type variables and collects
 /// equality constraints between them.
 struct FunctionSolver {
     uf: UnionFind,
     value_vars: HashMap<ValueId, TVar>,
     constraints: Vec<(TVar, TVar)>,
+    has_field: Vec<HasFieldConstraint>,
+    callable: Vec<CallableConstraint>,
 }
 
 impl FunctionSolver {
@@ -152,6 +191,8 @@ impl FunctionSolver {
             uf,
             value_vars,
             constraints: Vec::new(),
+            has_field: Vec::new(),
+            callable: Vec::new(),
         }
     }
 
@@ -311,6 +352,20 @@ impl ConstraintModuleContext {
             class_hierarchy,
             unique_method_sigs,
         }
+    }
+
+    /// Resolve the type of a field by walking the class hierarchy.
+    fn resolve_field_type(&self, struct_name: &str, field: &str) -> Option<Type> {
+        let mut current = Some(struct_name.to_string());
+        while let Some(name) = current {
+            if let Some(fields) = self.struct_fields.get(&name) {
+                if let Some(ty) = fields.get(field) {
+                    return Some(ty.clone());
+                }
+            }
+            current = self.class_hierarchy.get(&name).and_then(|p| p.clone());
+        }
+        None
     }
 
     /// Resolve a method's signature by walking the class hierarchy, falling
@@ -614,9 +669,10 @@ fn generate_constraints(
                     }
                 }
 
-                // GetField: r = field_ty (if struct type known)
-                Op::GetField { object, field } => {
-                    if let Type::Struct(name) = &func.value_types[*object] {
+                // GetField: r = field_ty (if struct type known);
+                // emit HasField pending constraint when object is Dynamic/Unknown.
+                Op::GetField { object, field } => match &func.value_types[*object] {
+                    Type::Struct(name) => {
                         if let Some(r) = result {
                             if let Some(field_ty) = ctx
                                 .struct_fields
@@ -627,7 +683,17 @@ fn generate_constraints(
                             }
                         }
                     }
-                }
+                    Type::Dynamic | Type::Unknown => {
+                        if let Some(r) = result {
+                            solver.has_field.push(HasFieldConstraint {
+                                object_var: solver.var_for(*object),
+                                field: field.clone(),
+                                result_var: solver.var_for(r),
+                            });
+                        }
+                    }
+                    _ => {}
+                },
 
                 // StructInit: r = Struct(name), field values = field types
                 Op::StructInit { name, fields } => {
@@ -692,12 +758,37 @@ fn generate_constraints(
                     constrain_index_op(solver, func, *collection, *index, &None, Some(*value));
                 }
 
+                // CallIndirect: emit Callable pending constraint when callee is Dynamic/Unknown.
+                Op::CallIndirect { callee, args } => match &func.value_types[*callee] {
+                    Type::Function(sig) => {
+                        let sig = sig.clone();
+                        for (arg, param_ty) in args.iter().zip(sig.params.iter()) {
+                            if !matches!(param_ty, Type::Dynamic | Type::Unknown) {
+                                solver.constrain_value_to_type(*arg, param_ty);
+                            }
+                        }
+                        if let Some(r) = result {
+                            if !matches!(sig.return_ty, Type::Dynamic | Type::Void | Type::Unknown)
+                            {
+                                solver.constrain_value_to_type(r, &sig.return_ty);
+                            }
+                        }
+                    }
+                    Type::Dynamic | Type::Unknown => {
+                        solver.callable.push(CallableConstraint {
+                            callee_var: solver.var_for(*callee),
+                            arg_vars: args.iter().map(|v| solver.var_for(*v)).collect(),
+                            result_var: result.map(|r| solver.var_for(r)),
+                        });
+                    }
+                    _ => {}
+                },
+
                 // No additional constraints for these:
                 Op::Const(_)
                 | Op::Load(_)
                 | Op::GlobalRef(_)
                 | Op::SystemCall { .. }
-                | Op::CallIndirect { .. }
                 | Op::Alloc(_)
                 | Op::Return(None)
                 | Op::TupleInit(_)
@@ -720,29 +811,50 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
     let mut solver = FunctionSolver::from_function(func);
     generate_constraints(&mut solver, func, ctx);
 
-    // Solve: iterate constraints and unify, tracking conflicted representatives.
-    let mut conflicted: std::collections::HashSet<TVar> = std::collections::HashSet::new();
+    // Solve: iterate equality constraints and unify.
     for (a, b) in solver.constraints.clone() {
-        if solver.uf.unify(a, b).is_err() {
-            // Mark both representatives as conflicted — any value in their
-            // equivalence class should not be refined.
-            conflicted.insert(solver.uf.find(a));
-            conflicted.insert(solver.uf.find(b));
+        solver.uf.unify(a, b);
+    }
+
+    // Process pending HasField constraints: if the object var has resolved to a
+    // Struct, look up the field type and constrain the result var.
+    let has_field = std::mem::take(&mut solver.has_field);
+    for hf in &has_field {
+        if let Some(Type::Struct(name)) = solver.uf.resolve(hf.object_var) {
+            if let Some(field_ty) = ctx.resolve_field_type(&name, &hf.field) {
+                let tmp = solver.uf.fresh_with_type(field_ty);
+                solver.uf.unify(hf.result_var, tmp);
+            }
         }
     }
 
-    // Collect updates: Dynamic or Unknown values that now have concrete types
-    // and whose representative is not conflicted.
+    // Process pending Callable constraints: if the callee var has resolved to a
+    // Function type, constrain arg vars and result var from the signature.
+    let callable = std::mem::take(&mut solver.callable);
+    for cc in &callable {
+        if let Some(Type::Function(sig)) = solver.uf.resolve(cc.callee_var) {
+            for (arg_var, param_ty) in cc.arg_vars.iter().zip(sig.params.iter()) {
+                if !matches!(param_ty, Type::Dynamic | Type::Unknown) {
+                    let tmp = solver.uf.fresh_with_type(param_ty.clone());
+                    solver.uf.unify(*arg_var, tmp);
+                }
+            }
+            if let Some(result_var) = cc.result_var {
+                if !matches!(sig.return_ty, Type::Dynamic | Type::Void | Type::Unknown) {
+                    let tmp = solver.uf.fresh_with_type(sig.return_ty.clone());
+                    solver.uf.unify(result_var, tmp);
+                }
+            }
+        }
+    }
+
+    // Collect updates: Dynamic or Unknown values that now have concrete types.
     let mut changed = false;
     let updates: Vec<(ValueId, Type)> = solver
         .value_vars
         .iter()
         .filter_map(|(vid, &var)| {
             if !matches!(func.value_types[*vid], Type::Dynamic | Type::Unknown) {
-                return None;
-            }
-            let rep = solver.uf.find(var);
-            if conflicted.contains(&rep) {
                 return None;
             }
             let ty = solver.uf.resolve(var)?;
@@ -879,7 +991,7 @@ mod tests {
         let mut uf = UnionFind::new();
         let a = uf.fresh_with_type(Type::Int(32));
         let b = uf.fresh();
-        assert!(uf.unify(a, b).is_ok());
+        uf.unify(a, b);
         assert_eq!(uf.resolve(b), Some(Type::Int(32)));
     }
 
@@ -890,22 +1002,30 @@ mod tests {
         let b = uf.fresh();
         let c = uf.fresh();
         let d = uf.fresh();
-        uf.unify(a, b).unwrap();
-        uf.unify(b, c).unwrap();
-        uf.unify(c, d).unwrap();
+        uf.unify(a, b);
+        uf.unify(b, c);
+        uf.unify(c, d);
         // After find, d should resolve through compressed path.
         assert_eq!(uf.resolve(d), Some(Type::Bool));
     }
 
     #[test]
-    fn union_find_conflict() {
+    fn union_find_conflict_produces_union() {
+        // Unifying two vars with different concrete types now produces a Union.
         let mut uf = UnionFind::new();
         let a = uf.fresh_with_type(Type::Int(32));
         let b = uf.fresh_with_type(Type::String);
-        assert!(uf.unify(a, b).is_err());
-        // Both keep their original types.
-        assert_eq!(uf.resolve(a), Some(Type::Int(32)));
-        assert_eq!(uf.resolve(b), Some(Type::String));
+        uf.unify(a, b);
+        // The representative should now hold a union of both types.
+        let resolved = uf.resolve(a).expect("should be resolved");
+        match resolved {
+            Type::Union(members) => {
+                assert!(members.contains(&Type::Int(32)));
+                assert!(members.contains(&Type::String));
+                assert_eq!(members.len(), 2);
+            }
+            other => panic!("expected Type::Union, got {:?}", other),
+        }
     }
 
     #[test]
@@ -913,7 +1033,7 @@ mod tests {
         let mut uf = UnionFind::new();
         let a = uf.fresh_with_type(Type::Int(64));
         let b = uf.fresh_with_type(Type::Int(64));
-        assert!(uf.unify(a, b).is_ok());
+        uf.unify(a, b);
         assert_eq!(uf.resolve(a), Some(Type::Int(64)));
     }
 
@@ -1074,8 +1194,8 @@ mod tests {
     }
 
     #[test]
-    fn conflict_stays_dynamic() {
-        // Value constrained to both Int(32) (by call) and String (by return) → stays Dynamic.
+    fn conflict_produces_union() {
+        // Value constrained to both Int(32) (by call) and String (by return) → produces Union.
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
             return_ty: Type::Void,
@@ -1105,8 +1225,14 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let caller_func = &module.functions[FuncId::new(1)];
-        // Conflict — stays Dynamic.
-        assert_eq!(caller_func.value_types[p], Type::Dynamic);
+        // Conflict → Union instead of Dynamic.
+        match &caller_func.value_types[p] {
+            Type::Union(members) => {
+                assert!(members.contains(&Type::Int(32)));
+                assert!(members.contains(&Type::String));
+            }
+            other => panic!("expected Type::Union, got {:?}", other),
+        }
     }
 
     #[test]
@@ -1291,9 +1417,9 @@ mod tests {
         assert!(!result.changed);
     }
 
-    /// Conflicting constraints (Int vs String) → stays Dynamic.
+    /// Conflicting constraints (Int vs String) → produces Union.
     #[test]
-    fn conflicting_constraints_fallback() {
+    fn conflicting_constraints_produce_union() {
         let callee_int = FunctionSig {
             params: vec![Type::Int(32)],
             return_ty: Type::Void,
@@ -1320,11 +1446,15 @@ mod tests {
         let module = mb.build();
         let result = ConstraintSolve.apply(module).unwrap();
         let func = &result.module.functions[FuncId::new(1)];
-        assert_eq!(
-            func.value_types[p],
-            Type::Dynamic,
-            "conflicting constraints → Dynamic"
-        );
+        match &func.value_types[p] {
+            Type::Union(members) => {
+                assert!(
+                    members.contains(&Type::Int(32)) && members.contains(&Type::String),
+                    "conflicting constraints → Union([Int(32), String])"
+                );
+            }
+            other => panic!("expected Type::Union, got {:?}", other),
+        }
     }
 
     // ---- Adversarial tests ----
@@ -1378,6 +1508,92 @@ mod tests {
         let result = ConstraintSolve.apply(module).unwrap();
         let func = &result.module.functions[FuncId::new(0)];
         assert_eq!(func.value_types[v], Type::Int(64));
+    }
+
+    /// HasField pending constraint: object is Dynamic at GetField but another
+    /// instruction constrains it to Struct("Foo") → result should get field type.
+    #[test]
+    fn has_field_pending_resolved_via_equality() {
+        // fn test(obj: Dynamic, v: Dynamic) -> Dynamic
+        //   r = obj.x      (Dynamic object → HasField pending)
+        //   call("set_foo", [obj])  (constrains obj to Struct("Foo"))
+        //   return r
+        let callee_sig = FunctionSig {
+            params: vec![Type::Struct("Foo".to_string())],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut callee_fb = FunctionBuilder::new("set_foo", callee_sig, Visibility::Private);
+        callee_fb.ret(None);
+        let callee = callee_fb.build();
+
+        let caller_sig = FunctionSig {
+            params: vec![Type::Dynamic],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut caller_fb = FunctionBuilder::new("test", caller_sig, Visibility::Private);
+        let obj = caller_fb.param(0); // Dynamic
+        let r = caller_fb.get_field(obj, "x", Type::Dynamic);
+        caller_fb.call("set_foo", &[obj], Type::Void);
+        caller_fb.ret(Some(r));
+        let caller = caller_fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_struct(StructDef {
+            name: "Foo".into(),
+            namespace: Vec::new(),
+            fields: vec![FieldDef {
+                name: "x".into(),
+                ty: Type::Int(32),
+                default: None,
+            }],
+            visibility: Visibility::Public,
+        });
+        mb.add_function(callee);
+        mb.add_function(caller);
+        let module = mb.build();
+
+        let transform = ConstraintSolve;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(1)];
+        // obj was narrowed to Struct("Foo") by the call constraint.
+        assert_eq!(func.value_types[obj], Type::Struct("Foo".to_string()));
+        // r should have been resolved to Int(32) via the HasField pending constraint.
+        assert_eq!(func.value_types[r], Type::Int(32));
+    }
+
+    /// CallIndirect with a Dynamic callee → no constraint applied to args (no panic).
+    #[test]
+    fn call_indirect_dynamic_callee_no_constraint() {
+        // fn test(callee: Dynamic, arg: Dynamic) -> Dynamic
+        //   r = call_indirect callee(arg)
+        //   return r
+        let sig = FunctionSig {
+            params: vec![Type::Dynamic, Type::Dynamic],
+            return_ty: Type::Dynamic,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let callee = fb.param(0);
+        let arg = fb.param(1);
+        let r = fb.call_indirect(callee, &[arg], Type::Dynamic);
+        fb.ret(Some(r));
+        let func = fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let module = mb.build();
+
+        let transform = ConstraintSolve;
+        let module = transform.apply(module).unwrap().module;
+
+        let func = &module.functions[FuncId::new(0)];
+        // No constraints applied → all remain Dynamic.
+        assert_eq!(func.value_types[callee], Type::Dynamic);
+        assert_eq!(func.value_types[arg], Type::Dynamic);
+        assert_eq!(func.value_types[r], Type::Dynamic);
     }
 
     #[test]
