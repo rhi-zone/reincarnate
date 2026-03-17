@@ -1472,6 +1472,42 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
         }
     }
 
+    // Post-processing Step D: read-site field declaration for confirmed structs.
+    //
+    // When a GetField instruction accesses a field on a value whose inferred
+    // type is already a known `_SC_` struct, the field EXISTS at runtime even
+    // if no write-site (SetField / GlobalStore) was ever observed for it.  Add
+    // it as Dynamic (`any`) so the emitted TypeScript interface declares it,
+    // preventing TS2339 "Property X does not exist on type _SC_Y".
+    //
+    // Guard: only extend struct schemas that already have confirmed fields —
+    // this prevents false-positive struct creation from bare read accesses on
+    // non-struct variables.
+    {
+        for func in module.functions.values() {
+            for inst in func.insts.values() {
+                if let Op::GetField { object, field } = &inst.op {
+                    if let Type::Struct(struct_name) = &func.value_types[*object] {
+                        if let Some(key) = struct_name.strip_prefix("_SC_") {
+                            if struct_schemas.contains_key(key)
+                                && !STRING_ONLY_METHODS.contains(&field.as_str())
+                            {
+                                struct_schemas
+                                    .entry(key.to_string())
+                                    .or_default()
+                                    .entry(field.clone())
+                                    .or_insert(Type::Dynamic);
+                                // Mark as confirmed so the Dynamic entry is included
+                                // in the emitted struct interface (see Phase 3 filter).
+                                write_site_fields.insert((key.to_string(), field.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Post-processing: upgrade Array(Dynamic) struct fields to Record<string,any>
     // when they have named struct children in the schema.
     //
