@@ -206,10 +206,17 @@ impl ModuleContext {
 }
 
 /// Replace `old` with `new` only when doing so refines our knowledge.
-/// Only `Dynamic → concrete` is allowed; a concrete type is never replaced
-/// by another concrete type (that would widen, not refine).
+///
+/// Allowed transitions:
+/// - `Dynamic → anything` (Dynamic means "completely unresolved").
+/// - `Unknown → concrete` (Unknown means "we know a value exists but not its type";
+///   GlobalStore may later discover the concrete type, e.g. Float(64)).
+///
+/// A concrete type is never replaced by another concrete type (that would widen).
 fn refine(old: &Type, new: &Type) -> Option<Type> {
-    if *old == Type::Dynamic && *new != Type::Dynamic {
+    let old_unresolved = matches!(old, Type::Dynamic | Type::Unknown);
+    let new_concrete = !matches!(new, Type::Dynamic | Type::Unknown);
+    if (old_unresolved && new_concrete) || (*old == Type::Dynamic && *new == Type::Unknown) {
         Some(new.clone())
     } else {
         None
@@ -846,12 +853,20 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                             // single Add(Dynamic, concrete_numeric) to find the numeric
                             // type.  Compound assignments like `$x += 200` produce
                             // Add(State.get("x"), 200.0) where the get result is
-                            // Dynamic on the first pass; the rhs reveals the expected
-                            // numeric type and unblocks GlobalStore inference.
-                            let effective_ty = if value_ty == Type::Dynamic {
+                            // Dynamic or Unknown on early passes; the rhs reveals
+                            // the expected numeric type and unblocks GlobalStore inference.
+                            //
+                            // Unknown is treated the same as Dynamic here: "value exists
+                            // at runtime but type is not yet known" — both are filtered so
+                            // they don't contaminate the union with Unknown members.
+                            let effective_ty = if matches!(value_ty, Type::Dynamic | Type::Unknown)
+                            {
                                 if let Some(prod) = result_to_inst.get(&write_val) {
                                     if let Op::Add(a, b) = &prod.op {
-                                        if func.value_types[*a] == Type::Dynamic {
+                                        if matches!(
+                                            func.value_types[*a],
+                                            Type::Dynamic | Type::Unknown
+                                        ) {
                                             let ty_b = &func.value_types[*b];
                                             if matches!(
                                                 ty_b,
@@ -1748,10 +1763,14 @@ impl Transform for TypeInference {
 
             // Update Module::globals entries for declared globals.
             for g in &mut module.globals {
-                if g.ty == Type::Dynamic {
+                // Update Dynamic *or* Unknown globals: Unknown means "value exists
+                // but type unknown"; if GlobalStore found a concrete type, use it.
+                if matches!(g.ty, Type::Dynamic | Type::Unknown) {
                     if let Some(inferred) = inferred_globals.get(&g.name) {
-                        g.ty = inferred.clone();
-                        changed = true;
+                        if *inferred != Type::Dynamic && *inferred != Type::Unknown {
+                            g.ty = inferred.clone();
+                            changed = true;
+                        }
                     }
                 }
             }
@@ -1769,9 +1788,15 @@ impl Transform for TypeInference {
             // SugarCube story/setup variables that have no Module::globals entry).
             let mut ctx = ModuleContext::from_module(&module);
             for (name, ty) in &inferred_globals {
-                ctx.global_types
-                    .entry(name.clone())
-                    .or_insert_with(|| ty.clone());
+                if *ty == Type::Dynamic || *ty == Type::Unknown {
+                    ctx.global_types
+                        .entry(name.clone())
+                        .or_insert_with(|| ty.clone());
+                } else {
+                    // Override Unknown/Dynamic in ctx from module.globals with the
+                    // concrete inferred type — or_insert_with would silently keep Unknown.
+                    ctx.global_types.insert(name.clone(), ty.clone());
+                }
             }
             for func in module.functions.keys().collect::<Vec<_>>() {
                 changed |= infer_function(&mut module.functions[func], &ctx);
