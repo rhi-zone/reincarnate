@@ -1259,7 +1259,8 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                         }
                         match &inst.op {
                             Op::GetField { object, field }
-                                if !array_field_set.contains(field.as_str()) =>
+                                if !array_field_set.contains(field.as_str())
+                                    && !STRING_ONLY_METHODS.contains(&field.as_str()) =>
                             {
                                 if let Some((root, path)) = provenance.get(object) {
                                     if path.len() < MAX_PROV_DEPTH {
@@ -1308,13 +1309,17 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                     }
                 }
 
-                // Values that are the 'object' of a non-array GetField have struct children.
+                // Values that are the 'object' of a non-array, non-string-method
+                // GetField have struct children.  String-method fields (replace,
+                // startsWith, etc.) do not count as struct children — they indicate
+                // the value is a string, not a struct.
                 let has_struct_children: HashSet<ValueId> = func
                     .insts
                     .values()
                     .filter_map(|inst| {
                         if let Op::GetField { object, field } = &inst.op {
                             if !array_field_set.contains(field.as_str())
+                                && !STRING_ONLY_METHODS.contains(&field.as_str())
                                 && provenance.contains_key(object)
                             {
                                 return Some(*object);
@@ -1439,6 +1444,46 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                     }
                 }
             }
+        }
+    }
+
+    // Post-processing: upgrade Array(Dynamic) struct fields to Record<string,any>
+    // when they have named struct children in the schema.
+    //
+    // Some story variables are initialized as `[]` in setup code but used as
+    // string-keyed dictionaries (e.g. `$C.npc.Whitney.state`).  The array init
+    // sets `Array(Dynamic)` for the field, which TypeScript emits as `any[]` and
+    // rejects dot-access (`npc.Whitney`) with TS2339.
+    //
+    // Evidence that a field is dictionary-style: named (non-array-method) GetField
+    // accesses on it from other passages generate entries in the nested struct
+    // schema.  When `struct_schemas["key_field"]` is non-empty, the field has
+    // struct children and should be typed as `Record<string, any>` (TypeScript's
+    // plain-object index type that accepts both dot and bracket string access).
+    // `Type::Struct("Object")` emits as `Record<string, any>` via ts_type.
+    {
+        let array_dyn = Type::Array(Box::new(Type::Dynamic));
+        let upgrades: Vec<(String, String)> = struct_schemas
+            .iter()
+            .flat_map(|(key, fields)| {
+                fields
+                    .iter()
+                    .filter(|(field, ty)| {
+                        **ty == array_dyn
+                            && struct_schemas
+                                .get(&format!("{key}_{field}"))
+                                .map(|s| !s.is_empty())
+                                .unwrap_or(false)
+                    })
+                    .map(|(field, _)| (key.clone(), field.clone()))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for (key, field) in upgrades {
+            struct_schemas
+                .get_mut(&key)
+                .unwrap()
+                .insert(field, Type::Struct("Object".to_string()));
         }
     }
 
