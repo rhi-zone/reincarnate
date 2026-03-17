@@ -820,6 +820,14 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                 }
             })
             .collect();
+
+        // Build a reverse map: result ValueId → instruction, for look-through below.
+        let result_to_inst: HashMap<ValueId, &crate::ir::Inst> = func
+            .insts
+            .values()
+            .filter_map(|inst| Some((inst.result?, inst)))
+            .collect();
+
         for inst in func.insts.values() {
             if let Op::SystemCall {
                 system,
@@ -832,14 +840,44 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                 {
                     if name_arg < args.len() && value_arg < args.len() {
                         if let Some(name) = const_strings.get(&args[name_arg]) {
-                            let value_ty = func.value_types[args[value_arg]].clone();
-                            if value_ty != Type::Dynamic {
-                                let entry = global_stores.entry(name.to_string()).or_insert(None);
-                                match entry {
-                                    None => *entry = Some(value_ty),
-                                    Some(existing) => {
-                                        *existing = union_type(existing.clone(), value_ty)
+                            let write_val = args[value_arg];
+                            let value_ty = func.value_types[write_val].clone();
+                            // If the write-site value is Dynamic, look through a
+                            // single Add(Dynamic, concrete_numeric) to find the numeric
+                            // type.  Compound assignments like `$x += 200` produce
+                            // Add(State.get("x"), 200.0) where the get result is
+                            // Dynamic on the first pass; the rhs reveals the expected
+                            // numeric type and unblocks GlobalStore inference.
+                            let effective_ty = if value_ty == Type::Dynamic {
+                                if let Some(prod) = result_to_inst.get(&write_val) {
+                                    if let Op::Add(a, b) = &prod.op {
+                                        if func.value_types[*a] == Type::Dynamic {
+                                            let ty_b = &func.value_types[*b];
+                                            if matches!(
+                                                ty_b,
+                                                Type::Float(_) | Type::Int(_) | Type::UInt(_)
+                                            ) {
+                                                ty_b.clone()
+                                            } else {
+                                                continue; // skip this write site
+                                            }
+                                        } else {
+                                            continue;
+                                        }
+                                    } else {
+                                        continue;
                                     }
+                                } else {
+                                    continue;
+                                }
+                            } else {
+                                value_ty
+                            };
+                            let entry = global_stores.entry(name.to_string()).or_insert(None);
+                            match entry {
+                                None => *entry = Some(effective_ty),
+                                Some(existing) => {
+                                    *existing = union_type(existing.clone(), effective_ty)
                                 }
                             }
                         }
