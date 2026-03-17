@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -287,6 +287,14 @@ pub struct Module {
     /// Flash/AS3), such functions are narrowed to `Void`.
     #[serde(default)]
     pub implicit_return_value: bool,
+    /// Struct names that are accessed with dynamic string keys (e.g. `obj[strVar]`).
+    ///
+    /// Populated by type inference when it detects `Op::GetIndex`/`Op::SetIndex` on
+    /// values with struct provenance.  The TypeScript backend emits a
+    /// `[key: string]: any` index signature for these structs so that dynamic
+    /// key access does not produce TS7053 errors.
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+    pub string_indexed_structs: HashSet<String>,
 }
 
 impl Module {
@@ -315,6 +323,7 @@ impl Module {
             callback_return_calls: BTreeMap::new(),
             diagnostics: Vec::new(),
             implicit_return_value: false,
+            string_indexed_structs: HashSet::new(),
         }
     }
 }

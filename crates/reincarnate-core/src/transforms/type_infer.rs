@@ -789,8 +789,10 @@ fn strip_opaque_array_from_union(ty: Type) -> Type {
 /// Scan all GlobalStore write-site
 /// instructions (identified via `SystemCallTypeRule::GlobalStore` rules registered
 /// by frontends).  Returns a map from global name → inferred type, plus any
-/// struct definitions inferred from use-site field access patterns (Phase 3).
-fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>) {
+/// struct definitions inferred from use-site field access patterns (Phase 3),
+/// plus the set of schema keys (var names without `_SC_` prefix) that are accessed
+/// with dynamic index keys (i.e. need `[key: string]: any` in their interfaces).
+fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>, HashSet<String>) {
     use crate::ir::module::SystemCallTypeRule;
 
     // Pre-collect the GlobalStore rules so we can match by (system, method).
@@ -811,10 +813,12 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
         .collect();
 
     if store_rules.is_empty() {
-        return (HashMap::new(), Vec::new());
+        return (HashMap::new(), Vec::new(), HashSet::new());
     }
 
     let mut global_stores: HashMap<String, Option<Type>> = HashMap::new();
+    // Schema keys (var names without `_SC_` prefix) accessed via GetIndex/SetIndex.
+    let mut index_accessed_vars: HashSet<String> = HashSet::new();
     for func in module.functions.values() {
         let const_strings: HashMap<ValueId, &str> = func
             .insts
@@ -1309,6 +1313,27 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                     }
                 }
 
+                // Detect dynamic key access (GetIndex/SetIndex) on struct-provisioned
+                // values.  The schema key for the indexed value is recorded so the
+                // backend can emit `[key: string]: any` index signatures.
+                for inst in func.insts.values() {
+                    let collection = match &inst.op {
+                        Op::GetIndex { collection, .. } => Some(*collection),
+                        Op::SetIndex { collection, .. } => Some(*collection),
+                        _ => None,
+                    };
+                    if let Some(col) = collection {
+                        if let Some((root, path)) = provenance.get(&col) {
+                            let key = if path.is_empty() {
+                                root.clone()
+                            } else {
+                                format!("{}_{}", root, path.join("_"))
+                            };
+                            index_accessed_vars.insert(key);
+                        }
+                    }
+                }
+
                 // Values that are the 'object' of a non-array, non-string-method
                 // GetField have struct children.  String-method fields (replace,
                 // startsWith, etc.) do not count as struct children — they indicate
@@ -1544,7 +1569,12 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
         .into_iter()
         .filter_map(|(name, ty)| ty.map(|t| (name, strip_opaque_array_from_union(t))))
         .collect();
-    (type_map, inferred_structs)
+    // Convert schema keys → struct names (prefix with "_SC_").
+    let string_indexed_struct_names: HashSet<String> = index_accessed_vars
+        .into_iter()
+        .map(|key| format!("_SC_{}", key))
+        .collect();
+    (type_map, inferred_structs, string_indexed_struct_names)
 }
 
 /// Run type inference on a single function within the given module context.
@@ -1778,7 +1808,7 @@ impl Transform for TypeInference {
         let mut prev_inferred: HashMap<String, Type> = HashMap::new();
         let mut prev_struct_count: usize = 0;
         for _ in 0..MAX_GLOBAL_INFERENCE_PASSES {
-            let (inferred_globals, new_structs) = build_global_types(&module);
+            let (inferred_globals, new_structs, new_indexed) = build_global_types(&module);
 
             // Check whether this scan produced any improvements over previous.
             let any_improved = inferred_globals.iter().any(|(k, v)| {
@@ -1827,6 +1857,9 @@ impl Transform for TypeInference {
                 module.structs.push(new_struct);
                 changed = true;
             }
+
+            // Record struct names that need `[key: string]: any` index signatures.
+            module.string_indexed_structs.extend(new_indexed);
 
             // Re-run per-function inference so that ResolveGlobalType uses
             // the newly inferred types (including for undeclared globals like

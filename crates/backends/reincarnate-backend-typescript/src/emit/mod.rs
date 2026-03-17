@@ -464,13 +464,17 @@ pub(crate) struct RefSets {
 
 fn emit_structs(module: &Module, out: &mut String) {
     for def in &module.structs {
-        emit_struct(def, out);
+        let needs_index_sig = module.string_indexed_structs.contains(&def.name);
+        emit_struct(def, needs_index_sig, out);
     }
 }
 
-fn emit_struct(def: &StructDef, out: &mut String) {
+fn emit_struct(def: &StructDef, needs_index_signature: bool, out: &mut String) {
     let vis = visibility_prefix(def.visibility);
     let _ = writeln!(out, "{vis}interface {} {{", sanitize_ident(&def.name));
+    if needs_index_signature {
+        let _ = writeln!(out, "  [key: string]: any;");
+    }
     for field in &def.fields {
         let _ = writeln!(
             out,
