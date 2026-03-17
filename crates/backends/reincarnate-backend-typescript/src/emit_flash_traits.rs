@@ -208,7 +208,7 @@ pub(crate) fn flash_forwarding_setters(
                     }
                     None
                 })
-                .unwrap_or_else(|| "any".to_string());
+                .unwrap_or_else(|| "unknown".to_string());
             (prop, ty)
         })
         .collect()

@@ -103,12 +103,44 @@ than requiring it to be hardcoded.
 This is the lightweight version of LLVM's analysis manager — no dynamic invalidation
 tracking, just declaration-based validation and ordering derivation.
 
+### Research Findings (2026-03-17)
+
+**`Type::Var` status — orphaned infrastructure.** `Type::Var(TypeVarId)` is defined in
+the IR but never instantiated anywhere in the codebase. No inference pass creates a
+`Type::Var`. The backend maps it alongside `Dynamic` → `any` (types.rs:86). It is a
+skeleton waiting for the constraint solver to use it.
+
+**`Dynamic` emission audit.** Audited all 25 `any` emission sites in the TypeScript
+backend (`types.rs`, `ast_printer.rs`, `emit_flash_traits.rs`, `emit/class.rs`):
+- **24 correct** — genuine source-language opacity (AS3 dynamic classes, XML coercion,
+  GML ClassRef runtime indices, hash-array hybrids, etc.).
+- **1 defect** — `emit_flash_traits.rs:211` defaults unknown property types to `"any"`;
+  should be `"unknown"` (inference failure, not genuine opacity).
+- **Design gap confirmed** — `types.rs:86` conflates `Type::Var(_)` (unresolved type
+  variable) with `Type::Dynamic` (source opacity). Both emit `any`. The split to `Unknown`
+  requires instantiating `Type::Var` in the solver and mapping it to `unknown` in the
+  backend.
+
+**Crescent constraint mapping.** Crescent's 7 constraint kinds map directly to IR ops:
+- `C_ARITH` → `Op::Add/Sub/Mul/Div/Mod` + arithmetic ops
+- `C_COMPARE` → `Op::CmpEq/CmpLt/CmpGe/...`
+- `C_HAS_FIELD` → `Op::GetField/SetField`
+- `C_CALLABLE` → `Op::Call/MethodCall/CallIndirect`
+- `C_UNIFY` → assignment ops, `Op::Copy`, phi merges (block args)
+- `C_SUB` → subtype constraints (narrower than unify; handles coercions)
+- `C_RETURN` → `Op::Return`
+
+The correspondence is 1:1 — the IR already has the semantic structure needed for
+constraint generation. No IR changes are required to prototype the solver.
+
 ### What to Preserve
 
 - The `TransformPipeline` / `Transform` trait structure is fine. Structural passes
   (`Mem2Reg`, `CoroutineLowering`, `CfgSimplify`, `DCE`) are not type inference and
   don't need to change.
-- `Type::Var(TypeVarId)` already exists in the IR — the solver would use it.
+- `Type::Var(TypeVarId)` exists in the IR but is currently dormant — the solver activates
+  it. No IR change needed; the constraint solver produces `Type::Var` during collection,
+  the unifier resolves them.
 - The `SystemCallTypeRule` plugin system is the right idea; it would feed into the
   constraint collection pass rather than being special-cased in `build_global_types`.
 
@@ -119,6 +151,8 @@ tracking, just declaration-based validation and ordering derivation.
 - The existing heuristic passes can coexist during the transition; replace them
   incrementally once the solver produces equivalent or better results.
 - Prior art: crescent `lib/type/static/` (constraint.lua, solve.lua, unify.lua).
+- Immediate prerequisite: fix `emit_flash_traits.rs:211` (`any` → `unknown`) and
+  add `Type::Unknown` → `"unknown"` mapping in `types.rs:86` (separate from `Dynamic`).
 
 ---
 
