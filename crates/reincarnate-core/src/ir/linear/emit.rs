@@ -570,16 +570,60 @@ impl<'a> EmitCtx<'a> {
                 expr: Box::new(self.build_val(*a)),
             },
 
-            Op::BitAnd(a, b) => Expr::Binary {
-                op: BinOp::BitAnd,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::BitOr(a, b) => Expr::Binary {
-                op: BinOp::BitOr,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
+            Op::BitAnd(a, b) => {
+                // TypeScript rejects `boolean & boolean` (TS2447). Cast both
+                // operands to Number to preserve bitwise integer semantics:
+                // `Number(true) & Number(false) = 1 & 0 = 0`.
+                if matches!(self.func.value_types[*a], Type::Bool)
+                    || matches!(self.func.value_types[*b], Type::Bool)
+                {
+                    Expr::Binary {
+                        op: BinOp::BitAnd,
+                        lhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(*a)),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                        rhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(*b)),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                    }
+                } else {
+                    Expr::Binary {
+                        op: BinOp::BitAnd,
+                        lhs: Box::new(self.build_val(*a)),
+                        rhs: Box::new(self.build_val(*b)),
+                    }
+                }
+            }
+            Op::BitOr(a, b) => {
+                // Same TS2447 fix: cast boolean operands to Number before `|`.
+                if matches!(self.func.value_types[*a], Type::Bool)
+                    || matches!(self.func.value_types[*b], Type::Bool)
+                {
+                    Expr::Binary {
+                        op: BinOp::BitOr,
+                        lhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(*a)),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                        rhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(*b)),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                    }
+                } else {
+                    Expr::Binary {
+                        op: BinOp::BitOr,
+                        lhs: Box::new(self.build_val(*a)),
+                        rhs: Box::new(self.build_val(*b)),
+                    }
+                }
+            }
             Op::BitXor(a, b) => {
                 // Boolean XOR is equivalent to `!==`; `^` on booleans is a
                 // TypeScript error (TS2447).
