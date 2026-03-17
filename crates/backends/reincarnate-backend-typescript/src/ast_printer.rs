@@ -594,6 +594,12 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                             JsExpr::ObjectInit(_) | JsExpr::Activation => {
                                 Some("Record<string, any>")
                             }
+                            // SystemCall results (e.g. State.get()) may return `unknown`
+                            // at the TypeScript level even when the IR analysis determined
+                            // the value is `Dynamic` (= `any`).  Without an explicit `: any`
+                            // annotation TypeScript infers `unknown`, blocking all use of
+                            // the variable and producing TS18046 errors.
+                            JsExpr::SystemCall { .. } => Some("any"),
                             _ => None,
                         };
                         if let Some(ann) = annotation {
