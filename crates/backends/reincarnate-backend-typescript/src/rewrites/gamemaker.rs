@@ -689,9 +689,10 @@ fn rewrite_expr(
         if let JsExpr::Var(name) = callee.as_ref() {
             match name.as_str() {
                 // @@NewGMLArray@@(v0, v1, ...) → [v0, v1, ...]
-                // When the array is empty, TypeScript infers `never[]` for `[]`,
-                // which prevents `.push(item)` calls (TS2345). Cast to `any[]`
-                // to preserve GML's dynamic array semantics.
+                // Empty case → new Array(): TypeScript infers `[]` as `never[]`
+                // in strict mode, so `[].push(item)` fails (TS2345). `new Array()`
+                // is typed as `any[]` via the `new(arrayLength?: number): any[]`
+                // constructor overload — no cast needed.
                 "@@NewGMLArray@@" => {
                     for arg in args.iter_mut() {
                         rewrite_expr(
@@ -703,16 +704,15 @@ fn rewrite_expr(
                             name_map,
                         );
                     }
-                    let arr = JsExpr::ArrayInit(std::mem::take(args));
-                    if matches!(&arr, JsExpr::ArrayInit(items) if items.is_empty()) {
-                        *expr = JsExpr::Cast {
-                            expr: Box::new(arr),
-                            ty: Type::Array(Box::new(Type::Dynamic)),
-                            kind: CastKind::NullableCoerce,
-                        };
+                    let items = std::mem::take(args);
+                    *expr = if items.is_empty() {
+                        JsExpr::New {
+                            callee: Box::new(JsExpr::Var("Array".into())),
+                            args: vec![],
+                        }
                     } else {
-                        *expr = arr;
-                    }
+                        JsExpr::ArrayInit(items)
+                    };
                     return;
                 }
                 // @@NewGMLObject@@() → new GMLObject()
