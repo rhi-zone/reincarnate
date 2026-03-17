@@ -18,6 +18,7 @@ pub use call_site_widen::CallSiteTypeWiden;
 pub use cfg_simplify::CfgSimplify;
 pub use const_fold::ConstantFolding;
 pub use constraint_solve::ConstraintSolve;
+pub use constraint_solve2::ConstraintSolve2;
 pub use coroutine_lower::CoroutineLowering;
 pub use dce::DeadCodeElimination;
 pub use int_to_bool::IntToBoolPromotion;

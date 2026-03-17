@@ -1,9 +1,10 @@
-//! HM-style unifier infrastructure (Phase 1 skeleton).
+//! HM-style unifier infrastructure and ConstraintSolve2 pass.
 //!
 //! This module provides the unifier primitives needed for a full HM type-inference
-//! redesign. No constraint generation or pipeline wiring is done here — this is
-//! only the unifier core:
+//! redesign, plus the [`ConstraintSolve2`] pass that runs [`collect_function`] and
+//! processes the resulting constraints via the HM unifier to update IR value types.
 //!
+//! Unifier primitives:
 //! - [`TypeVarArena`] — allocates fresh [`TypeVarId`] values with levels and bindings
 //! - [`resolve`] — dereference a [`Type`] through the arena (walk bound vars)
 //! - [`occurs`] — occurs check (prevent infinite types)
@@ -11,8 +12,13 @@
 //! - [`unify`] — HM unification of two [`Type`] values
 //! - [`UnifyError`] — error type for unification failures
 
+use std::collections::HashMap;
+
 use crate::entity::EntityRef;
+use crate::error::CoreError;
 use crate::ir::ty::{FunctionSig, Type, TypeVarId};
+use crate::ir::Module;
+use crate::pipeline::{Transform, TransformResult};
 
 // ---------------------------------------------------------------------------
 // TypeVarArena
@@ -409,6 +415,188 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
 
         // Concrete-type mismatch — surface as a union rather than a hard error.
         (a, b) => Ok(Type::Union(vec![a, b])),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ConstraintSolve2 pass
+// ---------------------------------------------------------------------------
+
+/// Build a map from struct name → field name → field type from a module.
+///
+/// Used by the constraint solver to resolve [`TypeConstraint::HasField`]
+/// constraints when the object type is a known [`Type::Struct`].
+fn build_struct_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
+    let mut map: HashMap<String, HashMap<String, Type>> = HashMap::new();
+    for s in &module.structs {
+        let fields: HashMap<String, Type> = s
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.ty.clone()))
+            .collect();
+        map.insert(s.name.clone(), fields);
+    }
+    map
+}
+
+/// HM-unifier–based constraint solver pass.
+///
+/// For each function in the module:
+/// 1. Calls [`collect_function`] to obtain a [`ConstraintSet`].
+/// 2. Processes each constraint through the HM unifier.
+/// 3. Resolves the arena and back-propagates inferred types into
+///    `func.value_types`, but only for values that were inference targets
+///    (`Dynamic`, `Unknown`, or `Var(_)`).
+pub struct ConstraintSolve2;
+
+impl Transform for ConstraintSolve2 {
+    fn name(&self) -> &str {
+        "constraint-solve2"
+    }
+
+    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
+        use crate::ir::ty::TypeConstraint;
+        use crate::transforms::constraint_collect::collect_function;
+
+        let struct_fields = build_struct_fields(&module);
+
+        // We must collect results before mutating module.functions to satisfy
+        // the borrow checker (collect_function borrows func and module).
+        struct FuncUpdate {
+            // Parallel to module.functions order.
+            /// (ValueId index, resolved Type) pairs to apply.
+            updates: Vec<(usize, Type)>,
+        }
+
+        let func_updates: Vec<FuncUpdate> = module
+            .functions
+            .values()
+            .map(|func| {
+                let set = collect_function(func, &module);
+                let crate::transforms::constraint_collect::ConstraintSet {
+                    constraints,
+                    mut var_arena,
+                    value_vars,
+                } = set;
+
+                // --- Step 1: process constraints --------------------------------
+                // We may generate additional Equal constraints from HasField and
+                // Callable.  Process the original list first, then any deferred.
+                let mut deferred: Vec<TypeConstraint> = Vec::new();
+
+                let process = |c: TypeConstraint,
+                               arena: &mut TypeVarArena,
+                               struct_fields: &HashMap<String, HashMap<String, Type>>,
+                               deferred: &mut Vec<TypeConstraint>| {
+                    match c {
+                        TypeConstraint::Equal(a, b) => {
+                            // Ignore unification errors: on conflict we get a Union,
+                            // which is fine — it won't overwrite a concrete type.
+                            let _ = unify(a, b, arena);
+                        }
+                        TypeConstraint::Subtype { sub, sup } => {
+                            // Phase 1: treat as equality.
+                            let _ = unify(sub, sup, arena);
+                        }
+                        TypeConstraint::HasField {
+                            ty,
+                            field,
+                            field_ty,
+                        } => {
+                            let resolved_ty = resolve(ty, arena);
+                            match &resolved_ty {
+                                Type::Struct(name) => {
+                                    if let Some(fields) = struct_fields.get(name) {
+                                        if let Some(ft) = fields.get(&field) {
+                                            deferred
+                                                .push(TypeConstraint::Equal(field_ty, ft.clone()));
+                                        }
+                                    }
+                                    // Unknown field — skip; don't invent a type.
+                                }
+                                Type::Var(_) => {
+                                    // Object type not yet resolved — skip for now.
+                                }
+                                _ => {
+                                    // Dynamic, Unknown, or other — no useful info.
+                                }
+                            }
+                        }
+                        TypeConstraint::Callable { ty, args, ret } => {
+                            let resolved_ty = resolve(ty, arena);
+                            if let Type::Function(sig) = resolved_ty {
+                                // Unify each argument type with the corresponding param.
+                                for (arg_ty, param_ty) in
+                                    args.into_iter().zip(sig.params.iter().cloned())
+                                {
+                                    deferred.push(TypeConstraint::Equal(arg_ty, param_ty));
+                                }
+                                // Unify return type.
+                                deferred.push(TypeConstraint::Equal(ret, sig.return_ty.clone()));
+                            }
+                            // Var(_) or other — defer or skip.
+                        }
+                    }
+                };
+
+                // Process the initial constraint list.
+                for c in constraints {
+                    process(c, &mut var_arena, &struct_fields, &mut deferred);
+                }
+                // Process deferred constraints (one level deep is sufficient for phase 1).
+                for c in deferred {
+                    let mut noop: Vec<TypeConstraint> = Vec::new();
+                    process(c, &mut var_arena, &struct_fields, &mut noop);
+                }
+
+                // --- Step 2: resolve and collect updates ----------------------
+                let mut updates: Vec<(usize, Type)> = Vec::new();
+
+                for (vid, var_id) in &value_vars {
+                    let old_ty = &func.value_types[*vid];
+                    // Only update values that were inference targets.
+                    let is_target = matches!(old_ty, Type::Dynamic | Type::Unknown | Type::Var(_));
+                    if !is_target {
+                        continue;
+                    }
+
+                    let resolved = resolve(Type::Var(*var_id), &var_arena);
+
+                    let should_update = match &resolved {
+                        // Unresolved var — learned nothing.
+                        Type::Var(_) => false,
+                        // Unknown → no information gain.
+                        Type::Unknown => false,
+                        // Dynamic → update only if old was Unknown (Dynamic > Unknown).
+                        Type::Dynamic => matches!(old_ty, Type::Unknown),
+                        // Any other concrete type — always update.
+                        _ => true,
+                    };
+
+                    if should_update {
+                        updates.push((vid.index() as usize, resolved));
+                    }
+                }
+
+                FuncUpdate { updates }
+            })
+            .collect();
+
+        // --- Step 3: apply updates back to the module -------------------------
+        let mut changed = false;
+        for (func, update) in module.functions.values_mut().zip(func_updates.iter()) {
+            for &(idx, ref new_ty) in &update.updates {
+                use crate::entity::EntityRef;
+                use crate::ir::ValueId;
+                let vid = ValueId::new(idx as u32);
+                if &func.value_types[vid] != new_ty {
+                    func.value_types[vid] = new_ty.clone();
+                    changed = true;
+                }
+            }
+        }
+
+        Ok(TransformResult { module, changed })
     }
 }
 
