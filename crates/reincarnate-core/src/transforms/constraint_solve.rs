@@ -133,14 +133,14 @@ struct FunctionSolver {
 
 impl FunctionSolver {
     /// Build initial solver state from a function. Every value gets a type
-    /// variable; concrete-typed values are pre-bound, `Dynamic` values are
-    /// unbound.
+    /// variable; concrete-typed values are pre-bound, `Dynamic` and `Unknown`
+    /// values are unbound (both are inference targets).
     fn from_function(func: &Function) -> Self {
         let mut uf = UnionFind::new();
         let mut value_vars = HashMap::new();
 
         for (vid, ty) in func.value_types.iter() {
-            let var = if *ty == Type::Dynamic {
+            let var = if matches!(ty, Type::Dynamic | Type::Unknown) {
                 uf.fresh()
             } else {
                 uf.fresh_with_type(ty.clone())
@@ -392,6 +392,61 @@ fn constrain_branch_args(
     }
 }
 
+/// Emit index/element type constraints for `GetIndex` and `SetIndex`.
+///
+/// - `collection`: the collection being indexed.
+/// - `index`: the index value.
+/// - `get_result`: the result of a `GetIndex`, if any.
+/// - `set_value`: the value being written by a `SetIndex`, if any.
+///
+/// If the collection type is known, we constrain:
+/// - Array(_): index must be Int(64); element type constrains result/value.
+/// - Struct(_): index must be String (dynamic field access).
+/// - Map(k, v): index must be k; element type constrains result/value.
+fn constrain_index_op(
+    solver: &mut FunctionSolver,
+    func: &Function,
+    collection: ValueId,
+    index: ValueId,
+    get_result: &Option<ValueId>,
+    set_value: Option<ValueId>,
+) {
+    match &func.value_types[collection] {
+        Type::Array(elem) => {
+            solver.constrain_value_to_type(index, &Type::Int(64));
+            let elem = elem.clone();
+            if !matches!(*elem, Type::Dynamic | Type::Unknown) {
+                if let Some(r) = get_result {
+                    solver.constrain_value_to_type(*r, &elem);
+                }
+                if let Some(v) = set_value {
+                    solver.constrain_value_to_type(v, &elem);
+                }
+            }
+        }
+        Type::Struct(_) => {
+            // Dynamic field access: key must be a string.
+            solver.constrain_value_to_type(index, &Type::String);
+        }
+        Type::Map(k, v) => {
+            let k = k.clone();
+            let v = v.clone();
+            if !matches!(*k, Type::Dynamic | Type::Unknown) {
+                solver.constrain_value_to_type(index, &k);
+            }
+            if !matches!(*v, Type::Dynamic | Type::Unknown) {
+                if let Some(r) = get_result {
+                    solver.constrain_value_to_type(*r, &v);
+                }
+                if let Some(sv) = set_value {
+                    solver.constrain_value_to_type(sv, &v);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Walk all instructions in block order and generate equality constraints.
 fn generate_constraints(
     solver: &mut FunctionSolver,
@@ -406,7 +461,10 @@ fn generate_constraints(
             let result = inst.result;
 
             match &inst.op {
-                // Arithmetic: a = b, a = r
+                // Arithmetic: a = b = r (no numeric ground — `+` is string concat
+                // too; Sub/Mul/Div are always numeric but a value also used as a
+                // GetIndex collection would get no counter-constraint and be wrongly
+                // narrowed to Float(64), causing TS7053/TS2362).
                 Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
                     solver.constrain_equal_values(*a, *b);
                     if let Some(r) = result {
@@ -419,7 +477,7 @@ fn generate_constraints(
                     }
                 }
 
-                // Bitwise: a = b, a = r
+                // Bitwise: a = b = r (no integer ground for same reason as above).
                 Op::BitAnd(a, b)
                 | Op::BitOr(a, b)
                 | Op::BitXor(a, b)
@@ -620,6 +678,20 @@ fn generate_constraints(
                     }
                 }
 
+                // GetIndex: constrain index and result types from collection type.
+                Op::GetIndex { collection, index } => {
+                    constrain_index_op(solver, func, *collection, *index, &result, None);
+                }
+
+                // SetIndex: constrain index and value types from collection type.
+                Op::SetIndex {
+                    collection,
+                    index,
+                    value,
+                } => {
+                    constrain_index_op(solver, func, *collection, *index, &None, Some(*value));
+                }
+
                 // No additional constraints for these:
                 Op::Const(_)
                 | Op::Load(_)
@@ -628,8 +700,6 @@ fn generate_constraints(
                 | Op::CallIndirect { .. }
                 | Op::Alloc(_)
                 | Op::Return(None)
-                | Op::GetIndex { .. }
-                | Op::SetIndex { .. }
                 | Op::TupleInit(_)
                 | Op::Yield(_)
                 | Op::CoroutineCreate { .. }
@@ -661,14 +731,14 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
         }
     }
 
-    // Collect updates: Dynamic values that now have concrete types and whose
-    // representative is not conflicted.
+    // Collect updates: Dynamic or Unknown values that now have concrete types
+    // and whose representative is not conflicted.
     let mut changed = false;
     let updates: Vec<(ValueId, Type)> = solver
         .value_vars
         .iter()
         .filter_map(|(vid, &var)| {
-            if func.value_types[*vid] != Type::Dynamic {
+            if !matches!(func.value_types[*vid], Type::Dynamic | Type::Unknown) {
                 return None;
             }
             let rep = solver.uf.find(var);
@@ -676,7 +746,7 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
                 return None;
             }
             let ty = solver.uf.resolve(var)?;
-            if ty == Type::Dynamic {
+            if matches!(ty, Type::Dynamic | Type::Unknown) {
                 return None;
             }
             Some((*vid, ty))
