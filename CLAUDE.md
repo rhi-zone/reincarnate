@@ -24,7 +24,7 @@ Reincarnate is a decompiler that produces working, type-safe, high-quality code 
 
 **Fix the real problem.** A workaround avoids fixing the actual cause. Narrow guards on symptoms indicate wrong core logic. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both in TODO.md and leave the code unchanged. Emit-level casts and type widenings that exist only to satisfy the type checker without improving inference are workarounds — they paper over the gap instead of closing it.
 
-**Conversation is not memory.** Write behavior changes to CLAUDE.md or a memory file immediately. A statement made only in conversation evaporates at session end. Any correction → update CLAUDE.md now.
+**Conversation is not memory.** Anything said in chat evaporates at session end. If it implies a future behavior change, write it to CLAUDE.md immediately — or it will not happen.
 
 **Good tooling is a high priority.** When a task is tedious and error-prone, automate it. If you find yourself running the same command multiple times to get different views of the output, that is a tooling gap — fix the command's output first, then run it once.
 
@@ -76,6 +76,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 
 ## Constraints
 
+- No Claude Code auto-memory (`~/.claude/projects/.*./memory/`) — unversioned and invisible. Write behavioral changes to CLAUDE.md instead
 - No engine-specific logic in `reincarnate-core`
 - No path dependencies in Cargo.toml
 - No `--no-verify`
