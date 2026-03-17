@@ -107,8 +107,32 @@ tracking, just declaration-based validation and ordering derivation.
 
 **`Type::Var` status — orphaned infrastructure.** `Type::Var(TypeVarId)` is defined in
 the IR but never instantiated anywhere in the codebase. No inference pass creates a
-`Type::Var`. The backend maps it alongside `Dynamic` → `any` (types.rs:86). It is a
-skeleton waiting for the constraint solver to use it.
+`Type::Var`. The backend previously mapped it alongside `Dynamic` → `any` (fixed: now
+`unknown`). It is a skeleton waiting for the constraint solver to use it.
+
+**`TypeConstraint` is dead scaffolding.** `ty.rs` defines `TypeConstraint { Equal,
+Subtype, HasField, Callable }` — the right shape — but it is never emitted or consumed
+by any pass. Can be repurposed directly for the constraint collection pass.
+
+**`Struct(String)` is structurally opaque.** `Type::Struct(String)` carries only a name
+string. The solver cannot resolve `C_HAS_FIELD(Struct("Foo"), "x", result)` because it
+has no access to the fields of `Foo` from the type alone. Two consequences:
+- `HasField` constraints are unresolvable without a separate struct-def lookup
+- Row-variable inference for anonymous structs (e.g. GML `ds_map`, SugarCube state vars)
+  is impossible without introducing `Type::Row(RowVarId)` (crescent's `TAG_ROWVAR`)
+The correct long-term fix is `Struct(StructId)` with an arena of struct definitions.
+Short-term workaround: the solver looks up fields via the module's class-def registry
+keyed by name, accepting the string-identity assumption until `StructId` is introduced.
+
+**`from_function` guard — root cause of heuristic immutability.** The existing
+`constraint_solve.rs` only updates values whose current type is `Dynamic` or `Unknown`.
+Values pre-bound by `type_infer.rs` (from write-site heuristics, call-site aggregation,
+etc.) are immutable from the solver's perspective. This is the single architectural
+reason the pipeline has four type passes instead of one: each subsequent pass exists
+to fix what the previous heuristic got wrong while being unable to touch pre-bound
+values. The new solver starts ALL values as `Type::Var` (unbound) and derives ground
+types purely from constraints; `type_infer.rs`'s heuristics become constraint sources,
+not pre-bound facts.
 
 **`Dynamic` emission audit.** Audited all 25 `any` emission sites in the TypeScript
 backend (`types.rs`, `ast_printer.rs`, `emit_flash_traits.rs`, `emit/class.rs`):
@@ -116,10 +140,13 @@ backend (`types.rs`, `ast_printer.rs`, `emit_flash_traits.rs`, `emit/class.rs`):
   GML ClassRef runtime indices, hash-array hybrids, etc.).
 - **1 defect** — `emit_flash_traits.rs:211` defaults unknown property types to `"any"`;
   should be `"unknown"` (inference failure, not genuine opacity).
-- **Design gap confirmed** — `types.rs:86` conflates `Type::Var(_)` (unresolved type
-  variable) with `Type::Dynamic` (source opacity). Both emit `any`. The split to `Unknown`
-  requires instantiating `Type::Var` in the solver and mapping it to `unknown` in the
-  backend.
+
+**`any` / `any[]` / `Record<string, any>` are three distinct TypeScript types** emitted
+from three distinct IR patterns: `Dynamic`, `Array(Dynamic)`, and `Struct("Object")`.
+They must not be conflated at the solver level. The heuristic that detects
+"partially-inferred" types like `Array(Dynamic)` and demotes them is wrong: it equates
+`any[]` with `any`. With proper HM, `_bodypart = Array(_bodypart)` triggers the occurs
+check → `Dynamic`; no heuristic needed.
 
 **Crescent constraint mapping.** Crescent's 7 constraint kinds map directly to IR ops:
 - `C_ARITH` → `Op::Add/Sub/Mul/Div/Mod` + arithmetic ops
@@ -148,41 +175,61 @@ the numeric grounding is deferred to the full constraint solver redesign.
 - The `TransformPipeline` / `Transform` trait structure is fine. Structural passes
   (`Mem2Reg`, `CoroutineLowering`, `CfgSimplify`, `DCE`) are not type inference and
   don't need to change.
-- `Type::Var(TypeVarId)` exists in the IR but is currently dormant — the solver activates
-  it. No IR change needed; the constraint solver produces `Type::Var` during collection,
-  the unifier resolves them.
-- The `SystemCallTypeRule` plugin system is the right idea; it would feed into the
-  constraint collection pass rather than being special-cased in `build_global_types`.
+- `Type::Var(TypeVarId)` and `TypeConstraint` exist in the IR — the solver activates
+  them. No IR change needed to prototype.
+- The `SystemCallTypeRule` plugin system is the right idea; it feeds into the constraint
+  collection pass as constraint emitters, replacing `build_global_types`.
 
 ### Scope and Approach
 
-Constraint collection is engine-agnostic — it maps to IR ops, which live in
-`reincarnate-core`. No engine-specific prototype is needed. The IR already has the full
-semantic structure; the Crescent mapping is 1:1 with `Op` variants.
+Constraint collection is engine-agnostic — it maps to IR ops in `reincarnate-core`.
+Crescent's `lib/type/static/` (constrain.lua, solve.lua, unify.lua) is the prior art
+and close to gold standard for a practical system. Crescent adds row polymorphism,
+union/intersection types, and subtyping to basic HM — all applicable here.
 
 **Implementation sequence:**
 
-1. **`ConstraintCollect` pass (core)** — single IR walk, emits typed constraints from
-   every `Op`. Each variant is a generator:
-   - `Op::Add/Sub/Mul/Div` → `C_ARITH(a)`, `C_ARITH(b)`
-   - `Op::GetField/SetField` → `C_HAS_FIELD(object, field, result)`
+1. **New `ConstraintSolve` pass skeleton** — add `transforms/constraint_solve2.rs`
+   alongside the existing one. Introduce a `TypeVarArena` that allocates fresh
+   `Type::Var(id)` nodes with levels (for generalization). Add `UnionFind` over
+   `TypeVarId` with occurs check in `bind_var`. No constraint generation yet — just
+   the unifier + arena infrastructure.
+
+2. **`ConstraintCollect` pass** — single IR walk (per function, then inter-proc) that
+   emits `TypeConstraint` values for every `Op`:
+   - `Op::Add/Sub/Mul/Div/Mod` → `C_ARITH(a)`, `C_ARITH(b)`, `C_UNIFY(result, float)`
+   - `Op::GetField { object, field }` → `C_HAS_FIELD(object, field, result)`
    - `Op::GetIndex/SetIndex` → `C_INDEX(collection, index, result)`
    - `Op::Call/MethodCall` → `C_CALLABLE(func, args, result)`
-   - `Op::Copy`, block args, phi merges → `C_UNIFY(a, b)`
-   - Engine-specific rules (GlobalStore, ClassRef) plug in via `SystemCallTypeRule`,
-     same interface as today.
+   - `Op::Copy`, block args → `C_UNIFY(a, b)`
+   - `Op::Return` → `C_RETURN(value, func_return_ty)`
+   - Engine-specific rules (GlobalStore write sites, ClassRef) via `SystemCallTypeRule`,
+     emitting `C_UNIFY` constraints instead of pre-binding types.
 
-2. **`ConstraintSolve` pass (core, replacement)** — processes constraint set via
-   HM-style unification. Activates `Type::Var` for unresolved variables. Produces
-   `Type::Unknown` for variables that remain unbound after solving (not `Dynamic`).
+3. **Wire collection into `ConstraintSolve2`** — solver processes `TypeConstraint` list;
+   starts ALL non-ground values as `Type::Var`; resolves vars to concrete types; falls
+   back to `Type::Unknown` (not `Dynamic`) for unresolved vars. Occurs check fires for
+   recursive types like `_bodypart = Array(_bodypart)` → `Dynamic`.
 
-3. **Transition** — `ConstraintCollect` + new solver coexist with the old heuristic
-   passes initially. Once solver results match or exceed heuristic quality on all
-   test games, the four old passes are removed.
+4. **Coexistence testing** — run both old and new passes; compare type maps on test
+   games; flag regressions. Old passes remain in pipeline until new solver meets or
+   exceeds their results on all games.
 
-- Prior art: crescent `lib/type/static/` (constraint.lua, solve.lua, unify.lua).
-- Prerequisites done: `emit_flash_traits.rs:211` fixed; `ConstraintSolve` already
-  treats `Unknown` as an inference target; `GetIndex`/`SetIndex` constraints added.
+5. **Struct field resolution** — the solver looks up struct fields via module class-def
+   registry for `C_HAS_FIELD` on `Struct(name)`. Long-term: migrate to `Struct(StructId)`
+   with proper arena, enabling the solver to work without string lookup.
+
+6. **Row variables** — introduce `Type::Row(RowVarId)` for anonymous struct inference
+   (GML `ds_map`, SugarCube state vars). Modeled after crescent's `TAG_ROWVAR`. Lets the
+   solver infer struct shapes from field-access patterns alone.
+
+7. **Retire heuristic passes** — once the new solver covers all test games, remove
+   `TypeInference`, `CallSiteTypeFlow`, `CallSiteTypeWiden`, `CallSiteArityWiden` and
+   replace with the new pipeline: `ConstraintCollect` → `ConstraintSolve2`.
+
+**Prerequisites done (2026-03-17):**
+- `Type::Var → "unknown"` in TypeScript backend (commit `a7ba296`)
+- `TypeConstraint` and `TypeVarId` exist in `ir/ty.rs` (repurposable scaffolding)
 
 ---
 
