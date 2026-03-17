@@ -133,6 +133,16 @@ backend (`types.rs`, `ast_printer.rs`, `emit_flash_traits.rs`, `emit/class.rs`):
 The correspondence is 1:1 — the IR already has the semantic structure needed for
 constraint generation. No IR changes are required to prototype the solver.
 
+**Numeric grounding limitation (2026-03-17).** Adding a `Float(64)` constraint for
+arithmetic operands (Sub/Mul/Div) causes false positives when the same value is also
+used as a `GetIndex` collection with unknown element type — no counter-constraint is
+added and the value is wrongly narrowed to `number`, causing TS7053/TS2362. The fix
+requires either: (a) adding a "must be a collection" counter-constraint from GetIndex
+when the collection is Dynamic, or (b) a proper constraint language with `C_ARITH`
+constraints that back-off when they conflict with structural constraints (HAS_FIELD,
+CALLABLE). Currently, arithmetic and bitwise ops only generate equality constraints;
+the numeric grounding is deferred to the full constraint solver redesign.
+
 ### What to Preserve
 
 - The `TransformPipeline` / `Transform` trait structure is fine. Structural passes
