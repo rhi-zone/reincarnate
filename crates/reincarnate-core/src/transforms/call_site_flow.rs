@@ -116,6 +116,14 @@ fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
                         return true;
                     }
                 }
+                // GML's `array_length(arr)` is emitted as `arr.length` in TypeScript.
+                // In the IR it's a Call, not a GetField — check explicitly so that
+                // narrowing to Float(64) is suppressed when the body calls array_length.
+                Op::Call { func: fname, args } if fname == "array_length" => {
+                    if args.first().map(|a| tracked.contains(a)).unwrap_or(false) {
+                        return true;
+                    }
+                }
                 _ => {}
             }
         }

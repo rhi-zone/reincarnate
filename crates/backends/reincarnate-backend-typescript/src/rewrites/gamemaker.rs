@@ -689,6 +689,9 @@ fn rewrite_expr(
         if let JsExpr::Var(name) = callee.as_ref() {
             match name.as_str() {
                 // @@NewGMLArray@@(v0, v1, ...) → [v0, v1, ...]
+                // When the array is empty, TypeScript infers `never[]` for `[]`,
+                // which prevents `.push(item)` calls (TS2345). Cast to `any[]`
+                // to preserve GML's dynamic array semantics.
                 "@@NewGMLArray@@" => {
                     for arg in args.iter_mut() {
                         rewrite_expr(
@@ -700,7 +703,16 @@ fn rewrite_expr(
                             name_map,
                         );
                     }
-                    *expr = JsExpr::ArrayInit(std::mem::take(args));
+                    let arr = JsExpr::ArrayInit(std::mem::take(args));
+                    if matches!(&arr, JsExpr::ArrayInit(items) if items.is_empty()) {
+                        *expr = JsExpr::Cast {
+                            expr: Box::new(arr),
+                            ty: Type::Array(Box::new(Type::Dynamic)),
+                            kind: CastKind::NullableCoerce,
+                        };
+                    } else {
+                        *expr = arr;
+                    }
                     return;
                 }
                 // @@NewGMLObject@@() → new GMLObject()

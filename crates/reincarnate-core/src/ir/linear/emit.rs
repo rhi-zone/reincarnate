@@ -716,6 +716,20 @@ impl<'a> EmitCtx<'a> {
                 } else {
                     let mut coll_expr = self.build_val(*collection);
                     let mut idx_expr = self.build_val(*index);
+                    // Numeric-typed (Int/UInt/Float) collection: TypeScript's
+                    // `Number` type has no index signature → TS7053. Cast to
+                    // `any` so the index access compiles. GML uses integer
+                    // object IDs interchangeably with arrays in some patterns.
+                    if matches!(
+                        self.func.value_types.get(*collection),
+                        Some(Type::Int(_) | Type::UInt(_) | Type::Float(_))
+                    ) {
+                        coll_expr = Expr::Cast {
+                            expr: Box::new(coll_expr),
+                            ty: Type::Dynamic,
+                            kind: CastKind::NullableCoerce,
+                        };
+                    }
                     if self.config.coerce_index_types {
                         // Struct-typed collection + Dynamic index → (collection as any)
                         if self.is_struct_needing_index_coerce(*collection)
@@ -1498,8 +1512,14 @@ impl<'a> EmitCtx<'a> {
                 // Record the type so collect_block_param_decls can emit
                 // `let name!: ty;` (with definite-assignment assertion) instead
                 // of the untyped `let name;` that would trigger TS2454.
+                // Struct types are suppressed here for the same reason as in
+                // types_coalesce_compatible: a Struct annotation can prevent
+                // TypeScript from inferring `any` from e.g. instance_create_depth
+                // when called with `cls as any`, causing TS2362 on arithmetic.
                 let ty = self.func.value_types[result].clone();
-                self.cross_scope_hoisted_types.insert(name.clone(), ty);
+                if !matches!(ty, Type::Struct(_)) {
+                    self.cross_scope_hoisted_types.insert(name.clone(), ty);
+                }
                 stmts.push(Stmt::Assign {
                     target: Expr::Var(name),
                     value: expr,
@@ -1520,7 +1540,9 @@ impl<'a> EmitCtx<'a> {
                 // Hoist the declaration to function scope via shared_names.
                 self.shared_names.insert(name.clone());
                 let ty = self.func.value_types[result].clone();
-                self.cross_scope_hoisted_types.insert(name.clone(), ty);
+                if !matches!(ty, Type::Struct(_)) {
+                    self.cross_scope_hoisted_types.insert(name.clone(), ty);
+                }
                 stmts.push(Stmt::Assign {
                     target: Expr::Var(name),
                     value: expr,

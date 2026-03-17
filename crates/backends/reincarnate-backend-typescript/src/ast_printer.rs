@@ -414,12 +414,54 @@ fn print_params(
 // Statement printing
 // ---------------------------------------------------------------------------
 
+/// Return true if `stmts` contains a `break` (or labeled break) that exits the
+/// current loop — i.e. a break at the top level of the body or directly inside
+/// an `if`/`else`/`dispatch` block, but NOT inside a nested `while`/`for`/`switch`
+/// (which would break the inner loop, not the outer one).
+fn body_has_reachable_break(stmts: &[JsStmt]) -> bool {
+    for stmt in stmts {
+        match stmt {
+            JsStmt::Break | JsStmt::LabeledBreak { .. } => return true,
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                if body_has_reachable_break(then_body) || body_has_reachable_break(else_body) {
+                    return true;
+                }
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                if blocks.iter().any(|(_, b)| body_has_reachable_break(b)) {
+                    return true;
+                }
+            }
+            // Nested While/For/Switch introduce a new break scope — breaks inside
+            // them exit the inner loop, not the current one. Don't recurse.
+            _ => {}
+        }
+    }
+    false
+}
+
 fn print_stmts(stmts: &[JsStmt], out: &mut String, indent: &str) {
     for stmt in stmts {
         print_stmt(stmt, out, indent);
         // Stop after a terminal statement — anything that follows is unreachable
         // and would trigger TS7027. Throw and Return are always unconditional exits.
-        if matches!(stmt, JsStmt::Throw(_) | JsStmt::Return(_)) {
+        // A `while(true)` with no reachable break is also an unconditional infinite
+        // loop — TypeScript flags code after it as TS7027.
+        let is_terminal = match stmt {
+            JsStmt::Throw(_) | JsStmt::Return(_) => true,
+            JsStmt::While {
+                cond: JsExpr::Literal(Constant::Bool(true)),
+                body,
+            } => !body_has_reachable_break(body),
+            // `Loop` nodes emit as `while (true) { ... }` — same rule applies.
+            JsStmt::Loop { body } => !body_has_reachable_break(body),
+            _ => false,
+        };
+        if is_terminal {
             break;
         }
     }

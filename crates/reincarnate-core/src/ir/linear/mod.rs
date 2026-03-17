@@ -293,11 +293,23 @@ fn is_js_ident(s: &str) -> bool {
 /// Return true if `init_ty` is assignment-compatible with `decl_ty` for
 /// TypeScript purposes.
 fn types_coalesce_compatible(decl_ty: &Type, init_ty: &Type) -> bool {
+    // Struct annotations are suppressed unconditionally: TypeScript infers the
+    // same struct type from the init expression in the normal case. When the
+    // init comes from a call that returns `any` (e.g. `instance_create_depth`
+    // with a `cls as any` argument), suppressing the annotation lets TypeScript
+    // infer `any` — needed so that GML patterns like `instance_id - 1` compile
+    // (TS2362: `OMortonsForkButton` is not assignable to arithmetic).
+    if matches!(decl_ty, Type::Struct(_)) {
+        return false;
+    }
     if decl_ty == init_ty {
         return true;
     }
     match (decl_ty, init_ty) {
-        (Type::Dynamic, _) | (_, Type::Dynamic) => true,
+        // Decl is Dynamic (any): always accept any init type.
+        // Init is Dynamic (any): do NOT impose a concrete decl annotation — let
+        // TypeScript infer `any` from the init expression instead.
+        (Type::Dynamic, _) => true,
         (Type::Option(inner), ty) | (ty, Type::Option(inner)) => inner.as_ref() == ty,
         _ => false,
     }
