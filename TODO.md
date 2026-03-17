@@ -4,6 +4,92 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## Pipeline Architecture Redesign (HIGH PRIORITY — BACKLOG)
+
+### Problem
+
+The transform pipeline is structurally clean (`Transform` trait, ordered pass list,
+fixpoint mode) but the passes themselves have no principled foundation. Type inference
+in particular has accumulated into an ad-hoc heuristic stack:
+
+- **Four coupled passes** (`TypeInference`, `CallSiteTypeFlow`, `ConstraintSolve`,
+  `CallSiteTypeWiden`) approximate what should be a single constraint collection + solve
+  phase. Their ordering contracts are implicit — documented only in CLAUDE.md and
+  MEMORY.md, not enforced in code.
+
+- **`TypeInference` is a pipeline-within-a-pipeline.** `build_global_types` runs its own
+  multi-pass loop (up to 4 iterations of: global store scan → use-site heuristics → struct
+  schema inference → re-run `infer_function`) inside a single `Transform::apply()`.
+
+- **Analysis and transformation are interleaved in every pass.** No pass declares what it
+  reads or writes. You can't add a pass that runs "after ConstraintSolve but before Mem2Reg"
+  without reading all the code to understand the implicit ordering.
+
+- **`Dynamic` conflates two distinct concepts:**
+  - `Unknown` — type inference didn't have enough information to resolve the type. Should
+    emit `unknown` in TypeScript (type-safe but requires narrowing).
+  - `Any` — the source language is genuinely opaque at this point (e.g. a GML `var`, a
+    SugarCube state variable before inference). Should emit `any` in TypeScript.
+  Conflating them means every unresolved type variable emits `any`, which suppresses
+  TypeScript's ability to catch real errors.
+
+- **`RedundantCastElimination` exists to clean up `TypeInference`'s mess.** Casts that
+  become redundant after inference runs are emitted by one pass and cleaned up by another.
+
+- **`ConstantFolding` runs twice** because `Mem2Reg` creates new folding opportunities —
+  a symptom of no pass invalidation tracking.
+
+### Proposed Redesign
+
+A constraint-based type inference architecture, drawing on crescent's
+`constrain → solve → unify` design (`lib/type/static/` in `~/git/rhizone/crescent/`).
+Crescent infers types for Lua — a dynamically-typed language — from usage patterns alone,
+which is structurally identical to recovering types from untyped bytecode.
+
+**Key ideas:**
+
+1. **Single constraint collection pass** — one IR walk that emits typed constraints from
+   every instruction. Each `Op` variant becomes a constraint generator:
+   - `Op::Add(a, b)` → `C_ARITH(a)`, `C_ARITH(b)`, `result = number`
+   - `Op::GetField { object, field }` → `C_HAS_FIELD(object, field, result)`
+   - `Op::Call { func, args }` → `C_CALLABLE(func, args, result)`
+   - etc.
+
+2. **Unified solver** — processes the full constraint set, binds type variables to concrete
+   types via HM-style unification. Interprocedural constraints (call sites) handled in the
+   same solve pass, not a separate pipeline stage.
+
+3. **`Unknown` distinct from `Dynamic`:**
+   - Unresolved type variable after solving → `Unknown` → emit `unknown` in TypeScript
+   - Source-language opaque value → `Dynamic` → emit `any` in TypeScript
+   This distinction already exists in crescent (`TAG_UNKNOWN` vs `TAG_ANY`).
+
+4. **Conflict resolution** — contradictory constraints produce union types automatically,
+   not silently dropped or defaulted.
+
+5. **Pass ordering becomes explicit** — constraint collection and solving are separate,
+   declared phases. Frontend-specific constraint generators (e.g. `GlobalStore`/
+   `ResolveGlobalType` rules) plug in at collection time, not via extra pipeline passes.
+
+### What to Preserve
+
+- The `TransformPipeline` / `Transform` trait structure is fine. Structural passes
+  (`Mem2Reg`, `CoroutineLowering`, `CfgSimplify`, `DCE`) are not type inference and
+  don't need to change.
+- `Type::Var(TypeVarId)` already exists in the IR — the solver would use it.
+- The `SystemCallTypeRule` plugin system is the right idea; it would feed into the
+  constraint collection pass rather than being special-cased in `build_global_types`.
+
+### Scope and Approach
+
+- Prototype constraint collection + solver for a single engine (SugarCube or GML) to
+  validate the design before committing to a full rewrite.
+- The existing heuristic passes can coexist during the transition; replace them
+  incrementally once the solver produces equivalent or better results.
+- Prior art: crescent `lib/type/static/` (constraint.lua, solve.lua, unify.lua).
+
+---
+
 ## Full Architecture Audit — COMPLETED 2026-03-12
 
 Full report: [`docs/architecture-audit-2026-03-12.md`](docs/architecture-audit-2026-03-12.md)
