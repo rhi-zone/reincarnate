@@ -650,7 +650,25 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
         }
 
         JsStmt::Expr(expr) => {
-            let s = print_expr(expr);
+            // For a standalone SystemCall statement the result is discarded —
+            // no `as any` cast is needed (see `print_expr` for inline uses).
+            let s = if let JsExpr::SystemCall {
+                system,
+                method,
+                args,
+            } = expr
+            {
+                let args_str: Vec<_> = args.iter().map(print_expr).collect();
+                let sys_ident = sanitize_ident(system);
+                let safe_method = if is_valid_js_ident(method) {
+                    format!(".{method}")
+                } else {
+                    format!("[\"{}\"]", escape_js_string(method))
+                };
+                format!("{sys_ident}{safe_method}({})", args_str.join(", "))
+            } else {
+                print_expr(expr)
+            };
             if s.starts_with('{') {
                 let _ = writeln!(out, "{indent}({s});");
             } else {
@@ -1240,7 +1258,13 @@ fn print_expr(expr: &JsExpr) -> String {
             } else {
                 format!("[\"{}\"]", escape_js_string(method))
             };
-            format!("{sys_ident}{safe_method}({})", args_str.join(", "))
+            // The IR type for SystemCall results is Dynamic (= `any`), but the
+            // runtime function may declare a narrower or wider return type (e.g.
+            // `State.get()` returns `unknown`).  Cast to `any` so that TypeScript
+            // sees the IR type at every inline use site, preventing TS2571
+            // ("Object is of type 'unknown'") and similar errors when the result
+            // is used as an operand, index, or object.
+            format!("({sys_ident}{safe_method}({}) as any)", args_str.join(", "))
         }
     }
 }
