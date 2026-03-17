@@ -640,12 +640,12 @@ const BREAK_SENTINEL = Symbol("break");
 const CONTINUE_SENTINEL = Symbol("continue");
 
 /** Deep clone a value (SugarCube's clone() function). */
-export function clone(value: unknown): unknown {
+export function clone<T>(value: T): T {
   if (value === null || value === undefined) return value;
   if (typeof value !== "object") return value;
 
   if (typeof (value as Record<string, unknown>)["clone"] === "function") {
-    return (value as { clone(deep: boolean): unknown }).clone(true);
+    return (value as { clone(deep: boolean): unknown }).clone(true) as unknown as T;
   }
 
   if (value instanceof Array) {
@@ -653,27 +653,27 @@ export function clone(value: unknown): unknown {
     for (const key of Object.keys(value)) {
       (copy as Record<string, unknown>)[key] = clone((value as Record<string, unknown>)[key]);
     }
-    return copy;
+    return copy as unknown as T;
   }
 
-  if (value instanceof Date) return new Date(value.getTime());
+  if (value instanceof Date) return new Date(value.getTime()) as unknown as T;
   if (value instanceof Map) {
     const copy = new Map<unknown, unknown>();
     value.forEach((val, key) => copy.set(clone(key), clone(val)));
-    return copy;
+    return copy as unknown as T;
   }
-  if (value instanceof RegExp) return new RegExp(value);
+  if (value instanceof RegExp) return new RegExp(value) as unknown as T;
   if (value instanceof Set) {
     const copy = new Set<unknown>();
     value.forEach((val) => copy.add(clone(val)));
-    return copy;
+    return copy as unknown as T;
   }
 
   const copy = Object.create(Object.getPrototypeOf(value)) as Record<string, unknown>;
   for (const key of Object.keys(value)) {
     copy[key] = clone((value as Record<string, unknown>)[key]);
   }
-  return copy;
+  return copy as unknown as T;
 }
 
 /** Create an iterator over a collection (for <<for _v range collection>>). */
