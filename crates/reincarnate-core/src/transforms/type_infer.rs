@@ -1098,6 +1098,43 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                                 }
                             }
                         }
+                        // Phase 2 (index type): when a ResolveGlobalType result is
+                        // used as the index in a GetIndex/SetIndex, infer its type
+                        // from the collection type:
+                        //   Array(_)     → Int(64)   (numeric index)
+                        //   Struct(_)    → String    (string key)
+                        //   Map(key, _)  → key       (map key type)
+                        //
+                        // Conditioned on the collection's already-known type, so this
+                        // only fires when the collection has been resolved in a prior
+                        // pass.  Uses union semantics — conflicting hints produce
+                        // Union(String, Int) rather than dropping the inference.
+                        Op::GetIndex { collection, index }
+                        | Op::SetIndex {
+                            collection, index, ..
+                        } => {
+                            if let Some(&index_var) = get_results.get(index) {
+                                if !struct_only_results.contains(index) {
+                                    let inferred = match &func.value_types[*collection] {
+                                        Type::Array(_) => Some(Type::Int(64)),
+                                        Type::Struct(_) => Some(Type::String),
+                                        Type::Map(key_ty, _) => Some(*key_ty.clone()),
+                                        _ => None,
+                                    };
+                                    if let Some(ty) = inferred {
+                                        let entry = global_stores
+                                            .entry(index_var.to_string())
+                                            .or_insert(None);
+                                        match entry {
+                                            None => *entry = Some(ty),
+                                            Some(existing) => {
+                                                *existing = union_type(existing.clone(), ty)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         _ => {}
                     }
                 }
