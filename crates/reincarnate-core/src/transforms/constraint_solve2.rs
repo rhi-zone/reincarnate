@@ -413,8 +413,11 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
             })
         }
 
-        // Concrete-type mismatch — surface as a union rather than a hard error.
-        (a, b) => Ok(Type::Union(vec![a, b])),
+        // Concrete-type mismatch — fall back to Dynamic during coexistence phase.
+        // Union type inference is phase 2: we don't yet have the constraint
+        // vocabulary (C_UNIFY vs C_SUB) to decide when a union is appropriate vs
+        // when it is spurious over-inference. Dynamic is conservative and correct.
+        (_a, _b) => Ok(Type::Dynamic),
     }
 }
 

@@ -45,6 +45,9 @@ pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     if config.constraint_solve {
         pipeline.add(Box::new(ConstraintSolve));
     }
+    if config.constraint_solve2 {
+        pipeline.add(Box::new(ConstraintSolve2));
+    }
     // Widen after ConstraintSolve: if ConstraintSolve narrowed a param via body
     // constraints but callers pass incompatible types, widen back to Dynamic.
     if config.call_site_widen {

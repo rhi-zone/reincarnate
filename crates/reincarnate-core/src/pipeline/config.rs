@@ -83,6 +83,11 @@ pub struct PassConfig {
     pub type_inference: bool,
     pub call_site_flow: bool,
     pub constraint_solve: bool,
+    /// HM-style constraint solver (phase 2 redesign). Runs after
+    /// `constraint_solve` as a coexistence test pass. Default: false (opt-in
+    /// during development). Will replace `constraint_solve` once coverage
+    /// matches or exceeds the heuristic passes on all test games.
+    pub constraint_solve2: bool,
     /// Widen params narrowed by ConstraintSolve when callers pass incompatible
     /// types. Runs immediately after `constraint_solve`. Requires both
     /// `call_site_flow` and `constraint_solve` to have run for useful results,
@@ -104,6 +109,7 @@ impl Default for PassConfig {
             type_inference: true,
             call_site_flow: true,
             constraint_solve: true,
+            constraint_solve2: true,
             call_site_widen: true,
 
             constant_folding: true,
@@ -152,6 +158,7 @@ impl PassConfig {
             "type-inference" => self.type_inference = false,
             "call-site-type-flow" => self.call_site_flow = false,
             "constraint-solve" => self.constraint_solve = false,
+            "constraint-solve2" => self.constraint_solve2 = false,
             "call-site-type-widen" => self.call_site_widen = false,
 
             "constant-folding" => self.constant_folding = false,
@@ -338,6 +345,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
                 type_inference: true,
                 call_site_flow: true,
                 constraint_solve: true,
+                constraint_solve2: false,
                 call_site_widen: true,
 
                 coroutine_lowering: true,

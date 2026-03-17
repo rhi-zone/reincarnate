@@ -146,23 +146,11 @@ pub fn collect_function(func: &Function, _module: &Module) -> ConstraintSet {
                     }
                 }
 
-                // Arithmetic — both operands and result are Float(64).
-                Op::Add(lhs, rhs)
-                | Op::Sub(lhs, rhs)
-                | Op::Mul(lhs, rhs)
-                | Op::Div(lhs, rhs)
-                | Op::Rem(lhs, rhs) => {
-                    let f64 = Type::Float(64);
-                    if let Some(lv) = var_for(*lhs, &value_vars) {
-                        constraints.push(TypeConstraint::Equal(lv, f64.clone()));
-                    }
-                    if let Some(rv_op) = var_for(*rhs, &value_vars) {
-                        constraints.push(TypeConstraint::Equal(rv_op, f64.clone()));
-                    }
-                    if let Some(rv) = result_var {
-                        constraints.push(TypeConstraint::Equal(rv, f64));
-                    }
-                }
+                // Arithmetic — numeric grounding disabled pending full C_ARITH
+                // constraint kind. Emitting Equal(operand, Float(64)) causes false
+                // positives when a value is also used as a collection key or bool
+                // (documented in TODO.md "Numeric grounding limitation").
+                Op::Add(_, _) | Op::Sub(_, _) | Op::Mul(_, _) | Op::Div(_, _) | Op::Rem(_, _) => {}
 
                 // GetField — emit HasField on the object type.
                 Op::GetField { object, field } => {
