@@ -46,7 +46,11 @@ These are invariant. When a violation appears, adjust the law — don't add a co
 
 **4. Honest Representation.** IR types reflect source-language semantics, not VM storage format. A GML boolean is `Bool`, not `Float`. Source-level type violations surface as target-language type errors — that is correct behavior.
 
-- **`Dynamic` is a type inference failure.** Every value has a concrete type. `Dynamic` in the IR means inference wasn't good enough. `any` in emitted TypeScript or runtime code is never acceptable — use specific types, `unknown`, union types, or generics.
+- **`Dynamic` is a type inference failure, and `any` is what makes it invisible.** Every value has a concrete type at the source level. `Dynamic` in the IR means inference wasn't good enough. A Rust emitter on the same IR cannot use `any` — it must use a `Value` enum with runtime dispatch on every operation, which destroys the static guarantees and performance that make Rust worth targeting. `any` in TypeScript silently papers over the same gap that would force a Rust emitter into an unusable design. Specifically prohibited:
+  - `any` in a runtime type signature → use `unknown`; the call site must narrow before use
+  - `Record<string, any>` or `[key: string]: any` → use `unknown` as the value type
+  - `(expr as any)` in the emitter → fix the IR type; `as unknown` is acceptable only as a temporary marker with a TODO entry for the root cause
+  - Any of the above added to reduce TypeScript error counts → this is a regression, not a fix
 - **Preserve integer vs float distinction.** Use `"int"` for indices, IDs, counts, flags, enum values; `"number"` for continuous values (coordinates, scales, angles). Matters for non-TS backends and the type checker.
 
 **5. Instantiability.** All mutable runtime state lives on root runtime instances. No module-level mutable variables. Multiple game instances must coexist on one page.
@@ -86,7 +90,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 - No DOM data attributes as state-passing mechanism
 - No `function_modules` entry without a corresponding `function_signatures` entry
 - No widening runtime types to match wrong emitter output — fix the inference
-- No `any` in emitted TypeScript or runtime code
+- No `any` in emitted TypeScript, runtime code, or Rust emit paths — `unknown` for unknown types, specific types for known types; see Law 4
 
 ## Crate Structure
 

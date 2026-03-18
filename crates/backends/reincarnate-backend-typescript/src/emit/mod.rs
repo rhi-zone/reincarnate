@@ -473,7 +473,7 @@ fn emit_struct(def: &StructDef, needs_index_signature: bool, out: &mut String) {
     let vis = visibility_prefix(def.visibility);
     let _ = writeln!(out, "{vis}interface {} {{", sanitize_ident(&def.name));
     if needs_index_signature {
-        let _ = writeln!(out, "  [key: string]: any;");
+        let _ = writeln!(out, "  [key: string]: unknown;");
     }
     for field in &def.fields {
         let _ = writeln!(
