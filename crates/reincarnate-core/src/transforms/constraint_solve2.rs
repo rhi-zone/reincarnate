@@ -99,6 +99,16 @@ impl TypeVarArena {
         self.bindings[idx] = Some(ty);
     }
 
+    /// Overwrite the binding of `id` unconditionally.
+    ///
+    /// Used to poison a TypeVar that was already bound when a conflicting
+    /// concrete type is unified against it (e.g., rebind `String` → `Dynamic`
+    /// when a second write assigns `Bool` to the same global).  Unlike
+    /// [`bind`], this does not assert that `id` is unbound.
+    pub fn force_rebind(&mut self, id: TypeVarId, ty: Type) {
+        self.bindings[id.index() as usize] = Some(ty);
+    }
+
     /// Lower the level of `id` to `new_level` (only if currently higher).
     fn lower_level(&mut self, id: TypeVarId, new_level: u32) {
         let idx = id.index() as usize;
@@ -322,10 +332,27 @@ pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(),
 /// HM unification of two [`Type`] values.
 ///
 /// Returns the unified type on success. On a concrete-type mismatch (neither is
-/// a type variable or absorbing type) returns `Type::Union(vec![a, b])` rather
-/// than an error — the conflict is surfaced as a union for the caller to
-/// decide how to handle.
+/// a type variable or absorbing type) returns [`Type::Dynamic`] — the conflict
+/// is the conservative fallback during the coexistence phase.
+///
+/// TypeVar poisoning: when `a` or `b` is a bound TypeVar that resolves to a
+/// conflicting concrete type, that TypeVar is force-rebound to `Dynamic` so
+/// that later reads of the same TypeVar see `Dynamic` rather than the stale
+/// first-bound concrete type.
 pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyError> {
+    // Save direct Var IDs before resolving — needed to poison them if we hit a
+    // concrete-type mismatch (see the `(_a, _b)` arm below).
+    let a_var = if let Type::Var(id) = &a {
+        Some(*id)
+    } else {
+        None
+    };
+    let b_var = if let Type::Var(id) = &b {
+        Some(*id)
+    } else {
+        None
+    };
+
     let a = resolve(a, arena);
     let b = resolve(b, arena);
 
@@ -419,7 +446,21 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
         // Union type inference is phase 2: we don't yet have the constraint
         // vocabulary (C_UNIFY vs C_SUB) to decide when a union is appropriate vs
         // when it is spurious over-inference. Dynamic is conservative and correct.
-        (_a, _b) => Ok(Type::Dynamic),
+        //
+        // Poison: if either input was a bound TypeVar that resolved to a concrete
+        // type, force-rebind it to Dynamic.  Without this, a global TypeVar bound
+        // to `String` by the first write would remain `String` even after a
+        // conflicting `Bool` write is processed — the TypeVar would keep returning
+        // the wrong first-write type instead of `Dynamic`.
+        (_a, _b) => {
+            if let Some(id) = a_var {
+                arena.force_rebind(id, Type::Dynamic);
+            }
+            if let Some(id) = b_var {
+                arena.force_rebind(id, Type::Dynamic);
+            }
+            Ok(Type::Dynamic)
+        }
     }
 }
 
@@ -938,6 +979,33 @@ mod tests {
         let mut arena = fresh_arena();
         let result = unify(Type::Bool, Type::Int(32), &mut arena).unwrap();
         assert_eq!(result, Type::Dynamic);
+    }
+
+    #[test]
+    fn unify_bound_var_conflict_poisons_var() {
+        // A TypeVar already bound to String, unified with Bool:
+        // result = Dynamic AND the var must be rebound to Dynamic.
+        // Without the poisoning fix, the var would stay bound to String and
+        // future resolve() calls would return String (first-write-wins bug).
+        let mut arena = fresh_arena();
+        let v = arena.fresh();
+        arena.bind(v, Type::String);
+
+        let result = unify(Type::Var(v), Type::Bool, &mut arena).unwrap();
+        assert_eq!(result, Type::Dynamic);
+        assert_eq!(arena.binding_of(v), Some(&Type::Dynamic));
+    }
+
+    #[test]
+    fn unify_bound_var_conflict_symmetric() {
+        // Symmetric: Bool on the left, Var(v) bound to String on the right.
+        let mut arena = fresh_arena();
+        let v = arena.fresh();
+        arena.bind(v, Type::String);
+
+        let result = unify(Type::Bool, Type::Var(v), &mut arena).unwrap();
+        assert_eq!(result, Type::Dynamic);
+        assert_eq!(arena.binding_of(v), Some(&Type::Dynamic));
     }
 
     #[test]
