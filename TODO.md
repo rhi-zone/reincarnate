@@ -905,6 +905,70 @@ doesn't have index signatures. Should use a proper Class interface with index si
 semantics. Later self-corrected to type-appropriate returns (`return false` for bool, `return 0`
 for number). The fix in `051e5a9` addressed this.
 
+### Remaining `as any` in TypeScript emitter (2026-03-18)
+
+Every item below is a Law 4 / no-any violation in the emitter. Root causes tracked here; fixes
+must close the inference gap, not widen further.
+
+- [ ] **ForOf Dynamic binding → `any[]` iterable cast** (`ast_printer.rs` ~753)
+  `for (x of (iter as any[]))` emitted when `binding_ty` is `Dynamic` (AVM2 for-each-in).
+  TypeScript disallows type annotations on for-of bindings (TS2483). Root cause: AVM2 for-each-in
+  iterates over object values whose element type is unknown. Fix: infer the element type from the
+  iterable's IR type (e.g. `Array<T>` → `T`) so the cast can be narrowed to a specific type; or
+  express the iterable as `Iterable<T>` and let TS infer the binding type without a cast.
+
+- [ ] **Switch literal discriminant → `as any`** (`ast_printer.rs` ~819)
+  `switch (0.0 as any) { case 1: ... }` — constant folding leaves a float literal where an integer
+  case is expected, causing TS2678. Fix: constant folding should preserve integer vs float
+  distinction (Law 4); a float `0.0` that is used as a switch discriminant should fold to `0`
+  (integer). Once discriminant and case types agree, the cast is unnecessary.
+
+- [ ] **`NullableCoerce + Dynamic` → `as any`** (`ast_printer.rs` ~1082)
+  `(voidExpr as any)` when a void-typed value is used as a boolean condition (TS1345 in AS3/GML).
+  Root cause: a `Dynamic` result type means inference failed to determine the real type. Fix:
+  infer the actual return type of void-returning functions; the condition should then be wrapped
+  with a proper truthiness helper rather than erased via `any`.
+
+- [ ] **`NullableCoerce + ClassRef` → `as any`** (`ast_printer.rs` ~1088)
+  GML OBJT class refs (integer object indices) are widened to `any` at use sites so they can
+  appear in numeric/arithmetic contexts. Root cause: `Type::ClassRef` carries the class constructor
+  where the IR should carry an integer ID. Fix: resolve OBJT integer indices to a typed
+  `ObjectIndex` IR type (or `Int(32)`) so the backend never sees `ClassRef` in arithmetic context.
+  Tracked separately under `ClassRef → any` above.
+
+- [ ] **`TypeCheck instanceof` → `(expr as any) instanceof T`** (`ast_printer.rs` ~1332)
+  GML objects can change type at runtime, so `this instanceof OwnClass` can genuinely be false.
+  TS control-flow narrows the else-branch to `never`. The `as any` prevents the spurious
+  narrowing. Fix: use a type predicate function (`isInstance(this, Wall)`) that TS treats as
+  opaque, removing the need for `as any` while preserving runtime semantics.
+
+- [ ] **Flash `null as any` shims placeholder in static construct calls**
+  (`rewrites/flash/expr.rs` ~592-596)
+  Static factory methods (`cinit`) have no `this._shims`; `null as any` is injected as a
+  placeholder. Root cause: shims are threaded through `this`, unavailable in static context.
+  Fix: make shims an optional parameter (`shims?: FlashShims`) or pass them via a module-level
+  accessor so static callsites can supply a real value. Also tracked as `ee0a98c` above.
+
+- [ ] **Flash XML/XMLList construct → `as any`** (`rewrites/flash/expr.rs` ~611-616)
+  `new XML(...)` wrapped in `as any` so the result is assignable to string-typed fields (TS2322).
+  AS3 XML has implicit `toString()` coercion on string assignment; TypeScript's XML class does
+  not. Fix: define a proper `XML` runtime class with implicit string coercion via `toString()`
+  and an appropriate union/interface type so no cast is needed. Also tracked as `XML/XMLList →
+  any` above.
+
+- [ ] **GML `(this as any).field` for event-method name conflicts** (`rewrites/gamemaker.rs` ~962)
+  When a game variable name matches an event method (e.g. `self.create = 10`), the typed method
+  declaration on `GMLObject` shadows the `[key: string]: any` index signature, causing TS2339.
+  Fix: separate event methods from the instance variable namespace in the emitted class hierarchy
+  (e.g. emit event methods on a separate `GMLObjectEvents` mixin) so the index signature is
+  never shadowed. Alternatively, emit event methods with a mangled name and alias them.
+
+- [ ] **`Type::ClassRef` → `any` in `ts_type()`** (`types.rs` ~57)
+  Function signatures with `ClassRef` parameters emit `any` because `typeof ClassName` propagates
+  the constructor type misleadingly to callers. Root cause is the same as `NullableCoerce +
+  ClassRef` above: ClassRef should be an integer ID in the IR, not a type-level class reference.
+  Fix: resolve to `ObjectIndex` / `Int(32)` in the IR; remove the ClassRef arm from `ts_type`.
+
 ---
 
 ## Adversarial Architecture Audit (2026-03-13)
