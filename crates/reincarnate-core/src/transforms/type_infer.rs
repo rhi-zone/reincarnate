@@ -786,13 +786,24 @@ fn strip_opaque_array_from_union(ty: Type) -> Type {
     }
 }
 
+/// Return type of [`build_global_types`]:
+/// `(type_map, inferred_structs, string_indexed_names, write_conflicts)`.
+type GlobalTypesResult = (
+    HashMap<String, Type>,
+    Vec<StructDef>,
+    HashSet<String>,
+    Vec<(String, Type)>,
+);
+
 /// Scan all GlobalStore write-site
 /// instructions (identified via `SystemCallTypeRule::GlobalStore` rules registered
 /// by frontends).  Returns a map from global name → inferred type, plus any
 /// struct definitions inferred from use-site field access patterns (Phase 3),
 /// plus the set of schema keys (var names without `_SC_` prefix) that are accessed
-/// with dynamic index keys (i.e. need `[key: string]: any` in their interfaces).
-fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>, HashSet<String>) {
+/// with dynamic index keys (i.e. need `[key: string]: any` in their interfaces),
+/// plus a list of write-site type conflicts `(var_name, raw_union_type)` for
+/// variables that have genuinely incompatible concrete write-site types.
+fn build_global_types(module: &Module) -> GlobalTypesResult {
     use crate::ir::module::SystemCallTypeRule;
 
     // Pre-collect the GlobalStore rules so we can match by (system, method).
@@ -813,10 +824,14 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
         .collect();
 
     if store_rules.is_empty() {
-        return (HashMap::new(), Vec::new(), HashSet::new());
+        return (HashMap::new(), Vec::new(), HashSet::new(), Vec::new());
     }
 
-    let mut global_stores: HashMap<String, Option<Type>> = HashMap::new();
+    // Per-variable accumulator: (concrete_union, concrete_count, opaque_count).
+    // `concrete_union` is the union of all write-site types that resolved to a
+    // concrete (non-Dynamic, non-Unknown) type.  `opaque_count` counts write sites
+    // whose value type remained Dynamic or Unknown after all look-throughs.
+    let mut global_stores: HashMap<String, (Option<Type>, u32, u32)> = HashMap::new();
     // Schema keys (var names without `_SC_` prefix) accessed via GetIndex/SetIndex.
     let mut index_accessed_vars: HashSet<String> = HashSet::new();
     for func in module.functions.values() {
@@ -853,50 +868,52 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                         if let Some(name) = const_strings.get(&args[name_arg]) {
                             let write_val = args[value_arg];
                             let value_ty = func.value_types[write_val].clone();
-                            // If the write-site value is Dynamic, look through a
-                            // single Add(Dynamic, concrete_numeric) to find the numeric
-                            // type.  Compound assignments like `$x += 200` produce
+                            // If the write-site value is Dynamic or Unknown, attempt a
+                            // single look-through: `$x += 200` produces
                             // Add(State.get("x"), 200.0) where the get result is
-                            // Dynamic or Unknown on early passes; the rhs reveals
-                            // the expected numeric type and unblocks GlobalStore inference.
-                            //
-                            // Unknown is treated the same as Dynamic here: "value exists
-                            // at runtime but type is not yet known" — both are filtered so
-                            // they don't contaminate the union with Unknown members.
-                            let effective_ty = if matches!(value_ty, Type::Dynamic | Type::Unknown)
-                            {
-                                if let Some(prod) = result_to_inst.get(&write_val) {
-                                    if let Op::Add(a, b) = &prod.op {
-                                        if matches!(
-                                            func.value_types[*a],
-                                            Type::Dynamic | Type::Unknown
-                                        ) {
-                                            let ty_b = &func.value_types[*b];
+                            // Dynamic/Unknown on early passes; the rhs reveals the
+                            // numeric type.  If look-through fails, count as an opaque
+                            // write (we know a write happened but not with what type).
+                            let effective_ty: Option<Type> =
+                                if matches!(value_ty, Type::Dynamic | Type::Unknown) {
+                                    result_to_inst.get(&write_val).and_then(|prod| {
+                                        if let Op::Add(a, b) = &prod.op {
                                             if matches!(
-                                                ty_b,
-                                                Type::Float(_) | Type::Int(_) | Type::UInt(_)
+                                                func.value_types[*a],
+                                                Type::Dynamic | Type::Unknown
                                             ) {
-                                                ty_b.clone()
+                                                let ty_b = &func.value_types[*b];
+                                                if matches!(
+                                                    ty_b,
+                                                    Type::Float(_) | Type::Int(_) | Type::UInt(_)
+                                                ) {
+                                                    Some(ty_b.clone())
+                                                } else {
+                                                    None
+                                                }
                                             } else {
-                                                continue; // skip this write site
+                                                None
                                             }
                                         } else {
-                                            continue;
+                                            None
                                         }
-                                    } else {
-                                        continue;
-                                    }
+                                    })
                                 } else {
-                                    continue;
-                                }
-                            } else {
-                                value_ty
-                            };
-                            let entry = global_stores.entry(name.to_string()).or_insert(None);
-                            match entry {
-                                None => *entry = Some(effective_ty),
-                                Some(existing) => {
-                                    *existing = union_type(existing.clone(), effective_ty)
+                                    Some(value_ty)
+                                };
+                            let entry = global_stores
+                                .entry(name.to_string())
+                                .or_insert((None, 0, 0));
+                            match effective_ty {
+                                None => entry.2 += 1, // opaque write
+                                Some(ty) => {
+                                    entry.1 += 1; // concrete write
+                                    match &mut entry.0 {
+                                        None => entry.0 = Some(ty),
+                                        Some(existing) => {
+                                            *existing = union_type(existing.clone(), ty)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1151,10 +1168,11 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                                 && !struct_only_results.contains(object)
                             {
                                 if let Some(&var_name) = get_results.get(object) {
-                                    let entry =
-                                        global_stores.entry(var_name.to_string()).or_insert(None);
-                                    if entry.is_none() {
-                                        *entry = Some(Type::Array(Box::new(Type::Dynamic)));
+                                    let entry = global_stores
+                                        .entry(var_name.to_string())
+                                        .or_insert((None, 0, 0));
+                                    if entry.0.is_none() {
+                                        entry.0 = Some(Type::Array(Box::new(Type::Dynamic)));
                                     }
                                 }
                             }
@@ -1181,11 +1199,12 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                         Op::CallIndirect { callee, args } => {
                             if !struct_only_results.contains(callee) {
                                 if let Some(&var_name) = get_results.get(callee) {
-                                    let entry =
-                                        global_stores.entry(var_name.to_string()).or_insert(None);
-                                    if entry.is_none() {
+                                    let entry = global_stores
+                                        .entry(var_name.to_string())
+                                        .or_insert((None, 0, 0));
+                                    if entry.0.is_none() {
                                         let params = vec![Type::Dynamic; args.len()];
-                                        *entry = Some(Type::Function(Box::new(FunctionSig {
+                                        entry.0 = Some(Type::Function(Box::new(FunctionSig {
                                             params,
                                             return_ty: Type::Dynamic,
                                             ..Default::default()
@@ -1220,9 +1239,9 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
                                     if let Some(ty) = inferred {
                                         let entry = global_stores
                                             .entry(index_var.to_string())
-                                            .or_insert(None);
-                                        match entry {
-                                            None => *entry = Some(ty),
+                                            .or_insert((None, 0, 0));
+                                        match &mut entry.0 {
+                                            None => entry.0 = Some(ty),
                                             Some(existing) => {
                                                 *existing = union_type(existing.clone(), ty)
                                             }
@@ -1595,9 +1614,11 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
             fields,
             visibility: Visibility::Public,
         });
-        let entry = global_stores.entry(var_name.clone()).or_insert(None);
-        if entry.is_none() {
-            *entry = Some(Type::Struct(struct_name));
+        let entry = global_stores
+            .entry(var_name.clone())
+            .or_insert((None, 0, 0));
+        if entry.0.is_none() {
+            entry.0 = Some(Type::Struct(struct_name));
         }
     }
 
@@ -1628,16 +1649,47 @@ fn build_global_types(module: &Module) -> (HashMap<String, Type>, Vec<StructDef>
         }
     }
 
+    // Build the final type map, applying majority-wins and collecting conflicts.
+    //
+    // Majority wins: a concrete type is only accepted when the number of concrete
+    // write sites exceeds the number of opaque (Dynamic/Unknown) write sites.
+    // This prevents a single anomalous write (e.g. `$x = [$x]`) from poisoning
+    // the inferred type when most writes remain unresolved.
+    //
+    // Conflict detection: when the concrete union contains genuinely incompatible
+    // types (e.g. both Array(Dynamic) and String), record the conflict for the
+    // caller to surface as an RC0004 diagnostic.
+    let mut conflicts: Vec<(String, Type)> = Vec::new();
     let type_map = global_stores
         .into_iter()
-        .filter_map(|(name, ty)| ty.map(|t| (name, strip_opaque_array_from_union(t))))
+        .filter_map(|(name, (ty_opt, concrete_count, opaque_count))| {
+            let ty = ty_opt?;
+            // Majority wins: opaque writes outnumber concrete → fall back to Dynamic.
+            if opaque_count >= concrete_count {
+                return None;
+            }
+            let stripped = strip_opaque_array_from_union(ty.clone());
+            // Detect genuine type conflicts:
+            //  (a) strip_opaque_array changed the type → array mixed with non-array
+            //  (b) stripped result is still a Union → multiple incompatible concrete types
+            let is_conflict = stripped != ty || matches!(&stripped, Type::Union(_));
+            if is_conflict {
+                conflicts.push((name.clone(), ty));
+            }
+            Some((name, stripped))
+        })
         .collect();
     // Convert schema keys → struct names (prefix with "_SC_").
     let string_indexed_struct_names: HashSet<String> = index_accessed_vars
         .into_iter()
         .map(|key| format!("_SC_{}", key))
         .collect();
-    (type_map, inferred_structs, string_indexed_struct_names)
+    (
+        type_map,
+        inferred_structs,
+        string_indexed_struct_names,
+        conflicts,
+    )
 }
 
 /// Run type inference on a single function within the given module context.
@@ -1870,8 +1922,11 @@ impl Transform for TypeInference {
         const MAX_GLOBAL_INFERENCE_PASSES: usize = 4;
         let mut prev_inferred: HashMap<String, Type> = HashMap::new();
         let mut prev_struct_count: usize = 0;
+        let mut last_conflicts: Vec<(String, Type)> = Vec::new();
         for _ in 0..MAX_GLOBAL_INFERENCE_PASSES {
-            let (inferred_globals, new_structs, new_indexed) = build_global_types(&module);
+            let (inferred_globals, new_structs, new_indexed, conflicts) =
+                build_global_types(&module);
+            last_conflicts = conflicts;
 
             // Check whether this scan produced any improvements over previous.
             let any_improved = inferred_globals.iter().any(|(k, v)| {
@@ -1941,6 +1996,28 @@ impl Transform for TypeInference {
             }
             for func in module.functions.keys().collect::<Vec<_>>() {
                 changed |= infer_function(&mut module.functions[func], &ctx);
+            }
+        }
+
+        // Emit RC0004 diagnostics for write-site type conflicts detected in the
+        // final inference pass.  Deduplicate by variable name so repeated passes
+        // don't multiply the diagnostics.
+        {
+            use crate::pipeline::checker::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for (var_name, raw_ty) in last_conflicts {
+                if seen.insert(var_name.clone()) {
+                    module.diagnostics.push(Diagnostic {
+                        file: module.name.clone(),
+                        line: 0,
+                        col: 0,
+                        code: DiagnosticCode::Rc(RcDiagnostic::WriteConflict),
+                        severity: Severity::Error,
+                        message: format!(
+                            "variable `{var_name}` has conflicting write-site types: {raw_ty:?}"
+                        ),
+                    });
+                }
             }
         }
 

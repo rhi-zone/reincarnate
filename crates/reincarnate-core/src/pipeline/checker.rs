@@ -40,6 +40,13 @@ pub enum RcDiagnostic {
     DuplicateObjectKey,
     /// Function in `function_modules` without a `function_signatures` entry.
     MissingFunctionSignature,
+    /// Global variable has conflicting concrete write-site types.
+    ///
+    /// Fired when write-site type inference observes two or more distinct
+    /// concrete types being stored into the same variable (e.g. both
+    /// `Array(Dynamic)` and `String`).  This is a game-author bug: the
+    /// same variable is used to hold values of incompatible types.
+    WriteConflict,
 }
 
 impl std::fmt::Display for RcDiagnostic {
@@ -48,6 +55,7 @@ impl std::fmt::Display for RcDiagnostic {
             RcDiagnostic::DuplicateCase => "RC0001",
             RcDiagnostic::DuplicateObjectKey => "RC0002",
             RcDiagnostic::MissingFunctionSignature => "RC0003",
+            RcDiagnostic::WriteConflict => "RC0004",
         };
         write!(f, "{code}")
     }

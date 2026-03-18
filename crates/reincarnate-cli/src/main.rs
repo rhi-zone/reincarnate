@@ -980,13 +980,19 @@ fn run_checks(
         all_outputs.push(result);
     }
 
-    // Merge pipeline diagnostics (game-author bug warnings) into check output.
+    // Merge pipeline diagnostics into check output, respecting severity.
     if !pipeline_diagnostics.is_empty() {
         if let Some(first) = all_outputs.first_mut() {
+            for diag in pipeline_diagnostics.iter() {
+                if diag.severity == reincarnate_core::pipeline::checker::Severity::Error {
+                    first.summary.total_errors += 1;
+                } else {
+                    first.summary.total_warnings += 1;
+                }
+            }
             first
                 .diagnostics
                 .extend(pipeline_diagnostics.iter().cloned());
-            first.summary.total_warnings += pipeline_diagnostics.len();
             // Add pipeline warning codes to the by_code summary.
             for diag in pipeline_diagnostics {
                 if let Some(entry) = first
@@ -1005,6 +1011,15 @@ fn run_checks(
                     .push((diag.message.clone(), diag.code.clone(), 1));
             }
         }
+    }
+
+    // Re-check has_errors after merging pipeline diagnostics — RC errors may have
+    // raised total_errors on the first output even if the TS checker found none.
+    if all_outputs
+        .first()
+        .is_some_and(|o| o.summary.total_errors > 0)
+    {
+        has_errors = true;
     }
 
     let summaries: Vec<CheckSummary> = all_outputs.iter().map(|o| o.summary.clone()).collect();
