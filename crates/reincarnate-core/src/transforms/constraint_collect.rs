@@ -6,13 +6,14 @@
 //! The collected constraints are stored in [`ConstraintSet`] values, one per
 //! function, and accumulated in [`ConstraintCollect::constraint_sets`].
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
 use crate::ir::block::BlockId;
 use crate::ir::inst::Op;
+use crate::ir::module::SystemCallTypeRule;
 use crate::ir::ty::{Type, TypeConstraint, TypeVarId};
-use crate::ir::{Function, Module, ValueId};
+use crate::ir::{Constant, Function, Module, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 use crate::transforms::constraint_solve2::TypeVarArena;
 
@@ -83,9 +84,9 @@ pub(crate) fn is_concrete(ty: &Type) -> bool {
 /// not yet used (see TODO.md — pipeline ordering for global HM inference).
 pub fn collect_function(
     func: &Function,
-    _module: &Module,
+    module: &Module,
     arena: &mut TypeVarArena,
-    _global_name_vars: &HashMap<String, TypeVarId>,
+    global_name_vars: &HashMap<String, TypeVarId>,
 ) -> ConstraintSet {
     let mut value_vars: HashMap<ValueId, TypeVarId> = HashMap::new();
 
@@ -116,6 +117,63 @@ pub fn collect_function(
     let var_for = |value: ValueId, vv: &HashMap<ValueId, TypeVarId>| -> Option<Type> {
         vv.get(&value).copied().map(Type::Var)
     };
+
+    // -----------------------------------------------------------------------
+    // Pre-compute SystemCall rule tables and const-string map.
+    //
+    // These are used in Phase 2 to emit GlobalStore / ResolveGlobalType
+    // constraints that link write/read values to global TypeVars.
+    // -----------------------------------------------------------------------
+    let store_rules: HashMap<(&str, &str), (usize, usize)> = module
+        .system_call_type_rules
+        .iter()
+        .filter_map(|((sys, meth), rule)| {
+            if let SystemCallTypeRule::GlobalStore {
+                name_arg,
+                value_arg,
+            } = rule
+            {
+                Some(((sys.as_str(), meth.as_str()), (*name_arg, *value_arg)))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Only ResolveGlobalType (e.g. State.get) emits Equal constraints.
+    // ResolveGlobalTypeStructOnly (e.g. Engine.resolve) is excluded: it is
+    // also used for JS built-ins whose default TS overload returns `unknown`,
+    // so linking those calls through a shared global TypeVar causes false
+    // TS2571 regressions when unrelated uses constrain the TypeVar unexpectedly.
+    let resolve_rules: HashSet<(&str, &str)> = module
+        .system_call_type_rules
+        .iter()
+        .filter_map(|((sys, meth), rule)| {
+            if matches!(rule, SystemCallTypeRule::ResolveGlobalType) {
+                Some((sys.as_str(), meth.as_str()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Const-string map: ValueId → string literal value.
+    // Only built when there are SystemCall rules to process.
+    let const_strings: HashMap<ValueId, &str> =
+        if store_rules.is_empty() && resolve_rules.is_empty() {
+            HashMap::new()
+        } else {
+            func.insts
+                .values()
+                .filter_map(|inst| {
+                    if let Op::Const(Constant::String(s)) = &inst.op {
+                        Some((inst.result?, s.as_str()))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        };
 
     // -----------------------------------------------------------------------
     // Phase 2 — walk blocks and emit constraints per Op.
@@ -215,8 +273,45 @@ pub fn collect_function(
                     }
                 }
 
+                // SystemCall — emit GlobalStore / ResolveGlobalType constraints.
+                //
+                // GlobalStore: the written value's type must equal the global's type.
+                // ResolveGlobalType: the result's type must equal the global's type.
+                // Both use the global's shared TypeVarId from global_name_vars.
+                Op::SystemCall {
+                    system,
+                    method,
+                    args,
+                } => {
+                    let key = (system.as_str(), method.as_str());
+                    if let Some(&(name_arg, value_arg)) = store_rules.get(&key) {
+                        if let Some(name) = args
+                            .get(name_arg)
+                            .and_then(|&v| const_strings.get(&v).copied())
+                        {
+                            if let Some(&gvar) = global_name_vars.get(name) {
+                                if let Some(val_var) =
+                                    args.get(value_arg).and_then(|&v| var_for(v, &value_vars))
+                                {
+                                    constraints
+                                        .push(TypeConstraint::Equal(val_var, Type::Var(gvar)));
+                                }
+                            }
+                        }
+                    } else if resolve_rules.contains(&key) {
+                        if let (Some(name), Some(rv)) = (
+                            args.first().and_then(|&v| const_strings.get(&v).copied()),
+                            result_var,
+                        ) {
+                            if let Some(&gvar) = global_name_vars.get(name) {
+                                constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
+                            }
+                        }
+                    }
+                }
+
                 // All other ops — no useful type constraint to emit at this
-                // stage (branches, allocs, stores, system calls, etc.).
+                // stage (branches, allocs, stores, loads, etc.).
                 _ => {}
             }
         }
