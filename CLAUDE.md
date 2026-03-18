@@ -14,6 +14,8 @@ Reincarnate is a decompiler that produces working, type-safe, high-quality code 
 
 ## Quality
 
+**Wrong code causes cascading damage: wasted time, risky reverts, corrupted `git blame`, and misdirected future work. Never write code unless you're confident you know what's needed.**
+
 **Sloppiness is not excusable.** There is no pressure, deadline, or metric that justifies a sloppy fix. The most common form of sloppiness in this codebase is treating TypeScript error counts as a goal — they are not. A change that reduces errors by widening a type, silencing a diagnostic, or guessing at correct behavior is a regression. The only valid reason to make a change is that it is correct.
 
 **The delta between "compiles" and "correct" lives in TODO.md.** Every known gap, unverified assumption, silent limitation, and unimplemented behavior must be tracked there. Not adding a TODO entry is an implicit claim of correctness. Growing TODO.md as scope grows is fine; gaps missing from TODO.md are not.

@@ -6,7 +6,6 @@
 //! The collected constraints are stored in [`ConstraintSet`] values, one per
 //! function, and accumulated in [`ConstraintCollect::constraint_sets`].
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 
 use crate::error::CoreError;
@@ -25,8 +24,6 @@ use crate::transforms::constraint_solve2::TypeVarArena;
 pub struct ConstraintSet {
     /// All type constraints emitted while walking the function.
     pub constraints: Vec<TypeConstraint>,
-    /// The unifier arena used during collection.
-    pub var_arena: TypeVarArena,
     /// Map from [`ValueId`] → [`TypeVarId`].
     ///
     /// Pre-populated during initialisation:
@@ -46,7 +43,7 @@ pub struct ConstraintSet {
 ///
 /// Compound types (Array, Map, …) whose inner types are all concrete are also
 /// considered concrete.
-fn is_concrete(ty: &Type) -> bool {
+pub(crate) fn is_concrete(ty: &Type) -> bool {
     match ty {
         Type::Dynamic | Type::Unknown | Type::Var(_) => false,
         Type::Array(elem) => is_concrete(elem),
@@ -77,27 +74,38 @@ fn is_concrete(ty: &Type) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Walk `func` and collect all type constraints into a [`ConstraintSet`].
-pub fn collect_function(func: &Function, _module: &Module) -> ConstraintSet {
-    let mut var_arena = TypeVarArena::new();
+///
+/// `arena` is the shared type-variable allocator.  Callers manage the arena
+/// lifetime; [`ConstraintSet`] does not own it.
+///
+/// `global_name_vars` maps global variable names to their [`TypeVarId`]s in
+/// `arena`.  Reserved for future cross-function global constraint emission;
+/// not yet used (see TODO.md — pipeline ordering for global HM inference).
+pub fn collect_function(
+    func: &Function,
+    _module: &Module,
+    arena: &mut TypeVarArena,
+    _global_name_vars: &HashMap<String, TypeVarId>,
+) -> ConstraintSet {
     let mut value_vars: HashMap<ValueId, TypeVarId> = HashMap::new();
 
     // -----------------------------------------------------------------------
     // Phase 1 — allocate a TypeVarId for every value in value_types.
     // -----------------------------------------------------------------------
     for (vid, ty) in func.value_types.iter() {
-        let var = var_arena.fresh();
+        let var = arena.fresh();
         if is_concrete(ty) {
-            var_arena.bind(var, ty.clone());
+            arena.bind(var, ty.clone());
         }
         // Dynamic / Unknown / Var(_) → leave unbound (inference target).
         value_vars.insert(vid, var);
     }
 
     // Allocate a TypeVarId for the function's return type.
-    let return_var: TypeVarId = var_arena.fresh();
+    let return_var: TypeVarId = arena.fresh();
     let return_ty = &func.sig.return_ty;
     if is_concrete(return_ty) {
-        var_arena.bind(return_var, return_ty.clone());
+        arena.bind(return_var, return_ty.clone());
     }
 
     let mut constraints: Vec<TypeConstraint> = Vec::new();
@@ -216,7 +224,6 @@ pub fn collect_function(func: &Function, _module: &Module) -> ConstraintSet {
 
     ConstraintSet {
         constraints,
-        var_arena,
         value_vars,
     }
 }
@@ -291,7 +298,7 @@ fn emit_phi_constraints(
 /// This pass is a pure analysis — it does not modify the module.
 pub struct ConstraintCollect {
     /// One [`ConstraintSet`] per function, in module function order.
-    pub constraint_sets: RefCell<Vec<ConstraintSet>>,
+    pub constraint_sets: std::cell::RefCell<Vec<ConstraintSet>>,
 }
 
 impl Default for ConstraintCollect {
@@ -303,7 +310,7 @@ impl Default for ConstraintCollect {
 impl ConstraintCollect {
     pub fn new() -> Self {
         Self {
-            constraint_sets: RefCell::new(Vec::new()),
+            constraint_sets: std::cell::RefCell::new(Vec::new()),
         }
     }
 }
@@ -316,9 +323,13 @@ impl Transform for ConstraintCollect {
     fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
         let mut sets: Vec<ConstraintSet> = Vec::with_capacity(module.functions.len());
         let any_functions = !module.functions.is_empty();
+        let empty_globals: HashMap<String, TypeVarId> = HashMap::new();
 
         for (_, func) in module.functions.iter() {
-            sets.push(collect_function(func, &module));
+            // Each function gets its own fresh arena (ConstraintCollect is a
+            // pure analysis pass; it does not cross-function-solve globals).
+            let mut arena = TypeVarArena::new();
+            sets.push(collect_function(func, &module, &mut arena, &empty_globals));
         }
 
         *self.constraint_sets.borrow_mut() = sets;
@@ -364,7 +375,9 @@ mod tests {
     fn collect_simple_function_produces_constraints() {
         let module = make_simple_module();
         let func = module.functions.values().next().expect("no functions");
-        let set = collect_function(func, &module);
+        let mut arena = TypeVarArena::new();
+        let empty_globals = HashMap::new();
+        let set = collect_function(func, &module, &mut arena, &empty_globals);
 
         // Every value in value_types should have a var.
         for (vid, _) in func.value_types.iter() {
