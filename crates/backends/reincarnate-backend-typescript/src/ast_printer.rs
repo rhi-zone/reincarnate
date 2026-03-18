@@ -594,12 +594,6 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                             JsExpr::ObjectInit(_) | JsExpr::Activation => {
                                 Some("Record<string, any>")
                             }
-                            // SystemCall results (e.g. State.get()) may return `unknown`
-                            // at the TypeScript level even when the IR analysis determined
-                            // the value is `Dynamic` (= `any`).  Without an explicit `: any`
-                            // annotation TypeScript infers `unknown`, blocking all use of
-                            // the variable and producing TS18046 errors.
-                            JsExpr::SystemCall { .. } => Some("any"),
                             _ => None,
                         };
                         if let Some(ann) = annotation {
@@ -1258,13 +1252,7 @@ fn print_expr(expr: &JsExpr) -> String {
             } else {
                 format!("[\"{}\"]", escape_js_string(method))
             };
-            // The IR type for SystemCall results is Dynamic (= `any`), but the
-            // runtime function may declare a narrower or wider return type (e.g.
-            // `State.get()` returns `unknown`).  Cast to `any` so that TypeScript
-            // sees the IR type at every inline use site, preventing TS2571
-            // ("Object is of type 'unknown'") and similar errors when the result
-            // is used as an operand, index, or object.
-            format!("({sys_ident}{safe_method}({}) as any)", args_str.join(", "))
+            format!("{sys_ident}{safe_method}({})", args_str.join(", "))
         }
     }
 }

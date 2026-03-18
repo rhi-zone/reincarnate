@@ -786,6 +786,33 @@ fn strip_opaque_array_from_union(ty: Type) -> Type {
     }
 }
 
+/// Returns true when the union variants span more than one TypeScript type family.
+///
+/// TypeScript collapses `Int(_) | Float(_)` to `number`; treating them as
+/// different IR types does not constitute a real conflict at the TS level.
+fn ts_type_family_conflict(variants: &[Type]) -> bool {
+    #[derive(PartialEq, Eq, Hash, Clone, Copy)]
+    enum TsFamily {
+        Number,
+        Boolean,
+        String,
+        Array,
+        Other,
+    }
+    let family = |t: &Type| match t {
+        Type::Int(_) | Type::Float(_) | Type::UInt(_) => TsFamily::Number,
+        Type::Bool => TsFamily::Boolean,
+        Type::String => TsFamily::String,
+        Type::Array(_) => TsFamily::Array,
+        _ => TsFamily::Other,
+    };
+    let mut seen = std::collections::HashSet::new();
+    for v in variants {
+        seen.insert(family(v));
+    }
+    seen.len() > 1
+}
+
 /// Return type of [`build_global_types`]:
 /// `(type_map, inferred_structs, string_indexed_names, write_conflicts)`.
 type GlobalTypesResult = (
@@ -802,7 +829,7 @@ type GlobalTypesResult = (
 /// plus the set of schema keys (var names without `_SC_` prefix) that are accessed
 /// with dynamic index keys (i.e. need `[key: string]: any` in their interfaces),
 /// plus a list of write-site type conflicts `(var_name, raw_union_type)` for
-/// variables that have genuinely incompatible concrete write-site types.
+/// variables whose concrete write-site types span different TypeScript type families.
 fn build_global_types(module: &Module) -> GlobalTypesResult {
     use crate::ir::module::SystemCallTypeRule;
 
@@ -827,11 +854,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
         return (HashMap::new(), Vec::new(), HashSet::new(), Vec::new());
     }
 
-    // Per-variable accumulator: (concrete_union, concrete_count, opaque_count).
-    // `concrete_union` is the union of all write-site types that resolved to a
-    // concrete (non-Dynamic, non-Unknown) type.  `opaque_count` counts write sites
-    // whose value type remained Dynamic or Unknown after all look-throughs.
-    let mut global_stores: HashMap<String, (Option<Type>, u32, u32)> = HashMap::new();
+    // Per-variable accumulator: union of all concrete write-site types.
+    let mut global_stores: HashMap<String, Option<Type>> = HashMap::new();
     // Schema keys (var names without `_SC_` prefix) accessed via GetIndex/SetIndex.
     let mut index_accessed_vars: HashSet<String> = HashSet::new();
     for func in module.functions.values() {
@@ -901,19 +925,11 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                 } else {
                                     Some(value_ty)
                                 };
-                            let entry = global_stores
-                                .entry(name.to_string())
-                                .or_insert((None, 0, 0));
-                            match effective_ty {
-                                None => entry.2 += 1, // opaque write
-                                Some(ty) => {
-                                    entry.1 += 1; // concrete write
-                                    match &mut entry.0 {
-                                        None => entry.0 = Some(ty),
-                                        Some(existing) => {
-                                            *existing = union_type(existing.clone(), ty)
-                                        }
-                                    }
+                            if let Some(ty) = effective_ty {
+                                let entry = global_stores.entry(name.to_string()).or_insert(None);
+                                match entry {
+                                    None => *entry = Some(ty),
+                                    Some(existing) => *existing = union_type(existing.clone(), ty),
                                 }
                             }
                         }
@@ -1168,11 +1184,10 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                 && !struct_only_results.contains(object)
                             {
                                 if let Some(&var_name) = get_results.get(object) {
-                                    let entry = global_stores
-                                        .entry(var_name.to_string())
-                                        .or_insert((None, 0, 0));
-                                    if entry.0.is_none() {
-                                        entry.0 = Some(Type::Array(Box::new(Type::Dynamic)));
+                                    let entry =
+                                        global_stores.entry(var_name.to_string()).or_insert(None);
+                                    if entry.is_none() {
+                                        *entry = Some(Type::Array(Box::new(Type::Dynamic)));
                                     }
                                 }
                             }
@@ -1199,12 +1214,11 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                         Op::CallIndirect { callee, args } => {
                             if !struct_only_results.contains(callee) {
                                 if let Some(&var_name) = get_results.get(callee) {
-                                    let entry = global_stores
-                                        .entry(var_name.to_string())
-                                        .or_insert((None, 0, 0));
-                                    if entry.0.is_none() {
+                                    let entry =
+                                        global_stores.entry(var_name.to_string()).or_insert(None);
+                                    if entry.is_none() {
                                         let params = vec![Type::Dynamic; args.len()];
-                                        entry.0 = Some(Type::Function(Box::new(FunctionSig {
+                                        *entry = Some(Type::Function(Box::new(FunctionSig {
                                             params,
                                             return_ty: Type::Dynamic,
                                             ..Default::default()
@@ -1239,9 +1253,9 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                     if let Some(ty) = inferred {
                                         let entry = global_stores
                                             .entry(index_var.to_string())
-                                            .or_insert((None, 0, 0));
-                                        match &mut entry.0 {
-                                            None => entry.0 = Some(ty),
+                                            .or_insert(None);
+                                        match entry {
+                                            None => *entry = Some(ty),
                                             Some(existing) => {
                                                 *existing = union_type(existing.clone(), ty)
                                             }
@@ -1614,11 +1628,9 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
             fields,
             visibility: Visibility::Public,
         });
-        let entry = global_stores
-            .entry(var_name.clone())
-            .or_insert((None, 0, 0));
-        if entry.0.is_none() {
-            entry.0 = Some(Type::Struct(struct_name));
+        let entry = global_stores.entry(var_name.clone()).or_insert(None);
+        if entry.is_none() {
+            *entry = Some(Type::Struct(struct_name));
         }
     }
 
@@ -1649,30 +1661,24 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
         }
     }
 
-    // Build the final type map, applying majority-wins and collecting conflicts.
+    // Build the final type map, collecting genuine type conflicts.
     //
-    // Majority wins: a concrete type is only accepted when the number of concrete
-    // write sites exceeds the number of opaque (Dynamic/Unknown) write sites.
-    // This prevents a single anomalous write (e.g. `$x = [$x]`) from poisoning
-    // the inferred type when most writes remain unresolved.
-    //
-    // Conflict detection: when the concrete union contains genuinely incompatible
-    // types (e.g. both Array(Dynamic) and String), record the conflict for the
-    // caller to surface as an RC0004 diagnostic.
+    // Conflict detection: when the concrete union contains types that belong to
+    // different TypeScript type families (e.g. String and Float both have concrete
+    // write sites), record the conflict for the caller to surface as an RC0004
+    // diagnostic.  Int/Float do NOT constitute a conflict — both map to `number`.
     let mut conflicts: Vec<(String, Type)> = Vec::new();
     let type_map = global_stores
         .into_iter()
-        .filter_map(|(name, (ty_opt, concrete_count, opaque_count))| {
+        .filter_map(|(name, ty_opt)| {
             let ty = ty_opt?;
-            // Majority wins: opaque writes outnumber concrete → fall back to Dynamic.
-            if opaque_count >= concrete_count {
-                return None;
-            }
             let stripped = strip_opaque_array_from_union(ty.clone());
-            // Detect genuine type conflicts:
-            //  (a) strip_opaque_array changed the type → array mixed with non-array
-            //  (b) stripped result is still a Union → multiple incompatible concrete types
-            let is_conflict = stripped != ty || matches!(&stripped, Type::Union(_));
+            // Detect genuine type conflicts across TypeScript type families:
+            //  (a) strip_opaque_array changed the type → opaque array stripped
+            //      alongside non-array concrete types (Array vs non-Array)
+            //  (b) stripped result is still a Union spanning multiple TS families
+            let is_conflict = (stripped != ty)
+                || matches!(&stripped, Type::Union(ms) if ts_type_family_conflict(ms));
             if is_conflict {
                 conflicts.push((name.clone(), ty));
             }
