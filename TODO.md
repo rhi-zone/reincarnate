@@ -240,11 +240,24 @@ union/intersection types, and subtyping to basic HM — all applicable here.
 - `majority-wins` heuristic removed from `build_global_types` — `union_type` already drops
   Dynamic members, so opaque write sites add no signal and should not suppress inference
 
-**Pipeline ordering gap (NOT YET RESOLVED):**
-- `collect_function` accepts `_global_name_vars: &HashMap<String, TypeVarId>` but does NOT
-  emit `GlobalStore`/`ResolveGlobalType` constraints yet. When ConstraintSolve2 runs AFTER
-  TypeInference, emitting those constraints would override TypeInference's already-set global
-  types and cause regressions. Resolution requires either:
+**Phase 1.5 done (2026-03-18, commit `6e44573`):**
+- `GlobalStore`/`ResolveGlobalType` Equal constraints now emitted from `collect_function`
+  (only `ResolveGlobalType`, not `ResolveGlobalTypeStructOnly` — the latter excludes
+  Engine.resolve to avoid TS2571 regressions from JS built-in global names)
+- `TypeVarArena::force_rebind` added — allows poisoning a TypeVar already bound to a
+  concrete type when a conflicting concrete type arrives later (fixes first-write-wins bug)
+- `unify` saves original Var IDs before `resolve`; in concrete-mismatch arm, poisons those
+  vars to Dynamic so step 6 writeback sees Dynamic (not stale first-write type)
+- DoL: 2570 → 2567 TS (−3 conflicting globals now correctly Dynamic)
+
+**Pipeline ordering gap (BLOCKER for Phase 2):**
+- ConstraintSolve2 runs AFTER TypeInference. Phase 1 write-site types (from
+  `build_global_types`) feed TypeInference's per-function inference loop (ResolveGlobalType
+  return types). Removing Phase 1 would leave per-function inference blind to global types,
+  and Phases 2/3 (array/struct use-site) in `build_global_types` would degrade.
+- ConstraintSolve2's global writeback (step 6) correctly handles Dynamic|Unknown globals
+  now, but cannot override Phase 1's concrete types (guard: `Dynamic | Unknown` only).
+- Resolution requires either:
   (a) merging global inference into TypeInference's multi-pass loop using HM infrastructure, or
   (b) moving TypeInference entirely after ConstraintSolve2 (removes majority of heuristic passes)
   Track as blocker for TODO item 7 (Retire heuristic passes).
