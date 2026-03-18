@@ -231,6 +231,24 @@ union/intersection types, and subtyping to basic HM — all applicable here.
 - `Type::Var → "unknown"` in TypeScript backend (commit `a7ba296`)
 - `TypeConstraint` and `TypeVarId` exist in `ir/ty.rs` (repurposable scaffolding)
 
+**Phase 1 done (2026-03-18, commit `302c3d2`):**
+- `TypeVarArena`, `UnionFind`, occurs check, `bind_var`, `resolve` in `constraint_solve2.rs`
+- `ConstraintCollect` pass in `constraint_collect.rs` — shared arena architecture; emits
+  `Equal`, `HasField`, `Callable` constraints per function
+- `ConstraintSolve2::apply` — shared arena across all functions; pre-allocates TypeVarIds
+  for declared globals; collects+solves constraints jointly; writes back improved types
+- `majority-wins` heuristic removed from `build_global_types` — `union_type` already drops
+  Dynamic members, so opaque write sites add no signal and should not suppress inference
+
+**Pipeline ordering gap (NOT YET RESOLVED):**
+- `collect_function` accepts `_global_name_vars: &HashMap<String, TypeVarId>` but does NOT
+  emit `GlobalStore`/`ResolveGlobalType` constraints yet. When ConstraintSolve2 runs AFTER
+  TypeInference, emitting those constraints would override TypeInference's already-set global
+  types and cause regressions. Resolution requires either:
+  (a) merging global inference into TypeInference's multi-pass loop using HM infrastructure, or
+  (b) moving TypeInference entirely after ConstraintSolve2 (removes majority of heuristic passes)
+  Track as blocker for TODO item 7 (Retire heuristic passes).
+
 ---
 
 ## Full Architecture Audit — COMPLETED 2026-03-12
