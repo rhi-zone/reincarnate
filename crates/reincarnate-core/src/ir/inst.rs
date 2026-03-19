@@ -110,29 +110,6 @@ pub enum Op {
         on_false: ValueId,
     },
 
-    // -- Control flow --
-    /// Unconditional branch.
-    Br {
-        target: BlockId,
-        args: Vec<ValueId>,
-    },
-    /// Conditional branch.
-    BrIf {
-        cond: ValueId,
-        then_target: BlockId,
-        then_args: Vec<ValueId>,
-        else_target: BlockId,
-        else_args: Vec<ValueId>,
-    },
-    /// Multi-way switch.
-    Switch {
-        value: ValueId,
-        cases: Vec<(Constant, BlockId, Vec<ValueId>)>,
-        default: (BlockId, Vec<ValueId>),
-    },
-    /// Return from function.
-    Return(Option<ValueId>),
-
     // -- Memory / fields --
     /// Allocate a local variable.
     Alloc(Type),
@@ -224,6 +201,29 @@ pub enum Op {
     /// Resume a coroutine, returning the yielded value.
     CoroutineResume(ValueId),
 
+    // -- Control flow (DEPRECATED: prefer Block.terminator) --
+    /// Unconditional branch.
+    Br {
+        target: BlockId,
+        args: Vec<ValueId>,
+    },
+    /// Conditional branch.
+    BrIf {
+        cond: ValueId,
+        then_target: BlockId,
+        then_args: Vec<ValueId>,
+        else_target: BlockId,
+        else_args: Vec<ValueId>,
+    },
+    /// Multi-way switch.
+    Switch {
+        value: ValueId,
+        cases: Vec<(Constant, BlockId, Vec<ValueId>)>,
+        default: (BlockId, Vec<ValueId>),
+    },
+    /// Return from function.
+    Return(Option<ValueId>),
+
     // -- Misc --
     /// Reference to a global variable.
     GlobalRef(String),
@@ -231,4 +231,31 @@ pub enum Op {
     Spread(ValueId),
     /// Phi-like copy (used internally during SSA construction, prefer block args).
     Copy(ValueId),
+}
+
+/// Block terminator — explicit control-flow edge at the end of each block.
+///
+/// Every complete block has exactly one terminator. Terminators carry their
+/// successor block IDs and block-argument lists, replacing the old
+/// `Op::Br`/`Op::BrIf`/`Op::Switch`/`Op::Return` variants.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Terminator {
+    /// Unconditional branch.
+    Br { target: BlockId, args: Vec<ValueId> },
+    /// Conditional branch.
+    BrIf {
+        cond: ValueId,
+        then_target: BlockId,
+        then_args: Vec<ValueId>,
+        else_target: BlockId,
+        else_args: Vec<ValueId>,
+    },
+    /// Multi-way switch.
+    Switch {
+        value: ValueId,
+        cases: Vec<(Constant, BlockId, Vec<ValueId>)>,
+        default: (BlockId, Vec<ValueId>),
+    },
+    /// Return from function.
+    Return(Option<ValueId>),
 }

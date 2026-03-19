@@ -3,7 +3,7 @@ use std::fmt;
 use crate::entity::EntityRef;
 
 use super::func::{Function, MethodKind, Visibility};
-use super::inst::{CastKind, CmpKind, Op};
+use super::inst::{CastKind, CmpKind, Op, Terminator};
 use super::module::Module;
 use super::ty::Type;
 use super::value::Constant;
@@ -199,6 +199,15 @@ impl fmt::Display for Function {
             // Instructions
             for &inst_id in &block.insts {
                 let inst = &self.insts[inst_id];
+
+                // Skip deprecated cf variants — printed from block.terminator instead.
+                if matches!(
+                    inst.op,
+                    Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_)
+                ) {
+                    continue;
+                }
+
                 write!(f, "    ")?;
 
                 // Result prefix
@@ -312,51 +321,6 @@ impl fmt::Display for Function {
                         fmt_value(*a, f)?;
                         write!(f, ", ")?;
                         fmt_value(*b, f)?;
-                    }
-
-                    Op::Br { target, args } => {
-                        write!(f, "br ")?;
-                        fmt_block_target(*target, args, f)?;
-                    }
-                    Op::BrIf {
-                        cond,
-                        then_target,
-                        then_args,
-                        else_target,
-                        else_args,
-                    } => {
-                        write!(f, "br_if ")?;
-                        fmt_value(*cond, f)?;
-                        write!(f, ", ")?;
-                        fmt_block_target(*then_target, then_args, f)?;
-                        write!(f, ", ")?;
-                        fmt_block_target(*else_target, else_args, f)?;
-                    }
-                    Op::Switch {
-                        value,
-                        cases,
-                        default,
-                    } => {
-                        write!(f, "switch ")?;
-                        fmt_value(*value, f)?;
-                        write!(f, ", [")?;
-                        for (i, (constant, block, args)) in cases.iter().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            fmt_constant(constant, f)?;
-                            write!(f, " -> ")?;
-                            fmt_block_target(*block, args, f)?;
-                        }
-                        write!(f, "], default -> ")?;
-                        fmt_block_target(default.0, &default.1, f)?;
-                    }
-                    Op::Return(val) => {
-                        write!(f, "return")?;
-                        if let Some(v) = val {
-                            write!(f, " ")?;
-                            fmt_value(*v, f)?;
-                        }
                     }
 
                     Op::Alloc(ty) => {
@@ -526,8 +490,65 @@ impl fmt::Display for Function {
                         write!(f, ", ")?;
                         fmt_value(*on_false, f)?;
                     }
+
+                    // Deprecated cf variants — skipped above, printed from block.terminator.
+                    Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_) => {
+                        unreachable!()
+                    }
                 }
 
+                writeln!(f)?;
+            }
+
+            // Terminator
+            if let Some(term) = &block.terminator {
+                write!(f, "    ")?;
+                match term {
+                    Terminator::Br { target, args } => {
+                        write!(f, "br ")?;
+                        fmt_block_target(*target, args, f)?;
+                    }
+                    Terminator::BrIf {
+                        cond,
+                        then_target,
+                        then_args,
+                        else_target,
+                        else_args,
+                    } => {
+                        write!(f, "br_if ")?;
+                        fmt_value(*cond, f)?;
+                        write!(f, ", ")?;
+                        fmt_block_target(*then_target, then_args, f)?;
+                        write!(f, ", ")?;
+                        fmt_block_target(*else_target, else_args, f)?;
+                    }
+                    Terminator::Switch {
+                        value,
+                        cases,
+                        default,
+                    } => {
+                        write!(f, "switch ")?;
+                        fmt_value(*value, f)?;
+                        write!(f, ", [")?;
+                        for (i, (constant, block_target, args)) in cases.iter().enumerate() {
+                            if i > 0 {
+                                write!(f, ", ")?;
+                            }
+                            fmt_constant(constant, f)?;
+                            write!(f, " -> ")?;
+                            fmt_block_target(*block_target, args, f)?;
+                        }
+                        write!(f, "], default -> ")?;
+                        fmt_block_target(default.0, &default.1, f)?;
+                    }
+                    Terminator::Return(val) => {
+                        write!(f, "return")?;
+                        if let Some(v) = val {
+                            write!(f, " ")?;
+                            fmt_value(*v, f)?;
+                        }
+                    }
+                }
                 writeln!(f)?;
             }
 

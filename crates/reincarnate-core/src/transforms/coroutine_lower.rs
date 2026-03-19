@@ -84,6 +84,7 @@ fn split_at_yields(func: &mut Function) -> Vec<YieldPoint> {
         let post_block = func.blocks.push(Block {
             params: post_params,
             insts: post_insts,
+            terminator: None,
         });
 
         // If there was a resume value, substitute the old ValueId with the
@@ -294,6 +295,7 @@ impl ResumeBuilder {
         self.blocks.push(Block {
             params: Vec::new(),
             insts: Vec::new(),
+            terminator: None,
         })
     }
 }
@@ -331,6 +333,7 @@ fn build_resume_function(
             },
         ],
         insts: Vec::new(),
+        terminator: None,
     });
 
     // Create state dispatch blocks (one per state).

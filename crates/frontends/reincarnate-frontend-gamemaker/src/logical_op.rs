@@ -272,6 +272,7 @@ fn insert_bypass_block(func: &mut Function, merge_target: BlockId, bypass_arg: V
     func.blocks.push(Block {
         params: vec![],
         insts: vec![br_inst],
+        terminator: None,
     })
 }
 

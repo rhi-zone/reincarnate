@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::define_entity;
 
-use super::inst::InstId;
+use super::inst::{InstId, Terminator};
 use super::ty::Type;
 use super::value::ValueId;
 
@@ -20,4 +20,7 @@ pub struct BlockParam {
 pub struct Block {
     pub params: Vec<BlockParam>,
     pub insts: Vec<InstId>,
+    /// The block's terminator (control-flow edge).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminator: Option<Terminator>,
 }

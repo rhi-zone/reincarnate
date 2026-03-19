@@ -17,7 +17,7 @@ pub use block::{Block, BlockId, BlockParam};
 pub use builder::{FunctionBuilder, ModuleBuilder};
 pub use coroutine::CoroutineInfo;
 pub use func::{CaptureMode, FuncId, Function, MethodKind, Visibility};
-pub use inst::{CastKind, CmpKind, Inst, InstId, Op, Span};
+pub use inst::{CastKind, CmpKind, Inst, InstId, Op, Span, Terminator};
 pub use linear::lower_function_linear;
 pub use module::{
     AbstractMember, ClassDef, EntryPoint, EnumDef, EnumVariant, ExternalImport, FieldDef, Global,
