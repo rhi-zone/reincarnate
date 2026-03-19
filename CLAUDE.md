@@ -76,7 +76,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 **`reincarnate check` output format:** progress lines go to stderr; diagnostics go to stdout. Never use `2>&1` — it mixes them. Without filters, stdout is a sorted count-by-code summary. With `--filter-code`, the first stdout line is `Showing N of M diagnostics matching ...` — the count is right there, no grep needed. Never grep check output for a code that `--filter-code` already filters.
 
 
-**Use subagents** for research tasks, >5 files, or >3 grep rounds. Any change that requires a `cargo clippy` or `cargo test` run should go through an agent — doing it inline accumulates tool output in the main context and crowds out the actual conversation. The temptation to do it inline is always wrong.
+**Implementation always goes through agents.** The main context is for coordination only — decisions, review, direction. Every edit, write, and build command belongs in an agent. This is not about test-run overhead: even a successful inline implementation pollutes the main context with tool calls that consume context space and obscure the coordination-level thinking. An agent contains the entire implementation — successes, failures, and intermediate states — and returns a clean summary. The main context stays clean regardless of outcome.
 
 **Session handoff:** plan mode → plan with only (next tasks / blocked items / what was done if it affects what's next) → flush TODO.md → ExitPlanMode. No commands, no build steps, no context summaries — those belong in CLAUDE.md or TODO.md. The next session reads both fresh.
 
