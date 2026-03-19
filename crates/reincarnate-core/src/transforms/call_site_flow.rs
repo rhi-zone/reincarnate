@@ -89,7 +89,7 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
 /// i.e. via `GetIndex(param, _)` or `GetField(param, "length")`. If so,
 /// narrowing it to a non-collection type (e.g. Float(64)) would cause
 /// `.length` / `[i]` to produce type errors in the emitted code.
-fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
+pub(crate) fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
     let tracked: Vec<ValueId> = vec![param_value];
 
     for block in func.blocks.values() {
@@ -109,6 +109,46 @@ fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
                 // narrowing to Float(64) is suppressed when the body calls array_length.
                 Op::Call { func: fname, args } if fname == "array_length" => {
                     if args.first().map(|a| tracked.contains(a)).unwrap_or(false) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+/// Check if a parameter value is used with field access (`GetField`),
+/// index access (`GetIndex`), or `array_length` in the function body.
+///
+/// Broader than [`param_used_as_collection`]: catches any `.field` access,
+/// not just `.length`. Used by `ConstraintSolve2` to avoid narrowing params
+/// that the body treats as objects or collections — unifying with a scalar
+/// type from callers would make all field accesses type errors.
+///
+/// NOT used by `CallSiteTypeFlow` because GML `self` params always have
+/// field accesses — the narrower collection check is sufficient there since
+/// `self` narrowing to `Struct(ClassName)` is safe.
+pub(crate) fn param_used_with_field_access(func: &Function, param_value: ValueId) -> bool {
+    for block in func.blocks.values() {
+        for &inst_id in &block.insts {
+            let inst = &func.insts[inst_id];
+            match &inst.op {
+                Op::GetIndex { collection, .. } if *collection == param_value => {
+                    return true;
+                }
+                Op::SetIndex { collection, .. } if *collection == param_value => {
+                    return true;
+                }
+                Op::GetField { object, .. } if *object == param_value => {
+                    return true;
+                }
+                Op::SetField { object, .. } if *object == param_value => {
+                    return true;
+                }
+                Op::Call { func: fname, args } if fname == "array_length" => {
+                    if args.first().map(|a| *a == param_value).unwrap_or(false) {
                         return true;
                     }
                 }

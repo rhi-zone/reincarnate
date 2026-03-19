@@ -245,10 +245,13 @@ pub(super) fn translate_with_body(
     wctx: &WithBodyCtx<'_>,
     extra_funcs: &mut Vec<Function>,
 ) -> Result<Function, String> {
+    // When the with-target is a known OBJT, type _self as that class.
+    // Otherwise fall back to GMLObject — all GML instances extend it,
+    // so field access via the `[key: string]: any` index signature works.
     let self_ty = wctx
         .instance_class
         .map(|n| Type::Struct(n.to_string()))
-        .unwrap_or(Type::Unknown);
+        .unwrap_or_else(|| Type::Struct("GMLObject".to_string()));
     // Use Unknown return type when the body contains "return X inside with" pattern
     // (exit PopEnv with sentinel Branch offset). TypeInference will refine further.
     let closure_return_ty = if wctx.has_return_in_with {

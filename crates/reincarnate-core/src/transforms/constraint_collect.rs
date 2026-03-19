@@ -12,7 +12,7 @@ use crate::error::CoreError;
 use crate::ir::block::BlockId;
 use crate::ir::inst::Op;
 use crate::ir::module::SystemCallTypeRule;
-use crate::ir::ty::{Type, TypeConstraint, TypeVarId};
+use crate::ir::ty::{FunctionSig, Type, TypeConstraint, TypeVarId};
 use crate::ir::{Constant, Function, Module, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 use crate::transforms::constraint_solve2::TypeVarArena;
@@ -117,6 +117,15 @@ pub fn collect_function(
     let var_for = |value: ValueId, vv: &HashMap<ValueId, TypeVarId>| -> Option<Type> {
         vv.get(&value).copied().map(Type::Var)
     };
+
+    // -----------------------------------------------------------------------
+    // Build function name → FunctionSig map for Call/MethodCall constraints.
+    // -----------------------------------------------------------------------
+    let func_sigs: HashMap<&str, &FunctionSig> = module
+        .functions
+        .keys()
+        .map(|fid| (module.func_name(fid), &module.functions[fid].sig))
+        .collect();
 
     // -----------------------------------------------------------------------
     // Pre-compute SystemCall rule tables and const-string map.
@@ -293,6 +302,107 @@ pub fn collect_function(
                                 constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
                             }
                         }
+                    }
+                }
+
+                // Call — constrain result to callee's return type and args to
+                // callee's param types (when those types are concrete).
+                Op::Call {
+                    func: callee_name,
+                    args,
+                } => {
+                    if let Some(sig) = func_sigs.get(callee_name.as_str()) {
+                        // Result ← callee return type.
+                        if let Some(rv) = result_var.as_ref() {
+                            if is_concrete(&sig.return_ty) {
+                                constraints
+                                    .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
+                            }
+                        }
+                        // Args → callee param types (only concrete).
+                        for (i, &arg) in args.iter().enumerate() {
+                            if i < sig.params.len() && is_concrete(&sig.params[i]) {
+                                if let Some(arg_var) = var_for(arg, &value_vars) {
+                                    constraints.push(TypeConstraint::Equal(
+                                        arg_var,
+                                        sig.params[i].clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // MethodCall — same as Call but params are offset by 1 (self).
+                Op::MethodCall {
+                    receiver,
+                    method,
+                    args,
+                } => {
+                    if let Some(sig) = func_sigs.get(method.as_str()) {
+                        // Result ← callee return type.
+                        if let Some(rv) = result_var.as_ref() {
+                            if is_concrete(&sig.return_ty) {
+                                constraints
+                                    .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
+                            }
+                        }
+                        // Receiver → callee param[0] (self).
+                        if !sig.params.is_empty() && is_concrete(&sig.params[0]) {
+                            if let Some(recv_var) = var_for(*receiver, &value_vars) {
+                                constraints
+                                    .push(TypeConstraint::Equal(recv_var, sig.params[0].clone()));
+                            }
+                        }
+                        // Args → callee params[1..].
+                        for (i, &arg) in args.iter().enumerate() {
+                            let param_idx = i + 1;
+                            if param_idx < sig.params.len() && is_concrete(&sig.params[param_idx]) {
+                                if let Some(arg_var) = var_for(arg, &value_vars) {
+                                    constraints.push(TypeConstraint::Equal(
+                                        arg_var,
+                                        sig.params[param_idx].clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Cast — result type is the cast target.
+                Op::Cast(_, target_ty, _) => {
+                    if let Some(rv) = result_var {
+                        if is_concrete(target_ty) {
+                            constraints.push(TypeConstraint::Equal(rv, target_ty.clone()));
+                        }
+                    }
+                }
+
+                // Comparison — result is Bool.
+                Op::Cmp(_, _, _) => {
+                    if let Some(rv) = result_var {
+                        constraints.push(TypeConstraint::Equal(rv, Type::Bool));
+                    }
+                }
+
+                // Boolean logic — operands and result are Bool.
+                Op::Not(_) | Op::BoolAnd(_, _) | Op::BoolOr(_, _) => {
+                    if let Some(rv) = result_var {
+                        constraints.push(TypeConstraint::Equal(rv, Type::Bool));
+                    }
+                }
+
+                // TypeCheck — result is Bool.
+                Op::TypeCheck(_, _) => {
+                    if let Some(rv) = result_var {
+                        constraints.push(TypeConstraint::Equal(rv, Type::Bool));
+                    }
+                }
+
+                // StructInit — result is Struct(name).
+                Op::StructInit { name, .. } => {
+                    if let Some(rv) = result_var {
+                        constraints.push(TypeConstraint::Equal(rv, Type::Struct(name.clone())));
                     }
                 }
 
