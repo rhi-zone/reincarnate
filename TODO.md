@@ -4,6 +4,34 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## Incremental Rewrite Plan (ACTIVE)
+
+Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally — each phase completes fully (output parity verified on Dead Estate via snapshot diff) before the next begins. No stubs. No deleting working code before its replacement is proven equivalent.
+
+**Quality gate:** `cargo run -p reincarnate-cli -- emit --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json --dump-function <name> > ~/reincarnate/snapshots/after.txt` and diff against before snapshot. Dead Estate must stay at 0 TS errors throughout.
+
+### Three dimensions being addressed
+
+1. **Structural ad-hoc → clean IR:** ban `SystemCall`, `GlobalRef`, `Copy`, `CoercingEq`/`CoercingNe`, `BoolAnd`/`BoolOr` as distinct ops; introduce `Terminator` enum; `NameInterner`/`NameTable`; declarative pass manager.
+2. **Inference:** multi-phase heuristic stack → single-pass HM unification; `Dynamic` → `Unknown` with honest diagnostics; `IntToBoolPromotion` ported to first-class `Bool` type.
+3. **Emit quality:** Core AST reconstruction pipeline; `ForEach` lifting; forward substitution; runtime as IR (M+N not M×N).
+
+### Phases
+
+- [ ] **Phase 1 — Terminator enum.** Extract control flow from `Op` into an explicit `Terminator` per block. No semantic change; all existing passes adapt. Gate: Dead Estate 0 errors, snapshot identical.
+- [ ] **Phase 2 — Ban `Copy` + `CoercingEq`/`CoercingNe`.** `Copy` → eliminated by Mem2Reg or substituted inline. `CoercingEq`/`CoercingNe` → `Call` via `RuntimeRegistry`. Gate: same.
+- [ ] **Phase 3 — Ban `SystemCall` + `GlobalRef`.** Engine API calls → typed `Call(FunctionId, ...)` via `RuntimeRegistry`. Gate: same.
+- [ ] **Phase 4 — `Dynamic` → `Unknown`.** Replace `Type::Dynamic` with `Type::Unknown`. `Dynamic` emits `any`; `Unknown` emits `unknown`. Gate: same or better TS error count.
+- [ ] **Phase 5 — `NameInterner` + `NameTable`.** Replace scattered name fields with collision-free interning. Gate: same.
+- [ ] **Phase 6 — Declarative pass manager.** `requires`/`invalidates` declarations replace implicit ordering. Gate: same.
+- [ ] **Phase 7 — HM inference.** Single-pass constraint collection + solve replaces four coupled passes. `IntToBoolPromotion` ported. Gate: same or better.
+- [ ] **Phase 8 — Core AST + reconstruction pipeline.** Structurizer → Core AST; forward substitution; `ForEach` lifting. Gate: emitted code measurably cleaner.
+- [ ] **Phase 9 — Runtime as IR.** GML runtime expressed as IR functions; `RuntimeRegistry` linkage. Gate: same output, M+N architecture.
+
+### Out of scope until designed
+
+- **Twine `State.get`/`State.set`:** banned by Phase 3 (`SystemCall` removal) but the replacement for temp vars (`_args`, `$vars`) passed between passages needs explicit design first. Tracked separately below.
+
 ## Pipeline Architecture Redesign (HIGH PRIORITY — BACKLOG)
 
 ### Problem
