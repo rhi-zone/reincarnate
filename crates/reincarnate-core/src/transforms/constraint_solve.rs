@@ -253,8 +253,8 @@ impl ConstraintModuleContext {
 
         let mut func_sigs: HashMap<String, FunctionSig> = module
             .functions
-            .values()
-            .map(|f| (f.name.clone(), f.sig.clone()))
+            .iter()
+            .map(|(id, f)| (module.func_name(id).to_string(), f.sig.clone()))
             .collect();
 
         // Extend with external function signatures from runtime.
@@ -273,9 +273,10 @@ impl ConstraintModuleContext {
         }
 
         let mut method_sigs = HashMap::new();
-        for f in module.functions.values() {
+        for (id, f) in module.functions.iter() {
             if f.class.is_some() {
-                if let Some(bare) = f.name.rsplit("::").next() {
+                let fname = module.func_name(id);
+                if let Some(bare) = fname.rsplit("::").next() {
                     if let Some(class) = &f.class {
                         method_sigs.insert((class.clone(), bare.to_string()), f.sig.clone());
                     }

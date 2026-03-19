@@ -213,6 +213,7 @@ fn full_pipeline_simple_add() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -245,6 +246,7 @@ fn full_pipeline_constant_inlining() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -277,6 +279,7 @@ fn full_pipeline_dead_pure_eliminated() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -316,6 +319,7 @@ fn full_pipeline_if_else() {
     let shape = structurize(&mut func);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -477,6 +481,7 @@ fn loop_init_assigns_emitted() {
     let shape = structurize(&mut func);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -530,12 +535,14 @@ fn pipeline_deterministic() {
 
     let ast1 = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
     );
     let ast2 = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -571,6 +578,7 @@ fn shared_name_gets_decl() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -603,6 +611,7 @@ fn duplicate_param_names_deduped() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -643,6 +652,7 @@ fn reassigned_self_param_renamed() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -732,6 +742,7 @@ fn debug_name_propagates_through_cast() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -778,7 +789,7 @@ fn logical_or_no_double_build() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
 
     // Should not panic. Output should contain a LogicalOr or similar.
     assert!(!ast.body.is_empty(), "Expected non-empty body");
@@ -814,6 +825,7 @@ fn flush_skips_consumed_values() {
     // Should not panic from double-flush.
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -860,6 +872,7 @@ fn flush_scoped_to_prevent_use_before_def() {
     let shape = structurize(&mut func);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -900,6 +913,7 @@ fn se_chain_through_cast() {
     let shape = Shape::Block(func.entry);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -959,6 +973,7 @@ fn inverted_cmp_not_wrapped_in_not() {
     let shape = structurize(&mut func);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -1015,6 +1030,7 @@ fn logical_and_no_duplicate_decl() {
     let shape = structurize(&mut func);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -1076,6 +1092,7 @@ fn minmax_se_flush_correct() {
     let shape = structurize(&mut func);
     let ast = lower_function_linear(
         &func,
+        &func.name,
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
@@ -1129,7 +1146,7 @@ fn while_loop_condition_hoisted() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
 
     // With while_condition_hoisting enabled (default), should be While
     // with a real condition, not `While { cond: Literal(true), ... }`.
@@ -1207,7 +1224,7 @@ fn switch_se_inline_flushed_to_outer_scope() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
 
     // The Switch must appear in the output.
     assert!(
@@ -1422,7 +1439,7 @@ fn logical_or_in_branch_no_duplicate_decl() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
 
     // The phi variable name must appear in at most ONE VarDecl across
     // the entire body.  Two VarDecls = duplicate declaration error.

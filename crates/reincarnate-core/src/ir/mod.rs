@@ -7,6 +7,7 @@ pub mod func;
 pub mod inst;
 pub mod linear;
 pub mod module;
+pub mod name_table;
 pub mod printer;
 pub mod structurize;
 pub mod ty;
@@ -23,6 +24,7 @@ pub use module::{
     AbstractMember, ClassDef, EntryPoint, EnumDef, EnumVariant, ExternalImport, FieldDef, Global,
     Import, Module, StaticField, StructDef, SystemCallTypeRule,
 };
+pub use name_table::NameTable;
 pub use structurize::structurize;
 pub use ty::{parse_type_notation, FunctionSig, Type, TypeConstraint, TypeVarId};
 pub use value::{Constant, ValueId};

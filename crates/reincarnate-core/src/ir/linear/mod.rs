@@ -121,6 +121,7 @@ pub(crate) enum LinearStmt {
 /// Lower a function through all 3 phases of the hybrid pipeline.
 pub fn lower_function_linear(
     func: &Function,
+    func_name: &str,
     shape: &Shape,
     config: &LoweringConfig,
     debug: &DebugConfig,
@@ -136,12 +137,12 @@ pub fn lower_function_linear(
     let mut full_body = decls;
     full_body.append(&mut body);
 
-    if debug.dump_ast && debug.should_dump(&func.name) {
-        eprintln!("=== AST (pre-passes): {} ===", func.name);
+    if debug.dump_ast && debug.should_dump(func_name) {
+        eprintln!("=== AST (pre-passes): {} ===", func_name);
         for stmt in &full_body {
             eprintln!("{stmt:#?}");
         }
-        eprintln!("=== end AST: {} ===\n", func.name);
+        eprintln!("=== end AST: {} ===\n", func_name);
     }
 
     // AST-to-AST rewrite passes.
@@ -208,7 +209,7 @@ pub fn lower_function_linear(
     param_defaults.resize(total_params, None);
 
     AstFunction {
-        name: func.name.clone(),
+        name: func_name.to_string(),
         params: ctx.build_params(),
         param_defaults,
         return_ty: func.sig.return_ty.clone(),

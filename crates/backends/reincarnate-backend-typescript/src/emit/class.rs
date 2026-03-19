@@ -235,7 +235,7 @@ pub(super) fn emit_function(
     func.hoist_allocs();
     let shape = structurize::structurize(func);
     let effective_config = lowering_config_for_engine(lowering_config, engine);
-    let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
+    let ast = linear::lower_function_linear(func, &func.name, &shape, &effective_config, debug);
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
     };
@@ -838,7 +838,7 @@ pub(super) fn compile_closures(
 
         func.hoist_allocs();
         let shape = structurize::structurize(func);
-        let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
+        let ast = linear::lower_function_linear(func, &func.name, &shape, &effective_config, debug);
 
         // Closures: self_param_name = None — the first param is the activation
         // scope, NOT `this`. This prevents the lowering pass from substituting
@@ -914,7 +914,7 @@ fn emit_class_method(
     func.hoist_allocs();
     let shape = structurize::structurize(func);
     let effective_config = lowering_config_for_engine(lowering_config, engine);
-    let ast = linear::lower_function_linear(func, &shape, &effective_config, debug);
+    let ast = linear::lower_function_linear(func, &func.name, &shape, &effective_config, debug);
 
     // Determine self_param_name for `this` substitution.
     let is_cinit = matches!(func.method_kind, MethodKind::StaticInit);

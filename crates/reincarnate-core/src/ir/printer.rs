@@ -147,26 +147,358 @@ fn fmt_method_kind(kind: MethodKind, f: &mut fmt::Formatter<'_>) -> fmt::Result 
     }
 }
 
-impl fmt::Display for Function {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Function header
-        match self.visibility {
-            Visibility::Public => write!(f, "pub ")?,
-            Visibility::Protected => write!(f, "protected ")?,
-            Visibility::Private => {}
+fn fmt_op(op: &Op, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match op {
+        Op::Const(c) => {
+            write!(f, "const ")?;
+            fmt_constant(c, f)
         }
-        // Class/namespace annotation
-        if let Some(class) = &self.class {
-            if !self.namespace.is_empty() {
-                write!(f, "{}.", self.namespace.join("."))?;
+        Op::Add(a, b) => {
+            write!(f, "add ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Sub(a, b) => {
+            write!(f, "sub ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Mul(a, b) => {
+            write!(f, "mul ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Div(a, b) => {
+            write!(f, "div ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Rem(a, b) => {
+            write!(f, "rem ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Neg(a) => {
+            write!(f, "neg ")?;
+            fmt_value(*a, f)
+        }
+        Op::BitAnd(a, b) => {
+            write!(f, "bit_and ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::BitOr(a, b) => {
+            write!(f, "bit_or ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::BitXor(a, b) => {
+            write!(f, "bit_xor ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::BitNot(a) => {
+            write!(f, "bit_not ")?;
+            fmt_value(*a, f)
+        }
+        Op::Shl(a, b) => {
+            write!(f, "shl ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Shr(a, b) => {
+            write!(f, "shr ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Cmp(kind, a, b) => {
+            write!(f, "cmp.")?;
+            fmt_cmp_kind(*kind, f)?;
+            write!(f, " ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Not(a) => {
+            write!(f, "not ")?;
+            fmt_value(*a, f)
+        }
+        Op::BoolAnd(a, b) => {
+            write!(f, "bool_and ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::BoolOr(a, b) => {
+            write!(f, "bool_or ")?;
+            fmt_value(*a, f)?;
+            write!(f, ", ")?;
+            fmt_value(*b, f)
+        }
+        Op::Alloc(ty) => {
+            write!(f, "alloc ")?;
+            fmt_type(ty, f)
+        }
+        Op::Load(ptr) => {
+            write!(f, "load ")?;
+            fmt_value(*ptr, f)
+        }
+        Op::Store { ptr, value } => {
+            write!(f, "store ")?;
+            fmt_value(*ptr, f)?;
+            write!(f, ", ")?;
+            fmt_value(*value, f)
+        }
+        Op::GetField { object, field } => {
+            write!(f, "get_field ")?;
+            fmt_value(*object, f)?;
+            write!(f, ", {field:?}")
+        }
+        Op::SetField {
+            object,
+            field,
+            value,
+        } => {
+            write!(f, "set_field ")?;
+            fmt_value(*object, f)?;
+            write!(f, ", {field:?}, ")?;
+            fmt_value(*value, f)
+        }
+        Op::GetIndex { collection, index } => {
+            write!(f, "get_index ")?;
+            fmt_value(*collection, f)?;
+            write!(f, ", ")?;
+            fmt_value(*index, f)
+        }
+        Op::SetIndex {
+            collection,
+            index,
+            value,
+        } => {
+            write!(f, "set_index ")?;
+            fmt_value(*collection, f)?;
+            write!(f, ", ")?;
+            fmt_value(*index, f)?;
+            write!(f, ", ")?;
+            fmt_value(*value, f)
+        }
+        Op::Call { func, args } => {
+            write!(f, "call {func:?}(")?;
+            fmt_value_list(args, f)?;
+            write!(f, ")")
+        }
+        Op::CallIndirect { callee, args } => {
+            write!(f, "call_indirect ")?;
+            fmt_value(*callee, f)?;
+            write!(f, "(")?;
+            fmt_value_list(args, f)?;
+            write!(f, ")")
+        }
+        Op::SystemCall {
+            system,
+            method,
+            args,
+        } => {
+            write!(f, "syscall {system:?}.{method:?}(")?;
+            fmt_value_list(args, f)?;
+            write!(f, ")")
+        }
+        Op::MethodCall {
+            receiver,
+            method,
+            args,
+        } => {
+            write!(f, "call_method ")?;
+            fmt_value(*receiver, f)?;
+            write!(f, ".{method:?}(")?;
+            fmt_value_list(args, f)?;
+            write!(f, ")")
+        }
+        Op::Cast(val, ty, kind) => {
+            match kind {
+                CastKind::NullableCoerce => write!(f, "nullable_coerce ")?,
+                CastKind::Coerce => write!(f, "coerce ")?,
             }
-            write!(f, "{class}::")?;
+            fmt_value(*val, f)?;
+            write!(f, ", ")?;
+            fmt_type(ty, f)
         }
-        write!(f, "fn {}", self.name)?;
-        fmt_method_kind(self.method_kind, f)?;
+        Op::TypeCheck(val, ty) => {
+            write!(f, "type_check ")?;
+            fmt_value(*val, f)?;
+            write!(f, ", ")?;
+            fmt_type(ty, f)
+        }
+        Op::StructInit { name, fields } => {
+            write!(f, "struct_init {name:?} {{ ")?;
+            for (i, (field_name, val)) in fields.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{field_name}: ")?;
+                fmt_value(*val, f)?;
+            }
+            write!(f, " }}")
+        }
+        Op::ArrayInit(elems) => {
+            write!(f, "array_init [")?;
+            fmt_value_list(elems, f)?;
+            write!(f, "]")
+        }
+        Op::TupleInit(elems) => {
+            write!(f, "tuple_init (")?;
+            fmt_value_list(elems, f)?;
+            write!(f, ")")
+        }
+        Op::Yield(val) => {
+            write!(f, "yield")?;
+            if let Some(v) = val {
+                write!(f, " ")?;
+                fmt_value(*v, f)?;
+            }
+            Ok(())
+        }
+        Op::CoroutineCreate { func, args } => {
+            write!(f, "coroutine_create {func:?}(")?;
+            fmt_value_list(args, f)?;
+            write!(f, ")")
+        }
+        Op::CoroutineResume(val) => {
+            write!(f, "coroutine_resume ")?;
+            fmt_value(*val, f)
+        }
+        Op::MakeClosure { func, captures } => {
+            write!(f, "make_closure {func:?}")?;
+            for cap in captures {
+                write!(f, ", ")?;
+                fmt_value(*cap, f)?;
+            }
+            Ok(())
+        }
+        Op::GlobalRef(name) => write!(f, "global_ref {name:?}"),
+        Op::Spread(val) => {
+            write!(f, "spread ")?;
+            fmt_value(*val, f)
+        }
+        Op::Select {
+            cond,
+            on_true,
+            on_false,
+        } => {
+            write!(f, "select ")?;
+            fmt_value(*cond, f)?;
+            write!(f, ", ")?;
+            fmt_value(*on_true, f)?;
+            write!(f, ", ")?;
+            fmt_value(*on_false, f)
+        }
+    }
+}
+
+fn fmt_terminator(term: &Terminator, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match term {
+        Terminator::Br { target, args } => {
+            write!(f, "br ")?;
+            fmt_block_target(*target, args, f)
+        }
+        Terminator::BrIf {
+            cond,
+            then_target,
+            then_args,
+            else_target,
+            else_args,
+        } => {
+            write!(f, "br_if ")?;
+            fmt_value(*cond, f)?;
+            write!(f, ", ")?;
+            fmt_block_target(*then_target, then_args, f)?;
+            write!(f, ", ")?;
+            fmt_block_target(*else_target, else_args, f)
+        }
+        Terminator::Switch {
+            value,
+            cases,
+            default,
+        } => {
+            write!(f, "switch ")?;
+            fmt_value(*value, f)?;
+            write!(f, ", [")?;
+            for (i, (constant, block_target, args)) in cases.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                fmt_constant(constant, f)?;
+                write!(f, " -> ")?;
+                fmt_block_target(*block_target, args, f)?;
+            }
+            write!(f, "], default -> ")?;
+            fmt_block_target(default.0, &default.1, f)
+        }
+        Terminator::Return(val) => {
+            write!(f, "return")?;
+            if let Some(v) = val {
+                write!(f, " ")?;
+                fmt_value(*v, f)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Write a function IR with an explicit name to a formatter.
+///
+/// Used by `Module::Display` (which has access to the `NameTable`)
+/// and by `Function::Display` (which prints `<unnamed>`).
+pub fn write_function_with_name(
+    f: &mut fmt::Formatter<'_>,
+    func: &Function,
+    name: &str,
+) -> fmt::Result {
+    // Function header
+    match func.visibility {
+        Visibility::Public => write!(f, "pub ")?,
+        Visibility::Protected => write!(f, "protected ")?,
+        Visibility::Private => {}
+    }
+    // Class/namespace annotation
+    if let Some(class) = &func.class {
+        if !func.namespace.is_empty() {
+            write!(f, "{}.", func.namespace.join("."))?;
+        }
+        write!(f, "{class}::")?;
+    }
+    write!(f, "fn {name}")?;
+    fmt_method_kind(func.method_kind, f)?;
+    write!(f, "(")?;
+    let entry = &func.blocks[func.entry];
+    for (i, param) in entry.params.iter().enumerate() {
+        if i > 0 {
+            write!(f, ", ")?;
+        }
+        fmt_value(param.value, f)?;
+        write!(f, ": ")?;
+        fmt_type(&param.ty, f)?;
+    }
+    write!(f, ") -> ")?;
+    fmt_type(&func.sig.return_ty, f)?;
+    writeln!(f, " {{")?;
+
+    // Blocks
+    for (block_id, block) in func.blocks.iter() {
+        // Block header
+        write!(f, "  block{}", block_id.index())?;
         write!(f, "(")?;
-        let entry = &self.blocks[self.entry];
-        for (i, param) in entry.params.iter().enumerate() {
+        for (i, param) in block.params.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
@@ -174,372 +506,49 @@ impl fmt::Display for Function {
             write!(f, ": ")?;
             fmt_type(&param.ty, f)?;
         }
-        write!(f, ") -> ")?;
-        fmt_type(&self.sig.return_ty, f)?;
-        writeln!(f, " {{")?;
+        writeln!(f, "):")?;
 
-        // Blocks
-        for (block_id, block) in self.blocks.iter() {
-            // Block header
-            write!(f, "  block{}", block_id.index())?;
-            write!(f, "(")?;
-            for (i, param) in block.params.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ", ")?;
-                }
-                fmt_value(param.value, f)?;
+        // Instructions
+        for &inst_id in &block.insts {
+            let inst = &func.insts[inst_id];
+
+            write!(f, "    ")?;
+
+            // Result prefix
+            if let Some(result) = inst.result {
+                fmt_value(result, f)?;
+                let ty = &func.value_types[result];
                 write!(f, ": ")?;
-                fmt_type(&param.ty, f)?;
-            }
-            writeln!(f, "):")?;
-
-            // Instructions
-            for &inst_id in &block.insts {
-                let inst = &self.insts[inst_id];
-
-                write!(f, "    ")?;
-
-                // Result prefix
-                if let Some(result) = inst.result {
-                    fmt_value(result, f)?;
-                    let ty = &self.value_types[result];
-                    write!(f, ": ")?;
-                    fmt_type(ty, f)?;
-                    write!(f, " = ")?;
-                }
-
-                // Operation
-                match &inst.op {
-                    Op::Const(c) => {
-                        write!(f, "const ")?;
-                        fmt_constant(c, f)?;
-                    }
-
-                    Op::Add(a, b) => {
-                        write!(f, "add ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::Sub(a, b) => {
-                        write!(f, "sub ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::Mul(a, b) => {
-                        write!(f, "mul ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::Div(a, b) => {
-                        write!(f, "div ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::Rem(a, b) => {
-                        write!(f, "rem ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::Neg(a) => {
-                        write!(f, "neg ")?;
-                        fmt_value(*a, f)?;
-                    }
-
-                    Op::BitAnd(a, b) => {
-                        write!(f, "bit_and ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::BitOr(a, b) => {
-                        write!(f, "bit_or ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::BitXor(a, b) => {
-                        write!(f, "bit_xor ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::BitNot(a) => {
-                        write!(f, "bit_not ")?;
-                        fmt_value(*a, f)?;
-                    }
-                    Op::Shl(a, b) => {
-                        write!(f, "shl ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::Shr(a, b) => {
-                        write!(f, "shr ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-
-                    Op::Cmp(kind, a, b) => {
-                        write!(f, "cmp.")?;
-                        fmt_cmp_kind(*kind, f)?;
-                        write!(f, " ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-
-                    Op::Not(a) => {
-                        write!(f, "not ")?;
-                        fmt_value(*a, f)?;
-                    }
-
-                    Op::BoolAnd(a, b) => {
-                        write!(f, "bool_and ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-                    Op::BoolOr(a, b) => {
-                        write!(f, "bool_or ")?;
-                        fmt_value(*a, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*b, f)?;
-                    }
-
-                    Op::Alloc(ty) => {
-                        write!(f, "alloc ")?;
-                        fmt_type(ty, f)?;
-                    }
-                    Op::Load(ptr) => {
-                        write!(f, "load ")?;
-                        fmt_value(*ptr, f)?;
-                    }
-                    Op::Store { ptr, value } => {
-                        write!(f, "store ")?;
-                        fmt_value(*ptr, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*value, f)?;
-                    }
-                    Op::GetField { object, field } => {
-                        write!(f, "get_field ")?;
-                        fmt_value(*object, f)?;
-                        write!(f, ", {field:?}")?;
-                    }
-                    Op::SetField {
-                        object,
-                        field,
-                        value,
-                    } => {
-                        write!(f, "set_field ")?;
-                        fmt_value(*object, f)?;
-                        write!(f, ", {field:?}, ")?;
-                        fmt_value(*value, f)?;
-                    }
-                    Op::GetIndex { collection, index } => {
-                        write!(f, "get_index ")?;
-                        fmt_value(*collection, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*index, f)?;
-                    }
-                    Op::SetIndex {
-                        collection,
-                        index,
-                        value,
-                    } => {
-                        write!(f, "set_index ")?;
-                        fmt_value(*collection, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*index, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*value, f)?;
-                    }
-
-                    Op::Call { func, args } => {
-                        write!(f, "call {func:?}(")?;
-                        fmt_value_list(args, f)?;
-                        write!(f, ")")?;
-                    }
-                    Op::CallIndirect { callee, args } => {
-                        write!(f, "call_indirect ")?;
-                        fmt_value(*callee, f)?;
-                        write!(f, "(")?;
-                        fmt_value_list(args, f)?;
-                        write!(f, ")")?;
-                    }
-                    Op::SystemCall {
-                        system,
-                        method,
-                        args,
-                    } => {
-                        write!(f, "syscall {system:?}.{method:?}(")?;
-                        fmt_value_list(args, f)?;
-                        write!(f, ")")?;
-                    }
-                    Op::MethodCall {
-                        receiver,
-                        method,
-                        args,
-                    } => {
-                        write!(f, "call_method ")?;
-                        fmt_value(*receiver, f)?;
-                        write!(f, ".{method:?}(")?;
-                        fmt_value_list(args, f)?;
-                        write!(f, ")")?;
-                    }
-
-                    Op::Cast(val, ty, kind) => {
-                        match kind {
-                            CastKind::NullableCoerce => write!(f, "nullable_coerce ")?,
-                            CastKind::Coerce => write!(f, "coerce ")?,
-                        }
-                        fmt_value(*val, f)?;
-                        write!(f, ", ")?;
-                        fmt_type(ty, f)?;
-                    }
-                    Op::TypeCheck(val, ty) => {
-                        write!(f, "type_check ")?;
-                        fmt_value(*val, f)?;
-                        write!(f, ", ")?;
-                        fmt_type(ty, f)?;
-                    }
-
-                    Op::StructInit { name, fields } => {
-                        write!(f, "struct_init {name:?} {{ ")?;
-                        for (i, (field_name, val)) in fields.iter().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "{field_name}: ")?;
-                            fmt_value(*val, f)?;
-                        }
-                        write!(f, " }}")?;
-                    }
-                    Op::ArrayInit(elems) => {
-                        write!(f, "array_init [")?;
-                        fmt_value_list(elems, f)?;
-                        write!(f, "]")?;
-                    }
-                    Op::TupleInit(elems) => {
-                        write!(f, "tuple_init (")?;
-                        fmt_value_list(elems, f)?;
-                        write!(f, ")")?;
-                    }
-
-                    Op::Yield(val) => {
-                        write!(f, "yield")?;
-                        if let Some(v) = val {
-                            write!(f, " ")?;
-                            fmt_value(*v, f)?;
-                        }
-                    }
-                    Op::CoroutineCreate { func, args } => {
-                        write!(f, "coroutine_create {func:?}(")?;
-                        fmt_value_list(args, f)?;
-                        write!(f, ")")?;
-                    }
-                    Op::CoroutineResume(val) => {
-                        write!(f, "coroutine_resume ")?;
-                        fmt_value(*val, f)?;
-                    }
-
-                    Op::MakeClosure { func, captures } => {
-                        write!(f, "make_closure {func:?}")?;
-                        for cap in captures {
-                            write!(f, ", ")?;
-                            fmt_value(*cap, f)?;
-                        }
-                    }
-
-                    Op::GlobalRef(name) => {
-                        write!(f, "global_ref {name:?}")?;
-                    }
-                    Op::Spread(val) => {
-                        write!(f, "spread ")?;
-                        fmt_value(*val, f)?;
-                    }
-                    Op::Select {
-                        cond,
-                        on_true,
-                        on_false,
-                    } => {
-                        write!(f, "select ")?;
-                        fmt_value(*cond, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*on_true, f)?;
-                        write!(f, ", ")?;
-                        fmt_value(*on_false, f)?;
-                    }
-                }
-
-                writeln!(f)?;
+                fmt_type(ty, f)?;
+                write!(f, " = ")?;
             }
 
-            // Terminator
-            {
-                let term = &block.terminator;
-                write!(f, "    ")?;
-                match term {
-                    Terminator::Br { target, args } => {
-                        write!(f, "br ")?;
-                        fmt_block_target(*target, args, f)?;
-                    }
-                    Terminator::BrIf {
-                        cond,
-                        then_target,
-                        then_args,
-                        else_target,
-                        else_args,
-                    } => {
-                        write!(f, "br_if ")?;
-                        fmt_value(*cond, f)?;
-                        write!(f, ", ")?;
-                        fmt_block_target(*then_target, then_args, f)?;
-                        write!(f, ", ")?;
-                        fmt_block_target(*else_target, else_args, f)?;
-                    }
-                    Terminator::Switch {
-                        value,
-                        cases,
-                        default,
-                    } => {
-                        write!(f, "switch ")?;
-                        fmt_value(*value, f)?;
-                        write!(f, ", [")?;
-                        for (i, (constant, block_target, args)) in cases.iter().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            fmt_constant(constant, f)?;
-                            write!(f, " -> ")?;
-                            fmt_block_target(*block_target, args, f)?;
-                        }
-                        write!(f, "], default -> ")?;
-                        fmt_block_target(default.0, &default.1, f)?;
-                    }
-                    Terminator::Return(val) => {
-                        write!(f, "return")?;
-                        if let Some(v) = val {
-                            write!(f, " ")?;
-                            fmt_value(*v, f)?;
-                        }
-                    }
-                }
-                writeln!(f)?;
-            }
+            // Operation
+            fmt_op(&inst.op, f)?;
 
-            // Blank line between blocks (except after last)
-            if block_id.index() + 1 < self.blocks.len() as u32 {
-                writeln!(f)?;
-            }
+            writeln!(f)?;
         }
 
-        write!(f, "}}")
+        // Terminator
+        {
+            let term = &block.terminator;
+            write!(f, "    ")?;
+            fmt_terminator(term, f)?;
+            writeln!(f)?;
+        }
+
+        // Blank line between blocks (except after last)
+        if block_id.index() + 1 < func.blocks.len() as u32 {
+            writeln!(f)?;
+        }
+    }
+
+    write!(f, "}}")
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write_function_with_name(f, self, &self.name)
     }
 }
 
@@ -621,9 +630,9 @@ impl fmt::Display for Module {
         }
 
         // Functions
-        for (_func_id, func) in self.functions.iter() {
+        for (func_id, func) in self.functions.iter() {
             writeln!(f)?;
-            write!(f, "{func}")?;
+            write_function_with_name(f, func, self.func_name(func_id))?;
             writeln!(f)?;
         }
 

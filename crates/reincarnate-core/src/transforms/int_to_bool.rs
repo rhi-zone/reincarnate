@@ -467,7 +467,7 @@ impl Transform for IntToBoolPromotion {
                     .iter()
                     .map(|p| f.value_types[p.value].clone())
                     .collect();
-                (f.name.clone(), param_tys)
+                (module.func_name(fid).to_string(), param_tys)
             })
             .collect();
 
@@ -497,7 +497,7 @@ impl Transform for IntToBoolPromotion {
             .functions
             .keys()
             .filter(|&fid| module.functions[fid].sig.return_ty == Type::Bool)
-            .map(|fid| module.functions[fid].name.clone())
+            .map(|fid| module.func_name(fid).to_string())
             .collect();
 
         if !all_bool_return_funcs.is_empty() {
@@ -518,7 +518,7 @@ impl Transform for IntToBoolPromotion {
                         .iter()
                         .map(|p| f.value_types[p.value].clone())
                         .collect();
-                    (f.name.clone(), param_tys)
+                    (module.func_name(fid).to_string(), param_tys)
                 })
                 .collect();
 

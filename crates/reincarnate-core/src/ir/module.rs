@@ -7,6 +7,7 @@ use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
 use super::func::{FuncId, Function, MethodKind, Visibility};
+use super::name_table::NameTable;
 use super::ty::Type;
 use super::value::Constant;
 
@@ -188,6 +189,9 @@ pub enum SystemCallTypeRule {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     pub name: String,
+    /// Centralized name storage for IR symbols.
+    #[serde(default)]
+    pub name_table: NameTable,
     pub functions: PrimaryMap<FuncId, Function>,
     pub structs: Vec<StructDef>,
     pub enums: Vec<EnumDef>,
@@ -298,9 +302,30 @@ pub struct Module {
 }
 
 impl Module {
+    /// Look up the name of a function by its `FuncId`.
+    ///
+    /// # Panics
+    /// Panics if the `FuncId` is not in the name table.
+    pub fn func_name(&self, id: FuncId) -> &str {
+        self.name_table.func_name(id)
+    }
+
+    /// Rebuild the `NameTable` from the `name` fields on `Function` structs.
+    ///
+    /// Called after deserialization (which populates `Function::name` but not
+    /// the `NameTable`) and after any direct mutation of `functions` that
+    /// bypasses `ModuleBuilder`.
+    pub fn rebuild_name_table(&mut self) {
+        self.name_table.func_names = PrimaryMap::new();
+        for (_id, func) in self.functions.iter() {
+            self.name_table.func_names.push(func.name.clone());
+        }
+    }
+
     pub fn new(name: String) -> Self {
         Self {
             name,
+            name_table: NameTable::new(),
             functions: PrimaryMap::new(),
             structs: Vec::new(),
             enums: Vec::new(),

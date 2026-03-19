@@ -58,6 +58,10 @@ pub enum MethodKind {
 /// A function in the IR.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Function {
+    /// Function name. Kept on the struct for backward compatibility during
+    /// the NameTable migration. The authoritative name source is
+    /// `Module::name_table`; callers with a `FuncId` should prefer
+    /// `module.func_name(id)`.
     pub name: String,
     pub sig: FunctionSig,
     pub visibility: Visibility,

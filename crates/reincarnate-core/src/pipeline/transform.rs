@@ -200,9 +200,19 @@ impl TransformPipeline {
 
 /// Dump IR for all functions in `module` that pass the debug filter.
 fn dump_ir_functions(module: &Module, debug: &DebugConfig) {
-    for func in module.functions.values() {
-        if debug.should_dump(&func.name) {
-            eprintln!("=== IR: {} ===\n{}\n=== end IR ===\n", func.name, func);
+    for (id, func) in module.functions.iter() {
+        let name = module.func_name(id);
+        if debug.should_dump(name) {
+            eprintln!("=== IR: {name} ===");
+            // Use write_function_with_name for proper named output.
+            struct NamedFunc<'a>(&'a super::super::ir::Function, &'a str);
+            impl std::fmt::Display for NamedFunc<'_> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    super::super::ir::printer::write_function_with_name(f, self.0, self.1)
+                }
+            }
+            eprintln!("{}", NamedFunc(func, name));
+            eprintln!("=== end IR ===\n");
         }
     }
 }

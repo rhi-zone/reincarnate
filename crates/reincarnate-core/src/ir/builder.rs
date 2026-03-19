@@ -17,6 +17,7 @@ use super::value::{Constant, ValueId};
 /// Manages value allocation, block creation, and instruction emission.
 /// Tracks a "current block" cursor — instructions are appended to it.
 pub struct FunctionBuilder {
+    name: String,
     func: Function,
     current_block: BlockId,
 }
@@ -26,6 +27,7 @@ impl FunctionBuilder {
     ///
     /// Creates the entry block and allocates `ValueId`s for each parameter.
     pub fn new(name: impl Into<String>, sig: FunctionSig, visibility: Visibility) -> Self {
+        let name = name.into();
         let mut blocks = PrimaryMap::new();
         let mut value_types = PrimaryMap::new();
 
@@ -45,7 +47,7 @@ impl FunctionBuilder {
         });
 
         let func = Function {
-            name: name.into(),
+            name: name.clone(),
             sig,
             visibility,
             namespace: Vec::new(),
@@ -62,6 +64,7 @@ impl FunctionBuilder {
         };
 
         Self {
+            name,
             func,
             current_block: entry,
         }
@@ -233,6 +236,11 @@ impl FunctionBuilder {
             }
         }
         None
+    }
+
+    /// Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Consume the builder and return the constructed `Function`.
@@ -428,7 +436,7 @@ impl FunctionBuilder {
             eprintln!(
                 "[reincarnate] WARN: {} — br to {:?} with {} args but block has {} params \
                  (compute_block_stack_depths depth mismatch — see TODO.md)",
-                self.func.name,
+                self.name,
                 target,
                 args.len(),
                 self.func.blocks[target].params.len()
@@ -452,14 +460,14 @@ impl FunctionBuilder {
             eprintln!(
                 "[reincarnate] WARN: {} — br_if then-branch to {:?} with {} args but block has {} params \
                  (compute_block_stack_depths depth mismatch — see TODO.md)",
-                self.func.name, then_target, then_args.len(), self.func.blocks[then_target].params.len()
+                self.name, then_target, then_args.len(), self.func.blocks[then_target].params.len()
             );
         }
         if cfg!(debug_assertions) && else_args.len() != self.func.blocks[else_target].params.len() {
             eprintln!(
                 "[reincarnate] WARN: {} — br_if else-branch to {:?} with {} args but block has {} params \
                  (compute_block_stack_depths depth mismatch — see TODO.md)",
-                self.func.name, else_target, else_args.len(), self.func.blocks[else_target].params.len()
+                self.name, else_target, else_args.len(), self.func.blocks[else_target].params.len()
             );
         }
         self.func.blocks[self.current_block].terminator = Terminator::BrIf {
@@ -483,7 +491,7 @@ impl FunctionBuilder {
                     eprintln!(
                         "[reincarnate] WARN: {} — switch case to {:?} with {} args but block has {} params \
                          (compute_block_stack_depths depth mismatch — see TODO.md)",
-                        self.func.name, target, args.len(), self.func.blocks[*target].params.len()
+                        self.name, target, args.len(), self.func.blocks[*target].params.len()
                     );
                 }
             }
@@ -491,7 +499,7 @@ impl FunctionBuilder {
                 eprintln!(
                     "[reincarnate] WARN: {} — switch default to {:?} with {} args but block has {} params \
                      (compute_block_stack_depths depth mismatch — see TODO.md)",
-                    self.func.name, default.0, default.1.len(), self.func.blocks[default.0].params.len()
+                    self.name, default.0, default.1.len(), self.func.blocks[default.0].params.len()
                 );
             }
         }
@@ -724,15 +732,19 @@ impl ModuleBuilder {
     }
 
     pub fn add_function(&mut self, func: Function) -> FuncId {
-        self.module.functions.push(func)
+        let name_id = self.module.name_table.func_names.push(func.name.clone());
+        let id = self.module.functions.push(func);
+        debug_assert_eq!(id, name_id);
+        id
     }
 
     /// Return the set of all function names currently in the module.
     pub fn existing_function_names(&self) -> HashSet<String> {
         self.module
-            .functions
+            .name_table
+            .func_names
             .values()
-            .map(|f| f.name.clone())
+            .cloned()
             .collect()
     }
 
@@ -913,7 +925,7 @@ mod tests {
 
         assert_eq!(module.name, "test_module");
         assert_eq!(module.functions.len(), 1);
-        assert_eq!(module.functions[fid].name, "main");
+        assert_eq!(module.func_name(fid), "main");
         assert_eq!(module.globals.len(), 1);
         assert_eq!(module.globals[0].name, "counter");
     }

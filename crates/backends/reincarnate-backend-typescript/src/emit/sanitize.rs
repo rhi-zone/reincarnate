@@ -124,11 +124,12 @@ pub(super) fn rename_colliding_free_funcs(
         })
         .collect();
     if !renames.is_empty() {
-        // Rename the function definitions.
+        // Rename the function definitions (both Function::name and NameTable).
         for fid in free_funcs {
             let name = &module.functions[*fid].name;
             if let Some(new_name) = renames.get(name) {
                 module.functions[*fid].name = new_name.clone();
+                *module.name_table.func_name_mut(*fid) = new_name.clone();
             }
         }
         // Update all Op::Call references throughout the module.

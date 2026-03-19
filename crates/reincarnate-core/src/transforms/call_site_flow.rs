@@ -35,7 +35,8 @@ pub(crate) type Observations = HashMap<(String, usize), Vec<Type>>;
 pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
     let mut observations: Observations = HashMap::new();
 
-    for func in module.functions.values() {
+    for (fid, func) in module.functions.iter() {
+        let caller_name = module.func_name(fid);
         for block in func.blocks.values() {
             for &inst_id in &block.insts {
                 let inst = &func.insts[inst_id];
@@ -45,7 +46,7 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
                         args,
                     } => {
                         // Skip self-calls (recursive).
-                        if callee_name == &func.name {
+                        if callee_name == caller_name {
                             continue;
                         }
                         for (i, &arg) in args.iter().enumerate() {
@@ -58,7 +59,7 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
                     }
                     Op::MethodCall { method, args, .. } => {
                         // Skip self-calls.
-                        if method == &func.name {
+                        if method == caller_name {
                             continue;
                         }
                         // MethodCall args exclude the receiver — args[0] is
@@ -162,8 +163,8 @@ impl Transform for CallSiteTypeFlow {
         // Build a name → func_id map for write-back.
         let name_to_id: HashMap<String, _> = module
             .functions
-            .iter()
-            .map(|(id, f)| (f.name.clone(), id))
+            .keys()
+            .map(|id| (module.func_name(id).to_string(), id))
             .collect();
 
         // For each observation, try to narrow the callee's param type.

@@ -55,8 +55,8 @@ impl ModuleContext {
 
         let mut func_return_types: HashMap<String, Type> = module
             .functions
-            .values()
-            .map(|f| (f.name.clone(), f.sig.return_ty.clone()))
+            .iter()
+            .map(|(id, f)| (module.func_name(id).to_string(), f.sig.return_ty.clone()))
             .collect();
 
         // Extend with external function signatures from runtime.
@@ -68,9 +68,10 @@ impl ModuleContext {
 
         // Build method_return_types: (class, bare_name) → return type
         let mut method_return_types = HashMap::new();
-        for f in module.functions.values() {
+        for (id, f) in module.functions.iter() {
             if f.class.is_some() {
-                if let Some(bare) = f.name.rsplit("::").next() {
+                let fname = module.func_name(id);
+                if let Some(bare) = fname.rsplit("::").next() {
                     if let Some(class) = &f.class {
                         method_return_types
                             .insert((class.clone(), bare.to_string()), f.sig.return_ty.clone());

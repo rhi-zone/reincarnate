@@ -59,12 +59,13 @@ fn build_symbol_table(modules: &[Module]) -> SymbolTable {
     for module in modules {
         let mod_exports = exports.entry(module.name.clone()).or_default();
 
-        for (_id, func) in module.functions.iter() {
+        for (id, func) in module.functions.iter() {
             if func.visibility == Visibility::Public {
+                let fname = module.func_name(id).to_string();
                 mod_exports.insert(
-                    func.name.clone(),
+                    fname.clone(),
                     Symbol {
-                        name: func.name.clone(),
+                        name: fname,
                         module: module.name.clone(),
                         kind: SymbolKind::Function,
                     },

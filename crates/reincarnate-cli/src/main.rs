@@ -557,8 +557,9 @@ fn cmd_print_ir(file: &Path) -> Result<()> {
     let f =
         File::open(file).with_context(|| format!("failed to open IR file: {}", file.display()))?;
     let reader = BufReader::new(f);
-    let module: Module = serde_json::from_reader(reader)
+    let mut module: Module = serde_json::from_reader(reader)
         .with_context(|| format!("failed to parse IR file: {}", file.display()))?;
+    module.rebuild_name_table();
     println!("{module}");
     Ok(())
 }

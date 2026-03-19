@@ -899,13 +899,17 @@ impl Transform for CoroutineLowering {
         let coroutine_funcs: Vec<(FuncId, String)> = module
             .functions
             .iter()
-            .filter_map(|(id, func)| func.coroutine.as_ref().map(|_| (id, func.name.clone())))
+            .filter_map(|(id, func)| {
+                func.coroutine
+                    .as_ref()
+                    .map(|_| (id, module.func_name(id).to_string()))
+            })
             .collect();
 
         for (func_id, func_name) in &coroutine_funcs {
             let func = &module.functions[*func_id];
             let coroutine_info = func.coroutine.clone().unwrap();
-            let struct_name = format!("{}_state", func.name);
+            let struct_name = format!("{func_name}_state");
 
             // Phase 1: Split blocks at yield points.
             let mut func_clone = func.clone();

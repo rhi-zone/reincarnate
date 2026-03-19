@@ -52,8 +52,8 @@ impl Transform for CallSiteTypeWiden {
         // Build a name → func_id map for write-back.
         let name_to_id: HashMap<String, _> = module
             .functions
-            .iter()
-            .map(|(id, f)| (f.name.clone(), id))
+            .keys()
+            .map(|id| (module.func_name(id).to_string(), id))
             .collect();
 
         // Group observations by callee name.
@@ -135,7 +135,7 @@ impl Transform for CallSiteTypeWiden {
         let zero_caller_ids: Vec<_> = module
             .functions
             .iter()
-            .filter(|(_, f)| !per_callee.contains_key(&f.name))
+            .filter(|(id, _)| !per_callee.contains_key(module.func_name(*id)))
             .map(|(id, _)| id)
             .collect();
 
