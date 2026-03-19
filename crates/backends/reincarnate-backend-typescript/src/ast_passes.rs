@@ -903,7 +903,7 @@ pub fn strip_redundant_casts(func: &mut JsFunction) {
     let mut var_types: HashMap<String, Type> = HashMap::new();
     // Collect param types.
     for (name, ty) in &func.params {
-        if *ty != Type::Dynamic {
+        if *ty != Type::Unknown {
             var_types.insert(name.clone(), ty.clone());
         }
     }
@@ -919,7 +919,7 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
         match stmt {
             JsStmt::VarDecl {
                 name, ty: Some(ty), ..
-            } if *ty != Type::Dynamic => {
+            } if *ty != Type::Unknown => {
                 var_types.insert(name.clone(), ty.clone());
             }
             // When ty is None but init is a Cast, the printer uses the cast
@@ -934,7 +934,7 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
                         ..
                     }),
                 ..
-            } if *cast_ty != Type::Dynamic
+            } if *cast_ty != Type::Unknown
                 && !matches!(cast_ty, Type::Struct(_) | Type::Enum(_)) =>
             {
                 var_types.insert(name.clone(), cast_ty.clone());

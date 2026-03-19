@@ -91,7 +91,7 @@ pub struct PassConfig {
     /// Widen params narrowed by ConstraintSolve when callers pass incompatible
     /// types. Runs immediately after `constraint_solve`. Requires both
     /// `call_site_flow` and `constraint_solve` to have run for useful results,
-    /// but is not gated on them (it is a no-op on already-Dynamic params).
+    /// but is not gated on them (it is a no-op on already-Unknown params).
     pub call_site_widen: bool,
     pub constant_folding: bool,
     pub cfg_simplify: bool,
@@ -231,7 +231,7 @@ pub struct LoweringConfig {
     ///
     /// When `true`, two coercions are applied in `GetIndex` emission:
     /// 1. If the collection is a `Struct` type (not Object/Class/Dictionary)
-    ///    and the index is `Dynamic`, the collection is wrapped with
+    ///    and the index is `Unknown`, the collection is wrapped with
     ///    `(collection as any)` so bracket access is allowed.
     /// 2. If the index is an XML/XMLList type, it is wrapped with
     ///    `String(index)` to coerce to a valid TS index type.
@@ -247,7 +247,7 @@ pub struct LoweringConfig {
     /// surface the inferred type.
     ///
     /// Entries are `(system, method)` pairs whose results should be cast when
-    /// the IR result type differs from `Dynamic`.
+    /// the IR result type differs from `Unknown`.
     ///
     /// SugarCube sets this to `[("SugarCube.State", "get")]` so that story
     /// variables narrowed by `build_global_types` are emitted as typed values
@@ -265,7 +265,7 @@ pub struct LoweringConfig {
     /// built-in global lookups like `Engine.resolve("Date")` are unaffected.
     pub cast_struct_syscall_results_for: Vec<(String, String)>,
 
-    /// When true, any `CallIndirect` whose callee has `Type::Dynamic` (i.e.
+    /// When true, any `CallIndirect` whose callee has `Type::Unknown` (i.e.
     /// would be typed `unknown` in TypeScript) is wrapped in a function-type
     /// cast before emission.  This eliminates TS2571 "Object is of type
     /// 'unknown'" errors at indirect call sites.

@@ -135,9 +135,9 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
         if func.sig.defaults[i].is_some() {
             continue;
         }
-        // Skip self/other params — they have Struct or Dynamic type but aren't arguments.
+        // Skip self/other params — they have Struct or Unknown type but aren't arguments.
         // Argument params are named "argument*" or are the positional args after self/other.
-        // Heuristic: self is always index 0 (Struct type or Dynamic for untyped),
+        // Heuristic: self is always index 0 (Struct type or Unknown for untyped),
         // but we can't distinguish self from args by type alone.  Use the entry block
         // param names if available.
         let param_value = func.blocks[func.entry].params.get(i).map(|p| p.value);
@@ -150,7 +150,7 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
         }
         // Use the narrowed type from value_types (set by type inference) for scalar types
         // (Bool/Int/UInt/Float/String) so their defaults are type-appropriate (false, 0, "").
-        // For non-scalar types (Struct, Array, Dynamic, etc.), fall back to the GML missing-arg
+        // For non-scalar types (Struct, Array, Unknown, etc.), fall back to the GML missing-arg
         // sentinel (0.0 / Float(0.0)).  A Struct-typed parameter that accepts the 0.0 sentinel
         // is effectively `any` at the call site — using the narrowed type would produce
         // `argument0: GMLObject = 0.0` which TypeScript rejects.
@@ -163,15 +163,15 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
             narrowed,
             Type::Bool | Type::Int(_) | Type::UInt(_) | Type::Float(_) | Type::String
         );
-        let ty = if is_scalar { narrowed } else { &Type::Dynamic };
+        let ty = if is_scalar { narrowed } else { &Type::Unknown };
         func.sig.defaults[i] = Some(zero_for_type(ty));
-        // Widen the param's value_type back to Dynamic for non-scalar types so the
+        // Widen the param's value_type back to Unknown for non-scalar types so the
         // TypeScript annotation (`any = 0.0`) is consistent with the variadic sentinel.
         // The narrowed type (e.g. GMLObject) is correct for callers that DO pass a value;
         // the variadic sentinel 0.0 means the type annotation must accommodate both.
         if !is_scalar {
             if let Some(pv) = param_value {
-                func.value_types[pv] = Type::Dynamic;
+                func.value_types[pv] = Type::Unknown;
             }
         }
         changed = true;
@@ -187,7 +187,7 @@ fn zero_for_type(ty: &Type) -> Constant {
         Type::UInt(_) => Constant::UInt(0),
         Type::Float(_) => Constant::Float(0.0),
         Type::String => Constant::String(String::new()),
-        // For Dynamic, Struct, Array, or anything else, use 0.0 — GML's missing-arg value.
+        // For Unknown, Struct, Array, or anything else, use 0.0 — GML's missing-arg value.
         _ => Constant::Float(0.0),
     }
 }
@@ -376,16 +376,16 @@ mod tests {
     fn build_test_function(defaults: &[Constant]) -> Module {
         // sig: (self, arg0, arg1, ...)
         let n_args = defaults.len();
-        let mut params = vec![Type::Dynamic]; // self
+        let mut params = vec![Type::Unknown]; // self
         let mut sig_defaults = vec![None]; // self has no default
         for _ in 0..n_args {
-            params.push(Type::Dynamic);
+            params.push(Type::Unknown);
             sig_defaults.push(None);
         }
         let sig = FunctionSig {
             params,
             defaults: sig_defaults,
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_func", sig, Visibility::Public);
@@ -399,14 +399,14 @@ mod tests {
             let arg_param = fb.param(1 + i);
 
             // get_field self, "undefined"
-            let undef = fb.get_field(self_param, "undefined", Type::Dynamic);
+            let undef = fb.get_field(self_param, "undefined", Type::Unknown);
 
             // cmp.eq arg, undef
             let cmp = fb.cmp(CmpKind::Eq, arg_param, undef);
 
             // Create default block and continue block
             let default_block = fb.create_block();
-            let (continue_block, continue_vals) = fb.create_block_with_params(&[Type::Dynamic]);
+            let (continue_block, continue_vals) = fb.create_block_with_params(&[Type::Unknown]);
 
             // br_if cmp, default_block, continue_block(arg_param)
             fb.br_if(cmp, default_block, &[], continue_block, &[arg_param]);
@@ -471,9 +471,9 @@ mod tests {
         // Function with no explicit `=== undefined` pattern.
         // set_variadic_defaults still fills arg params with zero defaults.
         let sig = FunctionSig {
-            params: vec![Type::Dynamic, Type::Dynamic],
+            params: vec![Type::Unknown, Type::Unknown],
             defaults: vec![None, None],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("plain_func", sig, Visibility::Public);

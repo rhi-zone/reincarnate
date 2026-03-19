@@ -347,7 +347,7 @@ fn infer_bool_return(
     func: &mut Function,
     callback_return_calls: &BTreeMap<(String, String), ()>,
 ) -> bool {
-    if func.sig.return_ty != Type::Dynamic {
+    if func.sig.return_ty != Type::Unknown {
         return false;
     }
 
@@ -454,7 +454,7 @@ impl Transform for IntToBoolPromotion {
 
         // Build internal function sig param types map.
         // Use value_types[entry_param.value] instead of sig.params — sig.params
-        // may still be Dynamic even after CallSiteTypeFlow/ConstraintSolve
+        // may still be Unknown even after CallSiteTypeFlow/ConstraintSolve
         // narrowed the entry block params (those passes update entry.params.ty
         // and value_types but not sig.params).
         let internal_sigs: HashMap<String, Vec<Type>> = module
@@ -552,7 +552,7 @@ mod tests {
     fn no_change_when_no_demands() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
@@ -684,7 +684,7 @@ mod tests {
 
         let then_block = fb.create_block();
         let else_block = fb.create_block();
-        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Dynamic]);
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Unknown]);
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
@@ -723,7 +723,7 @@ mod tests {
     fn infers_bool_return_type() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("is_ready", sig, Visibility::Public);
@@ -757,7 +757,7 @@ mod tests {
         // Function that returns 0/1
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("is_ready", sig, Visibility::Public);
@@ -772,7 +772,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
-        let result = fb.call("is_ready", &[], Type::Dynamic);
+        let result = fb.call("is_ready", &[], Type::Unknown);
         let _cast = fb.coerce(result, Type::Bool);
         fb.ret(None);
         let caller_func = fb.build();
@@ -889,7 +889,7 @@ mod tests {
         use crate::transforms::util::test_helpers::assert_idempotent;
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
@@ -930,8 +930,8 @@ mod tests {
         // inferred as Bool, even if the only visible return is `return false`.
         // The real return value is hidden inside the callback via live_result.
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("getNearestScreenType", sig, Visibility::Public);
@@ -960,7 +960,7 @@ mod tests {
         // Return type must NOT be changed to Bool
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
-            Type::Dynamic,
+            Type::Unknown,
         );
     }
 
@@ -970,7 +970,7 @@ mod tests {
         // Should NOT infer Bool return — the bare exit produces `undefined`.
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("step", sig, Visibility::Public);
@@ -994,7 +994,7 @@ mod tests {
         // Return type must NOT be changed to Bool
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
-            Type::Dynamic,
+            Type::Unknown,
         );
     }
 

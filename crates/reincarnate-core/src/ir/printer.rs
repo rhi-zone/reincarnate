@@ -77,7 +77,6 @@ fn fmt_type(ty: &Type, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             }
             Ok(())
         }
-        Type::Dynamic => write!(f, "dyn"),
         Type::Unknown => write!(f, "unknown"),
     }
 }
@@ -846,7 +845,7 @@ fn consts() -> void {
     v0: i64 = const 42
     v1: string = const \"hello\"
     v2: bool = const true
-    v3: ?dyn = const null
+    v3: ?unknown = const null
     v4: f64 = const 2.5
     return
 }"

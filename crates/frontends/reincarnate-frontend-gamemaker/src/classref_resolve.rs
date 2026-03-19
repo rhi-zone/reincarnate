@@ -4,7 +4,7 @@
 //! there is no `pushref` (Break -11) instruction.  So a call like
 //! `instance_create(x, y, 2)` generates `Op::Const(Int(2))` rather than a
 //! `Op::GlobalRef("Enemy", ClassRef)`.  This pass finds those plain integer
-//! (or `Cast(Int(N), Dynamic, Coerce)`) arguments at positions declared as
+//! (or `Cast(Int(N), Unknown, Coerce)`) arguments at positions declared as
 //! `"classref"` in `runtime.json`, and replaces them with a fresh
 //! `Op::GlobalRef(name)` instruction whose type is `Type::ClassRef(name)`.
 //!
@@ -93,7 +93,7 @@ fn resolve_function(
 ) -> bool {
     // Build helper maps: value → integer constant it holds.
     //   const_ints:      result of Op::Const(Int(N))   → N
-    //   cast_const_ints: result of Op::Cast(v, Dynamic, Coerce) where v is in const_ints → N
+    //   cast_const_ints: result of Op::Cast(v, Unknown, Coerce) where v is in const_ints → N
     let const_ints: HashMap<ValueId, i64> = func
         .insts
         .iter()
@@ -110,7 +110,7 @@ fn resolve_function(
         .insts
         .iter()
         .filter_map(|(_, inst)| {
-            if let Op::Cast(inner, Type::Dynamic, CastKind::Coerce) = &inst.op {
+            if let Op::Cast(inner, Type::Unknown, CastKind::Coerce) = &inst.op {
                 let n = const_ints.get(inner).copied()?;
                 inst.result.map(|v| (v, n))
             } else {

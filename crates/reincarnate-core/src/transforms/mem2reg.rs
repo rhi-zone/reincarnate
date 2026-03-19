@@ -445,7 +445,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
         // type-appropriate zero constant and mark it as a sentinel so the
         // linearizer skips its block-arg assign (emitting `let name!: T`).
         //
-        // For numeric / Dynamic types we use 0.0 rather than null so that any
+        // For numeric / Unknown types we use 0.0 rather than null so that any
         // arithmetic involving the sentinel (e.g. `null * 1.66`) is
         // TypeScript-valid.  GML uninitialized variables are 0/undefined which
         // coerces to 0 in arithmetic, so 0.0 is the semantically correct value.
@@ -454,7 +454,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                 Type::Bool => Constant::Bool(false),
                 Type::Int(_) => Constant::Int(0),
                 Type::UInt(_) => Constant::UInt(0),
-                Type::Float(_) | Type::Dynamic => Constant::Float(0.0),
+                Type::Float(_) | Type::Unknown => Constant::Float(0.0),
                 // Struct / String / Array / opaque: keep null (not used in
                 // arithmetic; a null struct ref is the right uninitialized
                 // sentinel for reference types).

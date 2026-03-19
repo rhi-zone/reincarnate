@@ -413,7 +413,7 @@ mod tests {
     fn test_loop_header_not_normalized_as_logical_and() {
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64), Type::Int(64)],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("loop_header_and_guard", sig, Visibility::Public);
@@ -489,7 +489,7 @@ mod tests {
     fn test_if_then_not_rewritten_as_logical_or() {
         let sig = FunctionSig {
             params: vec![Type::Bool, Type::Int(64)],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("if_then_guard", sig, Visibility::Public);

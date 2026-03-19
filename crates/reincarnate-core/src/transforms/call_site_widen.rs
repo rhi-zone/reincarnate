@@ -8,23 +8,23 @@ use crate::transforms::call_site_flow::collect_call_site_types;
 /// Interprocedural call-site type widening — widens callee parameter types
 /// that were narrowed by `ConstraintSolve` when callers pass incompatible types.
 ///
-/// `ConstraintSolve` is intra-procedural: it narrows a `Dynamic` param to a
+/// `ConstraintSolve` is intra-procedural: it narrows a `Unknown` param to a
 /// concrete type when the function body constrains it (e.g.
 /// `cmp.eq(param, i64_value)` causes the union-find to unify them → param
 /// becomes `Int(64)`). This can conflict with what callers actually pass — for
 /// example, a function that compares its parameter against a GML instance index
 /// (an i64) but is called with `ClassRef` values from every call site.
 ///
-/// This pass detects such conflicts and widens the param back to `Dynamic`,
+/// This pass detects such conflicts and widens the param back to `Unknown`,
 /// producing an `any` annotation in TypeScript output (which is valid for
 /// `any === number` comparisons).
 ///
 /// Design decisions:
 /// - Runs AFTER `ConstraintSolve`, which is when conflicting narrowing can occur.
-/// - Only widens concrete → Dynamic. Never makes other changes.
-/// - If any non-Dynamic caller passes a type that differs from the param type,
-///   the param is widened to Dynamic.
-/// - Dynamic callers are ignored — they are already compatible with any param
+/// - Only widens concrete → Unknown. Never makes other changes.
+/// - If any non-Unknown caller passes a type that differs from the param type,
+///   the param is widened to Unknown.
+/// - Unknown callers are ignored — they are already compatible with any param
 ///   type and don't signal a type conflict.
 /// - `run_once = true`: prevents oscillation in fixpoint mode. Without this,
 ///   `ConstraintSolve` would re-narrow in each iteration and this pass would
@@ -32,7 +32,7 @@ use crate::transforms::call_site_flow::collect_call_site_types;
 ///
 /// Requires both `CallSiteTypeFlow` and `ConstraintSolve` to have run for
 /// useful results. If `ConstraintSolve` is skipped and `CallSiteTypeFlow` runs,
-/// widening sees Dynamic caller types and silently undoes `ConstraintSolve`'s
+/// widening sees Unknown caller types and silently undoes `ConstraintSolve`'s
 /// narrowing. Consider gating this pass when either dependency is disabled.
 pub struct CallSiteTypeWiden;
 
@@ -89,18 +89,18 @@ impl Transform for CallSiteTypeWiden {
                     func.sig.params[param_idx].clone()
                 };
 
-                // Only widen non-Dynamic params — Dynamic is already the widest.
-                if param_ty == Type::Dynamic {
+                // Only widen non-Unknown params — Unknown is already the widest.
+                if param_ty == Type::Unknown {
                     continue;
                 }
 
-                // Widen if any non-Dynamic caller passes a type that differs
-                // from the current param type. Dynamic callers are skipped —
+                // Widen if any non-Unknown caller passes a type that differs
+                // from the current param type. Unknown callers are skipped —
                 // they don't indicate a type conflict (they're already
                 // compatible with any concrete type).
                 let should_widen = caller_types
                     .iter()
-                    .any(|t| t != &Type::Dynamic && t != &param_ty);
+                    .any(|t| t != &Type::Unknown && t != &param_ty);
 
                 if should_widen {
                     let func = &mut module.functions[func_id];
@@ -110,11 +110,11 @@ impl Transform for CallSiteTypeWiden {
                     // three, and the backend reads from entry block params).
                     let entry = func.entry;
                     if param_idx < func.blocks[entry].params.len() {
-                        func.blocks[entry].params[param_idx].ty = Type::Dynamic;
+                        func.blocks[entry].params[param_idx].ty = Type::Unknown;
                         let value = func.blocks[entry].params[param_idx].value;
-                        func.value_types[value] = Type::Dynamic;
+                        func.value_types[value] = Type::Unknown;
                     }
-                    func.sig.params[param_idx] = Type::Dynamic;
+                    func.sig.params[param_idx] = Type::Unknown;
 
                     changed = true;
                 }
@@ -123,12 +123,12 @@ impl Transform for CallSiteTypeWiden {
 
         // For functions with zero IR call sites (e.g., `withInstances` closures
         // called by the runtime, not by IR-visible call instructions), ConstraintSolve
-        // may have narrowed a param that was originally `Dynamic`. Since there are no
+        // may have narrowed a param that was originally `Unknown`. Since there are no
         // IR callers to validate the narrowing, and the runtime can dispatch any
-        // GMLObject instance to such callbacks, restore `Dynamic`.
+        // GMLObject instance to such callbacks, restore `Unknown`.
         //
         // Detection: `sig.params[i]` is NOT updated by ConstraintSolve, so it still
-        // holds the original type from TypeInference. If sig says `Dynamic` but the
+        // holds the original type from TypeInference. If sig says `Unknown` but the
         // entry-block param (post-ConstraintSolve) is concrete, the narrowing was
         // intra-procedural only — not validated by any caller.
         // Collect (func_id, name) pairs first to avoid borrow conflicts.
@@ -144,16 +144,16 @@ impl Transform for CallSiteTypeWiden {
             let entry = func.entry;
             let param_count = func.sig.params.len();
 
-            // Find params where sig says Dynamic but entry block was narrowed.
+            // Find params where sig says Unknown but entry block was narrowed.
             let mut to_widen: Vec<usize> = Vec::new();
             for i in 0..param_count {
-                if func.sig.params[i] != Type::Dynamic {
+                if func.sig.params[i] != Type::Unknown {
                     continue;
                 }
                 if i >= func.blocks[entry].params.len() {
                     continue;
                 }
-                if func.blocks[entry].params[i].ty != Type::Dynamic {
+                if func.blocks[entry].params[i].ty != Type::Unknown {
                     to_widen.push(i);
                 }
             }
@@ -161,10 +161,10 @@ impl Transform for CallSiteTypeWiden {
             for i in to_widen {
                 let func = &mut module.functions[func_id];
                 let entry = func.entry;
-                func.blocks[entry].params[i].ty = Type::Dynamic;
+                func.blocks[entry].params[i].ty = Type::Unknown;
                 let value = func.blocks[entry].params[i].value;
-                func.value_types[value] = Type::Dynamic;
-                // sig.params[i] is already Dynamic — no change needed there.
+                func.value_types[value] = Type::Unknown;
+                // sig.params[i] is already Unknown — no change needed there.
                 changed = true;
             }
         }
@@ -188,7 +188,7 @@ mod tests {
     // ---- Incompatible caller widens param ----
 
     /// Param is Int(64) (narrowed by ConstraintSolve), but a caller passes
-    /// String → param should be widened back to Dynamic.
+    /// String → param should be widened back to Unknown.
     #[test]
     fn widen_when_caller_passes_incompatible_type() {
         let mut mb = ModuleBuilder::new("test");
@@ -218,12 +218,12 @@ mod tests {
         let result = run(mb);
         assert!(result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        assert_eq!(target.sig.params[0], Type::Unknown);
         // Entry block param and value_types should also be widened.
         let entry = target.entry;
-        assert_eq!(target.blocks[entry].params[0].ty, Type::Dynamic);
+        assert_eq!(target.blocks[entry].params[0].ty, Type::Unknown);
         let val = target.blocks[entry].params[0].value;
-        assert_eq!(target.value_types[val], Type::Dynamic);
+        assert_eq!(target.value_types[val], Type::Unknown);
     }
 
     // ---- Compatible caller leaves param unchanged ----
@@ -259,10 +259,10 @@ mod tests {
         assert_eq!(target.sig.params[0], Type::String);
     }
 
-    // ---- Dynamic caller does not trigger widening ----
+    // ---- Unknown caller does not trigger widening ----
 
-    /// Param is Int(64), one caller passes Int(64) and another passes Dynamic.
-    /// Dynamic callers are ignored — only concrete-type callers signal conflicts.
+    /// Param is Int(64), one caller passes Int(64) and another passes Unknown.
+    /// Unknown callers are ignored — only concrete-type callers signal conflicts.
     #[test]
     fn dynamic_caller_does_not_widen() {
         let mut mb = ModuleBuilder::new("test");
@@ -288,14 +288,14 @@ mod tests {
         caller_a.ret(None);
         mb.add_function(caller_a.build());
 
-        // Caller B: passes Dynamic — ignored (not a type conflict).
+        // Caller B: passes Unknown — ignored (not a type conflict).
         let sig_b = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut caller_b = FunctionBuilder::new("caller_b", sig_b, Visibility::Private);
-        let p = caller_b.param(0); // Dynamic
+        let p = caller_b.param(0); // Unknown
         caller_b.call("target", &[p], Type::Void);
         caller_b.ret(None);
         mb.add_function(caller_b.build());
@@ -303,21 +303,21 @@ mod tests {
         let result = run(mb);
         assert!(
             !result.changed,
-            "Dynamic caller should not trigger widening"
+            "Unknown caller should not trigger widening"
         );
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(target.sig.params[0], Type::Int(64));
     }
 
-    // ---- Already Dynamic → no-op ----
+    // ---- Already Unknown → no-op ----
 
-    /// If param is already Dynamic, nothing to widen.
+    /// If param is already Unknown, nothing to widen.
     #[test]
     fn already_dynamic_no_op() {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -339,15 +339,15 @@ mod tests {
         let result = run(mb);
         assert!(!result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        assert_eq!(target.sig.params[0], Type::Unknown);
     }
 
-    // ---- No callers, non-Dynamic sig → no change ----
+    // ---- No callers, non-Unknown sig → no change ----
 
     /// Function with no IR callers and a concrete sig param (e.g. TypeInference
     /// already inferred Int(64)) is left alone even if ConstraintSolve narrowed
-    /// the entry block param further. We only restore Dynamic where the sig itself
-    /// declared Dynamic.
+    /// the entry block param further. We only restore Unknown where the sig itself
+    /// declared Unknown.
     #[test]
     fn no_callers_non_dynamic_sig_no_change() {
         let mut mb = ModuleBuilder::new("test");
@@ -367,23 +367,23 @@ mod tests {
         assert_eq!(target.sig.params[0], Type::Int(64));
     }
 
-    // ---- No callers, Dynamic sig narrowed by ConstraintSolve → restore Dynamic ----
+    // ---- No callers, Unknown sig narrowed by ConstraintSolve → restore Unknown ----
 
     /// Closure callbacks (e.g. `withInstances` bodies) are never called by IR
     /// call instructions — the runtime dispatches them. Their `_self` param is
-    /// originally `Dynamic` (from the GML with-body translator), but
+    /// originally `Unknown` (from the GML with-body translator), but
     /// `ConstraintSolve` may narrow it to a concrete type based on body usage
     /// (e.g. `collision_rectangle(_self, ...)` constrains it to `number`).
-    /// With no IR callers to validate the narrowing, we must restore `Dynamic`.
+    /// With no IR callers to validate the narrowing, we must restore `Unknown`.
     #[test]
     fn no_callers_dynamic_sig_narrowed_by_cs_restores_dynamic() {
         use crate::ir::Module;
 
         let mut mb = ModuleBuilder::new("test");
 
-        // Closure with Dynamic sig param (as emitted by with-body translator).
+        // Closure with Unknown sig param (as emitted by with-body translator).
         let closure_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -398,36 +398,36 @@ mod tests {
         module.functions[func_id].blocks[entry].params[0].ty = Type::Float(64);
         let value = module.functions[func_id].blocks[entry].params[0].value;
         module.functions[func_id].value_types[value] = Type::Float(64);
-        // sig.params is NOT updated by ConstraintSolve — leave it as Dynamic.
+        // sig.params is NOT updated by ConstraintSolve — leave it as Unknown.
 
         let result = CallSiteTypeWiden.apply(module).unwrap();
 
         assert!(
             result.changed,
-            "should restore Dynamic for no-caller closure param"
+            "should restore Unknown for no-caller closure param"
         );
         let target = &result.module.functions[FuncId::new(0)];
-        // Entry block param and value_types should be restored to Dynamic.
+        // Entry block param and value_types should be restored to Unknown.
         let entry = target.entry;
         assert_eq!(
             target.blocks[entry].params[0].ty,
-            Type::Dynamic,
-            "entry block param should be restored to Dynamic"
+            Type::Unknown,
+            "entry block param should be restored to Unknown"
         );
         let val = target.blocks[entry].params[0].value;
         assert_eq!(
             target.value_types[val],
-            Type::Dynamic,
-            "value_types should be restored to Dynamic"
+            Type::Unknown,
+            "value_types should be restored to Unknown"
         );
-        // sig.params was already Dynamic — stays Dynamic.
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        // sig.params was already Unknown — stays Unknown.
+        assert_eq!(target.sig.params[0], Type::Unknown);
     }
 
     // ---- ClassRef conflict (the playerIsCharacter scenario) ----
 
     /// Param is Int(64) (ConstraintSolve narrowed via cmp.eq against an i64),
-    /// but callers pass ClassRef values → widen to Dynamic.
+    /// but callers pass ClassRef values → widen to Unknown.
     #[test]
     fn classref_caller_widens_int_param() {
         let mut mb = ModuleBuilder::new("test");
@@ -466,8 +466,8 @@ mod tests {
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(
             target.sig.params[0],
-            Type::Dynamic,
-            "ClassRef callers should widen Int param to Dynamic"
+            Type::Unknown,
+            "ClassRef callers should widen Int param to Unknown"
         );
     }
 
@@ -505,6 +505,6 @@ mod tests {
         assert!(result.changed);
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(target.sig.params[0], Type::String); // x compatible, unchanged
-        assert_eq!(target.sig.params[1], Type::Dynamic); // y incompatible, widened
+        assert_eq!(target.sig.params[1], Type::Unknown); // y incompatible, widened
     }
 }

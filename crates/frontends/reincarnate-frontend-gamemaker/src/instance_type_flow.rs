@@ -4,7 +4,7 @@
 //!
 //! **Step B — instance_create return types**: When `instance_create_*` (or similar)
 //! is called with an OBJT class reference as the last argument, narrow the result
-//! type from `Dynamic` to `Struct(class_name)`. This allows TypeScript to infer
+//! type from `Unknown` to `Struct(class_name)`. This allows TypeScript to infer
 //! the concrete return type (e.g. `OEnemy`) from the class constructor argument.
 //!
 //! **Step C — object_index comparisons → TypeCheck**: When game code compares
@@ -26,7 +26,7 @@ use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 /// GML instance type propagation pass.
 ///
 /// `obj_names` is the set of all OBJT class names (e.g. `{"OEnemy", "Player"}`).
-/// Must be run after TypeInference so `Dynamic` result types are already
+/// Must be run after TypeInference so `Unknown` result types are already
 /// assigned to instance-creation calls.
 pub struct GmlInstanceTypeFlow {
     pub obj_names: HashSet<String>,
@@ -110,7 +110,7 @@ impl GmlInstanceTypeFlow {
             .collect();
 
         for (vid, class_name) in type_updates {
-            if func.value_types[vid] == Type::Dynamic {
+            if func.value_types[vid] == Type::Unknown {
                 func.value_types[vid] = Type::Struct(class_name);
                 changed = true;
             }

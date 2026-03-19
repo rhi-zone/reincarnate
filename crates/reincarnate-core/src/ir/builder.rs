@@ -190,7 +190,7 @@ impl FunctionBuilder {
     /// integer type, return the inner (pre-cast) value.  This is used to
     /// strip GML `Conv.v.i32` instructions that the VM emits for internal
     /// byte-layout reasons before `pushac`/`pushaf`, where the array
-    /// reference should remain `Dynamic` at the decompilation level.
+    /// reference should remain `Unknown` at the decompilation level.
     pub fn try_peel_int_coerce(&self, value: ValueId) -> ValueId {
         for inst in self.func.insts.values() {
             if inst.result == Some(value) {
@@ -511,7 +511,7 @@ impl FunctionBuilder {
     // ========================================================================
 
     pub fn alloc(&mut self, ty: Type) -> ValueId {
-        self.emit(Op::Alloc(ty), Type::Dynamic)
+        self.emit(Op::Alloc(ty), Type::Unknown)
     }
 
     pub fn load(&mut self, ptr: ValueId, ty: Type) -> ValueId {

@@ -119,10 +119,10 @@ fn is_bool(func: &Function, v: ValueId) -> bool {
 }
 
 /// Returns true if `v` is "effectively boolean" — either directly Bool-typed,
-/// or the result of a `Cast(bool_val, Dynamic, Coerce)` from a Bool value.
+/// or the result of a `Cast(bool_val, Unknown, Coerce)` from a Bool value.
 ///
 /// GML's `cmp.eq`/`cmp.lt` etc. produce Bool, which then gets coerced to
-/// Dynamic before being passed as a call arg.  The emitter strips the coerce,
+/// Unknown before being passed as a call arg.  The emitter strips the coerce,
 /// leaving a boolean expression where TypeScript expects a number.
 fn is_effectively_bool(func: &Function, v: ValueId) -> bool {
     if is_bool(func, v) {
@@ -143,7 +143,7 @@ fn is_numeric(ty: &Type) -> bool {
     matches!(ty, Type::Int(_) | Type::Float(_))
 }
 
-/// Look through a `Cast(src, Dynamic, Coerce)` to recover the underlying type.
+/// Look through a `Cast(src, Unknown, Coerce)` to recover the underlying type.
 ///
 /// GML translates most call arguments as `coerce val, dyn` before passing them,
 /// which hides the real type from the auto-coercion pass.  This helper peels off
@@ -154,13 +154,13 @@ fn peel_dynamic_coerce<'a>(
     result_map: &HashMap<ValueId, InstId>,
 ) -> &'a Type {
     let ty = &func.value_types[v];
-    if !matches!(ty, Type::Dynamic) {
+    if !matches!(ty, Type::Unknown) {
         return ty;
     }
     if let Some(&inst_id) = result_map.get(&v) {
         if let Op::Cast(source, _, CastKind::Coerce) = &func.insts[inst_id].op {
             let src_ty = &func.value_types[*source];
-            if !matches!(src_ty, Type::Dynamic) {
+            if !matches!(src_ty, Type::Unknown) {
                 return src_ty;
             }
         }
@@ -210,7 +210,7 @@ fn insert_cast_before(
 /// Direct Bool values (value_types == Bool) and Call results from Bool-returning
 /// callees (Fix A: ConstraintSolve may have widened the result type) both qualify.
 ///
-/// Also coerces Dynamic-typed GetField results for fields declared as `"*"` in
+/// Also coerces Unknown-typed GetField results for fields declared as `"*"` in
 /// external type definitions (e.g. `visible`, `persistent`).  These fields are
 /// `number | boolean` in the TypeScript runtime class; TypeScript rejects
 /// `number | boolean` in arithmetic, so we wrap them in `Number()`.
@@ -453,7 +453,7 @@ fn build_external_numeric_fields(module: &Module) -> HashSet<String> {
     result
 }
 
-/// Build a set of field names declared as `"*"` (Dynamic) in external type
+/// Build a set of field names declared as `"*"` (Unknown) in external type
 /// definitions.  These are GML properties like `visible`, `solid`,
 /// `persistent` that accept both `number` and `boolean`.  The TypeScript
 /// runtime class declares them as `number | boolean`, which TypeScript
@@ -528,7 +528,7 @@ fn coerce_bool_set_field(
 /// is numeric.  GML treats booleans as numbers, so `func(x == y)` is valid GML
 /// when `func` expects a number.
 ///
-/// The challenge: at call sites, the Bool value is often coerced to Dynamic
+/// The challenge: at call sites, the Bool value is often coerced to Unknown
 /// (`coerce bool, dyn`) before being passed.  The emitter strips the coerce,
 /// exposing the boolean expression to TypeScript.  We look through the coerce
 /// to find the underlying Bool and insert `Cast(Bool→Float(64), Coerce)`.
@@ -581,10 +581,10 @@ fn coerce_bool_call_args(
 /// GML auto-coerces between types at call sites: numbers become strings,
 /// strings become numbers, booleans become numbers.  TypeScript doesn't.
 /// Insert explicit `Cast(..., Coerce)` when arg type ≠ param type and both
-/// are concrete (non-Dynamic).
+/// are concrete (non-Unknown).
 ///
 /// Covers: number→string, string→number, bool→string.
-/// Does NOT coerce: Dynamic→anything (already compatible), struct→number
+/// Does NOT coerce: Unknown→anything (already compatible), struct→number
 /// (instance ID problem — different root cause).
 fn coerce_call_args_general(
     func: &mut Function,
@@ -608,7 +608,7 @@ fn coerce_call_args_general(
             if let Some(param_tys) = param_tys {
                 for (i, &arg_v) in args.iter().enumerate() {
                     if let Some(pty) = param_tys.get(i) {
-                        // Look through coerce-to-Dynamic to recover the real arg type.
+                        // Look through coerce-to-Unknown to recover the real arg type.
                         let arg_ty = peel_dynamic_coerce(func, arg_v, &result_map);
                         if let Some(target) = needs_coerce(arg_ty, pty) {
                             casts.push((inst_id, i, arg_v, target));
@@ -636,11 +636,11 @@ fn coerce_call_args_general(
 /// Determine if a GML auto-coercion is needed from `arg_ty` to `param_ty`.
 /// Returns `Some(target_type)` if a cast should be inserted, `None` otherwise.
 fn needs_coerce(arg_ty: &Type, param_ty: &Type) -> Option<Type> {
-    // Skip if types already match or either side is Dynamic (compatible with anything).
+    // Skip if types already match or either side is Unknown (compatible with anything).
     if arg_ty == param_ty {
         return None;
     }
-    if matches!(arg_ty, Type::Dynamic) || matches!(param_ty, Type::Dynamic) {
+    if matches!(arg_ty, Type::Unknown) || matches!(param_ty, Type::Unknown) {
         return None;
     }
     // Skip Void args (shouldn't happen but guard).
@@ -730,7 +730,7 @@ fn coerce_bool_cmp_operands(
     _dynamic_declared_fields: &HashSet<String>,
 ) -> bool {
     let result_map = result_inst_map(func);
-    // For comparisons, don't coerce Dynamic GetField results — only Bool operands.
+    // For comparisons, don't coerce Unknown GetField results — only Bool operands.
     let cmp_fields = &HashSet::new();
 
     // Each entry: (inst_id, lhs, rhs, lhs_is_bool, rhs_is_bool)
@@ -871,7 +871,7 @@ fn coerce_noone_sentinel(func: &mut Function) -> bool {
 
     for (inst_id, replace_a, replace_b) in targets {
         if replace_a {
-            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Dynamic)));
+            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Unknown)));
             let null_iid = func.insts.push(Inst {
                 op: Op::Const(Constant::Null),
                 result: Some(null_vid),
@@ -890,7 +890,7 @@ fn coerce_noone_sentinel(func: &mut Function) -> bool {
             }
         }
         if replace_b {
-            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Dynamic)));
+            let null_vid = func.value_types.push(Type::Option(Box::new(Type::Unknown)));
             let null_iid = func.insts.push(Inst {
                 op: Op::Const(Constant::Null),
                 result: Some(null_vid),

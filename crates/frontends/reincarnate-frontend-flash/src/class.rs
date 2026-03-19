@@ -430,7 +430,7 @@ fn translate_class_method(
         if let Some(name) = class_name {
             param_types.push(Type::Struct(name.to_string()));
         } else {
-            param_types.push(Type::Dynamic);
+            param_types.push(Type::Unknown);
         }
         param_names.push(None); // `this` — backend handles via self_value
     }
@@ -455,11 +455,11 @@ fn translate_class_method(
     }
 
     // AVM2 NEED_REST: the method receives extra arguments as an Array in the
-    // next register after the declared params.  Add an Array(Dynamic) param
+    // next register after the declared params.  Add an Array(Unknown) param
     // so translate_method_body initializes the register from the function arg.
     let has_rest = method.flags.contains(MethodFlags::NEED_REST);
     if has_rest {
-        param_types.push(Type::Array(Box::new(Type::Dynamic)));
+        param_types.push(Type::Array(Box::new(Type::Unknown)));
         param_names.push(None); // name comes from Op::Debug
     }
 
@@ -641,7 +641,7 @@ pub fn translate_abc_to_module(
     // an index signature.  Without it, `player[statName]` on a sealed
     // Player class produces TS7053.
     //
-    // Dynamic classes additionally allow *creating* new properties via
+    // Unknown classes additionally allow *creating* new properties via
     // bracket access, but TypeScript's `[key: string]: any` doesn't
     // distinguish read-only vs read-write bracket access, so we emit it
     // for all classes uniformly.

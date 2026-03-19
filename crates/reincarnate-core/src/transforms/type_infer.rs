@@ -8,7 +8,7 @@ use crate::ir::{
 };
 use crate::pipeline::{Transform, TransformResult};
 
-/// Type inference transform — refines `Dynamic` types to concrete types
+/// Type inference transform — refines `Unknown` types to concrete types
 /// by forward dataflow analysis with fixed-point iteration.
 pub struct TypeInference;
 
@@ -208,26 +208,25 @@ impl ModuleContext {
 /// Replace `old` with `new` only when doing so refines our knowledge.
 ///
 /// Allowed transitions:
-/// - `Dynamic → anything` (Dynamic means "completely unresolved").
-/// - `Unknown → concrete` (Unknown means "we know a value exists but not its type";
-///   GlobalStore may later discover the concrete type, e.g. Float(64)).
+/// - `Unknown → concrete` (Unknown means "completely unresolved";
+///   inference or GlobalStore may later discover the concrete type, e.g. Float(64)).
 ///
 /// A concrete type is never replaced by another concrete type (that would widen).
 fn refine(old: &Type, new: &Type) -> Option<Type> {
-    let old_unresolved = matches!(old, Type::Dynamic | Type::Unknown);
-    let new_concrete = !matches!(new, Type::Dynamic | Type::Unknown);
-    if (old_unresolved && new_concrete) || (*old == Type::Dynamic && *new == Type::Unknown) {
+    let old_unresolved = matches!(old, Type::Unknown);
+    let new_concrete = !matches!(new, Type::Unknown);
+    if old_unresolved && new_concrete {
         Some(new.clone())
     } else {
         None
     }
 }
 
-/// Flatten a type into a list of non-Dynamic, non-Option, non-Union members,
+/// Flatten a type into a list of non-Unknown, non-Option, non-Union members,
 /// tracking nullability. This ensures unions never nest.
 fn flatten_into(ty: Type, nullable: &mut bool, out: &mut Vec<Type>) {
     match ty {
-        Type::Dynamic => {}
+        Type::Unknown => {}
         Type::Option(inner) => {
             *nullable = true;
             flatten_into(*inner, nullable, out);
@@ -246,15 +245,15 @@ fn flatten_into(ty: Type, nullable: &mut bool, out: &mut Vec<Type>) {
 }
 
 /// Merge two types into a union, deduplicating members.
-/// `Dynamic` members are dropped. `Option` is unwrapped into a nullable flag
+/// `Unknown` members are dropped. `Option` is unwrapped into a nullable flag
 /// and its inner type is flattened into the member list. This prevents nesting
 /// from iterative inference passes.
 ///
 /// When `nullable` is true, the result is wrapped in `Type::Option` even when
-/// the base is `Dynamic`. Without this, `null | Dynamic` → `Dynamic`, and a
-/// later `union_type(Dynamic, Bool)` → `Bool` — the null information is
-/// permanently lost through the intermediate Dynamic. Preserving it as
-/// `Option(Dynamic)` (= TS `any | null` = `any`) allows a subsequent merge
+/// the base is `Unknown`. Without this, `null | Unknown` → `Unknown`, and a
+/// later `union_type(Unknown, Bool)` → `Bool` — the null information is
+/// permanently lost through the intermediate Unknown. Preserving it as
+/// `Option(Unknown)` (= TS `any | null` = `any`) allows a subsequent merge
 /// with a concrete type to produce the correct `Option(T)`.
 fn union_type(a: Type, b: Type) -> Type {
     let mut nullable = false;
@@ -263,7 +262,7 @@ fn union_type(a: Type, b: Type) -> Type {
     flatten_into(b, &mut nullable, &mut types);
 
     let base = match types.len() {
-        0 => Type::Dynamic,
+        0 => Type::Unknown,
         1 => types.into_iter().next().unwrap(),
         _ => Type::Union(types),
     };
@@ -277,17 +276,17 @@ fn union_type(a: Type, b: Type) -> Type {
 /// Build a map from alloc ValueId → stored type, by scanning all Store instructions.
 /// If all stores to a given alloc write the same concrete type, that type is recorded.
 /// If stores write different concrete types, a `Type::Union` is produced.
-/// If any store writes `Dynamic`, the alloc is left out of the map (stays Dynamic)
-/// because `Dynamic` means "any type" and must not be silently dropped by the union.
+/// If any store writes `Unknown`, the alloc is left out of the map (stays Unknown)
+/// because `Unknown` means "any type" and must not be silently dropped by the union.
 fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
     let mut alloc_stores: HashMap<ValueId, Option<Type>> = HashMap::new();
-    // Track allocs that receive a Dynamic store — these must stay Dynamic.
+    // Track allocs that receive a Unknown store — these must stay Unknown.
     let mut has_dynamic_store: HashSet<ValueId> = HashSet::new();
 
     for inst in func.insts.values() {
         if let Op::Store { ptr, value } = &inst.op {
             let stored_ty = func.value_types[*value].clone();
-            if stored_ty == Type::Dynamic {
+            if stored_ty == Type::Unknown {
                 has_dynamic_store.insert(*ptr);
                 continue;
             }
@@ -304,7 +303,7 @@ fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
     alloc_stores
         .into_iter()
         .filter_map(|(ptr, ty)| {
-            // If any store wrote Dynamic, don't narrow this alloc.
+            // If any store wrote Unknown, don't narrow this alloc.
             if has_dynamic_store.contains(&ptr) {
                 return None;
             }
@@ -355,7 +354,7 @@ fn branch_target_args(term: &crate::ir::inst::Terminator) -> Vec<(BlockId, &[Val
 }
 
 /// Return type of ECMAScript String prototype methods.
-/// Returns `None` for unknown methods (falls back to Dynamic).
+/// Returns `None` for unknown methods (falls back to Unknown).
 fn string_method_return_type(method: &str) -> Option<Type> {
     match method {
         // Methods that return string
@@ -392,12 +391,12 @@ fn infer_inst_type(
         // Arithmetic: propagate the type of the first operand.
         // For Add this is conservative (can be string concat in JS), so we keep it as-is.
         Op::Add(a, _) => func.value_types[*a].clone(),
-        // Sub/Mul/Div/Rem are always numeric. If the lhs is Dynamic but rhs is
+        // Sub/Mul/Div/Rem are always numeric. If the lhs is Unknown but rhs is
         // concrete (e.g. `state.get("x") - 1.0`), use the rhs type so the result
-        // doesn't poison downstream inference with Dynamic.
+        // doesn't poison downstream inference with Unknown.
         Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
             let ty_a = &func.value_types[*a];
-            if *ty_a == Type::Dynamic {
+            if *ty_a == Type::Unknown {
                 func.value_types[*b].clone()
             } else {
                 ty_a.clone()
@@ -431,27 +430,27 @@ fn infer_inst_type(
         // GetField: look up struct field type, walking class hierarchy.
         Op::GetField { object, field } => {
             match &func.value_types[*object] {
-                Type::Struct(name) => ctx.resolve_field_type(name, field).unwrap_or(Type::Dynamic),
+                Type::Struct(name) => ctx.resolve_field_type(name, field).unwrap_or(Type::Unknown),
                 Type::Union(members) => {
                     // Resolve the field type for each union member and join.
-                    // Members that can't resolve contribute Dynamic (unknown).
-                    let mut result = Type::Dynamic;
+                    // Members that can't resolve contribute Unknown (unknown).
+                    let mut result = Type::Unknown;
                     for member in members {
                         let member_field_ty = if let Type::Struct(name) = member {
-                            ctx.resolve_field_type(name, field).unwrap_or(Type::Dynamic)
+                            ctx.resolve_field_type(name, field).unwrap_or(Type::Unknown)
                         } else {
-                            Type::Dynamic
+                            Type::Unknown
                         };
                         result = union_type(result, member_field_ty);
                     }
                     result
                 }
                 _ => {
-                    // When the base is Dynamic but the field name is qualified
+                    // When the base is Unknown but the field name is qualified
                     // (e.g. "fl.core:UIComponent::focusManagerUsers"), extract
                     // the class name and resolve the field type.  This handles
                     // Flash scope-lookup patterns where findPropStrict returns
-                    // Dynamic but the field name carries the class info.
+                    // Unknown but the field name carries the class info.
                     if let Some(class_part) = field.rsplit("::").nth(1) {
                         // class_part is e.g. "fl.core:UIComponent" — extract short name.
                         let short = class_part.rsplit([':', '.']).next().unwrap_or(class_part);
@@ -486,7 +485,7 @@ fn infer_inst_type(
                             ctx.unique_method_types
                                 .get(bare)
                                 .cloned()
-                                .unwrap_or(Type::Dynamic)
+                                .unwrap_or(Type::Unknown)
                         })
                 } else {
                     // No struct receiver — try unique bare name.
@@ -494,10 +493,10 @@ fn infer_inst_type(
                     ctx.unique_method_types
                         .get(bare)
                         .cloned()
-                        .unwrap_or(Type::Dynamic)
+                        .unwrap_or(Type::Unknown)
                 }
             } else {
-                Type::Dynamic
+                Type::Unknown
             }
         }
 
@@ -514,20 +513,20 @@ fn infer_inst_type(
                         ctx.unique_method_types
                             .get(bare)
                             .cloned()
-                            .unwrap_or(Type::Dynamic)
+                            .unwrap_or(Type::Unknown)
                     })
             } else if func.value_types[*receiver] == Type::String {
                 string_method_return_type(bare).unwrap_or_else(|| {
                     ctx.unique_method_types
                         .get(bare)
                         .cloned()
-                        .unwrap_or(Type::Dynamic)
+                        .unwrap_or(Type::Unknown)
                 })
             } else {
                 ctx.unique_method_types
                     .get(bare)
                     .cloned()
-                    .unwrap_or(Type::Dynamic)
+                    .unwrap_or(Type::Unknown)
             }
         }
 
@@ -554,7 +553,7 @@ fn infer_inst_type(
             if ctx.class_hierarchy.contains_key(name.as_str()) {
                 Type::ClassRef(name.clone())
             } else {
-                ctx.global_types.get(name).cloned().unwrap_or(Type::Dynamic)
+                ctx.global_types.get(name).cloned().unwrap_or(Type::Unknown)
             }
         }
 
@@ -602,7 +601,7 @@ fn infer_inst_type(
                     ctx.global_types
                         .get(name.as_str())
                         .cloned()
-                        .unwrap_or(Type::Dynamic)
+                        .unwrap_or(Type::Unknown)
                 }
                 // GlobalStore is a write-side rule used by build_global_types,
                 // not a result-type rule — no type to infer here.
@@ -619,18 +618,18 @@ fn infer_inst_type(
 
 /// Find the common type among an iterator of types.
 /// Returns the single type if all agree, a `Union` if they differ,
-/// or `Dynamic` if any input is `Dynamic` or the iterator is empty.
+/// or `Unknown` if any input is `Unknown` or the iterator is empty.
 fn infer_common_type<'a>(mut types: impl Iterator<Item = &'a Type>) -> Type {
     let Some(first) = types.next() else {
-        return Type::Dynamic;
+        return Type::Unknown;
     };
-    if *first == Type::Dynamic {
-        return Type::Dynamic;
+    if *first == Type::Unknown {
+        return Type::Unknown;
     }
     let mut result = first.clone();
     for ty in types {
-        if *ty == Type::Dynamic {
-            return Type::Dynamic;
+        if *ty == Type::Unknown {
+            return Type::Unknown;
         }
         if *ty != result {
             result = union_type(result, ty.clone());
@@ -687,22 +686,22 @@ fn infer_field_use_type(
     match &inst.op {
         Op::GetField { object, field } if *object == vid => {
             if array_field_set.contains(field.as_str()) {
-                Some(Type::Array(Box::new(Type::Dynamic)))
+                Some(Type::Array(Box::new(Type::Unknown)))
             } else {
                 None
             }
         }
         Op::GetIndex { collection, .. } if *collection == vid => {
-            Some(Type::Array(Box::new(Type::Dynamic)))
+            Some(Type::Array(Box::new(Type::Unknown)))
         }
         Op::SetIndex { collection, .. } if *collection == vid => {
-            Some(Type::Array(Box::new(Type::Dynamic)))
+            Some(Type::Array(Box::new(Type::Unknown)))
         }
         Op::MethodCall {
             receiver, method, ..
         } if *receiver == vid => {
             if array_field_set.contains(method.as_str()) {
-                Some(Type::Array(Box::new(Type::Dynamic)))
+                Some(Type::Array(Box::new(Type::Unknown)))
             } else if STRING_ONLY_METHODS.contains(&method.as_str()) {
                 Some(Type::String)
             } else {
@@ -710,10 +709,10 @@ fn infer_field_use_type(
             }
         }
         Op::CallIndirect { callee, args } if *callee == vid => {
-            let params = vec![Type::Dynamic; args.len()];
+            let params = vec![Type::Unknown; args.len()];
             Some(Type::Function(Box::new(FunctionSig {
                 params,
-                return_ty: Type::Dynamic,
+                return_ty: Type::Unknown,
                 ..Default::default()
             })))
         }
@@ -748,17 +747,17 @@ fn infer_field_use_type(
 }
 
 /// Cross-function scan: collect value types from all global-store `SystemCall`
-/// Remove `Array(Dynamic)` or `Array(Unknown)` members from a union when the union
+/// Remove `Array(Unknown)` or `Array(Unknown)` members from a union when the union
 /// also contains at least one concrete non-array type.
 ///
 /// Motivation: GlobalStore write-site inference sometimes adds a spurious
-/// `Array(Dynamic)` to a variable's type when one passage wraps the variable in an
+/// `Array(Unknown)` to a variable's type when one passage wraps the variable in an
 /// array (e.g. `<<set _x to [_x]>>`).  If the variable is genuinely a string,
-/// struct, etc. at all other write sites, the `Array(Dynamic)` member is misleading
+/// struct, etc. at all other write sites, the `Array(Unknown)` member is misleading
 /// and causes TS2367 ("any[] and string have no overlap") and TS2339 ("property
 /// does not exist on type 'any[]'") errors.
 ///
-/// This filter is conservative: it only removes `Array(Dynamic|Unknown)` — typed
+/// This filter is conservative: it only removes `Array(Unknown|Unknown)` — typed
 /// arrays (`Array(String)`, `Array(Int)`, etc.) are never removed.  Pure-array
 /// variables (no non-array write sites) are unaffected.
 fn strip_opaque_array_from_union(ty: Type) -> Type {
@@ -766,21 +765,16 @@ fn strip_opaque_array_from_union(ty: Type) -> Type {
         return ty;
     };
     // Does the union contain at least one concrete, non-array, non-opaque type?
-    let has_concrete_non_array = variants.iter().any(|t| {
-        !matches!(
-            t,
-            Type::Array(_) | Type::Dynamic | Type::Unknown | Type::Var(_)
-        )
-    });
+    let has_concrete_non_array = variants
+        .iter()
+        .any(|t| !matches!(t, Type::Array(_) | Type::Unknown | Type::Var(_)));
     if !has_concrete_non_array {
         return Type::Union(variants);
     }
-    // Strip Array(Dynamic) and Array(Unknown) — these are "opaque array" slots.
-    variants.retain(
-        |v| !matches!(v, Type::Array(elem) if matches!(**elem, Type::Dynamic | Type::Unknown)),
-    );
+    // Strip Array(Unknown) and Array(Unknown) — these are "opaque array" slots.
+    variants.retain(|v| !matches!(v, Type::Array(elem) if matches!(**elem, Type::Unknown)));
     match variants.len() {
-        0 => Type::Dynamic,
+        0 => Type::Unknown,
         1 => variants.into_iter().next().unwrap(),
         _ => Type::Union(variants),
     }
@@ -856,9 +850,9 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
 
     // Per-variable accumulator: union of all write-site types.
     //
-    // Dynamic members are dropped by `union_type` (see `flatten_into`), so
-    // opaque (Dynamic/Unknown) writes contribute nothing to the union.
-    // Variables written only with opaque values remain `None` and stay Dynamic.
+    // Unknown members are dropped by `union_type` (see `flatten_into`), so
+    // opaque (Unknown/Unknown) writes contribute nothing to the union.
+    // Variables written only with opaque values remain `None` and stay Unknown.
     // Variables written with conflicting concrete types produce a Union, which
     // is detected as RC0004.
     let mut global_stores: HashMap<String, Option<Type>> = HashMap::new();
@@ -898,39 +892,35 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                         if let Some(name) = const_strings.get(&args[name_arg]) {
                             let write_val = args[value_arg];
                             let value_ty = func.value_types[write_val].clone();
-                            // If the write-site value is Dynamic or Unknown, attempt a
+                            // If the write-site value is Unknown, attempt a
                             // single look-through: `$x += 200` produces
                             // Add(State.get("x"), 200.0) where the get result is
-                            // Dynamic/Unknown on early passes; the rhs reveals the
+                            // Unknown on early passes; the rhs reveals the
                             // numeric type.  If look-through fails, count as an opaque
                             // write (we know a write happened but not with what type).
-                            let effective_ty: Option<Type> =
-                                if matches!(value_ty, Type::Dynamic | Type::Unknown) {
-                                    result_to_inst.get(&write_val).and_then(|prod| {
-                                        if let Op::Add(a, b) = &prod.op {
+                            let effective_ty: Option<Type> = if matches!(value_ty, Type::Unknown) {
+                                result_to_inst.get(&write_val).and_then(|prod| {
+                                    if let Op::Add(a, b) = &prod.op {
+                                        if matches!(func.value_types[*a], Type::Unknown) {
+                                            let ty_b = &func.value_types[*b];
                                             if matches!(
-                                                func.value_types[*a],
-                                                Type::Dynamic | Type::Unknown
+                                                ty_b,
+                                                Type::Float(_) | Type::Int(_) | Type::UInt(_)
                                             ) {
-                                                let ty_b = &func.value_types[*b];
-                                                if matches!(
-                                                    ty_b,
-                                                    Type::Float(_) | Type::Int(_) | Type::UInt(_)
-                                                ) {
-                                                    Some(ty_b.clone())
-                                                } else {
-                                                    None
-                                                }
+                                                Some(ty_b.clone())
                                             } else {
                                                 None
                                             }
                                         } else {
                                             None
                                         }
-                                    })
-                                } else {
-                                    Some(value_ty)
-                                };
+                                    } else {
+                                        None
+                                    }
+                                })
+                            } else {
+                                Some(value_ty)
+                            };
                             if let Some(ty) = effective_ty {
                                 let entry = global_stores.entry(name.to_string()).or_insert(None);
                                 match entry {
@@ -948,7 +938,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
     //
     // Phase 2 (array/function): when a ResolveGlobalType result is accessed via
     // GetField with an array method name or called indirectly, infer the variable
-    // as Array(Dynamic) or Function(…→Dynamic).
+    // as Array(Unknown) or Function(…→Unknown).
     //
     // Phase 3 (struct): when a ResolveGlobalType result is accessed via GetField
     // on a non-array field, infer a named struct type `_SC_<varname>` with field
@@ -963,8 +953,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
     let mut struct_schemas: HashMap<String, HashMap<String, Type>> = HashMap::new();
     // write_site_fields: (struct_key, field_name) pairs confirmed to exist via
     // SetField write-site inference.  These fields are included in the emitted
-    // struct interface even when their type is Dynamic (unknown → emits as `any`).
-    // Fields from GetField read-site inference are excluded when Dynamic because
+    // struct interface even when their type is Unknown (unknown → emits as `any`).
+    // Fields from GetField read-site inference are excluded when Unknown because
     // we can't distinguish "the field has type any" from "we just haven't typed it".
     let mut write_site_fields: HashSet<(String, String)> = HashSet::new();
 
@@ -1126,7 +1116,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                 // Before Mem2Reg runs, a State.get result `v0` is often stored into
                 // an Alloc and then Loaded back before use:
                 //   v0 = State.get("x")  → get_results[v0] = "x"
-                //   a  = Alloc(Dynamic)
+                //   a  = Alloc(Unknown)
                 //   Store { ptr: a, value: v0 }
                 //   v1 = Load(a)         → NOT in get_results without this extension
                 //   GetField(v1, "f")    → missed without v1 in get_results
@@ -1164,10 +1154,10 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                 }
 
                 // GetField on a ResolveGlobalType result with an array field →
-                // infer the variable as Array(Dynamic) if no write-site type.
+                // infer the variable as Array(Unknown) if no write-site type.
                 //
                 // CallIndirect directly on a ResolveGlobalType result →
-                // infer the variable as Function(Dynamic params → Dynamic).
+                // infer the variable as Function(Unknown params → Unknown).
                 //
                 // Both are Phase 2 patterns.  Skipped for struct-only resolve
                 // rules (e.g. Engine.resolve) where built-in JS globals like
@@ -1182,7 +1172,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                     let entry =
                                         global_stores.entry(var_name.to_string()).or_insert(None);
                                     if entry.is_none() {
-                                        *entry = Some(Type::Array(Box::new(Type::Dynamic)));
+                                        *entry = Some(Type::Array(Box::new(Type::Unknown)));
                                     }
                                 }
                             }
@@ -1212,10 +1202,10 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                     let entry =
                                         global_stores.entry(var_name.to_string()).or_insert(None);
                                     if entry.is_none() {
-                                        let params = vec![Type::Dynamic; args.len()];
+                                        let params = vec![Type::Unknown; args.len()];
                                         *entry = Some(Type::Function(Box::new(FunctionSig {
                                             params,
-                                            return_ty: Type::Dynamic,
+                                            return_ty: Type::Unknown,
                                             ..Default::default()
                                         })));
                                     }
@@ -1411,8 +1401,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                 .entry(key)
                                 .or_default()
                                 .entry(field)
-                                .or_insert(Type::Dynamic);
-                            if *entry == Type::Dynamic {
+                                .or_insert(Type::Unknown);
+                            if *entry == Type::Unknown {
                                 *entry = ty;
                             }
                         }
@@ -1431,8 +1421,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                     .entry(key)
                                     .or_default()
                                     .entry(field)
-                                    .or_insert(Type::Dynamic);
-                                if *entry == Type::Dynamic {
+                                    .or_insert(Type::Unknown);
+                                if *entry == Type::Unknown {
                                     *entry = Type::Bool;
                                 }
                             }
@@ -1453,8 +1443,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                         .entry(key)
                         .or_default()
                         .entry(field)
-                        .or_insert(Type::Dynamic);
-                    if *entry == Type::Dynamic {
+                        .or_insert(Type::Unknown);
+                    if *entry == Type::Unknown {
                         *entry = Type::Struct(nested);
                     }
                 }
@@ -1467,7 +1457,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                 // assigned but never read in a way that narrows the type
                 // (e.g. `<<set _modeloptions.animation_speed = "fast">>`).
                 //
-                // Only record concrete (non-Dynamic) types so we don't pollute
+                // Only record concrete (non-Unknown) types so we don't pollute
                 // the schema with fields whose stored type is still unknown.
                 for inst in func.insts.values() {
                     if let Op::SetField {
@@ -1479,8 +1469,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                         // The object may be the root (e.g. _modeloptions itself) or a
                         // nested field — check both provenance roots and non-root entries.
                         //
-                        // Note: we add the field even when val_ty is Dynamic so that
-                        // fields assigned a Dynamic value (e.g. `Engine.new(...)`) are
+                        // Note: we add the field even when val_ty is Unknown so that
+                        // fields assigned a Unknown value (e.g. `Engine.new(...)`) are
                         // still declared on the struct.  The field EXISTS — omitting it
                         // causes TS2339 "Property does not exist".  It emits as `any`.
                         // Concrete types are preferred via `or_insert` (first writer wins).
@@ -1500,14 +1490,14 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                 .entry(key.clone())
                                 .or_default()
                                 .entry(schema_field.clone())
-                                .or_insert(Type::Dynamic);
+                                .or_insert(Type::Unknown);
                             // Prefer concrete types: only update if we have something
                             // better than what's already recorded.
-                            if *entry == Type::Dynamic && val_ty != Type::Dynamic {
+                            if *entry == Type::Unknown && val_ty != Type::Unknown {
                                 *entry = val_ty;
                             }
                             // Record that this field was proven to exist (even if type
-                            // remains Dynamic — it will be emitted as `any`).
+                            // remains Unknown — it will be emitted as `any`).
                             write_site_fields.insert((key, schema_field));
                         }
                     }
@@ -1521,7 +1511,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
     // When a GetField instruction accesses a field on a value whose inferred
     // type is already a known `_SC_` struct, the field EXISTS at runtime even
     // if no write-site (SetField / GlobalStore) was ever observed for it.  Add
-    // it as Dynamic (`any`) so the emitted TypeScript interface declares it,
+    // it as Unknown (`any`) so the emitted TypeScript interface declares it,
     // preventing TS2339 "Property X does not exist on type _SC_Y".
     //
     // Guard: only extend struct schemas that already have confirmed fields —
@@ -1540,8 +1530,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                     .entry(key.to_string())
                                     .or_default()
                                     .entry(field.clone())
-                                    .or_insert(Type::Dynamic);
-                                // Mark as confirmed so the Dynamic entry is included
+                                    .or_insert(Type::Unknown);
+                                // Mark as confirmed so the Unknown entry is included
                                 // in the emitted struct interface (see Phase 3 filter).
                                 write_site_fields.insert((key.to_string(), field.clone()));
                             }
@@ -1552,12 +1542,12 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
         }
     }
 
-    // Post-processing: upgrade Array(Dynamic) struct fields to Record<string,any>
+    // Post-processing: upgrade Array(Unknown) struct fields to Record<string,any>
     // when they have named struct children in the schema.
     //
     // Some story variables are initialized as `[]` in setup code but used as
     // string-keyed dictionaries (e.g. `$C.npc.Whitney.state`).  The array init
-    // sets `Array(Dynamic)` for the field, which TypeScript emits as `any[]` and
+    // sets `Array(Unknown)` for the field, which TypeScript emits as `any[]` and
     // rejects dot-access (`npc.Whitney`) with TS2339.
     //
     // Evidence that a field is dictionary-style: named (non-array-method) GetField
@@ -1567,7 +1557,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
     // plain-object index type that accepts both dot and bracket string access).
     // `Type::Struct("Object")` emits as `Record<string, any>` via ts_type.
     {
-        let array_dyn = Type::Array(Box::new(Type::Dynamic));
+        let array_dyn = Type::Array(Box::new(Type::Unknown));
         let upgrades: Vec<(String, String)> = struct_schemas
             .iter()
             .flat_map(|(key, fields)| {
@@ -1608,8 +1598,8 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
 
     // Phase 3: build StructDef instances from the collected field schemas.
     //
-    // Only create a struct when at least one field has a concrete (non-Dynamic)
-    // inferred type — Dynamic fields are excluded to avoid emitting `any` in
+    // Only create a struct when at least one field has a concrete (non-Unknown)
+    // inferred type — Unknown fields are excluded to avoid emitting `any` in
     // TypeScript interfaces (Law 4).  The variable type is set to
     // `Type::Struct("_SC_<name>")` only when no write-site type was found.
     let mut inferred_structs: Vec<StructDef> = Vec::new();
@@ -1619,7 +1609,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
             .filter(|(name, ty)| {
                 // Include field if it has a concrete type, OR if it was proven to
                 // exist by a SetField write-site (field IS real; type is just unknown).
-                **ty != Type::Dynamic
+                **ty != Type::Unknown
                     || write_site_fields.contains(&(var_name.clone(), (*name).clone()))
             })
             .map(|(name, ty)| FieldDef {
@@ -1674,9 +1664,9 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
 
     // Build the final type map, collecting genuine type conflicts.
     //
-    // Dynamic members are dropped by `union_type` (see `flatten_into`), so
+    // Unknown members are dropped by `union_type` (see `flatten_into`), so
     // opaque write sites do not affect the inferred type.  Variables written
-    // only opaquely have no entry here and remain Dynamic.
+    // only opaquely have no entry here and remain Unknown.
     //
     // Conflict detection: when the concrete union spans different TypeScript type
     // families (e.g. String and Float), record the conflict for RC0004.
@@ -1755,7 +1745,7 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
         }
 
         // Block parameter refinement: widen to union of all concrete incoming types.
-        // Skip Dynamic args so back-edges (which depend on the param's own type)
+        // Skip Unknown args so back-edges (which depend on the param's own type)
         // don't poison the join and prevent convergence in loops.
         //
         // We use union_type rather than refine here because block params are join
@@ -1771,10 +1761,10 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
                     let common = infer_common_type(
                         args.iter()
                             .map(|v| &func.value_types[*v])
-                            .filter(|ty| **ty != Type::Dynamic),
+                            .filter(|ty| **ty != Type::Unknown),
                     );
-                    if common == Type::Dynamic {
-                        // All incoming were Dynamic — no useful type info yet.
+                    if common == Type::Unknown {
+                        // All incoming were Unknown — no useful type info yet.
                         continue;
                     }
                     let current = func.value_types[param.value].clone();
@@ -1795,10 +1785,10 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
 
     // Refine alloc instruction types from store analysis.
     // Update whenever the store-derived type differs from the current alloc type,
-    // not just when current is Dynamic. This handles the case where the translator
+    // not just when current is Unknown. This handles the case where the translator
     // gives an alloc a concrete type (e.g. String) but stores also include null,
     // requiring the type to be widened to Option(String).
-    // Skip updates that would narrow to Dynamic (store analysis returning Dynamic
+    // Skip updates that would narrow to Unknown (store analysis returning Unknown
     // means no info — don't override a known type with "unknown").
     let alloc_types = build_alloc_types(func);
     for block in func.blocks.values() {
@@ -1807,7 +1797,7 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
             if let Op::Alloc(ref ty) = inst.op {
                 if let Some(result) = inst.result {
                     if let Some(refined) = alloc_types.get(&result) {
-                        if refined != ty && *refined != Type::Dynamic {
+                        if refined != ty && *refined != Type::Unknown {
                             func.insts[inst_id].op = Op::Alloc(refined.clone());
                             any_changed = true;
                         }
@@ -1817,10 +1807,10 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
         }
     }
 
-    // Post-convergence widening: block params that still receive a Dynamic argument
-    // must themselves be Dynamic.  The main fixpoint loop above filters out Dynamic
+    // Post-convergence widening: block params that still receive a Unknown argument
+    // must themselves be Unknown.  The main fixpoint loop above filters out Unknown
     // args to avoid premature widening during early iterations when most values are
-    // still unresolved (Dynamic).  After convergence, any remaining Dynamic arg is
+    // still unresolved (Unknown).  After convergence, any remaining Unknown arg is
     // genuinely dynamic (e.g. a struct-constructor result, or a call whose return
     // type can't be narrowed), so the block param must accommodate it.
     {
@@ -1829,9 +1819,9 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
             for (i, param) in block.params.iter().enumerate() {
                 if let Some(args) = incoming.get(&(block_id, i)) {
                     let has_persistent_dynamic =
-                        args.iter().any(|v| func.value_types[*v] == Type::Dynamic);
-                    if has_persistent_dynamic && func.value_types[param.value] != Type::Dynamic {
-                        func.value_types[param.value] = Type::Dynamic;
+                        args.iter().any(|v| func.value_types[*v] == Type::Unknown);
+                    if has_persistent_dynamic && func.value_types[param.value] != Type::Unknown {
+                        func.value_types[param.value] = Type::Unknown;
                         any_changed = true;
                     }
                 }
@@ -1889,7 +1879,7 @@ impl Transform for TypeInference {
 
         // Infer return types from actual Return instructions.
         for func in module.functions.values_mut() {
-            if func.sig.return_ty != Type::Dynamic {
+            if func.sig.return_ty != Type::Unknown {
                 continue;
             }
             let mut return_types: Vec<&Type> = Vec::new();
@@ -1906,7 +1896,7 @@ impl Transform for TypeInference {
                 if ctx.implicit_return_value {
                     // Source language returns a value from every function even
                     // without an explicit `return` (e.g. GML returns 0.0 by
-                    // default).  Keep the Dynamic return type so callers may
+                    // default).  Keep the Unknown return type so callers may
                     // still use the result.  Init-guard stubs in GMS2.3+ shared
                     // blobs have only `Return(None)` but callers index the
                     // result, causing TS7053 if narrowed to void.
@@ -1920,11 +1910,11 @@ impl Transform for TypeInference {
             } else {
                 infer_common_type(return_types.into_iter())
             };
-            if has_void_return && inferred != Type::Dynamic && inferred != Type::Void {
-                // Mixed void + value returns — keep Dynamic.
+            if has_void_return && inferred != Type::Unknown && inferred != Type::Void {
+                // Mixed void + value returns — keep Unknown.
                 continue;
             }
-            if inferred != Type::Dynamic && func.sig.return_ty != inferred {
+            if inferred != Type::Unknown && func.sig.return_ty != inferred {
                 func.sig.return_ty = inferred;
                 changed = true;
             }
@@ -1950,7 +1940,7 @@ impl Transform for TypeInference {
 
             // Check whether this scan produced any improvements over previous.
             let any_improved = inferred_globals.iter().any(|(k, v)| {
-                v != &Type::Dynamic && prev_inferred.get(k).is_none_or(|pv| pv == &Type::Dynamic)
+                v != &Type::Unknown && prev_inferred.get(k).is_none_or(|pv| pv == &Type::Unknown)
             });
             let has_undeclared = inferred_globals
                 .keys()
@@ -1976,11 +1966,10 @@ impl Transform for TypeInference {
 
             // Update Module::globals entries for declared globals.
             for g in &mut module.globals {
-                // Update Dynamic *or* Unknown globals: Unknown means "value exists
-                // but type unknown"; if GlobalStore found a concrete type, use it.
-                if matches!(g.ty, Type::Dynamic | Type::Unknown) {
+                // Update Unknown globals: if GlobalStore found a concrete type, use it.
+                if matches!(g.ty, Type::Unknown) {
                     if let Some(inferred) = inferred_globals.get(&g.name) {
-                        if *inferred != Type::Dynamic && *inferred != Type::Unknown {
+                        if *inferred != Type::Unknown {
                             g.ty = inferred.clone();
                             changed = true;
                         }
@@ -2004,12 +1993,12 @@ impl Transform for TypeInference {
             // SugarCube story/setup variables that have no Module::globals entry).
             let mut ctx = ModuleContext::from_module(&module);
             for (name, ty) in &inferred_globals {
-                if *ty == Type::Dynamic || *ty == Type::Unknown {
+                if *ty == Type::Unknown {
                     ctx.global_types
                         .entry(name.clone())
                         .or_insert_with(|| ty.clone());
                 } else {
-                    // Override Unknown/Dynamic in ctx from module.globals with the
+                    // Override Unknown in ctx from module.globals with the
                     // concrete inferred type — or_insert_with would silently keep Unknown.
                     ctx.global_types.insert(name.clone(), ty.clone());
                 }
@@ -2091,7 +2080,7 @@ mod tests {
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
         let mut func = fb.build();
-        func.value_types[sum] = Type::Dynamic;
+        func.value_types[sum] = Type::Unknown;
         assert_idempotent(&TypeInference, func);
     }
 
@@ -2106,13 +2095,13 @@ mod tests {
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.const_int(42);
         let b = fb.const_int(10);
-        // Manually create add with Dynamic type to simulate flash frontend output.
+        // Manually create add with Unknown type to simulate flash frontend output.
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
         let mut func = fb.build();
 
-        // Force the add result to Dynamic (simulating untyped frontend).
-        func.value_types[sum] = Type::Dynamic;
+        // Force the add result to Unknown (simulating untyped frontend).
+        func.value_types[sum] = Type::Unknown;
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
@@ -2137,7 +2126,7 @@ mod tests {
         let ptr = fb.alloc(Type::Int(32));
         let val = fb.const_int(42);
         fb.store(ptr, val);
-        let loaded = fb.load(ptr, Type::Dynamic); // Frontend doesn't know the type.
+        let loaded = fb.load(ptr, Type::Unknown); // Frontend doesn't know the type.
         fb.ret(Some(loaded));
         let func = fb.build();
 
@@ -2166,14 +2155,14 @@ mod tests {
         callee_fb.ret(Some(s));
         let callee = callee_fb.build();
 
-        // Create a caller that calls get_name with Dynamic return type.
+        // Create a caller that calls get_name with Unknown return type.
         let caller_sig = FunctionSig {
             params: vec![],
             return_ty: Type::String,
             ..Default::default()
         };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
-        let result = caller_fb.call("get_name", &[], Type::Dynamic);
+        let result = caller_fb.call("get_name", &[], Type::Unknown);
         caller_fb.ret(Some(result));
         let caller = caller_fb.build();
 
@@ -2201,7 +2190,7 @@ mod tests {
         let vx = fb.const_int(10);
         let vy = fb.const_int(20);
         let obj = fb.struct_init("Point", vec![("x".into(), vx), ("y".into(), vy)]);
-        let x = fb.get_field(obj, "x", Type::Dynamic);
+        let x = fb.get_field(obj, "x", Type::Unknown);
         fb.ret(Some(x));
         let func = fb.build();
 
@@ -2242,12 +2231,12 @@ mod tests {
                 Type::Struct("Point".into()),
                 Type::Struct("Point3D".into()),
             ])],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let obj = fb.param(0);
-        let x = fb.get_field(obj, "x", Type::Dynamic);
+        let x = fb.get_field(obj, "x", Type::Unknown);
         fb.ret(Some(x));
         let func = fb.build();
 
@@ -2298,7 +2287,7 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let func = &module.functions[FuncId::new(0)];
-        // Both Point and Point3D have `x: Int(64)` → result is Int(64), not Dynamic.
+        // Both Point and Point3D have `x: Int(64)` → result is Int(64), not Unknown.
         assert_eq!(func.value_types[x], Type::Int(64));
     }
 
@@ -2311,12 +2300,12 @@ mod tests {
                 Type::Struct("Foo".into()),
                 Type::Struct("Bar".into()),
             ])],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let obj = fb.param(0);
-        let val = fb.get_field(obj, "val", Type::Dynamic);
+        let val = fb.get_field(obj, "val", Type::Unknown);
         fb.ret(Some(val));
         let func = fb.build();
 
@@ -2366,8 +2355,8 @@ mod tests {
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
-        // Merge block with a Dynamic param.
-        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Dynamic]);
+        // Merge block with a Unknown param.
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Unknown]);
         let then_block = fb.create_block();
         let else_block = fb.create_block();
 
@@ -2400,36 +2389,36 @@ mod tests {
         assert_eq!(func.blocks[merge].params[0].ty, Type::Int(64));
     }
 
-    /// A block param that receives a persistently-Dynamic argument must remain
-    /// Dynamic after convergence.  GML struct-constructor results (e.g.
+    /// A block param that receives a persistently-Unknown argument must remain
+    /// Unknown after convergence.  GML struct-constructor results (e.g.
     /// `@@NewGMLObject@@`) stay `dyn` forever; a merge param that receives one
-    /// such value alongside concrete values must be widened to Dynamic.
+    /// such value alongside concrete values must be widened to Unknown.
     #[test]
     fn dynamic_input_widens_block_param_at_convergence() {
-        // Function: if (cond) { let x = <Dynamic call>; merge(x) }
+        // Function: if (cond) { let x = <Unknown call>; merge(x) }
         //           else      { let y = 0 (i64);        merge(y) }
-        // The merge param starts Dynamic, gets tentatively narrowed toward Int(64)
-        // by the concrete branch, but must end as Dynamic because the other branch
-        // sends a genuinely-Dynamic value.
+        // The merge param starts Unknown, gets tentatively narrowed toward Int(64)
+        // by the concrete branch, but must end as Unknown because the other branch
+        // sends a genuinely-Unknown value.
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
-        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Dynamic]);
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Unknown]);
         let then_block = fb.create_block();
         let else_block = fb.create_block();
 
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
-        // A Dynamic value: entry param typed Dynamic.  TypeInference can't narrow it.
-        let dynamic_val = fb.param(0); // reuse cond (Bool) — but actually we need a Dynamic val.
-                                       // Use a system call whose return type is Dynamic (TypeInference can't narrow it).
-        let dyn_val = fb.system_call("Ext", "create", &[], Type::Dynamic);
+        // A Unknown value: entry param typed Unknown.  TypeInference can't narrow it.
+        let dynamic_val = fb.param(0); // reuse cond (Bool) — but actually we need a Unknown val.
+                                       // Use a system call whose return type is Unknown (TypeInference can't narrow it).
+        let dyn_val = fb.system_call("Ext", "create", &[], Type::Unknown);
         fb.br(merge, &[dyn_val]);
 
         fb.switch_to_block(else_block);
@@ -2451,11 +2440,11 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let func = &module.functions[FuncId::new(0)];
-        // The merge param receives (Dynamic, Int(64)) — must stay Dynamic.
+        // The merge param receives (Unknown, Int(64)) — must stay Unknown.
         assert_eq!(
             func.value_types[merge_vals[0]],
-            Type::Dynamic,
-            "block param receiving a genuinely-Dynamic arg must remain Dynamic"
+            Type::Unknown,
+            "block param receiving a genuinely-Unknown arg must remain Unknown"
         );
     }
 
@@ -2464,13 +2453,13 @@ mod tests {
     fn mixed_types_produce_union() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
-        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Dynamic]);
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Unknown]);
         let then_block = fb.create_block();
         let else_block = fb.create_block();
 
@@ -2513,7 +2502,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let g = fb.global_ref("counter", Type::Dynamic);
+        let g = fb.global_ref("counter", Type::Unknown);
         fb.ret(Some(g));
         let func = fb.build();
 
@@ -2550,8 +2539,8 @@ mod tests {
         fb.ret(Some(cmp));
         let mut func = fb.build();
 
-        // Force cmp result to Dynamic.
-        func.value_types[cmp] = Type::Dynamic;
+        // Force cmp result to Unknown.
+        func.value_types[cmp] = Type::Unknown;
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
@@ -2588,12 +2577,12 @@ mod tests {
         // The caller calls bare "isNaga" with a Struct("Creature") receiver.
         let caller_sig = FunctionSig {
             params: vec![Type::Struct(class_name.to_string())],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
-        let result = caller_fb.call(method_bare, &[recv], Type::Dynamic);
+        let result = caller_fb.call(method_bare, &[recv], Type::Unknown);
         caller_fb.ret(Some(result));
         let caller_func = caller_fb.build();
 
@@ -2654,12 +2643,12 @@ mod tests {
         // Caller has a Naga receiver, calls bare "isNaga".
         let caller_sig = FunctionSig {
             params: vec![Type::Struct("Naga".to_string())],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
-        let result = caller_fb.call("isNaga", &[recv], Type::Dynamic);
+        let result = caller_fb.call("isNaga", &[recv], Type::Unknown);
         caller_fb.ret(Some(result));
         let caller_func = caller_fb.build();
 
@@ -2722,7 +2711,7 @@ mod tests {
     fn method_call_unique_fallback() {
         // Only one class defines "isNaga" → unique fallback works.
         let method_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -2733,15 +2722,15 @@ mod tests {
         let mut method_func = method_fb.build();
         method_func.class = Some("Creature".to_string());
 
-        // Caller with Dynamic receiver.
+        // Caller with Unknown receiver.
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
-        let result = caller_fb.call("isNaga", &[recv], Type::Dynamic);
+        let result = caller_fb.call("isNaga", &[recv], Type::Unknown);
         caller_fb.ret(Some(result));
         let caller_func = caller_fb.build();
 
@@ -2792,8 +2781,8 @@ mod tests {
         let b = fb.const_int(2);
         let mut func = fb.build();
 
-        // Manually insert a Select with Dynamic result type.
-        let select_val = func.value_types.push(Type::Dynamic);
+        // Manually insert a Select with Unknown result type.
+        let select_val = func.value_types.push(Type::Unknown);
         let select_inst = func.insts.push(Inst {
             op: Op::Select {
                 cond,
@@ -2824,7 +2813,7 @@ mod tests {
     fn select_mixed_types_produces_union() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
@@ -2833,7 +2822,7 @@ mod tests {
         let b = fb.const_string("hello");
         let mut func = fb.build();
 
-        let select_val = func.value_types.push(Type::Dynamic);
+        let select_val = func.value_types.push(Type::Unknown);
         let select_inst = func.insts.push(Inst {
             op: Op::Select {
                 cond,
@@ -2861,12 +2850,12 @@ mod tests {
         );
     }
 
-    /// Ambiguous bare name stays Dynamic when multiple classes disagree on return type.
+    /// Ambiguous bare name stays Unknown when multiple classes disagree on return type.
     #[test]
     fn method_call_ambiguous_stays_dynamic() {
         // Two classes define "getValue" with different return types.
         let method1_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -2878,7 +2867,7 @@ mod tests {
         method1.class = Some("ClassA".to_string());
 
         let method2_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Int(64),
             ..Default::default()
         };
@@ -2889,15 +2878,15 @@ mod tests {
         let mut method2 = method2_fb.build();
         method2.class = Some("ClassB".to_string());
 
-        // Caller with Dynamic receiver.
+        // Caller with Unknown receiver.
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
-        let result = caller_fb.call("getValue", &[recv], Type::Dynamic);
+        let result = caller_fb.call("getValue", &[recv], Type::Unknown);
         caller_fb.ret(Some(result));
         let caller_func = caller_fb.build();
 
@@ -2941,11 +2930,11 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let caller = &module.functions[FuncId::new(2)];
-        // Ambiguous — stays Dynamic.
-        assert_eq!(caller.value_types[result], Type::Dynamic);
+        // Ambiguous — stays Unknown.
+        assert_eq!(caller.value_types[result], Type::Unknown);
     }
 
-    /// Alloc(Dynamic) refined to Alloc(Int(64)) when all stores agree.
+    /// Alloc(Unknown) refined to Alloc(Int(64)) when all stores agree.
     #[test]
     fn alloc_type_refined_from_stores() {
         let sig = FunctionSig {
@@ -2954,12 +2943,12 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let ptr = fb.alloc(Type::Dynamic);
+        let ptr = fb.alloc(Type::Unknown);
         let a = fb.const_int(1);
         fb.store(ptr, a);
         let b = fb.const_int(2);
         fb.store(ptr, b);
-        let loaded = fb.load(ptr, Type::Dynamic);
+        let loaded = fb.load(ptr, Type::Unknown);
         fb.ret(Some(loaded));
         let func = fb.build();
 
@@ -2983,21 +2972,21 @@ mod tests {
         }
     }
 
-    /// Alloc(Dynamic) becomes Alloc(Union([Int(64), String])) when stores disagree.
+    /// Alloc(Unknown) becomes Alloc(Union([Int(64), String])) when stores disagree.
     #[test]
     fn alloc_type_union_from_mixed_stores() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let ptr = fb.alloc(Type::Dynamic);
+        let ptr = fb.alloc(Type::Unknown);
         let a = fb.const_int(1);
         fb.store(ptr, a);
         let b = fb.const_string("hello");
         fb.store(ptr, b);
-        let loaded = fb.load(ptr, Type::Dynamic);
+        let loaded = fb.load(ptr, Type::Unknown);
         fb.ret(Some(loaded));
         let func = fb.build();
 
@@ -3026,16 +3015,16 @@ mod tests {
     fn alloc_type_null_sentinel_absorbed() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let ptr = fb.alloc(Type::Dynamic);
+        let ptr = fb.alloc(Type::Unknown);
         let a = fb.const_int(1);
         fb.store(ptr, a);
         let b = fb.const_null();
         fb.store(ptr, b);
-        let loaded = fb.load(ptr, Type::Dynamic);
+        let loaded = fb.load(ptr, Type::Unknown);
         fb.ret(Some(loaded));
         let func = fb.build();
 
@@ -3058,28 +3047,28 @@ mod tests {
         }
     }
 
-    /// Null sentinel + Dynamic → Option(Dynamic), preserving nullability.
-    /// Even though `Option(Dynamic)` = `any | null` = `any` in TypeScript,
+    /// Null sentinel + Unknown → Option(Unknown), preserving nullability.
+    /// Even though `Option(Unknown)` = `any | null` = `any` in TypeScript,
     /// keeping the nullable flag in the IR is critical: if this alloc later
-    /// receives a concrete-typed store, union_type(Option(Dynamic), Bool)
+    /// receives a concrete-typed store, union_type(Option(Unknown), Bool)
     /// produces Option(Bool) rather than losing the null and producing Bool.
     #[test]
     fn alloc_type_null_sentinel_with_dynamic_stays_dynamic() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let ptr = fb.alloc(Type::Dynamic);
+        let ptr = fb.alloc(Type::Unknown);
         let b = fb.const_null();
         fb.store(ptr, b);
-        let loaded = fb.load(ptr, Type::Dynamic);
+        let loaded = fb.load(ptr, Type::Unknown);
         fb.ret(Some(loaded));
         let mut func = fb.build();
 
-        // Simulate an unresolved store by manually inserting a Store with Dynamic value.
-        let dyn_val = func.value_types.push(Type::Dynamic);
+        // Simulate an unresolved store by manually inserting a Store with Unknown value.
+        let dyn_val = func.value_types.push(Type::Unknown);
         let store_inst = func.insts.push(Inst {
             op: Op::Store {
                 ptr,
@@ -3106,9 +3095,9 @@ mod tests {
             .find(|i| matches!(&i.op, Op::Alloc(_)))
             .unwrap();
         match &alloc_inst.op {
-            // Dynamic allocs that receive at least one Dynamic store stay Dynamic
-            // (the null sentinel is subsumed by Dynamic).
-            Op::Alloc(ty) => assert_eq!(*ty, Type::Dynamic),
+            // Unknown allocs that receive at least one Unknown store stay Unknown
+            // (the null sentinel is subsumed by Unknown).
+            Op::Alloc(ty) => assert_eq!(*ty, Type::Unknown),
             other => panic!("expected Alloc, got {:?}", other),
         }
     }
@@ -3120,7 +3109,7 @@ mod tests {
     fn alloc_type_widened_to_option_when_null_stored() {
         let sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
@@ -3129,7 +3118,7 @@ mod tests {
         fb.store(ptr, null_val);
         let str_val = fb.const_string("hello".to_string());
         fb.store(ptr, str_val);
-        let loaded = fb.load(ptr, Type::Dynamic);
+        let loaded = fb.load(ptr, Type::Unknown);
         fb.ret(Some(loaded));
         let func = fb.build();
 
@@ -3172,13 +3161,13 @@ mod tests {
         assert!(!result.changed);
     }
 
-    /// Dynamic + Int(64) in Add — forward-only inference keeps result Dynamic.
+    /// Unknown + Int(64) in Add — forward-only inference keeps result Unknown.
     /// (Backward constraint flow is ConstraintSolve's job.)
     #[test]
     fn dynamic_operand_stays_dynamic_in_add() {
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
@@ -3187,15 +3176,15 @@ mod tests {
         let sum = fb.add(p, c);
         fb.ret(Some(sum));
         let mut func = fb.build();
-        func.value_types[sum] = Type::Dynamic;
+        func.value_types[sum] = Type::Unknown;
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
         let module = mb.build();
         let result = TypeInference.apply(module).unwrap();
         let func = &result.module.functions[FuncId::new(0)];
-        // TypeInference only does forward flow: Dynamic + Int → Dynamic.
-        assert_eq!(func.value_types[sum], Type::Dynamic);
+        // TypeInference only does forward flow: Unknown + Int → Unknown.
+        assert_eq!(func.value_types[sum], Type::Unknown);
     }
 
     // ---- Adversarial tests ----
@@ -3205,14 +3194,14 @@ mod tests {
     fn circular_block_params() {
         let sig = FunctionSig {
             params: vec![Type::Bool],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let init = fb.const_int(0);
 
-        let (header, header_params) = fb.create_block_with_params(&[Type::Dynamic]);
+        let (header, header_params) = fb.create_block_with_params(&[Type::Unknown]);
         let body = fb.create_block();
         let exit = fb.create_block();
 
@@ -3239,19 +3228,19 @@ mod tests {
         assert_eq!(func.value_types[header_params[0]], Type::Int(64));
     }
 
-    /// Deeply nested field chain with Dynamic root.
+    /// Deeply nested field chain with Unknown root.
     #[test]
     fn deeply_nested_field_chain() {
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
-        let a = fb.get_field(p, "a", Type::Dynamic);
-        let b = fb.get_field(a, "b", Type::Dynamic);
-        let c = fb.get_field(b, "c", Type::Dynamic);
+        let a = fb.get_field(p, "a", Type::Unknown);
+        let b = fb.get_field(a, "b", Type::Unknown);
+        let c = fb.get_field(b, "c", Type::Unknown);
         fb.ret(Some(c));
 
         let mut mb = ModuleBuilder::new("test");
@@ -3260,8 +3249,8 @@ mod tests {
         // Should not panic.
         let result = TypeInference.apply(module).unwrap();
         let func = &result.module.functions[FuncId::new(0)];
-        // No struct info → all stay Dynamic.
-        assert_eq!(func.value_types[c], Type::Dynamic);
+        // No struct info → all stay Unknown.
+        assert_eq!(func.value_types[c], Type::Unknown);
     }
 
     /// Cross-function global type inference: a set in one function types a get in another.
@@ -3283,19 +3272,19 @@ mod tests {
         // Reader function: global.get("score") — should resolve to Int(64)
         let reader_sig = FunctionSig {
             params: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut reader_fb = FunctionBuilder::new("reader", reader_sig, Visibility::Public);
         let name2 = reader_fb.const_string("score");
-        let result = reader_fb.system_call("GameMaker.Global", "get", &[name2], Type::Dynamic);
+        let result = reader_fb.system_call("GameMaker.Global", "get", &[name2], Type::Unknown);
         reader_fb.ret(Some(result));
         let reader = reader_fb.build();
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_global(Global {
             name: "score".into(),
-            ty: Type::Dynamic,
+            ty: Type::Unknown,
             visibility: Visibility::Public,
             mutable: true,
             init: None,
@@ -3332,17 +3321,17 @@ mod tests {
     fn string_method_call_return_type() {
         let sig = FunctionSig {
             params: vec![Type::String],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let s = fb.param(0);
         let pattern = fb.const_string("a");
         let replacement = fb.const_string("b");
-        // call_method with Dynamic return type — simulating untyped frontend output.
-        let replaced = fb.call_method(s, "replace", &[pattern, replacement], Type::Dynamic);
-        let idx = fb.call_method(s, "indexOf", &[pattern], Type::Dynamic);
-        let starts = fb.call_method(s, "startsWith", &[pattern], Type::Dynamic);
+        // call_method with Unknown return type — simulating untyped frontend output.
+        let replaced = fb.call_method(s, "replace", &[pattern, replacement], Type::Unknown);
+        let idx = fb.call_method(s, "indexOf", &[pattern], Type::Unknown);
+        let starts = fb.call_method(s, "startsWith", &[pattern], Type::Unknown);
         fb.ret(Some(replaced));
 
         let mut mb = ModuleBuilder::new("test");
@@ -3380,8 +3369,8 @@ mod tests {
         let s = fb.param(0);
         let pattern = fb.const_string("a");
         let replacement = fb.const_string("b");
-        // Simulate: v1 = s.replace(a, b) → Dynamic, then coerce to String.
-        let replaced = fb.call_method(s, "replace", &[pattern, replacement], Type::Dynamic);
+        // Simulate: v1 = s.replace(a, b) → Unknown, then coerce to String.
+        let replaced = fb.call_method(s, "replace", &[pattern, replacement], Type::Unknown);
         let coerced = fb.coerce(replaced, Type::String);
         fb.ret(Some(coerced));
 

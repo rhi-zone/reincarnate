@@ -74,7 +74,7 @@ pub enum NodeKind {
     HtmlOpen {
         tag: String,
         attrs: Vec<(String, String)>,
-        /// Dynamic `@attr="expr"` attributes (kept as raw expression strings).
+        /// Unknown `@attr="expr"` attributes (kept as raw expression strings).
         dynamic_attrs: Vec<(String, String)>,
     },
     /// Closing HTML tag: `</tag>` — pops element from stack.
@@ -83,7 +83,7 @@ pub enum NodeKind {
     HtmlVoid {
         tag: String,
         attrs: Vec<(String, String)>,
-        /// Dynamic `@attr="expr"` attributes.
+        /// Unknown `@attr="expr"` attributes.
         dynamic_attrs: Vec<(String, String)>,
     },
     /// An `[img[src]]` or `[img[src][link]]` inline image.

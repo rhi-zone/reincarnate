@@ -19,7 +19,7 @@ use crate::transforms::{
 
 /// All types we test with.
 const TYPES: &[Type] = &[
-    Type::Dynamic,
+    Type::Unknown,
     Type::Int(64),
     Type::Int(32),
     Type::Float(64),
@@ -147,7 +147,7 @@ fn build_cast_chain(ty: Type) -> crate::ir::Function {
 fn build_bool_return() -> crate::ir::Function {
     let sig = FunctionSig {
         params: vec![Type::Bool],
-        return_ty: Type::Dynamic,
+        return_ty: Type::Unknown,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("bool_ret", sig, Visibility::Public);
@@ -395,11 +395,11 @@ fn stress_full_pipeline_varied_shapes() {
     let config = PassConfig::default();
     let shapes: Vec<crate::ir::Function> = vec![
         build_linear_chain(1, Type::Int(64)),
-        build_linear_chain(10, Type::Dynamic),
+        build_linear_chain(10, Type::Unknown),
         build_diamond(Type::Int(64)),
         build_diamond(Type::Float(64)),
         build_loop(Type::Int(64)),
-        build_loop(Type::Dynamic),
+        build_loop(Type::Unknown),
         build_alloc_pattern(Type::Int(64)),
         build_cast_chain(Type::Bool),
         build_bool_return(),

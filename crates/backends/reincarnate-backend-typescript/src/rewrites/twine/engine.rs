@@ -263,7 +263,7 @@ fn try_inline_closure(expr: &JsExpr, closures: &HashMap<String, JsFunction>) -> 
     };
     let closure = closures.get(name.as_str())?;
     // Inline: use the closure's params/return_ty/body as an arrow function.
-    // infer_param_types: true lets TypeScript infer Dynamic params contextually.
+    // infer_param_types: true lets TypeScript infer Unknown params contextually.
     Some(JsExpr::ArrowFunction {
         params: closure.params.clone(),
         return_ty: closure.return_ty.clone(),
@@ -486,8 +486,8 @@ mod tests {
     fn rewrite_collection_op_sorted_via_lambda_routes_to_sorted_by() {
         // `(sorted: via _x via _x, a, b)` — first arg is an arrow (already inlined).
         let arrow = JsExpr::ArrowFunction {
-            params: vec![("_x".into(), reincarnate_core::ir::Type::Dynamic)],
-            return_ty: reincarnate_core::ir::Type::Dynamic,
+            params: vec![("_x".into(), reincarnate_core::ir::Type::Unknown)],
+            return_ty: reincarnate_core::ir::Type::Unknown,
             body: vec![JsStmt::Expr(var("_x"))],
             has_rest_param: false,
             cast_as: None,
@@ -651,7 +651,7 @@ mod tests {
         use reincarnate_core::ir::MethodKind;
         JsFunction {
             name: name.into(),
-            params: vec![("_x".into(), Type::Dynamic)],
+            params: vec![("_x".into(), Type::Unknown)],
             param_defaults: vec![],
             return_ty: Type::Bool,
             body: vec![JsStmt::Return(Some(JsExpr::Literal(Constant::Bool(true))))],
@@ -698,8 +698,8 @@ mod tests {
                     } => {
                         assert_eq!(params.len(), 1);
                         assert!(
-                            matches!(&params[0].1, Type::Dynamic),
-                            "param should be Dynamic (inferred by TS)"
+                            matches!(&params[0].1, Type::Unknown),
+                            "param should be Unknown (inferred by TS)"
                         );
                         assert_eq!(*return_ty, Type::Bool);
                         assert!(infer_param_types, "should omit `: any` for TS inference");

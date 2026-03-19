@@ -15,7 +15,7 @@ pub fn ts_type(ty: &Type) -> String {
         Type::Map(k, v) => {
             // Map keys should be `unknown` rather than `any` — `any` disables
             // type checking on lookups while `unknown` forces explicit narrowing.
-            let key = if matches!(k.as_ref(), Type::Dynamic) {
+            let key = if matches!(k.as_ref(), Type::Unknown) {
                 "unknown".to_string()
             } else {
                 ts_type(k)
@@ -84,22 +84,26 @@ pub fn ts_type(ty: &Type) -> String {
             parts.join(" | ")
         }
         Type::Var(_) => "unknown".into(),
-        Type::Dynamic => "any".into(),
-        Type::Unknown => "unknown".into(),
+        // TODO(phase-4): emit `unknown` once inference eliminates most Unknown
+        // params.  Currently emits `any` to maintain behavioral equivalence;
+        // switching to `unknown` surfaces ~21K TS18046/TS2345 errors because GML
+        // params (_self, _other, loop vars) are typed Unknown rather than their
+        // concrete class types.
+        Type::Unknown => "any".into(),
     }
 }
 
 /// Map an IR [`Type`] to its TypeScript representation in a Flash-specific context.
 ///
-/// Differs from [`ts_type`] in one way: `Map<Dynamic, _>` → `"Dictionary"` (the
-/// Flash runtime class that wraps `Map<unknown, any>` with a Proxy that supports
+/// Differs from [`ts_type`] in one way: `Map<Unknown, _>` → `"Dictionary"` (the
+/// Flash runtime class that wraps `Map<unknown, unknown>` with a Proxy that supports
 /// bracket-notation access).  Callers must ensure `Dictionary` is imported.
 pub fn flash_ts_type(ty: &Type) -> String {
     match ty {
-        // AS3 Dictionary is Map(Dynamic, Dynamic) in the IR but should be emitted
+        // AS3 Dictionary is Map(Unknown, Unknown) in the IR but should be emitted
         // as `Dictionary` (the runtime class with index signatures) so that bracket
         // access `dict[key]` type-checks without TS7052.
-        Type::Map(k, _) if matches!(k.as_ref(), Type::Dynamic) => "Dictionary".into(),
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
         // AS3 Array allows both numeric and string indexing (it's a hash-array hybrid).
         // TypeScript's `any[]` only allows numeric indexing, causing TS7015 on string
         // keys. Emit `any` to allow all indexing patterns faithfully.
@@ -145,7 +149,7 @@ pub fn ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> S
 /// Like [`flash_ts_type`] but resolves disambiguated class names from `class_names`.
 pub fn flash_ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> String {
     match ty {
-        Type::Map(k, _) if matches!(k.as_ref(), Type::Dynamic) => "Dictionary".into(),
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
         Type::Array(_) => "any".into(),
         Type::Struct(name)
             if matches!(name.rsplit("::").next().unwrap_or(name), "XML" | "XMLList") =>

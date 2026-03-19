@@ -274,23 +274,23 @@ mod tests {
 
     // ---- Adversarial tests ----
 
-    /// Dynamic value cast to Int is NOT redundant (type mismatch).
+    /// Unknown value cast to Int is NOT redundant (type mismatch).
     #[test]
     fn dynamic_to_int_not_redundant() {
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Int(64),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let p = fb.param(0); // Dynamic
+        let p = fb.param(0); // Unknown
         let cast = fb.cast(p, Type::Int(64));
         fb.ret(Some(cast));
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let result = RedundantCastElimination.apply(mb.build()).unwrap();
-        assert!(!result.changed, "Dynamic -> Int cast is NOT redundant");
+        assert!(!result.changed, "Unknown -> Int cast is NOT redundant");
     }
 
     /// NullableCoerce(x: Foo, Foo) where source is Struct -> redundant, eliminated.

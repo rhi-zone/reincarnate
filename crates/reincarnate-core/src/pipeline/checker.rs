@@ -44,7 +44,7 @@ pub enum RcDiagnostic {
     ///
     /// Fired when write-site type inference observes two or more distinct
     /// concrete types being stored into the same variable (e.g. both
-    /// `Array(Dynamic)` and `String`).  This is a game-author bug: the
+    /// `Array(Unknown)` and `String`).  This is a game-author bug: the
     /// same variable is used to hold values of incompatible types.
     WriteConflict,
 }

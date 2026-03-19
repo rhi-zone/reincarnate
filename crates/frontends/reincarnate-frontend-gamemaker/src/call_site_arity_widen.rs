@@ -5,7 +5,7 @@ use reincarnate_core::ir::block::BlockParam;
 use reincarnate_core::ir::{Module, Op, Type};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
-/// Interprocedural call-site arity widening — appends optional `Dynamic`
+/// Interprocedural call-site arity widening — appends optional `Unknown`
 /// parameters to functions that are called with more arguments than they
 /// declare.
 ///
@@ -13,12 +13,12 @@ use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 /// arguments beyond its declared parameter list, which are accessible via
 /// `argument[N]`. TypeScript does not allow extra arguments (TS2554 "Expected N
 /// arguments, but got M"). This pass detects such over-applications and widens
-/// the callee signature to accept the extra arguments as optional `Dynamic`
+/// the callee signature to accept the extra arguments as optional `Unknown`
 /// parameters with a `Null` default.
 ///
 /// Design decisions:
 /// - Only extends, never removes params.
-/// - Extra params are typed `Dynamic` with a `Null` default (matching GML
+/// - Extra params are typed `Unknown` with a `Null` default (matching GML
 ///   semantics: an unset `argument[N]` is the undefined value).
 /// - `run_once = true`: call sites are fully observable in one pass; repeating
 ///   would be a no-op and the pass is not idempotent-safe in fixpoint mode.
@@ -117,9 +117,9 @@ impl Transform for CallSiteArityWiden {
             // Extend sig.params and sig.defaults.
             let func = &mut module.functions[func_id];
             for _ in 0..extra {
-                func.sig.params.push(Type::Dynamic);
+                func.sig.params.push(Type::Unknown);
                 // Ensure defaults vec is long enough, then set None for the
-                // new params (they use the Dynamic/null GML default).
+                // new params (they use the Unknown/null GML default).
                 // Extend existing defaults to align with the new param count.
                 while func.sig.defaults.len() < func.sig.params.len() - 1 {
                     func.sig.defaults.push(None);
@@ -132,10 +132,10 @@ impl Transform for CallSiteArityWiden {
             // Extend entry block params with matching ValueIds.
             let entry = func.entry;
             for _ in 0..extra {
-                let value = func.value_types.push(Type::Dynamic);
+                let value = func.value_types.push(Type::Unknown);
                 func.blocks[entry].params.push(BlockParam {
                     value,
-                    ty: Type::Dynamic,
+                    ty: Type::Unknown,
                 });
             }
 
@@ -166,7 +166,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -191,7 +191,7 @@ mod tests {
 
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(target.sig.params.len(), 2);
-        assert_eq!(target.sig.params[1], Type::Dynamic);
+        assert_eq!(target.sig.params[1], Type::Unknown);
         // New param should have a Null default.
         assert!(target.sig.defaults.len() >= 2);
         assert!(matches!(
@@ -209,7 +209,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic, Type::Dynamic],
+            params: vec![Type::Unknown, Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -241,7 +241,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             has_rest_param: true,
             ..Default::default()
@@ -275,7 +275,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };

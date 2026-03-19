@@ -185,7 +185,7 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
                                 receiver,
                                 JsExpr::Cast {
                                     expr: Box::new(args_array),
-                                    ty: Type::Dynamic,
+                                    ty: Type::Unknown,
                                     kind: CastKind::NullableCoerce,
                                 },
                             ],
@@ -578,11 +578,11 @@ pub(super) fn rewrite_system_call(
         // Only inject this._shims for user-defined classes (those in the SWF module).
         // Native JS and Flash runtime classes (Error, Array, Event, Font, etc.) don't
         // accept _shims and will produce TS2554 if it is passed.
-        // Dynamic callees (computed index, `new this()`) are treated as user classes —
+        // Unknown callees (computed index, `new this()`) are treated as user classes —
         // they always refer to SWF-defined symbols (e.g. embedded frame classes, singletons).
         let is_user_class = match &callee {
             JsExpr::Var(name) => ctx.class_names.values().any(|s| s == name),
-            // Dynamic callee: constructed from an array index or `this` reference.
+            // Unknown callee: constructed from an array index or `this` reference.
             // These always refer to user-defined classes — embedded frame symbols or
             // the current class itself (singleton `getInstance()` pattern).
             // In instance context: inject this._shims.
@@ -601,7 +601,7 @@ pub(super) fn rewrite_system_call(
         } else if ctx.is_static || ctx.is_cinit {
             vec![JsExpr::Cast {
                 expr: Box::new(JsExpr::Literal(Constant::Null)),
-                ty: Type::Dynamic,
+                ty: Type::Unknown,
                 kind: CastKind::NullableCoerce,
             }]
         } else {
@@ -621,7 +621,7 @@ pub(super) fn rewrite_system_call(
         if matches!(&callee, JsExpr::Var(n) if matches!(n.as_str(), "XML" | "XMLList")) {
             return Some(JsExpr::Cast {
                 expr: Box::new(new_expr),
-                ty: Type::Dynamic,
+                ty: Type::Unknown,
                 kind: CastKind::NullableCoerce,
             });
         }

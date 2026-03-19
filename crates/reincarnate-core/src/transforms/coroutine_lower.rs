@@ -492,7 +492,7 @@ fn build_resume_function(
     let null_val = rb.emit(
         done_block,
         Op::Const(Constant::Null),
-        Type::Option(Box::new(Type::Dynamic)),
+        Type::Option(Box::new(Type::Unknown)),
     );
     rb.blocks[done_block].terminator = Terminator::Return(Some(null_val));
 
@@ -539,8 +539,8 @@ fn copy_instructions_with_subst(
         super::util::substitute_values_in_op(&mut new_op, subst);
 
         if let Some(result) = inst.result {
-            let ty = rb.value_types.get(result).cloned().unwrap_or(Type::Dynamic);
-            // Use the original result's type if available in subst chain, otherwise Dynamic.
+            let ty = rb.value_types.get(result).cloned().unwrap_or(Type::Unknown);
+            // Use the original result's type if available in subst chain, otherwise Unknown.
             let new_val = rb.emit(target_block, new_op, ty);
             subst.insert(result, new_val);
         } else {
@@ -586,7 +586,7 @@ fn emit_state_exit(
             let null_val = rb.emit(
                 target_block,
                 Op::Const(Constant::Null),
-                Type::Option(Box::new(Type::Dynamic)),
+                Type::Option(Box::new(Type::Unknown)),
             );
             rb.blocks[target_block].terminator = Terminator::Return(Some(null_val));
         }
@@ -719,7 +719,7 @@ fn emit_yield_exit(
             rb.emit(
                 target_block,
                 Op::Const(Constant::Null),
-                Type::Option(Box::new(Type::Dynamic)),
+                Type::Option(Box::new(Type::Unknown)),
             )
         };
         rb.blocks[target_block].terminator = Terminator::Return(Some(ret_val));
@@ -728,7 +728,7 @@ fn emit_yield_exit(
         let null_val = rb.emit(
             target_block,
             Op::Const(Constant::Null),
-            Type::Option(Box::new(Type::Dynamic)),
+            Type::Option(Box::new(Type::Unknown)),
         );
         rb.blocks[target_block].terminator = Terminator::Return(Some(null_val));
     }
@@ -843,7 +843,7 @@ fn rewrite_callers(
                         // Replace with Call to the resume function.
                         let null_val = module.functions[func_id]
                             .value_types
-                            .push(Type::Option(Box::new(Type::Dynamic)));
+                            .push(Type::Option(Box::new(Type::Unknown)));
                         let null_inst_id = module.functions[func_id].insts.push(Inst {
                             op: Op::Const(Constant::Null),
                             result: Some(null_val),
@@ -969,7 +969,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let val = fb.const_int(42);
-        let _resume = fb.yield_(Some(val), Type::Dynamic);
+        let _resume = fb.yield_(Some(val), Type::Unknown);
         fb.ret(None);
         let mut func = fb.build();
         func.coroutine = Some(CoroutineInfo {
@@ -1060,9 +1060,9 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("gen2", sig, Visibility::Public);
         let v1 = fb.const_int(1);
-        let _r1 = fb.yield_(Some(v1), Type::Dynamic);
+        let _r1 = fb.yield_(Some(v1), Type::Unknown);
         let v2 = fb.const_int(2);
-        let _r2 = fb.yield_(Some(v2), Type::Dynamic);
+        let _r2 = fb.yield_(Some(v2), Type::Unknown);
         fb.ret(None);
         let mut func = fb.build();
         func.coroutine = Some(CoroutineInfo {
@@ -1103,7 +1103,7 @@ mod tests {
 
         // Loop body: yield counter, then branch back.
         fb.switch_to_block(loop_block);
-        let _resume = fb.yield_(Some(counter), Type::Dynamic);
+        let _resume = fb.yield_(Some(counter), Type::Unknown);
         // Use counter after yield — it should be saved as a cross-yield live value.
         let one = fb.const_int(1);
         let _next = fb.add(counter, one);
@@ -1146,7 +1146,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let p = fb.param(0);
-        let _r = fb.yield_(Some(p), Type::Dynamic);
+        let _r = fb.yield_(Some(p), Type::Unknown);
         fb.ret(None);
         let mut gen_func = fb.build();
         gen_func.coroutine = Some(CoroutineInfo {
@@ -1204,7 +1204,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let v = fb.const_int(1);
-        let _r = fb.yield_(Some(v), Type::Dynamic);
+        let _r = fb.yield_(Some(v), Type::Unknown);
         fb.ret(None);
         let mut gen_func = fb.build();
         gen_func.coroutine = Some(CoroutineInfo {
@@ -1300,7 +1300,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         let val = fb.const_int(99);
-        let _r = fb.yield_(Some(val), Type::Dynamic);
+        let _r = fb.yield_(Some(val), Type::Unknown);
         fb.ret(None);
         let mut func = fb.build();
         func.coroutine = Some(CoroutineInfo {
@@ -1342,12 +1342,12 @@ mod tests {
 
         fb.switch_to_block(then_b);
         let v1 = fb.const_int(1);
-        let _r1 = fb.yield_(Some(v1), Type::Dynamic);
+        let _r1 = fb.yield_(Some(v1), Type::Unknown);
         fb.br(merge, &[]);
 
         fb.switch_to_block(else_b);
         let v2 = fb.const_int(2);
-        let _r2 = fb.yield_(Some(v2), Type::Dynamic);
+        let _r2 = fb.yield_(Some(v2), Type::Unknown);
         fb.br(merge, &[]);
 
         fb.switch_to_block(merge);
@@ -1383,7 +1383,7 @@ mod tests {
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         for i in 1..=3 {
             let v = fb.const_int(i);
-            let _r = fb.yield_(Some(v), Type::Dynamic);
+            let _r = fb.yield_(Some(v), Type::Unknown);
         }
         fb.ret(None);
         let mut func = fb.build();
@@ -1419,7 +1419,7 @@ mod tests {
 
         // Define a value before yield.
         let val = fb.const_int(42);
-        let _r = fb.yield_(Some(val), Type::Dynamic);
+        let _r = fb.yield_(Some(val), Type::Unknown);
         // Use val after yield — it must be saved.
         let one = fb.const_int(1);
         let _sum = fb.add(val, one);

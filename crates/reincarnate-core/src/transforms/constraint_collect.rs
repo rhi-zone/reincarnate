@@ -30,7 +30,7 @@ pub struct ConstraintSet {
     /// Pre-populated during initialisation:
     /// - Concrete ground types get a fresh var that is immediately bound to
     ///   that type.
-    /// - [`Type::Dynamic`] and [`Type::Unknown`] and [`Type::Var`] get fresh,
+    /// - [`Type::Unknown`] and [`Type::Var`] get fresh,
     ///   unbound vars (inference targets).
     pub value_vars: HashMap<ValueId, TypeVarId>,
 }
@@ -46,7 +46,7 @@ pub struct ConstraintSet {
 /// considered concrete.
 pub(crate) fn is_concrete(ty: &Type) -> bool {
     match ty {
-        Type::Dynamic | Type::Unknown | Type::Var(_) => false,
+        Type::Unknown | Type::Var(_) => false,
         Type::Array(elem) => is_concrete(elem),
         Type::Map(k, v) => is_concrete(k) && is_concrete(v),
         Type::Option(inner) => is_concrete(inner),
@@ -98,7 +98,7 @@ pub fn collect_function(
         if is_concrete(ty) {
             arena.bind(var, ty.clone());
         }
-        // Dynamic / Unknown / Var(_) → leave unbound (inference target).
+        // Unknown / Unknown / Var(_) → leave unbound (inference target).
         value_vars.insert(vid, var);
     }
 

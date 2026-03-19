@@ -215,7 +215,7 @@ pub(super) struct WithBodyCtx<'a> {
     /// When set, the `_self` parameter and `inner_ctx.class_name` are typed accordingly.
     pub instance_class: Option<&'a str>,
     /// True when `body_insts` contains an exit PopEnv (sentinel Branch offset ≈ -4194304).
-    /// This is the GML `return X inside with` pattern: the closure should return Dynamic
+    /// This is the GML `return X inside with` pattern: the closure should return Unknown
     /// and the outer function should `return withInstances(...)`.
     pub has_return_in_with: bool,
 }
@@ -225,7 +225,7 @@ pub(super) struct WithBodyCtx<'a> {
 /// True when `body_insts` contains an exit PopEnv (sentinel branch offset ≈ -4194304)
 /// AND has no conditional branches (Bt/Bf).  The latter condition ensures the exit
 /// PopEnv is the *sole* exit from the body — every code path ends there — so the
-/// closure's return type can safely be narrowed from void to Dynamic.
+/// closure's return type can safely be narrowed from void to Unknown.
 ///
 /// When conditional branches exist (loops, if/else), other code paths may fall
 /// through without returning a value.  Changing the closure's return type in that
@@ -248,11 +248,11 @@ pub(super) fn translate_with_body(
     let self_ty = wctx
         .instance_class
         .map(|n| Type::Struct(n.to_string()))
-        .unwrap_or(Type::Dynamic);
-    // Use Dynamic return type when the body contains "return X inside with" pattern
+        .unwrap_or(Type::Unknown);
+    // Use Unknown return type when the body contains "return X inside with" pattern
     // (exit PopEnv with sentinel Branch offset). TypeInference will refine further.
     let closure_return_ty = if wctx.has_return_in_with {
-        Type::Dynamic
+        Type::Unknown
     } else {
         Type::Void
     };
@@ -274,7 +274,7 @@ pub(super) fn translate_with_body(
         fb.add_capture_params(
             wctx.captured_names
                 .iter()
-                .map(|n| (n.clone(), Type::Dynamic, CaptureMode::ByValue))
+                .map(|n| (n.clone(), Type::Unknown, CaptureMode::ByValue))
                 .collect(),
         )
     };
@@ -300,7 +300,7 @@ pub(super) fn translate_with_body(
     // These are not GML locals so they aren't in ctx.local_names / allocate_locals.
     for name in wctx.captured_names {
         if name.starts_with("_argument") && !locals.contains_key(name) {
-            let slot = fb.alloc(Type::Dynamic);
+            let slot = fb.alloc(Type::Unknown);
             locals.insert(name.clone(), slot);
         }
     }
@@ -314,7 +314,7 @@ pub(super) fn translate_with_body(
         let slot = if let Some(&s) = locals.get(name) {
             s
         } else {
-            let s = fb.alloc(Type::Dynamic);
+            let s = fb.alloc(Type::Unknown);
             fb.name_value(s, name.clone());
             locals.insert(name.clone(), s);
             s

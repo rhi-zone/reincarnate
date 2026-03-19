@@ -305,10 +305,10 @@ fn types_coalesce_compatible(decl_ty: &Type, init_ty: &Type) -> bool {
         return true;
     }
     match (decl_ty, init_ty) {
-        // Decl is Dynamic (any): always accept any init type.
-        // Init is Dynamic (any): do NOT impose a concrete decl annotation — let
+        // Decl is Unknown (any): always accept any init type.
+        // Init is Unknown (any): do NOT impose a concrete decl annotation — let
         // TypeScript infer `any` from the init expression instead.
-        (Type::Dynamic, _) => true,
+        (Type::Unknown, _) => true,
         (Type::Option(inner), ty) | (ty, Type::Option(inner)) => inner.as_ref() == ty,
         _ => false,
     }

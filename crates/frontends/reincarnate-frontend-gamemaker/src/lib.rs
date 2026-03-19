@@ -593,7 +593,7 @@ fn register_globals(dw: &DataWin, vari: &datawin::chunks::vari::Vari, mb: &mut M
             if let Ok(name) = dw.resolve_string(entry.name) {
                 mb.add_global(Global {
                     name,
-                    ty: Type::Dynamic,
+                    ty: Type::Unknown,
                     visibility: Visibility::Public,
                     mutable: true,
                     init: None,

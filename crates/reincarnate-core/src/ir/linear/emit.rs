@@ -37,7 +37,7 @@ pub(super) struct EmitCtx<'a> {
     /// Widened declaration type for coalesced block-param names.
     /// When multiple non-entry block params share a name but have different
     /// IR types (e.g. `TimeModel` in one branch, `DefaultDict` in another),
-    /// the declaration must use `Dynamic` to avoid TS2739/TS2322.
+    /// the declaration must use `Unknown` to avoid TS2739/TS2322.
     coalesced_decl_types: HashMap<String, Type>,
     /// Types for names hoisted from cross-scope SE inlines (used by
     /// collect_block_param_decls to emit `let name!: ty;` with the definite
@@ -301,7 +301,7 @@ impl<'a> EmitCtx<'a> {
 
         // Compute widened declaration types for all coalesced (shared) names.
         // When multiple values share a name but have different IR types, widen
-        // the declared type to Dynamic so TypeScript doesn't flag TS2739/TS2322
+        // the declared type to Unknown so TypeScript doesn't flag TS2739/TS2322
         // on assignments from a branch with a different type.  Covers both
         // block params AND instruction results that end up sharing a name.
         let mut coalesced_decl_types: HashMap<String, Type> = {
@@ -318,7 +318,7 @@ impl<'a> EmitCtx<'a> {
                     .entry(name.clone())
                     .and_modify(|existing| {
                         if *existing != ty {
-                            *existing = Type::Dynamic;
+                            *existing = Type::Unknown;
                         }
                     })
                     .or_insert(ty);
@@ -718,21 +718,21 @@ impl<'a> EmitCtx<'a> {
                     ) {
                         coll_expr = Expr::Cast {
                             expr: Box::new(coll_expr),
-                            ty: Type::Dynamic,
+                            ty: Type::Unknown,
                             kind: CastKind::NullableCoerce,
                         };
                     }
                     if self.config.coerce_index_types {
-                        // Struct-typed collection + Dynamic index → (collection as any)
+                        // Struct-typed collection + Unknown index → (collection as any)
                         if self.is_struct_needing_index_coerce(*collection)
                             && matches!(
                                 self.func.value_types.get(*index),
-                                Some(Type::Dynamic) | None
+                                Some(Type::Unknown) | None
                             )
                         {
                             coll_expr = Expr::Cast {
                                 expr: Box::new(coll_expr),
-                                ty: Type::Dynamic,
+                                ty: Type::Unknown,
                                 kind: CastKind::NullableCoerce,
                             };
                         }
@@ -760,7 +760,7 @@ impl<'a> EmitCtx<'a> {
                 let callee_ty = self.func.value_types[*callee].clone();
                 let callee_expr = self.build_val(*callee);
                 // When `cast_unknown_indirect_callee` is enabled and the callee is
-                // `unknown` (Type::Dynamic), calling it directly causes TS2571.
+                // `unknown` (Type::Unknown), calling it directly causes TS2571.
                 // Cast to a typed function with matching arity so the call is valid.
                 // Params and return type remain `unknown`; downstream uses of the
                 // return value that need a concrete type require their own cast.
@@ -769,12 +769,12 @@ impl<'a> EmitCtx<'a> {
                 // rewrites (e.g. findPropStrict → bare name) that run after core emit
                 // and cannot see through a cast wrapper.
                 let callee_expr =
-                    if self.config.cast_unknown_indirect_callee && callee_ty == Type::Dynamic {
+                    if self.config.cast_unknown_indirect_callee && callee_ty == Type::Unknown {
                         Expr::Cast {
                             expr: Box::new(callee_expr),
                             ty: Type::Function(Box::new(FunctionSig {
-                                params: vec![Type::Dynamic; args.len()],
-                                return_ty: Type::Dynamic,
+                                params: vec![Type::Unknown; args.len()],
+                                return_ty: Type::Unknown,
                                 ..Default::default()
                             })),
                             kind: CastKind::NullableCoerce,
@@ -792,7 +792,7 @@ impl<'a> EmitCtx<'a> {
                 method,
                 args,
             } => {
-                // Cast Dynamic constructor callee for SugarCube.Engine.new so that
+                // Cast Unknown constructor callee for SugarCube.Engine.new so that
                 // `new (Engine.resolve("DateTime"))()` doesn't produce TS2571.
                 // Same flag as cast_unknown_indirect_callee — both are Engine.resolve
                 // patterns that need a cast when the callee is untyped.
@@ -800,11 +800,11 @@ impl<'a> EmitCtx<'a> {
                     && method == "new"
                     && self.config.cast_unknown_indirect_callee
                     && !args.is_empty()
-                    && self.func.value_types.get(args[0]) == Some(&Type::Dynamic)
+                    && self.func.value_types.get(args[0]) == Some(&Type::Unknown)
                 {
                     let callee_cast = Expr::Cast {
                         expr: Box::new(self.build_val(args[0])),
-                        ty: Type::Dynamic,
+                        ty: Type::Unknown,
                         kind: CastKind::NullableCoerce,
                     };
                     let rest: Vec<_> = args[1..].iter().map(|a| self.build_val(*a)).collect();
@@ -923,7 +923,7 @@ impl<'a> EmitCtx<'a> {
         if matches!(self.func.value_types[cond], Type::Void) {
             Expr::Cast {
                 expr: Box::new(expr),
-                ty: Type::Dynamic,
+                ty: Type::Unknown,
                 kind: CastKind::NullableCoerce,
             }
         } else {
@@ -1139,7 +1139,7 @@ impl<'a> EmitCtx<'a> {
                     && declared.insert(name.clone())
                 {
                     // Use coalesced_decl_types: if multiple block params share
-                    // this name with different types, the map holds Dynamic.
+                    // this name with different types, the map holds Unknown.
                     // Fall back to value_types for names with a single type.
                     let ty = self
                         .coalesced_decl_types
@@ -1165,7 +1165,7 @@ impl<'a> EmitCtx<'a> {
         for name in sorted_shared {
             if declared.insert(name.clone()) {
                 // Use coalesced_decl_types if available — this holds the widened
-                // type (Dynamic) when multiple values share the name with different
+                // type (Unknown) when multiple values share the name with different
                 // types.  Fall back to cross_scope_hoisted_types for closure-lifted
                 // variables, then None (no annotation) as last resort.
                 let ty = self
@@ -1442,7 +1442,7 @@ impl<'a> EmitCtx<'a> {
         // - Scalar (Float/Int/Bool/String): NullableCoerce → `expr as number/boolean/string`
         // - Struct/Enum: Coerce → `expr as TypeName` (TS assertion, no runtime asType())
         // - Array: NullableCoerce → `expr as T[]` (propagates through array indexing)
-        // Other types (Dynamic, Void, Union, etc.) are skipped — no cast.
+        // Other types (Unknown, Void, Union, etc.) are skipped — no cast.
         let syscall_cast_kind = match &result_ty {
             Type::Float(_) | Type::Int(_) | Type::UInt(_) | Type::Bool | Type::String => {
                 Some(CastKind::NullableCoerce)

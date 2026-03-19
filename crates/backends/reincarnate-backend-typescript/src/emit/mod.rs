@@ -115,7 +115,7 @@ fn lowering_config_for_engine(
             // builtins (DateConstructor, etc.) are not shadowed by a wrong type.
             c.cast_struct_syscall_results_for =
                 vec![("SugarCube.Engine".to_string(), "resolve".to_string())];
-            // Cast Dynamic-typed indirect callees to a function type so that
+            // Cast Unknown-typed indirect callees to a function type so that
             // Engine.resolve("fn")(...) doesn't produce TS2571.
             c.cast_unknown_indirect_callee = true;
         }

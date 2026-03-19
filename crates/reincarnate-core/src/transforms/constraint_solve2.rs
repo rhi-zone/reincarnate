@@ -102,7 +102,7 @@ impl TypeVarArena {
     /// Overwrite the binding of `id` unconditionally.
     ///
     /// Used to poison a TypeVar that was already bound when a conflicting
-    /// concrete type is unified against it (e.g., rebind `String` → `Dynamic`
+    /// concrete type is unified against it (e.g., rebind `String` → `Unknown`
     /// when a second write assigns `Bool` to the same global).  Unlike
     /// [`bind`], this does not assert that `id` is unbound.
     pub fn force_rebind(&mut self, id: TypeVarId, ty: Type) {
@@ -165,7 +165,6 @@ pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
         | Type::Struct(_)
         | Type::Enum(_)
         | Type::ClassRef(_)
-        | Type::Dynamic
         | Type::Unknown) => t,
     }
 }
@@ -209,7 +208,6 @@ fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
         | Type::Struct(_)
         | Type::Enum(_)
         | Type::ClassRef(_)
-        | Type::Dynamic
         | Type::Unknown => false,
     }
 }
@@ -267,7 +265,6 @@ fn collect_free_vars(ty: &Type, arena: &TypeVarArena, out: &mut Vec<TypeVarId>) 
         | Type::Struct(_)
         | Type::Enum(_)
         | Type::ClassRef(_)
-        | Type::Dynamic
         | Type::Unknown => {}
     }
 }
@@ -290,7 +287,7 @@ pub enum UnifyError {
 /// Bind type variable `id` to `ty`, with occurs check and level adjustment.
 ///
 /// - Same-variable self-binding is a no-op.
-/// - Recursive types (occurs check failure) are bound to [`Type::Dynamic`] and
+/// - Recursive types (occurs check failure) are bound to [`Type::Unknown`] and
 ///   return `Ok(())` — recursive structure = genuine opacity.
 /// - Free variables in `ty` whose level exceeds `id`'s level are lowered to
 ///   prevent escaping a generalization scope.
@@ -308,8 +305,8 @@ pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(),
 
     // Occurs check: would binding create an infinite type?
     if occurs(id, &ty, arena) {
-        // Treat as recursive / opaque → bind to Dynamic instead of erroring.
-        arena.bind(id, Type::Dynamic);
+        // Treat as recursive / opaque → bind to Unknown instead of erroring.
+        arena.bind(id, Type::Unknown);
         return Ok(());
     }
 
@@ -332,12 +329,12 @@ pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(),
 /// HM unification of two [`Type`] values.
 ///
 /// Returns the unified type on success. On a concrete-type mismatch (neither is
-/// a type variable or absorbing type) returns [`Type::Dynamic`] — the conflict
+/// a type variable or absorbing type) returns [`Type::Unknown`] — the conflict
 /// is the conservative fallback during the coexistence phase.
 ///
 /// TypeVar poisoning: when `a` or `b` is a bound TypeVar that resolves to a
-/// conflicting concrete type, that TypeVar is force-rebound to `Dynamic` so
-/// that later reads of the same TypeVar see `Dynamic` rather than the stale
+/// conflicting concrete type, that TypeVar is force-rebound to `Unknown` so
+/// that later reads of the same TypeVar see `Unknown` rather than the stale
 /// first-bound concrete type.
 pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyError> {
     // Save direct Var IDs before resolving — needed to poison them if we hit a
@@ -360,20 +357,16 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
         // Identical types unify trivially.
         (a, b) if a == b => Ok(a),
 
-        // Dynamic absorbs everything.
-        (Type::Dynamic, _) | (_, Type::Dynamic) => Ok(Type::Dynamic),
+        // Unknown absorbs everything — conservative fallback for inference gaps.
+        (Type::Unknown, _) | (_, Type::Unknown) => Ok(Type::Unknown),
 
-        // Unknown is the top type — the concrete side wins.
-        (Type::Unknown, b) => Ok(b),
-        (a, Type::Unknown) => Ok(a),
-
-        // Union — phase 2; absorb into Dynamic for now.
-        (Type::Union(_), _) | (_, Type::Union(_)) => Ok(Type::Dynamic),
+        // Union — phase 2; absorb into Unknown for now.
+        (Type::Union(_), _) | (_, Type::Union(_)) => Ok(Type::Unknown),
 
         // Type variable on either side.
         (Type::Var(id), b) => {
             bind_var(id, b.clone(), arena)?;
-            // Return whatever `id` is now bound to (or Dynamic if recursive).
+            // Return whatever `id` is now bound to (or Unknown if recursive).
             Ok(arena.binding_of(id).cloned().unwrap_or(b))
         }
         (a, Type::Var(id)) => {
@@ -442,24 +435,24 @@ pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyEr
             })
         }
 
-        // Concrete-type mismatch — fall back to Dynamic during coexistence phase.
+        // Concrete-type mismatch — fall back to Unknown during coexistence phase.
         // Union type inference is phase 2: we don't yet have the constraint
         // vocabulary (C_UNIFY vs C_SUB) to decide when a union is appropriate vs
-        // when it is spurious over-inference. Dynamic is conservative and correct.
+        // when it is spurious over-inference. Unknown is conservative and correct.
         //
         // Poison: if either input was a bound TypeVar that resolved to a concrete
-        // type, force-rebind it to Dynamic.  Without this, a global TypeVar bound
+        // type, force-rebind it to Unknown.  Without this, a global TypeVar bound
         // to `String` by the first write would remain `String` even after a
         // conflicting `Bool` write is processed — the TypeVar would keep returning
-        // the wrong first-write type instead of `Dynamic`.
+        // the wrong first-write type instead of `Unknown`.
         (_a, _b) => {
             if let Some(id) = a_var {
-                arena.force_rebind(id, Type::Dynamic);
+                arena.force_rebind(id, Type::Unknown);
             }
             if let Some(id) = b_var {
-                arena.force_rebind(id, Type::Dynamic);
+                arena.force_rebind(id, Type::Unknown);
             }
-            Ok(Type::Dynamic)
+            Ok(Type::Unknown)
         }
     }
 }
@@ -498,7 +491,7 @@ fn build_struct_fields(module: &Module) -> HashMap<String, HashMap<String, Type>
 ///    a `ResolveGlobalType` result to the same var).
 /// 3. Solves all collected constraints jointly.
 /// 4. Back-propagates inferred types into `func.value_types` (inference targets
-///    only) and into `module.globals` (declared globals that were Dynamic or
+///    only) and into `module.globals` (declared globals that were Unknown or
 ///    Unknown and now have a more concrete type).
 pub struct ConstraintSolve2;
 
@@ -512,7 +505,7 @@ fn process_constraint(
 ) {
     match c {
         TypeConstraint::Equal(a, b) => {
-            // Ignore unification errors: on conflict we get Dynamic (coexistence
+            // Ignore unification errors: on conflict we get Unknown (coexistence
             // phase — see constraint_solve2 module doc).
             let _ = unify(a, b, arena);
         }
@@ -539,7 +532,7 @@ fn process_constraint(
                     // Object type not yet resolved — skip for now.
                 }
                 _ => {
-                    // Dynamic, Unknown, or other — no useful info.
+                    // Unknown, Unknown, or other — no useful info.
                 }
             }
         }
@@ -676,16 +669,11 @@ impl Transform for ConstraintSolve2 {
                 for (vid, var_id) in &data.value_vars {
                     let old_ty = &func.value_types[*vid];
                     // Only update values that were inference targets.
-                    if !matches!(old_ty, Type::Dynamic | Type::Unknown | Type::Var(_)) {
+                    if !matches!(old_ty, Type::Unknown | Type::Var(_)) {
                         continue;
                     }
                     let resolved = resolve(Type::Var(*var_id), &arena);
-                    let should_update = match &resolved {
-                        Type::Var(_) | Type::Unknown => false,
-                        Type::Dynamic => matches!(old_ty, Type::Unknown),
-                        _ => true,
-                    };
-                    if should_update {
+                    if !matches!(&resolved, Type::Var(_) | Type::Unknown) {
                         updates.push((vid.index() as usize, resolved));
                     }
                 }
@@ -710,13 +698,13 @@ impl Transform for ConstraintSolve2 {
         // -----------------------------------------------------------------------
         // Step 6: write back improved global types to module.globals.
         //
-        // Only update declared globals that were Dynamic or Unknown and now
+        // Only update declared globals that were Unknown and now
         // have a more concrete resolved type.  Undeclared story variables are
         // not added here — TypeInference handles their discovery.
         // -----------------------------------------------------------------------
         for g in &mut module.globals {
             if let Some(&var_id) = global_name_vars.get(&g.name) {
-                if matches!(g.ty, Type::Dynamic | Type::Unknown) {
+                if matches!(g.ty, Type::Unknown) {
                     let resolved = resolve(Type::Var(var_id), &arena);
                     if is_concrete(&resolved) {
                         g.ty = resolved;
@@ -873,7 +861,7 @@ mod tests {
         // Try to bind v to Array(v) — occurs check should catch this.
         let recursive = Type::Array(Box::new(Type::Var(v)));
         bind_var(v, recursive, &mut arena).unwrap();
-        assert_eq!(arena.binding_of(v), Some(&Type::Dynamic));
+        assert_eq!(arena.binding_of(v), Some(&Type::Unknown));
     }
 
     #[test]
@@ -901,30 +889,26 @@ mod tests {
     }
 
     #[test]
-    fn unify_dynamic_absorbs() {
+    fn unify_unknown_absorbs() {
         let mut arena = fresh_arena();
         assert_eq!(
-            unify(Type::Dynamic, Type::Int(32), &mut arena).unwrap(),
-            Type::Dynamic
+            unify(Type::Unknown, Type::Int(32), &mut arena).unwrap(),
+            Type::Unknown
         );
         let mut arena = fresh_arena();
         assert_eq!(
-            unify(Type::Bool, Type::Dynamic, &mut arena).unwrap(),
-            Type::Dynamic
+            unify(Type::Bool, Type::Unknown, &mut arena).unwrap(),
+            Type::Unknown
         );
-    }
-
-    #[test]
-    fn unify_unknown_yields_concrete() {
         let mut arena = fresh_arena();
         assert_eq!(
             unify(Type::Unknown, Type::String, &mut arena).unwrap(),
-            Type::String
+            Type::Unknown
         );
         let mut arena = fresh_arena();
         assert_eq!(
             unify(Type::Int(64), Type::Unknown, &mut arena).unwrap(),
-            Type::Int(64)
+            Type::Unknown
         );
     }
 
@@ -974,17 +958,17 @@ mod tests {
     #[test]
     fn unify_concrete_mismatch_is_dynamic() {
         // During the coexistence phase, concrete-type mismatches fall back to
-        // Dynamic rather than Union — see the "Numeric grounding limitation" note
+        // Unknown rather than Union — see the "Numeric grounding limitation" note
         // in constraint_solve2.rs and TODO.md.
         let mut arena = fresh_arena();
         let result = unify(Type::Bool, Type::Int(32), &mut arena).unwrap();
-        assert_eq!(result, Type::Dynamic);
+        assert_eq!(result, Type::Unknown);
     }
 
     #[test]
     fn unify_bound_var_conflict_poisons_var() {
         // A TypeVar already bound to String, unified with Bool:
-        // result = Dynamic AND the var must be rebound to Dynamic.
+        // result = Unknown AND the var must be rebound to Unknown.
         // Without the poisoning fix, the var would stay bound to String and
         // future resolve() calls would return String (first-write-wins bug).
         let mut arena = fresh_arena();
@@ -992,8 +976,8 @@ mod tests {
         arena.bind(v, Type::String);
 
         let result = unify(Type::Var(v), Type::Bool, &mut arena).unwrap();
-        assert_eq!(result, Type::Dynamic);
-        assert_eq!(arena.binding_of(v), Some(&Type::Dynamic));
+        assert_eq!(result, Type::Unknown);
+        assert_eq!(arena.binding_of(v), Some(&Type::Unknown));
     }
 
     #[test]
@@ -1004,8 +988,8 @@ mod tests {
         arena.bind(v, Type::String);
 
         let result = unify(Type::Bool, Type::Var(v), &mut arena).unwrap();
-        assert_eq!(result, Type::Dynamic);
-        assert_eq!(arena.binding_of(v), Some(&Type::Dynamic));
+        assert_eq!(result, Type::Unknown);
+        assert_eq!(arena.binding_of(v), Some(&Type::Unknown));
     }
 
     #[test]
@@ -1017,6 +1001,6 @@ mod tests {
             &mut arena,
         )
         .unwrap();
-        assert_eq!(result, Type::Dynamic);
+        assert_eq!(result, Type::Unknown);
     }
 }

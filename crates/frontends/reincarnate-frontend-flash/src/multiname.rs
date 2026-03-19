@@ -257,10 +257,10 @@ pub fn type_from_name(name: &str) -> reincarnate_core::ir::Type {
         "Boolean" => Type::Bool,
         "String" => Type::String,
         "void" => Type::Void,
-        "*" | "Object" | "Function" => Type::Dynamic,
-        "Array" => Type::Array(Box::new(Type::Dynamic)),
+        "*" | "Object" | "Function" => Type::Unknown,
+        "Array" => Type::Array(Box::new(Type::Unknown)),
         "flash.utils::Dictionary" | "Dictionary" => {
-            Type::Map(Box::new(Type::Dynamic), Box::new(Type::Dynamic))
+            Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown))
         }
         _ => Type::Struct(name.to_string()),
     }
@@ -271,7 +271,7 @@ pub fn resolve_type(pool: &ConstantPool, index: &Index<Multiname>) -> reincarnat
     use reincarnate_core::ir::Type;
 
     if index.0 == 0 {
-        return Type::Dynamic;
+        return Type::Unknown;
     }
 
     // Inspect the raw multiname for generic types (Vector.<T>) before
@@ -286,7 +286,7 @@ pub fn resolve_type(pool: &ConstantPool, index: &Index<Multiname>) -> reincarnat
             let elem = parameters
                 .first()
                 .map(|p| resolve_type(pool, p))
-                .unwrap_or(Type::Dynamic);
+                .unwrap_or(Type::Unknown);
             return Type::Array(Box::new(elem));
         }
     }
@@ -403,7 +403,7 @@ mod tests {
             name: Index::new(6),
         }); // mn 6 = MyClass
 
-        assert_eq!(resolve_type(&pool, &Index::new(0)), Type::Dynamic); // index 0 = *
+        assert_eq!(resolve_type(&pool, &Index::new(0)), Type::Unknown); // index 0 = *
         assert_eq!(resolve_type(&pool, &Index::new(1)), Type::Int(32));
         assert_eq!(resolve_type(&pool, &Index::new(2)), Type::Float(64));
         assert_eq!(resolve_type(&pool, &Index::new(3)), Type::Bool);

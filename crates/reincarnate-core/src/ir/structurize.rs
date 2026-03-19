@@ -3032,7 +3032,7 @@ mod tests {
         use crate::ir::value::Constant;
 
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };

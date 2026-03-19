@@ -5,17 +5,17 @@ use crate::ir::{Function, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
 /// Interprocedural call-site type narrowing — collects argument types from all
-/// call sites and narrows callee parameter types that are still `Dynamic`.
+/// call sites and narrows callee parameter types that are still `Unknown`.
 ///
 /// This pass bridges the gap between intra-function `TypeInference` (which
 /// refines types within a function) and `ConstraintSolve` (which flows callee
 /// param types into callers, but not the reverse). By observing what types
-/// callers actually pass, we can narrow `Dynamic` params to concrete types.
+/// callers actually pass, we can narrow `Unknown` params to concrete types.
 ///
 /// Design decisions:
-/// - Only narrows `Dynamic` → concrete. Never overrides an already-concrete
+/// - Only narrows `Unknown` → concrete. Never overrides an already-concrete
 ///   type (TypeInference's intra-function evidence is more reliable).
-/// - If callers disagree on types, the param stays `Dynamic` (no union types).
+/// - If callers disagree on types, the param stays `Unknown` (no union types).
 /// - `CallIndirect` is skipped (no name to resolve).
 /// - `SystemCall` is skipped (runtime stubs have known signatures).
 /// - Self-calls (recursive) are skipped to avoid circular reasoning.
@@ -23,13 +23,13 @@ pub struct CallSiteTypeFlow;
 
 /// Collected argument type observations: `(callee_name, param_index) → Vec<Type>`.
 ///
-/// A `Dynamic` entry means a caller passed an unresolved value — this prevents
-/// narrowing because Dynamic means "could be anything at runtime."
+/// A `Unknown` entry means a caller passed an unresolved value — this prevents
+/// narrowing because Unknown means "could be anything at runtime."
 pub(crate) type Observations = HashMap<(String, usize), Vec<Type>>;
 
 /// Collect argument types from all call sites in the module.
 ///
-/// Shared by `CallSiteTypeFlow` (narrows Dynamic params) and
+/// Shared by `CallSiteTypeFlow` (narrows Unknown params) and
 /// `CallSiteTypeWiden` (widens params whose ConstraintSolve-narrowed type
 /// conflicts with what callers actually pass).
 pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
@@ -119,21 +119,21 @@ fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
 }
 
 /// Narrow a set of observed types to a single type, or `None` if they disagree
-/// or if any caller passes `Dynamic` (meaning "could be anything at runtime").
+/// or if any caller passes `Unknown` (meaning "could be anything at runtime").
 fn narrow(types: &[Type]) -> Option<Type> {
     if types.is_empty() {
         return None;
     }
-    // If any caller passes Dynamic, we can't narrow — the param genuinely
+    // If any caller passes Unknown, we can't narrow — the param genuinely
     // receives unknown types at runtime.
-    if types.contains(&Type::Dynamic) {
+    if types.contains(&Type::Unknown) {
         return None;
     }
     // ClassRef callers block narrowing. ClassRef values represent class constructors
     // (`typeof ClassName` in TypeScript), which are incompatible with numeric or
     // other concrete types the callee body might expect. Narrowing a callee param
     // to ClassRef would cause type errors whenever that param is used in non-class
-    // contexts — the param type should stay Dynamic.
+    // contexts — the param type should stay Unknown.
     if types.iter().any(|t| matches!(t, Type::ClassRef(_))) {
         return None;
     }
@@ -141,7 +141,7 @@ fn narrow(types: &[Type]) -> Option<Type> {
     if types.iter().all(|t| t == first) {
         Some(first.clone())
     } else {
-        // Callers disagree — leave as Dynamic (no union types for now).
+        // Callers disagree — leave as Unknown (no union types for now).
         None
     }
 }
@@ -190,8 +190,8 @@ impl Transform for CallSiteTypeFlow {
                     continue;
                 }
 
-                // Only narrow Dynamic params.
-                if func.sig.params[param_idx] != Type::Dynamic {
+                // Only narrow Unknown params.
+                if func.sig.params[param_idx] != Type::Unknown {
                     continue;
                 }
 
@@ -246,14 +246,14 @@ mod tests {
 
     // ---- Basic narrowing ----
 
-    /// Caller passes String to callee's Dynamic param → narrows to String.
+    /// Caller passes String to callee's Unknown param → narrows to String.
     #[test]
     fn basic_narrowing() {
         let mut mb = ModuleBuilder::new("test");
 
-        // Callee: fn target(x: Dynamic) → Void
+        // Callee: fn target(x: Unknown) → Void
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -294,7 +294,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -329,13 +329,13 @@ mod tests {
 
     // ---- Multiple callers disagree ----
 
-    /// One passes String, another Float(64) → stays Dynamic.
+    /// One passes String, another Float(64) → stays Unknown.
     #[test]
     fn multiple_callers_disagree() {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -363,18 +363,18 @@ mod tests {
         let result = run(mb);
         assert!(!result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        assert_eq!(target.sig.params[0], Type::Unknown);
     }
 
     // ---- No callers ----
 
-    /// Function with Dynamic params but no call sites → stays Dynamic.
+    /// Function with Unknown params but no call sites → stays Unknown.
     #[test]
     fn no_callers() {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -385,7 +385,7 @@ mod tests {
         let result = run(mb);
         assert!(!result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        assert_eq!(target.sig.params[0], Type::Unknown);
     }
 
     // ---- Already typed ----
@@ -428,9 +428,9 @@ mod tests {
     fn method_call_narrows_params() {
         let mut mb = ModuleBuilder::new("test");
 
-        // Method: fn Foo::bar(self: Struct(Foo), x: Dynamic) → Void
+        // Method: fn Foo::bar(self: Struct(Foo), x: Unknown) → Void
         let method_sig = FunctionSig {
-            params: vec![Type::Struct("Foo".into()), Type::Dynamic],
+            params: vec![Type::Struct("Foo".into()), Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -461,28 +461,28 @@ mod tests {
 
     // ---- Self-call (recursive) ----
 
-    /// Recursive function doesn't use its own Dynamic params as evidence.
+    /// Recursive function doesn't use its own Unknown params as evidence.
     #[test]
     fn self_call_ignored() {
         let mut mb = ModuleBuilder::new("test");
 
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut func = FunctionBuilder::new("recurse", sig, Visibility::Private);
-        let p = func.param(0); // Dynamic
+        let p = func.param(0); // Unknown
         func.call("recurse", &[p], Type::Void);
         func.ret(None);
         mb.add_function(func.build());
 
         let result = run(mb);
-        // Self-call passes Dynamic (which is skipped) and is also a self-call.
+        // Self-call passes Unknown (which is skipped) and is also a self-call.
         // Either way, no narrowing.
         assert!(!result.changed);
         let f = &result.module.functions[FuncId::new(0)];
-        assert_eq!(f.sig.params[0], Type::Dynamic);
+        assert_eq!(f.sig.params[0], Type::Unknown);
     }
 
     // ---- Idempotent ----
@@ -493,7 +493,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -518,16 +518,16 @@ mod tests {
         assert!(!r2.changed, "second run should report no changes");
     }
 
-    // ---- Dynamic arg prevents narrowing ----
+    // ---- Unknown arg prevents narrowing ----
 
-    /// A caller passing Dynamic prevents narrowing — Dynamic means "could be
+    /// A caller passing Unknown prevents narrowing — Unknown means "could be
     /// anything at runtime", so we can't safely narrow to a specific type.
     #[test]
     fn dynamic_arg_prevents_narrowing() {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -547,14 +547,14 @@ mod tests {
         caller_a.ret(None);
         mb.add_function(caller_a.build());
 
-        // Caller B passes Dynamic (its own Dynamic param).
+        // Caller B passes Unknown (its own Unknown param).
         let sig_b = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut caller_b = FunctionBuilder::new("caller_b", sig_b, Visibility::Private);
-        let p = caller_b.param(0); // Dynamic — prevents narrowing
+        let p = caller_b.param(0); // Unknown — prevents narrowing
         caller_b.call("target", &[p], Type::Void);
         caller_b.ret(None);
         mb.add_function(caller_b.build());
@@ -562,19 +562,19 @@ mod tests {
         let result = run(mb);
         assert!(!result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        // Dynamic arg prevents narrowing — stays Dynamic.
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        // Unknown arg prevents narrowing — stays Unknown.
+        assert_eq!(target.sig.params[0], Type::Unknown);
     }
 
     // ---- Multiple params ----
 
-    /// Multiple params: one narrows, another stays Dynamic due to disagreement.
+    /// Multiple params: one narrows, another stays Unknown due to disagreement.
     #[test]
     fn multiple_params_mixed() {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic, Type::Dynamic],
+            params: vec![Type::Unknown, Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -608,26 +608,26 @@ mod tests {
         assert!(result.changed);
         let target = &result.module.functions[FuncId::new(0)];
         assert_eq!(target.sig.params[0], Type::String); // Agreed.
-        assert_eq!(target.sig.params[1], Type::Dynamic); // Disagreed.
+        assert_eq!(target.sig.params[1], Type::Unknown); // Disagreed.
     }
 
     // ---- Collection body usage prevents narrowing ----
 
-    /// Callers all pass Float(64), but body uses GetIndex on param → stays Dynamic.
+    /// Callers all pass Float(64), but body uses GetIndex on param → stays Unknown.
     #[test]
     fn collection_body_usage_prevents_narrowing() {
         let mut mb = ModuleBuilder::new("test");
 
-        // Callee: fn target(arr: Dynamic) → Void; body does GetIndex(arr, 0)
+        // Callee: fn target(arr: Unknown) → Void; body does GetIndex(arr, 0)
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
         let arr = callee.param(0);
         let idx = callee.const_int(0);
-        callee.get_index(arr, idx, Type::Dynamic);
+        callee.get_index(arr, idx, Type::Unknown);
         callee.ret(None);
         mb.add_function(callee.build());
 
@@ -646,17 +646,17 @@ mod tests {
         let result = run(mb);
         assert!(!result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        // Body uses param as collection → stays Dynamic despite callers agreeing.
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        // Body uses param as collection → stays Unknown despite callers agreeing.
+        assert_eq!(target.sig.params[0], Type::Unknown);
     }
 
-    /// Callers all pass Float(64), but body uses GetField "length" on param → stays Dynamic.
+    /// Callers all pass Float(64), but body uses GetField "length" on param → stays Unknown.
     #[test]
     fn length_access_prevents_narrowing() {
         let mut mb = ModuleBuilder::new("test");
 
         let callee_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -680,6 +680,6 @@ mod tests {
         let result = run(mb);
         assert!(!result.changed);
         let target = &result.module.functions[FuncId::new(0)];
-        assert_eq!(target.sig.params[0], Type::Dynamic);
+        assert_eq!(target.sig.params[0], Type::Unknown);
     }
 }

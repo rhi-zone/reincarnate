@@ -159,7 +159,7 @@ pub enum JsExpr {
         cast_as: Option<String>,
         /// When true, omit `: any` annotations so TypeScript can infer
         /// param types contextually from the call site.  Only applicable
-        /// when a param's IR type is `Dynamic`; non-Dynamic types are
+        /// when a param's IR type is `Unknown`; non-Unknown types are
         /// always printed regardless of this flag.
         ///
         /// This is a TS-backend display optimization only.  Correctness

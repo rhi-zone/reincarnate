@@ -12,11 +12,11 @@ use crate::pipeline::{Transform, TransformResult};
 /// A type variable index into the union-find.
 type TVar = u32;
 
-/// Flatten two concrete types into a union, absorbing `Dynamic`.
+/// Flatten two concrete types into a union, absorbing `Unknown`.
 fn make_union_type(a: Type, b: Type) -> Type {
-    // Dynamic absorbs everything.
-    if matches!(a, Type::Dynamic) || matches!(b, Type::Dynamic) {
-        return Type::Dynamic;
+    // Unknown absorbs everything.
+    if matches!(a, Type::Unknown) || matches!(b, Type::Unknown) {
+        return Type::Unknown;
     }
     // Flatten existing unions.
     let mut members: Vec<Type> = Vec::new();
@@ -146,14 +146,14 @@ impl UnionFind {
 // FunctionSolver
 // ---------------------------------------------------------------------------
 
-/// Pending constraint: the result of a `GetField` where the object was `Dynamic`/`Unknown`.
+/// Pending constraint: the result of a `GetField` where the object was `Unknown`/`Unknown`.
 struct HasFieldConstraint {
     object_var: TVar,
     field: String,
     result_var: TVar,
 }
 
-/// Pending constraint: a `CallIndirect` where the callee type was `Dynamic`/`Unknown`.
+/// Pending constraint: a `CallIndirect` where the callee type was `Unknown`/`Unknown`.
 struct CallableConstraint {
     callee_var: TVar,
     arg_vars: Vec<TVar>,
@@ -172,14 +172,14 @@ struct FunctionSolver {
 
 impl FunctionSolver {
     /// Build initial solver state from a function. Every value gets a type
-    /// variable; concrete-typed values are pre-bound, `Dynamic` and `Unknown`
+    /// variable; concrete-typed values are pre-bound, `Unknown` and `Unknown`
     /// values are unbound (both are inference targets).
     fn from_function(func: &Function) -> Self {
         let mut uf = UnionFind::new();
         let mut value_vars = HashMap::new();
 
         for (vid, ty) in func.value_types.iter() {
-            let var = if matches!(ty, Type::Dynamic | Type::Unknown) {
+            let var = if matches!(ty, Type::Unknown) {
                 uf.fresh()
             } else {
                 uf.fresh_with_type(ty.clone())
@@ -210,7 +210,7 @@ impl FunctionSolver {
 
     /// Constrain a value to a concrete type (allocates a bound temp var).
     fn constrain_value_to_type(&mut self, v: ValueId, ty: &Type) {
-        if *ty == Type::Dynamic {
+        if *ty == Type::Unknown {
             return;
         }
         let va = self.var_for(v);
@@ -379,7 +379,7 @@ impl ConstraintModuleContext {
         // Strategy 1: exact qualified name lookup.
         if let Some(sig) = self.func_sigs.get(name) {
             // Skip self-references (calling function would just return its own sig).
-            if sig != func_sig || sig.params.iter().any(|p| *p != Type::Dynamic) {
+            if sig != func_sig || sig.params.iter().any(|p| *p != Type::Unknown) {
                 return Some(sig.clone());
             }
         }
@@ -424,7 +424,7 @@ fn build_alloc_types_from_op(func: &Function) -> HashMap<ValueId, Type> {
             let inst = &func.insts[inst_id];
             if let Op::Alloc(ty) = &inst.op {
                 if let Some(result) = inst.result {
-                    if *ty != Type::Dynamic {
+                    if *ty != Type::Unknown {
                         alloc_types.insert(result, ty.clone());
                     }
                 }
@@ -470,7 +470,7 @@ fn constrain_index_op(
         Type::Array(elem) => {
             solver.constrain_value_to_type(index, &Type::Int(64));
             let elem = elem.clone();
-            if !matches!(*elem, Type::Dynamic | Type::Unknown) {
+            if !matches!(*elem, Type::Unknown) {
                 if let Some(r) = get_result {
                     solver.constrain_value_to_type(*r, &elem);
                 }
@@ -480,16 +480,16 @@ fn constrain_index_op(
             }
         }
         Type::Struct(_) => {
-            // Dynamic field access: key must be a string.
+            // Unknown field access: key must be a string.
             solver.constrain_value_to_type(index, &Type::String);
         }
         Type::Map(k, v) => {
             let k = k.clone();
             let v = v.clone();
-            if !matches!(*k, Type::Dynamic | Type::Unknown) {
+            if !matches!(*k, Type::Unknown) {
                 solver.constrain_value_to_type(index, &k);
             }
-            if !matches!(*v, Type::Dynamic | Type::Unknown) {
+            if !matches!(*v, Type::Unknown) {
                 if let Some(r) = get_result {
                     solver.constrain_value_to_type(*r, &v);
                 }
@@ -639,7 +639,7 @@ fn generate_constraints(
                 }
 
                 // GetField: r = field_ty (if struct type known);
-                // emit HasField pending constraint when object is Dynamic/Unknown.
+                // emit HasField pending constraint when object is Unknown.
                 Op::GetField { object, field } => match &func.value_types[*object] {
                     Type::Struct(name) => {
                         if let Some(r) = result {
@@ -652,7 +652,7 @@ fn generate_constraints(
                             }
                         }
                     }
-                    Type::Dynamic | Type::Unknown => {
+                    Type::Unknown => {
                         if let Some(r) = result {
                             solver.has_field.push(HasFieldConstraint {
                                 object_var: solver.var_for(*object),
@@ -688,7 +688,7 @@ fn generate_constraints(
                     }
                 }
 
-                // Store: if Alloc(ty) has ty != Dynamic, value = ty
+                // Store: if Alloc(ty) has ty != Unknown, value = ty
                 Op::Store { ptr, value } => {
                     if let Some(alloc_ty) = alloc_types.get(ptr) {
                         solver.constrain_value_to_type(*value, alloc_ty);
@@ -727,23 +727,22 @@ fn generate_constraints(
                     constrain_index_op(solver, func, *collection, *index, &None, Some(*value));
                 }
 
-                // CallIndirect: emit Callable pending constraint when callee is Dynamic/Unknown.
+                // CallIndirect: emit Callable pending constraint when callee is Unknown.
                 Op::CallIndirect { callee, args } => match &func.value_types[*callee] {
                     Type::Function(sig) => {
                         let sig = sig.clone();
                         for (arg, param_ty) in args.iter().zip(sig.params.iter()) {
-                            if !matches!(param_ty, Type::Dynamic | Type::Unknown) {
+                            if !matches!(param_ty, Type::Unknown) {
                                 solver.constrain_value_to_type(*arg, param_ty);
                             }
                         }
                         if let Some(r) = result {
-                            if !matches!(sig.return_ty, Type::Dynamic | Type::Void | Type::Unknown)
-                            {
+                            if !matches!(sig.return_ty, Type::Unknown | Type::Void) {
                                 solver.constrain_value_to_type(r, &sig.return_ty);
                             }
                         }
                     }
-                    Type::Dynamic | Type::Unknown => {
+                    Type::Unknown => {
                         solver.callable.push(CallableConstraint {
                             callee_var: solver.var_for(*callee),
                             arg_vars: args.iter().map(|v| solver.var_for(*v)).collect(),
@@ -833,13 +832,13 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
     for cc in &callable {
         if let Some(Type::Function(sig)) = solver.uf.resolve(cc.callee_var) {
             for (arg_var, param_ty) in cc.arg_vars.iter().zip(sig.params.iter()) {
-                if !matches!(param_ty, Type::Dynamic | Type::Unknown) {
+                if !matches!(param_ty, Type::Unknown) {
                     let tmp = solver.uf.fresh_with_type(param_ty.clone());
                     solver.uf.unify(*arg_var, tmp);
                 }
             }
             if let Some(result_var) = cc.result_var {
-                if !matches!(sig.return_ty, Type::Dynamic | Type::Void | Type::Unknown) {
+                if !matches!(sig.return_ty, Type::Unknown | Type::Void) {
                     let tmp = solver.uf.fresh_with_type(sig.return_ty.clone());
                     solver.uf.unify(result_var, tmp);
                 }
@@ -847,17 +846,17 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
         }
     }
 
-    // Collect updates: Dynamic or Unknown values that now have concrete types.
+    // Collect updates: Unknown or Unknown values that now have concrete types.
     let mut changed = false;
     let updates: Vec<(ValueId, Type)> = solver
         .value_vars
         .iter()
         .filter_map(|(vid, &var)| {
-            if !matches!(func.value_types[*vid], Type::Dynamic | Type::Unknown) {
+            if !matches!(func.value_types[*vid], Type::Unknown) {
                 return None;
             }
             let ty = solver.uf.resolve(var)?;
-            if matches!(ty, Type::Dynamic | Type::Unknown) {
+            if matches!(ty, Type::Unknown) {
                 return None;
             }
             Some((*vid, ty))
@@ -898,7 +897,7 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Constraint-based type inference pass. Runs after `TypeInference` to refine
-/// remaining `Dynamic` types via unification of equality constraints.
+/// remaining `Unknown` types via unification of equality constraints.
 pub struct ConstraintSolve;
 
 impl Transform for ConstraintSolve {
@@ -962,7 +961,7 @@ mod tests {
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -1040,7 +1039,7 @@ mod tests {
 
     #[test]
     fn call_arg_backward_flow() {
-        // foo(x: Int(32)) → Void. Caller passes Dynamic arg → should refine.
+        // foo(x: Int(32)) → Void. Caller passes Unknown arg → should refine.
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
             return_ty: Type::Void,
@@ -1051,7 +1050,7 @@ mod tests {
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -1075,9 +1074,9 @@ mod tests {
 
     #[test]
     fn return_backward_flow() {
-        // fn returning Int(32), returns a Dynamic param → param should refine.
+        // fn returning Int(32), returns a Unknown param → param should refine.
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Int(32),
             ..Default::default()
         };
@@ -1101,12 +1100,12 @@ mod tests {
     fn arithmetic_equalization() {
         // Add(v_dynamic, v_int64) → v_dynamic should become Int(64).
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Int(64),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.param(0); // Dynamic
+        let a = fb.param(0); // Unknown
         let b = fb.const_int(42); // Int(64)
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
@@ -1125,14 +1124,14 @@ mod tests {
 
     #[test]
     fn brif_cond_refined_to_bool() {
-        // BrIf on a Dynamic cond → should become Bool.
+        // BrIf on a Unknown cond → should become Bool.
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let cond = fb.param(0); // Dynamic
+        let cond = fb.param(0); // Unknown
         let then_b = fb.create_block();
         let else_b = fb.create_block();
         fb.br_if(cond, then_b, &[], else_b, &[]);
@@ -1156,7 +1155,7 @@ mod tests {
 
     #[test]
     fn transitive_constraint_flow() {
-        // v1 = param(Dynamic), v2 = copy(v1), call("foo", [v2]) where foo
+        // v1 = param(Unknown), v2 = copy(v1), call("foo", [v2]) where foo
         // expects Int(32) → both v1 and v2 should become Int(32).
         let callee_sig = FunctionSig {
             params: vec![Type::Int(32)],
@@ -1168,7 +1167,7 @@ mod tests {
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -1203,7 +1202,7 @@ mod tests {
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::String,
             ..Default::default()
         };
@@ -1222,7 +1221,7 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let caller_func = &module.functions[FuncId::new(1)];
-        // Conflict → Union instead of Dynamic.
+        // Conflict → Union instead of Unknown.
         match &caller_func.value_types[p] {
             Type::Union(members) => {
                 assert!(members.contains(&Type::Int(32)));
@@ -1272,7 +1271,7 @@ mod tests {
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
 
-        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Dynamic]);
+        let (merge, merge_vals) = fb.create_block_with_params(&[Type::Unknown]);
         let then_b = fb.create_block();
         let else_b = fb.create_block();
         fb.br_if(cond, then_b, &[], else_b, &[]);
@@ -1303,7 +1302,7 @@ mod tests {
 
     #[test]
     fn noop_on_fully_typed() {
-        // Module with no Dynamic values → changed = false.
+        // Module with no Unknown values → changed = false.
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
             return_ty: Type::Int(64),
@@ -1326,8 +1325,8 @@ mod tests {
     #[test]
     fn method_call_backward_flow() {
         // Method call: Creature::isAlive(self: Struct("Creature")) → Bool.
-        // Caller calls "isAlive" with Dynamic receiver and uses result as Dynamic.
-        // → receiver should stay Dynamic (no constraint on receiver type), but
+        // Caller calls "isAlive" with Unknown receiver and uses result as Unknown.
+        // → receiver should stay Unknown (no constraint on receiver type), but
         //   result should become Bool via unique method sig fallback.
         let method_sig = FunctionSig {
             params: vec![Type::Struct("Creature".to_string())],
@@ -1342,13 +1341,13 @@ mod tests {
         method_func.class = Some("Creature".to_string());
 
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let recv = caller_fb.param(0);
-        let result = caller_fb.call("isAlive", &[recv], Type::Dynamic);
+        let result = caller_fb.call("isAlive", &[recv], Type::Unknown);
         caller_fb.ret(Some(result));
         let caller_func = caller_fb.build();
 
@@ -1427,7 +1426,7 @@ mod tests {
         let callee1 = fb1.build();
 
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::String,
             ..Default::default()
         };
@@ -1461,7 +1460,7 @@ mod tests {
     #[test]
     fn spread_chain_propagation() {
         let sig = FunctionSig {
-            params: vec![Type::Dynamic],
+            params: vec![Type::Unknown],
             return_ty: Type::Int(64),
             ..Default::default()
         };
@@ -1481,12 +1480,12 @@ mod tests {
         assert_eq!(func.value_types[c], Type::Int(64));
     }
 
-    /// HasField pending constraint: object is Dynamic at GetField but another
+    /// HasField pending constraint: object is Unknown at GetField but another
     /// instruction constrains it to Struct("Foo") → result should get field type.
     #[test]
     fn has_field_pending_resolved_via_equality() {
-        // fn test(obj: Dynamic, v: Dynamic) -> Dynamic
-        //   r = obj.x      (Dynamic object → HasField pending)
+        // fn test(obj: Unknown, v: Unknown) -> Unknown
+        //   r = obj.x      (Unknown object → HasField pending)
         //   call("set_foo", [obj])  (constrains obj to Struct("Foo"))
         //   return r
         let callee_sig = FunctionSig {
@@ -1499,13 +1498,13 @@ mod tests {
         let callee = callee_fb.build();
 
         let caller_sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut caller_fb = FunctionBuilder::new("test", caller_sig, Visibility::Private);
-        let obj = caller_fb.param(0); // Dynamic
-        let r = caller_fb.get_field(obj, "x", Type::Dynamic);
+        let obj = caller_fb.param(0); // Unknown
+        let r = caller_fb.get_field(obj, "x", Type::Unknown);
         caller_fb.call("set_foo", &[obj], Type::Void);
         caller_fb.ret(Some(r));
         let caller = caller_fb.build();
@@ -1535,21 +1534,21 @@ mod tests {
         assert_eq!(func.value_types[r], Type::Int(32));
     }
 
-    /// CallIndirect with a Dynamic callee → no constraint applied to args (no panic).
+    /// CallIndirect with a Unknown callee → no constraint applied to args (no panic).
     #[test]
     fn call_indirect_dynamic_callee_no_constraint() {
-        // fn test(callee: Dynamic, arg: Dynamic) -> Dynamic
+        // fn test(callee: Unknown, arg: Unknown) -> Unknown
         //   r = call_indirect callee(arg)
         //   return r
         let sig = FunctionSig {
-            params: vec![Type::Dynamic, Type::Dynamic],
-            return_ty: Type::Dynamic,
+            params: vec![Type::Unknown, Type::Unknown],
+            return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let callee = fb.param(0);
         let arg = fb.param(1);
-        let r = fb.call_indirect(callee, &[arg], Type::Dynamic);
+        let r = fb.call_indirect(callee, &[arg], Type::Unknown);
         fb.ret(Some(r));
         let func = fb.build();
 
@@ -1561,23 +1560,23 @@ mod tests {
         let module = transform.apply(module).unwrap().module;
 
         let func = &module.functions[FuncId::new(0)];
-        // No constraints applied → all remain Dynamic.
-        assert_eq!(func.value_types[callee], Type::Dynamic);
-        assert_eq!(func.value_types[arg], Type::Dynamic);
-        assert_eq!(func.value_types[r], Type::Dynamic);
+        // No constraints applied → all remain Unknown.
+        assert_eq!(func.value_types[callee], Type::Unknown);
+        assert_eq!(func.value_types[arg], Type::Unknown);
+        assert_eq!(func.value_types[r], Type::Unknown);
     }
 
     #[test]
     fn set_field_constrains_value() {
         // SetField on a known struct constrains the value to the field type.
         let sig = FunctionSig {
-            params: vec![Type::Struct("Point".to_string()), Type::Dynamic],
+            params: vec![Type::Struct("Point".to_string()), Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let obj = fb.param(0);
-        let val = fb.param(1); // Dynamic
+        let val = fb.param(1); // Unknown
         fb.set_field(obj, "x", val);
         fb.ret(None);
         let func = fb.build();

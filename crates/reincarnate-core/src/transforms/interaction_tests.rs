@@ -58,7 +58,7 @@ fn const_fold_then_dce() {
     );
 }
 
-/// TypeInference refines a Dynamic param to Bool via comparison, making
+/// TypeInference refines a Unknown param to Bool via comparison, making
 /// a Cast(v, Bool) redundant. RedundantCastElim should then eliminate it
 /// entirely, substituting all uses with the source value.
 #[test]
@@ -203,7 +203,7 @@ fn cfg_simplify_then_mem2reg() {
 fn full_pipeline_well_formed() {
     let sig = FunctionSig {
         params: vec![Type::Bool],
-        return_ty: Type::Dynamic,
+        return_ty: Type::Unknown,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
@@ -254,7 +254,7 @@ fn full_pipeline_well_formed() {
 fn full_pipeline_idempotent() {
     let sig = FunctionSig {
         params: vec![Type::Bool],
-        return_ty: Type::Dynamic,
+        return_ty: Type::Unknown,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);

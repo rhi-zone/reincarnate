@@ -622,13 +622,13 @@ pub(super) fn collect_type_refs_from_function(
         })
         .collect();
 
-    // Also track integers reachable through Coerce-to-Dynamic (`coerce v_int, dyn`).
+    // Also track integers reachable through Coerce-to-Unknown (`coerce v_int, dyn`).
     // GML bytecode sometimes widens a const integer to `dyn` before passing it
     // to a SystemCall; the coerced ValueId is the actual syscall argument, but
     // the integer value lives on the source ValueId one step earlier.
     let mut const_ints = direct_const_ints.clone();
     for (_id, inst) in func.insts.iter() {
-        if let Op::Cast(src, Type::Dynamic, CastKind::Coerce) = &inst.op {
+        if let Op::Cast(src, Type::Unknown, CastKind::Coerce) = &inst.op {
             if let (Some(result), Some(&n)) = (inst.result, direct_const_ints.get(src)) {
                 const_ints.insert(result, n);
             }
@@ -944,9 +944,9 @@ pub(super) fn collect_type_ref(
             );
         }
         Type::Map(k, v) => {
-            // AS3 Dictionary (Map<Dynamic, _>) → Flash-specific `Dictionary` class.
+            // AS3 Dictionary (Map<Unknown, _>) → Flash-specific `Dictionary` class.
             // Register the import so flash_ts_type()'s "Dictionary" emission resolves.
-            if matches!(k.as_ref(), Type::Dynamic)
+            if matches!(k.as_ref(), Type::Unknown)
                 && external_imports.contains_key("flash.utils::Dictionary")
             {
                 ext_refs.insert("flash.utils::Dictionary".to_string());
@@ -1050,7 +1050,6 @@ pub(super) fn collect_type_ref(
         | Type::Float(_)
         | Type::String
         | Type::Var(_)
-        | Type::Dynamic
         | Type::Unknown => {}
     }
 }
@@ -1100,7 +1099,6 @@ pub(super) fn collect_global_type_imports(
         | Type::Float(_)
         | Type::String
         | Type::Var(_)
-        | Type::Dynamic
         | Type::Unknown => {}
     }
 }
@@ -1144,7 +1142,6 @@ pub(super) fn collect_all_struct_names(ty: &Type, refs: &mut BTreeSet<String>) {
         | Type::Float(_)
         | Type::String
         | Type::Var(_)
-        | Type::Dynamic
         | Type::Unknown => {}
     }
 }

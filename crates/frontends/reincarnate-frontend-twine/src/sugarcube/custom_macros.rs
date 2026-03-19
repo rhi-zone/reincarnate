@@ -41,7 +41,7 @@ pub type CustomMacroRegistry = HashMap<String, CustomMacroDef>;
 /// Uses a simple text-scanning approach (not a full JS parser). Handles:
 /// - Single name: `Macro.add("name", { ... })`
 /// - Name array: `Macro.add(["a", "b"], { ... })`
-/// - Dynamic names (variable first arg) are skipped silently.
+/// - Unknown names (variable first arg) are skipped silently.
 pub fn extract_custom_macros(js_source: &str) -> CustomMacroRegistry {
     let mut registry = CustomMacroRegistry::new();
     let bytes = js_source.as_bytes();
@@ -75,7 +75,7 @@ pub fn extract_custom_macros(js_source: &str) -> CustomMacroRegistry {
                 names
             }
             _ => {
-                // Dynamic name — skip this call
+                // Unknown name — skip this call
                 continue;
             }
         };

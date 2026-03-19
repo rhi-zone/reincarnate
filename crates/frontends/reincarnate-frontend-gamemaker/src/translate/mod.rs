@@ -124,7 +124,7 @@ pub fn translate_code_entry(
         // Mark as variadic with a rest param.  Type-appropriate defaults for the
         // fixed argument params are set later by GmlDefaultArgRecovery (which runs
         // post-inference and can match defaults to narrowed param types).
-        sig.params.push(Type::Array(Box::new(Type::Dynamic)));
+        sig.params.push(Type::Array(Box::new(Type::Unknown)));
         sig.defaults.push(None);
         sig.has_rest_param = true;
     }
@@ -224,22 +224,22 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
         let self_ty = ctx
             .class_name
             .map(|name| Type::Struct(name.to_string()))
-            .unwrap_or(Type::Dynamic);
+            .unwrap_or(Type::Unknown);
         params.push(self_ty);
         defaults.push(None);
     }
     if ctx.has_other {
-        params.push(Type::Dynamic);
+        params.push(Type::Unknown);
         defaults.push(None);
     }
     for _ in 0..arg_count {
-        params.push(Type::Dynamic);
+        params.push(Type::Unknown);
         defaults.push(None);
     }
     FunctionSig {
         params,
         defaults,
-        return_ty: Type::Dynamic,
+        return_ty: Type::Unknown,
         ..Default::default()
     }
 }
@@ -314,7 +314,7 @@ fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> Impli
                         let idx = idx as usize;
                         max_idx = Some(max_idx.map_or(idx, |m: usize| m.max(idx)));
                     } else {
-                        // Dynamic index — script accesses argument[variable].
+                        // Unknown index — script accesses argument[variable].
                         uses_dynamic_args = true;
                     }
                 }
@@ -328,7 +328,7 @@ fn scan_implicit_args(instructions: &[Instruction], ctx: &TranslateCtx) -> Impli
                         let idx = idx as usize;
                         max_idx = Some(max_idx.map_or(idx, |m: usize| m.max(idx)));
                     } else {
-                        // Dynamic index — script accesses argument[variable].
+                        // Unknown index — script accesses argument[variable].
                         uses_dynamic_args = true;
                     }
                 }
@@ -368,7 +368,7 @@ fn arg_name(ctx: &TranslateCtx, i: u16) -> Option<String> {
 fn allocate_locals(fb: &mut FunctionBuilder, ctx: &TranslateCtx) -> HashMap<String, ValueId> {
     let mut locals = HashMap::new();
     for (_, name) in ctx.local_names {
-        let slot = fb.alloc(Type::Dynamic);
+        let slot = fb.alloc(Type::Unknown);
         fb.name_value(slot, name.clone());
         locals.insert(name.clone(), slot);
     }
@@ -411,7 +411,7 @@ fn datatype_to_ir_type(dt: DataType) -> Type {
         DataType::Int64 => Type::Int(64),
         DataType::Bool => Type::Bool,
         DataType::String => Type::String,
-        _ => Type::Dynamic,
+        _ => Type::Unknown,
     }
 }
 
@@ -697,7 +697,7 @@ fn run_translation_loop(
                     // locals as `_argumentN` (an alloc slot).  Load from there.
                     if let Some(&slot) = locals.get(&captured_key) {
                         captured_names.push(captured_key);
-                        capture_vals.push(fb.load(slot, Type::Dynamic));
+                        capture_vals.push(fb.load(slot, Type::Unknown));
                     } else {
                         // Top-level: argument is a formal param of the outer function.
                         let outer_idx = outer_arg_offset + n;
@@ -712,7 +712,7 @@ fn run_translation_loop(
                     let &slot = locals
                         .get(name)
                         .expect("captured local must have an alloc slot");
-                    capture_vals.push(fb.load(slot, Type::Dynamic));
+                    capture_vals.push(fb.load(slot, Type::Unknown));
                 }
 
                 // Determine the class of the with-target (if it's a typed OBJT pushref).
@@ -721,7 +721,7 @@ fn run_translation_loop(
 
                 // Detect "return X inside with" pattern: an exit PopEnv with sentinel
                 // branch offset exists in body_insts. In this case the closure should
-                // return Dynamic and the outer function should return withInstances(…).
+                // return Unknown and the outer function should return withInstances(…).
                 let has_return_in_with = has_exit_popenv(body_insts);
 
                 // Build the inner closure function (may recursively extract nested withs).
@@ -741,11 +741,11 @@ fn run_translation_loop(
                 extra_funcs.push(inner_func);
 
                 // Emit: withInstances(target, closure).
-                // When the closure uses "return X inside with", type the call as Dynamic
+                // When the closure uses "return X inside with", type the call as Unknown
                 // so the outer function can propagate the return value.
-                let closure_val = fb.make_closure(&inner_name, &capture_vals, Type::Dynamic);
+                let closure_val = fb.make_closure(&inner_name, &capture_vals, Type::Unknown);
                 let with_return_ty = if has_return_in_with {
-                    Type::Dynamic
+                    Type::Unknown
                 } else {
                     Type::Void
                 };

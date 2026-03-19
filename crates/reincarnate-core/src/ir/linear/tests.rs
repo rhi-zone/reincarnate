@@ -722,7 +722,7 @@ fn debug_name_propagates_through_cast() {
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let obj = fb.param(0);
-    let v_field = fb.get_field(obj, "hp", Type::Dynamic);
+    let v_field = fb.get_field(obj, "hp", Type::Unknown);
     // Don't name v_field — only name the cast result.
     let v_cast = fb.cast(v_field, Type::Int(32));
     fb.name_value(v_cast, "hp".to_string());
@@ -803,9 +803,9 @@ fn flush_skips_consumed_values() {
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let obj = fb.param(0);
-    let v1 = fb.get_field(obj, "a", Type::Dynamic);
-    let v2 = fb.get_field(v1, "b", Type::Dynamic);
-    let ptr = fb.alloc(Type::Dynamic);
+    let v1 = fb.get_field(obj, "a", Type::Unknown);
+    let v2 = fb.get_field(v1, "b", Type::Unknown);
+    let ptr = fb.alloc(Type::Unknown);
     fb.store(ptr, v2);
     fb.ret(None);
 
@@ -835,13 +835,13 @@ fn flush_scoped_to_prevent_use_before_def() {
     // It must NOT be flushed inside then_block's body (use-before-def).
     let sig = FunctionSig {
         params: vec![Type::Struct("Obj".to_string()), Type::Bool],
-        return_ty: Type::Dynamic,
+        return_ty: Type::Unknown,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let obj = fb.param(0);
     let cond = fb.param(1);
-    let v_field = fb.get_field(obj, "x", Type::Dynamic);
+    let v_field = fb.get_field(obj, "x", Type::Unknown);
 
     let then_block = fb.create_block();
     let merge = fb.create_block();
@@ -890,7 +890,7 @@ fn se_chain_through_cast() {
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("g", sig, Visibility::Public);
-    let v_call = fb.call("f", &[], Type::Dynamic);
+    let v_call = fb.call("f", &[], Type::Unknown);
     fb.name_value(v_call, "result".to_string());
     let v_cast = fb.cast(v_call, Type::Int(32));
     fb.name_value(v_cast, "result".to_string());
@@ -1165,7 +1165,7 @@ fn while_loop_condition_hoisted() {
 fn switch_se_inline_flushed_to_outer_scope() {
     let sig = FunctionSig {
         params: vec![Type::Int(64), Type::Bool],
-        return_ty: Type::Dynamic,
+        return_ty: Type::Unknown,
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
@@ -1177,7 +1177,7 @@ fn switch_se_inline_flushed_to_outer_scope() {
     let case1 = fb.create_block();
 
     // Entry: side-effecting call followed by switch.
-    let v_call = fb.call("foo", &[], Type::Dynamic);
+    let v_call = fb.call("foo", &[], Type::Unknown);
     fb.name_value(v_call, "foo_call".to_string());
     fb.switch(
         v_key,
@@ -1200,7 +1200,7 @@ fn switch_se_inline_flushed_to_outer_scope() {
     // case1 (default): uses v_call.  Without the outer flush, "foo_call" is
     // undeclared here because it was materialised inside case0's scope.
     fb.switch_to_block(case1);
-    let v_result = fb.call("bar", &[v_call], Type::Dynamic);
+    let v_result = fb.call("bar", &[v_call], Type::Unknown);
     fb.name_value(v_result, "bar_result".to_string());
     fb.ret(Some(v_result));
 

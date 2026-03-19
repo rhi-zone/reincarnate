@@ -281,7 +281,7 @@ pub struct Module {
     /// Whether the source language implicitly returns a value from every
     /// function (e.g. GML returns `0.0` by default).
     ///
-    /// When `true`, type inference keeps `Dynamic` return types for functions
+    /// When `true`, type inference keeps `Unknown` return types for functions
     /// that have no value-bearing `Return` instructions, because callers may
     /// still use the implicit return value.  When `false` (the default, e.g.
     /// Flash/AS3), such functions are narrowed to `Void`.

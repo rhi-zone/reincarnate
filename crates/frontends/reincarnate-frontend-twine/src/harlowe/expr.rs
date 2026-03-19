@@ -848,7 +848,7 @@ fn try_parse_inline_macro(lexer: &mut ExprLexer, start: usize) -> Option<Expr> {
     let saved = lexer.pos();
     let tok = lexer.peek_token();
 
-    // Dynamic macro call: `($storyVar: args)` or `(_tempVar: args)`.
+    // Unknown macro call: `($storyVar: args)` or `(_tempVar: args)`.
     // The callee is a variable holding a custom macro created with `(macro:)`.
     if let TokenKind::StoryVar(ref name) | TokenKind::TempVar(ref name) = tok.kind {
         let is_story = matches!(tok.kind, TokenKind::StoryVar(_));

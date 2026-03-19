@@ -46,7 +46,7 @@ fn is_event_method_name(name: &str) -> bool {
 /// the printed level but prevents `resolve_instance_target` from seeing the
 /// underlying literal.
 ///
-/// Strips `Int(32)` and `Dynamic` coerce wrappers; both are printed as the
+/// Strips `Int(32)` and `Unknown` coerce wrappers; both are printed as the
 /// inner expression unchanged and both may hide a constant integer class index.
 fn strip_int_coerce(expr: JsExpr) -> JsExpr {
     use reincarnate_core::ir::{CastKind, Type};
@@ -56,7 +56,7 @@ fn strip_int_coerce(expr: JsExpr) -> JsExpr {
         kind: CastKind::Coerce,
     } = expr
     {
-        if matches!(ty, Type::Int(32) | Type::Dynamic) {
+        if matches!(ty, Type::Int(32) | Type::Unknown) {
             return *inner;
         }
         JsExpr::Cast {
@@ -964,7 +964,7 @@ fn rewrite_expr_children(
             if matches!(object.as_ref(), JsExpr::This) && is_event_method_name(field) {
                 *object = Box::new(JsExpr::Cast {
                     expr: Box::new(JsExpr::This),
-                    ty: Type::Dynamic,
+                    ty: Type::Unknown,
                     kind: CastKind::NullableCoerce,
                 });
             } else {
@@ -1336,14 +1336,14 @@ fn try_rewrite_system_call(
             let cap_params: Vec<(String, Type)> = all_params
                 .split_off(n_reg)
                 .into_iter()
-                .map(|(n, _)| (n, Type::Dynamic))
+                .map(|(n, _)| (n, Type::Unknown))
                 .collect();
             let reg_params = all_params;
             let cap_vals: Vec<JsExpr> = args.drain(1..).collect();
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::ArrowFunction {
                     params: cap_params,
-                    return_ty: Type::Dynamic,
+                    return_ty: Type::Unknown,
                     body: vec![crate::js_ast::JsStmt::Return(Some(JsExpr::ArrowFunction {
                         params: reg_params,
                         return_ty: closure_func.return_ty,
@@ -1822,7 +1822,7 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
 /// Constant literals are replaced with their truthiness value directly.
 /// All other non-boolean expressions are wrapped with `!!`.
 fn coerce_to_bool(arg: &mut JsExpr) {
-    // Extract constant from nested Coerce casts (e.g. Cast(Int(16777215), Dynamic, Coerce)).
+    // Extract constant from nested Coerce casts (e.g. Cast(Int(16777215), Unknown, Coerce)).
     if let Some(b) = try_const_truthiness(arg) {
         *arg = JsExpr::Literal(Constant::Bool(b));
         return;
@@ -1852,7 +1852,7 @@ fn try_const_truthiness(expr: &JsExpr) -> Option<bool> {
 }
 
 /// Returns true if the expression is already boolean-typed and doesn't need `!!`.
-/// Looks through `Cast(expr, Dynamic, Coerce)` wrappers that are no-ops at runtime.
+/// Looks through `Cast(expr, Unknown, Coerce)` wrappers that are no-ops at runtime.
 fn is_already_boolean(expr: &JsExpr) -> bool {
     match expr {
         JsExpr::Literal(Constant::Bool(_))
@@ -1897,14 +1897,14 @@ fn is_numeric_param(param_ty: &str) -> bool {
 
 /// Coerces a boolean expression to number in-place.
 /// Wraps with `Number(expr)` — emitted as `JsExpr::Cast { ty: Float(64), kind: Coerce }`.
-/// Unwraps redundant `Cast(_, Dynamic, Coerce)` wrappers first (no-ops at runtime).
+/// Unwraps redundant `Cast(_, Unknown, Coerce)` wrappers first (no-ops at runtime).
 fn coerce_to_number(arg: &mut JsExpr) {
     // `false` → `0`, `true` → `1` (constant fold).
     if let JsExpr::Literal(Constant::Bool(b)) = arg {
         *arg = JsExpr::Literal(Constant::Float(if *b { 1.0 } else { 0.0 }));
         return;
     }
-    // Unwrap `Cast(inner, Dynamic, Coerce)` — replacing with `Number(inner)` directly.
+    // Unwrap `Cast(inner, Unknown, Coerce)` — replacing with `Number(inner)` directly.
     let inner = match arg {
         JsExpr::Cast {
             kind: CastKind::Coerce,
@@ -2017,7 +2017,7 @@ mod tests {
 
     #[test]
     fn coerce_to_number_unwraps_dynamic_coerce_wrapper() {
-        // Cast(Cmp → Dynamic, Coerce) should become Cast(Cmp → Float(64), Coerce)
+        // Cast(Cmp → Unknown, Coerce) should become Cast(Cmp → Float(64), Coerce)
         let cmp = JsExpr::Cmp {
             kind: CmpKind::Eq,
             lhs: Box::new(JsExpr::Var("a".to_string())),
@@ -2025,7 +2025,7 @@ mod tests {
         };
         let mut expr = JsExpr::Cast {
             expr: Box::new(cmp),
-            ty: Type::Dynamic,
+            ty: Type::Unknown,
             kind: CastKind::Coerce,
         };
         coerce_to_number(&mut expr);
@@ -2075,7 +2075,7 @@ mod tests {
                 ],
             })],
             param_defaults: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             is_generator: false,
             visibility: Visibility::Public,
             method_kind: MethodKind::Free,
@@ -2134,7 +2134,7 @@ mod tests {
                 ],
             })],
             param_defaults: vec![],
-            return_ty: Type::Dynamic,
+            return_ty: Type::Unknown,
             is_generator: false,
             visibility: Visibility::Public,
             method_kind: MethodKind::Free,

@@ -68,7 +68,6 @@ fn rename_type_with_map(ty: &mut Type, name_map: &HashMap<String, String>) {
         | Type::Float(_)
         | Type::String
         | Type::Var(_)
-        | Type::Dynamic
         | Type::Unknown => {}
     }
 }
@@ -333,12 +332,12 @@ pub(super) fn emit_function(
             .params
             .insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
         js_func.param_defaults.insert(0, None);
-        // If a context_type is configured, retype the first Dynamic param after `_rt`
+        // If a context_type is configured, retype the first Unknown param after `_rt`
         // (e.g. `h: any` → `h: HarloweContext`).
         if let Some(ctx_type) = runtime_config.and_then(|c| c.context_type.as_ref()) {
             let ctx_type_name = ctx_type.name.clone();
             for (_, ty) in &mut js_func.params {
-                if *ty == Type::Dynamic {
+                if *ty == Type::Unknown {
                     *ty = Type::Struct(ctx_type_name);
                     break;
                 }
@@ -747,9 +746,9 @@ pub(super) fn emit_class(
 }
 
 /// Appends `| null` to a type string when a field has a `null` default initializer,
-/// unless the type already accommodates null (Dynamic → `any`, Option → `T | null`).
+/// unless the type already accommodates null (Unknown → `any`, Option → `T | null`).
 fn widen_type_for_null(ty: &Type, ts: &mut String) {
-    if !matches!(ty, Type::Dynamic | Type::Option(_)) {
+    if !matches!(ty, Type::Unknown | Type::Option(_)) {
         ts.push_str(" | null");
     }
 }

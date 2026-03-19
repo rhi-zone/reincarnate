@@ -23,7 +23,7 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
   > **Note:** `CoercingEq`/`CoercingNe` were replaced with `SystemCall("SugarCube.Engine", "loose_eq"/"loose_ne")` → `JsExpr::LooseEq`/`LooseNe` as an interim step. The correct long-term replacement is `Call(js_eq_fn, ...)` via `RuntimeRegistry` (Phase 9). This is tracked.
 - [ ] **Phase 3 — Ban `SystemCall` + `GlobalRef`.** Engine API calls → typed `Call(FunctionId, ...)` via `RuntimeRegistry`. Gate: same.
   > **Blocked on Phase 9.** `SystemCall` carries a two-part name (`system`, `method`) used by backend rewrite passes to resolve into native JS constructs. Without `RuntimeRegistry` modeling runtime functions as IR functions, any replacement is either a magic-string convention (worse), a sentinel FuncId (more complex), or a no-op rename. The current design is sound: frontends emit `SystemCall` with engine-specific names, core passes them through with declarative type rules (`SystemCallTypeRule`), backends resolve via rewrite passes. `GlobalRef` similarly requires `RuntimeRegistry` to model named globals as first-class IR entities. Phase 2 increased `SystemCall` usage (CoercingEq interim), confirming the dependency. Scope: ~25 files across all frontends, core transforms, core linear IR, and the entire backend rewrite layer. Proceed only after Phase 9 provides `RuntimeRegistry`.
-- [ ] **Phase 4 — `Dynamic` → `Unknown`.** Replace `Type::Dynamic` with `Type::Unknown`. `Dynamic` emits `any`; `Unknown` emits `unknown`. Gate: same or better TS error count.
+- [x] **Phase 4 — `Dynamic` → `Unknown`.** `Type::Dynamic` removed from the IR; all uses replaced with `Type::Unknown`. The TS backend currently still emits `any` for `Unknown` to maintain 0 TS errors; switching to `unknown` surfaces ~21K TS18046/TS2345 errors because GML params (`_self`, `_other`, loop vars) are typed Unknown rather than their concrete class types. Emitting `unknown` is gated on inference improvements that eliminate Unknown from param positions.
 - [ ] **Phase 5 — `NameInterner` + `NameTable`.** Replace scattered name fields with collision-free interning. Gate: same.
 - [ ] **Phase 6 — Declarative pass manager.** `requires`/`invalidates` declarations replace implicit ordering. Gate: same.
 - [ ] **Phase 7 — HM inference.** Single-pass constraint collection + solve replaces four coupled passes. `IntToBoolPromotion` ported. Gate: same or better.
@@ -55,13 +55,10 @@ in particular has accumulated into an ad-hoc heuristic stack:
   reads or writes. You can't add a pass that runs "after ConstraintSolve but before Mem2Reg"
   without reading all the code to understand the implicit ordering.
 
-- **`Dynamic` conflates two distinct concepts:**
-  - `Unknown` — type inference didn't have enough information to resolve the type. Should
-    emit `unknown` in TypeScript (type-safe but requires narrowing).
-  - `Any` — the source language is genuinely opaque at this point (e.g. a GML `var`, a
-    SugarCube state variable before inference). Should emit `any` in TypeScript.
-  Conflating them means every unresolved type variable emits `any`, which suppresses
-  TypeScript's ability to catch real errors.
+- **`Type::Dynamic` removed (Phase 4).** All inference gaps are now `Type::Unknown`.
+  The TS backend still emits `any` for `Unknown` to maintain error counts; switching
+  to `unknown` is gated on inference improvements that give concrete types to params
+  like `_self`, `_other`, and loop variables (~21K TS18046/TS2345 errors otherwise).
 
 - **`RedundantCastElimination` exists to clean up `TypeInference`'s mess.** Casts that
   become redundant after inference runs are emitted by one pass and cleaned up by another.
@@ -89,10 +86,8 @@ which is structurally identical to recovering types from untyped bytecode.
    types via HM-style unification. Interprocedural constraints (call sites) handled in the
    same solve pass, not a separate pipeline stage.
 
-3. **`Unknown` distinct from `Dynamic`:**
-   - Unresolved type variable after solving → `Unknown` → emit `unknown` in TypeScript
-   - Source-language opaque value → `Dynamic` → emit `any` in TypeScript
-   This distinction already exists in crescent (`TAG_UNKNOWN` vs `TAG_ANY`).
+3. **`Unknown` → `unknown` in TypeScript** (Phase 4 completed the IR side; TS emission
+   gated on inference improvements — see Phase 4 entry above).
 
 4. **Conflict resolution** — contradictory constraints produce union types automatically,
    not silently dropped or defaulted.

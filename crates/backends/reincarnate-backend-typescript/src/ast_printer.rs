@@ -140,8 +140,8 @@ fn loop_body_has_break(stmts: &[JsStmt]) -> bool {
 ///
 /// GML implicitly returns 0 when a function exits without a `return` statement.
 /// The zero value is type-appropriate: `0` for numbers, `false` for booleans.
-/// Dynamic (`any`) return types are excluded — TypeScript doesn't enforce
-/// complete returns for `any`, so no synthetic return is needed.
+/// Unknown (`unknown`) return types are excluded — TypeScript doesn't enforce
+/// complete returns for `unknown`, so no synthetic return is needed.
 fn implicit_gml_return(ty: &Type) -> Option<&'static str> {
     match ty {
         Type::Int(_) | Type::UInt(_) | Type::Float(_) => Some("0"),
@@ -208,7 +208,7 @@ fn has_bare_return(stmts: &[JsStmt]) -> bool {
 fn effective_return_type(js: &JsFunction) -> (String, bool) {
     let ret_ty = ts_type(&js.return_ty);
     let needs_undefined =
-        !matches!(js.return_ty, Type::Void | Type::Dynamic) && has_bare_return(&js.body);
+        !matches!(js.return_ty, Type::Void | Type::Unknown) && has_bare_return(&js.body);
     if needs_undefined {
         (format!("{ret_ty} | undefined"), true)
     } else {
@@ -239,8 +239,8 @@ pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String)
 
     // GML functions implicitly return 0 when no explicit return is reached.
     // Emit a synthetic return to suppress TS2366 for concrete return types.
-    // Dynamic (any) return types don't need this — TypeScript doesn't require
-    // all paths to return for `any`-typed functions.
+    // Unknown return types don't need this — TypeScript doesn't require
+    // all paths to return for `unknown`-typed functions.
     if let Some(implicit) = implicit_gml_return(&js.return_ty) {
         if !ends_with_terminal(&js.body) {
             let _ = writeln!(out, "  return {implicit};");
@@ -364,10 +364,10 @@ fn print_params(
                 .and_then(|d| d.as_ref())
                 .map(|c| format!(" = {}", emit_constant(c)))
                 .unwrap_or_default();
-            // When infer_dynamic is set and the type is Dynamic, omit `: any` so
+            // When infer_dynamic is set and the type is Unknown, omit the annotation so
             // TypeScript can contextually infer the type from the call site.
             // When the default constant's TypeScript type is incompatible with the declared
-            // param type, widen the annotation to `any`.  This arises when type inference
+            // param type, widen the annotation to `unknown`.  This arises when type inference
             // narrows a param (e.g. to `number` from callers) but the actual default is a
             // different type (e.g. `false` for a bool default, or `0.0` for GML's missing-arg
             // sentinel on a GMLObject-typed param).
@@ -384,19 +384,19 @@ fn print_params(
                            Type::Int(_) | Type::UInt(_) | Type::Float(_))
                         // String default is compatible with String type
                         | (Constant::String(_), Type::String)
-                        // Null is compatible with Option or Dynamic
-                        | (Constant::Null, Type::Option(_) | Type::Dynamic)
-                        // Any default is compatible with Dynamic
-                        | (_, Type::Dynamic)
+                        // Null is compatible with Option or Unknown
+                        | (Constant::Null, Type::Option(_) | Type::Unknown)
+                        // Any default is compatible with Unknown
+                        | (_, Type::Unknown)
                     )
                 })
                 .unwrap_or(false);
             let effective_ty = if default_mismatches_type {
-                &Type::Dynamic
+                &Type::Unknown
             } else {
                 ty
             };
-            if infer_dynamic && matches!(ty, Type::Dynamic) {
+            if infer_dynamic && matches!(ty, Type::Unknown) {
                 format!("{prefix}{}{default_suffix}", sanitize_ident(name))
             } else {
                 format!(
@@ -484,7 +484,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // When NULL_ASSERT is active, null prints as `null!` (type `never`)
                     // which is assignable to any type — no widening needed.
                     let is_null_init = matches!(init, JsExpr::Literal(Constant::Null))
-                        && !matches!(ty, Type::Dynamic | Type::Option(_))
+                        && !matches!(ty, Type::Unknown | Type::Option(_))
                         && !NULL_ASSERT.get();
                     let type_str = if is_null_init {
                         format!("{} | null", ts_type(ty))
@@ -747,9 +747,9 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
             let inner = format!("{indent}  ");
             let decl = if *declare { "const " } else { "" };
             // TypeScript doesn't allow type annotations on for-of bindings
-            // (TS2483), so when the binding is typed Dynamic (AVM2 for-each-in)
+            // (TS2483), so when the binding is typed Unknown (AVM2 for-each-in)
             // we cast the iterable to `any[]` instead.
-            let iterable_str = if matches!(binding_ty, Some(Type::Dynamic)) {
+            let iterable_str = if matches!(binding_ty, Some(Type::Unknown)) {
                 format!("({} as any[])", print_expr(iterable))
             } else {
                 print_expr(iterable)
@@ -1080,12 +1080,12 @@ fn print_expr(expr: &JsExpr) -> String {
                 (CastKind::Coerce, Type::Bool) => {
                     format!("Boolean({})", print_expr(unwrap_coerce(inner, ty)))
                 }
-                // Coerce + Dynamic/other → passthrough (no-op).
+                // Coerce + Unknown/other → passthrough (no-op).
                 (CastKind::Coerce, _) => print_expr(inner),
-                // NullableCoerce + Dynamic → widen to `any`.
+                // NullableCoerce + Unknown → widen to `any`.
                 // Used when a void-typed value is tested as a boolean condition (TS1345):
-                // `Cast(void_val, Dynamic, NullableCoerce)` emits `(expr as any)`.
-                (CastKind::NullableCoerce, Type::Dynamic) => {
+                // `Cast(void_val, Unknown, NullableCoerce)` emits `(expr as any)`.
+                (CastKind::NullableCoerce, Type::Unknown) => {
                     format!("{} as any", print_expr_operand(inner))
                 }
                 // NullableCoerce + ClassRef → widen to `any`. GML object class names (OBJT)

@@ -45,10 +45,8 @@ pub enum Type {
     Var(TypeVarId),
     /// Union of distinct concrete types.
     Union(Vec<Type>),
-    /// Dynamic / any — fallback when inference fails.
-    /// Backends emit a tagged union for this.
-    Dynamic,
-    /// Unknown — type-safe top type (TypeScript `unknown`).
+    /// Unknown — type-safe top type representing an inference gap.
+    /// TypeScript: `unknown`; Rust: `Value` enum with runtime dispatch.
     Unknown,
 }
 
@@ -86,10 +84,10 @@ impl Default for FunctionSig {
 /// | `"boolean"`   | `Type::Bool`          |
 /// | `"string"`    | `Type::String`        |
 /// | `"void"`      | `Type::Void`          |
-/// | `"*"`         | `Type::Dynamic`       |
-/// | `"Function"`  | `Type::Dynamic`       |
-/// | `"Array"`     | `Type::Array(Dynamic)`|
-/// | `"classref"`  | `Type::Dynamic`       |
+/// | `"*"`         | `Type::Unknown`       |
+/// | `"Function"`  | `Type::Unknown`       |
+/// | `"Array"`     | `Type::Array(Unknown)`|
+/// | `"classref"`  | `Type::Unknown`       |
 /// | `"ClassName"` | `Type::Struct(name)`  |
 pub fn parse_type_notation(s: &str) -> Type {
     match s {
@@ -101,9 +99,9 @@ pub fn parse_type_notation(s: &str) -> Type {
         "void" => Type::Void,
         // "classref" marks a GML integer object-index parameter in runtime.json.
         // It has no IR equivalent — the backend rewrite resolves integer literals
-        // to class-name Var references; in the IR the parameter type is Dynamic.
-        "*" | "any" | "dynamic" | "Function" | "Object" | "Class" | "classref" => Type::Dynamic,
-        "Array" => Type::Array(Box::new(Type::Dynamic)),
+        // to class-name Var references; in the IR the parameter type is Unknown.
+        "*" | "any" | "dynamic" | "Function" | "Object" | "Class" | "classref" => Type::Unknown,
+        "Array" => Type::Array(Box::new(Type::Unknown)),
         name if name.ends_with("[]") => {
             let elem = &name[..name.len() - 2];
             Type::Array(Box::new(parse_type_notation(elem)))

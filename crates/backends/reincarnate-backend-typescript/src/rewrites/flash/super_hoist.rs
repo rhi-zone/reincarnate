@@ -410,7 +410,7 @@ pub(super) fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
                 let mut method_ref = method_ref;
                 rewrite_this_to_prototype(&mut method_ref, class_name);
                 *expr = JsExpr::ArrowFunction {
-                    params: vec![("args".to_string(), Type::Array(Box::new(Type::Dynamic)))],
+                    params: vec![("args".to_string(), Type::Array(Box::new(Type::Unknown)))],
                     return_ty: Type::Unknown,
                     body: vec![JsStmt::Return(Some(JsExpr::Call {
                         callee: Box::new(JsExpr::Field {
@@ -421,7 +421,7 @@ pub(super) fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
                             JsExpr::This,
                             JsExpr::Cast {
                                 expr: Box::new(JsExpr::Var("args".to_string())),
-                                ty: Type::Dynamic,
+                                ty: Type::Unknown,
                                 kind: CastKind::NullableCoerce,
                             },
                         ],
