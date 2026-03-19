@@ -466,10 +466,6 @@ impl fmt::Display for Function {
                         write!(f, "spread ")?;
                         fmt_value(*val, f)?;
                     }
-                    Op::Copy(val) => {
-                        write!(f, "copy ")?;
-                        fmt_value(*val, f)?;
-                    }
                     Op::Select {
                         cond,
                         on_true,

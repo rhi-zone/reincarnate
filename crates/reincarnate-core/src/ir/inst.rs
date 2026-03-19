@@ -206,8 +206,6 @@ pub enum Op {
     GlobalRef(String),
     /// Spread operator: marks a value for spreading in arrays/objects/calls.
     Spread(ValueId),
-    /// Phi-like copy (used internally during SSA construction, prefer block args).
-    Copy(ValueId),
 }
 
 /// Block terminator — explicit control-flow edge at the end of each block.

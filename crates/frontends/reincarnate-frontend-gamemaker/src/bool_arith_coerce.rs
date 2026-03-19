@@ -669,13 +669,12 @@ fn needs_coerce(arg_ty: &Type, param_ty: &Type) -> Option<Type> {
 // Pass 5 — Bool operand in Cmp with numeric other side (TS2367)
 // ---------------------------------------------------------------------------
 
-/// Try to resolve a ValueId to its compile-time constant (following Copy chains).
+/// Try to resolve a ValueId to its compile-time constant.
 fn try_get_const(func: &Function, v: ValueId) -> Option<Constant> {
     for inst in func.insts.values() {
         if inst.result == Some(v) {
             match &inst.op {
                 Op::Const(c) => return Some(c.clone()),
-                Op::Copy(src) => return try_get_const(func, *src),
                 _ => return None,
             }
         }

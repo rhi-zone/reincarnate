@@ -205,13 +205,6 @@ pub fn collect_function(
             let result_var = inst.result.and_then(|r| var_for(r, &value_vars));
 
             match &inst.op {
-                // Copy — result has the same type as the source.
-                Op::Copy(value) => {
-                    if let (Some(rv), Some(sv)) = (result_var, var_for(*value, &value_vars)) {
-                        constraints.push(TypeConstraint::Equal(rv, sv));
-                    }
-                }
-
                 // Arithmetic — numeric grounding disabled pending full C_ARITH
                 // constraint kind. Emitting Equal(operand, Float(64)) causes false
                 // positives when a value is also used as a collection key or bool

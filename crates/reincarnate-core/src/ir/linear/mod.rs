@@ -248,7 +248,6 @@ fn is_deferrable(op: &Op) -> bool {
             | Op::Shr(..)
             | Op::Cmp(..)
             | Op::Cast(..)
-            | Op::Copy(..)
             | Op::GetField { .. }
             | Op::GetIndex { .. }
             | Op::Load(..)

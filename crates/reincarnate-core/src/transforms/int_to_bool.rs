@@ -44,7 +44,7 @@ fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
                     leaves.push(v);
                 }
                 Op::Const(_) => return None,
-                Op::Copy(src) | Op::Cast(src, _, _) => {
+                Op::Cast(src, _, _) => {
                     worklist.push(*src);
                 }
                 Op::Select {
@@ -175,7 +175,7 @@ fn set_chain_types(func: &mut Function, start: ValueId) {
         if let Some(inst_id) = inst_id {
             match &func.insts[inst_id].op {
                 Op::Const(_) => {} // leaf — already handled
-                Op::Copy(src) | Op::Cast(src, _, _) => {
+                Op::Cast(src, _, _) => {
                     worklist.push(*src);
                 }
                 Op::Select {

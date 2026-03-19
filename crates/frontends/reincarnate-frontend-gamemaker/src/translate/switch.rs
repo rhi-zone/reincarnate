@@ -186,8 +186,7 @@ fn match_switch_block(
         }
     };
 
-    // Resolve through Copy to find the actual switch value.
-    let switch_val = resolve_through_copy(func, block_id, switch_operand);
+    let switch_val = switch_operand;
 
     // If we have an expected switch value, verify it matches.
     if let Some(expected) = expected_switch_val {
@@ -196,16 +195,11 @@ fn match_switch_block(
         }
     }
 
-    // Collect instruction IDs to remove from this block (Const, Copy, Cmp).
+    // Collect instruction IDs to remove from this block (Const, Cmp).
     let mut remove = Vec::new();
     // Only collect remove_insts for the first block; intermediate blocks
     // will be cleared entirely.
     if expected_switch_val.is_none() {
-        if let Some(id) = find_def_inst(func, block_id, switch_operand) {
-            if matches!(func.insts[id].op, Op::Copy(_)) {
-                remove.push(id);
-            }
-        }
         // Find the Const instruction.
         let const_val = if find_const(func, block_id, cmp_lhs).is_some() {
             cmp_lhs
@@ -263,17 +257,6 @@ fn find_const(func: &Function, block_id: BlockId, value: ValueId) -> Option<Cons
         Op::Const(c) => Some(c.clone()),
         _ => None,
     }
-}
-
-/// Resolve through Copy instructions: if `value` is defined by Copy(src),
-/// return src; otherwise return value as-is.
-fn resolve_through_copy(func: &Function, block_id: BlockId, value: ValueId) -> ValueId {
-    if let Some(inst_id) = find_def_inst(func, block_id, value) {
-        if let Op::Copy(src) = &func.insts[inst_id].op {
-            return *src;
-        }
-    }
-    value
 }
 
 /// Rewrite a block's terminator from BrIf to Op::Switch.

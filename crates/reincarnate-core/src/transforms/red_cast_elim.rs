@@ -1,30 +1,100 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::error::CoreError;
+use crate::ir::value::ValueId;
 use crate::ir::{Function, Module, Op};
 use crate::pipeline::{Transform, TransformResult};
 
-/// Redundant cast elimination — rewrites `Cast(v, ty)` to `Copy(v)` when
-/// `value_types[v]` already matches `ty`.
+use super::util::{substitute_values_in_op, substitute_values_in_terminator};
+
+/// Redundant cast elimination — removes `Cast(v, ty)` entirely when
+/// `value_types[v]` already matches `ty`, substituting all uses of the cast
+/// result with the source value.
 ///
 /// This runs after type inference refines types so that casts inserted by the
 /// frontend (e.g., `as boolean` on a method that already returns Bool) become
-/// redundant. Mem2Reg then eliminates the Copy, and DCE cleans up.
+/// redundant.
 pub struct RedundantCastElimination;
 
 /// Eliminate redundant casts in a single function.
 /// Returns true if any changes were made.
 fn elim_function(func: &mut Function) -> bool {
-    let mut changed = false;
+    let mut subst: HashMap<ValueId, ValueId> = HashMap::new();
+    let mut dead_insts: HashSet<crate::ir::InstId> = HashSet::new();
 
-    for inst_id in func.insts.keys().collect::<Vec<_>>() {
+    // Only examine instructions that are live (referenced from blocks).
+    let live_insts: Vec<_> = func
+        .blocks
+        .values()
+        .flat_map(|b| b.insts.iter().copied())
+        .collect();
+
+    for inst_id in live_insts {
         if let Op::Cast(value, ref ty, _) = func.insts[inst_id].op {
             if func.value_types[value] == *ty {
-                func.insts[inst_id].op = Op::Copy(value);
-                changed = true;
+                if let Some(result) = func.insts[inst_id].result {
+                    subst.insert(result, value);
+                    dead_insts.insert(inst_id);
+                }
             }
         }
     }
 
-    changed
+    if subst.is_empty() {
+        return false;
+    }
+
+    // Resolve transitive chains (e.g. Cast(Cast(x, T), T)).
+    loop {
+        let mut changed = false;
+        let snapshot: Vec<_> = subst.iter().map(|(k, v)| (*k, *v)).collect();
+        for (key, target) in snapshot {
+            if let Some(&next) = subst.get(&target) {
+                if next != subst[&key] {
+                    subst.insert(key, next);
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+
+    // Transfer names from removed cast results to their sources.
+    for &inst_id in &dead_insts {
+        if let Some(result) = func.insts[inst_id].result {
+            if let Op::Cast(src, ..) = func.insts[inst_id].op {
+                let final_src = subst.get(&result).copied().unwrap_or(src);
+                if let Some(name) = func.value_names.remove(&result) {
+                    func.value_names.entry(final_src).or_insert(name);
+                }
+            }
+        }
+    }
+
+    // Apply substitution to all surviving instructions.
+    let inst_ids: Vec<_> = func.insts.keys().collect();
+    for inst_id in inst_ids {
+        if dead_insts.contains(&inst_id) {
+            continue;
+        }
+        substitute_values_in_op(&mut func.insts[inst_id].op, &subst);
+    }
+
+    // Substitute in block terminators.
+    for block_id in func.blocks.keys().collect::<Vec<_>>() {
+        substitute_values_in_terminator(&mut func.blocks[block_id].terminator, &subst);
+    }
+
+    // Remove dead instructions from blocks.
+    for block_id in func.blocks.keys().collect::<Vec<_>>() {
+        func.blocks[block_id]
+            .insts
+            .retain(|id| !dead_insts.contains(id));
+    }
+
+    true
 }
 
 impl Transform for RedundantCastElimination {
@@ -41,6 +111,18 @@ impl Transform for RedundantCastElimination {
     }
 }
 
+/// Collect the set of instruction IDs that are live (referenced from blocks).
+#[cfg(test)]
+fn live_inst_ids(func: &crate::ir::Function) -> HashSet<crate::ir::InstId> {
+    let mut live = HashSet::new();
+    for block in func.blocks.values() {
+        for &id in &block.insts {
+            live.insert(id);
+        }
+    }
+    live
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -51,7 +133,7 @@ mod tests {
 
     // ---- Identity & idempotency tests ----
 
-    /// All casts cross types (Int → Bool) → no changes.
+    /// All casts cross types (Int -> Bool) -> no changes.
     #[test]
     fn identity_no_change() {
         let sig = FunctionSig {
@@ -89,9 +171,10 @@ mod tests {
         assert_idempotent(&RedundantCastElimination, fb.build());
     }
 
-    /// Redundant cast (Bool → Bool) is rewritten to Copy.
+    /// Redundant cast (Bool -> Bool) is eliminated: removed from blocks
+    /// and all uses substituted with the source value.
     #[test]
-    fn redundant_cast_rewritten_to_copy() {
+    fn redundant_cast_eliminated() {
         let sig = FunctionSig {
             params: vec![],
             return_ty: Type::Bool,
@@ -113,24 +196,25 @@ mod tests {
         assert!(result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
+        // The redundant cast instruction should not be in any block.
+        let live = live_inst_ids(func);
         assert!(
-            matches!(
-                func.insts
-                    .values()
-                    .find(|i| i.result == Some(cast))
-                    .unwrap()
-                    .op,
-                Op::Copy(_)
-            ),
-            "redundant cast should become Copy"
+            !live.iter().any(|&id| func.insts[id].result == Some(cast)),
+            "redundant cast should be removed from blocks"
         );
+        // Return should reference the cmp result directly.
+        if let crate::ir::inst::Terminator::Return(Some(v)) = &func.blocks[func.entry].terminator {
+            assert_eq!(*v, val, "return should reference cmp result directly");
+        } else {
+            panic!("expected Return(Some(val))");
+        }
     }
 
     // ---- Edge case tests ----
 
-    /// Coerce vs NullableCoerce — both kinds tested when redundant.
+    /// Coerce vs NullableCoerce -- both kinds tested when redundant.
     #[test]
-    fn coerce_redundant_rewritten() {
+    fn coerce_redundant_eliminated() {
         let sig = FunctionSig {
             params: vec![Type::Int(64)],
             return_ty: Type::Int(64),
@@ -147,17 +231,13 @@ mod tests {
         let result = RedundantCastElimination.apply(module).unwrap();
         assert!(result.changed, "same-type coerce should be eliminated");
         let func = &result.module.functions[FuncId::new(0)];
-        assert!(matches!(
-            func.insts
-                .values()
-                .find(|i| i.result == Some(coerced))
-                .unwrap()
-                .op,
-            Op::Copy(_)
-        ));
+        let live = live_inst_ids(func);
+        assert!(!live
+            .iter()
+            .any(|&id| func.insts[id].result == Some(coerced)));
     }
 
-    /// Chain of same-type casts: Cast(Cast(x, Int), Int) → both become Copy.
+    /// Chain of same-type casts: Cast(Cast(x, Int), Int) -> both eliminated.
     #[test]
     fn chain_of_casts() {
         let sig = FunctionSig {
@@ -177,11 +257,19 @@ mod tests {
         let result = RedundantCastElimination.apply(module).unwrap();
         assert!(result.changed);
         let func = &result.module.functions[FuncId::new(0)];
-        // Both casts should be Copy.
-        let c1_inst = func.insts.values().find(|i| i.result == Some(c1)).unwrap();
-        assert!(matches!(c1_inst.op, Op::Copy(_)));
-        let c2_inst = func.insts.values().find(|i| i.result == Some(c2)).unwrap();
-        assert!(matches!(c2_inst.op, Op::Copy(_)));
+        let live = live_inst_ids(func);
+        // Both casts should be removed from blocks.
+        assert!(!live.iter().any(|&id| func.insts[id].result == Some(c1)));
+        assert!(!live.iter().any(|&id| func.insts[id].result == Some(c2)));
+        // Return should reference param directly.
+        if let crate::ir::inst::Terminator::Return(Some(v)) = &func.blocks[func.entry].terminator {
+            assert_eq!(
+                *v, p,
+                "return should reference param directly after chain elimination"
+            );
+        } else {
+            panic!("expected Return(Some(p))");
+        }
     }
 
     // ---- Adversarial tests ----
@@ -202,10 +290,10 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let result = RedundantCastElimination.apply(mb.build()).unwrap();
-        assert!(!result.changed, "Dynamic → Int cast is NOT redundant");
+        assert!(!result.changed, "Dynamic -> Int cast is NOT redundant");
     }
 
-    /// NullableCoerce(x: Foo, Foo) where source is Struct → redundant, becomes Copy.
+    /// NullableCoerce(x: Foo, Foo) where source is Struct -> redundant, eliminated.
     #[test]
     fn astype_same_struct() {
         let sig = FunctionSig {
@@ -227,18 +315,14 @@ mod tests {
             "NullableCoerce(Foo, Foo) should be redundant"
         );
         let func = &result.module.functions[FuncId::new(0)];
-        let inst = func
-            .insts
-            .values()
-            .find(|i| i.result == Some(cast))
-            .unwrap();
+        let live = live_inst_ids(func);
         assert!(
-            matches!(inst.op, Op::Copy(_)),
-            "same-struct NullableCoerce should become Copy"
+            !live.iter().any(|&id| func.insts[id].result == Some(cast)),
+            "same-struct NullableCoerce should be eliminated"
         );
     }
 
-    /// Coerce(x: Int(32), Int(32)) → redundant Copy.
+    /// Coerce(x: Int(32), Int(32)) -> redundant, eliminated.
     #[test]
     fn coerce_same_primitive() {
         let sig = FunctionSig {
@@ -259,15 +343,13 @@ mod tests {
             "Coerce(Int(32), Int(32)) should be redundant"
         );
         let func = &result.module.functions[FuncId::new(0)];
-        let inst = func
-            .insts
-            .values()
-            .find(|i| i.result == Some(coerced))
-            .unwrap();
-        assert!(matches!(inst.op, Op::Copy(_)));
+        let live = live_inst_ids(func);
+        assert!(!live
+            .iter()
+            .any(|&id| func.insts[id].result == Some(coerced)));
     }
 
-    /// Non-redundant cast (Int → Bool) is left unchanged.
+    /// Non-redundant cast (Int -> Bool) is left unchanged.
     #[test]
     fn non_redundant_cast_unchanged() {
         let sig = FunctionSig {
@@ -289,8 +371,15 @@ mod tests {
         assert!(!result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
+        let live = live_inst_ids(func);
+        let cast_still_live = live.iter().any(|&id| func.insts[id].result == Some(cast));
+        assert!(cast_still_live, "non-redundant cast should remain");
+        let cast_inst = live
+            .iter()
+            .find(|&&id| func.insts[id].result == Some(cast))
+            .map(|&id| &func.insts[id].op);
         assert!(
-            matches!(&func.insts.values().find(|i| i.result == Some(cast)).unwrap().op, Op::Cast(_, ty, _) if *ty == Type::Bool),
+            matches!(cast_inst, Some(Op::Cast(_, ty, _)) if *ty == Type::Bool),
             "non-redundant cast should remain Cast"
         );
     }

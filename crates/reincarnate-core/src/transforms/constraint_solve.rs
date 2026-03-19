@@ -600,8 +600,8 @@ fn generate_constraints(
                     }
                 }
 
-                // Copy / Spread: v = r
-                Op::Copy(v) | Op::Spread(v) => {
+                // Spread: v = r
+                Op::Spread(v) => {
                     if let Some(r) = result {
                         solver.constrain_equal_values(*v, r);
                     }
@@ -1174,8 +1174,7 @@ mod tests {
         };
         let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
         let v1 = caller_fb.param(0);
-        let v2 = caller_fb.copy(v1);
-        caller_fb.call("foo", &[v2], Type::Void);
+        caller_fb.call("foo", &[v1], Type::Void);
         caller_fb.ret(None);
         let caller = caller_fb.build();
 
@@ -1189,7 +1188,6 @@ mod tests {
 
         let caller_func = &module.functions[FuncId::new(1)];
         assert_eq!(caller_func.value_types[v1], Type::Int(32));
-        assert_eq!(caller_func.value_types[v2], Type::Int(32));
     }
 
     #[test]
@@ -1458,10 +1456,10 @@ mod tests {
 
     // ---- Adversarial tests ----
 
-    /// Cycle in constraints: A=B, B=C, C=A with concrete type on one.
+    /// Spread chain propagation: Spread creates an Equal constraint between
+    /// source and result. Return type should propagate through spread chain.
     #[test]
-    fn cycle_in_constraints() {
-        // Three Copy instructions forming a chain, one with a concrete type.
+    fn spread_chain_propagation() {
         let sig = FunctionSig {
             params: vec![Type::Dynamic],
             return_ty: Type::Int(64),
@@ -1469,9 +1467,8 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let a = fb.param(0);
-        let b = fb.copy(a);
-        let c = fb.copy(b);
-        // Return c — constrains chain to Int(64) from return type.
+        let b = fb.spread(a);
+        let c = fb.spread(b);
         fb.ret(Some(c));
 
         let mut mb = ModuleBuilder::new("test");
@@ -1479,34 +1476,9 @@ mod tests {
         let module = mb.build();
         let result = ConstraintSolve.apply(module).unwrap();
         let func = &result.module.functions[FuncId::new(0)];
-        // All should resolve to Int(64) from the return type constraint.
         assert_eq!(func.value_types[a], Type::Int(64));
         assert_eq!(func.value_types[b], Type::Int(64));
         assert_eq!(func.value_types[c], Type::Int(64));
-    }
-
-    /// Many variables all chained — tests union-find scalability.
-    #[test]
-    fn many_chained_variables() {
-        let sig = FunctionSig {
-            params: vec![Type::Dynamic],
-            return_ty: Type::Int(64),
-            ..Default::default()
-        };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let mut v = fb.param(0);
-        for _ in 0..50 {
-            v = fb.copy(v);
-        }
-        fb.ret(Some(v));
-
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(fb.build());
-        let module = mb.build();
-        // Should complete without performance issues.
-        let result = ConstraintSolve.apply(module).unwrap();
-        let func = &result.module.functions[FuncId::new(0)];
-        assert_eq!(func.value_types[v], Type::Int(64));
     }
 
     /// HasField pending constraint: object is Dynamic at GetField but another

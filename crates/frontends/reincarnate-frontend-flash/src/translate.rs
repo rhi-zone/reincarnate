@@ -1060,8 +1060,7 @@ fn translate_op(
         // ====================================================================
         Op::Dup => {
             if let Some(a) = stack.last().copied() {
-                let v = fb.copy(a);
-                stack.push(v);
+                stack.push(a);
             }
         }
         Op::Swap => {
@@ -1092,7 +1091,7 @@ fn translate_op(
         }
         Op::GetScopeObject { index } => {
             let v = if let Some(val) = scope_stack.get(*index as usize) {
-                fb.copy(val)
+                val
             } else {
                 fb.const_null()
             };
@@ -1100,7 +1099,7 @@ fn translate_op(
         }
         Op::GetGlobalScope => {
             let v = if let Some(val) = scope_stack.get(0) {
-                fb.copy(val)
+                val
             } else {
                 fb.const_null()
             };
@@ -2629,10 +2628,7 @@ mod tests {
             translate_method_body(&abc, &body, "dup_swap_test", sig, &[], false, &mut vec![])
                 .unwrap();
         let output = format!("{func}");
-        assert!(
-            output.contains("copy"),
-            "expected copy (from dup) in:\n{output}"
-        );
+        // Dup reuses the same ValueId, so `add v1, v1` (not via copy).
         assert!(output.contains("add "), "expected add in:\n{output}");
         assert!(output.contains("sub "), "expected sub in:\n{output}");
     }

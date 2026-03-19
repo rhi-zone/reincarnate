@@ -89,20 +89,7 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
 /// narrowing it to a non-collection type (e.g. Float(64)) would cause
 /// `.length` / `[i]` to produce type errors in the emitted code.
 fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
-    // Collect the param value and any direct copies of it.
-    let mut tracked: Vec<ValueId> = vec![param_value];
-    for block in func.blocks.values() {
-        for &inst_id in &block.insts {
-            let inst = &func.insts[inst_id];
-            if let Op::Copy(src) = &inst.op {
-                if *src == param_value {
-                    if let Some(r) = inst.result {
-                        tracked.push(r);
-                    }
-                }
-            }
-        }
-    }
+    let tracked: Vec<ValueId> = vec![param_value];
 
     for block in func.blocks.values() {
         for &inst_id in &block.insts {

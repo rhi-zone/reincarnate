@@ -14,65 +14,23 @@ use super::util::{
 };
 
 /// Mem2Reg transform — promotes Alloc/Store/Load patterns into direct value
-/// references using SSA construction, and eliminates Copy instructions.
+/// references using SSA construction.
 ///
-/// Three sub-passes:
-/// 1. Copy elimination — replaces `Copy(v)` with `v`
-/// 2. Single-store promotion — fast path for allocs stored to exactly once
-/// 3. Multi-store SSA — full Cytron-style phi placement + rename for allocs
+/// Two sub-passes:
+/// 1. Single-store promotion — fast path for allocs stored to exactly once
+/// 2. Multi-store SSA — full Cytron-style phi placement + rename for allocs
 ///    with multiple stores across different blocks
 pub struct Mem2Reg;
 
-/// Promote alloc/store/load chains and copy aliases in a function.
+/// Promote alloc/store/load chains in a function.
 fn promote_function(func: &mut Function) -> bool {
-    let copy_changed = eliminate_copies(func);
     let single_changed = promote_single_store(func);
     let multi_changed = promote_multi_store(func);
-    copy_changed || single_changed || multi_changed
+    single_changed || multi_changed
 }
 
 // -------------------------------------------------------------------------
-// Sub-pass 1: Copy elimination
-// -------------------------------------------------------------------------
-
-fn eliminate_copies(func: &mut Function) -> bool {
-    let mut subst: HashMap<ValueId, ValueId> = HashMap::new();
-    let mut dead_insts: HashSet<InstId> = HashSet::new();
-
-    for (inst_id, inst) in func.insts.iter() {
-        if let Op::Copy(src) = &inst.op {
-            if let Some(r) = inst.result {
-                subst.insert(r, *src);
-                dead_insts.insert(inst_id);
-            }
-        }
-    }
-
-    if subst.is_empty() {
-        return false;
-    }
-
-    resolve_transitive(&mut subst);
-
-    // Transfer names from copy results to sources.
-    for (inst_id, inst) in func.insts.iter() {
-        if dead_insts.contains(&inst_id) {
-            if let Op::Copy(src) = &inst.op {
-                if let Some(r) = inst.result {
-                    if let Some(name) = func.value_names.remove(&r) {
-                        func.value_names.entry(*src).or_insert(name);
-                    }
-                }
-            }
-        }
-    }
-
-    apply_subst_and_remove(func, &subst, &dead_insts);
-    true
-}
-
-// -------------------------------------------------------------------------
-// Sub-pass 2: Single-store promotion
+// Sub-pass 1: Single-store promotion
 // -------------------------------------------------------------------------
 
 /// Returns true if block `a` dominates block `b` given the immediate-dominator map.
@@ -954,54 +912,6 @@ mod tests {
 
         // Should not panic.
         let _func = apply_mem2reg(fb.build());
-    }
-
-    #[test]
-    fn copy_eliminated() {
-        let sig = FunctionSig {
-            params: vec![Type::Int(64), Type::Int(64)],
-            return_ty: Type::Int(64),
-            ..Default::default()
-        };
-        let mut fb = FunctionBuilder::new("add_copy", sig, Visibility::Private);
-        let a = fb.param(0);
-        let b = fb.param(1);
-        let sum = fb.add(a, b);
-        let copied = fb.copy(sum);
-        fb.ret(Some(copied));
-
-        let func = apply_mem2reg(fb.build());
-        let entry = func.entry;
-        assert_eq!(func.blocks[entry].insts.len(), 1);
-        if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
-            assert_eq!(v.index(), 2, "return should reference add result v2");
-        } else {
-            panic!("expected Return(Some(v2))");
-        }
-    }
-
-    #[test]
-    fn transitive_chain() {
-        let sig = FunctionSig {
-            params: vec![Type::Int(64)],
-            return_ty: Type::Int(64),
-            ..Default::default()
-        };
-        let mut fb = FunctionBuilder::new("chain", sig, Visibility::Private);
-        let param = fb.param(0);
-        let c1 = fb.copy(param);
-        let c2 = fb.copy(c1);
-        let c3 = fb.copy(c2);
-        fb.ret(Some(c3));
-
-        let func = apply_mem2reg(fb.build());
-        let entry = func.entry;
-        assert_eq!(func.blocks[entry].insts.len(), 0);
-        if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
-            assert_eq!(v.index(), 0, "transitive chain should resolve to v0");
-        } else {
-            panic!("expected Return(Some(v0))");
-        }
     }
 
     // ---- Identity & idempotency tests ----

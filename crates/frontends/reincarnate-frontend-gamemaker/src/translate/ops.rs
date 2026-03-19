@@ -539,7 +539,7 @@ fn translate_conditional_branch(
 /// Handle Popz, Dup.
 fn translate_stack_op(
     inst: &Instruction,
-    fb: &mut FunctionBuilder,
+    _fb: &mut FunctionBuilder,
     stack: &mut Vec<ValueId>,
     gml_sizes: &mut HashMap<ValueId, u8>,
     compound_popaf_pending: &mut bool,
@@ -613,9 +613,7 @@ fn translate_stack_op(
                     let start = stack.len() - item_count;
                     let to_dup: Vec<ValueId> = stack[start..].to_vec();
                     for &v in &to_dup {
-                        let copied = fb.copy(v);
-                        gml_sizes.insert(copied, gml_sizes.get(&v).copied().unwrap_or(1));
-                        stack.push(copied);
+                        stack.push(v);
                     }
                 }
             } else {
@@ -623,9 +621,7 @@ fn translate_stack_op(
                     return Err(format!("{:#x}: Dup(0) on stack of depth 0", inst.offset));
                 }
                 let v = *stack.last().unwrap();
-                let copied = fb.copy(v);
-                gml_sizes.insert(copied, gml_sizes.get(&v).copied().unwrap_or(1));
-                stack.push(copied);
+                stack.push(v);
             }
         }
         _ => unreachable!(),

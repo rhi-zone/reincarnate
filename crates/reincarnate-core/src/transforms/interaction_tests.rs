@@ -59,7 +59,8 @@ fn const_fold_then_dce() {
 }
 
 /// TypeInference refines a Dynamic param to Bool via comparison, making
-/// a Cast(v, Bool) redundant. RedundantCastElim should then rewrite it to Copy.
+/// a Cast(v, Bool) redundant. RedundantCastElim should then eliminate it
+/// entirely, substituting all uses with the source value.
 #[test]
 fn type_infer_then_red_cast_elim() {
     let sig = FunctionSig {
@@ -71,7 +72,7 @@ fn type_infer_then_red_cast_elim() {
     let p = fb.param(0);
     let zero = fb.const_int(0);
     let cmp_result = fb.cmp(CmpKind::Eq, p, zero); // produces Bool
-    let cast = fb.cast(cmp_result, Type::Bool); // redundant: Bool → Bool
+    let cast = fb.cast(cmp_result, Type::Bool); // redundant: Bool -> Bool
     fb.ret(Some(cast));
     let func = fb.build();
 
@@ -82,7 +83,7 @@ fn type_infer_then_red_cast_elim() {
     // Type inference should confirm cmp_result is Bool.
     let r1 = TypeInference.apply(module).unwrap();
 
-    // Redundant cast elimination should find Cast(Bool, Bool) and rewrite to Copy.
+    // Redundant cast elimination should eliminate Cast(Bool, Bool) entirely.
     let r2 = RedundantCastElimination.apply(r1.module).unwrap();
     assert!(
         r2.changed,
@@ -91,19 +92,20 @@ fn type_infer_then_red_cast_elim() {
 
     let func = &r2.module.functions[FuncId::new(0)];
     assert_well_formed(func);
-    let cast_inst = func
-        .insts
+    // The cast instruction should not appear in any block.
+    let live: std::collections::HashSet<_> = func
+        .blocks
         .values()
-        .find(|i| i.result == Some(cast))
-        .unwrap();
+        .flat_map(|b| b.insts.iter().copied())
+        .collect();
     assert!(
-        matches!(cast_inst.op, Op::Copy(_)),
-        "redundant Bool→Bool cast should become Copy"
+        !live.iter().any(|&id| func.insts[id].result == Some(cast)),
+        "redundant Bool->Bool cast should be eliminated entirely"
     );
 }
 
-/// Mem2Reg promotes alloc/store/load to SSA values. The original Load is
-/// replaced by Copy, and the dead Copy is then removed by DCE.
+/// Mem2Reg promotes alloc/store/load to SSA values, substituting loads with
+/// the stored value directly. DCE then cleans up dead instructions.
 /// Note: Store is a side-effect in DCE and stays; pipeline compaction handles cleanup.
 #[test]
 fn mem2reg_then_dce() {

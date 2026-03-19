@@ -243,7 +243,7 @@ impl<'a> EmitCtx<'a> {
             if let Some(result) = inst.result {
                 if let Some(name) = value_names.get(&result).cloned() {
                     let src = match &inst.op {
-                        Op::Cast(s, ..) | Op::Copy(s) => Some(*s),
+                        Op::Cast(s, ..) => Some(*s),
                         _ => None,
                     };
                     if let Some(src) = src {
@@ -908,8 +908,6 @@ impl<'a> EmitCtx<'a> {
 
             Op::GlobalRef(name) => Expr::GlobalRef(name.clone()),
             Op::Spread(v) => Expr::Spread(Box::new(self.build_val(*v))),
-            Op::Copy(src) => self.build_val(*src),
-
             Op::Alloc(_) | Op::Store { .. } | Op::SetField { .. } | Op::SetIndex { .. } => {
                 return None
             }
@@ -1019,7 +1017,7 @@ impl<'a> EmitCtx<'a> {
                     return None;
                 }
                 match &self.func.insts[wiid].op {
-                    Op::Cast(src, ..) | Op::Copy(src) => Some((*src, (w, wiid))),
+                    Op::Cast(src, ..) => Some((*src, (w, wiid))),
                     _ => None,
                 }
             })

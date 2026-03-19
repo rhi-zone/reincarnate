@@ -381,9 +381,6 @@ fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
         // Cast
         Op::Cast(a, ty, _) => fold_cast(consts.get(a)?, ty),
 
-        // Copy propagation
-        Op::Copy(a) => consts.get(a).cloned(),
-
         // Pure type-conversion function calls: int(x), uint(x), real(x), string(x)
         Op::Call { func, args } if args.len() == 1 => {
             let c = consts.get(&args[0])?;

@@ -309,8 +309,7 @@ pub(super) fn collect_call_names_from_funcs<'a>(
                 | Op::Yield(_)
                 | Op::CoroutineCreate { .. }
                 | Op::CoroutineResume(_)
-                | Op::Spread(_)
-                | Op::Copy(_) => {}
+                | Op::Spread(_) => {}
             }
         }
     }
@@ -881,8 +880,7 @@ pub(super) fn collect_type_refs_from_function(
             | Op::Yield(_)
             | Op::CoroutineCreate { .. }
             | Op::CoroutineResume(_)
-            | Op::Spread(_)
-            | Op::Copy(_) => {}
+            | Op::Spread(_) => {}
         }
     }
 

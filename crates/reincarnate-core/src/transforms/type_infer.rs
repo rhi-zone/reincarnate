@@ -531,8 +531,8 @@ fn infer_inst_type(
             }
         }
 
-        // Copy/Spread: propagate source type.
-        Op::Copy(v) | Op::Spread(v) => func.value_types[*v].clone(),
+        // Spread: propagate source type.
+        Op::Spread(v) => func.value_types[*v].clone(),
 
         // StructInit: always Struct(name).
         Op::StructInit { name, .. } => Type::Struct(name.clone()),
@@ -1140,30 +1140,19 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                             }
                         }
                     }
-                    // Extend via Copy and via Load-of-tracked-alloc.
+                    // Extend via Load-of-tracked-alloc.
                     let mut extensions: Vec<(ValueId, &str, bool)> = Vec::new();
                     for inst in func.insts.values() {
-                        match &inst.op {
-                            Op::Copy(src) => {
-                                if let (Some(&var_name), Some(result)) =
-                                    (get_results.get(src), inst.result)
-                                {
-                                    let so = struct_only_results.contains(src);
-                                    extensions.push((result, var_name, so));
-                                }
+                        if let Op::Load(ptr) = &inst.op {
+                            if let (Some(&var_name), Some(result)) =
+                                (alloc_stored.get(ptr), inst.result)
+                            {
+                                // Determine if the alloc's stored source was struct-only.
+                                // (We only have the alloc ptr, not the original src here;
+                                // conservatively inherit if ptr is struct-only.)
+                                let so = struct_only_results.contains(ptr);
+                                extensions.push((result, var_name, so));
                             }
-                            Op::Load(ptr) => {
-                                if let (Some(&var_name), Some(result)) =
-                                    (alloc_stored.get(ptr), inst.result)
-                                {
-                                    // Determine if the alloc's stored source was struct-only.
-                                    // (We only have the alloc ptr, not the original src here;
-                                    // conservatively inherit if ptr is struct-only.)
-                                    let so = struct_only_results.contains(ptr);
-                                    extensions.push((result, var_name, so));
-                                }
-                            }
-                            _ => {}
                         }
                     }
                     for (vid, var_name, is_struct_only) in extensions {
@@ -1311,11 +1300,6 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                         p.push(field.clone());
                                         new_entries.push((result, root.clone(), p));
                                     }
-                                }
-                            }
-                            Op::Copy(src) => {
-                                if let Some((root, path)) = provenance.get(src) {
-                                    new_entries.push((result, root.clone(), path.clone()));
                                 }
                             }
                             Op::Load(ptr) => {
@@ -3419,16 +3403,18 @@ mod tests {
             .unwrap();
         assert!(result.changed, "redundant coerce should be eliminated");
         let func = &result.module.functions[FuncId::new(0)];
+        // After RedCastElim, the redundant cast is removed from blocks and all
+        // uses of `coerced` are substituted with `replaced`.
+        let live: std::collections::HashSet<_> = func
+            .blocks
+            .values()
+            .flat_map(|b| b.insts.iter().copied())
+            .collect();
         assert!(
-            matches!(
-                func.insts
-                    .values()
-                    .find(|i| i.result == Some(coerced))
-                    .unwrap()
-                    .op,
-                Op::Copy(_)
-            ),
-            "Cast(String→String) should become Copy"
+            !live
+                .iter()
+                .any(|&id| func.insts[id].result == Some(coerced)),
+            "Cast(String->String) should be eliminated entirely"
         );
     }
 }
