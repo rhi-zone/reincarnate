@@ -19,7 +19,7 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
 ### Phases
 
 - [x] **Phase 1 — Terminator enum.** Extract control flow from `Op` into an explicit `Terminator` per block. No semantic change; all existing passes adapt. Gate: Dead Estate 0 errors, snapshot identical.
-- [ ] **Phase 2 — Ban `Copy` + `CoercingEq`/`CoercingNe`.** `Copy` → eliminated by Mem2Reg or substituted inline. `CoercingEq`/`CoercingNe` → `Call` via `RuntimeRegistry`. Gate: same.
+- [x] **Phase 2 — Ban `Copy` + `CoercingEq`/`CoercingNe`.** `Copy` → eliminated by Mem2Reg or substituted inline. `CoercingEq`/`CoercingNe` → `SystemCall` routed through backend rewrite to `JsExpr::LooseEq`/`LooseNe`. Gate: same.
 - [ ] **Phase 3 — Ban `SystemCall` + `GlobalRef`.** Engine API calls → typed `Call(FunctionId, ...)` via `RuntimeRegistry`. Gate: same.
 - [ ] **Phase 4 — `Dynamic` → `Unknown`.** Replace `Type::Dynamic` with `Type::Unknown`. `Dynamic` emits `any`; `Unknown` emits `unknown`. Gate: same or better TS error count.
 - [ ] **Phase 5 — `NameInterner` + `NameTable`.** Replace scattered name fields with collision-free interning. Gate: same.
