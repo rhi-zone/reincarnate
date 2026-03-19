@@ -84,12 +84,7 @@ pub fn ts_type(ty: &Type) -> String {
             parts.join(" | ")
         }
         Type::Var(_) => "unknown".into(),
-        // TODO(phase-4): emit `unknown` once inference eliminates most Unknown
-        // params.  Currently emits `any` to maintain behavioral equivalence;
-        // switching to `unknown` surfaces ~21K TS18046/TS2345 errors because GML
-        // params (_self, _other, loop vars) are typed Unknown rather than their
-        // concrete class types.
-        Type::Unknown => "any".into(),
+        Type::Unknown => "unknown".into(),
     }
 }
 
