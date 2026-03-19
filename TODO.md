@@ -20,6 +20,7 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
 
 - [x] **Phase 1 — Terminator enum.** Extract control flow from `Op` into an explicit `Terminator` per block. No semantic change; all existing passes adapt. Gate: Dead Estate 0 errors, snapshot identical.
 - [x] **Phase 2 — Ban `Copy` + `CoercingEq`/`CoercingNe`.** `Copy` → eliminated by Mem2Reg or substituted inline. `CoercingEq`/`CoercingNe` → `SystemCall` routed through backend rewrite to `JsExpr::LooseEq`/`LooseNe`. Gate: same.
+  > **Note:** `CoercingEq`/`CoercingNe` were replaced with `SystemCall("SugarCube.Engine", "loose_eq"/"loose_ne")` → `JsExpr::LooseEq`/`LooseNe` as an interim step. The correct long-term replacement is `Call(js_eq_fn, ...)` via `RuntimeRegistry` (Phase 9). This is tracked.
 - [ ] **Phase 3 — Ban `SystemCall` + `GlobalRef`.** Engine API calls → typed `Call(FunctionId, ...)` via `RuntimeRegistry`. Gate: same.
 - [ ] **Phase 4 — `Dynamic` → `Unknown`.** Replace `Type::Dynamic` with `Type::Unknown`. `Dynamic` emits `any`; `Unknown` emits `unknown`. Gate: same or better TS error count.
 - [ ] **Phase 5 — `NameInterner` + `NameTable`.** Replace scattered name fields with collision-free interning. Gate: same.
