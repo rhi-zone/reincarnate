@@ -14,17 +14,19 @@ Reincarnate is a decompiler that produces working, type-safe, high-quality code 
 
 ## Quality
 
-**Wrong code causes cascading damage: wasted time, risky reverts, corrupted `git blame`, and misdirected future work. Never write code unless you're confident you know what's needed.**
+**Wrong code causes cascading damage: wasted time, risky reverts, corrupted `git blame`, and misdirected future work. Read the relevant code before modifying anything — confidence is not a feeling, it is a result of having verified. When a request is ambiguous or could be interpreted multiple ways, state your interpretation and wait for confirmation before touching any file.**
 
 **Sloppiness is not excusable.** There is no pressure, deadline, or metric that justifies a sloppy fix. The most common form of sloppiness in this codebase is treating TypeScript error counts as a goal — they are not. A change that reduces errors by widening a type, silencing a diagnostic, or guessing at correct behavior is a regression. The only valid reason to make a change is that it is correct.
 
 **The delta between "compiles" and "correct" lives in TODO.md.** Every known gap, unverified assumption, silent limitation, and unimplemented behavior must be tracked there. Not adding a TODO entry is an implicit claim of correctness. Growing TODO.md as scope grows is fine; gaps missing from TODO.md are not.
 
-**Implement fully or throw — never stub silently.** `throw Error("name: not yet implemented")` is always correct when a function isn't implemented. Silent returns (`0`, `""`, `false`, `null`, `{}`) hide missing functionality. If a function needs design work first, add it to TODO.md and throw.
+**Implement fully — throwing is not a substitute.** `throw Error("impossible: ...")` is acceptable only when correct implementation is genuinely blocked by a missing prerequisite documented in TODO.md. "Not yet implemented" is not a reason to throw — it is a reason to implement. Silent returns (`0`, `""`, `false`, `null`, `{}`), no-op passes that return input unchanged, and stubs that compile but produce wrong output are all the same defect.
 
 **Look up the spec; don't guess from call sites.** GML: docs.yoyogames.com (source: github.com/YoYoGames/GameMaker-Manual). Flash: AS3 API reference. A decompiled call site may be wrong; the spec is authoritative.
 
 **Fix the real problem.** A workaround avoids fixing the actual cause. Narrow guards on symptoms indicate wrong core logic. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both in TODO.md and leave the code unchanged. Emit-level casts and type widenings that exist only to satisfy the type checker without improving inference are workarounds — they paper over the gap instead of closing it.
+
+**The sign of a correct fix is that code gets simpler — never monkeypatch.** A correct fix changes the model so the case can't arise. If a fix requires a "shouldn't happen but does" guard, fix what makes it happen instead. A branch that exists to compensate for upstream failures is a monkeypatch.
 
 **Conversation is not memory.** Anything said in chat evaporates at session end. If it implies a future behavior change, write it to CLAUDE.md immediately — or it will not happen.
 
@@ -72,7 +74,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 **`reincarnate check` output format:** progress lines go to stderr; diagnostics go to stdout. Never use `2>&1` — it mixes them. Without filters, stdout is a sorted count-by-code summary. With `--filter-code`, the first stdout line is `Showing N of M diagnostics matching ...` — the count is right there, no grep needed. Never grep check output for a code that `--filter-code` already filters.
 
 
-**Use subagents** for research tasks, >5 files, or >3 grep rounds.
+**Use subagents** for research tasks, >5 files, or >3 grep rounds. Any change that requires a `cargo clippy` or `cargo test` run should go through an agent — doing it inline accumulates tool output in the main context and crowds out the actual conversation. The temptation to do it inline is always wrong.
 
 **Session handoff:** plan mode → plan with only (next tasks / blocked items / what was done if it affects what's next) → flush TODO.md → ExitPlanMode. No commands, no build steps, no context summaries — those belong in CLAUDE.md or TODO.md. The next session reads both fresh.
 
