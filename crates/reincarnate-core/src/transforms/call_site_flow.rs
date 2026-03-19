@@ -152,6 +152,10 @@ impl Transform for CallSiteTypeFlow {
         "call-site-type-flow"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["type-inference"]
+    }
+
     fn run_once(&self) -> bool {
         true
     }

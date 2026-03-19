@@ -906,6 +906,10 @@ impl Transform for ConstraintSolve {
         "constraint-solve"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["type-inference"]
+    }
+
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let ctx = ConstraintModuleContext::from_module(&module);
         let mut changed = false;

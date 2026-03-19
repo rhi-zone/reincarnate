@@ -35,6 +35,20 @@ pub trait Transform {
     fn run_once(&self) -> bool {
         false
     }
+
+    /// Pass names that must appear before this pass in the pipeline.
+    /// The pipeline validates this at startup and panics if violated.
+    fn requires(&self) -> &[&str] {
+        &[]
+    }
+
+    /// Pass names whose results this pass invalidates (i.e. that may need
+    /// to re-run after this pass). Used for documentation and validation —
+    /// the pipeline checks that no invalidated pass appears *only* before
+    /// this pass without a later re-run.
+    fn invalidates(&self) -> &[&str] {
+        &[]
+    }
 }
 
 /// Marker trait for transforms that are provably IR-only: stateless, no external I/O,
@@ -60,6 +74,14 @@ impl Transform for Box<dyn PureIrPass> {
 
     fn run_once(&self) -> bool {
         (**self).run_once()
+    }
+
+    fn requires(&self) -> &[&str] {
+        (**self).requires()
+    }
+
+    fn invalidates(&self) -> &[&str] {
+        (**self).invalidates()
     }
 }
 
@@ -118,6 +140,61 @@ impl TransformPipeline {
         self.fixpoint = enabled;
     }
 
+    /// Validate that all `requires()` and `invalidates()` declarations are
+    /// satisfied by the current pipeline ordering.
+    ///
+    /// Panics if:
+    /// - A pass declares a `requires` dependency on a pass that does not
+    ///   appear earlier in the pipeline.
+    /// - A pass declares that it `invalidates` another pass, but that pass
+    ///   appears only before the invalidating pass with no later re-run.
+    ///
+    /// This is a developer-time check — violations are configuration errors
+    /// in pass declarations, not runtime conditions.
+    pub fn validate_ordering(&self) {
+        // Build name → list of positions (a pass can appear multiple times,
+        // e.g. ConstantFolding runs twice).
+        let mut name_positions: std::collections::HashMap<&str, Vec<usize>> =
+            std::collections::HashMap::new();
+        for (i, t) in self.transforms.iter().enumerate() {
+            name_positions.entry(t.name()).or_default().push(i);
+        }
+
+        for (i, t) in self.transforms.iter().enumerate() {
+            // Check requires: every required pass must have at least one
+            // occurrence before position i.
+            for &req in t.requires() {
+                let satisfied = name_positions
+                    .get(req)
+                    .is_some_and(|positions| positions.iter().any(|&p| p < i));
+                assert!(
+                    satisfied,
+                    "pass {:?} requires {:?} but it does not appear earlier in the pipeline",
+                    t.name(),
+                    req,
+                );
+            }
+
+            // Check invalidates: if this pass invalidates another pass, that
+            // pass must either (a) not be in the pipeline at all, or (b) have
+            // at least one occurrence after position i.
+            for &inv in t.invalidates() {
+                if let Some(positions) = name_positions.get(inv) {
+                    // The invalidated pass is in the pipeline. It must have a
+                    // re-run after this pass.
+                    let has_later = positions.iter().any(|&p| p > i);
+                    assert!(
+                        has_later,
+                        "pass {:?} invalidates {:?} but {:?} has no later re-run in the pipeline",
+                        t.name(),
+                        inv,
+                        inv,
+                    );
+                }
+            }
+        }
+    }
+
     /// Run all transforms in order on the given module.
     ///
     /// When fixpoint mode is enabled, the pipeline repeats until a full
@@ -142,6 +219,8 @@ impl TransformPipeline {
         mut module: Module,
         debug: &DebugConfig,
     ) -> Result<PipelineOutput, CoreError> {
+        self.validate_ordering();
+
         // Special case: dump raw IR before any transforms.
         if debug.dump_ir_after.as_deref() == Some("frontend") {
             dump_ir_functions(&module, debug);
@@ -312,5 +391,111 @@ mod tests {
         let remaining_b = unsafe { (*mock_b).changes_left.load(Ordering::SeqCst) };
         assert_eq!(remaining_a, 0);
         assert_eq!(remaining_b, 0);
+    }
+
+    /// A mock transform with configurable `requires` and `invalidates`.
+    struct DeclMock {
+        name: &'static str,
+        requires: &'static [&'static str],
+        invalidates: &'static [&'static str],
+    }
+
+    impl Transform for DeclMock {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
+            Ok(TransformResult {
+                module,
+                changed: false,
+            })
+        }
+
+        fn requires(&self) -> &[&str] {
+            self.requires
+        }
+
+        fn invalidates(&self) -> &[&str] {
+            self.invalidates
+        }
+    }
+
+    #[test]
+    fn validate_ordering_satisfied() {
+        let mut pipeline = TransformPipeline::new();
+        pipeline.add(Box::new(DeclMock {
+            name: "a",
+            requires: &[],
+            invalidates: &[],
+        }));
+        pipeline.add(Box::new(DeclMock {
+            name: "b",
+            requires: &["a"],
+            invalidates: &[],
+        }));
+        pipeline.validate_ordering(); // should not panic
+    }
+
+    #[test]
+    #[should_panic(expected = "requires \"a\" but it does not appear earlier")]
+    fn validate_ordering_missing_requires() {
+        let mut pipeline = TransformPipeline::new();
+        pipeline.add(Box::new(DeclMock {
+            name: "b",
+            requires: &["a"],
+            invalidates: &[],
+        }));
+        pipeline.validate_ordering();
+    }
+
+    #[test]
+    fn validate_ordering_invalidates_with_rerun() {
+        let mut pipeline = TransformPipeline::new();
+        pipeline.add(Box::new(DeclMock {
+            name: "fold",
+            requires: &[],
+            invalidates: &[],
+        }));
+        pipeline.add(Box::new(DeclMock {
+            name: "mem2reg",
+            requires: &[],
+            invalidates: &["fold"],
+        }));
+        pipeline.add(Box::new(DeclMock {
+            name: "fold",
+            requires: &[],
+            invalidates: &[],
+        }));
+        pipeline.validate_ordering(); // should not panic — fold re-runs after mem2reg
+    }
+
+    #[test]
+    #[should_panic(expected = "invalidates \"fold\" but \"fold\" has no later re-run")]
+    fn validate_ordering_invalidates_without_rerun() {
+        let mut pipeline = TransformPipeline::new();
+        pipeline.add(Box::new(DeclMock {
+            name: "fold",
+            requires: &[],
+            invalidates: &[],
+        }));
+        pipeline.add(Box::new(DeclMock {
+            name: "mem2reg",
+            requires: &[],
+            invalidates: &["fold"],
+        }));
+        pipeline.validate_ordering();
+    }
+
+    #[test]
+    fn validate_ordering_invalidates_absent_pass() {
+        // If the invalidated pass is not in the pipeline at all, that's fine.
+        let mut pipeline = TransformPipeline::new();
+        pipeline.add(Box::new(DeclMock {
+            name: "mem2reg",
+            requires: &[],
+            invalidates: &["fold"],
+        }));
+        pipeline.validate_ordering(); // should not panic
     }
 }

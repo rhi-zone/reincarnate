@@ -41,6 +41,10 @@ impl Transform for CallSiteTypeWiden {
         "call-site-type-widen"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["constraint-solve"]
+    }
+
     fn run_once(&self) -> bool {
         true
     }

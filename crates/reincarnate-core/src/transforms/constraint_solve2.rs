@@ -554,6 +554,10 @@ impl Transform for ConstraintSolve2 {
         "constraint-solve2"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["type-inference"]
+    }
+
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         use crate::transforms::constraint_collect::{collect_function, is_concrete};
 

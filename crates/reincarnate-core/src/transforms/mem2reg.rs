@@ -618,6 +618,14 @@ impl Transform for Mem2Reg {
         "mem2reg"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["coroutine-lowering"]
+    }
+
+    fn invalidates(&self) -> &[&str] {
+        &["constant-folding"]
+    }
+
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let mut changed = false;
         for func_id in module.functions.keys().collect::<Vec<_>>() {

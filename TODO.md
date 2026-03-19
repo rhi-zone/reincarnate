@@ -28,7 +28,7 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
   - [x] **5a — `NameTable` for function names.** `NameTable` stores `PrimaryMap<FuncId, String>` on `Module`. All core transforms and pipeline code read via `module.func_name(id)`. `Function::name` kept for backward compat (frontends, backends still write it); `ModuleBuilder::add_function` populates both. `rebuild_name_table()` for deserialized IR. Gate: Dead Estate 21110 TS errors (unchanged).
   - [ ] **5b — `NameInterner`.** Collision-free name generation replacing ad-hoc dedup in sanitize pass and frontend name logic.
   - [ ] **5c — Extend to other name fields.** Migrate struct, class, global, field, enum names into `NameTable`. Remove `Function::name` once all consumers read from `NameTable`.
-- [ ] **Phase 6 — Declarative pass manager.** `requires`/`invalidates` declarations replace implicit ordering. Gate: same.
+- [x] **Phase 6 — Declarative pass manager.** `requires`/`invalidates` declarations replace implicit ordering. Gate: same.
 - [ ] **Phase 7 — HM inference.** Single-pass constraint collection + solve replaces four coupled passes. `IntToBoolPromotion` ported. Gate: same or better.
 - [ ] **Phase 8 — Core AST + reconstruction pipeline.** Structurizer → Core AST; forward substitution; `ForEach` lifting. Gate: emitted code measurably cleaner.
 - [ ] **Phase 9 — Runtime as IR.** GML runtime expressed as IR functions; `RuntimeRegistry` linkage. Gate: same output, M+N architecture.
