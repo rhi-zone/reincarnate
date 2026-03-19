@@ -21,6 +21,6 @@ pub struct Block {
     pub params: Vec<BlockParam>,
     pub insts: Vec<InstId>,
     /// The block's terminator (control-flow edge).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub terminator: Option<Terminator>,
+    #[serde(default)]
+    pub terminator: Terminator,
 }

@@ -41,7 +41,7 @@ impl FunctionBuilder {
         let entry = blocks.push(Block {
             params,
             insts: Vec::new(),
-            terminator: None,
+            terminator: Terminator::default(),
         });
 
         let func = Function {
@@ -72,7 +72,7 @@ impl FunctionBuilder {
         self.func.blocks.push(Block {
             params: Vec::new(),
             insts: Vec::new(),
-            terminator: None,
+            terminator: Terminator::default(),
         })
     }
 
@@ -92,7 +92,7 @@ impl FunctionBuilder {
         let block = self.func.blocks.push(Block {
             params,
             insts: Vec::new(),
-            terminator: None,
+            terminator: Terminator::default(),
         });
         (block, values)
     }
@@ -445,15 +445,10 @@ impl FunctionBuilder {
                 self.func.blocks[target].params.len()
             );
         }
-        self.func.blocks[self.current_block].terminator = Some(Terminator::Br {
+        self.func.blocks[self.current_block].terminator = Terminator::Br {
             target,
             args: args.to_vec(),
-        });
-        // Also emit as Op for backward compat with consumers that read instructions.
-        self.emit_void(Op::Br {
-            target,
-            args: args.to_vec(),
-        });
+        };
     }
 
     pub fn br_if(
@@ -478,21 +473,13 @@ impl FunctionBuilder {
                 self.func.name, else_target, else_args.len(), self.func.blocks[else_target].params.len()
             );
         }
-        self.func.blocks[self.current_block].terminator = Some(Terminator::BrIf {
+        self.func.blocks[self.current_block].terminator = Terminator::BrIf {
             cond,
             then_target,
             then_args: then_args.to_vec(),
             else_target,
             else_args: else_args.to_vec(),
-        });
-        // Also emit as Op for backward compat with consumers that read instructions.
-        self.emit_void(Op::BrIf {
-            cond,
-            then_target,
-            then_args: then_args.to_vec(),
-            else_target,
-            else_args: else_args.to_vec(),
-        });
+        };
     }
 
     pub fn switch(
@@ -519,23 +506,15 @@ impl FunctionBuilder {
                 );
             }
         }
-        self.func.blocks[self.current_block].terminator = Some(Terminator::Switch {
-            value,
-            cases: cases.clone(),
-            default: default.clone(),
-        });
-        // Also emit as Op for backward compat with consumers that read instructions.
-        self.emit_void(Op::Switch {
+        self.func.blocks[self.current_block].terminator = Terminator::Switch {
             value,
             cases,
             default,
-        });
+        };
     }
 
     pub fn ret(&mut self, value: Option<ValueId>) {
-        self.func.blocks[self.current_block].terminator = Some(Terminator::Return(value));
-        // Also emit as Op for backward compat with consumers that read instructions.
-        self.emit_void(Op::Return(value));
+        self.func.blocks[self.current_block].terminator = Terminator::Return(value);
     }
 
     // ========================================================================
@@ -871,11 +850,11 @@ mod tests {
         assert_eq!(func.sig.params.len(), 2);
         assert_eq!(func.sig.return_ty, Type::Int(64));
 
-        // Entry block should have 2 params and 2 instructions (add + return Op).
-        // During Phase 1, cf ops are emitted both as block.terminator AND as instructions.
+        // Entry block should have 2 params and 1 instruction (add).
+        // Terminators are stored in block.terminator, not as instructions.
         let entry = &func.blocks[func.entry];
         assert_eq!(entry.params.len(), 2);
-        assert_eq!(entry.insts.len(), 2);
+        assert_eq!(entry.insts.len(), 1);
 
         // The add instruction should have a result.
         let add_inst = &func.insts[entry.insts[0]];
@@ -883,10 +862,7 @@ mod tests {
         assert!(matches!(add_inst.op, Op::Add(_, _)));
 
         // The terminator should be Return.
-        assert!(matches!(
-            entry.terminator,
-            Some(Terminator::Return(Some(_)))
-        ));
+        assert!(matches!(entry.terminator, Terminator::Return(Some(_))));
 
         // Value types: 2 params + 1 add result = 3.
         assert_eq!(func.value_types.len(), 3);

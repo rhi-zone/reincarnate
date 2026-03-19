@@ -10,6 +10,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::entity::EntityRef;
+use crate::ir::inst::Terminator;
 use crate::ir::value::Constant;
 use crate::ir::{BlockId, Function, Op, ValueId};
 use crate::transforms::util::{branch_targets, value_operands};
@@ -130,11 +131,9 @@ pub fn build_cfg(func: &Function) -> Cfg {
     }
 
     for (block_id, block) in func.blocks.iter() {
-        if let Some(&last_inst) = block.insts.last() {
-            for target in branch_targets(&func.insts[last_inst].op) {
-                succs.entry(block_id).or_default().push(target);
-                preds.entry(target).or_default().push(block_id);
-            }
+        for target in branch_targets(&block.terminator) {
+            succs.entry(block_id).or_default().push(target);
+            preds.entry(target).or_default().push(block_id);
         }
     }
 
@@ -300,11 +299,9 @@ fn compute_post_dominators(func: &Function, cfg: &Cfg) -> HashMap<BlockId, Block
         .blocks
         .iter()
         .filter_map(|(id, block)| {
-            // Explicit return instruction.
-            if let Some(&last) = block.insts.last() {
-                if matches!(func.insts[last].op, Op::Return(_)) {
-                    return Some(id);
-                }
+            // Explicit return terminator.
+            if matches!(block.terminator, Terminator::Return(_)) {
+                return Some(id);
             }
             // Empty block with no successors = implicit return (GML fall-through).
             if block.insts.is_empty() {
@@ -459,25 +456,9 @@ impl<'a> Structurizer<'a> {
         self.loops.iter().any(|l| l.header == block)
     }
 
-    /// Get the terminator Op of a block.
-    ///
-    /// Finds the *first* control-flow terminator (Br, BrIf, Switch, Return)
-    /// rather than assuming it's the last instruction. This is defensive
-    /// against frontends that may emit dead instructions after a terminator
-    /// (e.g. a redundant `Br` following a `BrIf`).
-    fn terminator(&self, block: BlockId) -> Option<&Op> {
-        let blk = &self.func.blocks[block];
-        for &inst_id in &blk.insts {
-            let op = &self.func.insts[inst_id].op;
-            if matches!(
-                op,
-                Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_)
-            ) {
-                return Some(op);
-            }
-        }
-        // Fallback: use the last instruction if it exists.
-        blk.insts.last().map(|&id| &self.func.insts[id].op)
+    /// Get the terminator of a block.
+    fn terminator(&self, block: BlockId) -> &Terminator {
+        &self.func.blocks[block].terminator
     }
 
     /// If `cond` is produced by a single-use `Cmp`, flip the comparison
@@ -552,7 +533,7 @@ impl<'a> Structurizer<'a> {
     fn trailing_merge_assigns(&self, shape: &Shape, merge: BlockId) -> Vec<BlockArgAssign> {
         match shape {
             Shape::Block(b) => {
-                if let Some(Op::Br { target, args }) = self.terminator(*b).cloned() {
+                if let Terminator::Br { target, args } = self.terminator(*b).clone() {
                     if target == merge {
                         return self.branch_assigns(merge, &args);
                     }
@@ -626,15 +607,12 @@ impl<'a> Structurizer<'a> {
             return self.structurize_loop(block, until);
         }
 
-        let Some(term) = self.terminator(block).cloned() else {
-            // Empty block — treat as a no-op block.
-            return Shape::Block(block);
-        };
+        let term = self.terminator(block).clone();
 
         match &term {
-            Op::Return(_) => Shape::Block(block),
+            Terminator::Return(_) => Shape::Block(block),
 
-            Op::Br { target, args } => {
+            Terminator::Br { target, args } => {
                 let assigns = self.branch_assigns(*target, args);
 
                 // Branch to a loop header in our stack → Continue.
@@ -675,7 +653,7 @@ impl<'a> Structurizer<'a> {
                 Shape::Seq(parts)
             }
 
-            Op::BrIf {
+            Terminator::BrIf {
                 cond,
                 then_target,
                 then_args,
@@ -1008,7 +986,7 @@ impl<'a> Structurizer<'a> {
                 }
             }
 
-            Op::Switch {
+            Terminator::Switch {
                 value,
                 cases,
                 default,
@@ -1105,8 +1083,6 @@ impl<'a> Structurizer<'a> {
                     switch_shape
                 }
             }
-
-            _ => Shape::Block(block),
         }
     }
 
@@ -1211,23 +1187,23 @@ impl<'a> Structurizer<'a> {
             return false;
         }
         match self.terminator(block) {
-            Some(Op::Return(_)) => true,
-            Some(Op::Br { target, .. }) => {
+            Terminator::Return(_) => true,
+            Terminator::Br { target, .. } => {
                 // If target is a loop header we're inside, it doesn't terminate.
                 if self.loop_stack.contains(target) {
                     return false;
                 }
                 self.region_terminates(*target, depth + 1)
             }
-            Some(Op::BrIf {
+            Terminator::BrIf {
                 then_target,
                 else_target,
                 ..
-            }) => {
+            } => {
                 self.region_terminates(*then_target, depth + 1)
                     && self.region_terminates(*else_target, depth + 1)
             }
-            _ => false,
+            Terminator::Switch { .. } => false,
         }
     }
 
@@ -1284,7 +1260,7 @@ impl<'a> Structurizer<'a> {
             .map(|l| l.body.clone())
             .unwrap_or_default();
 
-        let term = self.terminator(header).cloned();
+        let term = self.terminator(header).clone();
 
         // Find the exit block (successor of header not in loop body, or
         // the "next" block after the loop).
@@ -1292,13 +1268,13 @@ impl<'a> Structurizer<'a> {
 
         self.loop_stack.push(header);
 
-        let shape = match term.as_ref() {
-            Some(Op::BrIf {
+        let shape = match &term {
+            Terminator::BrIf {
                 cond,
                 then_target,
                 else_target,
                 ..
-            }) => {
+            } => {
                 let mut cond = *cond;
                 let mut then_target = *then_target;
                 let mut else_target = *else_target;
@@ -1358,11 +1334,11 @@ impl<'a> Structurizer<'a> {
     fn find_loop_exit(&self, header: BlockId, loop_body: &HashSet<BlockId>) -> Option<BlockId> {
         // Look for successors of loop blocks that are outside the loop.
         match self.terminator(header) {
-            Some(Op::BrIf {
+            Terminator::BrIf {
                 then_target,
                 else_target,
                 ..
-            }) => {
+            } => {
                 if !loop_body.contains(then_target) {
                     Some(*then_target)
                 } else if !loop_body.contains(else_target) {
@@ -1462,7 +1438,7 @@ impl<'a> Structurizer<'a> {
             if loop_body.contains(&pred) {
                 continue; // Skip back edges.
             }
-            if let Some(Op::Br { target, args }) = self.terminator(pred) {
+            if let Terminator::Br { target, args } = self.terminator(pred) {
                 if *target == header {
                     return Some(self.branch_assigns(header, args));
                 }
@@ -1483,17 +1459,17 @@ impl<'a> Structurizer<'a> {
                 continue; // Skip non-loop predecessors.
             }
             match self.terminator(pred) {
-                Some(Op::Br { target, args }) if *target == header && pred != header => {
+                Terminator::Br { target, args } if *target == header && pred != header => {
                     return Some(self.branch_assigns(header, args));
                 }
                 // BrIf self-loop: header branches back to itself via one arm.
-                Some(Op::BrIf {
+                Terminator::BrIf {
                     then_target,
                     then_args,
                     else_target,
                     else_args,
                     ..
-                }) if pred == header => {
+                } if pred == header => {
                     if *then_target == header {
                         return Some(self.branch_assigns(header, then_args));
                     }
@@ -1640,17 +1616,7 @@ impl<'a> Structurizer<'a> {
     /// Check if a block has non-terminator instructions (i.e. actual work
     /// that must execute, not just a branch).
     fn block_has_body(&self, block: BlockId) -> bool {
-        let blk = &self.func.blocks[block];
-        for &inst_id in &blk.insts {
-            let op = &self.func.insts[inst_id].op;
-            if !matches!(
-                op,
-                Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_)
-            ) {
-                return true;
-            }
-        }
-        false
+        !self.func.blocks[block].insts.is_empty()
     }
 
     /// Build a shape for a loop-exit path: emit the exit target block's
@@ -1707,13 +1673,13 @@ impl<'a> Structurizer<'a> {
             }
 
             // Only follow unconditional branches (linear chain).
-            let term = self.terminator(current).cloned();
+            let term = self.terminator(current).clone();
             chain.push(current);
             chain_set.insert(current);
             self.emitted.insert(current);
 
             match term {
-                Some(Op::Br { target: next, .. }) => {
+                Terminator::Br { target: next, .. } => {
                     // If the next block is also outside the loop, continue
                     // the chain. Otherwise stop here.
                     if loop_body.contains(&next) {

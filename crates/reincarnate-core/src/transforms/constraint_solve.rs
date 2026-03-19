@@ -600,37 +600,6 @@ fn generate_constraints(
                     }
                 }
 
-                // Return: v = func.sig.return_ty
-                Op::Return(Some(v)) => {
-                    solver.constrain_value_to_type(*v, &func.sig.return_ty);
-                }
-
-                // BrIf: cond = Bool, branch args = target block params
-                Op::BrIf {
-                    cond,
-                    then_target,
-                    then_args,
-                    else_target,
-                    else_args,
-                } => {
-                    solver.constrain_value_to_type(*cond, &Type::Bool);
-                    constrain_branch_args(solver, func, *then_target, then_args);
-                    constrain_branch_args(solver, func, *else_target, else_args);
-                }
-
-                // Br: branch args = target block params
-                Op::Br { target, args } => {
-                    constrain_branch_args(solver, func, *target, args);
-                }
-
-                // Switch: branch args = target block params
-                Op::Switch { cases, default, .. } => {
-                    for (_, target, args) in cases {
-                        constrain_branch_args(solver, func, *target, args);
-                    }
-                    constrain_branch_args(solver, func, default.0, &default.1);
-                }
-
                 // Copy / Spread: v = r
                 Op::Copy(v) | Op::Spread(v) => {
                     if let Some(r) = result {
@@ -790,13 +759,43 @@ fn generate_constraints(
                 | Op::GlobalRef(_)
                 | Op::SystemCall { .. }
                 | Op::Alloc(_)
-                | Op::Return(None)
                 | Op::TupleInit(_)
                 | Op::Yield(_)
                 | Op::CoroutineCreate { .. }
                 | Op::CoroutineResume(_)
                 | Op::MakeClosure { .. } => {}
             }
+        }
+    }
+
+    // Constrain terminators: Return, BrIf cond, branch args.
+    use crate::ir::inst::Terminator;
+    for (_, block) in func.blocks.iter() {
+        match &block.terminator {
+            Terminator::Return(Some(v)) => {
+                solver.constrain_value_to_type(*v, &func.sig.return_ty);
+            }
+            Terminator::BrIf {
+                cond,
+                then_target,
+                then_args,
+                else_target,
+                else_args,
+            } => {
+                solver.constrain_value_to_type(*cond, &Type::Bool);
+                constrain_branch_args(solver, func, *then_target, then_args);
+                constrain_branch_args(solver, func, *else_target, else_args);
+            }
+            Terminator::Br { target, args } => {
+                constrain_branch_args(solver, func, *target, args);
+            }
+            Terminator::Switch { cases, default, .. } => {
+                for (_, target, args) in cases {
+                    constrain_branch_args(solver, func, *target, args);
+                }
+                constrain_branch_args(solver, func, default.0, &default.1);
+            }
+            Terminator::Return(None) => {}
         }
     }
 }

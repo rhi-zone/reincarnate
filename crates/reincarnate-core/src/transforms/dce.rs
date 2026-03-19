@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::error::CoreError;
+use crate::ir::inst::Terminator;
 use crate::ir::{BlockId, Constant, Function, InstId, Module, Op, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
-use super::util::{branch_targets, value_operands};
+use super::util::{branch_targets, terminator_operands, value_operands};
 
 /// Dead code elimination transform — removes unused instructions and unreachable blocks.
 ///
@@ -42,10 +43,9 @@ fn is_truthy(c: &Constant) -> bool {
 fn simplify_constant_branches(func: &mut Function) {
     let consts = build_const_map(func);
 
-    for inst_id in func.insts.keys().collect::<Vec<_>>() {
-        let inst = &func.insts[inst_id];
-        let new_op = match &inst.op {
-            Op::BrIf {
+    for block_id in func.blocks.keys().collect::<Vec<_>>() {
+        let new_term = match &func.blocks[block_id].terminator {
+            Terminator::BrIf {
                 cond,
                 then_target,
                 then_args,
@@ -54,12 +54,12 @@ fn simplify_constant_branches(func: &mut Function) {
             } => {
                 if let Some(c) = consts.get(cond) {
                     if is_truthy(c) {
-                        Some(Op::Br {
+                        Some(Terminator::Br {
                             target: *then_target,
                             args: then_args.clone(),
                         })
                     } else {
-                        Some(Op::Br {
+                        Some(Terminator::Br {
                             target: *else_target,
                             args: else_args.clone(),
                         })
@@ -68,7 +68,7 @@ fn simplify_constant_branches(func: &mut Function) {
                     None
                 }
             }
-            Op::Switch {
+            Terminator::Switch {
                 value,
                 cases,
                 default,
@@ -76,12 +76,12 @@ fn simplify_constant_branches(func: &mut Function) {
                 if let Some(c) = consts.get(value) {
                     let matched = cases.iter().find(|(case_val, _, _)| case_val == c);
                     if let Some((_, target, args)) = matched {
-                        Some(Op::Br {
+                        Some(Terminator::Br {
                             target: *target,
                             args: args.clone(),
                         })
                     } else {
-                        Some(Op::Br {
+                        Some(Terminator::Br {
                             target: default.0,
                             args: default.1.clone(),
                         })
@@ -93,8 +93,8 @@ fn simplify_constant_branches(func: &mut Function) {
             _ => None,
         };
 
-        if let Some(op) = new_op {
-            func.insts[inst_id].op = op;
+        if let Some(term) = new_term {
+            func.blocks[block_id].terminator = term;
         }
     }
 }
@@ -107,12 +107,9 @@ fn find_reachable_blocks(func: &Function) -> HashSet<BlockId> {
     reachable.insert(func.entry);
 
     while let Some(block_id) = worklist.pop_front() {
-        let block = &func.blocks[block_id];
-        for &inst_id in &block.insts {
-            for target in branch_targets(&func.insts[inst_id].op) {
-                if reachable.insert(target) {
-                    worklist.push_back(target);
-                }
+        for target in branch_targets(&func.blocks[block_id].terminator) {
+            if reachable.insert(target) {
+                worklist.push_back(target);
             }
         }
     }
@@ -124,12 +121,7 @@ fn find_reachable_blocks(func: &Function) -> HashSet<BlockId> {
 fn has_side_effects(op: &Op) -> bool {
     matches!(
         op,
-        // Control flow
-        Op::Br { .. }
-            | Op::BrIf { .. }
-            | Op::Switch { .. }
-            | Op::Return(_)
-            | Op::Yield(_)
+        Op::Yield(_)
             // Mutation
             | Op::Store { .. }
             | Op::SetField { .. }
@@ -176,6 +168,14 @@ fn eliminate_dead_code(func: &mut Function) -> bool {
         for &inst_id in &func.blocks[block_id].insts {
             if has_side_effects(&func.insts[inst_id].op) && live.insert(inst_id) {
                 worklist.push_back(inst_id);
+            }
+        }
+        // Mark terminator operands as live (terminators are always live).
+        for operand in terminator_operands(&func.blocks[block_id].terminator) {
+            if let Some(&prod_id) = producer.get(&operand) {
+                if live.insert(prod_id) {
+                    worklist.push_back(prod_id);
+                }
             }
         }
     }
@@ -227,12 +227,19 @@ fn eliminate_dead_block_params(func: &mut Function, reachable: &HashSet<BlockId>
     let mut any_changed = false;
 
     loop {
-        // Collect values used by non-branch-arg operands in live instructions.
+        // Collect values used by non-branch-arg operands in live instructions
+        // plus non-branch-arg operands from terminators (e.g. BrIf cond, Switch value).
         let mut used_values: HashSet<ValueId> = reachable
             .iter()
             .flat_map(|&bid| func.blocks[bid].insts.iter())
-            .flat_map(|&iid| non_branch_arg_operands(&func.insts[iid].op))
+            .flat_map(|&iid| value_operands(&func.insts[iid].op))
             .collect();
+        // Add non-branch-arg terminator operands (conditions, discriminants, return values).
+        for &bid in reachable {
+            for v in non_branch_arg_terminator_operands(&func.blocks[bid].terminator) {
+                used_values.insert(v);
+            }
+        }
 
         // Propagate liveness backward through branch-arg chains: if a block
         // param is live, all values passed to it via branch args are also live.
@@ -260,13 +267,11 @@ fn eliminate_dead_block_params(func: &mut Function, reachable: &HashSet<BlockId>
             }
         }
 
-        // Precompute: target → [inst_ids that branch to it]
-        let mut edges_to: HashMap<BlockId, Vec<InstId>> = HashMap::new();
+        // Precompute: target → [block_ids that branch to it]
+        let mut edges_to: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
         for &block_id in reachable {
-            for &inst_id in &func.blocks[block_id].insts {
-                for (tgt, _) in branch_target_args(&func.insts[inst_id].op) {
-                    edges_to.entry(tgt).or_default().push(inst_id);
-                }
+            for (tgt, _) in branch_target_args(&func.blocks[block_id].terminator) {
+                edges_to.entry(tgt).or_default().push(block_id);
             }
         }
 
@@ -274,9 +279,9 @@ fn eliminate_dead_block_params(func: &mut Function, reachable: &HashSet<BlockId>
         // it and mark those values as live too.
         while let Some(live_val) = worklist.pop_front() {
             if let Some(&(target_block, param_idx)) = param_to_block.get(&live_val) {
-                if let Some(edge_insts) = edges_to.get(&target_block) {
-                    for &inst_id in edge_insts {
-                        for (tgt, args) in branch_target_args(&func.insts[inst_id].op) {
+                if let Some(edge_blocks) = edges_to.get(&target_block) {
+                    for &src_block in edge_blocks {
+                        for (tgt, args) in branch_target_args(&func.blocks[src_block].terminator) {
                             if tgt == target_block {
                                 if let Some(&arg_val) = args.get(param_idx) {
                                     if used_values.insert(arg_val) {
@@ -325,29 +330,27 @@ fn eliminate_dead_block_params(func: &mut Function, reachable: &HashSet<BlockId>
             });
         }
 
-        // Update branch arguments in all live instructions.
+        // Update branch arguments in all terminators.
         for &block_id in reachable {
-            for &inst_id in &func.blocks[block_id].insts.clone() {
-                strip_dead_branch_args(&mut func.insts[inst_id].op, &dead_param_indices);
-            }
+            strip_dead_branch_args(&mut func.blocks[block_id].terminator, &dead_param_indices);
         }
     }
 
     any_changed
 }
 
-/// Extract (target, args) pairs from branch instructions for liveness propagation.
-fn branch_target_args(op: &Op) -> Vec<(BlockId, &[ValueId])> {
-    match op {
-        Op::Br { target, args } => vec![(*target, args)],
-        Op::BrIf {
+/// Extract (target, args) pairs from a block terminator for liveness propagation.
+fn branch_target_args(term: &Terminator) -> Vec<(BlockId, &[ValueId])> {
+    match term {
+        Terminator::Br { target, args } => vec![(*target, args.as_slice())],
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
             else_args,
             ..
         } => vec![(*then_target, then_args), (*else_target, else_args)],
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             let mut result: Vec<(BlockId, &[ValueId])> = cases
                 .iter()
                 .map(|(_, target, args)| (*target, args.as_slice()))
@@ -355,30 +358,29 @@ fn branch_target_args(op: &Op) -> Vec<(BlockId, &[ValueId])> {
             result.push((default.0, &default.1));
             result
         }
-        _ => vec![],
+        Terminator::Return(_) => vec![],
     }
 }
 
-/// Extract operands excluding branch arguments (which only forward values to
-/// block params). Returns conditions, discriminants, and all non-branch operands.
-fn non_branch_arg_operands(op: &Op) -> Vec<ValueId> {
-    match op {
-        Op::Br { .. } => vec![],
-        Op::BrIf { cond, .. } => vec![*cond],
-        Op::Switch { value, .. } => vec![*value],
-        _ => value_operands(op),
+/// Extract operands from a terminator excluding branch arguments (which only
+/// forward values to block params). Returns conditions, discriminants, and
+/// return values.
+fn non_branch_arg_terminator_operands(term: &Terminator) -> Vec<ValueId> {
+    match term {
+        Terminator::Br { .. } => vec![],
+        Terminator::BrIf { cond, .. } => vec![*cond],
+        Terminator::Switch { value, .. } => vec![*value],
+        Terminator::Return(v) => v.iter().copied().collect(),
     }
 }
 
 /// Remove branch arguments at indices where the target block's parameter was
 /// eliminated.
-fn strip_dead_branch_args(op: &mut Op, dead: &HashMap<BlockId, Vec<bool>>) {
+fn strip_dead_branch_args(term: &mut Terminator, dead: &HashMap<BlockId, Vec<bool>>) {
     fn filter_args(target: BlockId, args: &mut Vec<ValueId>, dead: &HashMap<BlockId, Vec<bool>>) {
         if let Some(keep) = dead.get(&target) {
             let mut i = 0;
             args.retain(|_| {
-                // If args is shorter than keep, extra entries don't apply.
-                // If args is longer (shouldn't happen), keep extras as-is.
                 let k = keep.get(i).copied().unwrap_or(true);
                 i += 1;
                 k
@@ -386,11 +388,11 @@ fn strip_dead_branch_args(op: &mut Op, dead: &HashMap<BlockId, Vec<bool>>) {
         }
     }
 
-    match op {
-        Op::Br { target, args } => {
+    match term {
+        Terminator::Br { target, args } => {
             filter_args(*target, args, dead);
         }
-        Op::BrIf {
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -400,13 +402,13 @@ fn strip_dead_branch_args(op: &mut Op, dead: &HashMap<BlockId, Vec<bool>>) {
             filter_args(*then_target, then_args, dead);
             filter_args(*else_target, else_args, dead);
         }
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             for (_, target, args) in cases.iter_mut() {
                 filter_args(*target, args, dead);
             }
             filter_args(default.0, &mut default.1, dead);
         }
-        _ => {}
+        Terminator::Return(_) => {}
     }
 }
 
@@ -429,6 +431,7 @@ mod tests {
     use super::*;
     use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
+    use crate::ir::inst::Terminator;
     use crate::ir::ty::FunctionSig;
     use crate::ir::{FuncId, Type, Visibility};
 
@@ -460,12 +463,12 @@ mod tests {
         fb.ret(None);
 
         let func = apply_dce(fb.build());
-        // Only the return should remain — consts and add are dead.
+        // Consts and add are dead; return is in terminator.
         let entry = func.entry;
-        assert_eq!(block_inst_count(&func, entry), 1);
+        assert_eq!(block_inst_count(&func, entry), 0);
         assert!(matches!(
-            func.insts[func.blocks[entry].insts[0]].op,
-            Op::Return(None)
+            func.blocks[entry].terminator,
+            Terminator::Return(None)
         ));
     }
 
@@ -484,9 +487,9 @@ mod tests {
         fb.ret(Some(sum));
 
         let func = apply_dce(fb.build());
-        // const 1, const 2, add, return — all live.
+        // const 1, const 2, add — all live. Return is in terminator.
         let entry = func.entry;
-        assert_eq!(block_inst_count(&func, entry), 4);
+        assert_eq!(block_inst_count(&func, entry), 3);
     }
 
     /// Side effects are kept: Call with unused result is preserved.
@@ -502,9 +505,9 @@ mod tests {
         fb.ret(None);
 
         let func = apply_dce(fb.build());
-        // Call and return both kept.
+        // Call kept. Return is in terminator.
         let entry = func.entry;
-        assert_eq!(block_inst_count(&func, entry), 2);
+        assert_eq!(block_inst_count(&func, entry), 1);
     }
 
     /// Chained dead code: `a = const 1; b = add(a, a)` where `b` unused — both removed.
@@ -522,7 +525,7 @@ mod tests {
 
         let func = apply_dce(fb.build());
         let entry = func.entry;
-        assert_eq!(block_inst_count(&func, entry), 1);
+        assert_eq!(block_inst_count(&func, entry), 0);
     }
 
     /// Constant branch simplified: `BrIf(const true, A, B)` → `Br(A)`, B's dead code removed.
@@ -553,22 +556,15 @@ mod tests {
 
         let func = apply_dce(fb.build());
 
-        // Entry should have Br (simplified from BrIf) + the const that feeds it.
+        // Entry's terminator should be Br (simplified from BrIf).
         let entry = func.entry;
-        let entry_insts: Vec<&Op> = func.blocks[entry]
-            .insts
-            .iter()
-            .map(|id| &func.insts[*id].op)
-            .collect();
-        // The BrIf was simplified to Br; the const(true) may or may not be kept
-        // depending on whether Br references it. Br doesn't reference the condition
-        // value, so const(true) should be dead.
-        assert!(entry_insts
-            .iter()
-            .any(|op| matches!(op, Op::Br { target, .. } if *target == then_block)));
+        assert!(matches!(
+            func.blocks[entry].terminator,
+            Terminator::Br { target, .. } if target == then_block
+        ));
 
         // then_block should be reachable with its instructions.
-        assert!(block_inst_count(&func, then_block) >= 2);
+        assert!(block_inst_count(&func, then_block) >= 1);
 
         // else_block should be cleared (unreachable).
         assert_eq!(block_inst_count(&func, else_block), 0);
@@ -655,10 +651,10 @@ mod tests {
 
         let func = apply_dce(fb.build());
         let entry = func.entry;
-        assert_eq!(block_inst_count(&func, entry), 1);
+        assert_eq!(block_inst_count(&func, entry), 0);
         assert!(matches!(
-            func.insts[func.blocks[entry].insts[0]].op,
-            Op::Return(None)
+            func.blocks[entry].terminator,
+            Terminator::Return(None)
         ));
     }
 
@@ -708,7 +704,7 @@ mod tests {
         let entry = func.entry;
         assert_eq!(
             block_inst_count(&func, entry),
-            1,
+            0,
             "all dead chain should be removed"
         );
     }
@@ -780,12 +776,10 @@ mod tests {
 
         let func = apply_dce(fb.build());
         // The final merge param should still exist and feed the Return.
-        let has_return_val = func.blocks.values().any(|block| {
-            block
-                .insts
-                .iter()
-                .any(|&id| matches!(func.insts[id].op, Op::Return(Some(_))))
-        });
+        let has_return_val = func
+            .blocks
+            .values()
+            .any(|block| matches!(block.terminator, Terminator::Return(Some(_))));
         assert!(has_return_val, "return value must survive branch-arg chain");
         // All merge blocks should still have their params (not stripped as dead).
         let non_entry_blocks_with_params = func

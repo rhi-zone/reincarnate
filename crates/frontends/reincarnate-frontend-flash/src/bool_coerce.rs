@@ -24,7 +24,8 @@
 //! (the original void/undefined value is still falsy).
 
 use reincarnate_core::error::CoreError;
-use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
+use reincarnate_core::ir::block::BlockId;
+use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op, Terminator};
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{Function, Module, ValueId};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
@@ -148,13 +149,14 @@ fn coerce_bool_cmp(func: &mut Function) -> bool {
 // ---------------------------------------------------------------------------
 
 fn coerce_void_brif(func: &mut Function) -> bool {
-    let targets: Vec<(InstId, ValueId)> = func
-        .insts
+    // Collect blocks whose BrIf terminator has a void condition.
+    let targets: Vec<(BlockId, ValueId)> = func
+        .blocks
         .iter()
-        .filter_map(|(id, inst)| {
-            if let Op::BrIf { cond, .. } = &inst.op {
+        .filter_map(|(bid, block)| {
+            if let Terminator::BrIf { cond, .. } = &block.terminator {
                 if is_void(func, *cond) {
-                    return Some((id, *cond));
+                    return Some((bid, *cond));
                 }
             }
             None
@@ -165,11 +167,17 @@ fn coerce_void_brif(func: &mut Function) -> bool {
         return false;
     }
 
-    for (inst_id, cond) in targets {
-        let new_cond =
-            insert_cast_before(func, cond, inst_id, Type::Dynamic, CastKind::NullableCoerce);
-        if let Op::BrIf { cond: c, .. } = &mut func.insts[inst_id].op {
-            *c = new_cond;
+    for (block_id, cond) in targets {
+        // Insert cast at end of block's insts.
+        let cast_vid = func.value_types.push(Type::Dynamic);
+        let cast_iid = func.insts.push(Inst {
+            op: Op::Cast(cond, Type::Dynamic, CastKind::NullableCoerce),
+            result: Some(cast_vid),
+            span: None,
+        });
+        func.blocks[block_id].insts.push(cast_iid);
+        if let Terminator::BrIf { cond: c, .. } = &mut func.blocks[block_id].terminator {
+            *c = cast_vid;
         }
     }
 

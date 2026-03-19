@@ -201,29 +201,6 @@ pub enum Op {
     /// Resume a coroutine, returning the yielded value.
     CoroutineResume(ValueId),
 
-    // -- Control flow (DEPRECATED: prefer Block.terminator) --
-    /// Unconditional branch.
-    Br {
-        target: BlockId,
-        args: Vec<ValueId>,
-    },
-    /// Conditional branch.
-    BrIf {
-        cond: ValueId,
-        then_target: BlockId,
-        then_args: Vec<ValueId>,
-        else_target: BlockId,
-        else_args: Vec<ValueId>,
-    },
-    /// Multi-way switch.
-    Switch {
-        value: ValueId,
-        cases: Vec<(Constant, BlockId, Vec<ValueId>)>,
-        default: (BlockId, Vec<ValueId>),
-    },
-    /// Return from function.
-    Return(Option<ValueId>),
-
     // -- Misc --
     /// Reference to a global variable.
     GlobalRef(String),
@@ -258,4 +235,10 @@ pub enum Terminator {
     },
     /// Return from function.
     Return(Option<ValueId>),
+}
+
+impl Default for Terminator {
+    fn default() -> Self {
+        Terminator::Return(None)
+    }
 }

@@ -565,19 +565,14 @@ fn promote_multi_store(func: &mut Function) -> bool {
             reaching_at_exit.insert(block, current_def);
 
             // For each successor with a phi: append current value as branch arg.
-            if let Some(last_inst_id) = func.blocks[block].insts.last().copied() {
-                let targets: Vec<BlockId> = {
-                    let op = &func.insts[last_inst_id].op;
-                    super::util::branch_targets(op)
-                };
-                for succ in targets {
-                    if phi_values.contains_key(&(succ, alloc_idx)) {
-                        append_branch_arg_for_target(
-                            &mut func.insts[last_inst_id].op,
-                            succ,
-                            current_def,
-                        );
-                    }
+            let targets: Vec<BlockId> = super::util::branch_targets(&func.blocks[block].terminator);
+            for succ in targets {
+                if phi_values.contains_key(&(succ, alloc_idx)) {
+                    append_branch_arg_for_target(
+                        &mut func.blocks[block].terminator,
+                        succ,
+                        current_def,
+                    );
                 }
             }
         }
@@ -642,7 +637,13 @@ fn apply_subst_and_remove(
             }
             substitute_values_in_op(&mut func.insts[inst_id].op, subst);
         }
-        // Also substitute in block params (not typical, but belt-and-suspenders).
+        // Also substitute in block terminators.
+        for block_id in func.blocks.keys().collect::<Vec<_>>() {
+            super::util::substitute_values_in_terminator(
+                &mut func.blocks[block_id].terminator,
+                subst,
+            );
+        }
     }
 
     if !dead_insts.is_empty() {
@@ -672,6 +673,7 @@ impl Transform for Mem2Reg {
 mod tests {
     use super::*;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
+    use crate::ir::inst::Terminator;
     use crate::ir::ty::FunctionSig;
     use crate::ir::{FuncId, Visibility};
 
@@ -699,9 +701,8 @@ mod tests {
 
         let func = apply_mem2reg(fb.build());
         let entry = func.entry;
-        assert_eq!(func.blocks[entry].insts.len(), 1);
-        let ret_inst = &func.insts[func.blocks[entry].insts[0]];
-        if let Op::Return(Some(v)) = &ret_inst.op {
+        assert_eq!(func.blocks[entry].insts.len(), 0);
+        if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
             assert_eq!(v.index(), 0, "return should reference param v0");
         } else {
             panic!("expected Return(Some(v0))");
@@ -727,15 +728,10 @@ mod tests {
 
         let func = apply_mem2reg(fb.build());
         let entry = func.entry;
-        // Alloc, both Stores, Load removed. Const(2) + Return remain.
+        // Alloc, both Stores, Load removed. Const(2) remains.
         // Plus the initial Const(Null) inserted by multi-store at entry start.
         // But we should check the Return references the const 2.
-        let ret_inst = func.blocks[entry]
-            .insts
-            .iter()
-            .find(|&&id| matches!(func.insts[id].op, Op::Return(_)))
-            .unwrap();
-        if let Op::Return(Some(v)) = &func.insts[*ret_inst].op {
+        if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
             // Should reference the const_int(2) value, not the param.
             assert_eq!(*v, two, "return should reference const 2");
         } else {
@@ -792,12 +788,7 @@ mod tests {
 
         // The return should reference the phi value (a block param of merge).
         let phi_val = func.blocks[merge_block].params.last().unwrap().value;
-        let ret_id = func.blocks[merge_block]
-            .insts
-            .iter()
-            .find(|&&id| matches!(func.insts[id].op, Op::Return(_)))
-            .unwrap();
-        if let Op::Return(Some(v)) = &func.insts[*ret_id].op {
+        if let Terminator::Return(Some(v)) = &func.blocks[merge_block].terminator {
             assert_eq!(*v, phi_val, "return should reference phi value");
         } else {
             panic!("expected Return");
@@ -805,8 +796,7 @@ mod tests {
 
         // The branches to merge should carry args.
         // then_block's terminator should pass const 10.
-        let then_term = *func.blocks[then_block].insts.last().unwrap();
-        if let Op::Br { args, .. } = &func.insts[then_term].op {
+        if let Terminator::Br { args, .. } = &func.blocks[then_block].terminator {
             assert!(!args.is_empty(), "then→merge should carry branch args");
             assert_eq!(args.last().copied(), Some(ten));
         } else {
@@ -814,8 +804,7 @@ mod tests {
         }
 
         // else_block's terminator should pass const 20.
-        let else_term = *func.blocks[else_block].insts.last().unwrap();
-        if let Op::Br { args, .. } = &func.insts[else_term].op {
+        if let Terminator::Br { args, .. } = &func.blocks[else_block].terminator {
             assert!(!args.is_empty(), "else→merge should carry branch args");
             assert_eq!(args.last().copied(), Some(twenty));
         } else {
@@ -983,9 +972,8 @@ mod tests {
 
         let func = apply_mem2reg(fb.build());
         let entry = func.entry;
-        assert_eq!(func.blocks[entry].insts.len(), 2);
-        let ret_inst = &func.insts[*func.blocks[entry].insts.last().unwrap()];
-        if let Op::Return(Some(v)) = &ret_inst.op {
+        assert_eq!(func.blocks[entry].insts.len(), 1);
+        if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
             assert_eq!(v.index(), 2, "return should reference add result v2");
         } else {
             panic!("expected Return(Some(v2))");
@@ -1008,9 +996,8 @@ mod tests {
 
         let func = apply_mem2reg(fb.build());
         let entry = func.entry;
-        assert_eq!(func.blocks[entry].insts.len(), 1);
-        let ret_inst = &func.insts[func.blocks[entry].insts[0]];
-        if let Op::Return(Some(v)) = &ret_inst.op {
+        assert_eq!(func.blocks[entry].insts.len(), 0);
+        if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
             assert_eq!(v.index(), 0, "transitive chain should resolve to v0");
         } else {
             panic!("expected Return(Some(v0))");
@@ -1091,11 +1078,10 @@ mod tests {
         // Single-store promotion requires exactly 1 store — 0 stores means
         // neither sub-pass handles it. Load should remain or get a null init.
         let entry = func.entry;
-        let has_return = func.blocks[entry]
-            .insts
-            .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Return(Some(_))));
-        assert!(has_return, "function should still return a value");
+        assert!(
+            matches!(func.blocks[entry].terminator, Terminator::Return(Some(_))),
+            "function should still return a value"
+        );
     }
 
     /// Multiple stores in the same block — last store wins.
@@ -1119,13 +1105,10 @@ mod tests {
 
         let func = apply_mem2reg(fb.build());
         let entry = func.entry;
-        let ret = func.blocks[entry]
-            .insts
-            .iter()
-            .find(|&&id| matches!(func.insts[id].op, Op::Return(_)))
-            .unwrap();
-        if let Op::Return(Some(v)) = &func.insts[*ret].op {
+        if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
             assert_eq!(*v, c, "should return last stored value");
+        } else {
+            panic!("expected Return");
         }
     }
 

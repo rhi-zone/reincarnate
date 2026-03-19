@@ -3,7 +3,7 @@ use datawin::bytecode::decode::Instruction;
 use datawin::bytecode::encode::encode;
 use datawin::bytecode::opcode::Opcode;
 use datawin::bytecode::types::{DataType, VariableRef};
-use reincarnate_core::ir::inst::Op;
+use reincarnate_core::ir::inst::{Op, Terminator};
 
 static EMPTY_ASSET_REF_NAMES: std::sync::LazyLock<HashMap<u32, String>> =
     std::sync::LazyLock::new(HashMap::new);
@@ -594,11 +594,11 @@ fn test_self_field_read_emits_get_field() {
         "self-field read must produce GetField(\"hp\"); ops: {ops:?}"
     );
 
-    let has_return_with_value = ops.iter().any(|op| matches!(op, Op::Return(Some(_))));
-    assert!(
-        has_return_with_value,
-        "Ret must produce Return(Some(_)); ops: {ops:?}"
-    );
+    let has_return_with_value = func
+        .blocks
+        .values()
+        .any(|b| matches!(&b.terminator, Terminator::Return(Some(_))));
+    assert!(has_return_with_value, "Ret must produce Return(Some(_))");
 }
 
 // -----------------------------------------------------------------------
@@ -871,12 +871,16 @@ fn test_bf_produces_br_if() {
     let (func, _) = translate_code_entry(&bytecode, "test_bf", &ctx).expect("translation failed");
     let ops = collect_ops(&func);
 
-    let has_br_if = ops.iter().any(|op| matches!(op, Op::BrIf { .. }));
+    let has_br_if = func
+        .blocks
+        .values()
+        .any(|b| matches!(&b.terminator, Terminator::BrIf { .. }));
     assert!(has_br_if, "Bf must produce BrIf; ops: {ops:?}");
 
-    let return_count = ops
-        .iter()
-        .filter(|op| matches!(op, Op::Return(Some(_))))
+    let return_count = func
+        .blocks
+        .values()
+        .filter(|b| matches!(&b.terminator, Terminator::Return(Some(_))))
         .count();
     assert!(
         return_count >= 2,

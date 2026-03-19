@@ -29,7 +29,7 @@ use std::collections::{HashMap, HashSet};
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockId;
-use reincarnate_core::ir::inst::{CastKind, CmpKind, Inst, InstId, Op};
+use reincarnate_core::ir::inst::{CastKind, CmpKind, Inst, InstId, Op, Terminator};
 use reincarnate_core::ir::module::StructDef;
 use reincarnate_core::ir::ty::{parse_type_notation, Type};
 use reincarnate_core::ir::value::Constant;
@@ -336,13 +336,13 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
         })
         .collect();
 
-    // Collect casts needed: (inst_id, arm, arg_pos, old_v, to_type)
+    // Collect casts needed: (block_id, arm, arg_pos, old_v, to_type)
     // arm: 0 = Br, 1 = BrIf then_args, 2 = BrIf else_args
-    let mut casts: Vec<(InstId, u8, usize, ValueId, Type)> = Vec::new();
+    let mut casts: Vec<(BlockId, u8, usize, ValueId, Type)> = Vec::new();
 
-    for (inst_id, inst) in func.insts.iter() {
-        match &inst.op {
-            Op::Br { target, args } => {
+    for (bid, block) in func.blocks.iter() {
+        match &block.terminator {
+            Terminator::Br { target, args } => {
                 if let Some(param_tys) = block_param_tys.get(target) {
                     for (i, &v) in args.iter().enumerate() {
                         if let Some(pty) = param_tys.get(i) {
@@ -350,13 +350,13 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
                                 // Always cast to Float(64) — the printer emits
                                 // Number(expr) for Float, but has no handler for
                                 // Int(64) Coerce casts (they fall through as no-op).
-                                casts.push((inst_id, 0, i, v, Type::Float(64)));
+                                casts.push((bid, 0, i, v, Type::Float(64)));
                             }
                         }
                     }
                 }
             }
-            Op::BrIf {
+            Terminator::BrIf {
                 then_target,
                 then_args,
                 else_target,
@@ -367,7 +367,7 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
                     for (i, &v) in then_args.iter().enumerate() {
                         if let Some(pty) = param_tys.get(i) {
                             if is_bool(func, v) && is_numeric(pty) {
-                                casts.push((inst_id, 1, i, v, Type::Float(64)));
+                                casts.push((bid, 1, i, v, Type::Float(64)));
                             }
                         }
                     }
@@ -376,7 +376,7 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
                     for (i, &v) in else_args.iter().enumerate() {
                         if let Some(pty) = param_tys.get(i) {
                             if is_bool(func, v) && is_numeric(pty) {
-                                casts.push((inst_id, 2, i, v, Type::Float(64)));
+                                casts.push((bid, 2, i, v, Type::Float(64)));
                             }
                         }
                     }
@@ -390,12 +390,19 @@ fn coerce_bool_br_args(func: &mut Function) -> bool {
         return false;
     }
 
-    for (inst_id, arm, pos, old_v, to_type) in casts {
-        let new_v = insert_cast_before(func, old_v, inst_id, to_type);
-        match &mut func.insts[inst_id].op {
-            Op::Br { args, .. } if arm == 0 => args[pos] = new_v,
-            Op::BrIf { then_args, .. } if arm == 1 => then_args[pos] = new_v,
-            Op::BrIf { else_args, .. } if arm == 2 => else_args[pos] = new_v,
+    for (block_id, arm, pos, old_v, to_type) in casts {
+        // Insert cast at end of block's insts (before the terminator).
+        let cast_vid = func.value_types.push(to_type.clone());
+        let cast_iid = func.insts.push(Inst {
+            op: Op::Cast(old_v, to_type, CastKind::Coerce),
+            result: Some(cast_vid),
+            span: None,
+        });
+        func.blocks[block_id].insts.push(cast_iid);
+        match &mut func.blocks[block_id].terminator {
+            Terminator::Br { args, .. } if arm == 0 => args[pos] = cast_vid,
+            Terminator::BrIf { then_args, .. } if arm == 1 => then_args[pos] = cast_vid,
+            Terminator::BrIf { else_args, .. } if arm == 2 => else_args[pos] = cast_vid,
             _ => {}
         }
     }

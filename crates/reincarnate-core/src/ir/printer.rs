@@ -200,14 +200,6 @@ impl fmt::Display for Function {
             for &inst_id in &block.insts {
                 let inst = &self.insts[inst_id];
 
-                // Skip deprecated cf variants — printed from block.terminator instead.
-                if matches!(
-                    inst.op,
-                    Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_)
-                ) {
-                    continue;
-                }
-
                 write!(f, "    ")?;
 
                 // Result prefix
@@ -490,18 +482,14 @@ impl fmt::Display for Function {
                         write!(f, ", ")?;
                         fmt_value(*on_false, f)?;
                     }
-
-                    // Deprecated cf variants — skipped above, printed from block.terminator.
-                    Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_) => {
-                        unreachable!()
-                    }
                 }
 
                 writeln!(f)?;
             }
 
             // Terminator
-            if let Some(term) = &block.terminator {
+            {
+                let term = &block.terminator;
                 write!(f, "    ")?;
                 match term {
                     Terminator::Br { target, args } => {

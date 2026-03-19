@@ -266,13 +266,6 @@ pub fn collect_function(
                     }
                 }
 
-                // Return — the returned value must match the function's return type.
-                Op::Return(Some(value)) => {
-                    if let Some(val_var) = var_for(*value, &value_vars) {
-                        constraints.push(TypeConstraint::Equal(val_var, Type::Var(return_var)));
-                    }
-                }
-
                 // SystemCall — emit GlobalStore / ResolveGlobalType constraints.
                 //
                 // GlobalStore: the written value's type must equal the global's type.
@@ -311,8 +304,18 @@ pub fn collect_function(
                 }
 
                 // All other ops — no useful type constraint to emit at this
-                // stage (branches, allocs, stores, loads, etc.).
+                // stage (allocs, stores, loads, etc.).
                 _ => {}
+            }
+        }
+    }
+
+    // Constrain Return terminators.
+    use crate::ir::inst::Terminator;
+    for (_, block) in func.blocks.iter() {
+        if let Terminator::Return(Some(value)) = &block.terminator {
+            if let Some(val_var) = var_for(*value, &value_vars) {
+                constraints.push(TypeConstraint::Equal(val_var, Type::Var(return_var)));
             }
         }
     }
@@ -334,46 +337,49 @@ fn emit_phi_constraints(
     var_for: &impl Fn(ValueId, &HashMap<ValueId, TypeVarId>) -> Option<Type>,
     constraints: &mut Vec<TypeConstraint>,
 ) {
+    use crate::ir::inst::Terminator;
     for (_, pred_block) in func.blocks.iter() {
-        for &inst_id in &pred_block.insts {
-            let inst = &func.insts[inst_id];
-            let edge_args: Option<&Vec<ValueId>> = match &inst.op {
-                Op::Br { target, args } if *target == target_block => Some(args),
-                Op::BrIf {
-                    then_target,
-                    then_args,
-                    ..
-                } if *then_target == target_block => Some(then_args),
-                Op::BrIf {
-                    else_target,
-                    else_args,
-                    ..
-                } if *else_target == target_block => Some(else_args),
-                Op::Switch { cases, default, .. } => {
-                    // Switch can have multiple arms — handle all that match.
-                    let mut found: Option<&Vec<ValueId>> = None;
-                    for (_, case_target, case_args) in cases {
-                        if *case_target == target_block {
-                            found = Some(case_args);
-                            break;
-                        }
-                    }
-                    if found.is_none() && default.0 == target_block {
-                        found = Some(&default.1);
-                    }
-                    found
+        let edge_args_list: Vec<&Vec<ValueId>> = match &pred_block.terminator {
+            Terminator::Br { target, args } if *target == target_block => vec![args],
+            Terminator::BrIf {
+                then_target,
+                then_args,
+                else_target,
+                else_args,
+                ..
+            } => {
+                let mut v = Vec::new();
+                if *then_target == target_block {
+                    v.push(then_args);
                 }
-                _ => None,
-            };
-
-            if let Some(args) = edge_args {
-                for (param, &arg_val) in block.params.iter().zip(args.iter()) {
-                    if let (Some(param_var), Some(arg_var)) = (
-                        var_for(param.value, value_vars),
-                        var_for(arg_val, value_vars),
-                    ) {
-                        constraints.push(TypeConstraint::Equal(param_var, arg_var));
+                if *else_target == target_block {
+                    v.push(else_args);
+                }
+                v
+            }
+            Terminator::Switch { cases, default, .. } => {
+                let mut v = Vec::new();
+                for (_, case_target, case_args) in cases {
+                    if *case_target == target_block {
+                        v.push(case_args);
+                        break;
                     }
+                }
+                if v.is_empty() && default.0 == target_block {
+                    v.push(&default.1);
+                }
+                v
+            }
+            _ => vec![],
+        };
+
+        for args in edge_args_list {
+            for (param, &arg_val) in block.params.iter().zip(args.iter()) {
+                if let (Some(param_var), Some(arg_var)) = (
+                    var_for(param.value, value_vars),
+                    var_for(arg_val, value_vars),
+                ) {
+                    constraints.push(TypeConstraint::Equal(param_var, arg_var));
                 }
             }
         }

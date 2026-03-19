@@ -63,13 +63,13 @@ fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
                 for (param_idx, param) in block.params.iter().enumerate() {
                     if param.value == v {
                         for src_block_id in func.blocks.keys() {
-                            for &src_inst_id in &func.blocks[src_block_id].insts {
-                                let args_for_block =
-                                    branch_args_for_target(&func.insts[src_inst_id].op, block_id);
-                                for args in args_for_block {
-                                    if param_idx < args.len() {
-                                        worklist.push(args[param_idx]);
-                                    }
+                            let args_for_block = branch_args_for_target(
+                                &func.blocks[src_block_id].terminator,
+                                block_id,
+                            );
+                            for args in args_for_block {
+                                if param_idx < args.len() {
+                                    worklist.push(args[param_idx]);
                                 }
                             }
                         }
@@ -90,18 +90,22 @@ fn trace_to_leaves(func: &Function, start: ValueId) -> Option<Vec<ValueId>> {
     }
 }
 
-/// Extract the argument lists targeting a specific block from a branch op.
-fn branch_args_for_target(op: &Op, target: crate::ir::BlockId) -> Vec<&[ValueId]> {
+/// Extract the argument lists targeting a specific block from a terminator.
+fn branch_args_for_target(
+    term: &crate::ir::inst::Terminator,
+    target: crate::ir::BlockId,
+) -> Vec<&[ValueId]> {
+    use crate::ir::inst::Terminator;
     let mut result = Vec::new();
-    match op {
-        Op::Br {
+    match term {
+        Terminator::Br {
             target: t, args, ..
         } => {
             if *t == target {
                 result.push(args.as_slice());
             }
         }
-        Op::BrIf {
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -115,7 +119,7 @@ fn branch_args_for_target(op: &Op, target: crate::ir::BlockId) -> Vec<&[ValueId]
                 result.push(else_args.as_slice());
             }
         }
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             for (_, block, args) in cases {
                 if *block == target {
                     result.push(args.as_slice());
@@ -125,7 +129,7 @@ fn branch_args_for_target(op: &Op, target: crate::ir::BlockId) -> Vec<&[ValueId]
                 result.push(default.1.as_slice());
             }
         }
-        _ => {}
+        Terminator::Return(_) => {}
     }
     result
 }
@@ -189,13 +193,13 @@ fn set_chain_types(func: &mut Function, start: ValueId) {
                 for (param_idx, param) in block.params.iter().enumerate() {
                     if param.value == v {
                         for src_block_id in func.blocks.keys() {
-                            for &src_inst_id in &func.blocks[src_block_id].insts {
-                                let args_for_block =
-                                    branch_args_for_target(&func.insts[src_inst_id].op, block_id);
-                                for args in args_for_block {
-                                    if param_idx < args.len() {
-                                        worklist.push(args[param_idx]);
-                                    }
+                            let args_for_block = branch_args_for_target(
+                                &func.blocks[src_block_id].terminator,
+                                block_id,
+                            );
+                            for args in args_for_block {
+                                if param_idx < args.len() {
+                                    worklist.push(args[param_idx]);
                                 }
                             }
                         }
@@ -264,15 +268,18 @@ fn collect_bool_demands(
                     }
                 }
             }
-            // BrIf condition is always boolean
-            Op::BrIf { cond, .. } => {
-                demands.push(*cond);
-            }
             // Not operand is boolean
             Op::Not(operand) => {
                 demands.push(*operand);
             }
             _ => {}
+        }
+    }
+
+    // BrIf condition is always boolean (now in terminators).
+    for (_, block) in func.blocks.iter() {
+        if let crate::ir::inst::Terminator::BrIf { cond, .. } = &block.terminator {
+            demands.push(*cond);
         }
     }
 
@@ -353,14 +360,12 @@ fn infer_bool_return(
 
     let mut return_vals = Vec::new();
     for block_id in func.blocks.keys() {
-        for &inst_id in &func.blocks[block_id].insts {
-            match &func.insts[inst_id].op {
-                Op::Return(Some(val)) => return_vals.push(*val),
-                // Bare return (Exit) — function has void-return paths,
-                // so we cannot infer Bool return type.
-                Op::Return(None) => return false,
-                _ => {}
-            }
+        match &func.blocks[block_id].terminator {
+            crate::ir::inst::Terminator::Return(Some(val)) => return_vals.push(*val),
+            // Bare return (Exit) — function has void-return paths,
+            // so we cannot infer Bool return type.
+            crate::ir::inst::Terminator::Return(None) => return false,
+            _ => {}
         }
     }
 

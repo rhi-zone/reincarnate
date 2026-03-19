@@ -2,9 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
 use crate::ir::block::BlockId;
-use crate::ir::inst::CmpKind;
+use crate::ir::inst::{CmpKind, Terminator};
 use crate::ir::{Constant, Function, InstId, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
+
+use super::util::branch_targets;
 
 /// Constant folding transform — evaluates operations with all-constant operands
 /// at compile time, replacing them with `Op::Const(result)`.
@@ -18,25 +20,8 @@ fn reachable_blocks(func: &Function) -> HashSet<BlockId> {
         if !reachable.insert(block_id) {
             continue;
         }
-        for &inst_id in &func.blocks[block_id].insts {
-            match &func.insts[inst_id].op {
-                Op::Br { target, .. } => worklist.push(*target),
-                Op::BrIf {
-                    then_target,
-                    else_target,
-                    ..
-                } => {
-                    worklist.push(*then_target);
-                    worklist.push(*else_target);
-                }
-                Op::Switch { cases, default, .. } => {
-                    for (_, target, _) in cases {
-                        worklist.push(*target);
-                    }
-                    worklist.push(default.0);
-                }
-                _ => {}
-            }
+        for target in branch_targets(&func.blocks[block_id].terminator) {
+            worklist.push(target);
         }
     }
     reachable
@@ -66,39 +51,37 @@ fn build_const_map(func: &Function) -> HashMap<ValueId, Constant> {
         if !reachable.contains(&block_id) {
             continue;
         }
-        for &inst_id in &block.insts {
-            match &func.insts[inst_id].op {
-                Op::Br { target, args } => {
+        match &block.terminator {
+            Terminator::Br { target, args } => {
+                for (i, &arg) in args.iter().enumerate() {
+                    param_vals.entry((*target, i)).or_default().push(arg);
+                }
+            }
+            Terminator::BrIf {
+                then_target,
+                then_args,
+                else_target,
+                else_args,
+                ..
+            } => {
+                for (i, &arg) in then_args.iter().enumerate() {
+                    param_vals.entry((*then_target, i)).or_default().push(arg);
+                }
+                for (i, &arg) in else_args.iter().enumerate() {
+                    param_vals.entry((*else_target, i)).or_default().push(arg);
+                }
+            }
+            Terminator::Switch { cases, default, .. } => {
+                for (_, target, args) in cases {
                     for (i, &arg) in args.iter().enumerate() {
                         param_vals.entry((*target, i)).or_default().push(arg);
                     }
                 }
-                Op::BrIf {
-                    then_target,
-                    then_args,
-                    else_target,
-                    else_args,
-                    ..
-                } => {
-                    for (i, &arg) in then_args.iter().enumerate() {
-                        param_vals.entry((*then_target, i)).or_default().push(arg);
-                    }
-                    for (i, &arg) in else_args.iter().enumerate() {
-                        param_vals.entry((*else_target, i)).or_default().push(arg);
-                    }
+                for (i, &arg) in default.1.iter().enumerate() {
+                    param_vals.entry((default.0, i)).or_default().push(arg);
                 }
-                Op::Switch { cases, default, .. } => {
-                    for (_, target, args) in cases {
-                        for (i, &arg) in args.iter().enumerate() {
-                            param_vals.entry((*target, i)).or_default().push(arg);
-                        }
-                    }
-                    for (i, &arg) in default.1.iter().enumerate() {
-                        param_vals.entry((default.0, i)).or_default().push(arg);
-                    }
-                }
-                _ => {}
             }
+            Terminator::Return(_) => {}
         }
     }
     for (block_id, block) in func.blocks.iter() {
@@ -535,33 +518,32 @@ fn fold_brif_constants(func: &mut Function) -> bool {
     loop {
         let consts = build_const_map(func);
 
-        let updates: Vec<(InstId, Op)> = func
-            .insts
+        let updates: Vec<(BlockId, Terminator)> = func
+            .blocks
             .keys()
-            .filter_map(|inst_id| {
-                let inst = &func.insts[inst_id];
-                if let Op::BrIf {
+            .filter_map(|block_id| {
+                if let Terminator::BrIf {
                     cond,
                     then_target,
                     then_args,
                     else_target,
                     else_args,
-                } = &inst.op
+                } = &func.blocks[block_id].terminator
                 {
                     let c = consts.get(cond)?;
                     let truthy = is_constant_truthy(c)?;
-                    let new_op = if truthy {
-                        Op::Br {
+                    let new_term = if truthy {
+                        Terminator::Br {
                             target: *then_target,
                             args: then_args.clone(),
                         }
                     } else {
-                        Op::Br {
+                        Terminator::Br {
                             target: *else_target,
                             args: else_args.clone(),
                         }
                     };
-                    Some((inst_id, new_op))
+                    Some((block_id, new_term))
                 } else {
                     None
                 }
@@ -571,8 +553,8 @@ fn fold_brif_constants(func: &mut Function) -> bool {
         if updates.is_empty() {
             break;
         }
-        for (inst_id, new_op) in updates {
-            func.insts[inst_id].op = new_op;
+        for (block_id, new_term) in updates {
+            func.blocks[block_id].terminator = new_term;
         }
         any_changed = true;
     }

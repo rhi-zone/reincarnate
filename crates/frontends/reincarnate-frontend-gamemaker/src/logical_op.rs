@@ -20,8 +20,8 @@
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::Block;
-use reincarnate_core::ir::inst::Inst;
-use reincarnate_core::ir::{BlockId, Constant, Function, InstId, Module, Op, ValueId};
+use reincarnate_core::ir::inst::Terminator;
+use reincarnate_core::ir::{BlockId, Constant, Function, Module, Op, ValueId};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
 pub struct GmlLogicalOpNormalize;
@@ -44,28 +44,28 @@ impl PureIrPass for GmlLogicalOpNormalize {}
 
 fn normalize_logical_ops(func: &mut Function) -> bool {
     let mut changed = false;
-    // Collect all BrIf instructions up front to avoid borrow conflicts.
-    let brifs: Vec<(InstId, ValueId, BlockId, BlockId)> = func
-        .insts
+    // Collect all BrIf terminators up front to avoid borrow conflicts.
+    let brifs: Vec<(BlockId, ValueId, BlockId, BlockId)> = func
+        .blocks
         .iter()
-        .filter_map(|(id, inst)| {
-            if let Op::BrIf {
+        .filter_map(|(bid, block)| {
+            if let Terminator::BrIf {
                 cond,
                 then_target,
                 else_target,
                 ..
-            } = &inst.op
+            } = &block.terminator
             {
-                Some((id, *cond, *then_target, *else_target))
+                Some((bid, *cond, *then_target, *else_target))
             } else {
                 None
             }
         })
         .collect();
 
-    for (brif_id, cond, then_target, else_target) in &brifs {
-        let (brif_id, cond, then_target, else_target) =
-            (*brif_id, *cond, *then_target, *else_target);
+    for (brif_block, cond, then_target, else_target) in &brifs {
+        let (brif_block, cond, then_target, else_target) =
+            (*brif_block, *cond, *then_target, *else_target);
         // Try GML OR: then-block is trivially pure with a const-truthy result,
         // else-block has real computation.
         // Guard: skip if the trivial block is shared by multiple BrIf predecessors —
@@ -77,18 +77,18 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
         // jumps directly to the join point (a plain `if (cond) { x = 1 }`, not `||`).
         // In a real `||`, the else branch has a body that computes the RHS and THEN
         // jumps to the merge; merge_target ≠ else_target.
-        if let Some(br_inst_id) = trivially_pure_const_branch(func, then_target, true) {
+        if trivially_pure_const_branch(func, then_target, true) {
             let then_pred_count = brifs
                 .iter()
                 .filter(|(_, _, t, _)| *t == then_target)
                 .count();
-            let merge_target = get_br_target(func, br_inst_id);
+            let merge_target = get_br_target(func, then_target);
             if then_pred_count == 1
                 && else_target != merge_target
                 && !is_trivially_pure_block(func, else_target)
                 && !is_loop_header(func, merge_target)
             {
-                func.insts[br_inst_id].op = replace_br_arg(func, br_inst_id, cond);
+                replace_br_arg(func, then_target, cond);
                 changed = true;
                 continue;
             }
@@ -101,19 +101,19 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
         // correctly-typed loop counter initial value with a bool condition.
         // Guard: skip if then_target IS the merge target — that means the then branch
         // jumps directly to the join point (a plain `if (!cond) { x = 0 }`, not `&&`).
-        if let Some(br_inst_id) = trivially_pure_const_branch(func, else_target, false) {
+        if trivially_pure_const_branch(func, else_target, false) {
             let else_pred_count = brifs
                 .iter()
                 .filter(|(_, _, _, e)| *e == else_target)
                 .count();
-            let merge_target = get_br_target(func, br_inst_id);
+            let merge_target = get_br_target(func, else_target);
             if then_target != merge_target
                 && !is_trivially_pure_block(func, then_target)
                 && !is_loop_header(func, merge_target)
             {
                 if else_pred_count == 1 {
                     // Sole predecessor: rewrite the trivial block in place.
-                    func.insts[br_inst_id].op = replace_br_arg(func, br_inst_id, cond);
+                    replace_br_arg(func, else_target, cond);
                     changed = true;
                 } else {
                     // Shared else-block (e.g. nested `if (a) { if (b) { ... } }` where
@@ -122,7 +122,7 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
                     // predecessor's path. Instead, insert a fresh bypass block
                     // `Br merge(cond)` and redirect only this BrIf's else_target.
                     let bypass = insert_bypass_block(func, merge_target, cond);
-                    update_brif_else_target(&mut func.insts[brif_id].op, bypass);
+                    update_brif_else_target(&mut func.blocks[brif_block].terminator, bypass);
                     changed = true;
                 }
             }
@@ -133,38 +133,29 @@ fn normalize_logical_ops(func: &mut Function) -> bool {
 
 /// If `block` is trivially pure (only `Op::Const` instructions) and its
 /// terminator `Br` passes a single arg that is const-truthy (for OR, `want_truthy=true`)
-/// or const-falsy (for AND, `want_truthy=false`), return the `InstId` of the Br.
-fn trivially_pure_const_branch(
-    func: &Function,
-    block: BlockId,
-    want_truthy: bool,
-) -> Option<InstId> {
+/// or const-falsy (for AND, `want_truthy=false`), return true.
+fn trivially_pure_const_branch(func: &Function, block: BlockId, want_truthy: bool) -> bool {
     let blk = &func.blocks[block];
     // Block must take no params (empty — it's just the intermediate branch block).
     if !blk.params.is_empty() {
-        return None;
+        return false;
     }
-    // All instructions except the last must be Op::Const.
-    let n = blk.insts.len();
-    if n == 0 {
-        return None;
-    }
-    for &inst_id in &blk.insts[..n - 1] {
+    // All instructions must be Op::Const.
+    for &inst_id in &blk.insts {
         if !matches!(func.insts[inst_id].op, Op::Const(_)) {
-            return None;
+            return false;
         }
     }
-    // Last instruction must be Br with a single arg.
-    let last_id = blk.insts[n - 1];
-    let Op::Br { args, .. } = &func.insts[last_id].op else {
-        return None;
+    // Terminator must be Br with a single arg.
+    let Terminator::Br { args, .. } = &blk.terminator else {
+        return false;
     };
     if args.len() != 1 {
-        return None;
+        return false;
     }
     let arg = args[0];
     // The arg must be a const truthy or falsy value.
-    let is_match = func.insts.iter().any(|(_, inst)| {
+    func.insts.iter().any(|(_, inst)| {
         inst.result == Some(arg)
             && match &inst.op {
                 Op::Const(c) => {
@@ -176,64 +167,51 @@ fn trivially_pure_const_branch(
                 }
                 _ => false,
             }
-    });
-    if is_match {
-        Some(last_id)
-    } else {
-        None
-    }
-}
-
-/// Return true if `block` contains only `Op::Const` instructions (plus a Br
-/// terminator). Used to reject genuine ternaries where BOTH branches are pure.
-fn is_trivially_pure_block(func: &Function, block: BlockId) -> bool {
-    let blk = &func.blocks[block];
-    blk.insts.iter().all(|&id| {
-        matches!(
-            func.insts[id].op,
-            Op::Const(_) | Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Return(_)
-        )
     })
 }
 
-/// Build a new `Op::Br` for `br_inst_id` with the single arg replaced by `new_arg`.
-fn replace_br_arg(func: &Function, br_inst_id: InstId, new_arg: ValueId) -> Op {
-    let Op::Br { target, .. } = &func.insts[br_inst_id].op else {
-        unreachable!("replace_br_arg called on non-Br");
-    };
-    Op::Br {
-        target: *target,
-        args: vec![new_arg],
+/// Return true if `block` contains only `Op::Const` instructions (terminators
+/// are separate). Used to reject genuine ternaries where BOTH branches are pure.
+fn is_trivially_pure_block(func: &Function, block: BlockId) -> bool {
+    let blk = &func.blocks[block];
+    blk.insts
+        .iter()
+        .all(|&id| matches!(func.insts[id].op, Op::Const(_)))
+}
+
+/// Replace the single arg in a block's `Br` terminator with `new_arg`.
+fn replace_br_arg(func: &mut Function, block: BlockId, new_arg: ValueId) {
+    if let Terminator::Br { args, .. } = &mut func.blocks[block].terminator {
+        assert_eq!(args.len(), 1, "replace_br_arg expects single-arg Br");
+        args[0] = new_arg;
+    } else {
+        unreachable!("replace_br_arg called on non-Br block");
     }
 }
 
-/// Return the target of the `Br` instruction `br_inst_id`.
-fn get_br_target(func: &Function, br_inst_id: InstId) -> BlockId {
-    let Op::Br { target, .. } = &func.insts[br_inst_id].op else {
-        unreachable!("get_br_target called on non-Br");
+/// Return the target of a block's `Br` terminator.
+fn get_br_target(func: &Function, block: BlockId) -> BlockId {
+    let Terminator::Br { target, .. } = &func.blocks[block].terminator else {
+        unreachable!("get_br_target called on non-Br block");
     };
     *target
 }
 
-/// Return all successor block IDs of `block`'s terminator instruction.
+/// Return all successor block IDs of `block`'s terminator.
 fn block_successors(func: &Function, block: BlockId) -> Vec<BlockId> {
-    let blk = &func.blocks[block];
-    let Some(&last_id) = blk.insts.last() else {
-        return vec![];
-    };
-    match &func.insts[last_id].op {
-        Op::Br { target, .. } => vec![*target],
-        Op::BrIf {
+    match &func.blocks[block].terminator {
+        Terminator::Br { target, .. } => vec![*target],
+        Terminator::BrIf {
             then_target,
             else_target,
             ..
         } => vec![*then_target, *else_target],
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             let mut succs: Vec<BlockId> = cases.iter().map(|(_, b, _)| *b).collect();
             succs.push(default.0);
             succs
         }
-        _ => vec![],
+        Terminator::Return(_) => vec![],
     }
 }
 
@@ -261,25 +239,20 @@ fn is_loop_header(func: &Function, block: BlockId) -> bool {
 /// return its `BlockId`. Used to redirect a BrIf's else_target so that only
 /// this path receives `bypass_arg` while the shared else block is left intact.
 fn insert_bypass_block(func: &mut Function, merge_target: BlockId, bypass_arg: ValueId) -> BlockId {
-    let br_inst = func.insts.push(Inst {
-        op: Op::Br {
+    func.blocks.push(Block {
+        params: vec![],
+        insts: vec![],
+        terminator: Terminator::Br {
             target: merge_target,
             args: vec![bypass_arg],
         },
-        result: None,
-        span: None,
-    });
-    func.blocks.push(Block {
-        params: vec![],
-        insts: vec![br_inst],
-        terminator: None,
     })
 }
 
 /// Rewrite `op` (a `BrIf`) to use `new_else` as its else_target.
-fn update_brif_else_target(op: &mut Op, new_else: BlockId) {
-    match op {
-        Op::BrIf { else_target, .. } => *else_target = new_else,
+fn update_brif_else_target(term: &mut Terminator, new_else: BlockId) {
+    match term {
+        Terminator::BrIf { else_target, .. } => *else_target = new_else,
         _ => unreachable!("update_brif_else_target called on non-BrIf"),
     }
 }
@@ -305,7 +278,7 @@ mod tests {
     use super::*;
     use reincarnate_core::ir::builder::FunctionBuilder;
     use reincarnate_core::ir::builder::ModuleBuilder;
-    use reincarnate_core::ir::{CmpKind, FunctionSig, Op, Type, Visibility};
+    use reincarnate_core::ir::{CmpKind, FunctionSig, Type, Visibility};
 
     /// GML compiles `a && b && c` with a SHARED else-block:
     ///   Bf(else)  // if !a
@@ -387,8 +360,7 @@ mod tests {
 
         // block3's Br arg must still be v_zero — the shared block must NOT be modified.
         let b3 = &func.blocks[block3];
-        let last_inst = func.insts[*b3.insts.last().unwrap()].op.clone();
-        let Op::Br { args, .. } = last_inst else {
+        let Terminator::Br { args, .. } = &b3.terminator else {
             panic!("Expected Br terminator in block3");
         };
         assert_eq!(
@@ -398,10 +370,10 @@ mod tests {
 
         // block1's BrIf else_target should no longer be block3 — it points to the bypass block.
         let b1 = &func.blocks[block1];
-        let b1_brif = func.insts[*b1.insts.last().unwrap()].op.clone();
-        let Op::BrIf { else_target, .. } = b1_brif else {
+        let Terminator::BrIf { else_target, .. } = &b1.terminator else {
             panic!("Expected BrIf terminator in block1");
         };
+        let else_target = *else_target;
         assert_ne!(
             else_target, block3,
             "block1's BrIf else_target should be redirected to bypass, not block3"
@@ -409,16 +381,15 @@ mod tests {
 
         // The new bypass block should Br to block4 with cond_b as the arg.
         let bypass_blk = &func.blocks[else_target];
-        assert_eq!(bypass_blk.insts.len(), 1);
-        let bypass_br = func.insts[bypass_blk.insts[0]].op.clone();
-        let Op::Br {
+        assert!(bypass_blk.insts.is_empty());
+        let Terminator::Br {
             target: bypass_target,
             args: bypass_args,
-        } = bypass_br
+        } = &bypass_blk.terminator
         else {
-            panic!("Expected Br in bypass block");
+            panic!("Expected Br terminator in bypass block");
         };
-        assert_eq!(bypass_target, block4, "bypass block should Br to block4");
+        assert_eq!(*bypass_target, block4, "bypass block should Br to block4");
         assert_eq!(
             bypass_args[0], cond_b,
             "bypass block should forward cond_b to merge"
@@ -495,8 +466,7 @@ mod tests {
 
         // block2's Br arg must remain v_zero — NOT replaced with v_cond.
         let b2 = &func.blocks[block2];
-        let last_inst = func.insts[*b2.insts.last().unwrap()].op.clone();
-        let Op::Br { args, .. } = last_inst else {
+        let Terminator::Br { args, .. } = &b2.terminator else {
             panic!("Expected Br terminator in block2");
         };
         assert_eq!(
@@ -553,8 +523,7 @@ mod tests {
         // The pass must NOT modify block1's Br arg — it's a plain if-then, not ||.
         let func = result.module.functions.values().next().unwrap();
         let b1 = &func.blocks[block1];
-        let last_inst = func.insts[*b1.insts.last().unwrap()].op.clone();
-        let Op::Br { args, .. } = last_inst else {
+        let Terminator::Br { args, .. } = &b1.terminator else {
             panic!("Expected Br terminator in block1");
         };
         assert_eq!(

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use reincarnate_core::entity::EntityRef;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::func::Function;
-use reincarnate_core::ir::inst::{CmpKind, Op};
+use reincarnate_core::ir::inst::{CmpKind, Op, Terminator};
 use reincarnate_core::ir::value::{Constant, ValueId};
 
 /// Detect BrIf chains that represent switch statements and rewrite them
@@ -147,15 +147,10 @@ fn match_switch_block(
     expected_switch_val: Option<ValueId>,
 ) -> Option<SwitchBlockMatch> {
     let block = &func.blocks[block_id];
-    if block.insts.is_empty() {
-        return None;
-    }
 
-    // The terminator must be the last instruction and a BrIf.
-    let term_id = *block.insts.last()?;
-    let term = &func.insts[term_id];
-    let (cond_val, then_target, then_args, else_target, else_args) = match &term.op {
-        Op::BrIf {
+    // The terminator must be a BrIf.
+    let (cond_val, then_target, then_args, else_target, else_args) = match &block.terminator {
+        Terminator::BrIf {
             cond,
             then_target,
             then_args,
@@ -241,11 +236,9 @@ fn match_switch_block(
 /// Match a default block (just a Br terminator, possibly with block-arg assigns).
 fn match_default_block(func: &Function, block_id: BlockId) -> Option<(BlockId, Vec<ValueId>)> {
     let block = &func.blocks[block_id];
-    // The block should have only a terminator (Br).
-    let term_id = *block.insts.last()?;
-    let term = &func.insts[term_id];
-    match &term.op {
-        Op::Br { target, args } => Some((*target, args.clone())),
+    // The block's terminator should be Br.
+    match &block.terminator {
+        Terminator::Br { target, args } => Some((*target, args.clone())),
         _ => None,
     }
 }
@@ -291,9 +284,8 @@ fn rewrite_to_switch(func: &mut Function, block_id: BlockId, chain: &SwitchChain
         .insts
         .retain(|id| !remove_set.contains(id));
 
-    // Replace the terminator (last inst, which is the BrIf) with Op::Switch.
-    let term_id = *func.blocks[block_id].insts.last().unwrap();
-    func.insts[term_id].op = Op::Switch {
+    // Replace the block's BrIf terminator with Switch.
+    func.blocks[block_id].terminator = Terminator::Switch {
         value: chain.switch_value,
         cases: chain.cases.clone(),
         default: chain.default.clone(),

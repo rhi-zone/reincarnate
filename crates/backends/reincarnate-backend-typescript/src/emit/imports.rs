@@ -291,10 +291,6 @@ pub(super) fn collect_call_names_from_funcs<'a>(
                 | Op::BoolAnd(..)
                 | Op::BoolOr(..)
                 | Op::Select { .. }
-                | Op::Br { .. }
-                | Op::BrIf { .. }
-                | Op::Switch { .. }
-                | Op::Return(_)
                 | Op::Alloc(_)
                 | Op::Load(_)
                 | Op::Store { .. }
@@ -870,10 +866,6 @@ pub(super) fn collect_type_refs_from_function(
             | Op::BoolAnd(..)
             | Op::BoolOr(..)
             | Op::Select { .. }
-            | Op::Br { .. }
-            | Op::BrIf { .. }
-            | Op::Switch { .. }
-            | Op::Return(_)
             | Op::Load(_)
             | Op::Store { .. }
             | Op::SetField { .. }

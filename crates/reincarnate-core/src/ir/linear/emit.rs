@@ -14,7 +14,7 @@ use crate::entity::EntityRef;
 use crate::ir::ast::{BinOp, Expr, Stmt, UnaryOp};
 use crate::ir::block::BlockId;
 use crate::ir::func::{Function, MethodKind};
-use crate::ir::inst::{CastKind, CmpKind, InstId, Op};
+use crate::ir::inst::{CastKind, CmpKind, InstId, Op, Terminator};
 use crate::ir::ty::{FunctionSig, Type};
 use crate::ir::value::{Constant, ValueId};
 use crate::pipeline::LoweringConfig;
@@ -91,9 +91,6 @@ impl<'a> EmitCtx<'a> {
 
             // Forward: propagate block-param names to branch args.
             for (_, block) in func.blocks.iter() {
-                let Some(&last_inst) = block.insts.last() else {
-                    continue;
-                };
                 let mut propagate_fwd = |target: BlockId, args: &[ValueId]| {
                     let target_block = &func.blocks[target];
                     for (param, &src) in target_block.params.iter().zip(args.iter()) {
@@ -107,9 +104,9 @@ impl<'a> EmitCtx<'a> {
                         }
                     }
                 };
-                match &func.insts[last_inst].op {
-                    Op::Br { target, args } => propagate_fwd(*target, args),
-                    Op::BrIf {
+                match &block.terminator {
+                    Terminator::Br { target, args } => propagate_fwd(*target, args),
+                    Terminator::BrIf {
                         then_target,
                         then_args,
                         else_target,
@@ -119,13 +116,13 @@ impl<'a> EmitCtx<'a> {
                         propagate_fwd(*then_target, then_args);
                         propagate_fwd(*else_target, else_args);
                     }
-                    Op::Switch { cases, default, .. } => {
+                    Terminator::Switch { cases, default, .. } => {
                         for (_, target, args) in cases {
                             propagate_fwd(*target, args);
                         }
                         propagate_fwd(default.0, &default.1);
                     }
-                    _ => {}
+                    Terminator::Return(_) => {}
                 }
             }
 
@@ -133,9 +130,6 @@ impl<'a> EmitCtx<'a> {
             // Only assign when all named args feeding a param agree on the same name.
             let mut candidates: HashMap<ValueId, Option<String>> = HashMap::new();
             for (_, block) in func.blocks.iter() {
-                let Some(&last_inst) = block.insts.last() else {
-                    continue;
-                };
                 let mut collect = |target: BlockId, args: &[ValueId]| {
                     let target_block = &func.blocks[target];
                     for (param, &src) in target_block.params.iter().zip(args.iter()) {
@@ -156,9 +150,9 @@ impl<'a> EmitCtx<'a> {
                         }
                     }
                 };
-                match &func.insts[last_inst].op {
-                    Op::Br { target, args } => collect(*target, args),
-                    Op::BrIf {
+                match &block.terminator {
+                    Terminator::Br { target, args } => collect(*target, args),
+                    Terminator::BrIf {
                         then_target,
                         then_args,
                         else_target,
@@ -168,13 +162,13 @@ impl<'a> EmitCtx<'a> {
                         collect(*then_target, then_args);
                         collect(*else_target, else_args);
                     }
-                    Op::Switch { cases, default, .. } => {
+                    Terminator::Switch { cases, default, .. } => {
                         for (_, target, args) in cases {
                             collect(*target, args);
                         }
                         collect(default.0, &default.1);
                     }
-                    _ => {}
+                    Terminator::Return(_) => {}
                 }
             }
             // Sort candidates by ValueId for deterministic fixpoint convergence.
@@ -347,12 +341,10 @@ impl<'a> EmitCtx<'a> {
         {
             let mut loop_blocks: HashSet<BlockId> = HashSet::new();
             for (block_id, block) in func.blocks.iter() {
-                if let Some(&last) = block.insts.last() {
-                    let targets = crate::transforms::util::branch_targets(&func.insts[last].op);
-                    for t in &targets {
-                        if *t == block_id {
-                            loop_blocks.insert(block_id);
-                        }
+                let targets = crate::transforms::util::branch_targets(&block.terminator);
+                for t in &targets {
+                    if *t == block_id {
+                        loop_blocks.insert(block_id);
                     }
                 }
             }
@@ -918,14 +910,9 @@ impl<'a> EmitCtx<'a> {
             Op::Spread(v) => Expr::Spread(Box::new(self.build_val(*v))),
             Op::Copy(src) => self.build_val(*src),
 
-            Op::Br { .. }
-            | Op::BrIf { .. }
-            | Op::Switch { .. }
-            | Op::Return(_)
-            | Op::Alloc(_)
-            | Op::Store { .. }
-            | Op::SetField { .. }
-            | Op::SetIndex { .. } => return None,
+            Op::Alloc(_) | Op::Store { .. } | Op::SetField { .. } | Op::SetIndex { .. } => {
+                return None
+            }
         })
     }
 
@@ -1633,8 +1620,6 @@ impl<'a> EmitCtx<'a> {
                     stmts.push(Stmt::Assign { target, value: val });
                 }
             }
-            // Skip terminators in dispatch blocks.
-            Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } => {}
             _ => {
                 if let Some(expr) = self.build_expr_from_op(&op) {
                     stmts.push(Stmt::Expr(expr));

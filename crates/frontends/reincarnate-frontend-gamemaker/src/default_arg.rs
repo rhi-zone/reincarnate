@@ -31,6 +31,7 @@
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::inst::CmpKind;
+use reincarnate_core::ir::inst::Terminator;
 use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::{BlockId, Constant, Function, Module, Op, ValueId};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
@@ -86,31 +87,16 @@ fn recover_defaults(func: &mut Function) -> bool {
     // prevents later passes (e.g. IntToBoolPromotion) from changing the body
     // constant to a different type than the recovered sig default.
     for m in &matches {
-        let block = &func.blocks[m.check_block];
-        // Find the BrIf instruction in this block.
-        let brif_pos = block.insts.iter().position(|&iid| {
-            matches!(
-                &func.insts[iid].op,
-                Op::BrIf {
-                    then_target,
-                    ..
-                } if func.blocks.get(*then_target).is_some()
-            )
-        });
-        if let Some(pos) = brif_pos {
-            let brif_id = block.insts[pos];
-            // Extract the else_target and else_args from the BrIf.
-            if let Op::BrIf {
-                else_target,
-                else_args,
-                ..
-            } = &func.insts[brif_id].op
-            {
-                let target = *else_target;
-                let args = else_args.clone();
-                // Replace BrIf with unconditional Br to continue block.
-                func.insts[brif_id].op = Op::Br { target, args };
-            }
+        // Replace the BrIf terminator with unconditional Br to continue block.
+        if let Terminator::BrIf {
+            else_target,
+            else_args,
+            ..
+        } = &func.blocks[m.check_block].terminator
+        {
+            let target = *else_target;
+            let args = else_args.clone();
+            func.blocks[m.check_block].terminator = Terminator::Br { target, args };
         }
     }
 
@@ -316,60 +302,50 @@ fn try_match_default_check(
     let cmp_val = cmp_val?;
     let checked_param_idx = checked_param_idx?;
 
-    // Find the BrIf using this comparison result.
-    for &inst_id in insts {
-        let inst = &func.insts[inst_id];
-        if let Op::BrIf {
-            cond,
-            then_target,
-            then_args,
-            else_target,
-            else_args,
-        } = &inst.op
-        {
-            if *cond != cmp_val {
-                continue;
+    // Check the block's BrIf terminator using this comparison result.
+    if let Terminator::BrIf {
+        cond,
+        then_target,
+        then_args,
+        else_target,
+        else_args,
+    } = &func.blocks[block_id].terminator
+    {
+        if *cond != cmp_val {
+            return None;
+        }
+
+        // The `then_target` is the default-assignment block (condition is true = arg is undefined).
+        // The `else_target` is the continuation block (arg already has a value).
+        let default_block = *then_target;
+        let continue_block = *else_target;
+
+        // Verify: then_args should be empty (default block doesn't take params from here).
+        if !then_args.is_empty() {
+            return None;
+        }
+
+        // Check the default block: should have a Const + Br to continue_block.
+        let default_blk = &func.blocks[default_block];
+
+        // Find the constant in the default block's instructions.
+        let mut found_const = None;
+        for &dinst_id in &default_blk.insts {
+            let dinst = &func.insts[dinst_id];
+            if let Op::Const(c) = &dinst.op {
+                found_const = Some(c.clone());
             }
+        }
 
-            // The `then_target` is the default-assignment block (condition is true = arg is undefined).
-            // The `else_target` is the continuation block (arg already has a value).
-            let default_block = *then_target;
-            let continue_block = *else_target;
+        // Check the default block's Br terminator.
+        let found_br = if let Terminator::Br { target, args } = &default_blk.terminator {
+            *target == continue_block && args.len() == else_args.len()
+        } else {
+            false
+        };
 
-            // Verify: then_args should be empty (default block doesn't take params from here).
-            if !then_args.is_empty() {
-                continue;
-            }
-
-            // Verify: else_args should pass the original param through.
-            // (It forwards the existing argument value to the continuation block.)
-            // We don't strictly need to verify this — the pattern is clear enough
-            // from the GetField/Cmp/BrIf structure.
-
-            // Check the default block: should have a Const + Br to continue_block.
-            let default_blk = &func.blocks[default_block];
-
-            // Find the constant and the branch in the default block.
-            let mut found_const = None;
-            let mut found_br = false;
-            for &dinst_id in &default_blk.insts {
-                let dinst = &func.insts[dinst_id];
-                match &dinst.op {
-                    Op::Const(c) => {
-                        found_const = Some(c.clone());
-                    }
-                    Op::Br { target, args } => {
-                        if *target == continue_block && args.len() == else_args.len() {
-                            found_br = true;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-
-            if let (Some(constant), true) = (found_const, found_br) {
-                return Some((checked_param_idx, constant, continue_block));
-            }
+        if let (Some(constant), true) = (found_const, found_br) {
+            return Some((checked_param_idx, constant, continue_block));
         }
     }
 

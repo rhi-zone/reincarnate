@@ -8,7 +8,7 @@ use super::LinearStmt;
 use crate::entity::EntityRef;
 use crate::ir::block::BlockId;
 use crate::ir::func::Function;
-use crate::ir::inst::Op;
+use crate::ir::inst::Terminator;
 use crate::ir::structurize::{BlockArgAssign, Shape};
 
 /// Convert a structurized shape tree into a flat sequence of LinearStmts.
@@ -247,20 +247,15 @@ fn emit_block_insts(func: &Function, block_id: BlockId, out: &mut Vec<LinearStmt
     let block = &func.blocks[block_id];
     for &inst_id in &block.insts {
         let inst = &func.insts[inst_id];
-        match &inst.op {
-            // Terminators absorbed by Shape structure.
-            Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } => break,
-            Op::Return(v) => {
-                out.push(LinearStmt::Return { value: *v });
-            }
-            _ => {
-                if let Some(result) = inst.result {
-                    out.push(LinearStmt::Def { result, inst_id });
-                } else {
-                    out.push(LinearStmt::Effect { inst_id });
-                }
-            }
+        if let Some(result) = inst.result {
+            out.push(LinearStmt::Def { result, inst_id });
+        } else {
+            out.push(LinearStmt::Effect { inst_id });
         }
+    }
+    // Emit Return from block terminator (branch terminators are absorbed by Shape).
+    if let Terminator::Return(v) = &block.terminator {
+        out.push(LinearStmt::Return { value: *v });
     }
 }
 
@@ -269,26 +264,21 @@ fn emit_dispatch_block_insts(func: &Function, block_id: BlockId, out: &mut Vec<L
     let block = &func.blocks[block_id];
     for &inst_id in &block.insts {
         let inst = &func.insts[inst_id];
-        match &inst.op {
-            Op::Return(v) => out.push(LinearStmt::Return { value: *v }),
-            _ => {
-                if let Some(result) = inst.result {
-                    out.push(LinearStmt::Def { result, inst_id });
-                } else {
-                    out.push(LinearStmt::Effect { inst_id });
-                }
-            }
+        if let Some(result) = inst.result {
+            out.push(LinearStmt::Def { result, inst_id });
+        } else {
+            out.push(LinearStmt::Effect { inst_id });
         }
+    }
+    if let Terminator::Return(v) = &block.terminator {
+        out.push(LinearStmt::Return { value: *v });
     }
 }
 
 /// Emit branch-arg assignments from a block's unconditional Br terminator.
 fn emit_br_assigns(func: &Function, block_id: BlockId, out: &mut Vec<LinearStmt>) {
     let block = &func.blocks[block_id];
-    let Some(&last_inst) = block.insts.last() else {
-        return;
-    };
-    if let Op::Br { target, ref args } = func.insts[last_inst].op {
+    if let Terminator::Br { target, ref args } = block.terminator {
         let target_block = &func.blocks[target];
         for (param, &src) in target_block.params.iter().zip(args.iter()) {
             if param.value == src || func.null_sentinel_values.contains(&src) {

@@ -317,11 +317,11 @@ fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
 fn collect_branch_args(func: &Function) -> HashMap<(BlockId, usize), Vec<ValueId>> {
     let mut incoming: HashMap<(BlockId, usize), Vec<ValueId>> = HashMap::new();
 
-    for inst in func.insts.values() {
-        let targets = branch_targets(&inst.op);
-        for (block, args) in targets {
+    for (_, block) in func.blocks.iter() {
+        let targets = branch_target_args(&block.terminator);
+        for (target_block, args) in targets {
             for (i, arg) in args.iter().enumerate() {
-                incoming.entry((block, i)).or_default().push(*arg);
+                incoming.entry((target_block, i)).or_default().push(*arg);
             }
         }
     }
@@ -329,11 +329,12 @@ fn collect_branch_args(func: &Function) -> HashMap<(BlockId, usize), Vec<ValueId
     incoming
 }
 
-/// Extract (target_block, args) pairs from a branch instruction.
-fn branch_targets(op: &Op) -> Vec<(BlockId, &[ValueId])> {
-    match op {
-        Op::Br { target, args } => vec![(*target, args.as_slice())],
-        Op::BrIf {
+/// Extract (target_block, args) pairs from a block terminator.
+fn branch_target_args(term: &crate::ir::inst::Terminator) -> Vec<(BlockId, &[ValueId])> {
+    use crate::ir::inst::Terminator;
+    match term {
+        Terminator::Br { target, args } => vec![(*target, args.as_slice())],
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -343,13 +344,13 @@ fn branch_targets(op: &Op) -> Vec<(BlockId, &[ValueId])> {
             (*then_target, then_args.as_slice()),
             (*else_target, else_args.as_slice()),
         ],
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             let mut targets: Vec<(BlockId, &[ValueId])> =
                 cases.iter().map(|(_, b, a)| (*b, a.as_slice())).collect();
             targets.push((default.0, default.1.as_slice()));
             targets
         }
-        _ => vec![],
+        Terminator::Return(_) => vec![],
     }
 }
 
@@ -729,7 +730,6 @@ fn infer_field_use_type(
         }
         Op::Not(v) if *v == vid => Some(Type::Bool),
         Op::BoolAnd(a, b) | Op::BoolOr(a, b) if *a == vid || *b == vid => Some(Type::Bool),
-        Op::BrIf { cond, .. } if *cond == vid => Some(Type::Bool),
         Op::Select { cond, .. } if *cond == vid => Some(Type::Bool),
         // `field == "literal"` — infer field type from the other operand's known type.
         Op::Cmp(_, a, b) if *a == vid || *b == vid => {
@@ -1434,6 +1434,27 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                         }
                     }
                 }
+                // Also check terminators: BrIf cond implies Bool.
+                for (_, block) in func.blocks.iter() {
+                    if let crate::ir::inst::Terminator::BrIf { cond, .. } = &block.terminator {
+                        for (vid, root, path) in non_root
+                            .iter()
+                            .filter(|(v, _, _)| !has_struct_children.contains(v))
+                        {
+                            if *cond == *vid {
+                                let (key, field) = schema_key_field(root, path);
+                                let entry = struct_schemas
+                                    .entry(key)
+                                    .or_default()
+                                    .entry(field)
+                                    .or_insert(Type::Dynamic);
+                                if *entry == Type::Dynamic {
+                                    *entry = Type::Bool;
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Step B: parent nodes with struct children → type as nested struct
                 // (only if use-site inference didn't already set a concrete type, so
@@ -1889,8 +1910,8 @@ impl Transform for TypeInference {
             }
             let mut return_types: Vec<&Type> = Vec::new();
             let mut has_void_return = false;
-            for inst in func.insts.values() {
-                if let Op::Return(val) = &inst.op {
+            for (_, block) in func.blocks.iter() {
+                if let crate::ir::inst::Terminator::Return(val) = &block.terminator {
                     match val {
                         Some(v) => return_types.push(&func.value_types[*v]),
                         None => has_void_return = true,

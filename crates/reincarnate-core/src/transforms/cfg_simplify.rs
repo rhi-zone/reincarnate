@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::error::CoreError;
-use crate::ir::{BlockId, Constant, Function, Inst, InstId, Module, Op, Type, ValueId};
+use crate::ir::inst::Terminator;
+use crate::ir::{BlockId, Constant, Function, Inst, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
-use super::util::{branch_targets, substitute_values_in_op};
+use super::util::{branch_targets, substitute_values_in_op, substitute_values_in_terminator};
 
 /// CFG simplification transform — removes redundant blocks and simplifies control flow.
 ///
@@ -23,12 +24,9 @@ fn find_reachable_blocks(func: &Function) -> HashSet<BlockId> {
     reachable.insert(func.entry);
 
     while let Some(block_id) = worklist.pop_front() {
-        let block = &func.blocks[block_id];
-        for &inst_id in &block.insts {
-            for target in branch_targets(&func.insts[inst_id].op) {
-                if reachable.insert(target) {
-                    worklist.push_back(target);
-                }
+        for target in branch_targets(&func.blocks[block_id].terminator) {
+            if reachable.insert(target) {
+                worklist.push_back(target);
             }
         }
     }
@@ -41,21 +39,17 @@ fn build_predecessor_map(func: &Function) -> HashMap<BlockId, Vec<BlockId>> {
     let mut preds: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
     for block_id in func.blocks.keys() {
         preds.entry(block_id).or_default();
-        for &inst_id in &func.blocks[block_id].insts {
-            for target in branch_targets(&func.insts[inst_id].op) {
-                preds.entry(target).or_default().push(block_id);
-            }
+        for target in branch_targets(&func.blocks[block_id].terminator) {
+            preds.entry(target).or_default().push(block_id);
         }
     }
     preds
 }
 
-/// Rewrite branch targets in an Op: replace `old` block with `new` block,
-/// optionally remapping args via an index mapping.
-/// `arg_remap[i]` gives the index into the predecessor's original args to use
-/// for the i-th arg of the new target.
-fn redirect_block_target_in_op(
-    op: &mut Op,
+/// Rewrite branch targets in a Terminator: replace `old` block with `new` block,
+/// optionally remapping args via a template.
+fn redirect_block_target_in_terminator(
+    term: &mut Terminator,
     old: BlockId,
     new: BlockId,
     new_args_template: Option<&[ValueId]>,
@@ -64,18 +58,14 @@ fn redirect_block_target_in_op(
         if *target == old {
             *target = new;
             if let Some(template) = new_args_template {
-                // Build new args from the template. Template values that are
-                // block params of `old` have already been resolved to concrete
-                // values by the caller through the arg_index_remap path,
-                // so we just assign directly.
                 *args = template.to_vec();
             }
         }
     };
 
-    match op {
-        Op::Br { target, args } => remap_args(target, args),
-        Op::BrIf {
+    match term {
+        Terminator::Br { target, args } => remap_args(target, args),
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -85,26 +75,26 @@ fn redirect_block_target_in_op(
             remap_args(then_target, then_args);
             remap_args(else_target, else_args);
         }
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             for (_, target, args) in cases {
                 remap_args(target, args);
             }
             remap_args(&mut default.0, &mut default.1);
         }
-        _ => {}
+        Terminator::Return(_) => {}
     }
 }
 
 /// Phase 1: Forward empty blocks.
 ///
-/// A block is "empty" if its only instruction is `Br { target, args }`.
+/// A block is "empty" if it has no instructions and a `Br` terminator.
 /// We redirect predecessors to bypass the empty block.
 ///
 /// Returns true if any changes were made.
 fn forward_empty_blocks(func: &mut Function) -> bool {
     let mut changed = false;
 
-    // Identify forwarding candidates: blocks with exactly one instruction that is a Br.
+    // Identify forwarding candidates: blocks with no instructions and a Br terminator.
     // Collect the forwarding info before mutating.
     let mut forwards: HashMap<BlockId, (BlockId, Vec<ValueId>)> = HashMap::new();
 
@@ -115,12 +105,11 @@ fn forward_empty_blocks(func: &mut Function) -> bool {
         }
 
         let block = &func.blocks[block_id];
-        if block.insts.len() != 1 {
+        if !block.insts.is_empty() {
             continue;
         }
 
-        let inst = &func.insts[block.insts[0]];
-        if let Op::Br { target, args } = &inst.op {
+        if let Terminator::Br { target, args } = &block.terminator {
             forwards.insert(block_id, (*target, args.clone()));
         }
     }
@@ -222,49 +211,46 @@ fn forward_empty_blocks(func: &mut Function) -> bool {
 
     // Now rewrite predecessors.
     for block_id in func.blocks.keys().collect::<Vec<_>>() {
-        let inst_ids: Vec<_> = func.blocks[block_id].insts.clone();
-        for inst_id in inst_ids {
-            let targets = branch_targets(&func.insts[inst_id].op);
-            for fwd_block in targets {
-                let info = match forward_info.get(&fwd_block) {
-                    Some(info) => info,
-                    None => continue,
-                };
+        let targets = branch_targets(&func.blocks[block_id].terminator);
+        for fwd_block in targets {
+            let info = match forward_info.get(&fwd_block) {
+                Some(info) => info,
+                None => continue,
+            };
 
-                // Safety: skip if forwarding would create a self-loop.
-                if info.target == block_id {
-                    continue;
+            // Safety: skip if forwarding would create a self-loop.
+            if info.target == block_id {
+                continue;
+            }
+
+            // Build the new args for the redirected branch.
+            match &info.param_remap {
+                None => {
+                    // Fixed args case: replace target and use the fixed args.
+                    redirect_block_target_in_terminator(
+                        &mut func.blocks[block_id].terminator,
+                        fwd_block,
+                        info.target,
+                        Some(&info.fixed_args),
+                    );
+                    changed = true;
                 }
-
-                // Build the new args for the redirected branch.
-                match &info.param_remap {
-                    None => {
-                        // Fixed args case: replace target and use the fixed args.
-                        redirect_block_target_in_op(
-                            &mut func.insts[inst_id].op,
-                            fwd_block,
-                            info.target,
-                            Some(&info.fixed_args),
-                        );
-                        changed = true;
-                    }
-                    Some(remap) => {
-                        // Remapped case: get the predecessor's current args for fwd_block,
-                        // then remap them.
-                        let pred_args = get_branch_args(&func.insts[inst_id].op, fwd_block);
-                        if let Some(pred_args) = pred_args {
-                            // Validate all remap indices are within bounds.
-                            if remap.iter().all(|&idx| idx < pred_args.len()) {
-                                let new_args: Vec<ValueId> =
-                                    remap.iter().map(|&idx| pred_args[idx]).collect();
-                                redirect_block_target_in_op(
-                                    &mut func.insts[inst_id].op,
-                                    fwd_block,
-                                    info.target,
-                                    Some(&new_args),
-                                );
-                                changed = true;
-                            }
+                Some(remap) => {
+                    // Remapped case: get the predecessor's current args for fwd_block,
+                    // then remap them.
+                    let pred_args = get_branch_args(&func.blocks[block_id].terminator, fwd_block);
+                    if let Some(pred_args) = pred_args {
+                        // Validate all remap indices are within bounds.
+                        if remap.iter().all(|&idx| idx < pred_args.len()) {
+                            let new_args: Vec<ValueId> =
+                                remap.iter().map(|&idx| pred_args[idx]).collect();
+                            redirect_block_target_in_terminator(
+                                &mut func.blocks[block_id].terminator,
+                                fwd_block,
+                                info.target,
+                                Some(&new_args),
+                            );
+                            changed = true;
                         }
                     }
                 }
@@ -275,13 +261,13 @@ fn forward_empty_blocks(func: &mut Function) -> bool {
     changed
 }
 
-/// Get the branch args from an Op for a specific target block.
-fn get_branch_args(op: &Op, target: BlockId) -> Option<Vec<ValueId>> {
-    match op {
-        Op::Br {
+/// Get the branch args from a Terminator for a specific target block.
+fn get_branch_args(term: &Terminator, target: BlockId) -> Option<Vec<ValueId>> {
+    match term {
+        Terminator::Br {
             target: t, args, ..
         } if *t == target => Some(args.clone()),
-        Op::BrIf {
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -296,7 +282,7 @@ fn get_branch_args(op: &Op, target: BlockId) -> Option<Vec<ValueId>> {
                 None
             }
         }
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             for (_, t, args) in cases {
                 if *t == target {
                     return Some(args.clone());
@@ -314,8 +300,8 @@ fn get_branch_args(op: &Op, target: BlockId) -> Option<Vec<ValueId>> {
 
 /// Phase 2: Merge blocks.
 ///
-/// If block A ends with `Br { target: B, args }`, B has exactly one predecessor (A),
-/// B is not the entry block, A ≠ B, and B is non-empty, merge B into A.
+/// If block A's terminator is `Br { target: B, args }`, B has exactly one predecessor (A),
+/// B is not the entry block, A != B, and B is non-empty, merge B into A.
 ///
 /// Returns true if any changes were made.
 fn merge_blocks(func: &mut Function) -> bool {
@@ -323,14 +309,8 @@ fn merge_blocks(func: &mut Function) -> bool {
     let preds = build_predecessor_map(func);
 
     for block_a in func.blocks.keys().collect::<Vec<_>>() {
-        let a_insts = &func.blocks[block_a].insts;
-        if a_insts.is_empty() {
-            continue;
-        }
-
-        let last_inst_id = *a_insts.last().unwrap();
-        let (target_b, br_args) = match &func.insts[last_inst_id].op {
-            Op::Br { target, args } => (*target, args.clone()),
+        let (target_b, br_args) = match &func.blocks[block_a].terminator {
+            Terminator::Br { target, args } => (*target, args.clone()),
             _ => continue,
         };
 
@@ -346,10 +326,12 @@ fn merge_blocks(func: &mut Function) -> bool {
         if preds.get(&target_b).map_or(0, |p| p.len()) != 1 {
             continue;
         }
-        // B must be non-empty (already cleared blocks are skipped).
-        if func.blocks[target_b].insts.is_empty() {
-            continue;
-        }
+        // Skip blocks that were already cleared by a previous iteration of this loop.
+        // A cleared block has no insts, no params, and a default terminator — but so does
+        // a legitimate Return(None) block. Use the predecessor map to distinguish: a cleared
+        // block's predecessor entry was already processed (no remaining edges to it).
+        // The simplest correct check: if A's Br is the only edge, B must be non-self
+        // (already checked above). The merge is always valid for any single-predecessor block.
 
         // Build substitution: B's param values → A's branch args.
         let b_params: Vec<ValueId> = func.blocks[target_b]
@@ -370,21 +352,23 @@ fn merge_blocks(func: &mut Function) -> bool {
         let b_insts: Vec<_> = func.blocks[target_b].insts.clone();
 
         // Rewrite operands in B's instructions using the substitution.
-        // Also rewrite any branch targets from B back to B → A (self-references after merge).
         for &inst_id in &b_insts {
             substitute_values_in_op(&mut func.insts[inst_id].op, &subst);
-            redirect_block_target_in_op(&mut func.insts[inst_id].op, target_b, block_a, None);
         }
 
-        // Remove A's terminal Br.
-        func.blocks[block_a].insts.pop();
+        // Take B's terminator, apply substitution, and redirect self-references.
+        let mut b_terminator = func.blocks[target_b].terminator.clone();
+        substitute_values_in_terminator(&mut b_terminator, &subst);
+        redirect_block_target_in_terminator(&mut b_terminator, target_b, block_a, None);
 
-        // Append B's instructions to A.
+        // Append B's instructions to A and adopt B's terminator.
         func.blocks[block_a].insts.extend_from_slice(&b_insts);
+        func.blocks[block_a].terminator = b_terminator;
 
         // Clear B.
         func.blocks[target_b].insts.clear();
         func.blocks[target_b].params.clear();
+        func.blocks[target_b].terminator = Terminator::default();
 
         changed = true;
     }
@@ -392,15 +376,15 @@ fn merge_blocks(func: &mut Function) -> bool {
     changed
 }
 
-/// Remove the branch argument at `index` from any branch targeting `target` in `op`.
-fn remove_branch_arg_at(op: &mut Op, target: BlockId, index: usize) {
-    match op {
-        Op::Br {
+/// Remove the branch argument at `index` from any branch targeting `target` in the terminator.
+fn remove_branch_arg_at(term: &mut Terminator, target: BlockId, index: usize) {
+    match term {
+        Terminator::Br {
             target: t, args, ..
         } if *t == target => {
             args.remove(index);
         }
-        Op::BrIf {
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -414,7 +398,7 @@ fn remove_branch_arg_at(op: &mut Op, target: BlockId, index: usize) {
                 else_args.remove(index);
             }
         }
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             for (_, t, args) in cases.iter_mut() {
                 if *t == target {
                     args.remove(index);
@@ -428,18 +412,18 @@ fn remove_branch_arg_at(op: &mut Op, target: BlockId, index: usize) {
     }
 }
 
-/// Collect all branch argument lists targeting `target` from an Op.
+/// Collect all branch argument lists targeting `target` from a Terminator.
 /// Unlike `get_branch_args` which returns the first match, this returns ALL
 /// arg lists (e.g., both then_args and else_args if both target the same block).
-fn collect_all_branch_args(op: &Op, target: BlockId) -> Vec<&Vec<ValueId>> {
+fn collect_all_branch_args(term: &Terminator, target: BlockId) -> Vec<&Vec<ValueId>> {
     let mut result = Vec::new();
-    match op {
-        Op::Br {
+    match term {
+        Terminator::Br {
             target: t, args, ..
         } if *t == target => {
             result.push(args);
         }
-        Op::BrIf {
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -453,7 +437,7 @@ fn collect_all_branch_args(op: &Op, target: BlockId) -> Vec<&Vec<ValueId>> {
                 result.push(else_args);
             }
         }
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             for (_, t, args) in cases {
                 if *t == target {
                     result.push(args);
@@ -500,13 +484,11 @@ fn eliminate_trivial_params(func: &mut Function) -> bool {
     // Collect removals: (block, param indices to remove in reverse order).
     let mut removals: Vec<(BlockId, Vec<usize>)> = Vec::new();
 
-    // Precompute: target → [inst_ids that branch to it]
-    let mut incoming_edges: HashMap<BlockId, Vec<InstId>> = HashMap::new();
+    // Precompute: target → [block_ids that branch to it]
+    let mut incoming_edges: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
     for &src_block in &reachable {
-        for &inst_id in &func.blocks[src_block].insts {
-            for target in branch_targets(&func.insts[inst_id].op) {
-                incoming_edges.entry(target).or_default().push(inst_id);
-            }
+        for target in branch_targets(&func.blocks[src_block].terminator) {
+            incoming_edges.entry(target).or_default().push(src_block);
         }
     }
 
@@ -524,9 +506,12 @@ fn eliminate_trivial_params(func: &mut Function) -> bool {
 
         // Collect all incoming arg lists for this block using precomputed edge map.
         let mut incoming: Vec<&Vec<ValueId>> = Vec::new();
-        if let Some(edge_insts) = incoming_edges.get(&block_id) {
-            for &inst_id in edge_insts {
-                incoming.extend(collect_all_branch_args(&func.insts[inst_id].op, block_id));
+        if let Some(edge_blocks) = incoming_edges.get(&block_id) {
+            for &src_block in edge_blocks {
+                incoming.extend(collect_all_branch_args(
+                    &func.blocks[src_block].terminator,
+                    block_id,
+                ));
             }
         }
 
@@ -620,23 +605,25 @@ fn eliminate_trivial_params(func: &mut Function) -> bool {
 
     // Remove branch args and apply substitutions only in reachable blocks.
     for &block_id in &reachable {
-        for &inst_id in &func.blocks[block_id].insts {
-            // Remove branch args from instructions that target affected blocks.
-            // Deduplicate targets since remove_branch_arg_at handles all arms
-            // of a BrIf/Switch in one call.
+        // Update terminator: remove branch args for affected blocks.
+        {
             let mut seen = HashSet::new();
-            for target in branch_targets(&func.insts[inst_id].op) {
+            for target in branch_targets(&func.blocks[block_id].terminator) {
                 if !seen.insert(target) {
                     continue;
                 }
                 if let Some(indices) = removal_map.get(&target) {
                     for &i in *indices {
-                        remove_branch_arg_at(&mut func.insts[inst_id].op, target, i);
+                        remove_branch_arg_at(&mut func.blocks[block_id].terminator, target, i);
                     }
                 }
             }
+            // Apply value substitution to terminator.
+            substitute_values_in_terminator(&mut func.blocks[block_id].terminator, &subst);
+        }
 
-            // Apply value substitution.
+        // Apply value substitution to instructions.
+        for &inst_id in &func.blocks[block_id].insts {
             substitute_values_in_op(&mut func.insts[inst_id].op, &subst);
         }
     }
@@ -650,12 +637,17 @@ fn cleanup_unreachable(func: &mut Function) -> bool {
     let mut changed = false;
 
     for block_id in func.blocks.keys().collect::<Vec<_>>() {
-        if !reachable.contains(&block_id)
-            && (!func.blocks[block_id].insts.is_empty() || !func.blocks[block_id].params.is_empty())
-        {
-            func.blocks[block_id].insts.clear();
-            func.blocks[block_id].params.clear();
-            changed = true;
+        if !reachable.contains(&block_id) {
+            let block = &func.blocks[block_id];
+            let is_non_default = !block.insts.is_empty()
+                || !block.params.is_empty()
+                || !matches!(block.terminator, Terminator::Return(None));
+            if is_non_default {
+                func.blocks[block_id].insts.clear();
+                func.blocks[block_id].params.clear();
+                func.blocks[block_id].terminator = Terminator::default();
+                changed = true;
+            }
         }
     }
 
@@ -673,13 +665,8 @@ fn collapse_same_target_brif(func: &mut Function) -> bool {
     let mut changed = false;
 
     for block_id in func.blocks.keys().collect::<Vec<_>>() {
-        let insts = func.blocks[block_id].insts.clone();
-        let Some(&last_inst_id) = insts.last() else {
-            continue;
-        };
-
-        let (cond, target, then_args, else_args) = match &func.insts[last_inst_id].op {
-            Op::BrIf {
+        let (cond, target, then_args, else_args) = match &func.blocks[block_id].terminator {
+            Terminator::BrIf {
                 cond,
                 then_target,
                 then_args,
@@ -721,15 +708,13 @@ fn collapse_same_target_brif(func: &mut Function) -> bool {
                     result: Some(result_val),
                     span: None,
                 });
-                // Insert the Select before the terminator.
-                let term_pos = func.blocks[block_id].insts.len() - 1;
-                func.blocks[block_id].insts.insert(term_pos, select_inst);
+                func.blocks[block_id].insts.push(select_inst);
                 unified_args.push(result_val);
             }
         }
 
         // Replace BrIf with Br.
-        func.insts[last_inst_id].op = Op::Br {
+        func.blocks[block_id].terminator = Terminator::Br {
             target,
             args: unified_args,
         };
@@ -781,6 +766,7 @@ mod tests {
     use super::*;
     use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
+    use crate::ir::inst::Terminator;
     use crate::ir::ty::FunctionSig;
     use crate::ir::{FuncId, Type, Visibility};
 
@@ -822,11 +808,10 @@ mod tests {
         // After forwarding entry→C, C has one predecessor (entry) so it gets merged.
         // Entry should now contain the return directly.
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         assert!(
-            matches!(func.insts[last_inst].op, Op::Return(_)),
+            matches!(func.blocks[entry].terminator, Terminator::Return(_)),
             "expected Return after forwarding + merge, got {:?}",
-            func.insts[last_inst].op
+            func.blocks[entry].terminator
         );
         // B and C should be cleared.
         assert!(func.blocks[block_b].insts.is_empty());
@@ -865,9 +850,8 @@ mod tests {
         // const 42, return(42)
         // (The return's operand gets substituted from C's param to the branch arg `val`.)
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
-        match &func.insts[last_inst].op {
-            Op::Return(Some(v)) => assert_eq!(*v, val),
+        match &func.blocks[entry].terminator {
+            Terminator::Return(Some(v)) => assert_eq!(*v, val),
             other => panic!("expected Return(Some(val)), got {:?}", other),
         }
     }
@@ -905,9 +889,8 @@ mod tests {
         // C has one predecessor so it gets merged into entry.
         // C's return(p0) gets substituted: p0 → v20 (first arg passed to C).
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
-        match &func.insts[last_inst].op {
-            Op::Return(Some(v)) => assert_eq!(*v, v20),
+        match &func.blocks[entry].terminator {
+            Terminator::Return(Some(v)) => assert_eq!(*v, v20),
             other => panic!("expected Return(Some(v20)), got {:?}", other),
         }
     }
@@ -944,10 +927,13 @@ mod tests {
             .iter()
             .map(|id| &func.insts[*id].op)
             .collect();
-        // Should have: const 42, return 42
-        assert_eq!(ops.len(), 2);
+        // Should have: const 42. Return is in terminator.
+        assert_eq!(ops.len(), 1);
         assert!(matches!(ops[0], Op::Const(_)));
-        assert!(matches!(ops[1], Op::Return(Some(_))));
+        assert!(matches!(
+            func.blocks[entry].terminator,
+            Terminator::Return(Some(_))
+        ));
     }
 
     /// Entry block is never forwarded through.
@@ -971,10 +957,13 @@ mod tests {
 
         let func = apply_cfg_simplify(fb.build());
 
-        // Entry should still exist with its branch (though B may be merged into it).
-        // The key assertion: the function still works — entry is the start.
+        // Entry should still exist (though B may be merged into it).
+        // After merge, entry has B's Return terminator.
         let entry = func.entry;
-        assert!(!func.blocks[entry].insts.is_empty());
+        assert!(
+            matches!(func.blocks[entry].terminator, Terminator::Return(_)),
+            "entry should have a return after merge"
+        );
     }
 
     /// Self-loop preserved: a block branching to itself is not broken.
@@ -1001,9 +990,8 @@ mod tests {
         // loop_block should still branch to itself.
         // (It may have been merged into entry, but the self-loop should survive.)
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
-        match &func.insts[last_inst].op {
-            Op::Br { target, .. } => {
+        match &func.blocks[entry].terminator {
+            Terminator::Br { target, .. } => {
                 // Either loop_block still exists, or it was merged into entry
                 // forming a self-loop on entry.
                 assert!(
@@ -1048,11 +1036,10 @@ mod tests {
         // After forwarding, BrIf targets B from both arms → collapses to Br(B) →
         // B merges into entry. Entry should end with Return.
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         assert!(
-            matches!(func.insts[last_inst].op, Op::Return(_)),
+            matches!(func.blocks[entry].terminator, Terminator::Return(_)),
             "expected Return after collapse + merge, got {:?}",
-            func.insts[last_inst].op
+            func.blocks[entry].terminator
         );
     }
 
@@ -1089,17 +1076,11 @@ mod tests {
 
         // After simplification, entry should reach D directly (or D merged into entry).
         let entry = func.entry;
-        let ops: Vec<_> = func.blocks[entry]
-            .insts
-            .iter()
-            .map(|id| &func.insts[*id].op)
-            .collect();
 
         // Should end with a return (D merged) or Br to D.
-        let last = ops.last().unwrap();
-        match last {
-            Op::Return(_) => {} // D was merged all the way in
-            Op::Br { target, .. } => assert_eq!(*target, block_d),
+        match &func.blocks[entry].terminator {
+            Terminator::Return(_) => {} // D was merged all the way in
+            Terminator::Br { target, .. } => assert_eq!(*target, block_d),
             other => panic!("expected Return or Br to D, got {:?}", other),
         }
     }
@@ -1141,9 +1122,8 @@ mod tests {
 
         // After forwarding + same-target collapse + merge, entry should return val directly.
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
-        match &func.insts[last_inst].op {
-            Op::Return(Some(v)) => assert_eq!(*v, val),
+        match &func.blocks[entry].terminator {
+            Terminator::Return(Some(v)) => assert_eq!(*v, val),
             other => panic!("expected Return(Some(val)), got {:?}", other),
         }
     }
@@ -1187,9 +1167,8 @@ mod tests {
             .any(|&id| matches!(func.insts[id].op, Op::Select { .. }));
         assert!(has_select, "different args should produce Select");
 
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         assert!(
-            matches!(func.insts[last_inst].op, Op::Return(Some(_))),
+            matches!(func.blocks[entry].terminator, Terminator::Return(Some(_))),
             "should end with Return"
         );
     }
@@ -1239,9 +1218,8 @@ mod tests {
             .any(|&id| matches!(func.insts[id].op, Op::Select { .. }));
         assert!(has_select, "differing param should produce Select");
 
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         assert!(
-            matches!(func.insts[last_inst].op, Op::Return(Some(_))),
+            matches!(func.blocks[entry].terminator, Terminator::Return(Some(_))),
             "should end with Return"
         );
     }
@@ -1270,10 +1248,9 @@ mod tests {
 
         // Should collapse to Br + eliminate trivial param.
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         // After merging, the return should reference val directly.
-        match &func.insts[last_inst].op {
-            Op::Return(Some(v)) => assert_eq!(*v, val),
+        match &func.blocks[entry].terminator {
+            Terminator::Return(Some(v)) => assert_eq!(*v, val),
             other => panic!("expected Return(Some(val)), got {:?}", other),
         }
         // No Select should be inserted since args are identical.
@@ -1316,9 +1293,8 @@ mod tests {
             .any(|&id| matches!(func.insts[id].op, Op::Select { .. }));
         assert!(has_select, "differing args should produce a Select");
 
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         assert!(
-            matches!(func.insts[last_inst].op, Op::Return(Some(_))),
+            matches!(func.blocks[entry].terminator, Terminator::Return(Some(_))),
             "should end with Return"
         );
     }
@@ -1387,11 +1363,10 @@ mod tests {
 
         // Should still have a BrIf (different targets).
         let entry = func.entry;
-        let has_brif = func.blocks[entry]
-            .insts
-            .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::BrIf { .. }));
-        assert!(has_brif, "different targets should preserve BrIf");
+        assert!(
+            matches!(func.blocks[entry].terminator, Terminator::BrIf { .. }),
+            "different targets should preserve BrIf"
+        );
     }
 
     // ---- Edge case tests ----
@@ -1419,9 +1394,8 @@ mod tests {
 
         let func = apply_cfg_simplify(fb.build());
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         assert!(
-            matches!(func.insts[last_inst].op, Op::Return(_)),
+            matches!(func.blocks[entry].terminator, Terminator::Return(_)),
             "chain should collapse so entry ends with Return"
         );
     }
@@ -1498,9 +1472,8 @@ mod tests {
         );
 
         // merge's Return should use false_1 (the representative constant).
-        let last_inst = *func.blocks[merge].insts.last().unwrap();
-        let ret_val = match &func.insts[last_inst].op {
-            Op::Return(Some(v)) => *v,
+        let ret_val = match &func.blocks[merge].terminator {
+            Terminator::Return(Some(v)) => *v,
             other => panic!("expected Return(Some(false)) in merge, got {:?}", other),
         };
         let ret_const = func
@@ -1571,11 +1544,10 @@ mod tests {
         // The BrIf then has same-target merge → collapse → Br(merge) → merge merged.
         // Final: entry should end with Return using a false constant.
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         // After full collapse, entry ends with Return(false).
         // The return value is either false_1 or false_2 (both are Const(false)).
-        let ret_val = match &func.insts[last_inst].op {
-            Op::Return(Some(v)) => *v,
+        let ret_val = match &func.blocks[entry].terminator {
+            Terminator::Return(Some(v)) => *v,
             other => panic!(
                 "expected Return(Some(false)) after full collapse, got {:?}",
                 other
@@ -1627,9 +1599,8 @@ mod tests {
 
         let func = apply_cfg_simplify(fb.build());
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
         assert!(
-            matches!(func.insts[last_inst].op, Op::Return(_)),
+            matches!(func.blocks[entry].terminator, Terminator::Return(_)),
             "20 empty blocks should collapse to Return in entry"
         );
     }
@@ -1664,8 +1635,10 @@ mod tests {
         // Should not panic.
         let func = apply_cfg_simplify(fb.build());
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
-        assert!(matches!(func.insts[last_inst].op, Op::Return(Some(_))));
+        assert!(matches!(
+            func.blocks[entry].terminator,
+            Terminator::Return(Some(_))
+        ));
     }
 
     /// Diamond with block params flowing through merge point.
@@ -1699,7 +1672,9 @@ mod tests {
         // After simplification with same-target collapse, we should still get the
         // correct return (via Select).
         let entry = func.entry;
-        let last_inst = *func.blocks[entry].insts.last().unwrap();
-        assert!(matches!(func.insts[last_inst].op, Op::Return(Some(_))));
+        assert!(matches!(
+            func.blocks[entry].terminator,
+            Terminator::Return(Some(_))
+        ));
     }
 }

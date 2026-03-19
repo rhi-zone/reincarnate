@@ -1,23 +1,24 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::entity::EntityRef;
+use crate::ir::inst::Terminator;
 use crate::ir::{BlockId, Op, ValueId};
 
-/// Extract branch targets from a control-flow instruction.
-pub fn branch_targets(op: &Op) -> Vec<BlockId> {
-    match op {
-        Op::Br { target, .. } => vec![*target],
-        Op::BrIf {
+/// Extract branch targets from a block terminator.
+pub fn branch_targets(term: &Terminator) -> Vec<BlockId> {
+    match term {
+        Terminator::Br { target, .. } => vec![*target],
+        Terminator::BrIf {
             then_target,
             else_target,
             ..
         } => vec![*then_target, *else_target],
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             let mut targets: Vec<BlockId> = cases.iter().map(|(_, t, _)| *t).collect();
             targets.push(default.0);
             targets
         }
-        _ => vec![],
+        Terminator::Return(_) => vec![],
     }
 }
 
@@ -44,32 +45,7 @@ pub fn value_operands(op: &Op) -> Vec<ValueId> {
             on_false,
         } => vec![*cond, *on_true, *on_false],
         Op::Cmp(_, a, b) => vec![*a, *b],
-        Op::Br { args, .. } => args.clone(),
-        Op::BrIf {
-            cond,
-            then_args,
-            else_args,
-            ..
-        } => {
-            let mut ops = vec![*cond];
-            ops.extend(then_args);
-            ops.extend(else_args);
-            ops
-        }
-        Op::Switch {
-            value,
-            cases,
-            default,
-            ..
-        } => {
-            let mut ops = vec![*value];
-            for (_, _, args) in cases {
-                ops.extend(args);
-            }
-            ops.extend(&default.1);
-            ops
-        }
-        Op::Return(v) | Op::Yield(v) => v.iter().copied().collect(),
+        Op::Yield(v) => v.iter().copied().collect(),
         Op::Alloc(_) => vec![],
         Op::Load(ptr) => vec![*ptr],
         Op::Store { ptr, value } => vec![*ptr, *value],
@@ -142,42 +118,7 @@ pub fn substitute_values_in_op(op: &mut Op, subst: &HashMap<ValueId, ValueId>) {
             sub(a);
             sub(b);
         }
-        Op::Br { args, .. } => {
-            for a in args {
-                sub(a);
-            }
-        }
-        Op::BrIf {
-            cond,
-            then_args,
-            else_args,
-            ..
-        } => {
-            sub(cond);
-            for a in then_args {
-                sub(a);
-            }
-            for a in else_args {
-                sub(a);
-            }
-        }
-        Op::Switch {
-            value,
-            cases,
-            default,
-            ..
-        } => {
-            sub(value);
-            for (_, _, args) in cases {
-                for a in args {
-                    sub(a);
-                }
-            }
-            for a in &mut default.1 {
-                sub(a);
-            }
-        }
-        Op::Return(v) | Op::Yield(v) => {
+        Op::Yield(v) => {
             if let Some(v) = v {
                 sub(v);
             }
@@ -286,17 +227,101 @@ pub fn compute_dominance_frontiers(
     df
 }
 
+/// Replace ValueIds in a Terminator using a substitution map.
+pub fn substitute_values_in_terminator(term: &mut Terminator, subst: &HashMap<ValueId, ValueId>) {
+    let sub = |v: &mut ValueId| {
+        if let Some(&new) = subst.get(v) {
+            *v = new;
+        }
+    };
+
+    match term {
+        Terminator::Br { args, .. } => {
+            for a in args {
+                sub(a);
+            }
+        }
+        Terminator::BrIf {
+            cond,
+            then_args,
+            else_args,
+            ..
+        } => {
+            sub(cond);
+            for a in then_args {
+                sub(a);
+            }
+            for a in else_args {
+                sub(a);
+            }
+        }
+        Terminator::Switch {
+            value,
+            cases,
+            default,
+            ..
+        } => {
+            sub(value);
+            for (_, _, args) in cases {
+                for a in args {
+                    sub(a);
+                }
+            }
+            for a in &mut default.1 {
+                sub(a);
+            }
+        }
+        Terminator::Return(v) => {
+            if let Some(v) = v {
+                sub(v);
+            }
+        }
+    }
+}
+
+/// Extract all ValueId operands from a Terminator.
+pub fn terminator_operands(term: &Terminator) -> Vec<ValueId> {
+    match term {
+        Terminator::Br { args, .. } => args.clone(),
+        Terminator::BrIf {
+            cond,
+            then_args,
+            else_args,
+            ..
+        } => {
+            let mut ops = vec![*cond];
+            ops.extend(then_args);
+            ops.extend(else_args);
+            ops
+        }
+        Terminator::Switch {
+            value,
+            cases,
+            default,
+            ..
+        } => {
+            let mut ops = vec![*value];
+            for (_, _, args) in cases {
+                ops.extend(args);
+            }
+            ops.extend(&default.1);
+            ops
+        }
+        Terminator::Return(v) => v.iter().copied().collect(),
+    }
+}
+
 /// Append a branch argument for edges targeting a specific block.
 ///
 /// Handles Br, BrIf (both arms), and Switch (cases + default).
-pub fn append_branch_arg_for_target(op: &mut Op, target: BlockId, value: ValueId) {
-    match op {
-        Op::Br {
+pub fn append_branch_arg_for_target(term: &mut Terminator, target: BlockId, value: ValueId) {
+    match term {
+        Terminator::Br {
             target: t, args, ..
         } if *t == target => {
             args.push(value);
         }
-        Op::BrIf {
+        Terminator::BrIf {
             then_target,
             then_args,
             else_target,
@@ -310,7 +335,7 @@ pub fn append_branch_arg_for_target(op: &mut Op, target: BlockId, value: ValueId
                 else_args.push(value);
             }
         }
-        Op::Switch { cases, default, .. } => {
+        Terminator::Switch { cases, default, .. } => {
             for (_, t, args) in cases.iter_mut() {
                 if *t == target {
                     args.push(value);
@@ -357,7 +382,7 @@ pub(crate) mod test_helpers {
     use super::*;
     use crate::entity::EntityRef;
     use crate::ir::builder::ModuleBuilder;
-    use crate::ir::{BlockId, FuncId, Function, Op, ValueId};
+    use crate::ir::{BlockId, FuncId, Function, ValueId};
     use crate::pipeline::Transform;
     use std::collections::HashSet;
 
@@ -367,17 +392,15 @@ pub(crate) mod test_helpers {
             .map(|i| ValueId::new(i as u32))
             .collect();
 
-        // Build the set of blocks that contain instructions.
+        // Build the set of reachable blocks via terminators.
         let reachable_blocks: HashSet<BlockId> = {
             let mut reachable = HashSet::new();
             let mut worklist = vec![func.entry];
             reachable.insert(func.entry);
             while let Some(block_id) = worklist.pop() {
-                for &inst_id in &func.blocks[block_id].insts {
-                    for target in branch_targets(&func.insts[inst_id].op) {
-                        if reachable.insert(target) {
-                            worklist.push(target);
-                        }
+                for target in branch_targets(&func.blocks[block_id].terminator) {
+                    if reachable.insert(target) {
+                        worklist.push(target);
                     }
                 }
             }
@@ -396,13 +419,6 @@ pub(crate) mod test_helpers {
                     param.value
                 );
             }
-
-            // Check instructions.
-            assert!(
-                !block.insts.is_empty(),
-                "reachable block {:?} has no instructions",
-                block_id
-            );
 
             for &inst_id in &block.insts {
                 let inst = &func.insts[inst_id];
@@ -427,43 +443,25 @@ pub(crate) mod test_helpers {
                         inst.op
                     );
                 }
-
-                // Check branch targets are valid blocks.
-                for target in branch_targets(&inst.op) {
-                    assert!(
-                        func.blocks.keys().any(|b| b == target),
-                        "inst {:?} branches to non-existent block {:?}",
-                        inst_id,
-                        target
-                    );
-                }
             }
 
-            // Check last instruction is a terminator.
-            let last_inst = &func.insts[*block.insts.last().unwrap()];
-            assert!(
-                matches!(
-                    &last_inst.op,
-                    Op::Br { .. }
-                        | Op::BrIf { .. }
-                        | Op::Switch { .. }
-                        | Op::Return(_)
-                        | Op::Yield(_)
-                ),
-                "reachable block {:?} does not end with a terminator, last op: {:?}",
-                block_id,
-                last_inst.op
-            );
-
-            // Check branch arg count matches target block param count.
-            let last_op = &last_inst.op;
-            check_branch_arg_counts(func, block_id, last_op);
+            // Check terminator targets are valid blocks, and arg counts match.
+            for target in branch_targets(&block.terminator) {
+                assert!(
+                    func.blocks.keys().any(|b| b == target),
+                    "block {:?} terminator branches to non-existent block {:?}",
+                    block_id,
+                    target
+                );
+            }
+            check_branch_arg_counts(func, block_id, &block.terminator);
         }
     }
 
-    fn check_branch_arg_counts(func: &Function, _src: BlockId, op: &Op) {
-        match op {
-            Op::Br { target, args } => {
+    fn check_branch_arg_counts(func: &Function, _src: BlockId, term: &Terminator) {
+        use crate::ir::inst::Terminator;
+        match term {
+            Terminator::Br { target, args } => {
                 let param_count = func.blocks[*target].params.len();
                 assert_eq!(
                     args.len(),
@@ -474,7 +472,7 @@ pub(crate) mod test_helpers {
                     param_count
                 );
             }
-            Op::BrIf {
+            Terminator::BrIf {
                 then_target,
                 then_args,
                 else_target,
@@ -500,7 +498,7 @@ pub(crate) mod test_helpers {
                     else_params
                 );
             }
-            Op::Switch { cases, default, .. } => {
+            Terminator::Switch { cases, default, .. } => {
                 for (val, target, args) in cases {
                     let param_count = func.blocks[*target].params.len();
                     assert_eq!(
@@ -523,7 +521,7 @@ pub(crate) mod test_helpers {
                     default_params
                 );
             }
-            _ => {}
+            Terminator::Return(_) => {}
         }
     }
 
@@ -640,20 +638,22 @@ mod tests {
 
     #[test]
     fn append_branch_arg_br() {
-        let mut op = Op::Br {
+        use crate::ir::inst::Terminator;
+        let mut term = Terminator::Br {
             target: bid(1),
             args: vec![],
         };
         let v = ValueId::new(42);
-        append_branch_arg_for_target(&mut op, bid(1), v);
-        if let Op::Br { args, .. } = &op {
+        append_branch_arg_for_target(&mut term, bid(1), v);
+        if let Terminator::Br { args, .. } = &term {
             assert_eq!(args, &[v]);
         }
     }
 
     #[test]
     fn append_branch_arg_brif_both_arms() {
-        let mut op = Op::BrIf {
+        use crate::ir::inst::Terminator;
+        let mut term = Terminator::BrIf {
             cond: ValueId::new(0),
             then_target: bid(1),
             then_args: vec![],
@@ -661,12 +661,12 @@ mod tests {
             else_args: vec![],
         };
         let v = ValueId::new(42);
-        append_branch_arg_for_target(&mut op, bid(1), v);
-        if let Op::BrIf {
+        append_branch_arg_for_target(&mut term, bid(1), v);
+        if let Terminator::BrIf {
             then_args,
             else_args,
             ..
-        } = &op
+        } = &term
         {
             assert_eq!(then_args, &[v]);
             assert_eq!(else_args, &[v]);

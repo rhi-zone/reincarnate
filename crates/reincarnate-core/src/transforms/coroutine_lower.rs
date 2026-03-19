@@ -11,6 +11,8 @@ use crate::ir::{
 };
 use crate::pipeline::{Transform, TransformResult};
 
+use crate::ir::inst::Terminator;
+
 use super::util::{branch_targets, value_operands};
 
 /// Coroutine lowering transform — rewrites coroutine functions into
@@ -81,20 +83,26 @@ fn split_at_yields(func: &mut Function) -> Vec<YieldPoint> {
             None
         };
 
+        // Move the original block's terminator to the post block.
+        let orig_terminator = std::mem::take(&mut func.blocks[block_id].terminator);
         let post_block = func.blocks.push(Block {
             params: post_params,
             insts: post_insts,
-            terminator: None,
+            terminator: orig_terminator,
         });
 
         // If there was a resume value, substitute the old ValueId with the
-        // new block param in all instructions of the post block.
+        // new block param in all instructions and the terminator of the post block.
         if let (Some(old_rv), Some(new_rv)) = (resume_value, new_resume_value) {
             let mut subst = HashMap::new();
             subst.insert(old_rv, new_rv);
             for &inst_id in &func.blocks[post_block].insts {
                 super::util::substitute_values_in_op(&mut func.insts[inst_id].op, &subst);
             }
+            super::util::substitute_values_in_terminator(
+                &mut func.blocks[post_block].terminator,
+                &subst,
+            );
         }
 
         yield_points.push(YieldPoint {
@@ -143,11 +151,9 @@ fn reachable_from(func: &Function, start: BlockId) -> HashSet<BlockId> {
     visited.insert(start);
     queue.push_back(start);
     while let Some(bid) = queue.pop_front() {
-        for &inst_id in &func.blocks[bid].insts {
-            for target in branch_targets(&func.insts[inst_id].op) {
-                if visited.insert(target) {
-                    queue.push_back(target);
-                }
+        for target in branch_targets(&func.blocks[bid].terminator) {
+            if visited.insert(target) {
+                queue.push_back(target);
             }
         }
     }
@@ -295,7 +301,7 @@ impl ResumeBuilder {
         self.blocks.push(Block {
             params: Vec::new(),
             insts: Vec::new(),
-            terminator: None,
+            terminator: Terminator::default(),
         })
     }
 }
@@ -333,7 +339,7 @@ fn build_resume_function(
             },
         ],
         insts: Vec::new(),
-        terminator: None,
+        terminator: Terminator::default(),
     });
 
     // Create state dispatch blocks (one per state).
@@ -359,14 +365,11 @@ fn build_resume_function(
     let cases: Vec<(Constant, BlockId, Vec<ValueId>)> = (0..num_states as u64)
         .map(|i| (Constant::UInt(i), state_blocks[i as usize], vec![]))
         .collect();
-    rb.emit_void(
-        entry,
-        Op::Switch {
-            value: state_field,
-            cases,
-            default: (done_block, vec![]),
-        },
-    );
+    rb.blocks[entry].terminator = Terminator::Switch {
+        value: state_field,
+        cases,
+        default: (done_block, vec![]),
+    };
 
     // Build a map from original ValueId → field name for cross-yield values.
     let mut live_value_field: HashMap<ValueId, String> = HashMap::new();
@@ -412,6 +415,7 @@ fn build_resume_function(
 
         emit_state_exit(
             &exit_ctx,
+            orig_func.entry,
             &orig_func.blocks[orig_func.entry].insts,
             &mut rb,
             sb,
@@ -476,6 +480,7 @@ fn build_resume_function(
 
         emit_state_exit(
             &exit_ctx,
+            yp.post_block,
             &orig_func.blocks[yp.post_block].insts,
             &mut rb,
             sb,
@@ -489,7 +494,7 @@ fn build_resume_function(
         Op::Const(Constant::Null),
         Type::Option(Box::new(Type::Dynamic)),
     );
-    rb.emit_void(done_block, Op::Return(Some(null_val)));
+    rb.blocks[done_block].terminator = Terminator::Return(Some(null_val));
 
     Function {
         name: orig_func.name.clone(),
@@ -524,11 +529,9 @@ fn copy_instructions_with_subst(
     for &inst_id in inst_ids {
         let inst = &orig_insts[inst_id];
 
-        // Skip terminators and yields — handled by emit_state_exit.
-        if matches!(
-            inst.op,
-            Op::Return(_) | Op::Br { .. } | Op::BrIf { .. } | Op::Switch { .. } | Op::Yield(_)
-        ) {
+        // Skip yields — handled by emit_state_exit.
+        // (Control-flow ops are in block terminators, not instructions.)
+        if matches!(inst.op, Op::Yield(_)) {
             continue;
         }
 
@@ -555,109 +558,100 @@ struct ExitCtx<'a> {
     state_blocks: &'a [BlockId],
 }
 
-/// Emit the exit sequence for a state block. Looks at the last instruction(s)
-/// of the original block to determine what to emit:
+/// Emit the exit sequence for a state block. Looks at the original block's
+/// terminator to determine what to emit:
 /// - Yield: save live values, update __state, return yielded value
 /// - Return: set __done = true, return null
 /// - Br/BrIf/Switch: intra-coroutine branches remapped to state blocks
 fn emit_state_exit(
     ctx: &ExitCtx<'_>,
+    orig_block: BlockId,
     orig_inst_ids: &[InstId],
     rb: &mut ResumeBuilder,
     target_block: BlockId,
     subst: &HashMap<ValueId, ValueId>,
 ) {
-    if let Some(&last_inst_id) = orig_inst_ids.last() {
-        let last_op = &ctx.orig_func.insts[last_inst_id].op;
-        match last_op {
-            Op::Return(_) => {
-                // Set __done = true.
-                let true_val = rb.emit(target_block, Op::Const(Constant::Bool(true)), Type::Bool);
-                rb.emit_void(
-                    target_block,
-                    Op::SetField {
-                        object: ctx.state_param,
-                        field: "__done".to_string(),
-                        value: true_val,
-                    },
-                );
-                let null_val = rb.emit(
-                    target_block,
-                    Op::Const(Constant::Null),
-                    Type::Option(Box::new(Type::Dynamic)),
-                );
-                rb.emit_void(target_block, Op::Return(Some(null_val)));
-            }
-            Op::Br { target, args } => {
-                let mapped_target = map_block_to_state(
-                    *target,
-                    ctx.yield_points,
-                    ctx.orig_func.entry,
-                    ctx.state_blocks,
-                );
-                let mut new_args = args.clone();
-                for a in &mut new_args {
-                    if let Some(&new_v) = subst.get(a) {
-                        *a = new_v;
-                    }
-                }
-                rb.emit_void(
-                    target_block,
-                    Op::Br {
-                        target: mapped_target,
-                        args: new_args,
-                    },
-                );
-            }
-            Op::BrIf {
-                cond,
-                then_target,
-                then_args,
-                else_target,
-                else_args,
-            } => {
-                let new_cond = subst.get(cond).copied().unwrap_or(*cond);
-                let mapped_then = map_block_to_state(
-                    *then_target,
-                    ctx.yield_points,
-                    ctx.orig_func.entry,
-                    ctx.state_blocks,
-                );
-                let mapped_else = map_block_to_state(
-                    *else_target,
-                    ctx.yield_points,
-                    ctx.orig_func.entry,
-                    ctx.state_blocks,
-                );
-                let mut new_then_args = then_args.clone();
-                let mut new_else_args = else_args.clone();
-                for a in &mut new_then_args {
-                    if let Some(&new_v) = subst.get(a) {
-                        *a = new_v;
-                    }
-                }
-                for a in &mut new_else_args {
-                    if let Some(&new_v) = subst.get(a) {
-                        *a = new_v;
-                    }
-                }
-                rb.emit_void(
-                    target_block,
-                    Op::BrIf {
-                        cond: new_cond,
-                        then_target: mapped_then,
-                        then_args: new_then_args,
-                        else_target: mapped_else,
-                        else_args: new_else_args,
-                    },
-                );
-            }
-            _ => {
-                emit_yield_exit(ctx, orig_inst_ids, rb, target_block, subst);
-            }
+    match &ctx.orig_func.blocks[orig_block].terminator {
+        Terminator::Return(_) => {
+            // Set __done = true.
+            let true_val = rb.emit(target_block, Op::Const(Constant::Bool(true)), Type::Bool);
+            rb.emit_void(
+                target_block,
+                Op::SetField {
+                    object: ctx.state_param,
+                    field: "__done".to_string(),
+                    value: true_val,
+                },
+            );
+            let null_val = rb.emit(
+                target_block,
+                Op::Const(Constant::Null),
+                Type::Option(Box::new(Type::Dynamic)),
+            );
+            rb.blocks[target_block].terminator = Terminator::Return(Some(null_val));
         }
-    } else {
-        emit_yield_exit(ctx, orig_inst_ids, rb, target_block, subst);
+        Terminator::Br { target, args } => {
+            let mapped_target = map_block_to_state(
+                *target,
+                ctx.yield_points,
+                ctx.orig_func.entry,
+                ctx.state_blocks,
+            );
+            let mut new_args = args.clone();
+            for a in &mut new_args {
+                if let Some(&new_v) = subst.get(a) {
+                    *a = new_v;
+                }
+            }
+            rb.blocks[target_block].terminator = Terminator::Br {
+                target: mapped_target,
+                args: new_args,
+            };
+        }
+        Terminator::BrIf {
+            cond,
+            then_target,
+            then_args,
+            else_target,
+            else_args,
+        } => {
+            let new_cond = subst.get(cond).copied().unwrap_or(*cond);
+            let mapped_then = map_block_to_state(
+                *then_target,
+                ctx.yield_points,
+                ctx.orig_func.entry,
+                ctx.state_blocks,
+            );
+            let mapped_else = map_block_to_state(
+                *else_target,
+                ctx.yield_points,
+                ctx.orig_func.entry,
+                ctx.state_blocks,
+            );
+            let mut new_then_args = then_args.clone();
+            let mut new_else_args = else_args.clone();
+            for a in &mut new_then_args {
+                if let Some(&new_v) = subst.get(a) {
+                    *a = new_v;
+                }
+            }
+            for a in &mut new_else_args {
+                if let Some(&new_v) = subst.get(a) {
+                    *a = new_v;
+                }
+            }
+            rb.blocks[target_block].terminator = Terminator::BrIf {
+                cond: new_cond,
+                then_target: mapped_then,
+                then_args: new_then_args,
+                else_target: mapped_else,
+                else_args: new_else_args,
+            };
+        }
+        Terminator::Switch { .. } => {
+            // Yield blocks shouldn't have Switch terminators, fall through to yield exit.
+            emit_yield_exit(ctx, orig_inst_ids, rb, target_block, subst);
+        }
     }
 }
 
@@ -728,7 +722,7 @@ fn emit_yield_exit(
                 Type::Option(Box::new(Type::Dynamic)),
             )
         };
-        rb.emit_void(target_block, Op::Return(Some(ret_val)));
+        rb.blocks[target_block].terminator = Terminator::Return(Some(ret_val));
     } else {
         // No matching yield point — return null as a safety fallback.
         let null_val = rb.emit(
@@ -736,7 +730,7 @@ fn emit_yield_exit(
             Op::Const(Constant::Null),
             Type::Option(Box::new(Type::Dynamic)),
         );
-        rb.emit_void(target_block, Op::Return(Some(null_val)));
+        rb.blocks[target_block].terminator = Terminator::Return(Some(null_val));
     }
 }
 
@@ -1050,11 +1044,10 @@ mod tests {
 
         // Should have a switch instruction in the entry block.
         let entry = func.entry;
-        let has_switch = func.blocks[entry]
-            .insts
-            .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Switch { .. }));
-        assert!(has_switch, "entry should have a state dispatch switch");
+        assert!(
+            matches!(func.blocks[entry].terminator, Terminator::Switch { .. }),
+            "entry should have a state dispatch switch"
+        );
     }
 
     /// Multiple yields: two yields → 3 states.
@@ -1087,12 +1080,7 @@ mod tests {
         // Check the switch has 3 cases (states 0, 1, 2).
         let func = &module.functions[FuncId::new(0)];
         let entry = func.entry;
-        let switch_inst = func.blocks[entry]
-            .insts
-            .iter()
-            .find(|&&id| matches!(func.insts[id].op, Op::Switch { .. }));
-        assert!(switch_inst.is_some());
-        if let Op::Switch { cases, .. } = &func.insts[*switch_inst.unwrap()].op {
+        if let Terminator::Switch { cases, .. } = &func.blocks[entry].terminator {
             assert_eq!(cases.len(), 3, "should have 3 states for 2 yields");
         }
     }
@@ -1328,11 +1316,10 @@ mod tests {
         // Function should still have a valid switch dispatch.
         let func = &module.functions[FuncId::new(0)];
         let entry = func.entry;
-        let has_switch = func.blocks[entry]
-            .insts
-            .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Switch { .. }));
-        assert!(has_switch, "entry should have state dispatch");
+        assert!(
+            matches!(func.blocks[entry].terminator, Terminator::Switch { .. }),
+            "entry should have state dispatch"
+        );
     }
 
     // ---- Adversarial tests ----
@@ -1380,12 +1367,7 @@ mod tests {
         // Should have 3 states (0=entry, 1=yield-in-then, 2=yield-in-else).
         let func = &module.functions[FuncId::new(0)];
         let entry = func.entry;
-        let switch_inst = func.blocks[entry]
-            .insts
-            .iter()
-            .find(|&&id| matches!(func.insts[id].op, Op::Switch { .. }));
-        assert!(switch_inst.is_some());
-        if let Op::Switch { cases, .. } = &func.insts[*switch_inst.unwrap()].op {
+        if let Terminator::Switch { cases, .. } = &func.blocks[entry].terminator {
             assert_eq!(cases.len(), 3, "2 yields → 3 states");
         }
     }
@@ -1418,12 +1400,10 @@ mod tests {
         // 4 states: 0=entry, 1=after-yield1, 2=after-yield2, 3=after-yield3
         let func = &module.functions[FuncId::new(0)];
         let entry = func.entry;
-        let switch_inst = func.blocks[entry]
-            .insts
-            .iter()
-            .find(|&&id| matches!(func.insts[id].op, Op::Switch { .. }));
-        if let Op::Switch { cases, .. } = &func.insts[*switch_inst.unwrap()].op {
+        if let Terminator::Switch { cases, .. } = &func.blocks[entry].terminator {
             assert_eq!(cases.len(), 4, "3 yields → 4 states");
+        } else {
+            panic!("entry should have Switch terminator");
         }
     }
 
