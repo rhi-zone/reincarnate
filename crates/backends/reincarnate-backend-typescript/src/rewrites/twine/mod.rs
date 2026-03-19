@@ -135,7 +135,10 @@ fn rewrite_expr(expr: &mut JsExpr, closures: &HashMap<String, JsFunction>) {
 
 fn rewrite_expr_children(expr: &mut JsExpr, closures: &HashMap<String, JsFunction>) {
     match expr {
-        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs } => {
             rewrite_expr(lhs, closures);
             rewrite_expr(rhs, closures);
         }

@@ -444,6 +444,16 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             target: Box::new(rewrite_expr(*target, ctx)),
             value: Box::new(rewrite_expr(*value, ctx)),
         },
+
+        // LooseEq/LooseNe are SugarCube-only; pass through unchanged for Flash.
+        JsExpr::LooseEq { lhs, rhs } => JsExpr::LooseEq {
+            lhs: Box::new(rewrite_expr(*lhs, ctx)),
+            rhs: Box::new(rewrite_expr(*rhs, ctx)),
+        },
+        JsExpr::LooseNe { lhs, rhs } => JsExpr::LooseNe {
+            lhs: Box::new(rewrite_expr(*lhs, ctx)),
+            rhs: Box::new(rewrite_expr(*rhs, ctx)),
+        },
     }
 }
 

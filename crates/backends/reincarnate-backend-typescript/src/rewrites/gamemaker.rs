@@ -899,7 +899,10 @@ fn rewrite_expr_children(
     name_map: &HashMap<String, String>,
 ) {
     match expr {
-        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs } => {
             rewrite_expr(
                 lhs,
                 sprite_names,
@@ -1726,7 +1729,10 @@ fn coerce_bool_expr(expr: &mut JsExpr, sigs: &BTreeMap<String, ExternalMethodSig
                 coerce_bool_expr(arg, sigs);
             }
         }
-        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs } => {
             coerce_bool_expr(lhs, sigs);
             coerce_bool_expr(rhs, sigs);
         }

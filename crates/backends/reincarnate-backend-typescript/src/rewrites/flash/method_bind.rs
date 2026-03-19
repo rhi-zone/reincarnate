@@ -124,6 +124,8 @@ pub(super) fn bind_method_refs_expr(
         }
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
         | JsExpr::In {

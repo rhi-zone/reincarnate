@@ -8,6 +8,8 @@ fn expr_references_var(expr: &JsExpr, name: &str) -> bool {
         JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => false,
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
         | JsExpr::In {
@@ -255,6 +257,8 @@ fn eliminate_dead_activations_in_expr(expr: &mut JsExpr) {
         JsExpr::ArrowFunction { body, .. } => eliminate_dead_activations(body),
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
         | JsExpr::In {

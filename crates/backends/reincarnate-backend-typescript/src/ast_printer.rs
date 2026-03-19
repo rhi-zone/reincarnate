@@ -959,6 +959,13 @@ fn print_expr(expr: &JsExpr) -> String {
             result
         }
 
+        JsExpr::LooseEq { lhs, rhs } => {
+            format!("{} == {}", print_expr_operand(lhs), print_expr_operand(rhs),)
+        }
+        JsExpr::LooseNe { lhs, rhs } => {
+            format!("{} != {}", print_expr_operand(lhs), print_expr_operand(rhs),)
+        }
+
         JsExpr::Field { object, field } => {
             // Activation objects and empty object literals have no index signature;
             // accessing dynamic properties on them causes TS2339. Cast to
@@ -1298,6 +1305,8 @@ fn needs_parens(expr: &JsExpr) -> bool {
         } => true,
         JsExpr::Binary { .. }
         | JsExpr::Cmp { .. }
+        | JsExpr::LooseEq { .. }
+        | JsExpr::LooseNe { .. }
         | JsExpr::Ternary { .. }
         | JsExpr::LogicalOr { .. }
         | JsExpr::LogicalAnd { .. }
@@ -1382,8 +1391,6 @@ fn cmp_str(kind: CmpKind) -> &'static str {
         CmpKind::Le => "<=",
         CmpKind::Gt => ">",
         CmpKind::Ge => ">=",
-        CmpKind::CoercingEq => "==",
-        CmpKind::CoercingNe => "!=",
     }
 }
 

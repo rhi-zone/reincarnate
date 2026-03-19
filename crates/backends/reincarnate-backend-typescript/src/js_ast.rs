@@ -126,6 +126,12 @@ pub enum JsExpr {
     SuperGet(String),
     /// `super.prop = value` — super property write in expression context.
     SuperSet { prop: String, value: Box<JsExpr> },
+    /// Loose equality: `lhs == rhs` (JavaScript coercing equality).
+    /// Lowered from `SugarCube.Engine.loose_eq` SystemCall.
+    LooseEq { lhs: Box<JsExpr>, rhs: Box<JsExpr> },
+    /// Loose inequality: `lhs != rhs` (JavaScript coercing inequality).
+    /// Lowered from `SugarCube.Engine.loose_ne` SystemCall.
+    LooseNe { lhs: Box<JsExpr>, rhs: Box<JsExpr> },
     /// Non-null assertion: `expr!`.
     NonNull(Box<JsExpr>),
     /// Null-coalescing assignment: `(target ??= value)`.

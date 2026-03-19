@@ -70,6 +70,8 @@ pub(super) fn collect_expr_vars(expr: &JsExpr, out: &mut HashSet<String>) {
         JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => {}
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
         | JsExpr::In {
@@ -302,6 +304,8 @@ fn subst_var_to_this_expr(expr: &mut JsExpr, var_name: &str) {
         | JsExpr::SuperGet(_) => {}
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
         | JsExpr::In {
@@ -442,6 +446,8 @@ pub(super) fn rewrite_this_to_prototype(expr: &mut JsExpr, class_name: &str) {
         JsExpr::Field { object, .. } => rewrite_this_to_prototype(object, class_name),
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs }
         | JsExpr::In {

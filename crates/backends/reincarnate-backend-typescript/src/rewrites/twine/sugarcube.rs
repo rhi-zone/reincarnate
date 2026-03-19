@@ -243,6 +243,26 @@ pub(super) fn try_rewrite(
             })
         }
 
+        // loose_eq(a, b) → a == b (JavaScript coercing equality)
+        "loose_eq" if args.len() == 2 => {
+            let b = take_arg(args, "SugarCube.Engine.loose_eq");
+            let a = take_arg(args, "SugarCube.Engine.loose_eq");
+            Some(JsExpr::LooseEq {
+                lhs: Box::new(a),
+                rhs: Box::new(b),
+            })
+        }
+
+        // loose_ne(a, b) → a != b (JavaScript coercing inequality)
+        "loose_ne" if args.len() == 2 => {
+            let b = take_arg(args, "SugarCube.Engine.loose_ne");
+            let a = take_arg(args, "SugarCube.Engine.loose_ne");
+            Some(JsExpr::LooseNe {
+                lhs: Box::new(a),
+                rhs: Box::new(b),
+            })
+        }
+
         // Everything else (resolve, eval, arrow, error, done_*, break, continue,
         // parseLink) passes through to the runtime via the SystemCall fallback in
         // the printer.

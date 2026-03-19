@@ -194,6 +194,8 @@ pub(super) fn rewrite_late_bound_expr(
     match expr {
         JsExpr::Binary { lhs, rhs, .. }
         | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
         | JsExpr::LogicalOr { lhs, rhs }
         | JsExpr::LogicalAnd { lhs, rhs } => {
             rewrite_late_bound_expr(lhs, late_bound, short_to_qualified);
@@ -508,7 +510,10 @@ fn rewrite_stateful_calls_expr(
     from_class: bool,
 ) {
     match expr {
-        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs } => {
             rewrite_stateful_calls_expr(lhs, stateful_names, from_class);
             rewrite_stateful_calls_expr(rhs, stateful_names, from_class);
         }
@@ -743,7 +748,10 @@ fn prepend_rt_arg_stmt(stmt: &mut JsStmt, free_func_names: &HashSet<String>, fro
 fn prepend_rt_arg_expr(expr: &mut JsExpr, free_func_names: &HashSet<String>, from_class: bool) {
     // Recurse into children first.
     match expr {
-        JsExpr::Binary { lhs, rhs, .. } | JsExpr::Cmp { lhs, rhs, .. } => {
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs } => {
             prepend_rt_arg_expr(lhs, free_func_names, from_class);
             prepend_rt_arg_expr(rhs, free_func_names, from_class);
         }

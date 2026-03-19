@@ -657,8 +657,14 @@ impl TranslateCtx {
                 self.fb
                     .system_call("SugarCube.Engine", "pow", &[lhs, rhs], Type::Dynamic)
             }
-            js::BinaryOperator::Equality => self.fb.cmp(CmpKind::CoercingEq, lhs, rhs),
-            js::BinaryOperator::Inequality => self.fb.cmp(CmpKind::CoercingNe, lhs, rhs),
+            js::BinaryOperator::Equality => {
+                self.fb
+                    .system_call("SugarCube.Engine", "loose_eq", &[lhs, rhs], Type::Bool)
+            }
+            js::BinaryOperator::Inequality => {
+                self.fb
+                    .system_call("SugarCube.Engine", "loose_ne", &[lhs, rhs], Type::Bool)
+            }
             js::BinaryOperator::StrictEquality => self.fb.cmp(CmpKind::Eq, lhs, rhs),
             js::BinaryOperator::StrictInequality => self.fb.cmp(CmpKind::Ne, lhs, rhs),
             js::BinaryOperator::LessThan => self.fb.cmp(CmpKind::Lt, lhs, rhs),

@@ -45,12 +45,6 @@ pub enum CmpKind {
     Le,
     Gt,
     Ge,
-    /// Coercing equality — equality with implicit type conversion.
-    /// Used by languages where `==` coerces operands (JS, PHP, Perl).
-    /// Backends emit the coercing form (e.g. `==` in JS/TS) vs strict `===`.
-    CoercingEq,
-    /// Coercing inequality — the negation of `CoercingEq`.
-    CoercingNe,
 }
 
 impl CmpKind {
@@ -63,8 +57,6 @@ impl CmpKind {
             CmpKind::Ge => CmpKind::Lt,
             CmpKind::Gt => CmpKind::Le,
             CmpKind::Le => CmpKind::Gt,
-            CmpKind::CoercingEq => CmpKind::CoercingNe,
-            CmpKind::CoercingNe => CmpKind::CoercingEq,
         }
     }
 }
