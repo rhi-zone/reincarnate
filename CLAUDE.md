@@ -65,7 +65,7 @@ cargo clippy --all-targets --all-features -- -D warnings && cargo test -- --incl
 ```
 Always pass `--include-ignored`. Edit all files first, then build once.
 
-**Snapshot before/after each phase.** Dump representative functions to `~/reincarnate/snapshots/` before and after each phase and diff them to verify output quality didn't regress. Example: `cargo run -p reincarnate-cli -- emit --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json --dump-function <name> > ~/reincarnate/snapshots/before.txt`. This is a workaround for the lack of checked-in output snapshots (copyright); may not be needed once the rewrite introduces a clean snapshot testing mechanism.
+**Snapshot before/after each phase.** Dump representative functions to `~/reincarnate/snapshots/` before and after each phase and diff them to verify output quality didn't regress. Example: `cargo run -p reincarnate-cli -- emit --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json --dump-function <name> > ~/reincarnate/snapshots/before.txt`. This is a workaround for the lack of checked-in output snapshots (copyright); may not be needed once the rewrite is done.
 
 **Commit after every phase.** Each commit = one logical unit of progress. Conventional commits: `type(scope): message`. Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
 
