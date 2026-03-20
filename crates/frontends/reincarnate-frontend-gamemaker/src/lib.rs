@@ -1,5 +1,6 @@
 mod assets;
 mod bool_arith_coerce;
+mod builtins_generated;
 mod call_site_arity_widen;
 mod classref_resolve;
 mod data;
@@ -220,6 +221,11 @@ impl Frontend for GameMakerFrontend {
         }
 
         let mut module = mb.build();
+
+        // Populate extern sigs from the GML builtin signature table.
+        for (name, sig) in builtins_generated::gml_builtins() {
+            module.extern_sigs.insert(name.to_string(), sig);
+        }
 
         // GML implicitly returns 0.0 from every function even without an
         // explicit `return` statement.  Type inference must not narrow

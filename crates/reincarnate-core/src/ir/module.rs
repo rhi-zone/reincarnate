@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
 use super::func::{FuncId, Function, MethodKind, Visibility};
 use super::name_table::NameTable;
-use super::ty::Type;
+use super::ty::{FunctionSig, Type};
 use super::value::Constant;
 
 /// Describes how the application is started.
@@ -218,6 +218,11 @@ pub struct Module {
     /// Used by type inference and constraint solving to infer return types.
     #[serde(default, skip_serializing)]
     pub external_function_sigs: BTreeMap<String, ExternalMethodSig>,
+    /// Engine-declared function signatures (params + return type) for external/builtin functions.
+    /// Not serialized — populated by frontends at translate time.
+    /// TypeInference merges these into both `func_return_types` and `func_sigs`.
+    #[serde(default, skip_serializing)]
+    pub extern_sigs: HashMap<String, FunctionSig>,
     /// Room creation code: maps room index → function name.
     /// Populated by frontends so the scaffold can wire up per-room init functions.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -336,6 +341,7 @@ impl Module {
             external_imports: BTreeMap::new(),
             external_type_defs: BTreeMap::new(),
             external_function_sigs: BTreeMap::new(),
+            extern_sigs: HashMap::new(),
             room_creation_code: BTreeMap::new(),
             initial_room_name: None,
             sprite_names: Vec::new(),

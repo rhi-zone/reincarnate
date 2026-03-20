@@ -69,11 +69,19 @@ impl ModuleContext {
         }
 
         // Build func_sigs: function name → full FunctionSig (for MakeClosure typing).
-        let func_sigs: HashMap<String, FunctionSig> = module
+        let mut func_sigs: HashMap<String, FunctionSig> = module
             .functions
             .iter()
             .map(|(id, f)| (module.func_name(id).to_string(), f.sig.clone()))
             .collect();
+
+        // Merge engine-declared builtin signatures.
+        for (name, sig) in &module.extern_sigs {
+            func_return_types
+                .entry(name.clone())
+                .or_insert_with(|| sig.return_ty.clone());
+            func_sigs.entry(name.clone()).or_insert_with(|| sig.clone());
+        }
 
         // Build method_return_types: (class, bare_name) → return type
         let mut method_return_types = HashMap::new();
