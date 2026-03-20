@@ -95,6 +95,7 @@ const MAX_FIXPOINT_ITERATIONS: usize = 100;
 /// `--dump-ir-after <pass>` to stop at the wrong point.
 pub const VALID_PASS_NAMES: &[&str] = &[
     "frontend",
+    "constructor-struct-infer",
     "type-inference",
     "call-site-type-flow",
     "constraint-solve",

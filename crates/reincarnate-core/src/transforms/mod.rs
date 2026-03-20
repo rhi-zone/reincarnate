@@ -5,6 +5,7 @@ pub mod const_fold;
 pub mod constraint_collect;
 pub mod constraint_solve;
 pub mod constraint_solve2;
+pub mod constructor_struct_infer;
 pub mod coroutine_lower;
 pub mod dce;
 pub mod int_to_bool;
@@ -19,6 +20,7 @@ pub use cfg_simplify::CfgSimplify;
 pub use const_fold::ConstantFolding;
 pub use constraint_solve::ConstraintSolve;
 pub use constraint_solve2::ConstraintSolve2;
+pub use constructor_struct_infer::ConstructorStructInfer;
 pub use coroutine_lower::CoroutineLowering;
 pub use dce::DeadCodeElimination;
 pub use int_to_bool::IntToBoolPromotion;
@@ -36,6 +38,9 @@ mod stress_tests;
 /// Build a transform pipeline based on the given pass configuration.
 pub fn default_pipeline(config: &PassConfig) -> TransformPipeline {
     let mut pipeline = TransformPipeline::new();
+    if config.constructor_struct_infer {
+        pipeline.add(Box::new(ConstructorStructInfer));
+    }
     if config.type_inference {
         pipeline.add(Box::new(TypeInference));
     }

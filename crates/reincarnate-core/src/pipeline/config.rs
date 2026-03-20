@@ -80,6 +80,9 @@ impl DebugConfig {
 /// their fields to `false`, or use `from_skip_list` with pass name strings.
 #[derive(Debug, Clone)]
 pub struct PassConfig {
+    /// Infer struct definitions from constructor `SetField` ops.
+    /// Runs before `TypeInference` so field types are available to the solver.
+    pub constructor_struct_infer: bool,
     pub type_inference: bool,
     pub call_site_flow: bool,
     pub constraint_solve: bool,
@@ -106,6 +109,7 @@ pub struct PassConfig {
 impl Default for PassConfig {
     fn default() -> Self {
         Self {
+            constructor_struct_infer: true,
             type_inference: true,
             call_site_flow: true,
             constraint_solve: true,
@@ -127,6 +131,7 @@ impl PassConfig {
     /// Create a config with all passes enabled except those in the skip list.
     ///
     /// Pass names correspond to `Transform::name()` values:
+    /// - `"constructor-struct-infer"`
     /// - `"type-inference"`
     /// - `"call-site-type-flow"`
     /// - `"constraint-solve"`
@@ -155,6 +160,7 @@ impl PassConfig {
     /// recognized, `false` otherwise (unknown names are silently ignored).
     pub fn set_skip(&mut self, name: &str) -> bool {
         match name {
+            "constructor-struct-infer" => self.constructor_struct_infer = false,
             "type-inference" => self.type_inference = false,
             "call-site-type-flow" => self.call_site_flow = false,
             "constraint-solve" => self.constraint_solve = false,
@@ -342,6 +348,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
         "literal" => (
             PassConfig {
                 // Structural passes — needed for correct output.
+                constructor_struct_infer: true,
                 type_inference: true,
                 call_site_flow: true,
                 constraint_solve: true,
