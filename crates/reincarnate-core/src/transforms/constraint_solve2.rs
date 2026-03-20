@@ -731,17 +731,30 @@ impl Transform for ConstraintSolve2 {
                                                 continue;
                                             }
                                             // Guard against narrowing params the body
-                                            // uses as collections/objects.
+                                            // uses as collections/objects — but only when
+                                            // the arg type is not already a struct. Struct
+                                            // args must propagate through so that HasField
+                                            // constraints on the param can resolve.
+                                            let is_struct_arg = matches!(
+                                                arg_ty,
+                                                Type::Struct(_) | Type::ClassRef(_)
+                                            );
                                             let is_self_param = i == 0;
                                             if is_self_param {
-                                                if param_used_as_collection(callee_func, param_val)
+                                                if !is_struct_arg
+                                                    && param_used_as_collection(
+                                                        callee_func,
+                                                        param_val,
+                                                    )
                                                 {
                                                     continue;
                                                 }
-                                            } else if param_used_with_field_access(
-                                                callee_func,
-                                                param_val,
-                                            ) {
+                                            } else if !is_struct_arg
+                                                && param_used_with_field_access(
+                                                    callee_func,
+                                                    param_val,
+                                                )
+                                            {
                                                 continue;
                                             }
                                             if let (Some(&arg_var), Some(&param_var)) = (
@@ -830,7 +843,15 @@ impl Transform for ConstraintSolve2 {
                                             if is_concrete(param_ty) {
                                                 continue;
                                             }
-                                            if param_used_with_field_access(callee_func, param_val)
+                                            let is_struct_arg = matches!(
+                                                arg_ty,
+                                                Type::Struct(_) | Type::ClassRef(_)
+                                            );
+                                            if !is_struct_arg
+                                                && param_used_with_field_access(
+                                                    callee_func,
+                                                    param_val,
+                                                )
                                             {
                                                 continue;
                                             }
