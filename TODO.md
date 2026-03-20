@@ -239,6 +239,21 @@ The correct long-term fix is `Struct(StructId)` with an arena of struct definiti
 Short-term workaround: the solver looks up fields via the module's class-def registry
 keyed by name, accepting the string-identity assumption until `StructId` is introduced.
 
+**`Type::Struct` variant removal — in progress.** `normalize_struct_types()` now covers
+struct/class field types, static fields, abstract members, and globals (f7cab01). Backend
+emit now uses `Type::Instance` directly for these cases. Remaining for full removal:
+- Frontends (`reincarnate-frontend-flash`, `reincarnate-frontend-gamemaker`) use
+  `Type::Struct(name)` as a deferred-resolution form — needs frontend API to accept
+  TypeIds or have a pre-resolution pass that interns all names upfront before building
+  function signatures.
+- `resolve_js_function_types()` in backend converts `Instance → Struct` for the JsAST;
+  removing this requires threading `module_types` through `ast_printer` (via thread_local
+  or parameter), updating all `Type::Struct` match arms in printer/rewrites to also handle
+  `Type::Instance`, and removing the Struct arms from `constraint_collect.rs`,
+  `constraint_solve2.rs`, `call_site_flow.rs`, `ir/linear/tests.rs`, `red_cast_elim.rs`.
+- Backend tests in `emit/tests.rs` and `ast_printer.rs` use `Type::Struct(...)` directly
+  for cast/typecheck/return type tests — replace with `mb.intern_type_instance(name)`.
+
 **`from_function` guard — root cause of heuristic immutability.** The existing
 `constraint_solve.rs` only updates values whose current type is `Dynamic` or `Unknown`.
 Values pre-bound by `type_infer.rs` (from write-site heuristics, call-site aggregation,
