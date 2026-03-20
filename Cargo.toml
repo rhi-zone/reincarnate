@@ -9,6 +9,7 @@ members = [
     "crates/frontends/reincarnate-frontend-gamemaker",
     "crates/frontends/reincarnate-frontend-twine",
     "crates/checkers/reincarnate-checker-typescript",
+    "tools/gen-gml-builtins",
 ]
 
 [workspace.package]
