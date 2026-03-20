@@ -616,13 +616,41 @@ impl Module {
         }
     }
 
-    /// Normalize all `Type::Struct(name)` occurrences in function signatures and
-    /// value types to `Type::Instance(id)`, interning the name if necessary.
+    /// Normalize all `Type::Struct(name)` occurrences in function signatures,
+    /// value types, struct/class field types, and abstract member types to
+    /// `Type::Instance(id)`, interning the name if necessary.
     ///
     /// This is called by `ModuleBuilder::build()` after all structs/classes are
     /// registered, so that frontends can use the convenient `Type::Struct(name)`
     /// form during construction and have it transparently resolved to stable IDs.
     pub fn normalize_struct_types(&mut self) {
+        // Normalize struct field types.
+        for i in 0..self.structs.len() {
+            for j in 0..self.structs[i].fields.len() {
+                let ty = self.structs[i].fields[j].ty.clone();
+                self.structs[i].fields[j].ty = self.normalize_type(ty);
+            }
+        }
+        // Normalize class static fields and abstract member types.
+        for i in 0..self.classes.len() {
+            for j in 0..self.classes[i].static_fields.len() {
+                let ty = self.classes[i].static_fields[j].ty.clone();
+                self.classes[i].static_fields[j].ty = self.normalize_type(ty);
+            }
+            for j in 0..self.classes[i].abstract_members.len() {
+                let ret_ty = self.classes[i].abstract_members[j].return_ty.clone();
+                self.classes[i].abstract_members[j].return_ty = self.normalize_type(ret_ty);
+                for k in 0..self.classes[i].abstract_members[j].params.len() {
+                    let ty = self.classes[i].abstract_members[j].params[k].clone();
+                    self.classes[i].abstract_members[j].params[k] = self.normalize_type(ty);
+                }
+            }
+        }
+        // Normalize global types.
+        for i in 0..self.globals.len() {
+            let ty = self.globals[i].ty.clone();
+            self.globals[i].ty = self.normalize_type(ty);
+        }
         // Collect function IDs to avoid borrow conflicts.
         let func_ids: Vec<_> = self.functions.keys().collect();
         for func_id in func_ids {

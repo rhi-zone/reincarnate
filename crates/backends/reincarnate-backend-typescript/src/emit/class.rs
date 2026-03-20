@@ -13,7 +13,9 @@ use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, RuntimeConfig};
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
-use crate::types::{flash_ts_type, flash_ts_type_with_names, ts_type, ts_type_with_names};
+use crate::types::{
+    find_type_id, flash_ts_type_with_names_and_module, ts_type_with_names_and_module,
+};
 
 use super::rewrites;
 use super::sanitize::resolve_sprite_constant;
@@ -337,9 +339,11 @@ pub(super) fn emit_function(
             .and_then(|c| c.runtime_type.as_ref())
             .map(|t| t.name.as_str())
             .unwrap_or("GameRuntime");
-        js_func
-            .params
-            .insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
+        // Runtime types are pre-interned by intern_runtime_types() in emit_module_to_string/dir.
+        let rt_ty = find_type_id(module_types, rt_type_name)
+            .map(Type::Instance)
+            .unwrap_or_else(|| Type::Struct(rt_type_name.into()));
+        js_func.params.insert(0, ("_rt".into(), rt_ty));
         js_func.param_defaults.insert(0, None);
         rewrites::rewrite_stateful_calls(&mut js_func.body, stateful_names, false);
     }
@@ -350,17 +354,22 @@ pub(super) fn emit_function(
             .and_then(|c| c.runtime_type.as_ref())
             .map(|t| t.name.as_str())
             .unwrap_or("SugarCubeRuntime");
-        js_func
-            .params
-            .insert(0, ("_rt".into(), Type::Struct(rt_type_name.into())));
+        // Runtime types are pre-interned by intern_runtime_types() in emit_module_to_string/dir.
+        let rt_ty = find_type_id(module_types, rt_type_name)
+            .map(Type::Instance)
+            .unwrap_or_else(|| Type::Struct(rt_type_name.into()));
+        js_func.params.insert(0, ("_rt".into(), rt_ty));
         js_func.param_defaults.insert(0, None);
         // If a context_type is configured, retype the first Unknown param after `_rt`
         // (e.g. `h: any` → `h: HarloweContext`).
         if let Some(ctx_type) = runtime_config.and_then(|c| c.context_type.as_ref()) {
-            let ctx_type_name = ctx_type.name.clone();
+            let ctx_type_name = ctx_type.name.as_str();
+            let ctx_ty = find_type_id(module_types, ctx_type_name)
+                .map(Type::Instance)
+                .unwrap_or_else(|| Type::Struct(ctx_type_name.into()));
             for (_, ty) in &mut js_func.params {
                 if *ty == Type::Unknown {
-                    *ty = Type::Struct(ctx_type_name);
+                    *ty = ctx_ty.clone();
                     break;
                 }
             }
@@ -474,9 +483,9 @@ pub(super) fn emit_class(
     for f in &group.class_def.static_fields {
         let ident = sanitize_ident(&f.name);
         let mut ts = if engine == EngineKind::Flash {
-            flash_ts_type_with_names(&f.ty, class_names)
+            flash_ts_type_with_names_and_module(&f.ty, class_names, &module.types)
         } else {
-            ts_type_with_names(&f.ty, class_names)
+            ts_type_with_names_and_module(&f.ty, class_names, &module.types)
         };
         let ov = if parent_method_names_early.contains(f.name.as_str()) {
             "override "
@@ -506,9 +515,9 @@ pub(super) fn emit_class(
     for field in &group.struct_def.fields {
         let ident = sanitize_ident(&field.name);
         let mut ts = if engine == EngineKind::Flash {
-            flash_ts_type_with_names(&field.ty, class_names)
+            flash_ts_type_with_names_and_module(&field.ty, class_names, &module.types)
         } else {
-            ts_type_with_names(&field.ty, class_names)
+            ts_type_with_names_and_module(&field.ty, class_names, &module.types)
         };
         // A field that shadows a parent-class field/method needs `override`.
         let ov = if parent_method_names_early.contains(field.name.as_str()) {
@@ -558,7 +567,7 @@ pub(super) fn emit_class(
     // Abstract member declarations for interface classes (getters, setters, methods
     // that have no body in the ABC and are not emitted as real methods).
     for m in &group.class_def.abstract_members {
-        emit_abstract_member(m, engine, out);
+        emit_abstract_member(m, engine, &module.types, out);
     }
     let has_fields = !group.struct_def.fields.is_empty()
         || !group.class_def.static_fields.is_empty()
@@ -779,13 +788,26 @@ fn widen_type_for_null(ty: &Type, ts: &mut String) {
 fn emit_abstract_member(
     m: &reincarnate_core::ir::AbstractMember,
     engine: EngineKind,
+    module_types: &reincarnate_core::entity::PrimaryMap<
+        reincarnate_core::ir::TypeId,
+        reincarnate_core::ir::module::TypeDecl,
+    >,
     out: &mut String,
 ) {
+    use crate::types::ts_type_with_module;
     let ident = sanitize_ident(&m.name);
     let ret_ts = if engine == EngineKind::Flash {
-        flash_ts_type(&m.return_ty)
+        // flash_ts_type special-cases Map(Unknown,_) and Array; otherwise falls through.
+        // For Instance types, use ts_type_with_module which handles name lookup.
+        use crate::types::flash_ts_type;
+        match &m.return_ty {
+            reincarnate_core::ir::Type::Instance(_) => {
+                ts_type_with_module(&m.return_ty, module_types)
+            }
+            other => flash_ts_type(other),
+        }
     } else {
-        ts_type(&m.return_ty)
+        ts_type_with_module(&m.return_ty, module_types)
     };
     match m.kind {
         MethodKind::Getter => {
@@ -794,9 +816,15 @@ fn emit_abstract_member(
         MethodKind::Setter => {
             let param_ts = if let Some(p) = m.params.first() {
                 if engine == EngineKind::Flash {
-                    flash_ts_type(p)
+                    use crate::types::flash_ts_type;
+                    match p {
+                        reincarnate_core::ir::Type::Instance(_) => {
+                            ts_type_with_module(p, module_types)
+                        }
+                        other => flash_ts_type(other),
+                    }
                 } else {
-                    ts_type(p)
+                    ts_type_with_module(p, module_types)
                 }
             } else {
                 "any".to_string()
@@ -811,9 +839,15 @@ fn emit_abstract_member(
                 .enumerate()
                 .map(|(i, p)| {
                     let pts = if engine == EngineKind::Flash {
-                        flash_ts_type(p)
+                        use crate::types::flash_ts_type;
+                        match p {
+                            reincarnate_core::ir::Type::Instance(_) => {
+                                ts_type_with_module(p, module_types)
+                            }
+                            other => flash_ts_type(other),
+                        }
                     } else {
-                        ts_type(p)
+                        ts_type_with_module(p, module_types)
                     };
                     format!("p{i}: {pts}")
                 })

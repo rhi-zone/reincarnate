@@ -4,7 +4,9 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reincarnate_core::ir::{ClassDef, Function, MethodKind, Module, Op, Type};
+use reincarnate_core::entity::PrimaryMap;
+use reincarnate_core::ir::module::TypeDecl;
+use reincarnate_core::ir::{ClassDef, Function, MethodKind, Module, Op, Type, TypeId};
 use reincarnate_core::project::ExternalTypeDef;
 
 use super::{qualified_class_name, ClassRegistry};
@@ -94,8 +96,8 @@ pub(super) fn is_open_type(start: &str, type_defs: &BTreeMap<String, ExternalTyp
 /// Validate member accesses in a function against known type definitions.
 ///
 /// Checks `GetField` and `SetField` operations: if the object has a known
-/// `Struct` type, verifies that the field exists in the class hierarchy's
-/// instance fields, method names (getters/setters), or static fields.
+/// `Instance` or `Struct` type, verifies that the field exists in the class
+/// hierarchy's instance fields, method names (getters/setters), or static fields.
 pub(super) fn validate_member_accesses(
     func: &Function,
     function_class: Option<&str>,
@@ -103,6 +105,7 @@ pub(super) fn validate_member_accesses(
     registry: &ClassRegistry,
     short_to_qualified: &HashMap<String, String>,
     type_defs: &BTreeMap<String, ExternalTypeDef>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
 ) {
     for (_iid, inst) in func.insts.iter() {
         let (object, field) = match &inst.op {
@@ -116,7 +119,22 @@ pub(super) fn validate_member_accesses(
             continue;
         }
         let ty = &func.value_types[object];
+        // Resolve the type name from either Instance(id) (canonical IR form after
+        // normalize_struct_types) or Struct(name) (legacy pre-normalized form).
+        let type_name_storage: String;
         let type_name = match ty {
+            Type::Instance(id) => {
+                if let Some(named) = module_types.get(*id) {
+                    if let Some(name) = named.name() {
+                        type_name_storage = name.to_string();
+                        type_name_storage.as_str()
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            }
             Type::Struct(name) => name.as_str(),
             _ => continue,
         };

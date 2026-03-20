@@ -125,6 +125,24 @@ fn lowering_config_for_engine(
     }
 }
 
+/// Pre-intern runtime type names into the module's type arena.
+///
+/// `emit_function` only receives `module_types: &PrimaryMap<TypeId, TypeDecl>` (not
+/// the full `Module`), so it cannot call `module.intern_type()`. Interning the
+/// runtime/context type names here — before any emit calls — ensures that
+/// `find_type_id(module_types, name)` finds them during emission and they can be
+/// stored as `Type::Instance(id)` rather than `Type::Struct(name)`.
+fn intern_runtime_types(module: &mut Module, runtime_config: Option<&RuntimeConfig>) {
+    if let Some(rc) = runtime_config {
+        if let Some(rt_type) = &rc.runtime_type {
+            module.intern_type(&rt_type.name);
+        }
+        if let Some(ctx_type) = &rc.context_type {
+            module.intern_type(&ctx_type.name);
+        }
+    }
+}
+
 /// Emit a single module into `output_dir`.
 ///
 /// If the module has classes, emits a directory with one file per class plus
@@ -163,6 +181,7 @@ pub fn emit_module_to_string(
     debug: &DebugConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<String, CoreError> {
+    intern_runtime_types(module, runtime_config);
     let mut out = String::new();
     let class_names = build_class_names(module);
     let empty_type_defs = BTreeMap::new();
@@ -872,6 +891,7 @@ fn emit_class_file(
             registry,
             short_to_qualified,
             type_defs,
+            &module.types,
         );
     }
 
@@ -1223,6 +1243,7 @@ pub fn emit_module_to_dir(
     debug: &DebugConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(), CoreError> {
+    intern_runtime_types(module, runtime_config);
     let module_dir = output_dir.join(&module.name);
     fs::create_dir_all(&module_dir).map_err(CoreError::Io)?;
 

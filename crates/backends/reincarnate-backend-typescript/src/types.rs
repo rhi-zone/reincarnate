@@ -7,7 +7,61 @@ use reincarnate_core::ir::{Type, TypeId};
 use crate::emit::sanitize_ident;
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 
+/// Find a [`TypeId`] by name in `module_types` via a linear scan.
+///
+/// Used in emission contexts where only `module_types` (not the full `Module`) is
+/// available but a name → TypeId lookup is needed (e.g. for runtime type names).
+/// Returns `None` if no entry with the given name exists.
+pub fn find_type_id(module_types: &PrimaryMap<TypeId, TypeDecl>, name: &str) -> Option<TypeId> {
+    module_types
+        .iter()
+        .find(|(_, decl)| decl.name() == Some(name))
+        .map(|(id, _)| id)
+}
+
+/// Resolve a [`TypeId`] to its short TypeScript identifier using `module_types`.
+///
+/// Returns the sanitized short name (e.g. `"Monster"` for `"classes::Monster"`),
+/// or `"unknown"` when the id cannot be resolved.
+pub fn ts_type_id(id: TypeId, module_types: &PrimaryMap<TypeId, TypeDecl>) -> String {
+    if let Some(named) = module_types.get(id) {
+        if let Some(name) = named.name() {
+            let short = name.rsplit("::").next().unwrap_or(name);
+            // AS3 `Object` is a dynamic property bag — same mapping as `Type::Struct("Object")`.
+            if short == "Object" {
+                return "Record<string, any>".into();
+            }
+            // AS3 `Class` metaclass — map to `any`.
+            if short == "Class" {
+                return "any".into();
+            }
+            // AS3 XML/XMLList — map to `any`.
+            if matches!(short, "XML" | "XMLList") {
+                return "any".into();
+            }
+            return sanitize_ident(short);
+        }
+    }
+    "unknown".into()
+}
+
 /// Map an IR [`Type`] to its TypeScript representation.
+///
+/// For `Type::Instance(id)`, `module_types` is required to resolve the type name.
+/// Pass `None` only in contexts where `Instance` is guaranteed not to appear
+/// (e.g. post-`resolve_js_function_types` JsAST where all Instance → Struct).
+pub fn ts_type_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> String {
+    match ty {
+        Type::Instance(id) => ts_type_id(*id, module_types),
+        _ => ts_type(ty),
+    }
+}
+
+/// Map an IR [`Type`] to its TypeScript representation.
+///
+/// For `Type::Instance(id)`, falls back to `"unknown"` — call [`ts_type_with_module`]
+/// when struct/class field types (which are now `Instance` after normalization) need
+/// to be resolved to their real names.
 pub fn ts_type(ty: &Type) -> String {
     match ty {
         Type::Void => "void".into(),
@@ -146,6 +200,75 @@ pub fn ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> S
                 .unwrap_or_else(|| sanitize_ident(short))
         }
         _ => ts_type(ty),
+    }
+}
+
+/// Like [`ts_type_with_names`] but also resolves `Type::Instance(id)` via `module_types`.
+///
+/// Use this for struct/class field types and other types stored in the module
+/// (which are `Instance` after `normalize_struct_types`).
+pub fn ts_type_with_names_and_module(
+    ty: &Type,
+    class_names: &HashMap<String, String>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
+) -> String {
+    match ty {
+        Type::Instance(id) => {
+            if let Some(named) = module_types.get(*id) {
+                if let Some(name) = named.name() {
+                    let short = name.rsplit("::").next().unwrap_or(name);
+                    if short == "Object" {
+                        return "Record<string, any>".into();
+                    }
+                    if short == "Class" {
+                        return "any".into();
+                    }
+                    if matches!(short, "XML" | "XMLList") {
+                        return "any".into();
+                    }
+                    return class_names
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| sanitize_ident(short));
+                }
+            }
+            "unknown".into()
+        }
+        _ => ts_type_with_names(ty, class_names),
+    }
+}
+
+/// Like [`flash_ts_type_with_names`] but also resolves `Type::Instance(id)` via `module_types`.
+pub fn flash_ts_type_with_names_and_module(
+    ty: &Type,
+    class_names: &HashMap<String, String>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
+) -> String {
+    match ty {
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
+        Type::Array(_) => "any".into(),
+        Type::Instance(id) => {
+            if let Some(named) = module_types.get(*id) {
+                if let Some(name) = named.name() {
+                    let short = name.rsplit("::").next().unwrap_or(name);
+                    if matches!(short, "XML" | "XMLList") {
+                        return "any".into();
+                    }
+                    if short == "Object" {
+                        return "Record<string, any>".into();
+                    }
+                    if short == "Class" {
+                        return "any".into();
+                    }
+                    return class_names
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| sanitize_ident(short));
+                }
+            }
+            "unknown".into()
+        }
+        _ => flash_ts_type_with_names(ty, class_names),
     }
 }
 
