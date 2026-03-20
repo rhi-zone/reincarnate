@@ -44,20 +44,25 @@ from inside callee bodies to callers — even when TypeInference wrote Unknown f
 callee's return type. This fix is blocked behind the TypeInference deterministic-ops fix
 (step 1 above), since linking via return_var when callee body is all-Unknown is a no-op.
 
-**sig.return_ty writeback — done (2026-03-20, commit d293e66):** −377 TS errors
-(13,735 → 13,358 on Dead Estate). RC1002 conflict diagnostic emitted on conflicts;
-concrete sig.return_ty preserved when solver disagrees.
+**sig.return_ty writeback — done (2026-03-20, commit d293e66):** Structurally correct;
+writes inferred return types back to sig. Measured impact unclear — emit cache was stale
+across agent measurements. True ground truth: **13,496 TS errors** (measured via
+fresh emit after all commits through d72672d, consistent across all checkpoint checks).
 
-**Step 7 inference diagnostics — done (2026-03-20):** RC1001/RC1005 emission in
-ConstraintSolve2. Dead Estate breakdown after sig.return_ty writeback:
+**Step 7 inference diagnostics — done (2026-03-20, commits e8e80b0, d72672d+):**
+RC1001/RC1005 emission in ConstraintSolve2. MakeClosure→Function(sig) in TypeInference.
+Return_var interprocedural bridge (Step 2b) — structurally correct, no measurable effect
+yet (callee bodies lack enough constraints for information to flow).
+
+Dead Estate breakdown (13,496 TS errors, all inference improvements through Step 2b):
 - Total remaining Unknown: 56,387
 - RC1001 No constraints: 54,354 — by Op: Cast(17,862), Call(13,771), GetField(10,664),
-  GlobalRef(3,804), MakeClosure(2,293), CallIndirect(2,281), SystemCall(1,922),
-  GetIndex(1,025), Arithmetic(~732)
+  GlobalRef(3,804), MakeClosure(2,293→0 after d72672d), CallIndirect(2,281),
+  SystemCall(1,922), GetIndex(1,025), Arithmetic(~732)
 - RC1005 Inherited Unknown: 2,033
 
 Note: Cast RC1001s are largely false positives (Phase 1 binds cast targets directly,
-not via arena constraints). Real gaps: Call, GetField, MakeClosure, GlobalRef.
+not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
 
 ### After inference is solid
 
