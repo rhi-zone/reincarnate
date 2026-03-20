@@ -4,6 +4,36 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## Inference Improvement Loop (ACTIVE)
+
+**Workflow:** diagnose with `--dump-inference-failures` → identify next fix → propose to user → get confirmation → implement → measure → repeat.
+
+### Next: identify which ops inside callee bodies produce Unknown return values
+
+The `--dump-inference-failures` tool now shows which ops produce unconstrained values.
+The dominant remaining gap: 12,257 unconstrained `Op::Call` results. Return_var linking
+is safe (no regressions) but doesn't help because the callee bodies themselves return
+Unknown — the chain needs more constraint coverage inside function bodies.
+
+**Next diagnostic step:** run `--dump-inference-failures` filtered to functions that
+are called by other functions (callees with Unknown return types). Find which ops inside
+those bodies produce the Unknown return values, then add those constraints.
+
+Use: `cargo run -p reincarnate-cli -- emit --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json --dump-inference-failures 2>/dev/null`
+
+### After inference is solid
+
+- [ ] **Phase 8 — Core AST + reconstruction.** Structurizer → Core AST; forward
+  substitution; `ForEach` lifting. Gate: emitted code measurably cleaner.
+- [ ] **Phase 9 — Runtime as IR.** GML runtime as IR functions; `RuntimeRegistry`;
+  arithmetic ops as builtin calls (unblocks Phase 3). Gate: same output, M+N architecture.
+- [ ] **Phase 3 — Ban `SystemCall` + `GlobalRef`.** Blocked on Phase 9.
+- [ ] **Phase 5b/5c — `NameInterner` + extend `NameTable`.**
+- [ ] **Row variables** (`Type::Row(RowVarId)`) for anonymous struct inference (GML
+  `ds_map`, SugarCube state vars). High impact, high effort.
+- [ ] **Union on conflict** — replace `force_rebind(Unknown)` with `Union(t1, t2)`.
+  Prerequisite for safely relaxing interprocedural constraint guards.
+
 ## Incremental Rewrite Plan (ACTIVE)
 
 Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally — each phase completes fully (output parity verified on Dead Estate via snapshot diff) before the next begins. No stubs. No deleting working code before its replacement is proven equivalent.
