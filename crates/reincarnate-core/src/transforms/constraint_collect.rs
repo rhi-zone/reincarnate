@@ -241,16 +241,112 @@ pub fn collect_function(
                     }
                 }
 
-                // Arithmetic — type propagation via Equal(result, operand)
-                // disabled pending C_ARITH constraint kind. See TODO.md.
-                Op::Add(_, _) | Op::Sub(_, _) | Op::Mul(_, _) | Op::Div(_, _) | Op::Rem(_, _) => {}
-                Op::Neg(_) => {}
-                Op::BitAnd(_, _)
-                | Op::BitOr(_, _)
-                | Op::BitXor(_, _)
-                | Op::Shl(_, _)
-                | Op::Shr(_, _)
-                | Op::BitNot(_) => {}
+                // Op::Add is excluded — overloaded for string concatenation in GML,
+                // so result type cannot be assumed to match operand types.
+                Op::Add(_, _) => {}
+
+                // Interim: propagate operand type to result. Phase 9 replaces with builtin signatures.
+                Op::Sub(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::Mul(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::Div(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::Rem(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::BitAnd(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::BitOr(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::BitXor(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::Shl(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                Op::Shr(a, b) => {
+                    if let (Some(a_var), Some(b_var), Some(rv)) = (
+                        var_for(*a, &value_vars),
+                        var_for(*b, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
+                        constraints.push(TypeConstraint::Equal(rv, b_var));
+                    }
+                }
+                // Interim: propagate operand type to result. Phase 9 replaces with builtin signatures.
+                Op::Neg(a) => {
+                    if let (Some(a_var), Some(rv)) = (var_for(*a, &value_vars), result_var) {
+                        constraints.push(TypeConstraint::Equal(rv, a_var));
+                    }
+                }
+                Op::BitNot(a) => {
+                    if let (Some(a_var), Some(rv)) = (var_for(*a, &value_vars), result_var) {
+                        constraints.push(TypeConstraint::Equal(rv, a_var));
+                    }
+                }
 
                 // Select — result is compatible with both branches.
                 Op::Select {
@@ -640,8 +736,8 @@ mod tests {
         }
 
         // The Return op emits one Equal constraint: return_value_var == return_type_var.
-        // Arithmetic ops (Add) do NOT emit grounding constraints — see
-        // "Numeric grounding limitation" in TODO.md.
+        // Op::Add does NOT emit Equal constraints (string-concat overload); other
+        // arithmetic ops do, but that is a separate concern tested elsewhere.
         assert!(
             !set.constraints.is_empty(),
             "expected at least one constraint from Return op"

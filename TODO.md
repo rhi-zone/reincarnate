@@ -298,6 +298,21 @@ operands is no longer relevant: with builtins as declared functions, grounding c
 from the builtin's parameter types via `Callable` — which naturally back-propagates
 only when the constraint is consistent with other constraints on the same variable.
 
+**`Op::Add` and arithmetic ops are not core IR instructions — they are builtin calls.**
+GML bytecode carries explicit type tags (`ADD.f64`, `ADD.i64`, `ADD.str`). The frontend
+should emit different builtins per tag:
+- `ADD.f64` → `Op::Call("builtin.add_f64", [a, b])` — sig `(Float, Float) → Float`
+- `ADD.str` → `Op::Call("builtin.str_concat", [a, b])` — sig `(String, String) → String`
+- `ADD.i64` → `Op::Call("builtin.add_i64", [a, b])`
+
+The solver handles them via `Callable` on declared signatures — no special arithmetic
+logic. A `ty` field on `Op::Add` would be a transitional detour that Phase 9 makes
+obsolete immediately. Skip it; go straight to Phase 9.
+
+**Interim (active, 2026-03-20):** `Equal(result_var, operand_var)` for Sub/Mul/Div/Rem/
+Neg/bit ops in ConstraintCollect. Skips Add (ADD.str vs ADD.f64 ambiguity without type
+tag). Enables the interprocedural return type chain until Phase 9 lands.
+
 ### What to Preserve
 
 - The `TransformPipeline` / `Transform` trait structure is fine. Structural passes
