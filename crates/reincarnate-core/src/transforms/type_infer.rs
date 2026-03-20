@@ -22,6 +22,8 @@ struct ModuleContext {
     global_types: HashMap<String, Type>,
     /// Function name → return type.
     func_return_types: HashMap<String, Type>,
+    /// Function name → full signature (used to type `MakeClosure` results).
+    func_sigs: HashMap<String, FunctionSig>,
     /// (class_short_name, bare_method_name) → return type.
     method_return_types: HashMap<(String, String), Type>,
     /// class_short_name → super_class_short_name.
@@ -65,6 +67,13 @@ impl ModuleContext {
                 .entry(name.clone())
                 .or_insert_with(|| parse_type_notation(&sig.returns));
         }
+
+        // Build func_sigs: function name → full FunctionSig (for MakeClosure typing).
+        let func_sigs: HashMap<String, FunctionSig> = module
+            .functions
+            .iter()
+            .map(|(id, f)| (module.func_name(id).to_string(), f.sig.clone()))
+            .collect();
 
         // Build method_return_types: (class, bare_name) → return type
         let mut method_return_types = HashMap::new();
@@ -155,6 +164,7 @@ impl ModuleContext {
             static_fields: static_fields_map,
             global_types,
             func_return_types,
+            func_sigs,
             method_return_types,
             class_hierarchy,
             unique_method_types,
@@ -607,6 +617,15 @@ fn infer_inst_type(
                 // GlobalStore is a write-side rule used by build_global_types,
                 // not a result-type rule — no type to infer here.
                 Some(SystemCallTypeRule::GlobalStore { .. }) | None => return None,
+            }
+        }
+
+        // MakeClosure: result is a Function type with the closure's full signature.
+        Op::MakeClosure { func: name, .. } => {
+            if let Some(sig) = ctx.func_sigs.get(name.as_str()) {
+                Type::Function(Box::new(sig.clone()))
+            } else {
+                return None;
             }
         }
 

@@ -6,20 +6,58 @@ Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`
 
 ## Inference Improvement Loop (ACTIVE)
 
-**Workflow:** diagnose with `--dump-inference-failures` → identify next fix → propose to user → get confirmation → implement → measure → repeat.
+**Workflow:** diagnose with `--dump-inference-failures` → identify next fix → implement → measure → repeat.
 
-### Next: identify which ops inside callee bodies produce Unknown return values
+### Design goal: `Unknown` should be rare and `is_concrete(Unknown) = true`
 
-The `--dump-inference-failures` tool now shows which ops produce unconstrained values.
-The dominant remaining gap: 12,257 unconstrained `Op::Call` results. Return_var linking
-is safe (no regressions) but doesn't help because the callee bodies themselves return
-Unknown — the chain needs more constraint coverage inside function bodies.
+`Type::Unknown` is a concrete, final type meaning "inference verified this is genuinely
+unknown." `Type::Var(_)` (unbound) means "free, not yet constrained." These have
+fundamentally different semantics, but `is_concrete` currently returns `false` for both —
+causing Unknown and Var to be treated identically throughout the solver.
 
-**Next diagnostic step:** run `--dump-inference-failures` filtered to functions that
-are called by other functions (callees with Unknown return types). Find which ops inside
-those bodies produce the Unknown return values, then add those constraints.
+**Why `is_concrete(Unknown) = true` is correct:**
+- Unknown is not a "try again" signal — it's a real type in our system
+- Treating it as non-concrete causes the solver to create TypeVars for Unknown values
+  and attempt to improve them, which is wasteful and semantically wrong
+- An unbound TypeVar is open/polymorphic; Unknown is decided/final
 
-Use: `cargo run -p reincarnate-cli -- emit --manifest ~/reincarnate/gamemaker/deadestate/reincarnate.json --dump-inference-failures 2>/dev/null`
+**Why we can't flip this yet:** TypeInference currently writes `Unknown` for almost
+everything it doesn't immediately know. If `is_concrete(Unknown) = true`, ConstraintSolve
+stops improving Unknown values (they'd be treated as already concrete). We need TypeInference
+to write concrete types for all deterministic ops first — then Unknown becomes truly rare,
+meaning "we couldn't infer this after exhausting all analysis."
+
+**Path:**
+1. Fix TypeInference to write concrete types for all deterministic ops (Cmp→Bool, Not→Bool,
+   BoolAnd/BoolOr→Bool, MakeClosure→Function, Select→branch type, etc.) ← IN PROGRESS
+2. Fix Step 2b to link caller results to callee's `return_var` (TypeVar) unconditionally —
+   currently gated on `is_concrete(sig.return_ty)` which blocks the interprocedural bridge
+   when callee return type is Unknown (even if `return_var` would resolve to concrete)
+3. Make `is_concrete(Unknown) = true` — then Unknown in output means "confirmed failure"
+4. Retire `CallSiteTypeFlow` and `CallSiteTypeWiden` — subsumed by the unified solver
+
+**Interprocedural bridge gap (Step 2b):** Currently, call result types are only linked to
+callee return types when `sig.return_ty` is concrete. But `sig.return_ty` is TypeInference's
+snapshot (stale), while the callee's `return_var` TypeVarId is the live HM arena node.
+If we link via `return_var` unconditionally, the joint solver propagates concrete types
+from inside callee bodies to callers — even when TypeInference wrote Unknown for the
+callee's return type. This fix is blocked behind the TypeInference deterministic-ops fix
+(step 1 above), since linking via return_var when callee body is all-Unknown is a no-op.
+
+**sig.return_ty writeback — done (2026-03-20, commit d293e66):** −377 TS errors
+(13,735 → 13,358 on Dead Estate). RC1002 conflict diagnostic emitted on conflicts;
+concrete sig.return_ty preserved when solver disagrees.
+
+**Step 7 inference diagnostics — done (2026-03-20):** RC1001/RC1005 emission in
+ConstraintSolve2. Dead Estate breakdown after sig.return_ty writeback:
+- Total remaining Unknown: 56,387
+- RC1001 No constraints: 54,354 — by Op: Cast(17,862), Call(13,771), GetField(10,664),
+  GlobalRef(3,804), MakeClosure(2,293), CallIndirect(2,281), SystemCall(1,922),
+  GetIndex(1,025), Arithmetic(~732)
+- RC1005 Inherited Unknown: 2,033
+
+Note: Cast RC1001s are largely false positives (Phase 1 binds cast targets directly,
+not via arena constraints). Real gaps: Call, GetField, MakeClosure, GlobalRef.
 
 ### After inference is solid
 
@@ -297,17 +335,19 @@ union/intersection types, and subtyping to basic HM — all applicable here.
    - block args → `Equal(arg, param)` ✅
    - `Terminator::Return` → `Equal(value, return_var)` ✅
    - Engine-specific rules (GlobalStore write sites, ClassRef) via `SystemCallTypeRule` ✅
-   **Missing constraints (2026-03-20 audit — 48,954 unconstrained values on Dead Estate):**
-   - `Op::Const` → `Equal(result, literal_type)` — CRITICAL: constants not grounded
-   - `Op::GlobalRef` → `Equal(result, global_type_var)` — global refs not linked
-   - `Op::Add/Sub/Mul/Div/Rem/Neg` → `Equal(result, operand)` (interim: equality between
-     operands and result until builtins-as-calls is implemented)
-   - `Op::BitAnd/BitOr/BitXor/BitNot/Shl/Shr` → `Equal(result, operand)` — integer type
-   - `Op::Select` → `Equal(result, on_true)`, `Equal(result, on_false)` — branch merge
+   **Missing constraints (2026-03-20 audit — 54,354 RC1001 values after sig.return_ty fix):**
+   - `Op::Cmp` → `Equal(result, Bool)` — IN PROGRESS (TypeInference deterministic ops)
+   - `Op::Not/BoolAnd/BoolOr` → `Equal(result, Bool)` — IN PROGRESS
+   - `Op::Select` → `Equal(result, on_true)`, `Equal(result, on_false)` — IN PROGRESS
+   - `Op::MakeClosure` → `Equal(result, Function(sig))` from callee sig — IN PROGRESS
+   - `Op::Call result → callee return_var` (unconditional, not gated on sig.return_ty) — IN PROGRESS (Step 2b interprocedural bridge)
+   - `Op::Const` → `Equal(result, literal_type)` — redundant (Phase 1 already binds)
+   - `Op::GlobalRef` → `Equal(result, global_type_var)` — dormant (OBJT/FUNC refs not in globals map by design)
+   - `Op::Add/Sub/Mul/Div/Rem/Neg` → blocked on Phase 9 (builtins-as-calls); + is string concat in GML
+   - `Op::BitAnd/BitOr/BitXor/BitNot/Shl/Shr` → `Equal(result, operand)` — integer type (safe to add after Phase 9)
    - `Op::ArrayInit` → `Equal(result, Array(element_var))` with element unification
    - `Op::GetIndex` → index-access constraint (collection element → result)
    - `Op::Load` → blocked on per-Alloc element type tracking
-   - `Op::MakeClosure` → `Equal(result, Function(sig))` from callee signature
    - `Op::TupleInit`, `Yield`, `CoroutineCreate/Resume`, `Spread` — low priority
 
 3. **Wire collection into `ConstraintSolve2`** — solver processes `TypeConstraint` list;
