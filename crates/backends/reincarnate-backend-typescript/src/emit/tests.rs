@@ -886,6 +886,8 @@ fn emit_intra_module_imports() {
     let mut mb = ModuleBuilder::new("frame1");
 
     // Two classes: Monster (root) and Swamp (nested), where Swamp references Monster.
+    // Intern the qualified name so the field type lookup works correctly.
+    let monster_type_id = mb.intern_type("classes::Monster");
     mb.add_struct(StructDef {
         name: "Monster".into(),
         namespace: vec!["classes".into()],
@@ -897,7 +899,7 @@ fn emit_intra_module_imports() {
         namespace: vec!["classes".into(), "Scenes".into()],
         fields: vec![FieldDef {
             name: "boss".into(),
-            ty: Type::Struct("classes::Monster".into()),
+            ty: Type::Instance(monster_type_id),
             default: None,
         }],
         visibility: Visibility::Public,
@@ -2446,6 +2448,7 @@ fn emit_class_with_interfaces() {
 #[test]
 fn type_check_struct_uses_is_type() {
     let out = build_and_emit(|mb| {
+        let monster_id = mb.intern_type("Monster");
         let sig = FunctionSig {
             params: vec![Type::Unknown],
             return_ty: Type::Bool,
@@ -2453,7 +2456,7 @@ fn type_check_struct_uses_is_type() {
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let x = fb.param(0);
-        let check = fb.type_check(x, Type::Struct("Monster".into()));
+        let check = fb.type_check(x, Type::Instance(monster_id));
         fb.ret(Some(check));
         mb.add_function(fb.build());
     });
@@ -2471,14 +2474,15 @@ fn type_check_struct_uses_is_type() {
 #[test]
 fn cast_struct_uses_as_type() {
     let out = build_and_emit(|mb| {
+        let monster_id = mb.intern_type("Monster");
         let sig = FunctionSig {
             params: vec![Type::Unknown],
-            return_ty: Type::Struct("Monster".into()),
+            return_ty: Type::Instance(monster_id),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let x = fb.param(0);
-        let casted = fb.cast(x, Type::Struct("Monster".into()));
+        let casted = fb.cast(x, Type::Instance(monster_id));
         fb.ret(Some(casted));
         mb.add_function(fb.build());
     });
@@ -2601,14 +2605,15 @@ fn coerce_bool_emits_boolean_call() {
 #[test]
 fn coerce_struct_emits_ts_assertion() {
     let out = build_and_emit(|mb| {
+        let monster_id = mb.intern_type("Monster");
         let sig = FunctionSig {
             params: vec![Type::Unknown],
-            return_ty: Type::Struct("Monster".into()),
+            return_ty: Type::Instance(monster_id),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let x = fb.param(0);
-        let coerced = fb.coerce(x, Type::Struct("Monster".into()));
+        let coerced = fb.coerce(x, Type::Instance(monster_id));
         fb.ret(Some(coerced));
         mb.add_function(fb.build());
     });
@@ -2627,15 +2632,16 @@ fn coerce_struct_emits_ts_assertion() {
 fn redundant_astype_eliminated() {
     // When value is already typed as the target, Cast should be eliminated.
     let out = build_and_emit(|mb| {
+        let monster_id = mb.intern_type("Monster");
         let sig = FunctionSig {
-            params: vec![Type::Struct("Monster".into())],
-            return_ty: Type::Struct("Monster".into()),
+            params: vec![Type::Instance(monster_id)],
+            return_ty: Type::Instance(monster_id),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let x = fb.param(0);
         // Cast to same type — should be eliminated by linear lowering.
-        let casted = fb.cast(x, Type::Struct("Monster".into()));
+        let casted = fb.cast(x, Type::Instance(monster_id));
         fb.ret(Some(casted));
         mb.add_function(fb.build());
     });

@@ -116,21 +116,23 @@ pub(super) fn rewrite_late_bound_expr(
     short_to_qualified: &HashMap<String, String>,
 ) {
     // First, check if this expression itself needs rewriting.
+    // After resolve_js_function_types, named types are Instance(TypeId) —
+    // use MODULE_TYPES thread-local to resolve the name for late-bound checks.
     let needs_rewrite = match expr {
         JsExpr::TypeCheck {
-            ty: Type::Struct(name),
+            ty: Type::Instance(id),
             ..
         } => {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            late_bound.contains(short)
+            let short = crate::ast_printer::instance_type_short_name(*id);
+            late_bound.contains(short.as_str())
         }
         JsExpr::Cast {
-            ty: Type::Struct(name),
+            ty: Type::Instance(id),
             kind: CastKind::NullableCoerce,
             ..
         } => {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            late_bound.contains(short)
+            let short = crate::ast_printer::instance_type_short_name(*id);
+            late_bound.contains(short.as_str())
         }
         _ => false,
     };
@@ -142,14 +144,16 @@ pub(super) fn rewrite_late_bound_expr(
             JsExpr::TypeCheck {
                 expr: inner, ty, ..
             } => {
-                let name = match &ty {
-                    Type::Struct(n) => n,
+                let qualified = match &ty {
+                    Type::Instance(id) => {
+                        let short = crate::ast_printer::instance_type_short_name(*id);
+                        short_to_qualified
+                            .get(short.as_str())
+                            .cloned()
+                            .unwrap_or(short)
+                    }
                     _ => unreachable!(),
                 };
-                let short = name.rsplit("::").next().unwrap_or(name);
-                let qualified = short_to_qualified
-                    .get(short)
-                    .map_or_else(|| name.clone(), |q| q.clone());
                 *expr = JsExpr::Call {
                     callee: Box::new(JsExpr::Var("isType".into())),
                     args: vec![
@@ -164,14 +168,16 @@ pub(super) fn rewrite_late_bound_expr(
             JsExpr::Cast {
                 expr: inner, ty, ..
             } => {
-                let name = match &ty {
-                    Type::Struct(n) => n,
+                let qualified = match &ty {
+                    Type::Instance(id) => {
+                        let short = crate::ast_printer::instance_type_short_name(*id);
+                        short_to_qualified
+                            .get(short.as_str())
+                            .cloned()
+                            .unwrap_or(short)
+                    }
                     _ => unreachable!(),
                 };
-                let short = name.rsplit("::").next().unwrap_or(name);
-                let qualified = short_to_qualified
-                    .get(short)
-                    .map_or_else(|| name.clone(), |q| q.clone());
                 *expr = JsExpr::Call {
                     callee: Box::new(JsExpr::Var("asType".into())),
                     args: vec![

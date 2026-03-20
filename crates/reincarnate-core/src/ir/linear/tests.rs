@@ -642,7 +642,7 @@ fn reassigned_self_param_renamed() {
     // Instance method with self param named "this".
     // Another value also named "this" — should be renamed to "_this".
     let sig = FunctionSig {
-        params: vec![Type::Struct("Foo".to_string()), Type::Int(64)],
+        params: vec![Type::Unknown, Type::Int(64)],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -737,7 +737,7 @@ fn debug_name_propagates_through_cast() {
     //
     // The name "hp" should propagate back to v_field.
     let sig = FunctionSig {
-        params: vec![Type::Struct("Obj".to_string())],
+        params: vec![Type::Unknown],
         return_ty: Type::Int(32),
         ..Default::default()
     };
@@ -827,7 +827,7 @@ fn flush_skips_consumed_values() {
     // v1 and v2 are both pending lazy. Flushing v2 consumes v1.
     // The flush loop must skip v1 when it tries to flush it.
     let sig = FunctionSig {
-        params: vec![Type::Struct("Obj".to_string())],
+        params: vec![Type::Unknown],
         return_ty: Type::Void,
         ..Default::default()
     };
@@ -866,7 +866,7 @@ fn flush_scoped_to_prevent_use_before_def() {
     // v_field is defined in the header but used after the if/else.
     // It must NOT be flushed inside then_block's body (use-before-def).
     let sig = FunctionSig {
-        params: vec![Type::Struct("Obj".to_string()), Type::Bool],
+        params: vec![Type::Unknown, Type::Bool],
         return_ty: Type::Unknown,
         ..Default::default()
     };

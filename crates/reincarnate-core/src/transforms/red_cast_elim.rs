@@ -293,21 +293,22 @@ mod tests {
         assert!(!result.changed, "Unknown -> Int cast is NOT redundant");
     }
 
-    /// NullableCoerce(x: Foo, Foo) where source is Struct -> redundant, eliminated.
+    /// NullableCoerce(x: Foo, Foo) where source is Instance(Foo) -> redundant, eliminated.
     #[test]
     fn astype_same_struct() {
+        let mut mb = ModuleBuilder::new("test");
+        let foo_id = mb.intern_type("Foo");
         let sig = FunctionSig {
-            params: vec![Type::Struct("Foo".into())],
-            return_ty: Type::Struct("Foo".into()),
+            params: vec![Type::Instance(foo_id)],
+            return_ty: Type::Instance(foo_id),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
         // cast() produces NullableCoerce kind.
-        let cast = fb.cast(p, Type::Struct("Foo".into()));
+        let cast = fb.cast(p, Type::Instance(foo_id));
         fb.ret(Some(cast));
 
-        let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let result = RedundantCastElimination.apply(mb.build()).unwrap();
         assert!(

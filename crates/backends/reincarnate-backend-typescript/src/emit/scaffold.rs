@@ -119,8 +119,7 @@ pub(super) fn validate_member_accesses(
             continue;
         }
         let ty = &func.value_types[object];
-        // Resolve the type name from either Instance(id) (canonical IR form after
-        // normalize_struct_types) or Struct(name) (legacy pre-normalized form).
+        // Resolve the type name from Instance(id).
         let type_name_storage: String;
         let type_name = match ty {
             Type::Instance(id) => {
@@ -135,7 +134,6 @@ pub(super) fn validate_member_accesses(
                     continue;
                 }
             }
-            Type::Struct(name) => name.as_str(),
             _ => continue,
         };
         let short = type_name.rsplit("::").next().unwrap_or(type_name);

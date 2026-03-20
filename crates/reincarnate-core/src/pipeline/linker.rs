@@ -251,9 +251,10 @@ mod tests {
             ],
             visibility: Visibility::Public,
         });
+        let point_id = mb_a.intern_type("Point");
         mb_a.add_global(Global {
             name: "ORIGIN".into(),
-            ty: Type::Struct("Point".into()),
+            ty: Type::Instance(point_id),
             visibility: Visibility::Public,
             mutable: false,
             init: None,

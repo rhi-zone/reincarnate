@@ -53,8 +53,14 @@ impl Transform for GmlInstanceTypeFlow {
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let mut changed = false;
+        // Pre-build a name → TypeId map so process_function can use Type::Instance.
+        let type_ids: std::collections::HashMap<String, reincarnate_core::ir::TypeId> = module
+            .type_names
+            .iter()
+            .map(|(name, &id)| (name.clone(), id))
+            .collect();
         for func in module.functions.values_mut() {
-            changed |= self.process_function(func);
+            changed |= self.process_function(func, &type_ids);
         }
         Ok(TransformResult { module, changed })
     }
@@ -63,7 +69,11 @@ impl Transform for GmlInstanceTypeFlow {
 impl PureIrPass for GmlInstanceTypeFlow {}
 
 impl GmlInstanceTypeFlow {
-    fn process_function(&self, func: &mut Function) -> bool {
+    fn process_function(
+        &self,
+        func: &mut Function,
+        type_ids: &std::collections::HashMap<String, reincarnate_core::ir::TypeId>,
+    ) -> bool {
         let mut changed = false;
 
         // --- Step A: build objref_map ---
@@ -111,8 +121,10 @@ impl GmlInstanceTypeFlow {
 
         for (vid, class_name) in type_updates {
             if func.value_types[vid] == Type::Unknown {
-                func.value_types[vid] = Type::Struct(class_name);
-                changed = true;
+                if let Some(&type_id) = type_ids.get(&class_name) {
+                    func.value_types[vid] = Type::Instance(type_id);
+                    changed = true;
+                }
             }
         }
 
@@ -146,7 +158,10 @@ impl GmlInstanceTypeFlow {
             .collect();
 
         for (inst_id, object_vid, class_name, negate) in cmp_rewrites {
-            let type_check_op = Op::TypeCheck(object_vid, Type::Struct(class_name));
+            let Some(&type_id) = type_ids.get(&class_name) else {
+                continue;
+            };
+            let type_check_op = Op::TypeCheck(object_vid, Type::Instance(type_id));
             if negate {
                 // Replace Cmp(Ne, ...) with Not(TypeCheck(...)).
                 //

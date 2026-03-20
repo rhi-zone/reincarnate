@@ -9,6 +9,7 @@ use std::fmt::Write;
 
 use reincarnate_core::ir::{FuncId, MethodKind, Module, Type};
 
+use crate::ast_printer::instance_type_short_name;
 use crate::emit::{qualified_class_name, sanitize_ident, ClassGroup};
 
 /// Map an IR `Type` to the AS3-style type name used in describeType output.
@@ -22,7 +23,7 @@ pub(crate) fn as3_type_name(ty: &Type) -> String {
         Type::String => "String".into(),
         Type::Array(_) => "Array".into(),
         Type::Map(_, _) => "Object".into(),
-        Type::Struct(name) => name.rsplit("::").next().unwrap_or(name).into(),
+        Type::Instance(id) => instance_type_short_name(*id),
         _ => "*".into(),
     }
 }

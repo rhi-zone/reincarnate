@@ -616,40 +616,38 @@ impl Module {
         }
     }
 
-    /// Normalize all `Type::Struct(name)` occurrences in function signatures,
-    /// value types, struct/class field types, and abstract member types to
-    /// `Type::Instance(id)`, interning the name if necessary.
+    /// Normalize compound types in function signatures, value types, struct/class
+    /// field types, and abstract member types, resolving any nested type references.
     ///
     /// This is called by `ModuleBuilder::build()` after all structs/classes are
-    /// registered, so that frontends can use the convenient `Type::Struct(name)`
-    /// form during construction and have it transparently resolved to stable IDs.
+    /// registered.
     pub fn normalize_struct_types(&mut self) {
         // Normalize struct field types.
         for i in 0..self.structs.len() {
             for j in 0..self.structs[i].fields.len() {
                 let ty = self.structs[i].fields[j].ty.clone();
-                self.structs[i].fields[j].ty = self.normalize_type(ty);
+                self.structs[i].fields[j].ty = normalize_type(ty);
             }
         }
         // Normalize class static fields and abstract member types.
         for i in 0..self.classes.len() {
             for j in 0..self.classes[i].static_fields.len() {
                 let ty = self.classes[i].static_fields[j].ty.clone();
-                self.classes[i].static_fields[j].ty = self.normalize_type(ty);
+                self.classes[i].static_fields[j].ty = normalize_type(ty);
             }
             for j in 0..self.classes[i].abstract_members.len() {
                 let ret_ty = self.classes[i].abstract_members[j].return_ty.clone();
-                self.classes[i].abstract_members[j].return_ty = self.normalize_type(ret_ty);
+                self.classes[i].abstract_members[j].return_ty = normalize_type(ret_ty);
                 for k in 0..self.classes[i].abstract_members[j].params.len() {
                     let ty = self.classes[i].abstract_members[j].params[k].clone();
-                    self.classes[i].abstract_members[j].params[k] = self.normalize_type(ty);
+                    self.classes[i].abstract_members[j].params[k] = normalize_type(ty);
                 }
             }
         }
         // Normalize global types.
         for i in 0..self.globals.len() {
             let ty = self.globals[i].ty.clone();
-            self.globals[i].ty = self.normalize_type(ty);
+            self.globals[i].ty = normalize_type(ty);
         }
         // Collect function IDs to avoid borrow conflicts.
         let func_ids: Vec<_> = self.functions.keys().collect();
@@ -658,17 +656,17 @@ impl Module {
             let param_count = self.functions[func_id].sig.params.len();
             for i in 0..param_count {
                 let ty = self.functions[func_id].sig.params[i].clone();
-                let normalized = self.normalize_type(ty);
+                let normalized = normalize_type(ty);
                 self.functions[func_id].sig.params[i] = normalized;
             }
             let ret_ty = self.functions[func_id].sig.return_ty.clone();
-            self.functions[func_id].sig.return_ty = self.normalize_type(ret_ty);
+            self.functions[func_id].sig.return_ty = normalize_type(ret_ty);
 
             // Normalize value types.
             let value_ids: Vec<_> = self.functions[func_id].value_types.keys().collect();
             for vid in value_ids {
                 let ty = self.functions[func_id].value_types[vid].clone();
-                let normalized = self.normalize_type(ty);
+                let normalized = normalize_type(ty);
                 self.functions[func_id].value_types[vid] = normalized;
             }
 
@@ -678,7 +676,7 @@ impl Module {
                 let param_count = self.functions[func_id].blocks[bid].params.len();
                 for i in 0..param_count {
                     let ty = self.functions[func_id].blocks[bid].params[i].ty.clone();
-                    let normalized = self.normalize_type(ty);
+                    let normalized = normalize_type(ty);
                     self.functions[func_id].blocks[bid].params[i].ty = normalized;
                 }
             }
@@ -691,9 +689,9 @@ impl Module {
                     Op::Alloc(_) | Op::Cast(_, _, _) | Op::TypeCheck(_, _) => {
                         let op = self.functions[func_id].insts[iid].op.clone();
                         let normalized_op = match op {
-                            Op::Alloc(ty) => Op::Alloc(self.normalize_type(ty)),
-                            Op::Cast(v, ty, kind) => Op::Cast(v, self.normalize_type(ty), kind),
-                            Op::TypeCheck(v, ty) => Op::TypeCheck(v, self.normalize_type(ty)),
+                            Op::Alloc(ty) => Op::Alloc(normalize_type(ty)),
+                            Op::Cast(v, ty, kind) => Op::Cast(v, normalize_type(ty), kind),
+                            Op::TypeCheck(v, ty) => Op::TypeCheck(v, normalize_type(ty)),
                             other => other,
                         };
                         self.functions[func_id].insts[iid].op = normalized_op;
@@ -701,48 +699,6 @@ impl Module {
                     _ => {}
                 }
             }
-        }
-    }
-
-    /// Recursively normalize `Type::Struct(name)` to `Type::Instance(id)`.
-    fn normalize_type(&mut self, ty: Type) -> Type {
-        match ty {
-            Type::Struct(name) => Type::Instance(self.intern_type(&name)),
-            Type::Array(elem) => Type::Array(Box::new(self.normalize_type(*elem))),
-            Type::Map(k, v) => Type::Map(
-                Box::new(self.normalize_type(*k)),
-                Box::new(self.normalize_type(*v)),
-            ),
-            Type::Option(inner) => Type::Option(Box::new(self.normalize_type(*inner))),
-            Type::Tuple(elems) => {
-                Type::Tuple(elems.into_iter().map(|t| self.normalize_type(t)).collect())
-            }
-            Type::Union(elems) => {
-                Type::Union(elems.into_iter().map(|t| self.normalize_type(t)).collect())
-            }
-            Type::Function(sig) => {
-                let params = sig
-                    .params
-                    .into_iter()
-                    .map(|t| self.normalize_type(t))
-                    .collect();
-                let return_ty = self.normalize_type(sig.return_ty);
-                Type::Function(Box::new(super::ty::FunctionSig {
-                    params,
-                    return_ty,
-                    defaults: sig.defaults,
-                    has_rest_param: sig.has_rest_param,
-                }))
-            }
-            Type::Coroutine {
-                yield_ty,
-                return_ty,
-            } => Type::Coroutine {
-                yield_ty: Box::new(self.normalize_type(*yield_ty)),
-                return_ty: Box::new(self.normalize_type(*return_ty)),
-            },
-            // All other types are already normalized.
-            other => other,
         }
     }
 
@@ -777,5 +733,39 @@ impl Module {
             implicit_return_value: false,
             string_indexed_structs: HashSet::new(),
         }
+    }
+}
+
+/// Recursively normalize compound types (Array, Map, Option, etc.) so that
+/// any nested type references in the tree are passed through unchanged.
+///
+/// `Type::Struct` no longer exists; all named types are already `Type::Instance`
+/// after the frontend builds the IR. This function handles compound wrappers only.
+fn normalize_type(ty: Type) -> Type {
+    match ty {
+        Type::Array(elem) => Type::Array(Box::new(normalize_type(*elem))),
+        Type::Map(k, v) => Type::Map(Box::new(normalize_type(*k)), Box::new(normalize_type(*v))),
+        Type::Option(inner) => Type::Option(Box::new(normalize_type(*inner))),
+        Type::Tuple(elems) => Type::Tuple(elems.into_iter().map(normalize_type).collect()),
+        Type::Union(elems) => Type::Union(elems.into_iter().map(normalize_type).collect()),
+        Type::Function(sig) => {
+            let params = sig.params.into_iter().map(normalize_type).collect();
+            let return_ty = normalize_type(sig.return_ty);
+            Type::Function(Box::new(super::ty::FunctionSig {
+                params,
+                return_ty,
+                defaults: sig.defaults,
+                has_rest_param: sig.has_rest_param,
+            }))
+        }
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => Type::Coroutine {
+            yield_ty: Box::new(normalize_type(*yield_ty)),
+            return_ty: Box::new(normalize_type(*return_ty)),
+        },
+        // All other types (Instance, ClassRef, primitives, etc.) are already normalized.
+        other => other,
     }
 }

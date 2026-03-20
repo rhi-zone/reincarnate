@@ -473,9 +473,12 @@ mod tests {
     fn method_call_narrows_params() {
         let mut mb = ModuleBuilder::new("test");
 
-        // Method: fn Foo::bar(self: Struct(Foo), x: Unknown) → Void
+        // Pre-intern "Foo" so we can use Type::Instance(foo_id) in signatures.
+        let foo_id = mb.intern_type("Foo");
+
+        // Method: fn Foo::bar(self: Instance(Foo), x: Unknown) → Void
         let method_sig = FunctionSig {
-            params: vec![Type::Struct("Foo".into()), Type::Unknown],
+            params: vec![Type::Instance(foo_id), Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -485,7 +488,7 @@ mod tests {
 
         // Caller calls receiver.bar(int_val)
         let sig = FunctionSig {
-            params: vec![Type::Struct("Foo".into())],
+            params: vec![Type::Instance(foo_id)],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -498,12 +501,10 @@ mod tests {
 
         let result = run(mb);
         assert!(result.changed);
-        // param[0] (self): Struct("Foo") is normalized to Instance(TypeId) by build().
-        // Verify the type identity is preserved — the TypeId should resolve to "Foo".
+        // param[0] (self): Instance(TypeId) — verify the TypeId resolves to "Foo".
         let param0 = result.module.functions[FuncId::new(0)].sig.params[0].clone();
         let param0_name = match &param0 {
             Type::Instance(id) => result.module.types.get(*id).and_then(|t| t.name()),
-            Type::Struct(name) => Some(name.as_str()),
             _ => None,
         };
         assert_eq!(

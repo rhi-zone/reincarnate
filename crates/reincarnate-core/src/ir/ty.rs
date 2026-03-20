@@ -31,18 +31,9 @@ pub enum Type {
     /// Instance of a named type (struct/class or enum), referenced by stable ID.
     ///
     /// This is the canonical interned form used throughout the IR and transforms.
-    /// Frontends may emit `Struct(String)` before interning; `ModuleBuilder::build()`
-    /// normalizes all `Struct` to `Instance` by interning into `module.types`.
     /// Enum types are also represented as `Instance(TypeId)` pointing to a
     /// `TypeDecl::Enum` entry.
     Instance(TypeId),
-    /// Instance of a named type, referenced by string name.
-    ///
-    /// Used at frontend/backend boundaries and for runtime-provided type names
-    /// (e.g. `GameRuntime`, `SugarCubeRuntime`) that don't have an IR struct.
-    /// Core transforms should match `Instance(_)` rather than `Struct(_)`.
-    /// `ModuleBuilder::build()` converts these to `Instance(TypeId)` automatically.
-    Struct(String),
     /// Class constructor reference — the class itself, not an instance.
     /// TypeScript: `typeof ClassName`. The TypeId references a `TypeDecl::Object`
     /// entry in `module.types` that describes the static side.

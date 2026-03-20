@@ -2,12 +2,16 @@
 
 use std::collections::{HashMap, HashSet};
 
+use reincarnate_core::ir::ty::TypeId;
+
 use crate::js_ast::JsFunction;
 
 /// Context needed for Flash/AVM2 scope resolution and rewrite decisions.
 pub struct FlashRewriteCtx {
     /// Qualified class name → sanitized short name.
     pub class_names: HashMap<String, String>,
+    /// Short class name → pre-interned TypeId, for constructing `Type::Instance` in rewrites.
+    pub class_type_ids: HashMap<String, TypeId>,
     /// Short names of the current class and all its ancestors.
     pub ancestors: HashSet<String>,
     /// Instance method short names visible in the class hierarchy.

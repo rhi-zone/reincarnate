@@ -222,9 +222,15 @@ pub(super) fn resolve_scope_call(
     if rest_args.len() == 1 {
         if let JsExpr::Var(ref name) = callee {
             if ctx.known_classes.contains(name.as_str()) {
+                let ty = ctx
+                    .class_type_ids
+                    .get(name.as_str())
+                    .copied()
+                    .map(Type::Instance)
+                    .unwrap_or(Type::Unknown);
                 return JsExpr::Cast {
                     expr: Box::new(rest_args.into_iter().next().unwrap()),
-                    ty: Type::Struct(name.clone()),
+                    ty,
                     kind: CastKind::NullableCoerce,
                 };
             }

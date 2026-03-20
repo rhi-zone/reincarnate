@@ -48,8 +48,7 @@ pub fn ts_type_id(id: TypeId, module_types: &PrimaryMap<TypeId, TypeDecl>) -> St
 /// Map an IR [`Type`] to its TypeScript representation.
 ///
 /// For `Type::Instance(id)`, `module_types` is required to resolve the type name.
-/// Pass `None` only in contexts where `Instance` is guaranteed not to appear
-/// (e.g. post-`resolve_js_function_types` JsAST where all Instance → Struct).
+/// Use [`ts_type`] in contexts where `Instance` is guaranteed not to appear.
 pub fn ts_type_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> String {
     match ty {
         Type::Instance(id) => ts_type_id(*id, module_types),
@@ -60,7 +59,7 @@ pub fn ts_type_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, TypeDecl
 /// Map an IR [`Type`] to its TypeScript representation.
 ///
 /// For `Type::Instance(id)`, falls back to `"unknown"` — call [`ts_type_with_module`]
-/// when struct/class field types (which are now `Instance` after normalization) need
+/// when struct/class field types (which are `Instance` after normalization) need
 /// to be resolved to their real names.
 pub fn ts_type(ty: &Type) -> String {
     match ty {
@@ -84,27 +83,9 @@ pub fn ts_type(ty: &Type) -> String {
             let parts: Vec<_> = elems.iter().map(ts_type).collect();
             format!("[{}]", parts.join(", "))
         }
-        Type::Struct(name) => {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            // AS3/JS `Object` is a dynamic property bag, not TypeScript's `Object`
-            // interface. TypeScript's `Object` has no index signature, so any dynamic
-            // key access causes TS7053. Map it to `Record<string, any>` instead.
-            if short == "Object" {
-                return "Record<string, any>".into();
-            }
-            // AS3 `Class` is the metaclass for all class objects. In TypeScript, class objects
-            // are dynamically indexable (e.g. `MyClass["STATIC_FIELD"]`), so map to `any`.
-            if short == "Class" {
-                return "any".into();
-            }
-            // AS3 XML/XMLList have implicit string coercion — they are valid as index
-            // keys and assignable to string fields.  TypeScript's XML class has no such
-            // implicit coercion, so widen to `any` to avoid TS2538 and TS2322.
-            if matches!(short, "XML" | "XMLList") {
-                return "any".into();
-            }
-            sanitize_ident(short)
-        }
+        // Type::Instance is resolved via ts_type_with_module (which has module_types).
+        // Bare ts_type() without module_types can't resolve the name, so fall back to unknown.
+        Type::Instance(_) => "unknown".into(),
         Type::ClassRef(_) => {
             // GML OBJT class names are used as integer object indices at runtime.
             // While TypeScript represents the class constructor as `typeof ClassName`,
@@ -140,10 +121,6 @@ pub fn ts_type(ty: &Type) -> String {
             }
             parts.join(" | ")
         }
-        // Instance(id): call ts_type_with_module for proper name resolution.
-        // If Instance reaches ts_type() it means module_types is unavailable —
-        // callers should use ts_type_with_module instead. Fall back to "unknown".
-        Type::Instance(_) => "unknown".into(),
         Type::Var(_) => "unknown".into(),
         Type::Unknown => "unknown".into(),
     }
@@ -168,11 +145,7 @@ pub fn flash_ts_type(ty: &Type) -> String {
         // keys and assignable to string fields.  TypeScript's XML class has no such
         // implicit coercion, so declaring variables as `any` instead of `XML`/`XMLList`
         // avoids TS2538 (XML can't be used as index) and TS2322 (XML→string).
-        Type::Struct(name)
-            if matches!(name.rsplit("::").next().unwrap_or(name), "XML" | "XMLList") =>
-        {
-            "any".into()
-        }
+        // Instance(id) for XML/XMLList is handled by flash_ts_type_with_module.
         _ => ts_type(ty),
     }
 }
@@ -204,23 +177,10 @@ pub fn flash_ts_type_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, Ty
 /// `class_names` maps qualified IR type names (e.g. `"classes.Items.Armors::GooArmor"`)
 /// to the TypeScript identifier used in the emitted file (e.g. `"Armors_GooArmor"`).
 /// Pass an empty map for contexts where no disambiguation is needed.
-pub fn ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> String {
-    match ty {
-        Type::Struct(name) => {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            if short == "Object" {
-                return "Record<string, any>".into();
-            }
-            if short == "Class" {
-                return "any".into();
-            }
-            class_names
-                .get(name.as_str())
-                .cloned()
-                .unwrap_or_else(|| sanitize_ident(short))
-        }
-        _ => ts_type(ty),
-    }
+pub fn ts_type_with_names(ty: &Type, _class_names: &HashMap<String, String>) -> String {
+    // Instance(id) is resolved by ts_type_with_names_and_module which has module_types.
+    // All other types use ts_type directly.
+    ts_type(ty)
 }
 
 /// Like [`ts_type_with_names`] but also resolves `Type::Instance(id)` via `module_types`.
@@ -297,11 +257,7 @@ pub fn flash_ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>
     match ty {
         Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
         Type::Array(_) => "any".into(),
-        Type::Struct(name)
-            if matches!(name.rsplit("::").next().unwrap_or(name), "XML" | "XMLList") =>
-        {
-            "any".into()
-        }
+        // Instance(id) for XML/XMLList is handled by flash_ts_type_with_names_and_module.
         _ => ts_type_with_names(ty, class_names),
     }
 }
@@ -315,10 +271,10 @@ fn ts_type_paren(ty: &Type) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Instance type resolution — converts Type::Instance(TypeId) → Type::Struct(name)
+// Compound type normalization (recurse into Array/Map/Option/etc.)
 // ---------------------------------------------------------------------------
 
-/// Recursively resolve nested `Type::Instance` references inside compound types.
+/// Recursively normalize nested `Type::Instance` references inside compound types.
 ///
 /// `Instance(id)` is preserved as-is — all downstream printing uses
 /// `ts_type_with_module` which resolves the name via `module_types` at print

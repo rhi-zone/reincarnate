@@ -652,8 +652,7 @@ pub(super) fn collect_type_refs_from_function(
             // TypeCheck emits `isType()` — runtime value reference, collected
             // separately so circular imports can be detected and late-bound.
             Op::TypeCheck(_, ty) => {
-                let is_struct_or_enum =
-                    matches!(ty, Type::Instance(_) | Type::ClassRef(_) | Type::Struct(_));
+                let is_struct_or_enum = matches!(ty, Type::Instance(_) | Type::ClassRef(_));
                 if is_struct_or_enum {
                     collect_type_ref(
                         ty,
@@ -678,7 +677,7 @@ pub(super) fn collect_type_refs_from_function(
                     );
                 }
             }
-            // Alloc is type-only. Cast with Struct/Enum: NullableCoerce needs runtime value, Coerce is type-only.
+            // Alloc is type-only. Cast with Instance/Enum: NullableCoerce needs runtime value, Coerce is type-only.
             Op::Alloc(ty) => {
                 collect_type_ref(
                     ty,
@@ -692,8 +691,7 @@ pub(super) fn collect_type_refs_from_function(
                 );
             }
             Op::Cast(_, ty, kind) => {
-                let is_struct_or_enum =
-                    matches!(ty, Type::Instance(_) | Type::ClassRef(_) | Type::Struct(_));
+                let is_struct_or_enum = matches!(ty, Type::Instance(_) | Type::ClassRef(_));
                 if is_struct_or_enum && *kind == CastKind::NullableCoerce {
                     // NullableCoerce needs runtime constructor — collected separately
                     // so circular imports can be detected and late-bound.
@@ -1000,17 +998,6 @@ pub(super) fn collect_type_ref(
                 }
             }
         }
-        Type::Struct(name) => {
-            collect_named_type_ref(
-                name,
-                self_name,
-                self_ts_name,
-                registry,
-                external_imports,
-                refs,
-                ext_refs,
-            );
-        }
         Type::Array(inner) | Type::Option(inner) => {
             collect_type_ref(
                 inner,
@@ -1168,11 +1155,6 @@ pub(super) fn collect_global_type_imports(
                 }
             }
         }
-        Type::Struct(name) => {
-            if let Some(entry) = registry.lookup(name) {
-                refs.insert(entry.short_name.clone());
-            }
-        }
         Type::Array(inner) | Type::Option(inner) => {
             collect_global_type_imports(inner, module_types, registry, refs);
         }
@@ -1225,10 +1207,6 @@ pub(super) fn collect_all_struct_names(
                     refs.insert(short.to_string());
                 }
             }
-        }
-        Type::Struct(name) => {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            refs.insert(short.to_string());
         }
         Type::Array(inner) | Type::Option(inner) => {
             collect_all_struct_names(inner, module_types, refs);

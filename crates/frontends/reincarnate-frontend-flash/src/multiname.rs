@@ -262,7 +262,11 @@ pub fn type_from_name(name: &str) -> reincarnate_core::ir::Type {
         "flash.utils::Dictionary" | "Dictionary" => {
             Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown))
         }
-        _ => Type::Struct(name.to_string()),
+        // Named class/interface types: return Unknown here. TypeId is unavailable
+        // without module access. The Flash frontend pre-interns class TypeIds in
+        // build_module_from_abc and passes them for self-param typing. Other named
+        // type references (field types, cast targets, etc.) remain Unknown.
+        _ => Type::Unknown,
     }
 }
 
@@ -409,9 +413,7 @@ mod tests {
         assert_eq!(resolve_type(&pool, &Index::new(3)), Type::Bool);
         assert_eq!(resolve_type(&pool, &Index::new(4)), Type::String);
         assert_eq!(resolve_type(&pool, &Index::new(5)), Type::Void);
-        assert_eq!(
-            resolve_type(&pool, &Index::new(6)),
-            Type::Struct("MyClass".to_string())
-        );
+        // Named class types resolve to Unknown — TypeId is unavailable without module access.
+        assert_eq!(resolve_type(&pool, &Index::new(6)), Type::Unknown);
     }
 }

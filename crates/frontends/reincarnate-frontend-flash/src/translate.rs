@@ -354,59 +354,14 @@ fn match_method_table(bare: &str, count: usize) -> Option<Vec<Option<String>>> {
     Some(names.iter().map(|s| Some(s.to_string())).collect())
 }
 
-/// Layer 3: derive a parameter name from a `Type::Struct` class name.
-fn name_from_type(ty: &Type) -> Option<String> {
-    let class = match ty {
-        Type::Struct(name) => name,
-        _ => return None,
-    };
-
-    // Strip package prefix. Names may use "::" (e.g. "flash.net::URLRequest")
-    // or "." (e.g. "flash.events.Event") as separators.
-    let short = class
-        .rsplit("::")
-        .next()
-        .unwrap_or(class)
-        .rsplit('.')
-        .next()
-        .unwrap_or(class);
-
-    // *Event → "event"
-    if short.ends_with("Event") {
-        return Some("event".to_string());
-    }
-
-    // Detect leading acronym (consecutive uppercase, ≥2 chars).
-    let upper_len = short.chars().take_while(|c| c.is_ascii_uppercase()).count();
-    if upper_len >= 2 && upper_len < short.len() {
-        // E.g. "URLRequest" → strip "URL" → "Request" → "request"
-        let remainder = &short[upper_len - 1..]; // keep last uppercase as start
-                                                 // But if the acronym IS the whole prefix (like URL in URLRequest),
-                                                 // strip all but the transition char: "URLRequest" → "Request"
-        let stripped = &short[upper_len..];
-        if stripped.is_empty() {
-            // Entire name is an acronym — just lowercase it.
-            return Some(short.to_lowercase());
-        }
-        // "URLRequest" → acronym_len=3, stripped="equest", remainder="Request"
-        return Some(lower_first(remainder));
-    }
-
-    // Normal PascalCase → lowerCamelCase.
-    if short.len() > 1 && short.starts_with(|c: char| c.is_ascii_uppercase()) {
-        return Some(lower_first(short));
-    }
-
+/// Layer 3: derive a parameter name from a type's class name.
+///
+/// Previously used `Type::Struct(name)` which had the class name as a string.
+/// With `Type::Instance(id)`, the name requires `module.types` which is not
+/// available in this function. Layer 0 (Op::Debug) covers most cases; fall
+/// back to the generic `paramN` naming (layer 4) for the rest.
+fn name_from_type(_ty: &Type) -> Option<String> {
     None
-}
-
-/// Lowercase the first character of a string.
-fn lower_first(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) => c.to_lowercase().to_string() + chars.as_str(),
-        None => String::new(),
-    }
 }
 
 /// Check if the block ending just before `op_idx` has already been terminated.

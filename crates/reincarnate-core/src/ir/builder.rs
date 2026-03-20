@@ -659,8 +659,10 @@ impl FunctionBuilder {
         fields: Vec<(String, ValueId)>,
     ) -> ValueId {
         let name = name.into();
-        let ty = Type::Struct(name.clone());
-        self.emit(Op::StructInit { name, fields }, ty)
+        // Type inference (TypeInfer pass, Op::StructInit arm) will resolve the
+        // correct Instance(TypeId) for this op. Use Unknown here since TypeId
+        // is not available during IR construction.
+        self.emit(Op::StructInit { name, fields }, Type::Unknown)
     }
 
     pub fn array_init(&mut self, elements: &[ValueId], elem_ty: Type) -> ValueId {

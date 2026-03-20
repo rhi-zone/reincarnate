@@ -163,7 +163,6 @@ pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
         | Type::Float(_)
         | Type::String
         | Type::Instance(_)
-        | Type::Struct(_)
         | Type::ClassRef(_)
         | Type::Unknown) => t,
     }
@@ -206,7 +205,6 @@ fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
         | Type::Float(_)
         | Type::String
         | Type::Instance(_)
-        | Type::Struct(_)
         | Type::ClassRef(_)
         | Type::Unknown => false,
     }
@@ -263,7 +261,6 @@ fn collect_free_vars(ty: &Type, arena: &TypeVarArena, out: &mut Vec<TypeVarId>) 
         | Type::Float(_)
         | Type::String
         | Type::Instance(_)
-        | Type::Struct(_)
         | Type::ClassRef(_)
         | Type::Unknown => {}
     }

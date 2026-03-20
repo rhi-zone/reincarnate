@@ -89,6 +89,13 @@ pub struct TranslateCtx<'a> {
     /// Callers pre-populate this by calling `mb.intern_type_classref(name)` for
     /// each object name before translation begins.
     pub classref_types: &'a HashMap<String, TypeId>,
+    /// Pre-interned Instance TypeIds: object name → TypeId.
+    ///
+    /// Used to type `self` parameters and `with`-body `_self` parameters as
+    /// `Type::Instance(TypeId)` without needing direct module access.
+    /// Callers pre-populate this by calling `mb.intern_type(name)` for each
+    /// object name before translation begins.
+    pub instance_types: &'a HashMap<String, TypeId>,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
@@ -230,7 +237,8 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
     if ctx.has_self {
         let self_ty = ctx
             .class_name
-            .map(|name| Type::Struct(name.to_string()))
+            .and_then(|name| ctx.instance_types.get(name).copied())
+            .map(Type::Instance)
             .unwrap_or(Type::Unknown);
         params.push(self_ty);
         defaults.push(None);

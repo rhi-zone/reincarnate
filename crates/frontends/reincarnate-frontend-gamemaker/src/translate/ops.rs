@@ -703,7 +703,11 @@ fn translate_call_op(
                 // same base type). Giving it a concrete return type lets type inference produce
                 // proper unions (e.g. `GMLObject | boolean | number`) instead of Unknown.
                 let ret_ty = if func_name == "@@NewGMLObject@@" {
-                    Type::Struct("GMLObject".to_string())
+                    ctx.instance_types
+                        .get("GMLObject")
+                        .copied()
+                        .map(Type::Instance)
+                        .unwrap_or(Type::Unknown)
                 } else {
                     Type::Unknown
                 };

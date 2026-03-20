@@ -71,6 +71,26 @@ fn print_type_id(id: TypeId) -> String {
     })
 }
 
+/// Return the short (unqualified) TypeScript name for an `Instance(id)` type.
+///
+/// Uses the `MODULE_TYPES` thread-local set during printing. Returns `"unknown"` if
+/// the thread-local is not set or the id is not found.
+pub fn instance_type_short_name(id: TypeId) -> String {
+    MODULE_TYPES.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            return "unknown".into();
+        }
+        let module_types: &PrimaryMap<TypeId, TypeDecl> = unsafe { &*ptr };
+        if let Some(decl) = module_types.get(id) {
+            if let Some(name) = decl.name() {
+                return name.rsplit("::").next().unwrap_or(name).to_string();
+            }
+        }
+        "unknown".into()
+    })
+}
+
 /// Unwrap nested `Cast(x, T, Coerce)` when the inner is also a Coerce to the
 /// same type — collapses `String(String(x))` → `String(x)`, etc.
 /// Also unwraps `Call(Var("String"), [x])` inside `Cast(_, String, Coerce)` (and
@@ -573,7 +593,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // variable → TS2322.
                         let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_) | Type::Instance(_))
+                            && !matches!(ty, Type::Instance(_))
                             && !is_syscall_init;
                         if cast_ty == ty && is_ts_assertion {
                             let _ = writeln!(
@@ -611,7 +631,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // SystemCall inits must also NOT be stripped (see above comment).
                         let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_) | Type::Instance(_))
+                            && !matches!(ty, Type::Instance(_))
                             && !is_syscall_init;
                         if is_ts_assertion {
                             // Strip TS assertion, use type annotation + inner expr.
@@ -1086,39 +1106,21 @@ fn print_expr(expr: &JsExpr) -> String {
             kind,
         } => {
             match (kind, ty) {
-                // NullableCoerce + named type (Struct or Instance) → asType(x, Foo)!
+                // NullableCoerce + Instance → asType(x, Foo)!
                 // (runtime null-on-failure).  The `!` preserves AS3 semantics: accessing
                 // null is a runtime crash in AS3, just as `!` causes a runtime TypeError
                 // in TypeScript. Under strictNullChecks the result type is `T`
                 // (non-nullable) so it is usable in all value contexts.
-                (CastKind::NullableCoerce, Type::Struct(name)) => {
-                    let short = name.rsplit("::").next().unwrap_or(name);
-                    format!("asType({}, {})!", print_expr(inner), sanitize_ident(short))
-                }
                 (CastKind::NullableCoerce, Type::Instance(id)) => {
                     let ts_name = print_type_id(*id);
                     format!("asType({}, {})!", print_expr(inner), ts_name)
                 }
-                // Coerce + named type (Struct or Instance) → TS assertion (compiler-guaranteed).
+                // Coerce + Instance → TS assertion (compiler-guaranteed).
                 // Special case: `null as Type` is TS2352 because the types don't overlap;
                 // use `null as unknown as Type` to go through a safe intermediate.
                 // Also: some type names (e.g. AS3 `Class`) map to `any` in TypeScript;
                 // use print_type() to get the canonical form so `as Class` doesn't emit
                 // a reference to the runtime value `Class` as a type annotation (TS2749).
-                (CastKind::Coerce, Type::Struct(name)) => {
-                    let short = name.rsplit("::").next().unwrap_or(name);
-                    let ts_name = if matches!(short, "Class" | "Object") {
-                        print_type(ty)
-                    } else {
-                        sanitize_ident(short)
-                    };
-                    let inner_s = print_expr_operand(inner);
-                    if matches!(inner.as_ref(), JsExpr::Literal(Constant::Null)) {
-                        format!("null as unknown as {ts_name}")
-                    } else {
-                        format!("{inner_s} as {ts_name}")
-                    }
-                }
                 (CastKind::Coerce, Type::Instance(id)) => {
                     let ts_name = print_type_id(*id);
                     let inner_s = print_expr_operand(inner);
@@ -1351,10 +1353,10 @@ fn needs_parens(expr: &JsExpr) -> bool {
         // Function-call forms (asType, Number, int, etc.) don't need parens.
         // Only `x as T` forms need them.
         JsExpr::Cast { ty, kind, .. } => match (kind, ty) {
-            // NullableCoerce + named type → function call form (asType(x, Foo)!) — no parens needed.
-            (CastKind::NullableCoerce, Type::Struct(_) | Type::Instance(_)) => false,
-            // Coerce + named type → `x as Foo` assertion — needs parens as operand.
-            (CastKind::Coerce, Type::Struct(_) | Type::Instance(_)) => true,
+            // NullableCoerce + Instance → function call form (asType(x, Foo)!) — no parens needed.
+            (CastKind::NullableCoerce, Type::Instance(_)) => false,
+            // Coerce + Instance → `x as Foo` assertion — needs parens as operand.
+            (CastKind::Coerce, Type::Instance(_)) => true,
             (
                 CastKind::Coerce,
                 Type::Float(_)
@@ -1405,22 +1407,6 @@ fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
             format!("typeof {operand} === \"number\"")
         }
         Type::String => format!("typeof {operand} === \"string\""),
-        Type::Struct(name) => {
-            let short = name.rsplit("::").next().unwrap_or(name);
-            if use_instanceof {
-                // GML: all objects are class instances, `instanceof` is correct.
-                // Use `(expr as any)` to prevent TypeScript control-flow narrowing
-                // (`this instanceof Wall` in a Wall method narrows else-branch to `never`).
-                format!(
-                    "({} as any) instanceof {}",
-                    print_expr(expr),
-                    sanitize_ident(short)
-                )
-            } else {
-                // Flash: use isType() — handles both classes and AS3 interfaces.
-                format!("isType({}, {})", print_expr(expr), sanitize_ident(short))
-            }
-        }
         Type::Instance(id) => {
             let ts_name = print_type_id(*id);
             if use_instanceof {
@@ -1562,13 +1548,19 @@ fn visibility_prefix(vis: Visibility) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use reincarnate_core::ir::builder::ModuleBuilder;
+
     use super::*;
-    use reincarnate_core::ir::Type;
 
     #[test]
-    fn type_check_struct_is_type_for_flash() {
+    fn type_check_instance_is_type_for_flash() {
+        let mut mb = ModuleBuilder::new("test");
+        let monster_id = mb.intern_type("Monster");
+        let module = mb.build();
+        MODULE_TYPES.with(|cell| cell.set(&module.types as *const _));
         let expr = JsExpr::Var("v0".into());
-        let result = print_type_check(&expr, &Type::Struct("Monster".into()), false);
+        let result = print_type_check(&expr, &Type::Instance(monster_id), false);
+        MODULE_TYPES.with(|cell| cell.set(std::ptr::null()));
         assert_eq!(
             result, "isType(v0, Monster)",
             "Flash TypeCheck should use isType()"
@@ -1576,9 +1568,14 @@ mod tests {
     }
 
     #[test]
-    fn type_check_struct_instanceof_for_gml() {
+    fn type_check_instance_instanceof_for_gml() {
+        let mut mb = ModuleBuilder::new("test");
+        let enemy_id = mb.intern_type("OEnemy");
+        let module = mb.build();
+        MODULE_TYPES.with(|cell| cell.set(&module.types as *const _));
         let expr = JsExpr::Var("v0".into());
-        let result = print_type_check(&expr, &Type::Struct("OEnemy".into()), true);
+        let result = print_type_check(&expr, &Type::Instance(enemy_id), true);
+        MODULE_TYPES.with(|cell| cell.set(std::ptr::null()));
         // Uses `(expr as any) instanceof T` to prevent TypeScript control-flow narrowing
         // (`this instanceof Wall` in a Wall method would narrow else-branch to `never`).
         assert_eq!(
@@ -1589,11 +1586,15 @@ mod tests {
 
     #[test]
     fn type_check_instanceof_needs_parens_when_negated() {
+        let mut mb = ModuleBuilder::new("test");
+        let enemy_id = mb.intern_type("OEnemy");
+        let module = mb.build();
+        MODULE_TYPES.with(|cell| cell.set(&module.types as *const _));
         // `!x instanceof T` is wrong — TypeScript parses as `(!x) instanceof T`.
         // `needs_parens` must return true for TypeCheck { use_instanceof: true }.
         let tc = JsExpr::TypeCheck {
             expr: Box::new(JsExpr::Var("v0".into())),
-            ty: Type::Struct("OEnemy".into()),
+            ty: Type::Instance(enemy_id),
             use_instanceof: true,
         };
         assert!(
@@ -1602,6 +1603,7 @@ mod tests {
         );
         let not_tc = JsExpr::Not(Box::new(tc));
         let result = print_expr(&not_tc);
+        MODULE_TYPES.with(|cell| cell.set(std::ptr::null()));
         assert_eq!(
             result, "!((v0 as any) instanceof OEnemy)",
             "Not(TypeCheck) must add parens"

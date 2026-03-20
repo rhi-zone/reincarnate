@@ -107,6 +107,7 @@ pub fn rewrite_flash_function(mut func: JsFunction, ctx: &FlashRewriteCtx) -> Js
                 closure_bodies: ctx.closure_bodies.clone(),
                 known_classes: ctx.known_classes.clone(),
                 unique_static_fields: ctx.unique_static_fields.clone(),
+                class_type_ids: ctx.class_type_ids.clone(),
             };
             func.body = rewrite_stmts(func.body, &ctx2);
             if ctx2.has_self && !ctx2.bindable_methods.is_empty() {
@@ -229,6 +230,7 @@ mod tests {
             unique_static_fields: HashMap::new(),
             activation_var: None,
             activation_slots: HashSet::new(),
+            class_type_ids: HashMap::new(),
         }
     }
 

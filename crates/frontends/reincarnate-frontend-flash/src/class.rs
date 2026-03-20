@@ -1,11 +1,11 @@
 //! AVM2 class/instance → IR StructDef + method functions.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use reincarnate_core::ir::{
     AbstractMember, ClassDef, Constant, EntryPoint, ExternalImport, FieldDef, Function,
     FunctionSig, Global, MethodKind, Module, ModuleBuilder, Op, StaticField, StructDef,
-    SystemCallTypeRule, Type, Visibility,
+    SystemCallTypeRule, Type, TypeId, Visibility,
 };
 use swf::avm2::types::{AbcFile, ConstantPool, DefaultValue, Index, MethodFlags, Trait, TraitKind};
 
@@ -31,7 +31,11 @@ pub struct ClassInfo {
 }
 
 /// Translate a single AVM2 class (Instance + Class pair) into IR.
-pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, String> {
+pub fn translate_class(
+    abc: &AbcFile,
+    class_idx: usize,
+    class_type_ids: &HashMap<String, TypeId>,
+) -> Result<ClassInfo, String> {
     let instance = &abc.instances[class_idx];
     let class = &abc.classes[class_idx];
     let pool = &abc.constant_pool;
@@ -84,6 +88,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
         &format!("{class_short_name}::new"),
         true,
         Some(&class_short_name),
+        class_type_ids,
         &mut inner_functions,
     )? {
         func.namespace = class_ns.clone();
@@ -107,6 +112,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
                 &func_name,
                 true,
                 Some(&class_short_name),
+                class_type_ids,
                 &mut inner_functions,
             )? {
                 func.namespace = class_ns.clone();
@@ -146,6 +152,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
         &format!("{class_short_name}::cinit"),
         true,
         None,
+        class_type_ids,
         &mut inner_functions,
     )? {
         func.namespace = class_ns.clone();
@@ -175,6 +182,7 @@ pub fn translate_class(abc: &AbcFile, class_idx: usize) -> Result<ClassInfo, Str
                 &func_name,
                 true,
                 None,
+                class_type_ids,
                 &mut inner_functions,
             )? {
                 func.namespace = class_ns.clone();
@@ -398,13 +406,14 @@ fn find_private_ns_string(
 /// Translate a method (by its index) into an IR function.
 ///
 /// `has_self` indicates whether the first parameter is an implicit `this`.
-/// `class_name` provides the owning class name so `this` can be typed as `Struct(name)`.
+/// `class_name` provides the owning class name so `this` can be typed as `Instance(id)`.
 fn translate_class_method(
     abc: &AbcFile,
     method_idx: &Index<swf::avm2::types::Method>,
     func_name: &str,
     has_self: bool,
     class_name: Option<&str>,
+    class_type_ids: &HashMap<String, TypeId>,
     inner_functions: &mut Vec<Function>,
 ) -> Result<Option<Function>, String> {
     let idx = method_idx.0 as usize;
@@ -427,11 +436,15 @@ fn translate_class_method(
     let mut param_types = Vec::new();
     let mut param_names: Vec<Option<String>> = Vec::new();
     if has_self {
-        if let Some(name) = class_name {
-            param_types.push(Type::Struct(name.to_string()));
-        } else {
-            param_types.push(Type::Unknown);
-        }
+        let self_ty = class_name
+            .and_then(|name| {
+                // Look up the short class name (strip package prefix) in the pre-interned map.
+                let short = name.rsplit("::").next().unwrap_or(name);
+                class_type_ids.get(short).copied()
+            })
+            .map(Type::Instance)
+            .unwrap_or(Type::Unknown);
+        param_types.push(self_ty);
         param_names.push(None); // `this` — backend handles via self_value
     }
     // We intentionally ignore HAS_PARAM_NAMES from the ABC method_info.
@@ -542,9 +555,19 @@ pub fn translate_abc_to_module(
 ) -> Result<Module, String> {
     let mut mb = ModuleBuilder::new(module_name);
 
+    // Pre-intern TypeIds for all class names so translate_class_method can type `self` params.
+    let class_type_ids: HashMap<String, TypeId> = (0..abc.instances.len())
+        .map(|i| {
+            let raw = resolve_multiname_index(&abc.constant_pool, &abc.instances[i].name);
+            let short = raw.rsplit("::").next().unwrap_or(&raw).to_string();
+            let id = mb.intern_type(&short);
+            (short, id)
+        })
+        .collect();
+
     // Translate classes
     for i in 0..abc.instances.len() {
-        let info = translate_class(abc, i)?;
+        let info = translate_class(abc, i, &class_type_ids)?;
         let struct_index = mb.struct_count();
         mb.add_struct(info.struct_def);
 
@@ -746,8 +769,16 @@ fn try_register_external(name: &str, module: &mut Module) {
 /// Collect a type's qualified names for external import registration.
 fn collect_type_names(ty: &Type, module: &mut Module) {
     match ty {
-        Type::Struct(name) => {
-            try_register_external(name, module);
+        Type::Instance(id) => {
+            // Resolve the qualified name from module.types to check for Flash stdlib imports.
+            // Clone the name to release the immutable borrow before the mutable call.
+            let name_opt = module
+                .types
+                .get(*id)
+                .and_then(|d| d.name().map(str::to_string));
+            if let Some(name) = name_opt {
+                try_register_external(&name, module);
+            }
         }
         Type::Array(inner) | Type::Option(inner) => {
             collect_type_names(inner, module);

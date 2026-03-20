@@ -5,9 +5,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 
+use reincarnate_core::entity::PrimaryMap;
 use reincarnate_core::error::CoreError;
+use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{
-    structurize, ClassDef, Constant, FuncId, Function, MethodKind, Module, StructDef, Type,
+    structurize, ClassDef, Constant, FuncId, Function, MethodKind, Module, StructDef, Type, TypeId,
 };
 use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, RuntimeConfig};
@@ -22,62 +24,20 @@ use super::sanitize::resolve_sprite_constant;
 use super::scaffold::ClassMeta;
 use super::{lowering_config_for_engine, qualified_class_name, sanitize_ident, EngineKind};
 
-/// Rename Struct/Enum/ClassRef types in a `Type` using a raw-name → ts-name map.
+/// Build a map from short class name → TypeId for all Object TypeDecls in `module_types`.
 ///
-/// Used to fix up function param and return types after `lower_function` produces
-/// IR types that still use raw GML names (e.g. `objects::TOTCLeaderboard`) when
-/// the emitted TypeScript identifier is disambiguated (e.g. `objects_TOTCLeaderboard`).
-fn rename_type_with_map(ty: &mut Type, name_map: &HashMap<String, String>) {
-    match ty {
-        Type::Struct(name) => {
-            let short = name
-                .rsplit("::")
-                .next()
-                .unwrap_or(name.as_str())
-                .to_string();
-            if let Some(ts_name) = name_map.get(&short) {
-                *name = ts_name.clone();
-            }
-        }
-        // ClassRef(TypeId) — the name lives in module.types; no string to rename here.
-        Type::ClassRef(_) => {}
-        Type::Option(inner) | Type::Array(inner) => rename_type_with_map(inner, name_map),
-        Type::Map(k, v) => {
-            rename_type_with_map(k, name_map);
-            rename_type_with_map(v, name_map);
-        }
-        Type::Tuple(elems) | Type::Union(elems) => {
-            for elem in elems {
-                rename_type_with_map(elem, name_map);
-            }
-        }
-        Type::Function(sig) => {
-            rename_type_with_map(&mut sig.return_ty, name_map);
-            for p in &mut sig.params {
-                rename_type_with_map(p, name_map);
-            }
-        }
-        Type::Coroutine {
-            yield_ty,
-            return_ty,
-        } => {
-            rename_type_with_map(yield_ty, name_map);
-            rename_type_with_map(return_ty, name_map);
-        }
-        // Instance(id) appears only in raw IR; after resolve_js_function_types() all
-        // Instance types are converted to Struct. If Instance reaches here, it has
-        // no string name available in this context — leave it unchanged.
-        Type::Instance(_) => {}
-        // Primitive and leaf types — nothing to rename.
-        Type::Void
-        | Type::Bool
-        | Type::Int(_)
-        | Type::UInt(_)
-        | Type::Float(_)
-        | Type::String
-        | Type::Var(_)
-        | Type::Unknown => {}
-    }
+/// Used to populate `FlashRewriteCtx::class_type_ids` so that Flash rewrites can
+/// construct `Type::Instance(id)` casts without needing `Type::Struct(name)`.
+fn build_class_type_ids(module_types: &PrimaryMap<TypeId, TypeDecl>) -> HashMap<String, TypeId> {
+    module_types
+        .iter()
+        .filter_map(|(id, decl)| {
+            decl.name().map(|name| {
+                let short = name.rsplit("::").next().unwrap_or(name).to_string();
+                (short, id)
+            })
+        })
+        .collect()
 }
 
 /// Map raw GML object names (indexed by OBJT index) to their disambiguated
@@ -274,8 +234,10 @@ pub(super) fn emit_function(
             name_map,
         ),
         EngineKind::Flash => {
+            let class_type_ids = build_class_type_ids(module_types);
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
+                class_type_ids,
                 ancestors: HashSet::new(),
                 method_names: HashSet::new(),
                 instance_fields: HashSet::new(),
@@ -303,14 +265,6 @@ pub(super) fn emit_function(
             crate::rewrites::twine::rewrite_twine_function(js_func, closure_bodies)
         }
     };
-    // Rename Struct/ClassRef param and return types to use disambiguated TypeScript
-    // identifiers (e.g. `objects::TOTCLeaderboard` → `objects_TOTCLeaderboard`).
-    if !name_map.is_empty() {
-        for (_, ty) in js_func.params.iter_mut() {
-            rename_type_with_map(ty, name_map);
-        }
-        rename_type_with_map(&mut js_func.return_ty, name_map);
-    }
     // Coerce numeric arguments to boolean at call sites where the signature expects boolean.
     if engine == EngineKind::GameMaker {
         let empty_sigs = BTreeMap::new();
@@ -342,7 +296,7 @@ pub(super) fn emit_function(
         // Runtime types are pre-interned by intern_runtime_types() in emit_module_to_string/dir.
         let rt_ty = find_type_id(module_types, rt_type_name)
             .map(Type::Instance)
-            .unwrap_or_else(|| Type::Struct(rt_type_name.into()));
+            .unwrap_or(Type::Unknown);
         js_func.params.insert(0, ("_rt".into(), rt_ty));
         js_func.param_defaults.insert(0, None);
         rewrites::rewrite_stateful_calls(&mut js_func.body, stateful_names, false);
@@ -357,7 +311,7 @@ pub(super) fn emit_function(
         // Runtime types are pre-interned by intern_runtime_types() in emit_module_to_string/dir.
         let rt_ty = find_type_id(module_types, rt_type_name)
             .map(Type::Instance)
-            .unwrap_or_else(|| Type::Struct(rt_type_name.into()));
+            .unwrap_or(Type::Unknown);
         js_func.params.insert(0, ("_rt".into(), rt_ty));
         js_func.param_defaults.insert(0, None);
         // If a context_type is configured, retype the first Unknown param after `_rt`
@@ -366,7 +320,7 @@ pub(super) fn emit_function(
             let ctx_type_name = ctx_type.name.as_str();
             let ctx_ty = find_type_id(module_types, ctx_type_name)
                 .map(Type::Instance)
-                .unwrap_or_else(|| Type::Struct(ctx_type_name.into()));
+                .unwrap_or(Type::Unknown);
             for (_, ty) in &mut js_func.params {
                 if *ty == Type::Unknown {
                     *ty = ctx_ty.clone();
@@ -1004,7 +958,7 @@ fn emit_class_method(
 
     let ctx = crate::lower::LowerCtx { self_param_name };
     let mut js_func = crate::lower::lower_function(&ast, &ctx);
-    // Resolve Type::Instance(TypeId) → Type::Struct(name) before downstream processing.
+    // Resolve nested Type::Instance(TypeId) inside compound types before downstream processing.
     crate::types::resolve_js_function_types(&mut js_func, module_types);
     let mut js_func = match engine {
         EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(
@@ -1018,8 +972,10 @@ fn emit_class_method(
         EngineKind::Flash => {
             let is_constructor = matches!(func.method_kind, MethodKind::Constructor);
             let is_static_method = matches!(func.method_kind, MethodKind::Static);
+            let class_type_ids = build_class_type_ids(module_types);
             let rewrite_ctx = crate::rewrites::flash::FlashRewriteCtx {
                 class_names: class_names.clone(),
+                class_type_ids,
                 ancestors: ancestors.clone(),
                 method_names: method_names.clone(),
                 instance_fields: instance_fields.clone(),

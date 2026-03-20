@@ -309,6 +309,13 @@ fn translate_scripts(
         })
         .collect();
 
+    // Pre-intern Instance TypeIds for all object names so translators can type
+    // self/with-body parameters as Type::Instance(TypeId).
+    let instance_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .map(|name| (name.clone(), mb.intern_type(name)))
+        .collect();
+
     for script in &scpt.scripts {
         let script_name = dw
             .resolve_string(script.name)
@@ -402,6 +409,7 @@ fn translate_scripts(
             with_body_has_return: false,
             bytecode_version: bc_version,
             classref_types: &classref_types,
+            instance_types: &instance_types,
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
@@ -462,6 +470,13 @@ fn translate_global_inits(
         })
         .collect();
 
+    // Pre-intern Instance TypeIds for all object names so translators can type
+    // self/with-body parameters as Type::Instance(TypeId).
+    let instance_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .map(|name| (name.clone(), mb.intern_type(name)))
+        .collect();
+
     let mut count = 0;
     for &script_id in &glob.script_ids {
         let code_idx = script_id as usize;
@@ -499,6 +514,7 @@ fn translate_global_inits(
             with_body_has_return: false,
             bytecode_version: bc_version,
             classref_types: &classref_types,
+            instance_types: &instance_types,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
@@ -550,6 +566,13 @@ fn translate_room_creation(
         })
         .collect();
 
+    // Pre-intern Instance TypeIds for all object names so translators can type
+    // self/with-body parameters as Type::Instance(TypeId).
+    let instance_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .map(|name| (name.clone(), mb.intern_type(name)))
+        .collect();
+
     let mut count = 0;
     let mut creation_code_map = BTreeMap::new();
     for (room_idx, room_entry) in room.rooms.iter().enumerate() {
@@ -593,6 +616,7 @@ fn translate_room_creation(
             with_body_has_return: false,
             bytecode_version: bc_version,
             classref_types: &classref_types,
+            instance_types: &instance_types,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)

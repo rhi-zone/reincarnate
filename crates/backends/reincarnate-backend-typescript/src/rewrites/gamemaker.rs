@@ -1147,8 +1147,8 @@ fn rewrite_expr_children(
             ty,
             use_instanceof,
         } => {
-            // GML: all objects are class instances — use `instanceof` for Struct checks.
-            if matches!(ty, reincarnate_core::ir::ty::Type::Struct(_)) {
+            // GML: all objects are class instances — use `instanceof` for Instance checks.
+            if matches!(ty, reincarnate_core::ir::ty::Type::Instance(_)) {
                 *use_instanceof = true;
             }
             rewrite_expr(

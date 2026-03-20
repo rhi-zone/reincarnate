@@ -44,7 +44,6 @@ fn fmt_type(ty: &Type, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, ")")
         }
         Type::Instance(id) => write!(f, "type{}", id.index()),
-        Type::Struct(name) => write!(f, "{name}"),
         Type::ClassRef(id) => write!(f, "classref(type{})", id.index()),
         Type::Function(sig) => {
             write!(f, "fn(")?;

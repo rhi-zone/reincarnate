@@ -69,9 +69,15 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             let rest = rewrite_exprs(args[1..].to_vec(), ctx);
             if rest.len() == 1 {
                 if let Some(ref class_name) = ctx.class_short_name {
+                    let ty = ctx
+                        .class_type_ids
+                        .get(class_name.as_str())
+                        .copied()
+                        .map(Type::Instance)
+                        .unwrap_or(Type::Unknown);
                     return JsExpr::Cast {
                         expr: Box::new(rest.into_iter().next().unwrap()),
-                        ty: Type::Struct(class_name.clone()),
+                        ty,
                         kind: CastKind::NullableCoerce,
                     };
                 }
@@ -346,19 +352,12 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             ty,
             use_instanceof,
         } => {
-            // Disambiguate struct/enum type names using class_names so that
+            // Disambiguate Instance type names using class_type_ids so that
             // `isType(x, GooArmor)` becomes `isType(x, Armors_GooArmor)` when two
             // classes share the same short name.
-            let ty = match &ty {
-                Type::Struct(name) => {
-                    if let Some(ts_name) = ctx.class_names.get(name.as_str()) {
-                        Type::Struct(ts_name.clone())
-                    } else {
-                        ty
-                    }
-                }
-                _ => ty,
-            };
+            // The ts_name is stored as an alias in class_type_ids — the TypeId
+            // carries the disambiguated name through to print time via MODULE_TYPES.
+            // Instance(TypeId) — name resolution happens at print time via MODULE_TYPES
             JsExpr::TypeCheck {
                 expr: Box::new(rewrite_expr(*inner, ctx)),
                 ty,

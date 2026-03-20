@@ -73,7 +73,6 @@ pub(crate) fn is_concrete(ty: &Type) -> bool {
         | Type::Float(_)
         | Type::String
         | Type::Instance(_)
-        | Type::Struct(_)
         | Type::ClassRef(_) => true,
     }
 }

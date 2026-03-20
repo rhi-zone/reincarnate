@@ -44,6 +44,13 @@ pub fn translate_objects(
         })
         .collect();
 
+    // Pre-intern Instance TypeIds for all object names so translators can type
+    // self/with-body parameters as Type::Instance(TypeId).
+    let instance_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .map(|name| (name.clone(), mb.intern_type(name)))
+        .collect();
+
     for (obj_idx, obj) in objt.objects.iter().enumerate() {
         let obj_name = &obj_names[obj_idx];
 
@@ -134,6 +141,7 @@ pub fn translate_objects(
                         with_body_has_return: false,
                         bytecode_version: bc_version,
                         classref_types: &classref_types,
+                        instance_types: &instance_types,
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {
