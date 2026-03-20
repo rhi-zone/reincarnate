@@ -22,9 +22,9 @@ pub use inst::{CastKind, CmpKind, Inst, InstId, Op, Span, Terminator};
 pub use linear::lower_function_linear;
 pub use module::{
     AbstractMember, ClassDef, EntryPoint, EnumDef, EnumVariant, ExternalImport, FieldDef, Global,
-    Import, Module, StaticField, StructDef, SystemCallTypeRule,
+    Import, Module, NamedType, StaticField, StructDef, SystemCallTypeRule, TypeInterner,
 };
 pub use name_table::NameTable;
 pub use structurize::structurize;
-pub use ty::{parse_type_notation, FunctionSig, Type, TypeConstraint, TypeVarId};
+pub use ty::{parse_type_notation, FunctionSig, Type, TypeConstraint, TypeId, TypeVarId};
 pub use value::{Constant, ValueId};

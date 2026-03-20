@@ -72,6 +72,7 @@ pub(crate) fn is_concrete(ty: &Type) -> bool {
         | Type::UInt(_)
         | Type::Float(_)
         | Type::String
+        | Type::Instance(_)
         | Type::Struct(_)
         | Type::Enum(_)
         | Type::ClassRef(_) => true,
@@ -541,10 +542,12 @@ pub fn collect_function(
                     }
                 }
 
-                // StructInit — result is Struct(name).
+                // StructInit — result is Instance(id).
                 Op::StructInit { name, .. } => {
                     if let Some(rv) = result_var {
-                        constraints.push(TypeConstraint::Equal(rv, Type::Struct(name.clone())));
+                        if let Some(id) = module.find_type(name) {
+                            constraints.push(TypeConstraint::Equal(rv, Type::Instance(id)));
+                        }
                     }
                 }
 

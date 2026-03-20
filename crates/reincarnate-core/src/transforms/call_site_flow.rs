@@ -498,10 +498,21 @@ mod tests {
 
         let result = run(mb);
         assert!(result.changed);
-        let method = &result.module.functions[FuncId::new(0)];
-        // param[0] (self) should be untouched, param[1] should be narrowed.
-        assert_eq!(method.sig.params[0], Type::Struct("Foo".into()));
-        assert_eq!(method.sig.params[1], Type::Int(64));
+        // param[0] (self): Struct("Foo") is normalized to Instance(TypeId) by build().
+        // Verify the type identity is preserved — the TypeId should resolve to "Foo".
+        let param0 = result.module.functions[FuncId::new(0)].sig.params[0].clone();
+        let param0_name = match &param0 {
+            Type::Instance(id) => result.module.types.get(*id).map(|t| t.name.as_str()),
+            Type::Struct(name) => Some(name.as_str()),
+            _ => None,
+        };
+        assert_eq!(
+            param0_name,
+            Some("Foo"),
+            "param[0] should still refer to Foo"
+        );
+        let param1 = result.module.functions[FuncId::new(0)].sig.params[1].clone();
+        assert_eq!(param1, Type::Int(64));
     }
 
     // ---- Self-call (recursive) ----

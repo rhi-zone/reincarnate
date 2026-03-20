@@ -60,6 +60,10 @@ fn rename_type_with_map(ty: &mut Type, name_map: &HashMap<String, String>) {
             rename_type_with_map(yield_ty, name_map);
             rename_type_with_map(return_ty, name_map);
         }
+        // Instance(id) appears only in raw IR; after resolve_js_function_types() all
+        // Instance types are converted to Struct. If Instance reaches here, it has
+        // no string name available in this context — leave it unchanged.
+        Type::Instance(_) => {}
         // Primitive and leaf types — nothing to rename.
         Type::Void
         | Type::Bool
@@ -182,6 +186,7 @@ pub(super) fn emit_functions(
             let no_free_fns = HashSet::new();
             emit_function(
                 &mut module.functions[id],
+                &module.types,
                 class_names,
                 known_classes,
                 mutable_global_names,
@@ -208,6 +213,10 @@ pub(super) fn emit_functions(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn emit_function(
     func: &mut Function,
+    module_types: &reincarnate_core::entity::PrimaryMap<
+        reincarnate_core::ir::TypeId,
+        reincarnate_core::ir::module::NamedType,
+    >,
     class_names: &HashMap<String, String>,
     known_classes: &HashSet<String>,
     mutable_global_names: &HashSet<String>,
@@ -235,11 +244,22 @@ pub(super) fn emit_function(
     func.hoist_allocs();
     let shape = structurize::structurize(func);
     let effective_config = lowering_config_for_engine(lowering_config, engine);
-    let ast = linear::lower_function_linear(func, &func.name, &shape, &effective_config, debug);
+    let ast = linear::lower_function_linear(
+        func,
+        &func.name,
+        &shape,
+        &effective_config,
+        debug,
+        Some(module_types),
+    );
     let ctx = crate::lower::LowerCtx {
         self_param_name: None,
     };
-    let js_func = crate::lower::lower_function(&ast, &ctx);
+    let mut js_func = crate::lower::lower_function(&ast, &ctx);
+    // Resolve Type::Instance(TypeId) → Type::Struct(name) so that all
+    // downstream type-processing (ts_type, rename_type_with_map, etc.)
+    // only see the string-keyed Struct form.
+    crate::types::resolve_js_function_types(&mut js_func, module_types);
     let mut js_func = match engine {
         EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(
             js_func,
@@ -670,6 +690,7 @@ pub(super) fn emit_class(
         }
         emit_class_method(
             &mut module.functions[fid],
+            &module.types,
             class_names,
             ancestors,
             method_names,
@@ -838,7 +859,14 @@ pub(super) fn compile_closures(
 
         func.hoist_allocs();
         let shape = structurize::structurize(func);
-        let ast = linear::lower_function_linear(func, &func.name, &shape, &effective_config, debug);
+        let ast = linear::lower_function_linear(
+            func,
+            &func.name,
+            &shape,
+            &effective_config,
+            debug,
+            Some(&module.types),
+        );
 
         // Closures: self_param_name = None — the first param is the activation
         // scope, NOT `this`. This prevents the lowering pass from substituting
@@ -846,7 +874,8 @@ pub(super) fn compile_closures(
         let ctx = crate::lower::LowerCtx {
             self_param_name: None,
         };
-        let js_func = crate::lower::lower_function(&ast, &ctx);
+        let mut js_func = crate::lower::lower_function(&ast, &ctx);
+        crate::types::resolve_js_function_types(&mut js_func, &module.types);
         result.insert(short, js_func);
     }
     result
@@ -855,6 +884,10 @@ pub(super) fn compile_closures(
 /// Emit a single method inside a class body.
 fn emit_class_method(
     func: &mut Function,
+    module_types: &reincarnate_core::entity::PrimaryMap<
+        reincarnate_core::ir::TypeId,
+        reincarnate_core::ir::module::NamedType,
+    >,
     class_names: &HashMap<String, String>,
     ancestors: &HashSet<String>,
     method_names: &HashSet<String>,
@@ -914,7 +947,14 @@ fn emit_class_method(
     func.hoist_allocs();
     let shape = structurize::structurize(func);
     let effective_config = lowering_config_for_engine(lowering_config, engine);
-    let ast = linear::lower_function_linear(func, &func.name, &shape, &effective_config, debug);
+    let ast = linear::lower_function_linear(
+        func,
+        &func.name,
+        &shape,
+        &effective_config,
+        debug,
+        Some(module_types),
+    );
 
     // Determine self_param_name for `this` substitution.
     let is_cinit = matches!(func.method_kind, MethodKind::StaticInit);
@@ -927,7 +967,9 @@ fn emit_class_method(
     };
 
     let ctx = crate::lower::LowerCtx { self_param_name };
-    let js_func = crate::lower::lower_function(&ast, &ctx);
+    let mut js_func = crate::lower::lower_function(&ast, &ctx);
+    // Resolve Type::Instance(TypeId) → Type::Struct(name) before downstream processing.
+    crate::types::resolve_js_function_types(&mut js_func, module_types);
     let mut js_func = match engine {
         EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(
             js_func,

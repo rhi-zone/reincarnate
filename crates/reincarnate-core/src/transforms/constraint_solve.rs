@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::error::CoreError;
-use crate::ir::ty::{parse_type_notation, FunctionSig};
+use crate::ir::ty::{parse_type_notation, FunctionSig, TypeId};
 use crate::ir::{BlockId, Function, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
@@ -237,6 +237,8 @@ struct ConstraintModuleContext {
     class_hierarchy: HashMap<String, Option<String>>,
     /// bare_method_name → full signature (only for unambiguous names).
     unique_method_sigs: HashMap<String, FunctionSig>,
+    /// TypeId → type name (for resolving Instance/ClassRef variants to names).
+    type_id_to_name: HashMap<TypeId, String>,
 }
 
 impl ConstraintModuleContext {
@@ -346,13 +348,25 @@ impl ConstraintModuleContext {
             .filter_map(|(name, sig)| sig.map(|s| (name, s)))
             .collect();
 
+        let type_id_to_name: HashMap<TypeId, String> = module
+            .types
+            .iter()
+            .map(|(id, nt)| (id, nt.name.clone()))
+            .collect();
+
         Self {
             func_sigs,
             struct_fields,
             method_sigs,
             class_hierarchy,
             unique_method_sigs,
+            type_id_to_name,
         }
+    }
+
+    /// Resolve the name of a [`TypeId`] from the module's type arena snapshot.
+    fn type_name(&self, id: TypeId) -> Option<&str> {
+        self.type_id_to_name.get(&id).map(|s| s.as_str())
     }
 
     /// Resolve the type of a field by walking the class hierarchy.
@@ -387,10 +401,12 @@ impl ConstraintModuleContext {
 
         let bare = name.rsplit("::").next().unwrap_or(name);
 
-        // Strategy 2: receiver-based — if first arg is Struct(class), walk hierarchy.
-        if let Some(Type::Struct(class)) = first_arg_ty {
-            if let Some(sig) = self.resolve_method_sig(class, bare) {
-                return Some(sig);
+        // Strategy 2: receiver-based — if first arg is Instance(id), walk hierarchy.
+        if let Some(Type::Instance(id)) = first_arg_ty {
+            if let Some(class) = self.type_name(*id) {
+                if let Some(sig) = self.resolve_method_sig(class, bare) {
+                    return Some(sig);
+                }
             }
         }
 
@@ -480,8 +496,8 @@ fn constrain_index_op(
                 }
             }
         }
-        Type::Struct(_) => {
-            // Unknown field access: key must be a string.
+        Type::Instance(_) => {
+            // Struct indexed with unknown key: key must be a string.
             solver.constrain_value_to_type(index, &Type::String);
         }
         Type::Map(k, v) => {
@@ -628,13 +644,15 @@ fn generate_constraints(
                     field,
                     value,
                 } => {
-                    if let Type::Struct(name) = &func.value_types[*object] {
-                        if let Some(field_ty) = ctx
-                            .struct_fields
-                            .get(name)
-                            .and_then(|fields| fields.get(field))
-                        {
-                            solver.constrain_value_to_type(*value, field_ty);
+                    if let Type::Instance(id) = &func.value_types[*object] {
+                        if let Some(name) = ctx.type_name(*id) {
+                            if let Some(field_ty) = ctx
+                                .struct_fields
+                                .get(name)
+                                .and_then(|fields| fields.get(field))
+                            {
+                                solver.constrain_value_to_type(*value, field_ty);
+                            }
                         }
                     }
                 }
@@ -642,14 +660,16 @@ fn generate_constraints(
                 // GetField: r = field_ty (if struct type known);
                 // emit HasField pending constraint when object is Unknown.
                 Op::GetField { object, field } => match &func.value_types[*object] {
-                    Type::Struct(name) => {
+                    Type::Instance(id) => {
                         if let Some(r) = result {
-                            if let Some(field_ty) = ctx
-                                .struct_fields
-                                .get(name)
-                                .and_then(|fields| fields.get(field))
-                            {
-                                solver.constrain_value_to_type(r, field_ty);
+                            if let Some(name) = ctx.type_name(*id) {
+                                if let Some(field_ty) = ctx
+                                    .struct_fields
+                                    .get(name)
+                                    .and_then(|fields| fields.get(field))
+                                {
+                                    solver.constrain_value_to_type(r, field_ty);
+                                }
                             }
                         }
                     }
@@ -665,10 +685,18 @@ fn generate_constraints(
                     _ => {}
                 },
 
-                // StructInit: r = Struct(name), field values = field types
+                // StructInit: r = Instance(id), field values = field types
                 Op::StructInit { name, fields } => {
                     if let Some(r) = result {
-                        solver.constrain_value_to_type(r, &Type::Struct(name.clone()));
+                        if let Some(id) = ctx.type_id_to_name.iter().find_map(|(id, n)| {
+                            if n == name {
+                                Some(*id)
+                            } else {
+                                None
+                            }
+                        }) {
+                            solver.constrain_value_to_type(r, &Type::Instance(id));
+                        }
                     }
                     if let Some(field_defs) = ctx.struct_fields.get(name) {
                         for (fname, fval) in fields {
@@ -819,10 +847,13 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
     // Struct, look up the field type and constrain the result var.
     let has_field = std::mem::take(&mut solver.has_field);
     for hf in &has_field {
-        if let Some(Type::Struct(name)) = solver.uf.resolve(hf.object_var) {
-            if let Some(field_ty) = ctx.resolve_field_type(&name, &hf.field) {
-                let tmp = solver.uf.fresh_with_type(field_ty);
-                solver.uf.unify(hf.result_var, tmp);
+        if let Some(Type::Instance(id)) = solver.uf.resolve(hf.object_var) {
+            if let Some(name) = ctx.type_name(id) {
+                let name = name.to_string();
+                if let Some(field_ty) = ctx.resolve_field_type(&name, &hf.field) {
+                    let tmp = solver.uf.fresh_with_type(field_ty);
+                    solver.uf.unify(hf.result_var, tmp);
+                }
             }
         }
     }
@@ -1329,12 +1360,21 @@ mod tests {
 
     #[test]
     fn method_call_backward_flow() {
-        // Method call: Creature::isAlive(self: Struct("Creature")) → Bool.
+        // Method call: Creature::isAlive(self: Instance(creature_id)) → Bool.
         // Caller calls "isAlive" with Unknown receiver and uses result as Unknown.
         // → receiver should stay Unknown (no constraint on receiver type), but
         //   result should become Bool via unique method sig fallback.
+        let mut mb = ModuleBuilder::new("test");
+        let creature_id = mb.intern_type("Creature");
+        mb.add_struct(StructDef {
+            name: "Creature".into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+
         let method_sig = FunctionSig {
-            params: vec![Type::Struct("Creature".to_string())],
+            params: vec![Type::Instance(creature_id)],
             return_ty: Type::Bool,
             ..Default::default()
         };
@@ -1356,13 +1396,6 @@ mod tests {
         caller_fb.ret(Some(result));
         let caller_func = caller_fb.build();
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_struct(StructDef {
-            name: "Creature".into(),
-            namespace: Vec::new(),
-            fields: vec![],
-            visibility: Visibility::Public,
-        });
         let method_id = mb.add_function(method_func);
         mb.add_function(caller_func);
         mb.add_class(ClassDef {
@@ -1384,15 +1417,13 @@ mod tests {
 
         let transform = ConstraintSolve;
         let module = transform.apply(module).unwrap().module;
+        let creature_id = module.find_type("Creature").expect("Creature interned");
 
         let caller = &module.functions[FuncId::new(1)];
         // Result gets Bool from method sig's return type.
         assert_eq!(caller.value_types[result], Type::Bool);
-        // Receiver gets Struct("Creature") from method sig's param type.
-        assert_eq!(
-            caller.value_types[recv],
-            Type::Struct("Creature".to_string())
-        );
+        // Receiver gets Instance(creature_id) from method sig's param type.
+        assert_eq!(caller.value_types[recv], Type::Instance(creature_id));
     }
 
     // ---- Edge case tests ----
@@ -1486,15 +1517,28 @@ mod tests {
     }
 
     /// HasField pending constraint: object is Unknown at GetField but another
-    /// instruction constrains it to Struct("Foo") → result should get field type.
+    /// instruction constrains it to Instance(foo_id) → result should get field type.
     #[test]
     fn has_field_pending_resolved_via_equality() {
         // fn test(obj: Unknown, v: Unknown) -> Unknown
         //   r = obj.x      (Unknown object → HasField pending)
-        //   call("set_foo", [obj])  (constrains obj to Struct("Foo"))
+        //   call("set_foo", [obj])  (constrains obj to Instance(foo_id))
         //   return r
+        let mut mb = ModuleBuilder::new("test");
+        let foo_id = mb.intern_type("Foo");
+        mb.add_struct(StructDef {
+            name: "Foo".into(),
+            namespace: Vec::new(),
+            fields: vec![FieldDef {
+                name: "x".into(),
+                ty: Type::Int(32),
+                default: None,
+            }],
+            visibility: Visibility::Public,
+        });
+
         let callee_sig = FunctionSig {
-            params: vec![Type::Struct("Foo".to_string())],
+            params: vec![Type::Instance(foo_id)],
             return_ty: Type::Void,
             ..Default::default()
         };
@@ -1514,27 +1558,16 @@ mod tests {
         caller_fb.ret(Some(r));
         let caller = caller_fb.build();
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_struct(StructDef {
-            name: "Foo".into(),
-            namespace: Vec::new(),
-            fields: vec![FieldDef {
-                name: "x".into(),
-                ty: Type::Int(32),
-                default: None,
-            }],
-            visibility: Visibility::Public,
-        });
         mb.add_function(callee);
         mb.add_function(caller);
         let module = mb.build();
-
         let transform = ConstraintSolve;
         let module = transform.apply(module).unwrap().module;
+        let foo_id = module.find_type("Foo").expect("Foo still interned");
 
         let func = &module.functions[FuncId::new(1)];
-        // obj was narrowed to Struct("Foo") by the call constraint.
-        assert_eq!(func.value_types[obj], Type::Struct("Foo".to_string()));
+        // obj was narrowed to Instance(foo_id) by the call constraint.
+        assert_eq!(func.value_types[obj], Type::Instance(foo_id));
         // r should have been resolved to Int(32) via the HasField pending constraint.
         assert_eq!(func.value_types[r], Type::Int(32));
     }
@@ -1574,19 +1607,8 @@ mod tests {
     #[test]
     fn set_field_constrains_value() {
         // SetField on a known struct constrains the value to the field type.
-        let sig = FunctionSig {
-            params: vec![Type::Struct("Point".to_string()), Type::Unknown],
-            return_ty: Type::Void,
-            ..Default::default()
-        };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let obj = fb.param(0);
-        let val = fb.param(1); // Unknown
-        fb.set_field(obj, "x", val);
-        fb.ret(None);
-        let func = fb.build();
-
         let mut mb = ModuleBuilder::new("test");
+        let point_id = mb.intern_type("Point");
         mb.add_struct(StructDef {
             name: "Point".into(),
             namespace: Vec::new(),
@@ -1604,7 +1626,18 @@ mod tests {
             ],
             visibility: Visibility::Public,
         });
-        mb.add_function(func);
+
+        let sig = FunctionSig {
+            params: vec![Type::Instance(point_id), Type::Unknown],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let obj = fb.param(0);
+        let val = fb.param(1); // Unknown
+        fb.set_field(obj, "x", val);
+        fb.ret(None);
+        mb.add_function(fb.build());
         let module = mb.build();
 
         let transform = ConstraintSolve;

@@ -772,6 +772,14 @@ impl ModuleBuilder {
         self.module.classes.push(class);
     }
 
+    /// Intern a named type and return its [`TypeId`].
+    ///
+    /// Useful when constructing test modules that need `Type::Instance(id)`
+    /// in function signatures before the module is fully built.
+    pub fn intern_type(&mut self, name: &str) -> crate::ir::ty::TypeId {
+        self.module.intern_type(name)
+    }
+
     pub fn set_entry_point(&mut self, entry: EntryPoint) {
         self.module.entry_point = Some(entry);
     }
@@ -817,7 +825,28 @@ impl ModuleBuilder {
     }
 
     pub fn build(self) -> Module {
-        self.module
+        let mut module = self.module;
+        // Intern all named types from structs and classes into the type arena so
+        // that `module.types` / `module.type_names` are consistent with
+        // `module.structs`.  Consumers (type inference, constraint solving, etc.)
+        // rely on being able to look up TypeId by name.
+        for i in 0..module.structs.len() {
+            let name = module.structs[i].name.clone();
+            let fields = module.structs[i].fields.clone();
+            let id = module.intern_type(&name);
+            if module.types[id].fields.is_empty() && !fields.is_empty() {
+                module.types[id].fields = fields;
+            }
+        }
+        for i in 0..module.classes.len() {
+            let name = module.classes[i].name.clone();
+            module.intern_type(&name);
+        }
+        // Convert all Type::Struct(name) in function bodies to Type::Instance(id),
+        // interning any names not yet in the arena.  This allows frontends to use
+        // the convenient string form during construction.
+        module.normalize_struct_types();
+        module
     }
 }
 

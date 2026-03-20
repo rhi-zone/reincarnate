@@ -290,6 +290,7 @@ pub fn emit_module_to_string(
             if module.functions[fid].method_kind != MethodKind::Closure {
                 emit_function(
                     &mut module.functions[fid],
+                    &module.types,
                     &class_names,
                     &known_classes,
                     &no_mutable_globals,
@@ -572,8 +573,8 @@ fn emit_globals_file(
     // All struct/enum names used in globals (includes runtime types not in registry).
     let mut all_struct_names: BTreeSet<String> = BTreeSet::new();
     for global in &module.globals {
-        collect_global_type_imports(&global.ty, registry, &mut type_imports);
-        collect_all_struct_names(&global.ty, &mut all_struct_names);
+        collect_global_type_imports(&global.ty, &module.types, registry, &mut type_imports);
+        collect_all_struct_names(&global.ty, &module.types, &mut all_struct_names);
     }
     let mut any_import = false;
     // Import runtime/preamble types (e.g. GMLObject) that are used as global types
@@ -1109,6 +1110,7 @@ fn emit_free_functions_file(
             func,
             "",
             "",
+            &module.types,
             registry,
             &module.external_imports,
             &HashMap::new(),
@@ -1175,6 +1177,7 @@ fn emit_free_functions_file(
         if module.functions[fid].method_kind != MethodKind::Closure {
             emit_function(
                 &mut module.functions[fid],
+                &module.types,
                 class_names,
                 known_classes,
                 mutable_global_names,

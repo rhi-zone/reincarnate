@@ -28,9 +28,11 @@ use super::ast::{AstFunction, Stmt};
 use super::ast_passes;
 use super::func::Function;
 use super::inst::{InstId, Op};
+use super::module::NamedType;
 use super::structurize::Shape;
-use super::ty::Type;
+use super::ty::{Type, TypeId};
 use super::value::{Constant, ValueId};
+use crate::entity::PrimaryMap;
 use crate::pipeline::DebugConfig;
 use crate::pipeline::LoweringConfig;
 
@@ -119,16 +121,23 @@ pub(crate) enum LinearStmt {
 // -----------------------------------------------------------------------
 
 /// Lower a function through all 3 phases of the hybrid pipeline.
+///
+/// `module_types` is the module's type arena used to resolve `TypeId → name`
+/// in emitted type annotations.  Pass `None` (or an empty map reference) when
+/// no named types are expected (e.g. in unit tests).
 pub fn lower_function_linear(
     func: &Function,
     func_name: &str,
     shape: &Shape,
     config: &LoweringConfig,
     debug: &DebugConfig,
+    module_types: Option<&PrimaryMap<TypeId, NamedType>>,
 ) -> AstFunction {
+    static EMPTY: std::sync::OnceLock<PrimaryMap<TypeId, NamedType>> = std::sync::OnceLock::new();
+    let module_types = module_types.unwrap_or_else(|| EMPTY.get_or_init(PrimaryMap::new));
     let linear = linearize(func, shape);
     let rctx = resolve(func, &linear, &config.scope_lookup_systems);
-    let mut ctx = EmitCtx::new(func, &rctx, config);
+    let mut ctx = EmitCtx::new(func, &rctx, config, module_types);
 
     let mut body = ctx.emit_stmts(&linear);
     strip_trailing_void_return(&mut body);
@@ -299,7 +308,7 @@ fn types_coalesce_compatible(decl_ty: &Type, init_ty: &Type) -> bool {
     // with a `cls as any` argument), suppressing the annotation lets TypeScript
     // infer `any` — needed so that GML patterns like `instance_id - 1` compile
     // (TS2362: `OMortonsForkButton` is not assignable to arithmetic).
-    if matches!(decl_ty, Type::Struct(_)) {
+    if matches!(decl_ty, Type::Instance(_)) {
         return false;
     }
     if decl_ty == init_ty {

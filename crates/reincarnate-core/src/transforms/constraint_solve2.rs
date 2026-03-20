@@ -18,7 +18,7 @@ use crate::entity::EntityRef;
 use crate::error::CoreError;
 use crate::ir::inst::Op;
 use crate::ir::module::SystemCallTypeRule;
-use crate::ir::ty::{FunctionSig, Type, TypeConstraint, TypeVarId};
+use crate::ir::ty::{FunctionSig, Type, TypeConstraint, TypeId, TypeVarId};
 use crate::ir::{Constant, FuncId, Module, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
@@ -162,6 +162,7 @@ pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
         | Type::UInt(_)
         | Type::Float(_)
         | Type::String
+        | Type::Instance(_)
         | Type::Struct(_)
         | Type::Enum(_)
         | Type::ClassRef(_)
@@ -205,6 +206,7 @@ fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
         | Type::UInt(_)
         | Type::Float(_)
         | Type::String
+        | Type::Instance(_)
         | Type::Struct(_)
         | Type::Enum(_)
         | Type::ClassRef(_)
@@ -262,6 +264,7 @@ fn collect_free_vars(ty: &Type, arena: &TypeVarArena, out: &mut Vec<TypeVarId>) 
         | Type::UInt(_)
         | Type::Float(_)
         | Type::String
+        | Type::Instance(_)
         | Type::Struct(_)
         | Type::Enum(_)
         | Type::ClassRef(_)
@@ -501,6 +504,7 @@ fn process_constraint(
     c: TypeConstraint,
     arena: &mut TypeVarArena,
     struct_fields: &HashMap<String, HashMap<String, Type>>,
+    type_id_to_name: &HashMap<TypeId, String>,
     deferred: &mut Vec<TypeConstraint>,
 ) {
     match c {
@@ -520,10 +524,12 @@ fn process_constraint(
         } => {
             let resolved_ty = resolve(ty, arena);
             match resolved_ty {
-                Type::Struct(ref name) => {
-                    if let Some(fields) = struct_fields.get(name) {
-                        if let Some(ft) = fields.get(&field) {
-                            deferred.push(TypeConstraint::Equal(field_ty, ft.clone()));
+                Type::Instance(id) => {
+                    if let Some(name) = type_id_to_name.get(&id) {
+                        if let Some(fields) = struct_fields.get(name) {
+                            if let Some(ft) = fields.get(&field) {
+                                deferred.push(TypeConstraint::Equal(field_ty, ft.clone()));
+                            }
                         }
                     }
                     // Unknown field — skip; don't invent a type.
@@ -575,6 +581,11 @@ impl Transform for ConstraintSolve2 {
         use crate::transforms::constraint_collect::{collect_function, is_concrete};
 
         let struct_fields = build_struct_fields(&module);
+        let type_id_to_name: HashMap<TypeId, String> = module
+            .types
+            .iter()
+            .map(|(id, nt)| (id, nt.name.clone()))
+            .collect();
 
         // -----------------------------------------------------------------------
         // Step 1: allocate one TypeVarId per global name in a shared arena.
@@ -737,7 +748,7 @@ impl Transform for ConstraintSolve2 {
                                             // constraints on the param can resolve.
                                             let is_struct_arg = matches!(
                                                 arg_ty,
-                                                Type::Struct(_) | Type::ClassRef(_)
+                                                Type::Instance(_) | Type::ClassRef(_)
                                             );
                                             let is_self_param = i == 0;
                                             if is_self_param {
@@ -845,7 +856,7 @@ impl Transform for ConstraintSolve2 {
                                             }
                                             let is_struct_arg = matches!(
                                                 arg_ty,
-                                                Type::Struct(_) | Type::ClassRef(_)
+                                                Type::Instance(_) | Type::ClassRef(_)
                                             );
                                             if !is_struct_arg
                                                 && param_used_with_field_access(
@@ -913,7 +924,13 @@ impl Transform for ConstraintSolve2 {
             let pending_count = pending.len();
             let mut deferred: Vec<TypeConstraint> = Vec::new();
             for c in pending {
-                process_constraint(c, &mut arena, &struct_fields, &mut deferred);
+                process_constraint(
+                    c,
+                    &mut arena,
+                    &struct_fields,
+                    &type_id_to_name,
+                    &mut deferred,
+                );
             }
             if deferred.is_empty() {
                 break; // all resolved

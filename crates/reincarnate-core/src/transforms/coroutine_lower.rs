@@ -5,7 +5,7 @@ use crate::error::CoreError;
 use crate::ir::block::{Block, BlockParam};
 use crate::ir::inst::Inst;
 use crate::ir::module::{FieldDef, StructDef};
-use crate::ir::ty::FunctionSig;
+use crate::ir::ty::{FunctionSig, TypeId};
 use crate::ir::{
     BlockId, Constant, FuncId, Function, InstId, Module, Op, Type, ValueId, Visibility,
 };
@@ -311,13 +311,14 @@ fn build_resume_function(
     orig_func: &Function,
     yield_points: &[YieldPoint],
     live_values: &[ValueId],
-    struct_name: &str,
+    _struct_name: &str,
+    struct_type_id: TypeId,
     yield_ty: &Type,
 ) -> Function {
     let mut rb = ResumeBuilder::new();
 
     // New function signature: fn(state: Struct, resume_val: yield_ty) -> yield_ty
-    let state_ty = Type::Struct(struct_name.to_string());
+    let state_ty = Type::Instance(struct_type_id);
     let new_sig = FunctionSig {
         params: vec![state_ty.clone(), yield_ty.clone()],
         return_ty: yield_ty.clone(),
@@ -763,9 +764,10 @@ fn rewrite_callers(
     module: &mut Module,
     coroutine_func_id: FuncId,
     struct_name: &str,
+    struct_type_id: TypeId,
     func_name: &str,
 ) {
-    let struct_ty = Type::Struct(struct_name.to_string());
+    let struct_ty = Type::Instance(struct_type_id);
 
     for func_id in module.functions.keys().collect::<Vec<_>>() {
         if func_id == coroutine_func_id {
@@ -928,7 +930,10 @@ impl Transform for CoroutineLowering {
             // Phase 3: Generate state struct.
             let (struct_def, _fields) =
                 generate_state_struct(&func_clone, &live_values, &struct_name);
-            module.structs.push(struct_def);
+            module.structs.push(struct_def.clone());
+            let struct_type_id = module.intern_type(&struct_name);
+            // Sync fields into the type arena so downstream passes see them.
+            module.types[struct_type_id].fields = struct_def.fields;
 
             // Phase 4: Build resume function.
             let new_func = build_resume_function(
@@ -936,12 +941,19 @@ impl Transform for CoroutineLowering {
                 &yield_points,
                 &live_values,
                 &struct_name,
+                struct_type_id,
                 &coroutine_info.yield_ty,
             );
             module.functions[*func_id] = new_func;
 
             // Phase 5: Rewrite callers.
-            rewrite_callers(&mut module, *func_id, &struct_name, func_name);
+            rewrite_callers(
+                &mut module,
+                *func_id,
+                &struct_name,
+                struct_type_id,
+                func_name,
+            );
 
             changed = true;
         }
@@ -1043,7 +1055,8 @@ mod tests {
 
         // Function should have new signature: (state, resume_val) -> yield_ty.
         assert_eq!(func.sig.params.len(), 2);
-        assert_eq!(func.sig.params[0], Type::Struct("gen_state".to_string()));
+        let gen_state_id = module.find_type("gen_state").expect("gen_state interned");
+        assert_eq!(func.sig.params[0], Type::Instance(gen_state_id));
         assert_eq!(func.sig.return_ty, Type::Int(64));
 
         // Should have a switch instruction in the entry block.

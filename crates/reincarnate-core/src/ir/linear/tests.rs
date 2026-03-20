@@ -217,6 +217,7 @@ fn full_pipeline_simple_add() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     assert_eq!(ast.name, "add");
@@ -250,6 +251,7 @@ fn full_pipeline_constant_inlining() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Constant and sum both inlined into return.
@@ -283,6 +285,7 @@ fn full_pipeline_dead_pure_eliminated() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     assert!(
@@ -323,6 +326,7 @@ fn full_pipeline_if_else() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     assert!(!ast.body.is_empty());
@@ -485,6 +489,7 @@ fn loop_init_assigns_emitted() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Should have an init assign before the loop, not just a naked while.
@@ -539,6 +544,7 @@ fn pipeline_deterministic() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
     let ast2 = lower_function_linear(
         &func,
@@ -546,6 +552,7 @@ fn pipeline_deterministic() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     assert_eq!(
@@ -582,6 +589,7 @@ fn shared_name_gets_decl() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // The output should not panic or produce undeclared variables.
@@ -615,6 +623,7 @@ fn duplicate_param_names_deduped() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Params should have distinct names.
@@ -656,6 +665,7 @@ fn reassigned_self_param_renamed() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // The two "this" params should have different names.
@@ -697,7 +707,8 @@ fn store_target_uses_var_name() {
     let linear = linearize(&func, &shape);
     let resolved = resolve(&func, &linear, &[]);
     let config = LoweringConfig::default();
-    let mut ctx = EmitCtx::new(&func, &resolved, &config);
+    let empty_types = crate::entity::PrimaryMap::new();
+    let mut ctx = EmitCtx::new(&func, &resolved, &config, &empty_types);
     let body = ctx.emit_stmts(&linear);
 
     // The Store should produce assignments with Var("x") target.
@@ -746,6 +757,7 @@ fn debug_name_propagates_through_cast() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Output should reference "hp" somewhere, not a vN identifier.
@@ -789,7 +801,14 @@ fn logical_or_no_double_build() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(
+        &func,
+        &func.name,
+        &shape,
+        &config,
+        &DebugConfig::none(),
+        None,
+    );
 
     // Should not panic. Output should contain a LogicalOr or similar.
     assert!(!ast.body.is_empty(), "Expected non-empty body");
@@ -829,6 +848,7 @@ fn flush_skips_consumed_values() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
     let _ = debug_body(&ast.body);
 }
@@ -876,6 +896,7 @@ fn flush_scoped_to_prevent_use_before_def() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // v_field's declaration must appear before the if/else, not inside it.
@@ -917,6 +938,7 @@ fn se_chain_through_cast() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Should produce clean output with "result" name, no broken references.
@@ -977,6 +999,7 @@ fn inverted_cmp_not_wrapped_in_not() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Find the If statement and check its condition.
@@ -1034,6 +1057,7 @@ fn logical_and_no_duplicate_decl() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Count VarDecl statements for the phi value's name. There should be
@@ -1096,6 +1120,7 @@ fn minmax_se_flush_correct() {
         &shape,
         &LoweringConfig::default(),
         &DebugConfig::none(),
+        None,
     );
 
     // Should produce clean output — no panic from SE flush timing.
@@ -1146,7 +1171,14 @@ fn while_loop_condition_hoisted() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(
+        &func,
+        &func.name,
+        &shape,
+        &config,
+        &DebugConfig::none(),
+        None,
+    );
 
     // With while_condition_hoisting enabled (default), should be While
     // with a real condition, not `While { cond: Literal(true), ... }`.
@@ -1224,7 +1256,14 @@ fn switch_se_inline_flushed_to_outer_scope() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(
+        &func,
+        &func.name,
+        &shape,
+        &config,
+        &DebugConfig::none(),
+        None,
+    );
 
     // The Switch must appear in the output.
     assert!(
@@ -1439,7 +1478,14 @@ fn logical_or_in_branch_no_duplicate_decl() {
     let mut func = fb.build();
     let shape = structurize(&mut func);
     let config = LoweringConfig::default();
-    let ast = lower_function_linear(&func, &func.name, &shape, &config, &DebugConfig::none());
+    let ast = lower_function_linear(
+        &func,
+        &func.name,
+        &shape,
+        &config,
+        &DebugConfig::none(),
+        None,
+    );
 
     // The phi variable name must appear in at most ONE VarDecl across
     // the entire body.  Two VarDecls = duplicate declaration error.

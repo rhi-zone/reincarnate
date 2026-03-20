@@ -161,13 +161,17 @@ impl Transform for ConstructorStructInfer {
         let changed = !inferred.is_empty();
 
         for inf in inferred {
-            // Add the StructDef.
+            // Add the StructDef (legacy) and intern the TypeId.
             module.structs.push(StructDef {
                 name: inf.name.clone(),
                 namespace: Vec::new(),
-                fields: inf.fields,
+                fields: inf.fields.clone(),
                 visibility: Visibility::Public,
             });
+            let type_id = module.intern_type(&inf.name);
+            // Update fields on the NamedType.
+            module.types[type_id].fields = inf.fields;
+            module.types[type_id].inferred = true;
 
             // Update the self param type in value_types and sig.params[0].
             let func = &mut module.functions[inf.func_id];
@@ -175,14 +179,14 @@ impl Transform for ConstructorStructInfer {
 
             let current_ty = func.value_types[entry_block_param_value].clone();
             if is_unresolved(&current_ty) {
-                func.value_types[entry_block_param_value] = Type::Struct(inf.name.clone());
+                func.value_types[entry_block_param_value] = Type::Instance(type_id);
                 // Also update the block param's ty field.
-                func.blocks[func.entry].params[0].ty = Type::Struct(inf.name.clone());
+                func.blocks[func.entry].params[0].ty = Type::Instance(type_id);
             }
 
             if let Some(param0_ty) = func.sig.params.first_mut() {
                 if is_unresolved(param0_ty) {
-                    *param0_ty = Type::Struct(inf.name.clone());
+                    *param0_ty = Type::Instance(type_id);
                 }
             }
         }
@@ -251,10 +255,14 @@ mod tests {
     fn updates_self_param_type() {
         let (module, func_id) = make_constructor_with_fields(&[("hp", Type::Float(64))]);
         let result = ConstructorStructInfer.apply(module).unwrap();
-        let func = &result.module.functions[func_id];
-        assert_eq!(func.sig.params[0], Type::Struct("MyClass".to_string()));
+        let module = result.module;
+        let func = &module.functions[func_id];
+        let type_id = module
+            .find_type("MyClass")
+            .expect("MyClass should be interned");
+        assert_eq!(func.sig.params[0], Type::Instance(type_id));
         let entry_param_ty = &func.blocks[func.entry].params[0].ty;
-        assert_eq!(*entry_param_ty, Type::Struct("MyClass".to_string()));
+        assert_eq!(*entry_param_ty, Type::Instance(type_id));
     }
 
     #[test]

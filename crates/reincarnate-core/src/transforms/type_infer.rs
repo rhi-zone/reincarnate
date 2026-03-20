@@ -4,7 +4,7 @@ use crate::error::CoreError;
 use crate::ir::ty::parse_type_notation;
 use crate::ir::{
     BlockId, Constant, FieldDef, Function, FunctionSig, Inst, Module, Op, StructDef,
-    SystemCallTypeRule, Type, ValueId, Visibility,
+    SystemCallTypeRule, Type, TypeId, TypeInterner, ValueId, Visibility,
 };
 use crate::pipeline::{Transform, TransformResult};
 
@@ -13,6 +13,7 @@ use crate::pipeline::{Transform, TransformResult};
 pub struct TypeInference;
 
 /// Module-level type context built once before per-function inference.
+#[allow(dead_code)]
 struct ModuleContext {
     /// Struct name → field name → field type.
     struct_fields: HashMap<String, HashMap<String, Type>>,
@@ -35,6 +36,9 @@ struct ModuleContext {
     /// Whether the source language implicitly returns a value from every
     /// function (mirrors `Module::implicit_return_value`).
     implicit_return_value: bool,
+    /// Snapshot of the module's type name → TypeId map at context build time.
+    /// Used to look up TypeIds for names already interned in the module.
+    type_names: HashMap<String, TypeId>,
 }
 
 impl ModuleContext {
@@ -178,7 +182,21 @@ impl ModuleContext {
             unique_method_types,
             system_call_type_rules,
             implicit_return_value: module.implicit_return_value,
+            type_names: module.type_names.clone(),
         }
+    }
+
+    /// Look up or intern a TypeId for a named type.
+    ///
+    /// Checks the snapshot first; falls back to the interner for newly-discovered
+    /// names.  The interner mutates the module's type arena so the new entry is
+    /// committed even though the context itself is immutable.
+    #[allow(dead_code)]
+    fn type_id_for(&self, name: &str, interner: &mut TypeInterner<'_>) -> TypeId {
+        if let Some(&id) = self.type_names.get(name) {
+            return id;
+        }
+        interner.intern(name)
     }
 
     /// Resolve a method's return type by walking the class hierarchy.
@@ -400,6 +418,7 @@ fn infer_inst_type(
     ctx: &ModuleContext,
     alloc_types: &HashMap<ValueId, Type>,
     const_strings: &HashMap<ValueId, String>,
+    interner: &mut TypeInterner<'_>,
 ) -> Option<Type> {
     let result = inst.result?;
     let current = &func.value_types[result];
@@ -449,14 +468,20 @@ fn infer_inst_type(
         // GetField: look up struct field type, walking class hierarchy.
         Op::GetField { object, field } => {
             match &func.value_types[*object] {
-                Type::Struct(name) => ctx.resolve_field_type(name, field).unwrap_or(Type::Unknown),
+                Type::Instance(id) => {
+                    let name = interner.name_of(*id).to_string();
+                    ctx.resolve_field_type(&name, field)
+                        .unwrap_or(Type::Unknown)
+                }
                 Type::Union(members) => {
                     // Resolve the field type for each union member and join.
                     // Members that can't resolve contribute Unknown (unknown).
                     let mut result = Type::Unknown;
-                    for member in members {
-                        let member_field_ty = if let Type::Struct(name) = member {
-                            ctx.resolve_field_type(name, field).unwrap_or(Type::Unknown)
+                    for member in members.clone() {
+                        let member_field_ty = if let Type::Instance(id) = member {
+                            let name = interner.name_of(id).to_string();
+                            ctx.resolve_field_type(&name, field)
+                                .unwrap_or(Type::Unknown)
                         } else {
                             Type::Unknown
                         };
@@ -494,11 +519,12 @@ fn infer_inst_type(
             if let Some(ty) = ctx.func_return_types.get(name) {
                 ty.clone()
             }
-            // Strategy 2: receiver-based — if first arg is Struct(class), walk hierarchy.
+            // Strategy 2: receiver-based — if first arg is Instance(class), walk hierarchy.
             else if let Some(first) = args.first() {
-                if let Type::Struct(class) = &func.value_types[*first] {
+                if let Type::Instance(id) = &func.value_types[*first] {
+                    let class = interner.name_of(*id).to_string();
                     let bare = name.rsplit("::").next().unwrap_or(name);
-                    ctx.resolve_method_return_type(class, bare)
+                    ctx.resolve_method_return_type(&class, bare)
                         .unwrap_or_else(|| {
                             // Strategy 3: unique bare name fallback.
                             ctx.unique_method_types
@@ -526,8 +552,9 @@ fn infer_inst_type(
             args: _,
         } => {
             let bare = method.rsplit("::").next().unwrap_or(method);
-            if let Type::Struct(class) = &func.value_types[*receiver] {
-                ctx.resolve_method_return_type(class, bare)
+            if let Type::Instance(id) = &func.value_types[*receiver] {
+                let class = interner.name_of(*id).to_string();
+                ctx.resolve_method_return_type(&class, bare)
                     .unwrap_or_else(|| {
                         ctx.unique_method_types
                             .get(bare)
@@ -552,8 +579,8 @@ fn infer_inst_type(
         // Spread: propagate source type.
         Op::Spread(v) => func.value_types[*v].clone(),
 
-        // StructInit: always Struct(name).
-        Op::StructInit { name, .. } => Type::Struct(name.clone()),
+        // StructInit: always Instance(id).
+        Op::StructInit { name, .. } => interner.instance(name),
 
         // ArrayInit: infer element type from elements.
         Op::ArrayInit(elems) => {
@@ -570,7 +597,7 @@ fn infer_inst_type(
         // callee signatures use `typeof ClassName` rather than `number`.
         Op::GlobalRef(name) => {
             if ctx.class_hierarchy.contains_key(name.as_str()) {
-                Type::ClassRef(name.clone())
+                interner.classref(name)
             } else {
                 ctx.global_types.get(name).cloned().unwrap_or(Type::Unknown)
             }
@@ -598,15 +625,15 @@ fn infer_inst_type(
                     if ctx.struct_fields.contains_key(bare)
                         || ctx.class_hierarchy.contains_key(bare)
                     {
-                        Type::Struct(bare.to_string())
+                        interner.instance(bare)
                     } else {
                         return None;
                     }
                 }
                 Some(SystemCallTypeRule::ConstructFromFirstArgType) => {
                     let first = args.first()?;
-                    if let Type::Struct(name) = &func.value_types[*first] {
-                        Type::Struct(name.clone())
+                    if let Type::Instance(id) = &func.value_types[*first] {
+                        Type::Instance(*id)
                     } else {
                         return None;
                     }
@@ -852,7 +879,7 @@ type GlobalTypesResult = (
 /// with dynamic index keys (i.e. need `[key: string]: any` in their interfaces),
 /// plus a list of write-site type conflicts `(var_name, raw_union_type)` for
 /// variables whose concrete write-site types span different TypeScript type families.
-fn build_global_types(module: &Module) -> GlobalTypesResult {
+fn build_global_types(module: &Module, interner: &mut TypeInterner<'_>) -> GlobalTypesResult {
     use crate::ir::module::SystemCallTypeRule;
 
     // Pre-collect the GlobalStore rules so we can match by (system, method).
@@ -1259,7 +1286,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                                 if !struct_only_results.contains(index) {
                                     let inferred = match &func.value_types[*collection] {
                                         Type::Array(_) => Some(Type::Int(64)),
-                                        Type::Struct(_) => Some(Type::String),
+                                        Type::Instance(_) => Some(Type::String),
                                         Type::Map(key_ty, _) => Some(*key_ty.clone()),
                                         _ => None,
                                     };
@@ -1473,7 +1500,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
                         .entry(field)
                         .or_insert(Type::Unknown);
                     if *entry == Type::Unknown {
-                        *entry = Type::Struct(nested);
+                        *entry = interner.instance(&nested);
                     }
                 }
 
@@ -1549,19 +1576,22 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
         for func in module.functions.values() {
             for inst in func.insts.values() {
                 if let Op::GetField { object, field } = &inst.op {
-                    if let Type::Struct(struct_name) = &func.value_types[*object] {
-                        if let Some(key) = struct_name.strip_prefix("_SC_") {
-                            if struct_schemas.contains_key(key)
-                                && !STRING_ONLY_METHODS.contains(&field.as_str())
-                            {
-                                struct_schemas
-                                    .entry(key.to_string())
-                                    .or_default()
-                                    .entry(field.clone())
-                                    .or_insert(Type::Unknown);
-                                // Mark as confirmed so the Unknown entry is included
-                                // in the emitted struct interface (see Phase 3 filter).
-                                write_site_fields.insert((key.to_string(), field.clone()));
+                    if let Type::Instance(type_id) = &func.value_types[*object] {
+                        if interner.contains_id(*type_id) {
+                            let struct_name = interner.name_of(*type_id).to_string();
+                            if let Some(key) = struct_name.strip_prefix("_SC_") {
+                                if struct_schemas.contains_key(key)
+                                    && !STRING_ONLY_METHODS.contains(&field.as_str())
+                                {
+                                    struct_schemas
+                                        .entry(key.to_string())
+                                        .or_default()
+                                        .entry(field.clone())
+                                        .or_insert(Type::Unknown);
+                                    // Mark as confirmed so the Unknown entry is included
+                                    // in the emitted struct interface (see Phase 3 filter).
+                                    write_site_fields.insert((key.to_string(), field.clone()));
+                                }
                             }
                         }
                     }
@@ -1606,7 +1636,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
             struct_schemas
                 .get_mut(&key)
                 .unwrap()
-                .insert(field, Type::Struct("Object".to_string()));
+                .insert(field, interner.instance("Object"));
         }
     }
 
@@ -1659,7 +1689,7 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
         });
         let entry = global_stores.entry(var_name.clone()).or_insert(None);
         if entry.is_none() {
-            *entry = Some(Type::Struct(struct_name));
+            *entry = Some(interner.instance(&struct_name));
         }
     }
 
@@ -1673,9 +1703,12 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
         let mut to_add: HashSet<String> = HashSet::new();
         for s in &inferred_structs {
             for f in &s.fields {
-                if let Type::Struct(ref name) = f.ty {
-                    if name.starts_with("_SC_") && !defined.contains(name.as_str()) {
-                        to_add.insert(name.clone());
+                if let Type::Instance(id) = &f.ty {
+                    if interner.contains_id(*id) {
+                        let name = interner.name_of(*id);
+                        if name.starts_with("_SC_") && !defined.contains(name) {
+                            to_add.insert(name.to_string());
+                        }
                     }
                 }
             }
@@ -1732,7 +1765,11 @@ fn build_global_types(module: &Module) -> GlobalTypesResult {
 
 /// Run type inference on a single function within the given module context.
 /// Returns true if any types were refined.
-fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
+fn infer_function(
+    func: &mut Function,
+    ctx: &ModuleContext,
+    interner: &mut TypeInterner<'_>,
+) -> bool {
     let max_iters = func.value_types.len().max(1);
     let mut any_changed = false;
 
@@ -1762,7 +1799,8 @@ fn infer_function(func: &mut Function, ctx: &ModuleContext) -> bool {
             .values()
             .filter_map(|inst| {
                 let result = inst.result?;
-                let new_ty = infer_inst_type(inst, func, ctx, &alloc_types, &const_strings)?;
+                let new_ty =
+                    infer_inst_type(inst, func, ctx, &alloc_types, &const_strings, interner)?;
                 Some((result, new_ty))
             })
             .collect();
@@ -1889,9 +1927,20 @@ impl Transform for TypeInference {
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let ctx = ModuleContext::from_module(&module);
         let mut changed = false;
-        for func in module.functions.keys().collect::<Vec<_>>() {
-            changed |= infer_function(&mut module.functions[func], &ctx);
+
+        // Thread a TypeInterner through all per-function inference calls.
+        // We take the type arena fields temporarily so Rust allows a simultaneous
+        // &module borrow (via ctx/func iteration) alongside &mut to these fields.
+        let mut tmp_types = std::mem::take(&mut module.types);
+        let mut tmp_type_names = std::mem::take(&mut module.type_names);
+        {
+            let mut interner = TypeInterner::from_parts(&mut tmp_types, &mut tmp_type_names);
+            for func in module.functions.keys().collect::<Vec<_>>() {
+                changed |= infer_function(&mut module.functions[func], &ctx, &mut interner);
+            }
         }
+        module.types = tmp_types;
+        module.type_names = tmp_type_names;
 
         // Sync narrowed entry-block param types back to sig.params so that
         // cross-function passes (ConstraintSolve) see the inferred types.
@@ -1962,8 +2011,15 @@ impl Transform for TypeInference {
         let mut prev_struct_count: usize = 0;
         let mut last_conflicts: Vec<(String, Type)> = Vec::new();
         for _ in 0..MAX_GLOBAL_INFERENCE_PASSES {
-            let (inferred_globals, new_structs, new_indexed, conflicts) =
-                build_global_types(&module);
+            let (inferred_globals, new_structs, new_indexed, conflicts) = {
+                let mut tmp_t = std::mem::take(&mut module.types);
+                let mut tmp_tn = std::mem::take(&mut module.type_names);
+                let mut interner = TypeInterner::from_parts(&mut tmp_t, &mut tmp_tn);
+                let result = build_global_types(&module, &mut interner);
+                module.types = tmp_t;
+                module.type_names = tmp_tn;
+                result
+            };
             last_conflicts = conflicts;
 
             // Check whether this scan produced any improvements over previous.
@@ -2007,8 +2063,14 @@ impl Transform for TypeInference {
 
             // Phase 3: register inferred struct definitions.
             // Replace any existing _SC_* struct from a prior pass with the updated one.
+            // Also update the NamedType fields in the type arena so that type-inference
+            // passes see the correct field types via TypeId lookups.
             for new_struct in new_structs {
                 module.structs.retain(|s| s.name != new_struct.name);
+                // Sync fields into the module.types arena entry for this struct.
+                let type_id = module.intern_type(&new_struct.name);
+                module.types[type_id].fields = new_struct.fields.clone();
+                module.types[type_id].inferred = true;
                 module.structs.push(new_struct);
                 changed = true;
             }
@@ -2031,9 +2093,16 @@ impl Transform for TypeInference {
                     ctx.global_types.insert(name.clone(), ty.clone());
                 }
             }
-            for func in module.functions.keys().collect::<Vec<_>>() {
-                changed |= infer_function(&mut module.functions[func], &ctx);
+            let mut tmp_types2 = std::mem::take(&mut module.types);
+            let mut tmp_type_names2 = std::mem::take(&mut module.type_names);
+            {
+                let mut interner2 = TypeInterner::from_parts(&mut tmp_types2, &mut tmp_type_names2);
+                for func in module.functions.keys().collect::<Vec<_>>() {
+                    changed |= infer_function(&mut module.functions[func], &ctx, &mut interner2);
+                }
             }
+            module.types = tmp_types2;
+            module.type_names = tmp_type_names2;
         }
 
         // Emit RC0004 diagnostics for write-site type conflicts detected in the
@@ -2254,21 +2323,9 @@ mod tests {
     /// When all members have the same concrete field type, the result is that type.
     #[test]
     fn union_getfield_same_field_type() {
-        let sig = FunctionSig {
-            params: vec![Type::Union(vec![
-                Type::Struct("Point".into()),
-                Type::Struct("Point3D".into()),
-            ])],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let obj = fb.param(0);
-        let x = fb.get_field(obj, "x", Type::Unknown);
-        fb.ret(Some(x));
-        let func = fb.build();
-
         let mut mb = ModuleBuilder::new("test");
+        let point_id = mb.intern_type("Point");
+        let point3d_id = mb.intern_type("Point3D");
         mb.add_struct(StructDef {
             name: "Point".into(),
             namespace: Vec::new(),
@@ -2308,7 +2365,20 @@ mod tests {
             ],
             visibility: Visibility::Public,
         });
-        mb.add_function(func);
+
+        let sig = FunctionSig {
+            params: vec![Type::Union(vec![
+                Type::Instance(point_id),
+                Type::Instance(point3d_id),
+            ])],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let obj = fb.param(0);
+        let x = fb.get_field(obj, "x", Type::Unknown);
+        fb.ret(Some(x));
+        mb.add_function(fb.build());
         let module = mb.build();
 
         let transform = TypeInference;
@@ -2323,21 +2393,9 @@ mod tests {
     /// produces a Union of those types.
     #[test]
     fn union_getfield_mixed_field_types() {
-        let sig = FunctionSig {
-            params: vec![Type::Union(vec![
-                Type::Struct("Foo".into()),
-                Type::Struct("Bar".into()),
-            ])],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let obj = fb.param(0);
-        let val = fb.get_field(obj, "val", Type::Unknown);
-        fb.ret(Some(val));
-        let func = fb.build();
-
         let mut mb = ModuleBuilder::new("test");
+        let foo_id = mb.intern_type("Foo");
+        let bar_id = mb.intern_type("Bar");
         mb.add_struct(StructDef {
             name: "Foo".into(),
             namespace: Vec::new(),
@@ -2358,7 +2416,20 @@ mod tests {
             }],
             visibility: Visibility::Public,
         });
-        mb.add_function(func);
+
+        let sig = FunctionSig {
+            params: vec![Type::Union(vec![
+                Type::Instance(foo_id),
+                Type::Instance(bar_id),
+            ])],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let obj = fb.param(0);
+        let val = fb.get_field(obj, "val", Type::Unknown);
+        fb.ret(Some(val));
+        mb.add_function(fb.build());
         let module = mb.build();
 
         let transform = TypeInference;
@@ -2589,10 +2660,19 @@ mod tests {
         method_return_ty: Type,
         super_class: Option<&str>,
     ) -> (Module, ValueId) {
+        let mut mb = ModuleBuilder::new("test");
+        let class_id = mb.intern_type(class_name);
+        mb.add_struct(StructDef {
+            name: class_name.into(),
+            namespace: Vec::new(),
+            fields: vec![],
+            visibility: Visibility::Public,
+        });
+
         // The method: Creature::isNaga -> Bool
         let method_full = format!("{class_name}::{method_bare}");
         let method_sig = FunctionSig {
-            params: vec![Type::Struct(class_name.to_string())],
+            params: vec![Type::Instance(class_id)],
             return_ty: method_return_ty,
             ..Default::default()
         };
@@ -2602,9 +2682,9 @@ mod tests {
         let mut method_func = method_fb.build();
         method_func.class = Some(class_name.to_string());
 
-        // The caller calls bare "isNaga" with a Struct("Creature") receiver.
+        // The caller calls bare "isNaga" with an Instance(class_id) receiver.
         let caller_sig = FunctionSig {
-            params: vec![Type::Struct(class_name.to_string())],
+            params: vec![Type::Instance(class_id)],
             return_ty: Type::Unknown,
             ..Default::default()
         };
@@ -2614,13 +2694,6 @@ mod tests {
         caller_fb.ret(Some(result));
         let caller_func = caller_fb.build();
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_struct(StructDef {
-            name: class_name.into(),
-            namespace: Vec::new(),
-            fields: vec![],
-            visibility: Visibility::Public,
-        });
         let method_id = mb.add_function(method_func);
         mb.add_function(caller_func);
         mb.add_class(ClassDef {
@@ -2656,31 +2729,9 @@ mod tests {
     #[test]
     fn method_call_resolved_via_hierarchy() {
         // Parent class "Creature" has isNaga, child "Naga" extends it.
-        let parent_method_sig = FunctionSig {
-            params: vec![Type::Struct("Creature".to_string())],
-            return_ty: Type::Bool,
-            ..Default::default()
-        };
-        let mut parent_fb =
-            FunctionBuilder::new("Creature::isNaga", parent_method_sig, Visibility::Public);
-        let self_param = parent_fb.param(0);
-        parent_fb.ret(Some(self_param));
-        let mut parent_func = parent_fb.build();
-        parent_func.class = Some("Creature".to_string());
-
-        // Caller has a Naga receiver, calls bare "isNaga".
-        let caller_sig = FunctionSig {
-            params: vec![Type::Struct("Naga".to_string())],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-        let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
-        let recv = caller_fb.param(0);
-        let result = caller_fb.call("isNaga", &[recv], Type::Unknown);
-        caller_fb.ret(Some(result));
-        let caller_func = caller_fb.build();
-
         let mut mb = ModuleBuilder::new("test");
+        let creature_id = mb.intern_type("Creature");
+        let naga_id = mb.intern_type("Naga");
         mb.add_struct(StructDef {
             name: "Creature".into(),
             namespace: Vec::new(),
@@ -2693,6 +2744,30 @@ mod tests {
             fields: vec![],
             visibility: Visibility::Public,
         });
+
+        let parent_method_sig = FunctionSig {
+            params: vec![Type::Instance(creature_id)],
+            return_ty: Type::Bool,
+            ..Default::default()
+        };
+        let mut parent_fb =
+            FunctionBuilder::new("Creature::isNaga", parent_method_sig, Visibility::Public);
+        let self_param = parent_fb.param(0);
+        parent_fb.ret(Some(self_param));
+        let mut parent_func = parent_fb.build();
+        parent_func.class = Some("Creature".to_string());
+
+        // Caller has a Naga receiver, calls bare "isNaga".
+        let caller_sig = FunctionSig {
+            params: vec![Type::Instance(naga_id)],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        let mut caller_fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
+        let recv = caller_fb.param(0);
+        let result = caller_fb.call("isNaga", &[recv], Type::Unknown);
+        caller_fb.ret(Some(result));
+        let caller_func = caller_fb.build();
         let parent_method_id = mb.add_function(parent_func);
         mb.add_function(caller_func);
         mb.add_class(ClassDef {

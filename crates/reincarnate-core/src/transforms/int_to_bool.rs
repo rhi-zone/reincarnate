@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::error::CoreError;
-use crate::ir::ty::parse_type_notation;
+use crate::ir::ty::{parse_type_notation, TypeId};
 use crate::ir::{Constant, Function, Module, Op, Type, ValueId};
 use crate::pipeline::{PureIrPass, Transform, TransformResult};
 use crate::project::ExternalMethodSig;
@@ -228,6 +228,7 @@ fn collect_bool_demands(
     external_param_types: &HashMap<String, Vec<Type>>,
     internal_sigs: &HashMap<String, Vec<Type>>,
     struct_fields: &HashMap<String, HashMap<String, Type>>,
+    type_id_to_name: &HashMap<TypeId, String>,
 ) -> Vec<ValueId> {
     let mut demands = Vec::new();
 
@@ -258,12 +259,14 @@ fn collect_bool_demands(
                 field,
                 value,
             } => {
-                if let Type::Struct(name) = &func.value_types[*object] {
-                    if let Some(field_ty) =
-                        struct_fields.get(name).and_then(|fields| fields.get(field))
-                    {
-                        if *field_ty == Type::Bool {
-                            demands.push(*value);
+                if let Type::Instance(id) = &func.value_types[*object] {
+                    if let Some(name) = type_id_to_name.get(id) {
+                        if let Some(field_ty) =
+                            struct_fields.get(name).and_then(|fields| fields.get(field))
+                        {
+                            if *field_ty == Type::Bool {
+                                demands.push(*value);
+                            }
                         }
                     }
                 }
@@ -293,8 +296,15 @@ fn promote_demands(
     external_param_types: &HashMap<String, Vec<Type>>,
     internal_sigs: &HashMap<String, Vec<Type>>,
     struct_fields: &HashMap<String, HashMap<String, Type>>,
+    type_id_to_name: &HashMap<TypeId, String>,
 ) -> bool {
-    let demands = collect_bool_demands(func, external_param_types, internal_sigs, struct_fields);
+    let demands = collect_bool_demands(
+        func,
+        external_param_types,
+        internal_sigs,
+        struct_fields,
+        type_id_to_name,
+    );
     let mut changed = false;
 
     for demand_val in demands {
@@ -471,6 +481,12 @@ impl Transform for IntToBoolPromotion {
             })
             .collect();
 
+        let type_id_to_name: HashMap<TypeId, String> = module
+            .types
+            .iter()
+            .map(|(id, nt)| (id, nt.name.clone()))
+            .collect();
+
         // Phase 1-3: Promote demanded values in each function
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             changed |= promote_demands(
@@ -478,6 +494,7 @@ impl Transform for IntToBoolPromotion {
                 &external_param_types,
                 &internal_sigs,
                 &struct_fields,
+                &type_id_to_name,
             );
         }
 
@@ -528,6 +545,7 @@ impl Transform for IntToBoolPromotion {
                     &external_param_types,
                     &updated_internal_sigs,
                     &struct_fields,
+                    &type_id_to_name,
                 );
             }
         }
@@ -1002,19 +1020,8 @@ mod tests {
     fn promotes_int_at_bool_struct_field() {
         use crate::ir::module::{FieldDef, StructDef};
         // Setting a Bool-typed field with Int(1) should promote to Bool(true).
-        let sig = FunctionSig {
-            params: vec![Type::Struct("Obj".into())],
-            return_ty: Type::Void,
-            ..Default::default()
-        };
-        let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
-        let obj = fb.param(0);
-        let one = fb.const_int(1);
-        fb.set_field(obj, "persistent", one);
-        fb.ret(None);
-
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(fb.build());
+        let obj_id = mb.intern_type("Obj");
         mb.add_struct(StructDef {
             name: "Obj".into(),
             namespace: vec![],
@@ -1025,6 +1032,18 @@ mod tests {
             }],
             visibility: Visibility::Public,
         });
+
+        let sig = FunctionSig {
+            params: vec![Type::Instance(obj_id)],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
+        let obj = fb.param(0);
+        let one = fb.const_int(1);
+        fb.set_field(obj, "persistent", one);
+        fb.ret(None);
+        mb.add_function(fb.build());
         let module = mb.build();
 
         let result = IntToBoolPromotion.apply(module).unwrap();

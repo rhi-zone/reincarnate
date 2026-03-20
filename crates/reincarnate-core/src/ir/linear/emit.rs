@@ -10,12 +10,13 @@ use super::{
     is_deferrable, is_js_ident, is_memory_write, is_side_effecting_op, strip_trailing_continue,
     types_coalesce_compatible, LinearStmt,
 };
-use crate::entity::EntityRef;
+use crate::entity::{EntityRef, PrimaryMap};
 use crate::ir::ast::{BinOp, Expr, Stmt, UnaryOp};
 use crate::ir::block::BlockId;
 use crate::ir::func::{Function, MethodKind};
 use crate::ir::inst::{CastKind, CmpKind, InstId, Op, Terminator};
-use crate::ir::ty::{FunctionSig, Type};
+use crate::ir::module::NamedType;
+use crate::ir::ty::{FunctionSig, Type, TypeId};
 use crate::ir::value::{Constant, ValueId};
 use crate::pipeline::LoweringConfig;
 use crate::transforms::util::value_operands;
@@ -28,6 +29,8 @@ pub(super) struct EmitCtx<'a> {
     func: &'a Function,
     config: &'a LoweringConfig,
     resolve: &'a ResolveCtx,
+    /// Named type arena from the module — used for resolving TypeId → name.
+    module_types: &'a PrimaryMap<TypeId, NamedType>,
     /// Debug names for values (func.value_names + out-of-SSA coalescing).
     value_names: HashMap<ValueId, String>,
     /// Entry-block parameter ValueIds.
@@ -70,6 +73,7 @@ impl<'a> EmitCtx<'a> {
         func: &'a Function,
         resolve: &'a ResolveCtx,
         config: &'a LoweringConfig,
+        module_types: &'a PrimaryMap<TypeId, NamedType>,
     ) -> Self {
         let mut value_names: HashMap<ValueId, String> = func
             .value_names
@@ -404,6 +408,7 @@ impl<'a> EmitCtx<'a> {
             func,
             config,
             resolve,
+            module_types,
             value_names,
             entry_params,
             shared_names,
@@ -418,6 +423,17 @@ impl<'a> EmitCtx<'a> {
             all_block_params,
             flush_protected: HashSet::new(),
         }
+    }
+
+    /// Resolve a TypeId to its name string.
+    ///
+    /// Returns an empty string when the TypeId is not in the arena (e.g. in
+    /// unit tests where `module_types` is empty).
+    fn type_name(&self, id: TypeId) -> &str {
+        self.module_types
+            .get(id)
+            .map(|t| t.name.as_str())
+            .unwrap_or("")
     }
 
     fn value_name(&self, v: ValueId) -> String {
@@ -435,7 +451,10 @@ impl<'a> EmitCtx<'a> {
     /// Check if a value has Dictionary type (flash.utils::Dictionary).
     fn is_dictionary(&self, v: ValueId) -> bool {
         match self.func.value_types.get(v) {
-            Some(Type::Struct(name)) => name.rsplit("::").next() == Some("Dictionary"),
+            Some(Type::Instance(id)) => {
+                let name = self.type_name(*id);
+                name.rsplit("::").next() == Some("Dictionary")
+            }
             // AS3 Dictionary fields are often typed as Map<k, v> after type inference.
             // Map<K,V> doesn't have an index signature in TypeScript, so bracket access
             // produces TS7052. Treat any Map-typed value as a dictionary to emit .get()/.set().
@@ -444,12 +463,13 @@ impl<'a> EmitCtx<'a> {
         }
     }
 
-    /// Check if a Struct-typed collection needs `(as any)` wrapping for bracket access.
+    /// Check if a Instance-typed collection needs `(as any)` wrapping for bracket access.
     ///
-    /// Returns true when the collection is a concrete class (Struct) that isn't
+    /// Returns true when the collection is a concrete class (Instance) that isn't
     /// Object/Class/Dictionary — types that already have index signatures in TS.
     fn is_struct_needing_index_coerce(&self, v: ValueId) -> bool {
-        if let Some(Type::Struct(name)) = self.func.value_types.get(v) {
+        if let Some(Type::Instance(id)) = self.func.value_types.get(v) {
+            let name = self.type_name(*id);
             let short = name.rsplit("::").next().unwrap_or(name);
             !matches!(short, "Object" | "Class" | "Dictionary")
         } else {
@@ -459,7 +479,8 @@ impl<'a> EmitCtx<'a> {
 
     /// Check if a value is XML or XMLList typed (needs String coercion when used as index).
     fn is_xml_typed(&self, v: ValueId) -> bool {
-        if let Some(Type::Struct(name)) = self.func.value_types.get(v) {
+        if let Some(Type::Instance(id)) = self.func.value_types.get(v) {
+            let name = self.type_name(*id);
             let short = name.rsplit("::").next().unwrap_or(name);
             matches!(short, "XML" | "XMLList")
         } else {
@@ -1447,7 +1468,7 @@ impl<'a> EmitCtx<'a> {
             Type::Float(_) | Type::Int(_) | Type::UInt(_) | Type::Bool | Type::String => {
                 Some(CastKind::NullableCoerce)
             }
-            Type::Struct(_) | Type::Enum(_) => Some(CastKind::Coerce),
+            Type::Instance(_) | Type::Enum(_) => Some(CastKind::Coerce),
             Type::Array(_) | Type::Function(_) => Some(CastKind::NullableCoerce),
             _ => None,
         };
@@ -1457,7 +1478,7 @@ impl<'a> EmitCtx<'a> {
                 .cast_narrowed_syscall_results_for
                 .iter()
                 .any(|(s, m)| s == system && m == method);
-            let in_struct_only = matches!(&result_ty, Type::Struct(_) | Type::Enum(_))
+            let in_struct_only = matches!(&result_ty, Type::Instance(_) | Type::Enum(_))
                 && self
                     .config
                     .cast_struct_syscall_results_for
@@ -1502,7 +1523,7 @@ impl<'a> EmitCtx<'a> {
                 // TypeScript from inferring `any` from e.g. instance_create_depth
                 // when called with `cls as any`, causing TS2362 on arithmetic.
                 let ty = self.func.value_types[result].clone();
-                if !matches!(ty, Type::Struct(_)) {
+                if !matches!(ty, Type::Instance(_)) {
                     self.cross_scope_hoisted_types.insert(name.clone(), ty);
                 }
                 stmts.push(Stmt::Assign {
@@ -1525,7 +1546,7 @@ impl<'a> EmitCtx<'a> {
                 // Hoist the declaration to function scope via shared_names.
                 self.shared_names.insert(name.clone());
                 let ty = self.func.value_types[result].clone();
-                if !matches!(ty, Type::Struct(_)) {
+                if !matches!(ty, Type::Instance(_)) {
                     self.cross_scope_hoisted_types.insert(name.clone(), ty);
                 }
                 stmts.push(Stmt::Assign {

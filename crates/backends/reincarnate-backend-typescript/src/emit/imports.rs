@@ -5,7 +5,9 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 
-use reincarnate_core::ir::{CastKind, ExternalImport, Function, Module, Op, Type};
+use reincarnate_core::entity::PrimaryMap;
+use reincarnate_core::ir::module::NamedType;
+use reincarnate_core::ir::{CastKind, ExternalImport, Function, Module, Op, Type, TypeId};
 use reincarnate_core::project::RuntimeConfig;
 
 use crate::runtime::SYSTEM_NAMES;
@@ -456,6 +458,7 @@ pub(super) fn collect_class_references(
     engine: EngineKind,
     self_ts_name: &str,
 ) -> RefSets {
+    let module_types = &module.types;
     let self_name = &group.class_def.name;
     let mut refs = RefSets::default();
 
@@ -489,6 +492,7 @@ pub(super) fn collect_class_references(
             &field.ty,
             self_name,
             self_ts_name,
+            module_types,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -502,6 +506,7 @@ pub(super) fn collect_class_references(
             &f.ty,
             self_name,
             self_ts_name,
+            module_types,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -517,6 +522,7 @@ pub(super) fn collect_class_references(
             &m.return_ty,
             self_name,
             self_ts_name,
+            module_types,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -527,6 +533,7 @@ pub(super) fn collect_class_references(
                 param_ty,
                 self_name,
                 self_ts_name,
+                module_types,
                 registry,
                 external_imports,
                 &mut refs.type_refs,
@@ -542,6 +549,7 @@ pub(super) fn collect_class_references(
             func,
             self_name,
             self_ts_name,
+            module_types,
             registry,
             external_imports,
             static_method_owners,
@@ -563,6 +571,7 @@ pub(super) fn collect_type_refs_from_function(
     func: &Function,
     self_name: &str,
     self_ts_name: &str,
+    module_types: &PrimaryMap<TypeId, NamedType>,
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     static_method_owners: &HashMap<String, String>,
@@ -580,6 +589,7 @@ pub(super) fn collect_type_refs_from_function(
         &func.sig.return_ty,
         self_name,
         self_ts_name,
+        module_types,
         registry,
         external_imports,
         &mut refs.type_refs,
@@ -590,6 +600,7 @@ pub(super) fn collect_type_refs_from_function(
             ty,
             self_name,
             self_ts_name,
+            module_types,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -641,12 +652,14 @@ pub(super) fn collect_type_refs_from_function(
             // TypeCheck emits `isType()` — runtime value reference, collected
             // separately so circular imports can be detected and late-bound.
             Op::TypeCheck(_, ty) => {
-                let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
+                let is_struct_or_enum =
+                    matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Instance(_));
                 if is_struct_or_enum {
                     collect_type_ref(
                         ty,
                         self_name,
                         self_ts_name,
+                        module_types,
                         registry,
                         external_imports,
                         &mut refs.typecheck_value_refs,
@@ -657,6 +670,7 @@ pub(super) fn collect_type_refs_from_function(
                         ty,
                         self_name,
                         self_ts_name,
+                        module_types,
                         registry,
                         external_imports,
                         &mut refs.value_refs,
@@ -670,6 +684,7 @@ pub(super) fn collect_type_refs_from_function(
                     ty,
                     self_name,
                     self_ts_name,
+                    module_types,
                     registry,
                     external_imports,
                     &mut refs.type_refs,
@@ -677,7 +692,8 @@ pub(super) fn collect_type_refs_from_function(
                 );
             }
             Op::Cast(_, ty, kind) => {
-                let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Enum(_));
+                let is_struct_or_enum =
+                    matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Instance(_));
                 if is_struct_or_enum && *kind == CastKind::NullableCoerce {
                     // NullableCoerce needs runtime constructor — collected separately
                     // so circular imports can be detected and late-bound.
@@ -685,6 +701,7 @@ pub(super) fn collect_type_refs_from_function(
                         ty,
                         self_name,
                         self_ts_name,
+                        module_types,
                         registry,
                         external_imports,
                         &mut refs.typecheck_value_refs,
@@ -695,6 +712,7 @@ pub(super) fn collect_type_refs_from_function(
                         ty,
                         self_name,
                         self_ts_name,
+                        module_types,
                         registry,
                         external_imports,
                         &mut refs.type_refs,
@@ -709,6 +727,7 @@ pub(super) fn collect_type_refs_from_function(
                         &Type::Struct(field.clone()),
                         self_name,
                         self_ts_name,
+                        module_types,
                         registry,
                         external_imports,
                         &mut refs.value_refs,
@@ -837,6 +856,7 @@ pub(super) fn collect_type_refs_from_function(
                     &Type::ClassRef(name.clone()),
                     self_name,
                     self_ts_name,
+                    module_types,
                     registry,
                     external_imports,
                     &mut refs.value_refs,
@@ -890,6 +910,7 @@ pub(super) fn collect_type_refs_from_function(
             ty,
             self_name,
             self_ts_name,
+            module_types,
             registry,
             external_imports,
             &mut refs.type_refs,
@@ -905,16 +926,35 @@ pub(super) fn collect_type_refs_from_function(
 /// `self_ts_name` is the disambiguated TypeScript identifier for the current
 /// class — used to prevent false self-import matches when two classes share the
 /// same raw name (the second class gets a `_2` suffix ts_name).
+#[allow(clippy::too_many_arguments)]
 pub(super) fn collect_type_ref(
     ty: &Type,
     self_name: &str,
     self_ts_name: &str,
+    module_types: &PrimaryMap<TypeId, NamedType>,
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     refs: &mut BTreeSet<String>,
     ext_refs: &mut BTreeSet<String>,
 ) {
     match ty {
+        // Instance(id) is the canonical IR form after normalize_struct_types.
+        // Resolve to Struct(name) and recurse so downstream processing is uniform.
+        Type::Instance(id) => {
+            if let Some(named) = module_types.get(*id) {
+                let resolved = Type::Struct(named.name.clone());
+                collect_type_ref(
+                    &resolved,
+                    self_name,
+                    self_ts_name,
+                    module_types,
+                    registry,
+                    external_imports,
+                    refs,
+                    ext_refs,
+                );
+            }
+        }
         Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             if let Some(entry) = registry.lookup(name) {
@@ -937,6 +977,7 @@ pub(super) fn collect_type_ref(
                 inner,
                 self_name,
                 self_ts_name,
+                module_types,
                 registry,
                 external_imports,
                 refs,
@@ -955,6 +996,7 @@ pub(super) fn collect_type_ref(
                     k,
                     self_name,
                     self_ts_name,
+                    module_types,
                     registry,
                     external_imports,
                     refs,
@@ -964,6 +1006,7 @@ pub(super) fn collect_type_ref(
                     v,
                     self_name,
                     self_ts_name,
+                    module_types,
                     registry,
                     external_imports,
                     refs,
@@ -977,6 +1020,7 @@ pub(super) fn collect_type_ref(
                     elem,
                     self_name,
                     self_ts_name,
+                    module_types,
                     registry,
                     external_imports,
                     refs,
@@ -989,6 +1033,7 @@ pub(super) fn collect_type_ref(
                 &sig.return_ty,
                 self_name,
                 self_ts_name,
+                module_types,
                 registry,
                 external_imports,
                 refs,
@@ -999,6 +1044,7 @@ pub(super) fn collect_type_ref(
                     p,
                     self_name,
                     self_ts_name,
+                    module_types,
                     registry,
                     external_imports,
                     refs,
@@ -1014,6 +1060,7 @@ pub(super) fn collect_type_ref(
                 yield_ty,
                 self_name,
                 self_ts_name,
+                module_types,
                 registry,
                 external_imports,
                 refs,
@@ -1023,6 +1070,7 @@ pub(super) fn collect_type_ref(
                 return_ty,
                 self_name,
                 self_ts_name,
+                module_types,
                 registry,
                 external_imports,
                 refs,
@@ -1035,6 +1083,7 @@ pub(super) fn collect_type_ref(
                     t,
                     self_name,
                     self_ts_name,
+                    module_types,
                     registry,
                     external_imports,
                     refs,
@@ -1057,39 +1106,46 @@ pub(super) fn collect_type_ref(
 /// Collect short names of intra-module classes referenced by a type (for globals).
 pub(super) fn collect_global_type_imports(
     ty: &Type,
+    module_types: &PrimaryMap<TypeId, NamedType>,
     registry: &ClassRegistry,
     refs: &mut BTreeSet<String>,
 ) {
     match ty {
+        Type::Instance(id) => {
+            if let Some(named) = module_types.get(*id) {
+                let resolved = Type::Struct(named.name.clone());
+                collect_global_type_imports(&resolved, module_types, registry, refs);
+            }
+        }
         Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
             if let Some(entry) = registry.lookup(name) {
                 refs.insert(entry.short_name.clone());
             }
         }
         Type::Array(inner) | Type::Option(inner) => {
-            collect_global_type_imports(inner, registry, refs);
+            collect_global_type_imports(inner, module_types, registry, refs);
         }
         Type::Map(k, v) => {
-            collect_global_type_imports(k, registry, refs);
-            collect_global_type_imports(v, registry, refs);
+            collect_global_type_imports(k, module_types, registry, refs);
+            collect_global_type_imports(v, module_types, registry, refs);
         }
         Type::Tuple(elems) | Type::Union(elems) => {
             for elem in elems {
-                collect_global_type_imports(elem, registry, refs);
+                collect_global_type_imports(elem, module_types, registry, refs);
             }
         }
         Type::Function(sig) => {
-            collect_global_type_imports(&sig.return_ty, registry, refs);
+            collect_global_type_imports(&sig.return_ty, module_types, registry, refs);
             for p in &sig.params {
-                collect_global_type_imports(p, registry, refs);
+                collect_global_type_imports(p, module_types, registry, refs);
             }
         }
         Type::Coroutine {
             yield_ty,
             return_ty,
         } => {
-            collect_global_type_imports(yield_ty, registry, refs);
-            collect_global_type_imports(return_ty, registry, refs);
+            collect_global_type_imports(yield_ty, module_types, registry, refs);
+            collect_global_type_imports(return_ty, module_types, registry, refs);
         }
         // Primitive and leaf types — no class imports to collect.
         Type::Void
@@ -1105,34 +1161,46 @@ pub(super) fn collect_global_type_imports(
 
 /// Collect ALL struct/enum short names referenced by a type, regardless of registry membership.
 /// Used to detect runtime types (e.g. `GMLObject`) that are not in the emitted class registry.
-pub(super) fn collect_all_struct_names(ty: &Type, refs: &mut BTreeSet<String>) {
+pub(super) fn collect_all_struct_names(
+    ty: &Type,
+    module_types: &PrimaryMap<TypeId, NamedType>,
+    refs: &mut BTreeSet<String>,
+) {
     match ty {
+        Type::Instance(id) => {
+            if let Some(named) = module_types.get(*id) {
+                let short = named.name.rsplit("::").next().unwrap_or(&named.name);
+                refs.insert(short.to_string());
+            }
+        }
         Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             refs.insert(short.to_string());
         }
-        Type::Array(inner) | Type::Option(inner) => collect_all_struct_names(inner, refs),
+        Type::Array(inner) | Type::Option(inner) => {
+            collect_all_struct_names(inner, module_types, refs);
+        }
         Type::Map(k, v) => {
-            collect_all_struct_names(k, refs);
-            collect_all_struct_names(v, refs);
+            collect_all_struct_names(k, module_types, refs);
+            collect_all_struct_names(v, module_types, refs);
         }
         Type::Tuple(elems) | Type::Union(elems) => {
             for elem in elems {
-                collect_all_struct_names(elem, refs);
+                collect_all_struct_names(elem, module_types, refs);
             }
         }
         Type::Function(sig) => {
-            collect_all_struct_names(&sig.return_ty, refs);
+            collect_all_struct_names(&sig.return_ty, module_types, refs);
             for p in &sig.params {
-                collect_all_struct_names(p, refs);
+                collect_all_struct_names(p, module_types, refs);
             }
         }
         Type::Coroutine {
             yield_ty,
             return_ty,
         } => {
-            collect_all_struct_names(yield_ty, refs);
-            collect_all_struct_names(return_ty, refs);
+            collect_all_struct_names(yield_ty, module_types, refs);
+            collect_all_struct_names(return_ty, module_types, refs);
         }
         // Primitive and leaf types — no struct/enum names to collect.
         Type::Void

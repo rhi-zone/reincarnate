@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::define_entity;
 
 define_entity!(TypeVarId);
+define_entity!(TypeId);
 
 /// A resolved type in the IR.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -27,12 +28,24 @@ pub enum Type {
     Option(Box<Type>),
     /// Tuple of types.
     Tuple(Vec<Type>),
-    /// Named struct reference.
+    /// Instance of a named type (struct or class), referenced by stable ID.
+    ///
+    /// This is the canonical interned form used throughout the IR and transforms.
+    /// Frontends may emit `Struct(String)` before interning; `ModuleBuilder::build()`
+    /// normalizes all `Struct` to `Instance` by interning into `module.types`.
+    Instance(TypeId),
+    /// Instance of a named type, referenced by string name.
+    ///
+    /// Used at frontend/backend boundaries and for runtime-provided type names
+    /// (e.g. `GameRuntime`, `SugarCubeRuntime`) that don't have an IR struct.
+    /// Core transforms should match `Instance(_)` rather than `Struct(_)`.
+    /// `ModuleBuilder::build()` converts these to `Instance(TypeId)` automatically.
     Struct(String),
     /// Named enum reference.
     Enum(String),
     /// Class constructor reference — the class itself, not an instance.
-    /// TypeScript: `typeof ClassName`.
+    /// TypeScript: `typeof ClassName`. String-keyed because ClassRef types don't
+    /// need interning benefits (no field lookups on constructors).
     ClassRef(String),
     /// Function type.
     Function(Box<FunctionSig>),
@@ -88,7 +101,11 @@ impl Default for FunctionSig {
 /// | `"Function"`  | `Type::Unknown`       |
 /// | `"Array"`     | `Type::Array(Unknown)`|
 /// | `"classref"`  | `Type::Unknown`       |
-/// | `"ClassName"` | `Type::Struct(name)`  |
+/// | `"ClassName"` | `Type::Unknown`       |
+///
+/// Note: named struct/class types return `Type::Unknown` because `TypeId`s are
+/// not available at parse time — callers that need real `TypeId`s must use the
+/// module's `intern_type` directly.
 pub fn parse_type_notation(s: &str) -> Type {
     match s {
         "number" => Type::Float(64),
@@ -106,7 +123,8 @@ pub fn parse_type_notation(s: &str) -> Type {
             let elem = &name[..name.len() - 2];
             Type::Array(Box::new(parse_type_notation(elem)))
         }
-        name => Type::Struct(name.to_string()),
+        // Named struct/class types: callers must use module.intern_type(name) directly.
+        _name => Type::Unknown,
     }
 }
 
