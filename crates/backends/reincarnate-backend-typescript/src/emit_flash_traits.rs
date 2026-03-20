@@ -22,9 +22,7 @@ pub(crate) fn as3_type_name(ty: &Type) -> String {
         Type::String => "String".into(),
         Type::Array(_) => "Array".into(),
         Type::Map(_, _) => "Object".into(),
-        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
-            name.rsplit("::").next().unwrap_or(name).into()
-        }
+        Type::Struct(name) => name.rsplit("::").next().unwrap_or(name).into(),
         _ => "*".into(),
     }
 }

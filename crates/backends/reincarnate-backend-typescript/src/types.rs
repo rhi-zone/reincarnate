@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use reincarnate_core::entity::{EntityRef, PrimaryMap};
-use reincarnate_core::ir::module::NamedType;
+use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{Type, TypeId};
 
 use crate::emit::sanitize_ident;
@@ -30,7 +30,7 @@ pub fn ts_type(ty: &Type) -> String {
             let parts: Vec<_> = elems.iter().map(ts_type).collect();
             format!("[{}]", parts.join(", "))
         }
-        Type::Struct(name) | Type::Enum(name) => {
+        Type::Struct(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             // AS3/JS `Object` is a dynamic property bag, not TypeScript's `Object`
             // interface. TypeScript's `Object` has no index signature, so any dynamic
@@ -132,7 +132,7 @@ pub fn flash_ts_type(ty: &Type) -> String {
 /// Pass an empty map for contexts where no disambiguation is needed.
 pub fn ts_type_with_names(ty: &Type, class_names: &HashMap<String, String>) -> String {
     match ty {
-        Type::Struct(name) | Type::Enum(name) => {
+        Type::Struct(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             if short == "Object" {
                 return "Record<string, any>".into();
@@ -180,12 +180,13 @@ fn ts_type_paren(ty: &Type) -> String {
 /// Called before emitting TypeScript so that all downstream type-processing
 /// functions (ts_type, rename_type_with_map, collect_type_ref, etc.) only see
 /// the string-keyed `Struct(name)` form they already handle.
-fn resolve_type(ty: Type, module_types: &PrimaryMap<TypeId, NamedType>) -> Type {
+fn resolve_type(ty: Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> Type {
     match ty {
         Type::Instance(id) => {
             let name = module_types
                 .get(id)
-                .map(|t| t.name.clone())
+                .and_then(|t| t.name())
+                .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("type{}", id.index()));
             Type::Struct(name)
         }
@@ -234,7 +235,7 @@ fn resolve_type(ty: Type, module_types: &PrimaryMap<TypeId, NamedType>) -> Type 
 }
 
 /// Resolve all `Type::Instance(id)` references in a `JsExpr` in-place.
-fn resolve_expr_types(expr: &mut JsExpr, module_types: &PrimaryMap<TypeId, NamedType>) {
+fn resolve_expr_types(expr: &mut JsExpr, module_types: &PrimaryMap<TypeId, TypeDecl>) {
     match expr {
         JsExpr::Cast {
             expr: inner, ty, ..
@@ -360,7 +361,7 @@ fn resolve_expr_types(expr: &mut JsExpr, module_types: &PrimaryMap<TypeId, Named
 }
 
 /// Resolve all `Type::Instance(id)` references in a `JsStmt` in-place.
-fn resolve_stmt_types(stmt: &mut JsStmt, module_types: &PrimaryMap<TypeId, NamedType>) {
+fn resolve_stmt_types(stmt: &mut JsStmt, module_types: &PrimaryMap<TypeId, TypeDecl>) {
     match stmt {
         JsStmt::VarDecl { ty, init, .. } => {
             if let Some(t) = ty {
@@ -470,7 +471,7 @@ fn resolve_stmt_types(stmt: &mut JsStmt, module_types: &PrimaryMap<TypeId, Named
 /// engine-specific rewrites or printing.
 pub fn resolve_js_function_types(
     func: &mut JsFunction,
-    module_types: &PrimaryMap<TypeId, NamedType>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
 ) {
     for (_, ty) in func.params.iter_mut() {
         *ty = resolve_type(ty.clone(), module_types);

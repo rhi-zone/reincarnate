@@ -8,6 +8,9 @@ use reincarnate_core::ir::inst::{Op, Terminator};
 static EMPTY_ASSET_REF_NAMES: std::sync::LazyLock<HashMap<u32, String>> =
     std::sync::LazyLock::new(HashMap::new);
 
+static EMPTY_CLASSREF_TYPES: std::sync::LazyLock<HashMap<String, TypeId>> =
+    std::sync::LazyLock::new(HashMap::new);
+
 /// Build a minimal `TranslateCtx` for tests.
 ///
 /// `bytecode_offset = 0` so vari_ref_map keys equal decoded instruction offsets.
@@ -43,6 +46,7 @@ fn make_ctx<'a>(
         with_body_has_return: false,
         // Tests exercise GMS2.3+ bytecode by default (shared blobs, Break signals, etc.).
         bytecode_version: datawin::BytecodeVersion(17),
+        classref_types: &EMPTY_CLASSREF_TYPES,
     }
 }
 

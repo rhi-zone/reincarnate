@@ -446,6 +446,10 @@ mod tests {
         callee.ret(None);
         mb.add_function(callee.build());
 
+        // Pre-intern ClassRef TypeIds so we can build Type::ClassRef(TypeId) values.
+        let axel_ty = mb.intern_type_classref("OAxel");
+        let fuji_ty = mb.intern_type_classref("OFuji");
+
         // Caller A: passes ClassRef("OAxel")
         let sig = FunctionSig {
             params: vec![],
@@ -453,14 +457,14 @@ mod tests {
             ..Default::default()
         };
         let mut caller_a = FunctionBuilder::new("caller_a", sig.clone(), Visibility::Private);
-        let r = caller_a.global_ref("OAxel", Type::ClassRef("OAxel".into()));
+        let r = caller_a.global_ref("OAxel", axel_ty);
         caller_a.call("playerIsCharacter", &[r], Type::Void);
         caller_a.ret(None);
         mb.add_function(caller_a.build());
 
         // Caller B: passes ClassRef("OFuji")
         let mut caller_b = FunctionBuilder::new("caller_b", sig, Visibility::Private);
-        let r = caller_b.global_ref("OFuji", Type::ClassRef("OFuji".into()));
+        let r = caller_b.global_ref("OFuji", fuji_ty);
         caller_b.call("playerIsCharacter", &[r], Type::Void);
         caller_b.ret(None);
         mb.add_function(caller_b.build());

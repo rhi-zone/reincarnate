@@ -118,14 +118,14 @@ pub(super) fn rewrite_late_bound_expr(
     // First, check if this expression itself needs rewriting.
     let needs_rewrite = match expr {
         JsExpr::TypeCheck {
-            ty: Type::Struct(name) | Type::Enum(name),
+            ty: Type::Struct(name),
             ..
         } => {
             let short = name.rsplit("::").next().unwrap_or(name);
             late_bound.contains(short)
         }
         JsExpr::Cast {
-            ty: Type::Struct(name) | Type::Enum(name),
+            ty: Type::Struct(name),
             kind: CastKind::NullableCoerce,
             ..
         } => {
@@ -143,7 +143,7 @@ pub(super) fn rewrite_late_bound_expr(
                 expr: inner, ty, ..
             } => {
                 let name = match &ty {
-                    Type::Struct(n) | Type::Enum(n) => n,
+                    Type::Struct(n) => n,
                     _ => unreachable!(),
                 };
                 let short = name.rsplit("::").next().unwrap_or(name);
@@ -165,7 +165,7 @@ pub(super) fn rewrite_late_bound_expr(
                 expr: inner, ty, ..
             } => {
                 let name = match &ty {
-                    Type::Struct(n) | Type::Enum(n) => n,
+                    Type::Struct(n) => n,
                     _ => unreachable!(),
                 };
                 let short = name.rsplit("::").next().unwrap_or(name);

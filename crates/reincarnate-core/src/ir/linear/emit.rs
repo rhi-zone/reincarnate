@@ -15,7 +15,7 @@ use crate::ir::ast::{BinOp, Expr, Stmt, UnaryOp};
 use crate::ir::block::BlockId;
 use crate::ir::func::{Function, MethodKind};
 use crate::ir::inst::{CastKind, CmpKind, InstId, Op, Terminator};
-use crate::ir::module::NamedType;
+use crate::ir::module::TypeDecl;
 use crate::ir::ty::{FunctionSig, Type, TypeId};
 use crate::ir::value::{Constant, ValueId};
 use crate::pipeline::LoweringConfig;
@@ -30,7 +30,7 @@ pub(super) struct EmitCtx<'a> {
     config: &'a LoweringConfig,
     resolve: &'a ResolveCtx,
     /// Named type arena from the module — used for resolving TypeId → name.
-    module_types: &'a PrimaryMap<TypeId, NamedType>,
+    module_types: &'a PrimaryMap<TypeId, TypeDecl>,
     /// Debug names for values (func.value_names + out-of-SSA coalescing).
     value_names: HashMap<ValueId, String>,
     /// Entry-block parameter ValueIds.
@@ -73,7 +73,7 @@ impl<'a> EmitCtx<'a> {
         func: &'a Function,
         resolve: &'a ResolveCtx,
         config: &'a LoweringConfig,
-        module_types: &'a PrimaryMap<TypeId, NamedType>,
+        module_types: &'a PrimaryMap<TypeId, TypeDecl>,
     ) -> Self {
         let mut value_names: HashMap<ValueId, String> = func
             .value_names
@@ -432,7 +432,7 @@ impl<'a> EmitCtx<'a> {
     fn type_name(&self, id: TypeId) -> &str {
         self.module_types
             .get(id)
-            .map(|t| t.name.as_str())
+            .and_then(|t| t.name())
             .unwrap_or("")
     }
 
@@ -1468,7 +1468,7 @@ impl<'a> EmitCtx<'a> {
             Type::Float(_) | Type::Int(_) | Type::UInt(_) | Type::Bool | Type::String => {
                 Some(CastKind::NullableCoerce)
             }
-            Type::Instance(_) | Type::Enum(_) => Some(CastKind::Coerce),
+            Type::Instance(_) => Some(CastKind::Coerce),
             Type::Array(_) | Type::Function(_) => Some(CastKind::NullableCoerce),
             _ => None,
         };
@@ -1478,7 +1478,7 @@ impl<'a> EmitCtx<'a> {
                 .cast_narrowed_syscall_results_for
                 .iter()
                 .any(|(s, m)| s == system && m == method);
-            let in_struct_only = matches!(&result_ty, Type::Instance(_) | Type::Enum(_))
+            let in_struct_only = matches!(&result_ty, Type::Instance(_))
                 && self
                     .config
                     .cast_struct_syscall_results_for

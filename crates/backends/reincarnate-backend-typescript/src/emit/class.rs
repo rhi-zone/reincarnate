@@ -27,7 +27,7 @@ use super::{lowering_config_for_engine, qualified_class_name, sanitize_ident, En
 /// the emitted TypeScript identifier is disambiguated (e.g. `objects_TOTCLeaderboard`).
 fn rename_type_with_map(ty: &mut Type, name_map: &HashMap<String, String>) {
     match ty {
-        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
+        Type::Struct(name) => {
             let short = name
                 .rsplit("::")
                 .next()
@@ -37,6 +37,8 @@ fn rename_type_with_map(ty: &mut Type, name_map: &HashMap<String, String>) {
                 *name = ts_name.clone();
             }
         }
+        // ClassRef(TypeId) — the name lives in module.types; no string to rename here.
+        Type::ClassRef(_) => {}
         Type::Option(inner) | Type::Array(inner) => rename_type_with_map(inner, name_map),
         Type::Map(k, v) => {
             rename_type_with_map(k, name_map);
@@ -215,7 +217,7 @@ pub(super) fn emit_function(
     func: &mut Function,
     module_types: &reincarnate_core::entity::PrimaryMap<
         reincarnate_core::ir::TypeId,
-        reincarnate_core::ir::module::NamedType,
+        reincarnate_core::ir::module::TypeDecl,
     >,
     class_names: &HashMap<String, String>,
     known_classes: &HashSet<String>,
@@ -886,7 +888,7 @@ fn emit_class_method(
     func: &mut Function,
     module_types: &reincarnate_core::entity::PrimaryMap<
         reincarnate_core::ir::TypeId,
-        reincarnate_core::ir::module::NamedType,
+        reincarnate_core::ir::module::TypeDecl,
     >,
     class_names: &HashMap<String, String>,
     ancestors: &HashSet<String>,

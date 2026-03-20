@@ -22,7 +22,7 @@ pub use inst::{CastKind, CmpKind, Inst, InstId, Op, Span, Terminator};
 pub use linear::lower_function_linear;
 pub use module::{
     AbstractMember, ClassDef, EntryPoint, EnumDef, EnumVariant, ExternalImport, FieldDef, Global,
-    Import, Module, NamedType, StaticField, StructDef, SystemCallTypeRule, TypeInterner,
+    Import, Module, StaticField, StructDef, SystemCallTypeRule, TypeDecl, TypeInterner,
 };
 pub use name_table::NameTable;
 pub use structurize::structurize;

@@ -991,7 +991,11 @@ fn translate_break_op(
                 // OBJT references are class constructors; everything else
                 // (SPRT, SOND, ROOM, SCPT, etc.) is a plain asset index.
                 let ref_ty = if is_objt {
-                    Type::ClassRef(func_name.clone())
+                    ctx.classref_types
+                        .get(&func_name)
+                        .copied()
+                        .map(Type::ClassRef)
+                        .unwrap_or(Type::Unknown)
                 } else {
                     Type::Unknown
                 };

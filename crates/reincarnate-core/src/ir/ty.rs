@@ -28,11 +28,13 @@ pub enum Type {
     Option(Box<Type>),
     /// Tuple of types.
     Tuple(Vec<Type>),
-    /// Instance of a named type (struct or class), referenced by stable ID.
+    /// Instance of a named type (struct/class or enum), referenced by stable ID.
     ///
     /// This is the canonical interned form used throughout the IR and transforms.
     /// Frontends may emit `Struct(String)` before interning; `ModuleBuilder::build()`
     /// normalizes all `Struct` to `Instance` by interning into `module.types`.
+    /// Enum types are also represented as `Instance(TypeId)` pointing to a
+    /// `TypeDecl::Enum` entry.
     Instance(TypeId),
     /// Instance of a named type, referenced by string name.
     ///
@@ -41,12 +43,10 @@ pub enum Type {
     /// Core transforms should match `Instance(_)` rather than `Struct(_)`.
     /// `ModuleBuilder::build()` converts these to `Instance(TypeId)` automatically.
     Struct(String),
-    /// Named enum reference.
-    Enum(String),
     /// Class constructor reference — the class itself, not an instance.
-    /// TypeScript: `typeof ClassName`. String-keyed because ClassRef types don't
-    /// need interning benefits (no field lookups on constructors).
-    ClassRef(String),
+    /// TypeScript: `typeof ClassName`. The TypeId references a `TypeDecl::Object`
+    /// entry in `module.types` that describes the static side.
+    ClassRef(TypeId),
     /// Function type.
     Function(Box<FunctionSig>),
     /// Coroutine that yields a type and returns a type.

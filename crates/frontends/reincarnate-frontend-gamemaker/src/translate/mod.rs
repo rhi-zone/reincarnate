@@ -7,7 +7,7 @@ use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{Function, Visibility};
 use reincarnate_core::ir::inst::CmpKind;
-use reincarnate_core::ir::ty::{FunctionSig, Type};
+use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::ir::value::ValueId;
 
 mod cfg;
@@ -82,6 +82,13 @@ pub struct TranslateCtx<'a> {
     /// Bytecode version from GEN8. Used to guard version-specific behaviours
     /// (GMS2.3+ Break signals, Dup swap-mode encoding, etc.).
     pub bytecode_version: datawin::BytecodeVersion,
+    /// Pre-interned ClassRef TypeIds: object name → TypeId.
+    ///
+    /// Used by the GMS2.3+ `Break -11` (pushref) instruction translator so it
+    /// can emit `Type::ClassRef(TypeId)` without needing direct module access.
+    /// Callers pre-populate this by calling `mb.intern_type_classref(name)` for
+    /// each object name before translation begins.
+    pub classref_types: &'a HashMap<String, TypeId>,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.

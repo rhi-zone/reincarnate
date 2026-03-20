@@ -28,7 +28,7 @@ use super::ast::{AstFunction, Stmt};
 use super::ast_passes;
 use super::func::Function;
 use super::inst::{InstId, Op};
-use super::module::NamedType;
+use super::module::TypeDecl;
 use super::structurize::Shape;
 use super::ty::{Type, TypeId};
 use super::value::{Constant, ValueId};
@@ -131,9 +131,9 @@ pub fn lower_function_linear(
     shape: &Shape,
     config: &LoweringConfig,
     debug: &DebugConfig,
-    module_types: Option<&PrimaryMap<TypeId, NamedType>>,
+    module_types: Option<&PrimaryMap<TypeId, TypeDecl>>,
 ) -> AstFunction {
-    static EMPTY: std::sync::OnceLock<PrimaryMap<TypeId, NamedType>> = std::sync::OnceLock::new();
+    static EMPTY: std::sync::OnceLock<PrimaryMap<TypeId, TypeDecl>> = std::sync::OnceLock::new();
     let module_types = module_types.unwrap_or_else(|| EMPTY.get_or_init(PrimaryMap::new));
     let linear = linearize(func, shape);
     let rctx = resolve(func, &linear, &config.scope_lookup_systems);

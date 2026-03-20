@@ -484,7 +484,7 @@ impl Transform for IntToBoolPromotion {
         let type_id_to_name: HashMap<TypeId, String> = module
             .types
             .iter()
-            .map(|(id, nt)| (id, nt.name.clone()))
+            .filter_map(|(id, td)| td.name().map(|n| (id, n.to_string())))
             .collect();
 
         // Phase 1-3: Promote demanded values in each function

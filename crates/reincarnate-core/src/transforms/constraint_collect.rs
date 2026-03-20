@@ -74,7 +74,6 @@ pub(crate) fn is_concrete(ty: &Type) -> bool {
         | Type::String
         | Type::Instance(_)
         | Type::Struct(_)
-        | Type::Enum(_)
         | Type::ClassRef(_) => true,
     }
 }

@@ -515,7 +515,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // variable → TS2322.
                         let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_) | Type::Enum(_))
+                            && !matches!(ty, Type::Struct(_))
                             && !is_syscall_init;
                         if cast_ty == ty && is_ts_assertion {
                             let _ = writeln!(
@@ -553,7 +553,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // SystemCall inits must also NOT be stripped (see above comment).
                         let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_) | Type::Enum(_))
+                            && !matches!(ty, Type::Struct(_))
                             && !is_syscall_init;
                         if is_ts_assertion {
                             // Strip TS assertion, use type annotation + inner expr.
@@ -1032,7 +1032,7 @@ fn print_expr(expr: &JsExpr) -> String {
                 // The `!` preserves AS3 semantics: accessing null is a runtime crash in AS3,
                 // just as `!` causes a runtime TypeError in TypeScript. Under strictNullChecks
                 // the result type is `T` (non-nullable) so it is usable in all value contexts.
-                (CastKind::NullableCoerce, Type::Struct(name) | Type::Enum(name)) => {
+                (CastKind::NullableCoerce, Type::Struct(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
                     format!("asType({}, {})!", print_expr(inner), sanitize_ident(short))
                 }
@@ -1042,7 +1042,7 @@ fn print_expr(expr: &JsExpr) -> String {
                 // Also: some type names (e.g. AS3 `Class`) map to `any` in TypeScript;
                 // use ts_type() to get the canonical form so `as Class` doesn't emit
                 // a reference to the runtime value `Class` as a type annotation (TS2749).
-                (CastKind::Coerce, Type::Struct(name) | Type::Enum(name)) => {
+                (CastKind::Coerce, Type::Struct(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
                     let ts_name = if matches!(short, "Class" | "Object") {
                         ts_type(ty)
@@ -1279,8 +1279,8 @@ fn needs_parens(expr: &JsExpr) -> bool {
         // Function-call forms (asType, Number, int, etc.) don't need parens.
         // Only `x as T` forms need them.
         JsExpr::Cast { ty, kind, .. } => match (kind, ty) {
-            (CastKind::NullableCoerce, Type::Struct(_) | Type::Enum(_)) => false,
-            (CastKind::Coerce, Type::Struct(_) | Type::Enum(_)) => true, // `x as Foo`
+            (CastKind::NullableCoerce, Type::Struct(_)) => false,
+            (CastKind::Coerce, Type::Struct(_)) => true, // `x as Foo`
             (
                 CastKind::Coerce,
                 Type::Float(_)
@@ -1331,7 +1331,7 @@ fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
             format!("typeof {operand} === \"number\"")
         }
         Type::String => format!("typeof {operand} === \"string\""),
-        Type::Struct(name) | Type::Enum(name) => {
+        Type::Struct(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             if use_instanceof {
                 // GML: all objects are class instances, `instanceof` is correct.

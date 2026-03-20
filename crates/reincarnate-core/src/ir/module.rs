@@ -49,7 +49,7 @@ pub struct StructDef {
 /// `Module` is already mutably borrowed (e.g. iterating `module.functions` while
 /// also needing to intern new type names).
 pub struct TypeInterner<'a> {
-    types: &'a mut PrimaryMap<TypeId, NamedType>,
+    types: &'a mut PrimaryMap<TypeId, TypeDecl>,
     type_names: &'a mut HashMap<String, TypeId>,
 }
 
@@ -59,20 +59,23 @@ impl<'a> TypeInterner<'a> {
     /// Useful when the caller has already split the `Module` borrow (e.g. via
     /// `std::mem::take`) and cannot call `Module::type_interner_mut`.
     pub fn from_parts(
-        types: &'a mut PrimaryMap<TypeId, NamedType>,
+        types: &'a mut PrimaryMap<TypeId, TypeDecl>,
         type_names: &'a mut HashMap<String, TypeId>,
     ) -> Self {
         Self { types, type_names }
     }
 
-    /// Get or create a [`TypeId`] for the given name.
+    /// Get or create a [`TypeId`] for the given named Object type.
     pub fn intern(&mut self, name: &str) -> TypeId {
         if let Some(&id) = self.type_names.get(name) {
             return id;
         }
-        let id = self.types.push(NamedType {
-            name: name.to_string(),
+        let id = self.types.push(TypeDecl::Object {
+            name: Some(name.to_string()),
+            parent: None,
             fields: Vec::new(),
+            methods: Vec::new(),
+            class_ref: None,
             inferred: false,
         });
         self.type_names.insert(name.to_string(), id);
@@ -84,14 +87,27 @@ impl<'a> TypeInterner<'a> {
         Type::Instance(self.intern(name))
     }
 
-    /// Return `Type::ClassRef(name)`.
+    /// Get or create a `TypeDecl::Object` for the static side of a class, and
+    /// return `Type::ClassRef(id)`.
     ///
-    /// ClassRef is string-keyed — no interning is performed.  Interning is
-    /// still used for `Instance` types (which need field-lookup by TypeId),
-    /// but ClassRef types are constructor references that are treated as `any`
-    /// in TypeScript and don't benefit from stable numeric IDs.
-    pub fn classref(&self, name: &str) -> Type {
-        Type::ClassRef(name.to_string())
+    /// The static-side TypeDecl has the same name as the class but is stored
+    /// under a mangled key `"classref::NAME"` to avoid colliding with the
+    /// instance-side entry.
+    pub fn classref(&mut self, name: &str) -> Type {
+        let key = format!("classref::{name}");
+        if let Some(&id) = self.type_names.get(&key) {
+            return Type::ClassRef(id);
+        }
+        let id = self.types.push(TypeDecl::Object {
+            name: Some(name.to_string()),
+            parent: None,
+            fields: Vec::new(),
+            methods: Vec::new(),
+            class_ref: None,
+            inferred: false,
+        });
+        self.type_names.insert(key, id);
+        Type::ClassRef(id)
     }
 
     /// Look up a TypeId by name without creating.
@@ -102,9 +118,9 @@ impl<'a> TypeInterner<'a> {
     /// Look up the name of an already-interned TypeId.
     ///
     /// # Panics
-    /// Panics if the TypeId is not in the arena.
+    /// Panics if the TypeId is not in the arena, or if the TypeDecl has no name.
     pub fn name_of(&self, id: TypeId) -> &str {
-        &self.types[id].name
+        self.types[id].name_expect()
     }
 
     /// Check if a TypeId exists (is a valid interned id).
@@ -113,19 +129,96 @@ impl<'a> TypeInterner<'a> {
     }
 }
 
-/// A named type definition stored in the module's type arena.
+/// A type declaration stored in the module's type arena.
 ///
-/// Named types are referenced by [`TypeId`] in [`Type::Instance`] variants.
+/// Referenced by [`TypeId`] in [`Type::Instance`] and [`Type::ClassRef`] variants.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NamedType {
-    /// Short or qualified name of the type (e.g. `"MyClass"`, `"objects::Obj1"`).
-    pub name: String,
-    /// Instance fields for struct/class types.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub fields: Vec<FieldDef>,
-    /// Whether this type was inferred from constructor body vs. declared by frontend.
-    #[serde(default)]
-    pub inferred: bool,
+pub enum TypeDecl {
+    /// A struct or class type (instance side).
+    Object {
+        /// Short or qualified name of the type (e.g. `"MyClass"`, `"objects::Obj1"`).
+        name: Option<String>,
+        /// Superclass TypeId, if any (instance-side inheritance).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        parent: Option<TypeId>,
+        /// Instance fields.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        fields: Vec<FieldDef>,
+        /// Instance method FuncIds (into module.funcs).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        methods: Vec<FuncId>,
+        /// TypeId of the static-side TypeDecl::Object for this class, if any.
+        /// None for pure structs.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        class_ref: Option<TypeId>,
+        /// Whether this type was inferred from constructor body vs. declared by frontend.
+        #[serde(default)]
+        inferred: bool,
+    },
+    /// An enum type.
+    Enum {
+        /// Name of the enum (e.g. `"CockTypesEnum"`).
+        name: Option<String>,
+        /// Enum variants.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        variants: Vec<EnumVariant>,
+    },
+}
+
+impl TypeDecl {
+    /// Return the name of this type declaration, if any.
+    pub fn name(&self) -> Option<&str> {
+        match self {
+            TypeDecl::Object { name, .. } => name.as_deref(),
+            TypeDecl::Enum { name, .. } => name.as_deref(),
+        }
+    }
+
+    /// Return the name of this type declaration, panicking if unnamed.
+    ///
+    /// # Panics
+    /// Panics if this TypeDecl has no name.
+    pub fn name_expect(&self) -> &str {
+        self.name().expect("TypeDecl has no name")
+    }
+
+    /// Return the fields of an Object TypeDecl, or an empty slice for enums.
+    pub fn fields(&self) -> &[FieldDef] {
+        match self {
+            TypeDecl::Object { fields, .. } => fields,
+            TypeDecl::Enum { .. } => &[],
+        }
+    }
+
+    /// Return a mutable reference to the fields of an Object TypeDecl.
+    ///
+    /// # Panics
+    /// Panics if this TypeDecl is not an Object.
+    pub fn fields_mut(&mut self) -> &mut Vec<FieldDef> {
+        match self {
+            TypeDecl::Object { fields, .. } => fields,
+            TypeDecl::Enum { .. } => panic!("TypeDecl::Enum has no fields"),
+        }
+    }
+
+    /// Return whether this is an inferred (not declared) type.
+    pub fn inferred(&self) -> bool {
+        match self {
+            TypeDecl::Object { inferred, .. } => *inferred,
+            TypeDecl::Enum { .. } => false,
+        }
+    }
+
+    /// Set the inferred flag on an Object TypeDecl.
+    ///
+    /// # Panics
+    /// Panics if this TypeDecl is not an Object.
+    pub fn set_inferred(&mut self, value: bool) {
+        match self {
+            TypeDecl::Object { inferred, .. } => *inferred = value,
+            TypeDecl::Enum { .. } => panic!("TypeDecl::Enum has no inferred flag"),
+        }
+    }
 }
 
 /// An enum variant.
@@ -278,10 +371,10 @@ pub struct Module {
     #[serde(default)]
     pub name_table: NameTable,
     pub functions: PrimaryMap<FuncId, Function>,
-    /// Named type arena: maps [`TypeId`] → [`NamedType`].
+    /// Type declaration arena: maps [`TypeId`] → [`TypeDecl`].
     /// Serializes as a plain Vec (via `PrimaryMap`'s `serde(transparent)` impl).
     #[serde(default, skip_serializing_if = "PrimaryMap::is_empty")]
-    pub types: PrimaryMap<TypeId, NamedType>,
+    pub types: PrimaryMap<TypeId, TypeDecl>,
     /// Name → TypeId reverse index. Not serialized — rebuilt from `types` on load.
     #[serde(skip)]
     pub type_names: HashMap<String, TypeId>,
@@ -425,23 +518,45 @@ impl Module {
     /// `type_names`) and after any direct mutation of `types`.
     pub fn rebuild_type_index(&mut self) {
         self.type_names.clear();
-        for (id, nt) in self.types.iter() {
-            self.type_names.insert(nt.name.clone(), id);
+        for (id, td) in self.types.iter() {
+            if let Some(name) = td.name() {
+                self.type_names.insert(name.to_string(), id);
+            }
         }
     }
 
-    /// Get or create a [`TypeId`] for a named type.
+    /// Get or create a [`TypeId`] for a named Object type.
     ///
     /// If a type with this name already exists, returns its `TypeId`.
-    /// Otherwise, allocates a new `NamedType` with empty fields and returns the new id.
+    /// Otherwise, allocates a new `TypeDecl::Object` with empty fields and returns the new id.
     pub fn intern_type(&mut self, name: &str) -> TypeId {
         if let Some(&id) = self.type_names.get(name) {
             return id;
         }
-        let id = self.types.push(NamedType {
-            name: name.to_string(),
+        let id = self.types.push(TypeDecl::Object {
+            name: Some(name.to_string()),
+            parent: None,
             fields: Vec::new(),
+            methods: Vec::new(),
+            class_ref: None,
             inferred: false,
+        });
+        self.type_names.insert(name.to_string(), id);
+        id
+    }
+
+    /// Get or create a [`TypeId`] for a named Enum type.
+    ///
+    /// If an entry with this name already exists, returns its `TypeId` (reuses it
+    /// even if the existing entry is an Object — callers should be consistent).
+    /// Otherwise, allocates a new `TypeDecl::Enum` and returns the new id.
+    pub fn intern_enum(&mut self, name: &str, variants: Vec<EnumVariant>) -> TypeId {
+        if let Some(&id) = self.type_names.get(name) {
+            return id;
+        }
+        let id = self.types.push(TypeDecl::Enum {
+            name: Some(name.to_string()),
+            variants,
         });
         self.type_names.insert(name.to_string(), id);
         id
@@ -454,19 +569,34 @@ impl Module {
         Type::Instance(self.intern_type(name))
     }
 
-    /// Return `Type::ClassRef(name)`.
+    /// Get or create a static-side `TypeDecl::Object` for a class and return
+    /// `Type::ClassRef(id)`.
     ///
-    /// ClassRef is string-keyed — no interning is performed.
-    pub fn intern_type_classref(&self, name: &str) -> Type {
-        Type::ClassRef(name.to_string())
+    /// The static-side TypeDecl is stored under the key `"classref::NAME"` so
+    /// it does not collide with the instance-side entry.
+    pub fn intern_type_classref(&mut self, name: &str) -> Type {
+        let key = format!("classref::{name}");
+        if let Some(&id) = self.type_names.get(&key) {
+            return Type::ClassRef(id);
+        }
+        let id = self.types.push(TypeDecl::Object {
+            name: Some(name.to_string()),
+            parent: None,
+            fields: Vec::new(),
+            methods: Vec::new(),
+            class_ref: None,
+            inferred: false,
+        });
+        self.type_names.insert(key, id);
+        Type::ClassRef(id)
     }
 
-    /// Look up the name of a named type by its `TypeId`.
+    /// Look up the name of a type by its `TypeId`.
     ///
     /// # Panics
-    /// Panics if the `TypeId` is not in the type arena.
+    /// Panics if the `TypeId` is not in the type arena or the TypeDecl has no name.
     pub fn type_name(&self, id: TypeId) -> &str {
-        &self.types[id].name
+        self.types[id].name_expect()
     }
 
     /// Find a `TypeId` by name without creating a new entry.
@@ -476,7 +606,7 @@ impl Module {
 
     /// Borrow the type arena fields for use as a split borrow.
     ///
-    /// Returns `(&mut PrimaryMap<TypeId, NamedType>, &mut HashMap<String, TypeId>)`.
+    /// Returns a `TypeInterner` backed by the module's type arena and name index.
     /// This allows callers that already hold a mutable borrow on another field of
     /// `Module` (e.g. `functions`) to still intern types without conflicting borrows.
     pub fn type_interner_mut(&mut self) -> TypeInterner<'_> {

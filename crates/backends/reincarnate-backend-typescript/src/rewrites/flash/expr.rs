@@ -350,7 +350,7 @@ pub(super) fn rewrite_expr(expr: JsExpr, ctx: &FlashRewriteCtx) -> JsExpr {
             // `isType(x, GooArmor)` becomes `isType(x, Armors_GooArmor)` when two
             // classes share the same short name.
             let ty = match &ty {
-                Type::Struct(name) | Type::Enum(name) => {
+                Type::Struct(name) => {
                     if let Some(ts_name) = ctx.class_names.get(name.as_str()) {
                         Type::Struct(ts_name.clone())
                     } else {

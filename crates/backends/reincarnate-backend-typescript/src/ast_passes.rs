@@ -934,9 +934,7 @@ fn collect_var_types(body: &[JsStmt], var_types: &mut HashMap<String, Type>) {
                         ..
                     }),
                 ..
-            } if *cast_ty != Type::Unknown
-                && !matches!(cast_ty, Type::Struct(_) | Type::Enum(_)) =>
-            {
+            } if *cast_ty != Type::Unknown && !matches!(cast_ty, Type::Struct(_)) => {
                 var_types.insert(name.clone(), cast_ty.clone());
             }
             JsStmt::If {
@@ -1167,7 +1165,7 @@ fn strip_casts_in_expr(expr: &mut JsExpr, var_types: &HashMap<String, Type>) {
 /// matches the cast target.
 fn is_cast_redundant(inner: &JsExpr, cast_ty: &Type, var_types: &HashMap<String, Type>) -> bool {
     // Only strip TS assertion forms (not runtime calls like asType, Number).
-    if matches!(cast_ty, Type::Struct(_) | Type::Enum(_)) {
+    if matches!(cast_ty, Type::Struct(_)) {
         return false;
     }
     if let Some(expr_ty) = infer_expr_type(inner, var_types) {

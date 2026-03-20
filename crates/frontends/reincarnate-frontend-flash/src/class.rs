@@ -746,7 +746,7 @@ fn try_register_external(name: &str, module: &mut Module) {
 /// Collect a type's qualified names for external import registration.
 fn collect_type_names(ty: &Type, module: &mut Module) {
     match ty {
-        Type::Struct(name) | Type::Enum(name) => {
+        Type::Struct(name) => {
             try_register_external(name, module);
         }
         Type::Array(inner) | Type::Option(inner) => {

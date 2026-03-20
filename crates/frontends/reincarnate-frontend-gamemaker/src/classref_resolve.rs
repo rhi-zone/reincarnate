@@ -15,7 +15,7 @@ use std::collections::HashMap;
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
-use reincarnate_core::ir::ty::Type;
+use reincarnate_core::ir::ty::{Type, TypeId};
 use reincarnate_core::ir::{Constant, Function, Module, ValueId};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
@@ -71,10 +71,24 @@ impl Transform for GmlClassRefResolve {
         }
 
         let object_names = module.object_names.clone();
+
+        // Pre-intern all object names as ClassRef TypeIds so resolve_function can
+        // create Type::ClassRef(TypeId) values without needing the full module.
+        let classref_type_ids: Vec<Option<TypeId>> = object_names
+            .iter()
+            .map(|name| {
+                if let Type::ClassRef(id) = module.intern_type_classref(name) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         let mut changed = false;
 
         for func in module.functions.values_mut() {
-            changed |= resolve_function(func, &classref_params, &object_names);
+            changed |= resolve_function(func, &classref_params, &object_names, &classref_type_ids);
         }
 
         Ok(TransformResult { module, changed })
@@ -90,6 +104,7 @@ fn resolve_function(
     func: &mut Function,
     classref_params: &HashMap<String, Vec<usize>>,
     object_names: &[String],
+    classref_type_ids: &[Option<TypeId>],
 ) -> bool {
     // Build helper maps: value → integer constant it holds.
     //   const_ints:      result of Op::Const(Int(N))   → N
@@ -119,9 +134,9 @@ fn resolve_function(
         })
         .collect();
 
-    // Collect rewrites: (call_inst_id, arg_index, new_obj_name).
+    // Collect rewrites: (call_inst_id, arg_index, obj_index_into_object_names).
     // We need the block positions to insert the new GlobalRef instructions.
-    let mut rewrites: Vec<(InstId, usize, String)> = Vec::new();
+    let mut rewrites: Vec<(InstId, usize, usize)> = Vec::new();
 
     for (inst_id, inst) in func.insts.iter() {
         let Op::Call { func: callee, args } = &inst.op else {
@@ -147,10 +162,11 @@ fn resolve_function(
             if n < 0 {
                 continue;
             }
-            let Some(obj_name) = object_names.get(n as usize) else {
+            let obj_idx = n as usize;
+            if obj_idx >= object_names.len() {
                 continue;
-            };
-            rewrites.push((inst_id, param_idx, obj_name.clone()));
+            }
+            rewrites.push((inst_id, param_idx, obj_idx));
         }
     }
 
@@ -161,8 +177,14 @@ fn resolve_function(
     // For each rewrite, allocate a new ValueId + InstId for GlobalRef, then
     // patch the call's arg list and insert the GlobalRef instruction immediately
     // before the call in its block.
-    for (call_inst_id, param_idx, obj_name) in rewrites {
-        let new_vid = func.value_types.push(Type::ClassRef(obj_name.clone()));
+    for (call_inst_id, param_idx, obj_idx) in rewrites {
+        let obj_name = object_names[obj_idx].clone();
+        let classref_ty = classref_type_ids
+            .get(obj_idx)
+            .and_then(|opt| *opt)
+            .map(Type::ClassRef)
+            .unwrap_or(Type::Unknown);
+        let new_vid = func.value_types.push(classref_ty);
         let new_inst_id = func.insts.push(Inst {
             op: Op::GlobalRef(obj_name),
             result: Some(new_vid),

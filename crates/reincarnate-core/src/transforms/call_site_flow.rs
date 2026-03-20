@@ -502,7 +502,7 @@ mod tests {
         // Verify the type identity is preserved — the TypeId should resolve to "Foo".
         let param0 = result.module.functions[FuncId::new(0)].sig.params[0].clone();
         let param0_name = match &param0 {
-            Type::Instance(id) => result.module.types.get(*id).map(|t| t.name.as_str()),
+            Type::Instance(id) => result.module.types.get(*id).and_then(|t| t.name()),
             Type::Struct(name) => Some(name.as_str()),
             _ => None,
         };

@@ -164,7 +164,6 @@ pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
         | Type::String
         | Type::Instance(_)
         | Type::Struct(_)
-        | Type::Enum(_)
         | Type::ClassRef(_)
         | Type::Unknown) => t,
     }
@@ -208,7 +207,6 @@ fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
         | Type::String
         | Type::Instance(_)
         | Type::Struct(_)
-        | Type::Enum(_)
         | Type::ClassRef(_)
         | Type::Unknown => false,
     }
@@ -266,7 +264,6 @@ fn collect_free_vars(ty: &Type, arena: &TypeVarArena, out: &mut Vec<TypeVarId>) 
         | Type::String
         | Type::Instance(_)
         | Type::Struct(_)
-        | Type::Enum(_)
         | Type::ClassRef(_)
         | Type::Unknown => {}
     }
@@ -584,7 +581,7 @@ impl Transform for ConstraintSolve2 {
         let type_id_to_name: HashMap<TypeId, String> = module
             .types
             .iter()
-            .map(|(id, nt)| (id, nt.name.clone()))
+            .filter_map(|(id, td)| td.name().map(|n| (id, n.to_string())))
             .collect();
 
         // -----------------------------------------------------------------------

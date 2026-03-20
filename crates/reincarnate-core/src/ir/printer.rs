@@ -45,8 +45,7 @@ fn fmt_type(ty: &Type, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         }
         Type::Instance(id) => write!(f, "type{}", id.index()),
         Type::Struct(name) => write!(f, "{name}"),
-        Type::Enum(name) => write!(f, "{name}"),
-        Type::ClassRef(name) => write!(f, "classref({name})",),
+        Type::ClassRef(id) => write!(f, "classref(type{})", id.index()),
         Type::Function(sig) => {
             write!(f, "fn(")?;
             for (i, p) in sig.params.iter().enumerate() {

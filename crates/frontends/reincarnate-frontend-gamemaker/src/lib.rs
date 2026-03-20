@@ -19,7 +19,7 @@ use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
 use reincarnate_core::ir::func::{MethodKind, Visibility};
 use reincarnate_core::ir::module::{Global, SystemCallTypeRule};
-use reincarnate_core::ir::ty::{FunctionSig, Type};
+use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
 use reincarnate_core::project::EngineOrigin;
 
@@ -296,6 +296,19 @@ fn translate_scripts(
     let mut translated = 0;
     let mut errors = 0;
 
+    // Pre-intern ClassRef TypeIds for all object names so translators can emit
+    // correct Type::ClassRef(TypeId) for Break -11 (GMS2.3+ pushref) instructions.
+    let classref_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .filter_map(|name| {
+            if let Type::ClassRef(id) = mb.intern_type_classref(name) {
+                Some((name.clone(), id))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     for script in &scpt.scripts {
         let script_name = dw
             .resolve_string(script.name)
@@ -388,6 +401,7 @@ fn translate_scripts(
             is_with_body: false,
             with_body_has_return: false,
             bytecode_version: bc_version,
+            classref_types: &classref_types,
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
@@ -436,6 +450,18 @@ fn translate_global_inits(
         _ => return 0,
     };
 
+    // Pre-intern ClassRef TypeIds for all object names.
+    let classref_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .filter_map(|name| {
+            if let Type::ClassRef(id) = mb.intern_type_classref(name) {
+                Some((name.clone(), id))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     let mut count = 0;
     for &script_id in &glob.script_ids {
         let code_idx = script_id as usize;
@@ -472,6 +498,7 @@ fn translate_global_inits(
             is_with_body: false,
             with_body_has_return: false,
             bytecode_version: bc_version,
+            classref_types: &classref_types,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
@@ -510,6 +537,18 @@ fn translate_room_creation(
         Ok(r) => r,
         Err(_) => return (0, BTreeMap::new()),
     };
+
+    // Pre-intern ClassRef TypeIds for all object names.
+    let classref_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .filter_map(|name| {
+            if let Type::ClassRef(id) = mb.intern_type_classref(name) {
+                Some((name.clone(), id))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     let mut count = 0;
     let mut creation_code_map = BTreeMap::new();
@@ -553,6 +592,7 @@ fn translate_room_creation(
             is_with_body: false,
             with_body_has_return: false,
             bytecode_version: bc_version,
+            classref_types: &classref_types,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)

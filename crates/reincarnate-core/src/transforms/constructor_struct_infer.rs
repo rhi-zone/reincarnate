@@ -169,9 +169,9 @@ impl Transform for ConstructorStructInfer {
                 visibility: Visibility::Public,
             });
             let type_id = module.intern_type(&inf.name);
-            // Update fields on the NamedType.
-            module.types[type_id].fields = inf.fields;
-            module.types[type_id].inferred = true;
+            // Update fields on the TypeDecl.
+            *module.types[type_id].fields_mut() = inf.fields;
+            module.types[type_id].set_inferred(true);
 
             // Update the self param type in value_types and sig.params[0].
             let func = &mut module.functions[inf.func_id];

@@ -933,7 +933,7 @@ impl Transform for CoroutineLowering {
             module.structs.push(struct_def.clone());
             let struct_type_id = module.intern_type(&struct_name);
             // Sync fields into the type arena so downstream passes see them.
-            module.types[struct_type_id].fields = struct_def.fields;
+            *module.types[struct_type_id].fields_mut() = struct_def.fields;
 
             // Phase 4: Build resume function.
             let new_func = build_resume_function(

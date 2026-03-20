@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 
 use reincarnate_core::entity::PrimaryMap;
-use reincarnate_core::ir::module::NamedType;
+use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{CastKind, ExternalImport, Function, Module, Op, Type, TypeId};
 use reincarnate_core::project::RuntimeConfig;
 
@@ -571,7 +571,7 @@ pub(super) fn collect_type_refs_from_function(
     func: &Function,
     self_name: &str,
     self_ts_name: &str,
-    module_types: &PrimaryMap<TypeId, NamedType>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     static_method_owners: &HashMap<String, String>,
@@ -652,8 +652,7 @@ pub(super) fn collect_type_refs_from_function(
             // TypeCheck emits `isType()` — runtime value reference, collected
             // separately so circular imports can be detected and late-bound.
             Op::TypeCheck(_, ty) => {
-                let is_struct_or_enum =
-                    matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Instance(_));
+                let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Instance(_));
                 if is_struct_or_enum {
                     collect_type_ref(
                         ty,
@@ -692,8 +691,7 @@ pub(super) fn collect_type_refs_from_function(
                 );
             }
             Op::Cast(_, ty, kind) => {
-                let is_struct_or_enum =
-                    matches!(ty, Type::Struct(_) | Type::Enum(_) | Type::Instance(_));
+                let is_struct_or_enum = matches!(ty, Type::Struct(_) | Type::Instance(_));
                 if is_struct_or_enum && *kind == CastKind::NullableCoerce {
                     // NullableCoerce needs runtime constructor — collected separately
                     // so circular imports can be detected and late-bound.
@@ -853,7 +851,7 @@ pub(super) fn collect_type_refs_from_function(
             // import. ClassRef type means the value IS the class, not an instance.
             Op::GlobalRef(name) if registry.lookup(name).is_some() => {
                 collect_type_ref(
-                    &Type::ClassRef(name.clone()),
+                    &Type::Struct(name.clone()),
                     self_name,
                     self_ts_name,
                     module_types,
@@ -931,7 +929,7 @@ pub(super) fn collect_type_ref(
     ty: &Type,
     self_name: &str,
     self_ts_name: &str,
-    module_types: &PrimaryMap<TypeId, NamedType>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
     registry: &ClassRegistry,
     external_imports: &BTreeMap<String, ExternalImport>,
     refs: &mut BTreeSet<String>,
@@ -942,20 +940,41 @@ pub(super) fn collect_type_ref(
         // Resolve to Struct(name) and recurse so downstream processing is uniform.
         Type::Instance(id) => {
             if let Some(named) = module_types.get(*id) {
-                let resolved = Type::Struct(named.name.clone());
-                collect_type_ref(
-                    &resolved,
-                    self_name,
-                    self_ts_name,
-                    module_types,
-                    registry,
-                    external_imports,
-                    refs,
-                    ext_refs,
-                );
+                if let Some(name) = named.name() {
+                    let resolved = Type::Struct(name.to_string());
+                    collect_type_ref(
+                        &resolved,
+                        self_name,
+                        self_ts_name,
+                        module_types,
+                        registry,
+                        external_imports,
+                        refs,
+                        ext_refs,
+                    );
+                }
             }
         }
-        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
+        // ClassRef(id) — the class constructor. Resolve to Struct(name) and recurse
+        // so downstream processing treats it as a named type for import purposes.
+        Type::ClassRef(id) => {
+            if let Some(named) = module_types.get(*id) {
+                if let Some(name) = named.name() {
+                    let resolved = Type::Struct(name.to_string());
+                    collect_type_ref(
+                        &resolved,
+                        self_name,
+                        self_ts_name,
+                        module_types,
+                        registry,
+                        external_imports,
+                        refs,
+                        ext_refs,
+                    );
+                }
+            }
+        }
+        Type::Struct(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             if let Some(entry) = registry.lookup(name) {
                 // Skip self-imports: compare ts_names so that two classes with
@@ -1106,18 +1125,28 @@ pub(super) fn collect_type_ref(
 /// Collect short names of intra-module classes referenced by a type (for globals).
 pub(super) fn collect_global_type_imports(
     ty: &Type,
-    module_types: &PrimaryMap<TypeId, NamedType>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
     registry: &ClassRegistry,
     refs: &mut BTreeSet<String>,
 ) {
     match ty {
         Type::Instance(id) => {
             if let Some(named) = module_types.get(*id) {
-                let resolved = Type::Struct(named.name.clone());
-                collect_global_type_imports(&resolved, module_types, registry, refs);
+                if let Some(name) = named.name() {
+                    let resolved = Type::Struct(name.to_string());
+                    collect_global_type_imports(&resolved, module_types, registry, refs);
+                }
             }
         }
-        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
+        Type::ClassRef(id) => {
+            if let Some(named) = module_types.get(*id) {
+                if let Some(name) = named.name() {
+                    let resolved = Type::Struct(name.to_string());
+                    collect_global_type_imports(&resolved, module_types, registry, refs);
+                }
+            }
+        }
+        Type::Struct(name) => {
             if let Some(entry) = registry.lookup(name) {
                 refs.insert(entry.short_name.clone());
             }
@@ -1163,17 +1192,27 @@ pub(super) fn collect_global_type_imports(
 /// Used to detect runtime types (e.g. `GMLObject`) that are not in the emitted class registry.
 pub(super) fn collect_all_struct_names(
     ty: &Type,
-    module_types: &PrimaryMap<TypeId, NamedType>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
     refs: &mut BTreeSet<String>,
 ) {
     match ty {
         Type::Instance(id) => {
             if let Some(named) = module_types.get(*id) {
-                let short = named.name.rsplit("::").next().unwrap_or(&named.name);
-                refs.insert(short.to_string());
+                if let Some(name) = named.name() {
+                    let short = name.rsplit("::").next().unwrap_or(name);
+                    refs.insert(short.to_string());
+                }
             }
         }
-        Type::Struct(name) | Type::Enum(name) | Type::ClassRef(name) => {
+        Type::ClassRef(id) => {
+            if let Some(named) = module_types.get(*id) {
+                if let Some(name) = named.name() {
+                    let short = name.rsplit("::").next().unwrap_or(name);
+                    refs.insert(short.to_string());
+                }
+            }
+        }
+        Type::Struct(name) => {
             let short = name.rsplit("::").next().unwrap_or(name);
             refs.insert(short.to_string());
         }

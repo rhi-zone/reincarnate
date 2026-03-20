@@ -5,6 +5,7 @@ use datawin::DataWin;
 use reincarnate_core::ir::builder::ModuleBuilder;
 use reincarnate_core::ir::func::{MethodKind, Visibility};
 use reincarnate_core::ir::module::{ClassDef, FieldDef, StructDef};
+use reincarnate_core::ir::ty::TypeId;
 use reincarnate_core::ir::{Constant, Type};
 
 use crate::translate::{self, TranslateCtx};
@@ -29,6 +30,19 @@ pub fn translate_objects(
     let objt = dw.objt().map_err(|e| e.to_string())?;
     let mut translated = 0;
     let mut errors = 0;
+
+    // Pre-intern ClassRef TypeIds for all object names so translators can emit
+    // correct Type::ClassRef(TypeId) for Break -11 (GMS2.3+ pushref) instructions.
+    let classref_types: HashMap<String, TypeId> = obj_names
+        .iter()
+        .filter_map(|name| {
+            if let Type::ClassRef(id) = mb.intern_type_classref(name) {
+                Some((name.clone(), id))
+            } else {
+                None
+            }
+        })
+        .collect();
 
     for (obj_idx, obj) in objt.objects.iter().enumerate() {
         let obj_name = &obj_names[obj_idx];
@@ -119,6 +133,7 @@ pub fn translate_objects(
                         is_with_body: false,
                         with_body_has_return: false,
                         bytecode_version: bc_version,
+                        classref_types: &classref_types,
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {

@@ -2069,8 +2069,8 @@ impl Transform for TypeInference {
                 module.structs.retain(|s| s.name != new_struct.name);
                 // Sync fields into the module.types arena entry for this struct.
                 let type_id = module.intern_type(&new_struct.name);
-                module.types[type_id].fields = new_struct.fields.clone();
-                module.types[type_id].inferred = true;
+                *module.types[type_id].fields_mut() = new_struct.fields.clone();
+                module.types[type_id].set_inferred(true);
                 module.structs.push(new_struct);
                 changed = true;
             }

@@ -349,6 +349,7 @@ pub(super) fn translate_with_body(
         is_with_body: true,
         with_body_has_return: wctx.has_return_in_with,
         bytecode_version: ctx.bytecode_version,
+        classref_types: ctx.classref_types,
     };
 
     fb.switch_to_block(fb.entry_block());

@@ -780,6 +780,15 @@ impl ModuleBuilder {
         self.module.intern_type(name)
     }
 
+    /// Get or create a static-side `TypeDecl::Object` for a class and return
+    /// `Type::ClassRef(id)`.
+    ///
+    /// Delegates to [`Module::intern_type_classref`].  Useful when callers need
+    /// to pre-intern ClassRef types before translation begins.
+    pub fn intern_type_classref(&mut self, name: &str) -> crate::ir::ty::Type {
+        self.module.intern_type_classref(name)
+    }
+
     pub fn set_entry_point(&mut self, entry: EntryPoint) {
         self.module.entry_point = Some(entry);
     }
@@ -834,8 +843,8 @@ impl ModuleBuilder {
             let name = module.structs[i].name.clone();
             let fields = module.structs[i].fields.clone();
             let id = module.intern_type(&name);
-            if module.types[id].fields.is_empty() && !fields.is_empty() {
-                module.types[id].fields = fields;
+            if module.types[id].fields().is_empty() && !fields.is_empty() {
+                *module.types[id].fields_mut() = fields;
             }
         }
         for i in 0..module.classes.len() {
