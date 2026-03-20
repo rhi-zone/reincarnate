@@ -632,6 +632,7 @@ impl Transform for ConstraintSolve2 {
         // We must collect value_vars per function before mutating the module.
         struct FuncData {
             value_vars: HashMap<ValueId, TypeVarId>,
+            return_var: TypeVarId,
         }
 
         let mut all_constraints: Vec<TypeConstraint> = Vec::new();
@@ -642,6 +643,7 @@ impl Transform for ConstraintSolve2 {
             all_constraints.extend(set.constraints);
             func_data.push(FuncData {
                 value_vars: set.value_vars,
+                return_var: set.return_var,
             });
         }
 
@@ -896,10 +898,17 @@ impl Transform for ConstraintSolve2 {
 
         // -----------------------------------------------------------------------
         // Step 5: apply per-function updates (value_types, sig.params, block
-        // param types).
+        // param types, sig.return_ty).
         // -----------------------------------------------------------------------
+        use crate::pipeline::checker::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
         let mut changed = false;
-        for (func, update) in module.functions.values_mut().zip(func_updates.iter()) {
+        let mut new_diagnostics: Vec<Diagnostic> = Vec::new();
+        for ((func, update), data) in module
+            .functions
+            .values_mut()
+            .zip(func_updates.iter())
+            .zip(func_data.iter())
+        {
             for &(idx, ref new_ty) in &update.updates {
                 let vid = ValueId::new(idx as u32);
                 if &func.value_types[vid] != new_ty {
@@ -932,7 +941,37 @@ impl Transform for ConstraintSolve2 {
                     changed = true;
                 }
             }
+
+            // Sync sig.return_ty ← resolved return_var (only Unknown→concrete).
+            // If sig.return_ty is already concrete but conflicts with the solver's
+            // inference, emit RC1002 and keep the existing sig (TypeInference
+            // evidence is more reliable).
+            let resolved_ret = resolve(Type::Var(data.return_var), &arena);
+            if is_concrete(&resolved_ret) {
+                if matches!(func.sig.return_ty, Type::Unknown) {
+                    func.sig.return_ty = resolved_ret;
+                    changed = true;
+                } else if func.sig.return_ty != resolved_ret {
+                    // Conflict: TypeInference set a concrete return type that
+                    // differs from what the constraint solver inferred.  Keep
+                    // sig.return_ty unchanged and report the disagreement.
+                    new_diagnostics.push(Diagnostic {
+                        file: func.name.clone(),
+                        line: 0,
+                        col: 0,
+                        code: DiagnosticCode::Rc(RcDiagnostic::InferenceConflict),
+                        severity: Severity::Warning,
+                        message: format!(
+                            "return type inferred as {:?} by constraint solver conflicts with {:?} from TypeInference (keeping {:?})",
+                            resolved_ret,
+                            func.sig.return_ty,
+                            func.sig.return_ty,
+                        ),
+                    });
+                }
+            }
         }
+        module.diagnostics.append(&mut new_diagnostics);
 
         // -----------------------------------------------------------------------
         // Step 6: write back improved global types to module.globals.
