@@ -17,7 +17,7 @@ use std::fs;
 use datawin::DataWin;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
-use reincarnate_core::ir::func::Visibility;
+use reincarnate_core::ir::func::{MethodKind, Visibility};
 use reincarnate_core::ir::module::{Global, SystemCallTypeRule};
 use reincarnate_core::ir::ty::{FunctionSig, Type};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
@@ -307,7 +307,8 @@ fn translate_scripts(
         // In GMS2.3+ native games, constructor/nested-function SCPT entries have
         // code_id with the high bit set (>= 0x80000000).  The lower bits are NOT a
         // valid CODE chunk index.  Look up the CODE entry by canonical name instead.
-        let code_idx = if script.code_id & 0x8000_0000 != 0 {
+        let is_constructor = script.code_id & 0x8000_0000 != 0;
+        let code_idx = if is_constructor {
             let clean = strip_script_prefix(&script_name);
             let code_name = if clean == script_name {
                 // Name has no gml_Script_ prefix — try both forms.
@@ -390,7 +391,13 @@ fn translate_scripts(
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
-            Ok((func, extra_funcs)) => {
+            Ok((mut func, extra_funcs)) => {
+                // Tag GMS2.3+ constructors — but skip anonymous/nested ones
+                // (names like `___struct___0_*`) whose inferred struct names
+                // would be used as TypeScript type annotations.
+                if is_constructor && !func_name.starts_with("___struct___") {
+                    func.method_kind = MethodKind::Constructor;
+                }
                 mb.add_function(func);
                 for extra in extra_funcs {
                     mb.add_function(extra);
