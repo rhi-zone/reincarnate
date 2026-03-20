@@ -742,23 +742,22 @@ impl Transform for ConstraintSolve2 {
                                             }
                                         }
 
-                                        // Link result type to callee's return type var.
-                                        // We can't easily get the return type var from
-                                        // collect_function (it's a local), but the callee's
-                                        // Return terminators already emit constraints linking
-                                        // return values to the return type var, which propagates
-                                        // through param constraints. The sig.return_ty is also
-                                        // already bound for concrete return types.
-                                        // For result linking, constrain the caller's result
-                                        // value to the callee's sig.return_ty if concrete.
+                                        // Link caller result ← callee return_var (unconditional,
+                                        // not gated on sig.return_ty). The HM joint arena
+                                        // propagates concrete return types inferred from callee
+                                        // bodies even when sig.return_ty is still Unknown.
+                                        // Skip when sig.return_ty is already Void — void functions
+                                        // have no meaningful return value; propagating Void to the
+                                        // caller result would produce spurious type errors in GML
+                                        // where void calls in value position are valid.
                                         if let Some(result) = inst.result {
-                                            if is_concrete(&callee_func.sig.return_ty) {
+                                            if !matches!(callee_func.sig.return_ty, Type::Void) {
                                                 if let Some(&result_var) =
                                                     caller_data.value_vars.get(&result)
                                                 {
                                                     all_constraints.push(TypeConstraint::Equal(
                                                         Type::Var(result_var),
-                                                        callee_func.sig.return_ty.clone(),
+                                                        Type::Var(callee_data.return_var),
                                                     ));
                                                 }
                                             }
@@ -833,15 +832,22 @@ impl Transform for ConstraintSolve2 {
                                             }
                                         }
 
-                                        // Link result to callee return type.
+                                        // Link caller result ← callee return_var (unconditional,
+                                        // not gated on sig.return_ty). The HM joint arena
+                                        // propagates concrete return types inferred from callee
+                                        // bodies even when sig.return_ty is still Unknown.
+                                        // Skip when sig.return_ty is already Void — void functions
+                                        // have no meaningful return value; propagating Void to the
+                                        // caller result would produce spurious type errors in GML
+                                        // where void calls in value position are valid.
                                         if let Some(result) = inst.result {
-                                            if is_concrete(&callee_func.sig.return_ty) {
+                                            if !matches!(callee_func.sig.return_ty, Type::Void) {
                                                 if let Some(&result_var) =
                                                     caller_data.value_vars.get(&result)
                                                 {
                                                     all_constraints.push(TypeConstraint::Equal(
                                                         Type::Var(result_var),
-                                                        callee_func.sig.return_ty.clone(),
+                                                        Type::Var(callee_data.return_var),
                                                     ));
                                                 }
                                             }
