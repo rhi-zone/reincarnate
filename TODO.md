@@ -76,6 +76,14 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   `ds_map`, SugarCube state vars). High impact, high effort.
 - [ ] **Union on conflict** — replace `force_rebind(Unknown)` with `Union(t1, t2)`.
   Prerequisite for safely relaxing interprocedural constraint guards.
+- [ ] **HasField reverse-index (last resort).** After the fixpoint loop exhausts all
+  `Equal` and `HasField` constraints, any `HasField { ty: Var(v), field: "x" }` where
+  `v` is still unbound means no other constraint resolved `v`'s struct type. At that
+  point, look up which structs in the module have field `"x"` and narrow accordingly:
+  exactly one match → bind `v = Struct(name)`; multiple → `v = Union([...])` and result
+  = union of field types; zero → RC diagnostic (unknown field on unknown type). This is
+  genuinely a last resort — the fixpoint should resolve the vast majority of cases first
+  via call-site type flow and argument propagation.
 
 ## Incremental Rewrite Plan (ACTIVE)
 

@@ -519,8 +519,8 @@ fn process_constraint(
             field_ty,
         } => {
             let resolved_ty = resolve(ty, arena);
-            match &resolved_ty {
-                Type::Struct(name) => {
+            match resolved_ty {
+                Type::Struct(ref name) => {
                     if let Some(fields) = struct_fields.get(name) {
                         if let Some(ft) = fields.get(&field) {
                             deferred.push(TypeConstraint::Equal(field_ty, ft.clone()));
@@ -529,10 +529,16 @@ fn process_constraint(
                     // Unknown field — skip; don't invent a type.
                 }
                 Type::Var(_) => {
-                    // Object type not yet resolved — skip for now.
+                    // Object type not yet resolved — re-defer so the fixpoint
+                    // loop retries once the Var is bound by an Equal constraint.
+                    deferred.push(TypeConstraint::HasField {
+                        ty: resolved_ty,
+                        field,
+                        field_ty,
+                    });
                 }
                 _ => {
-                    // Unknown, Unknown, or other — no useful info.
+                    // Unknown or other — no useful info.
                 }
             }
         }
@@ -543,8 +549,15 @@ fn process_constraint(
                     deferred.push(TypeConstraint::Equal(arg_ty, param_ty));
                 }
                 deferred.push(TypeConstraint::Equal(ret, sig.return_ty.clone()));
+            } else if matches!(resolved_ty, Type::Var(_)) {
+                // Callee type not yet resolved — re-defer.
+                deferred.push(TypeConstraint::Callable {
+                    ty: resolved_ty,
+                    args,
+                    ret,
+                });
             }
-            // Var(_) or other — defer or skip.
+            // Other — no useful info.
         }
     }
 }
@@ -864,14 +877,31 @@ impl Transform for ConstraintSolve2 {
 
         // -----------------------------------------------------------------------
         // Step 3: solve all constraints jointly.
+        //
+        // `HasField { ty: Var(_) }` and `Callable { ty: Var(_) }` constraints
+        // cannot be resolved until the object/callee type variable is bound by
+        // a later `Equal` constraint. We run a fixpoint loop: each pass
+        // processes the pending list, and any constraint that still cannot be
+        // resolved is re-deferred. We stop when either:
+        //   (a) the deferred list is empty (all resolved), or
+        //   (b) a full pass made no progress (deferred list is no shorter than
+        //       before — the remaining constraints are genuinely unresolvable).
         // -----------------------------------------------------------------------
-        let mut deferred: Vec<TypeConstraint> = Vec::new();
-        for c in all_constraints {
-            process_constraint(c, &mut arena, &struct_fields, &mut deferred);
-        }
-        // Process deferred constraints (one level deep is sufficient for phase 1).
-        for c in deferred {
-            process_constraint(c, &mut arena, &struct_fields, &mut Vec::new());
+        let mut pending: Vec<TypeConstraint> = all_constraints;
+        loop {
+            let pending_count = pending.len();
+            let mut deferred: Vec<TypeConstraint> = Vec::new();
+            for c in pending {
+                process_constraint(c, &mut arena, &struct_fields, &mut deferred);
+            }
+            if deferred.is_empty() {
+                break; // all resolved
+            }
+            if deferred.len() >= pending_count {
+                // No progress this pass — remaining constraints are unresolvable.
+                break;
+            }
+            pending = deferred;
         }
 
         // -----------------------------------------------------------------------
