@@ -33,6 +33,14 @@ pub struct ConstraintSet {
     /// - [`Type::Unknown`] and [`Type::Var`] get fresh,
     ///   unbound vars (inference targets).
     pub value_vars: HashMap<ValueId, TypeVarId>,
+    /// TypeVarId allocated for the function's return type.
+    ///
+    /// Linked to return values via `Return` terminator constraints.  Exposed
+    /// so that interprocedural call-site linking (Step 2b in ConstraintSolve2)
+    /// can unify a caller's result type var with the callee's return type var,
+    /// enabling bidirectional return-type propagation even when the callee's
+    /// `sig.return_ty` is not yet concrete.
+    pub return_var: TypeVarId,
 }
 
 // ---------------------------------------------------------------------------
@@ -214,11 +222,49 @@ pub fn collect_function(
             let result_var = inst.result.and_then(|r| var_for(r, &value_vars));
 
             match &inst.op {
-                // Arithmetic — numeric grounding disabled pending full C_ARITH
-                // constraint kind. Emitting Equal(operand, Float(64)) causes false
-                // positives when a value is also used as a collection key or bool
-                // (documented in TODO.md "Numeric grounding limitation").
+                // Constants — ground the result to the literal's type.
+                Op::Const(constant) => {
+                    if let Some(rv) = result_var {
+                        let ty = constant.ty();
+                        if is_concrete(&ty) {
+                            constraints.push(TypeConstraint::Equal(rv, ty));
+                        }
+                    }
+                }
+
+                // GlobalRef — link result to the global's shared type var.
+                Op::GlobalRef(name) => {
+                    if let Some(rv) = result_var {
+                        if let Some(&gvar) = global_name_vars.get(name.as_str()) {
+                            constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
+                        }
+                    }
+                }
+
+                // Arithmetic — type propagation via Equal(result, operand)
+                // disabled pending C_ARITH constraint kind. See TODO.md.
                 Op::Add(_, _) | Op::Sub(_, _) | Op::Mul(_, _) | Op::Div(_, _) | Op::Rem(_, _) => {}
+                Op::Neg(_) => {}
+                Op::BitAnd(_, _)
+                | Op::BitOr(_, _)
+                | Op::BitXor(_, _)
+                | Op::Shl(_, _)
+                | Op::Shr(_, _)
+                | Op::BitNot(_) => {}
+
+                // Select — result is compatible with both branches.
+                Op::Select {
+                    on_true, on_false, ..
+                } => {
+                    if let Some(rv) = result_var {
+                        if let Some(t_var) = var_for(*on_true, &value_vars) {
+                            constraints.push(TypeConstraint::Equal(rv.clone(), t_var));
+                        }
+                        if let Some(f_var) = var_for(*on_false, &value_vars) {
+                            constraints.push(TypeConstraint::Equal(rv, f_var));
+                        }
+                    }
+                }
 
                 // GetField — emit HasField on the object type.
                 Op::GetField { object, field } => {
@@ -426,6 +472,7 @@ pub fn collect_function(
     ConstraintSet {
         constraints,
         value_vars,
+        return_var,
     }
 }
 

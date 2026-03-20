@@ -16,8 +16,8 @@ use reincarnate_checker_typescript::TsChecker;
 use reincarnate_core::ir::Module;
 use reincarnate_core::pipeline::{
     link_modules, resolve_preset, Backend, BackendInput, CheckSummary, Checker, CheckerInput,
-    CheckerOutput, DebugConfig, Diagnostic, Frontend, FrontendInput, PassConfig, PipelineOutput,
-    RuntimePackage, VALID_PASS_NAMES,
+    CheckerOutput, DebugConfig, Diagnostic, DiagnosticCode, Frontend, FrontendInput, PassConfig,
+    PipelineOutput, RcDiagnostic, RuntimePackage, VALID_PASS_NAMES,
 };
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
 use reincarnate_core::transforms::default_pipeline;
@@ -110,6 +110,10 @@ enum Command {
         /// producing a full emit.
         #[arg(long)]
         no_emit: bool,
+        /// Print a summary of inference failures by category.
+        /// Shows count of Unknown values by failure reason and top functions.
+        #[arg(long)]
+        dump_inference_failures: bool,
     },
     /// Emit and type-check the output.
     Check {
@@ -590,6 +594,111 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// Returns `true` if the diagnostic is an inference failure (RC1xxx).
+fn is_inference_diagnostic(diag: &Diagnostic) -> bool {
+    matches!(
+        &diag.code,
+        DiagnosticCode::Rc(
+            RcDiagnostic::InferenceNoConstraints
+                | RcDiagnostic::InferenceConflict
+                | RcDiagnostic::InferenceUnresolvedDeferred
+                | RcDiagnostic::InferenceNoCallers
+                | RcDiagnostic::InferenceInheritedUnknown
+        )
+    )
+}
+
+/// Print a summary of inference failure diagnostics by category and top functions.
+fn print_inference_failure_summary(diags: &[Diagnostic]) {
+    let inference_diags: Vec<&Diagnostic> = diags
+        .iter()
+        .filter(|d| is_inference_diagnostic(d))
+        .collect();
+    if inference_diags.is_empty() {
+        println!("No inference failures.");
+        return;
+    }
+
+    // Count by category.
+    let mut by_category: HashMap<&str, usize> = HashMap::new();
+    for d in &inference_diags {
+        let label = match &d.code {
+            DiagnosticCode::Rc(RcDiagnostic::InferenceNoConstraints) => "RC1001 No constraints",
+            DiagnosticCode::Rc(RcDiagnostic::InferenceConflict) => "RC1002 Conflicting types",
+            DiagnosticCode::Rc(RcDiagnostic::InferenceUnresolvedDeferred) => {
+                "RC1003 Unresolved deferred"
+            }
+            DiagnosticCode::Rc(RcDiagnostic::InferenceNoCallers) => "RC1004 No callers",
+            DiagnosticCode::Rc(RcDiagnostic::InferenceInheritedUnknown) => {
+                "RC1005 Inherited Unknown"
+            }
+            _ => "Other",
+        };
+        *by_category.entry(label).or_insert(0) += 1;
+    }
+
+    println!("\n=== Inference Failure Summary ===");
+    println!("Total Unknown values: {}", inference_diags.len());
+    println!();
+
+    // Sort categories by code for stable output.
+    let mut categories: Vec<(&&str, &usize)> = by_category.iter().collect();
+    categories.sort_by_key(|(label, _)| **label);
+    println!("By category:");
+    for (label, count) in &categories {
+        println!("  {label}: {count}");
+    }
+
+    // Count RC1001 failures by Op type (parsed from message suffix).
+    let mut by_op: HashMap<&str, usize> = HashMap::new();
+    for d in &inference_diags {
+        if matches!(
+            &d.code,
+            DiagnosticCode::Rc(RcDiagnostic::InferenceNoConstraints)
+        ) {
+            let op_name = d
+                .message
+                .rsplit_once("produced by Op::")
+                .map(|(_, rest)| rest.trim_end_matches(')'))
+                .unwrap_or("(unknown)");
+            *by_op.entry(op_name).or_insert(0) += 1;
+        }
+    }
+    if !by_op.is_empty() {
+        let mut op_counts: Vec<(&str, usize)> = by_op.into_iter().collect();
+        op_counts.sort_by(|a, b| b.1.cmp(&a.1));
+        println!();
+        println!("No-constraint failures by Op type:");
+        for (op, count) in &op_counts {
+            println!("  {op:<20} {count:>6}");
+        }
+    }
+
+    // Count by function (file field holds function name).
+    let mut by_func: HashMap<&str, usize> = HashMap::new();
+    for d in &inference_diags {
+        *by_func.entry(d.file.as_str()).or_insert(0) += 1;
+    }
+    let mut func_counts: Vec<(&str, usize)> = by_func.into_iter().collect();
+    func_counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+    println!();
+    println!("Top 20 functions by failure count:");
+    for (func, count) in func_counts.iter().take(20) {
+        println!("  {count:>5}  {func}");
+    }
+
+    if func_counts.len() > 20 {
+        let remaining: usize = func_counts.iter().skip(20).map(|(_, c)| c).sum();
+        println!(
+            "  ... and {} more functions ({} failures)",
+            func_counts.len() - 20,
+            remaining
+        );
+    }
+    println!();
+}
+
 /// Run emit and return the list of output directories produced, plus any
 /// pipeline diagnostics (game-author bug warnings, etc.).
 fn cmd_emit(
@@ -701,7 +810,12 @@ fn cmd_emit(
 
     if no_emit {
         eprintln!("[emit] --no-emit: skipping file output");
-        return Ok((Vec::new(), Vec::new()));
+        // Collect module-level diagnostics so --dump-inference-failures
+        // works with --no-emit (backend normally collects these).
+        for m in &modules {
+            all_diagnostics.extend(m.diagnostics.iter().cloned());
+        }
+        return Ok((Vec::new(), all_diagnostics));
     }
 
     for target in &manifest.targets {
@@ -836,8 +950,12 @@ fn cmd_emit_all(skip_passes: &[String], preset: &str, debug: &DebugConfig) -> Re
         let manifest_path = PathBuf::from(&entry.manifest);
         match cmd_emit(&manifest_path, skip_passes, preset, false, false, debug) {
             Ok((_, pipeline_diags)) => {
-                if !pipeline_diags.is_empty() {
-                    eprintln!("  {} pipeline warning(s)", pipeline_diags.len());
+                let non_inference: Vec<_> = pipeline_diags
+                    .iter()
+                    .filter(|d| !is_inference_diagnostic(d))
+                    .collect();
+                if !non_inference.is_empty() {
+                    eprintln!("  {} pipeline warning(s)", non_inference.len());
                 }
                 try_update_last_emitted(&manifest_path);
             }
@@ -982,9 +1100,15 @@ fn run_checks(
     }
 
     // Merge pipeline diagnostics into check output, respecting severity.
-    if !pipeline_diagnostics.is_empty() {
+    // Filter out inference failure diagnostics (RC1xxx) — they are too numerous
+    // for the check summary and have their own --dump-inference-failures flag.
+    let filtered_pipeline_diags: Vec<_> = pipeline_diagnostics
+        .iter()
+        .filter(|d| !is_inference_diagnostic(d))
+        .collect();
+    if !filtered_pipeline_diags.is_empty() {
         if let Some(first) = all_outputs.first_mut() {
-            for diag in pipeline_diagnostics.iter() {
+            for diag in filtered_pipeline_diags.iter() {
                 if diag.severity == reincarnate_core::pipeline::checker::Severity::Error {
                     first.summary.total_errors += 1;
                 } else {
@@ -993,9 +1117,9 @@ fn run_checks(
             }
             first
                 .diagnostics
-                .extend(pipeline_diagnostics.iter().cloned());
+                .extend(filtered_pipeline_diags.iter().cloned().cloned());
             // Add pipeline warning codes to the by_code summary.
-            for diag in pipeline_diagnostics {
+            for diag in &filtered_pipeline_diags {
                 if let Some(entry) = first
                     .summary
                     .by_code
@@ -2374,6 +2498,7 @@ fn main() -> Result<()> {
             dump_function,
             dump_ir_after,
             no_emit,
+            dump_inference_failures,
         } => {
             // Validate --dump-ir-after pass name early so the error is clear.
             if let Some(pass) = dump_ir_after.as_deref() {
@@ -2397,9 +2522,16 @@ fn main() -> Result<()> {
                 let path = resolve_target(target.as_deref(), manifest.as_deref())?;
                 let result = cmd_emit(&path, skip_passes, preset, *fixpoint, *no_emit, &debug);
                 if let Ok((_, pipeline_diags)) = &result {
-                    if !pipeline_diags.is_empty() {
-                        eprintln!("{} pipeline warning(s)", pipeline_diags.len());
-                        for diag in pipeline_diags {
+                    if *dump_inference_failures {
+                        print_inference_failure_summary(pipeline_diags);
+                    }
+                    let non_inference_diags: Vec<_> = pipeline_diags
+                        .iter()
+                        .filter(|d| !is_inference_diagnostic(d))
+                        .collect();
+                    if !non_inference_diags.is_empty() {
+                        eprintln!("{} pipeline warning(s)", non_inference_diags.len());
+                        for diag in &non_inference_diags {
                             eprintln!("  [{}] {}: {}", diag.code, diag.file, diag.message);
                         }
                     }

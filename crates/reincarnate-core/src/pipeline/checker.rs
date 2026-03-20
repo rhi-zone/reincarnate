@@ -47,6 +47,19 @@ pub enum RcDiagnostic {
     /// `Array(Unknown)` and `String`).  This is a game-author bug: the
     /// same variable is used to hold values of incompatible types.
     WriteConflict,
+
+    // -- Inference failure diagnostics (RC1xxx) --------------------------------
+    /// A type variable was allocated but never constrained by any instruction.
+    InferenceNoConstraints,
+    /// Two or more concrete types were unified and conflicted.
+    InferenceConflict,
+    /// A HasField or Callable constraint couldn't resolve because the
+    /// object/callee type never became concrete.
+    InferenceUnresolvedDeferred,
+    /// A function parameter has no call sites providing type info.
+    InferenceNoCallers,
+    /// The value was constrained as Equal to another value that is itself Unknown.
+    InferenceInheritedUnknown,
 }
 
 impl std::fmt::Display for RcDiagnostic {
@@ -56,6 +69,11 @@ impl std::fmt::Display for RcDiagnostic {
             RcDiagnostic::DuplicateObjectKey => "RC0002",
             RcDiagnostic::MissingFunctionSignature => "RC0003",
             RcDiagnostic::WriteConflict => "RC0004",
+            RcDiagnostic::InferenceNoConstraints => "RC1001",
+            RcDiagnostic::InferenceConflict => "RC1002",
+            RcDiagnostic::InferenceUnresolvedDeferred => "RC1003",
+            RcDiagnostic::InferenceNoCallers => "RC1004",
+            RcDiagnostic::InferenceInheritedUnknown => "RC1005",
         };
         write!(f, "{code}")
     }

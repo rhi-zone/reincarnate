@@ -200,6 +200,55 @@ pub enum Op {
     Spread(ValueId),
 }
 
+impl Op {
+    /// Returns a short, stable name for the `Op` variant (e.g. `"Call"`, `"GetField"`).
+    /// Used for diagnostic grouping — must not include operand data.
+    pub fn variant_name(&self) -> &'static str {
+        match self {
+            Op::Const(_) => "Const",
+            Op::Add(..) => "Add",
+            Op::Sub(..) => "Sub",
+            Op::Mul(..) => "Mul",
+            Op::Div(..) => "Div",
+            Op::Rem(..) => "Rem",
+            Op::Neg(_) => "Neg",
+            Op::BitAnd(..) => "BitAnd",
+            Op::BitOr(..) => "BitOr",
+            Op::BitXor(..) => "BitXor",
+            Op::BitNot(_) => "BitNot",
+            Op::Shl(..) => "Shl",
+            Op::Shr(..) => "Shr",
+            Op::Cmp(..) => "Cmp",
+            Op::Not(_) => "Not",
+            Op::BoolAnd(..) => "BoolAnd",
+            Op::BoolOr(..) => "BoolOr",
+            Op::Select { .. } => "Select",
+            Op::Alloc(_) => "Alloc",
+            Op::Load(_) => "Load",
+            Op::Store { .. } => "Store",
+            Op::GetField { .. } => "GetField",
+            Op::SetField { .. } => "SetField",
+            Op::GetIndex { .. } => "GetIndex",
+            Op::SetIndex { .. } => "SetIndex",
+            Op::Call { .. } => "Call",
+            Op::MakeClosure { .. } => "MakeClosure",
+            Op::CallIndirect { .. } => "CallIndirect",
+            Op::SystemCall { .. } => "SystemCall",
+            Op::MethodCall { .. } => "MethodCall",
+            Op::Cast(..) => "Cast",
+            Op::TypeCheck(..) => "TypeCheck",
+            Op::StructInit { .. } => "StructInit",
+            Op::ArrayInit(_) => "ArrayInit",
+            Op::TupleInit(_) => "TupleInit",
+            Op::Yield(_) => "Yield",
+            Op::CoroutineCreate { .. } => "CoroutineCreate",
+            Op::CoroutineResume(_) => "CoroutineResume",
+            Op::GlobalRef(_) => "GlobalRef",
+            Op::Spread(_) => "Spread",
+        }
+    }
+}
+
 /// Block terminator — explicit control-flow edge at the end of each block.
 ///
 /// Every complete block has exactly one terminator. Terminators carry their

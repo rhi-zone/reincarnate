@@ -80,7 +80,7 @@ which is structurally identical to recovering types from untyped bytecode.
 
 1. **Single constraint collection pass** — one IR walk that emits typed constraints from
    every instruction. Each `Op` variant becomes a constraint generator:
-   - `Op::Add(a, b)` → `C_ARITH(a)`, `C_ARITH(b)`, `result = number`
+   - `Op::Add(a, b)` → `C_CALLABLE(builtin_add, [a, b], result)` (arithmetic ops are builtin calls)
    - `Op::GetField { object, field }` → `C_HAS_FIELD(object, field, result)`
    - `Op::Call { func, args }` → `C_CALLABLE(func, args, result)`
    - etc.
@@ -176,27 +176,54 @@ They must not be conflated at the solver level. The heuristic that detects
 `any[]` with `any`. With proper HM, `_bodypart = Array(_bodypart)` triggers the occurs
 check → `Dynamic`; no heuristic needed.
 
-**Crescent constraint mapping.** Crescent's 7 constraint kinds map directly to IR ops:
-- `C_ARITH` → `Op::Add/Sub/Mul/Div/Mod` + arithmetic ops
-- `C_COMPARE` → `Op::CmpEq/CmpLt/CmpGe/...`
+**Crescent constraint mapping.** Crescent's 7 constraint kinds map to IR ops:
+- `C_ARITH` → not a distinct kind in our solver (see design decision below)
+- `C_COMPARE` → `Op::Cmp` — result is always `Bool`; emit `Equal(result, Bool)`
 - `C_HAS_FIELD` → `Op::GetField/SetField`
-- `C_CALLABLE` → `Op::Call/MethodCall/CallIndirect`
-- `C_UNIFY` → assignment ops, `Op::Copy`, phi merges (block args)
+- `C_CALLABLE` → `Op::Call/MethodCall/CallIndirect` **and arithmetic ops** (see below)
+- `C_UNIFY` → assignment ops, phi merges (block args)
 - `C_SUB` → subtype constraints (narrower than unify; handles coercions)
 - `C_RETURN` → `Op::Return`
 
-The correspondence is 1:1 — the IR already has the semantic structure needed for
-constraint generation. No IR changes are required to prototype the solver.
+**Design decision (2026-03-20): `C_ARITH` is not a distinct constraint kind. Arithmetic
+ops are calls to builtins with declared signatures; `Callable` handles them uniformly.**
 
-**Numeric grounding limitation (2026-03-17).** Adding a `Float(64)` constraint for
-arithmetic operands (Sub/Mul/Div) causes false positives when the same value is also
-used as a `GetIndex` collection with unknown element type — no counter-constraint is
-added and the value is wrongly narrowed to `number`, causing TS7053/TS2362. The fix
-requires either: (a) adding a "must be a collection" counter-constraint from GetIndex
-when the collection is Dynamic, or (b) a proper constraint language with `C_ARITH`
-constraints that back-off when they conflict with structural constraints (HAS_FIELD,
-CALLABLE). Currently, arithmetic and bitwise ops only generate equality constraints;
-the numeric grounding is deferred to the full constraint solver redesign.
+Crescent needs `C_ARITH` because Lua has metamethods — the constraint means "find
+`__add` on the operand type and unify result with the metamethod return." Our IR has no
+metamethods: `Op::Add` is defined as numeric addition by contract, so `C_ARITH`
+reduces to `Callable(builtin_add, [a, b], result)` against a declared signature.
+
+The correct model:
+- Arithmetic ops (`Op::Add`, `Op::Sub`, etc.) are calls to builtin functions registered
+  in the module with declared signatures: `add: (Int(64), Int(64)) -> Int(64)`, etc.
+- `FunctionBuilder` keeps convenience methods (`fb.add(a, b)`) that emit `Op::Call` to
+  the appropriate builtin `FuncId` — frontend API unchanged.
+- The constraint solver treats arithmetic identically to any other `Call` — reads the
+  declared signature, emits `Callable`, propagates bidirectionally.
+- No op-specific logic in the solver. No hardcoded numeric grounding. No false positives.
+
+Why this is correct:
+1. **Law 1 (Pipeline Stage Isolation):** type semantics of operations live in the IR
+   (declared signatures), not implicitly in the solver as pattern-matched op knowledge.
+2. **Law 2 (Engine Specificity at Boundaries):** the solver stays engine-agnostic; it
+   handles `Callable` uniformly for all functions. Arithmetic semantics are declared by
+   whoever builds the builtins, not hardcoded in core.
+3. **"Fix the real problem":** the root cause of missing numeric grounding is that
+   `Callable` constraints don't propagate types well — for ANY function, not just
+   arithmetic. Fixing `Callable` fixes arithmetic as a consequence; patching arithmetic
+   specifically would be a monkeypatch.
+4. **Parameter constraining is general, not builtin-specific.** Any function with a
+   declared signature constrains its callers. Builtins are just the first consumers.
+
+**Corollary:** once `Callable` is properly bidirectional, `CallSiteTypeFlow` and
+`CallSiteTypeWiden` are redundant and should be retired. The unified solver handles
+interprocedural inference in one pass.
+
+**Numeric grounding — prior limitation resolved by the above design.** The 2026-03-17
+note about false positives from emitting `Float(64)` equality constraints for arithmetic
+operands is no longer relevant: with builtins as declared functions, grounding comes
+from the builtin's parameter types via `Callable` — which naturally back-propagates
+only when the constraint is consistent with other constraints on the same variable.
 
 ### What to Preserve
 
@@ -225,14 +252,33 @@ union/intersection types, and subtyping to basic HM — all applicable here.
 
 2. **`ConstraintCollect` pass** — single IR walk (per function, then inter-proc) that
    emits `TypeConstraint` values for every `Op`:
-   - `Op::Add/Sub/Mul/Div/Mod` → `C_ARITH(a)`, `C_ARITH(b)`, `C_UNIFY(result, float)`
-   - `Op::GetField { object, field }` → `C_HAS_FIELD(object, field, result)`
+   - `Op::Add/Sub/Mul/Div/Mod` → `C_CALLABLE(builtin_fn, [a, b], result)` (arithmetic ops
+     are calls to builtins with declared signatures; no special C_ARITH constraint kind)
+   - `Op::Cmp` → `Equal(result, Bool)` ✅ (already implemented)
+   - `Op::Not/BoolAnd/BoolOr` → `Equal(result, Bool)` ✅ (already implemented)
+   - `Op::GetField { object, field }` → `HasField(object, field, result)` ✅
+   - `Op::SetField { object, field, value }` → `HasField(object, field, value)` ✅
    - `Op::GetIndex/SetIndex` → `C_INDEX(collection, index, result)`
-   - `Op::Call/MethodCall` → `C_CALLABLE(func, args, result)`
-   - `Op::Copy`, block args → `C_UNIFY(a, b)`
-   - `Op::Return` → `C_RETURN(value, func_return_ty)`
-   - Engine-specific rules (GlobalStore write sites, ClassRef) via `SystemCallTypeRule`,
-     emitting `C_UNIFY` constraints instead of pre-binding types.
+   - `Op::Call/MethodCall` → `Equal(result, return_ty)` ✅ (concrete returns only)
+   - `Op::CallIndirect` → `Callable(callee, args, result)` ✅
+   - `Op::Cast` → `Equal(result, target_ty)` ✅
+   - `Op::TypeCheck` → `Equal(result, Bool)` ✅
+   - `Op::StructInit` → `Equal(result, Struct(name))` ✅
+   - block args → `Equal(arg, param)` ✅
+   - `Terminator::Return` → `Equal(value, return_var)` ✅
+   - Engine-specific rules (GlobalStore write sites, ClassRef) via `SystemCallTypeRule` ✅
+   **Missing constraints (2026-03-20 audit — 48,954 unconstrained values on Dead Estate):**
+   - `Op::Const` → `Equal(result, literal_type)` — CRITICAL: constants not grounded
+   - `Op::GlobalRef` → `Equal(result, global_type_var)` — global refs not linked
+   - `Op::Add/Sub/Mul/Div/Rem/Neg` → `Equal(result, operand)` (interim: equality between
+     operands and result until builtins-as-calls is implemented)
+   - `Op::BitAnd/BitOr/BitXor/BitNot/Shl/Shr` → `Equal(result, operand)` — integer type
+   - `Op::Select` → `Equal(result, on_true)`, `Equal(result, on_false)` — branch merge
+   - `Op::ArrayInit` → `Equal(result, Array(element_var))` with element unification
+   - `Op::GetIndex` → index-access constraint (collection element → result)
+   - `Op::Load` → blocked on per-Alloc element type tracking
+   - `Op::MakeClosure` → `Equal(result, Function(sig))` from callee signature
+   - `Op::TupleInit`, `Yield`, `CoroutineCreate/Resume`, `Spread` — low priority
 
 3. **Wire collection into `ConstraintSolve2`** — solver processes `TypeConstraint` list;
    starts ALL non-ground values as `Type::Var`; resolves vars to concrete types; falls
@@ -277,6 +323,19 @@ union/intersection types, and subtyping to basic HM — all applicable here.
 - `unify` saves original Var IDs before `resolve`; in concrete-mismatch arm, poisons those
   vars to Dynamic so step 6 writeback sees Dynamic (not stale first-write type)
 - DoL: 2570 → 2567 TS (−3 conflicting globals now correctly Dynamic)
+
+**Inference failure diagnostics (2026-03-20):**
+- `--dump-inference-failures` on `emit` subcommand — category breakdown + top functions
+- RC1001–RC1005 diagnostic codes: NoConstraints, Conflict, UnresolvedDeferred, NoCallers,
+  InheritedUnknown
+- Dead Estate baseline (96,404 total Unknown values):
+  - RC1001 No constraints:      48,954 (51%) — solver is starving, not failing
+  - RC1005 Inherited Unknown:   36,701 (38%) — transitive dependents of unconstrained values
+  - RC1003 Unresolved deferred:  5,835 (6%) — HasField/Callable on Unknown objects
+  - RC1004 No callers:           4,488 (5%) — runtime-only closures
+  - RC1002 Conflicting types:      426 (<1%) — actual unification conflicts
+- Key insight: fixing constraint coverage (Tier 1+2 in missing constraints list above)
+  should resolve ~30,000+ RC1001 failures and cascade into reducing RC1005
 
 **Pipeline ordering gap (BLOCKER for Phase 2):**
 - ConstraintSolve2 runs AFTER TypeInference. Phase 1 write-site types (from
