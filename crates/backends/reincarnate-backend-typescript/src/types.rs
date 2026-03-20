@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use reincarnate_core::entity::{EntityRef, PrimaryMap};
+use reincarnate_core::entity::PrimaryMap;
 use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{Type, TypeId};
 
@@ -140,10 +140,9 @@ pub fn ts_type(ty: &Type) -> String {
             }
             parts.join(" | ")
         }
-        // Instance(id) appears only in raw IR; after resolve_js_function_types() all
-        // Instance types are converted to Struct. If Instance reaches ts_type() it
-        // means the resolution step was skipped — fall back to "unknown" to avoid a
-        // panic while still flagging the gap.
+        // Instance(id): call ts_type_with_module for proper name resolution.
+        // If Instance reaches ts_type() it means module_types is unavailable —
+        // callers should use ts_type_with_module instead. Fall back to "unknown".
         Type::Instance(_) => "unknown".into(),
         Type::Var(_) => "unknown".into(),
         Type::Unknown => "unknown".into(),
@@ -175,6 +174,27 @@ pub fn flash_ts_type(ty: &Type) -> String {
             "any".into()
         }
         _ => ts_type(ty),
+    }
+}
+
+/// Map an IR [`Type`] to its TypeScript representation for Flash in a context
+/// where `module_types` is available to resolve [`Type::Instance`].
+pub fn flash_ts_type_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> String {
+    match ty {
+        Type::Map(k, _) if matches!(k.as_ref(), Type::Unknown) => "Dictionary".into(),
+        Type::Array(_) => "any".into(),
+        Type::Instance(id) => {
+            if let Some(named) = module_types.get(*id) {
+                if let Some(name) = named.name() {
+                    let short = name.rsplit("::").next().unwrap_or(name);
+                    if matches!(short, "XML" | "XMLList") {
+                        return "any".into();
+                    }
+                }
+            }
+            ts_type_id(*id, module_types)
+        }
+        _ => flash_ts_type(ty),
     }
 }
 
@@ -298,21 +318,17 @@ fn ts_type_paren(ty: &Type) -> String {
 // Instance type resolution — converts Type::Instance(TypeId) → Type::Struct(name)
 // ---------------------------------------------------------------------------
 
-/// Recursively convert `Type::Instance(id)` → `Type::Struct(name)` in a `Type`.
+/// Recursively resolve nested `Type::Instance` references inside compound types.
 ///
-/// Called before emitting TypeScript so that all downstream type-processing
-/// functions (ts_type, rename_type_with_map, collect_type_ref, etc.) only see
-/// the string-keyed `Struct(name)` form they already handle.
+/// `Instance(id)` is preserved as-is — all downstream printing uses
+/// `ts_type_with_module` which resolves the name via `module_types` at print
+/// time.  This function recurses only to handle `Instance` inside `Array`,
+/// `Option`, `Map`, etc.
+#[allow(clippy::only_used_in_recursion)]
 fn resolve_type(ty: Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> Type {
     match ty {
-        Type::Instance(id) => {
-            let name = module_types
-                .get(id)
-                .and_then(|t| t.name())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("type{}", id.index()));
-            Type::Struct(name)
-        }
+        // Instance(id) is the canonical post-build form — preserve it unchanged.
+        Type::Instance(_) => ty,
         Type::Array(elem) => Type::Array(Box::new(resolve_type(*elem, module_types))),
         Type::Map(k, v) => Type::Map(
             Box::new(resolve_type(*k, module_types)),

@@ -384,7 +384,7 @@ pub(super) fn emit_function(
     };
     ensure_trailing_unreachable(func, &mut js_func);
     crate::ast_printer::NULL_ASSERT.set(engine == EngineKind::Flash);
-    crate::ast_printer::print_function(&js_func, preamble.as_deref(), out);
+    crate::ast_printer::print_function(&js_func, preamble.as_deref(), module_types, out);
     crate::ast_printer::NULL_ASSERT.set(false);
     Ok(())
 }
@@ -1143,6 +1143,7 @@ fn emit_class_method(
         preamble.as_deref(),
         is_override,
         flash_ctor_extra_param.as_deref(),
+        module_types,
         out,
     );
     crate::ast_printer::NULL_ASSERT.set(false);

@@ -427,9 +427,11 @@ fn infer_inst_type(
         Op::Const(c) => c.ty(),
 
         // Arithmetic ops are untyped in the IR pending Phase 9 monomorphisation.
-        // Propagate the lhs type as a conservative approximation; fall back to
-        // rhs when lhs is Unknown so we don't needlessly poison downstream inference.
-        Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
+        // Propagate the lhs type; forward flow only — Unknown lhs stays Unknown.
+        Op::Add(a, _) => func.value_types[*a].clone(),
+        // Sub/Mul/Div/Rem: fall back to rhs when lhs is Unknown so a single
+        // concrete operand doesn't poison the result.
+        Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
             let ty_a = &func.value_types[*a];
             if *ty_a == Type::Unknown {
                 func.value_types[*b].clone()
@@ -439,14 +441,9 @@ fn infer_inst_type(
         }
         Op::Neg(a) => func.value_types[*a].clone(),
 
-        // Bitwise: same — fall back to rhs when lhs is Unknown.
-        Op::BitAnd(a, b) | Op::BitOr(a, b) | Op::BitXor(a, b) | Op::Shl(a, b) | Op::Shr(a, b) => {
-            let ty_a = &func.value_types[*a];
-            if *ty_a == Type::Unknown {
-                func.value_types[*b].clone()
-            } else {
-                ty_a.clone()
-            }
+        // Bitwise: propagate lhs type.
+        Op::BitAnd(a, _) | Op::BitOr(a, _) | Op::BitXor(a, _) | Op::Shl(a, _) | Op::Shr(a, _) => {
+            func.value_types[*a].clone()
         }
         Op::BitNot(a) => func.value_types[*a].clone(),
 
@@ -605,17 +602,12 @@ fn infer_inst_type(
             }
         }
 
-        // Select: prefer a concrete branch over Unknown.
+        // Select: infer common type of the two branches.
         Op::Select {
             on_true, on_false, ..
-        } => {
-            let ty_t = &func.value_types[*on_true];
-            let ty_f = &func.value_types[*on_false];
-            match (ty_t, ty_f) {
-                (Type::Unknown, other) | (other, Type::Unknown) => other.clone(),
-                _ => infer_common_type([ty_t, ty_f].into_iter()),
-            }
-        }
+        } => infer_common_type(
+            [&func.value_types[*on_true], &func.value_types[*on_false]].into_iter(),
+        ),
 
         // SystemCall: infer types from frontend-provided rules.
         Op::SystemCall {

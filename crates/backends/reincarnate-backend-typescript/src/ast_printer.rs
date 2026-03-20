@@ -8,12 +8,16 @@
 use std::cell::Cell;
 use std::fmt::Write;
 
+use reincarnate_core::entity::PrimaryMap;
 use reincarnate_core::ir::ast::BinOp;
-use reincarnate_core::ir::{CastKind, CmpKind, Constant, MethodKind, Type, UnaryOp, Visibility};
+use reincarnate_core::ir::module::TypeDecl;
+use reincarnate_core::ir::{
+    CastKind, CmpKind, Constant, MethodKind, Type, TypeId, UnaryOp, Visibility,
+};
 
 use crate::emit::sanitize_ident;
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
-use crate::types::ts_type;
+use crate::types::{ts_type, ts_type_id, ts_type_with_module};
 
 thread_local! {
     /// When true, bare `return;` is printed as `return undefined;` to satisfy
@@ -25,6 +29,46 @@ thread_local! {
     /// `null!` (type: `never`, assignable to everything) preserves runtime behavior.
     /// Comparison operands use `print_expr_operand` which bypasses this.
     pub(crate) static NULL_ASSERT: Cell<bool> = const { Cell::new(false) };
+
+    /// Pointer to the current `module_types` map, set around each call to
+    /// `print_function` / `print_class_method`.  All internal helpers use
+    /// `print_type` (which reads this) instead of calling `ts_type` directly,
+    /// so `Instance(id)` is resolved to its short name at print time.
+    ///
+    /// # Safety
+    /// The caller must ensure the referenced `PrimaryMap` outlives the printer
+    /// call.  We set this to null after the call returns, so the pointer is
+    /// never dangled.
+    static MODULE_TYPES: Cell<*const PrimaryMap<TypeId, TypeDecl>> =
+        const { Cell::new(std::ptr::null()) };
+}
+
+/// Format an IR `Type` for TypeScript output, resolving `Instance(id)` via the
+/// thread-local `module_types` set by `print_function` / `print_class_method`.
+fn print_type(ty: &Type) -> String {
+    MODULE_TYPES.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            ts_type(ty)
+        } else {
+            // SAFETY: pointer is set from a `&PrimaryMap` that outlives the call.
+            let module_types: &PrimaryMap<TypeId, TypeDecl> = unsafe { &*ptr };
+            ts_type_with_module(ty, module_types)
+        }
+    })
+}
+
+/// Format a `TypeId` to its short TypeScript name via thread-local `module_types`.
+fn print_type_id(id: TypeId) -> String {
+    MODULE_TYPES.with(|cell| {
+        let ptr = cell.get();
+        if ptr.is_null() {
+            "unknown".into()
+        } else {
+            let module_types: &PrimaryMap<TypeId, TypeDecl> = unsafe { &*ptr };
+            ts_type_id(id, module_types)
+        }
+    })
 }
 
 /// Unwrap nested `Cast(x, T, Coerce)` when the inner is also a Coerce to the
@@ -206,7 +250,7 @@ fn has_bare_return(stmts: &[JsStmt]) -> bool {
 /// `return;` statements, the type is widened to `T | undefined` to satisfy
 /// `noImplicitReturns`. (AS3 functions can `returnvoid` from typed functions.)
 fn effective_return_type(js: &JsFunction) -> (String, bool) {
-    let ret_ty = ts_type(&js.return_ty);
+    let ret_ty = print_type(&js.return_ty);
     let needs_undefined =
         !matches!(js.return_ty, Type::Void | Type::Unknown) && has_bare_return(&js.body);
     if needs_undefined {
@@ -217,7 +261,16 @@ fn effective_return_type(js: &JsFunction) -> (String, bool) {
 }
 
 /// Print a standalone function.
-pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String) {
+///
+/// `module_types` is used to resolve `Type::Instance(id)` to its short
+/// TypeScript identifier in all type annotations emitted by this function.
+pub fn print_function(
+    js: &JsFunction,
+    preamble: Option<&str>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
+    out: &mut String,
+) {
+    MODULE_TYPES.with(|cell| cell.set(module_types as *const _));
     let vis = visibility_prefix(js.visibility);
     let star = if js.is_generator { "*" } else { "" };
     let params = print_params(&js.params, &js.param_defaults, js.has_rest_param, false);
@@ -248,6 +301,7 @@ pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String)
     }
 
     let _ = writeln!(out, "}}\n");
+    MODULE_TYPES.with(|cell| cell.set(std::ptr::null()));
 }
 
 /// Print a class method.
@@ -256,6 +310,7 @@ pub fn print_function(js: &JsFunction, preamble: Option<&str>, out: &mut String)
 /// used by the Flash emitter to inject `_shims: FlashShims` (or
 /// `readonly _shims: FlashShims` for base classes) as the first constructor
 /// parameter so each game instance carries its own shim set.
+#[allow(clippy::too_many_arguments)]
 pub fn print_class_method(
     js: &JsFunction,
     raw_name: &str,
@@ -263,8 +318,10 @@ pub fn print_class_method(
     preamble: Option<&str>,
     is_override: bool,
     extra_first_param: Option<&str>,
+    module_types: &PrimaryMap<TypeId, TypeDecl>,
     out: &mut String,
 ) {
+    MODULE_TYPES.with(|cell| cell.set(module_types as *const _));
     let (params, param_defaults) = if skip_self && !js.params.is_empty() {
         let defaults_offset = js.param_defaults.len().min(1);
         (&js.params[1..], &js.param_defaults[defaults_offset..])
@@ -342,6 +399,7 @@ pub fn print_class_method(
     }
 
     let _ = writeln!(out, "  }}");
+    MODULE_TYPES.with(|cell| cell.set(std::ptr::null()));
 }
 
 fn print_params(
@@ -402,7 +460,7 @@ fn print_params(
                 format!(
                     "{prefix}{}: {}{default_suffix}",
                     sanitize_ident(name),
-                    ts_type(effective_ty)
+                    print_type(effective_ty)
                 )
             }
         })
@@ -487,9 +545,9 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         && !matches!(ty, Type::Unknown | Type::Option(_))
                         && !NULL_ASSERT.get();
                     let type_str = if is_null_init {
-                        format!("{} | null", ts_type(ty))
+                        format!("{} | null", print_type(ty))
                     } else {
-                        ts_type(ty)
+                        print_type(ty)
                     };
                     // Cast to the same type: strip TS assertion forms and use type
                     // annotation. Keep function-call forms (asType, Number, int, etc.).
@@ -515,7 +573,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // variable → TS2322.
                         let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_))
+                            && !matches!(ty, Type::Struct(_) | Type::Instance(_))
                             && !is_syscall_init;
                         if cast_ty == ty && is_ts_assertion {
                             let _ = writeln!(
@@ -540,7 +598,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                     // assigned"). The `!` tells TypeScript to trust that the variable will
                     // be assigned before any read on every live path.
                     let bang = if *mutable { "!" } else { "" };
-                    let _ = writeln!(out, "{indent}{kw} {name_str}{bang}: {};", ts_type(ty));
+                    let _ = writeln!(out, "{indent}{kw} {name_str}{bang}: {};", print_type(ty));
                 }
                 (None, Some(init)) => {
                     // Cast → determine if the cast form is a TS assertion (strippable
@@ -553,14 +611,14 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // SystemCall inits must also NOT be stripped (see above comment).
                         let is_syscall_init = matches!(expr.as_ref(), JsExpr::SystemCall { .. });
                         let is_ts_assertion = matches!(kind, CastKind::NullableCoerce)
-                            && !matches!(ty, Type::Struct(_))
+                            && !matches!(ty, Type::Struct(_) | Type::Instance(_))
                             && !is_syscall_init;
                         if is_ts_assertion {
                             // Strip TS assertion, use type annotation + inner expr.
                             let _ = writeln!(
                                 out,
                                 "{indent}{kw} {name_str}: {} = {};",
-                                ts_type(ty),
+                                print_type(ty),
                                 print_expr(expr),
                             );
                         } else {
@@ -569,7 +627,7 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                             let _ = writeln!(
                                 out,
                                 "{indent}{kw} {name_str}: {} = {};",
-                                ts_type(ty),
+                                print_type(ty),
                                 print_expr(init),
                             );
                         }
@@ -865,7 +923,7 @@ fn print_for_init(stmt: &JsStmt) -> Option<String> {
             match ty {
                 Some(ty) => Some(format!(
                     "{kw} {name_str}: {} = {}",
-                    ts_type(ty),
+                    print_type(ty),
                     print_expr(init)
                 )),
                 None => Some(format!("{kw} {name_str} = {}", print_expr(init))),
@@ -1028,27 +1086,41 @@ fn print_expr(expr: &JsExpr) -> String {
             kind,
         } => {
             match (kind, ty) {
-                // NullableCoerce + Struct/Enum → asType(x, Foo)! (runtime null-on-failure).
-                // The `!` preserves AS3 semantics: accessing null is a runtime crash in AS3,
-                // just as `!` causes a runtime TypeError in TypeScript. Under strictNullChecks
-                // the result type is `T` (non-nullable) so it is usable in all value contexts.
+                // NullableCoerce + named type (Struct or Instance) → asType(x, Foo)!
+                // (runtime null-on-failure).  The `!` preserves AS3 semantics: accessing
+                // null is a runtime crash in AS3, just as `!` causes a runtime TypeError
+                // in TypeScript. Under strictNullChecks the result type is `T`
+                // (non-nullable) so it is usable in all value contexts.
                 (CastKind::NullableCoerce, Type::Struct(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
                     format!("asType({}, {})!", print_expr(inner), sanitize_ident(short))
                 }
-                // Coerce + Struct/Enum → TS assertion (compiler-guaranteed).
+                (CastKind::NullableCoerce, Type::Instance(id)) => {
+                    let ts_name = print_type_id(*id);
+                    format!("asType({}, {})!", print_expr(inner), ts_name)
+                }
+                // Coerce + named type (Struct or Instance) → TS assertion (compiler-guaranteed).
                 // Special case: `null as Type` is TS2352 because the types don't overlap;
                 // use `null as unknown as Type` to go through a safe intermediate.
                 // Also: some type names (e.g. AS3 `Class`) map to `any` in TypeScript;
-                // use ts_type() to get the canonical form so `as Class` doesn't emit
+                // use print_type() to get the canonical form so `as Class` doesn't emit
                 // a reference to the runtime value `Class` as a type annotation (TS2749).
                 (CastKind::Coerce, Type::Struct(name)) => {
                     let short = name.rsplit("::").next().unwrap_or(name);
                     let ts_name = if matches!(short, "Class" | "Object") {
-                        ts_type(ty)
+                        print_type(ty)
                     } else {
                         sanitize_ident(short)
                     };
+                    let inner_s = print_expr_operand(inner);
+                    if matches!(inner.as_ref(), JsExpr::Literal(Constant::Null)) {
+                        format!("null as unknown as {ts_name}")
+                    } else {
+                        format!("{inner_s} as {ts_name}")
+                    }
+                }
+                (CastKind::Coerce, Type::Instance(id)) => {
+                    let ts_name = print_type_id(*id);
                     let inner_s = print_expr_operand(inner);
                     if matches!(inner.as_ref(), JsExpr::Literal(Constant::Null)) {
                         format!("null as unknown as {ts_name}")
@@ -1097,7 +1169,7 @@ fn print_expr(expr: &JsExpr) -> String {
                 }
                 // NullableCoerce + Primitive → TS type assertion.
                 (CastKind::NullableCoerce, _) => {
-                    format!("{} as {}", print_expr_operand(inner), ts_type(ty))
+                    format!("{} as {}", print_expr_operand(inner), print_type(ty))
                 }
             }
         }
@@ -1236,7 +1308,7 @@ fn print_expr(expr: &JsExpr) -> String {
             infer_param_types,
         } => {
             let params_str = print_params(params, &[], *has_rest_param, *infer_param_types);
-            let ret_ty = ts_type(return_ty);
+            let ret_ty = print_type(return_ty);
             let mut out = format!("({params_str}): {ret_ty} => {{\n");
             print_stmts(body, &mut out, "  ");
             out.push('}');
@@ -1279,8 +1351,10 @@ fn needs_parens(expr: &JsExpr) -> bool {
         // Function-call forms (asType, Number, int, etc.) don't need parens.
         // Only `x as T` forms need them.
         JsExpr::Cast { ty, kind, .. } => match (kind, ty) {
-            (CastKind::NullableCoerce, Type::Struct(_)) => false,
-            (CastKind::Coerce, Type::Struct(_)) => true, // `x as Foo`
+            // NullableCoerce + named type → function call form (asType(x, Foo)!) — no parens needed.
+            (CastKind::NullableCoerce, Type::Struct(_) | Type::Instance(_)) => false,
+            // Coerce + named type → `x as Foo` assertion — needs parens as operand.
+            (CastKind::Coerce, Type::Struct(_) | Type::Instance(_)) => true,
             (
                 CastKind::Coerce,
                 Type::Float(_)
@@ -1345,6 +1419,14 @@ fn print_type_check(expr: &JsExpr, ty: &Type, use_instanceof: bool) -> String {
             } else {
                 // Flash: use isType() — handles both classes and AS3 interfaces.
                 format!("isType({}, {})", print_expr(expr), sanitize_ident(short))
+            }
+        }
+        Type::Instance(id) => {
+            let ts_name = print_type_id(*id);
+            if use_instanceof {
+                format!("({} as any) instanceof {}", print_expr(expr), ts_name)
+            } else {
+                format!("isType({}, {})", print_expr(expr), ts_name)
             }
         }
         Type::Union(types) => {
