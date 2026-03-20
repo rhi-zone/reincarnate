@@ -992,6 +992,79 @@ impl Transform for ConstraintSolve2 {
             }
         }
 
+        // -----------------------------------------------------------------------
+        // Step 7: emit inference failure diagnostics for values that remain
+        // Unknown after solving.
+        // -----------------------------------------------------------------------
+        // RC1001 — value had no constraints touching it (arena binding is None).
+        // RC1005 — value was constrained but all constraints resolved to Unknown.
+        // -----------------------------------------------------------------------
+        {
+            use crate::pipeline::checker::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
+            let mut step7_diagnostics: Vec<Diagnostic> = Vec::new();
+
+            for ((fid, func), data) in module.functions.iter().zip(func_data.iter()) {
+                // Build ValueId → Op::variant_name map.
+                let mut value_op: HashMap<ValueId, &'static str> = HashMap::new();
+                for inst in func.insts.values() {
+                    if let Some(result) = inst.result {
+                        value_op.insert(result, inst.op.variant_name());
+                    }
+                }
+
+                let func_name = module.func_name(fid).to_string();
+
+                for (vid, &var_id) in &data.value_vars {
+                    // Only report values that are still Unknown after Step 5.
+                    if !matches!(func.value_types[*vid], Type::Unknown) {
+                        continue;
+                    }
+
+                    // Skip Alloc and Load results — they are not inference targets.
+                    let op_name = match value_op.get(vid) {
+                        Some(&name) => name,
+                        None => continue, // block param or other non-inst value
+                    };
+                    if op_name == "Alloc" || op_name == "Load" {
+                        continue;
+                    }
+
+                    // Determine whether the var was ever bound in the arena.
+                    let binding = arena.binding_of(var_id);
+                    let (code, message) = if binding.is_none() {
+                        // Var was never unified with anything — no constraints touched it.
+                        (
+                            DiagnosticCode::Rc(RcDiagnostic::InferenceNoConstraints),
+                            format!(
+                                "value {:?} remains Unknown: no constraints (produced by Op::{})",
+                                vid, op_name
+                            ),
+                        )
+                    } else {
+                        // Var was unified but all constraints resolved to Unknown.
+                        (
+                            DiagnosticCode::Rc(RcDiagnostic::InferenceInheritedUnknown),
+                            format!(
+                                "value {:?} remains Unknown: all constraints resolved to Unknown (produced by Op::{})",
+                                vid, op_name
+                            ),
+                        )
+                    };
+
+                    step7_diagnostics.push(Diagnostic {
+                        file: func_name.clone(),
+                        line: 0,
+                        col: 0,
+                        code,
+                        severity: Severity::Warning,
+                        message,
+                    });
+                }
+            }
+
+            module.diagnostics.append(&mut step7_diagnostics);
+        }
+
         Ok(TransformResult { module, changed })
     }
 }
