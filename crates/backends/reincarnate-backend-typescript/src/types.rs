@@ -52,7 +52,39 @@ pub fn ts_type_id(id: TypeId, module_types: &PrimaryMap<TypeId, TypeDecl>) -> St
 pub fn ts_type_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> String {
     match ty {
         Type::Instance(id) => ts_type_id(*id, module_types),
+        // Recurse into composite types so nested Instance(id) references are resolved.
+        Type::Array(elem) => format!("{}[]", ts_type_paren_with_module(elem, module_types)),
+        Type::Option(inner) => format!("{} | null", ts_type_paren_with_module(inner, module_types)),
+        Type::Function(sig) => {
+            let params: Vec<_> = sig
+                .params
+                .iter()
+                .enumerate()
+                .map(|(i, t)| format!("p{}: {}", i, ts_type_with_module(t, module_types)))
+                .collect();
+            format!(
+                "({}) => {}",
+                params.join(", "),
+                ts_type_with_module(&sig.return_ty, module_types)
+            )
+        }
+        Type::Union(types) => {
+            let parts: Vec<_> = types
+                .iter()
+                .map(|t| ts_type_with_module(t, module_types))
+                .collect();
+            parts.join(" | ")
+        }
         _ => ts_type(ty),
+    }
+}
+
+fn ts_type_paren_with_module(ty: &Type, module_types: &PrimaryMap<TypeId, TypeDecl>) -> String {
+    let s = ts_type_with_module(ty, module_types);
+    if matches!(ty, Type::Union(_) | Type::Function(_)) {
+        format!("({s})")
+    } else {
+        s
     }
 }
 

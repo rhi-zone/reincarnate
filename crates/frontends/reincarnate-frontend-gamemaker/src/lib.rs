@@ -311,10 +311,14 @@ fn translate_scripts(
 
     // Pre-intern Instance TypeIds for all object names so translators can type
     // self/with-body parameters as Type::Instance(TypeId).
-    let instance_types: HashMap<String, TypeId> = obj_names
+    let mut instance_types: HashMap<String, TypeId> = obj_names
         .iter()
         .map(|name| (name.clone(), mb.intern_type(name)))
         .collect();
+    // GMLObject is the runtime base class for all GML instances; it is not an
+    // OBJT entry, so it must be interned explicitly for with-body fallback typing.
+    let gml_object_id = mb.intern_type("GMLObject");
+    instance_types.insert("GMLObject".to_string(), gml_object_id);
 
     for script in &scpt.scripts {
         let script_name = dw
@@ -472,10 +476,12 @@ fn translate_global_inits(
 
     // Pre-intern Instance TypeIds for all object names so translators can type
     // self/with-body parameters as Type::Instance(TypeId).
-    let instance_types: HashMap<String, TypeId> = obj_names
+    let mut instance_types: HashMap<String, TypeId> = obj_names
         .iter()
         .map(|name| (name.clone(), mb.intern_type(name)))
         .collect();
+    let gml_object_id = mb.intern_type("GMLObject");
+    instance_types.insert("GMLObject".to_string(), gml_object_id);
 
     let mut count = 0;
     for &script_id in &glob.script_ids {
@@ -568,10 +574,12 @@ fn translate_room_creation(
 
     // Pre-intern Instance TypeIds for all object names so translators can type
     // self/with-body parameters as Type::Instance(TypeId).
-    let instance_types: HashMap<String, TypeId> = obj_names
+    let mut instance_types: HashMap<String, TypeId> = obj_names
         .iter()
         .map(|name| (name.clone(), mb.intern_type(name)))
         .collect();
+    let gml_object_id = mb.intern_type("GMLObject");
+    instance_types.insert("GMLObject".to_string(), gml_object_id);
 
     let mut count = 0;
     let mut creation_code_map = BTreeMap::new();

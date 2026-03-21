@@ -46,10 +46,12 @@ pub fn translate_objects(
 
     // Pre-intern Instance TypeIds for all object names so translators can type
     // self/with-body parameters as Type::Instance(TypeId).
-    let instance_types: HashMap<String, TypeId> = obj_names
+    let mut instance_types: HashMap<String, TypeId> = obj_names
         .iter()
         .map(|name| (name.clone(), mb.intern_type(name)))
         .collect();
+    let gml_object_id = mb.intern_type("GMLObject");
+    instance_types.insert("GMLObject".to_string(), gml_object_id);
 
     for (obj_idx, obj) in objt.objects.iter().enumerate() {
         let obj_name = &obj_names[obj_idx];

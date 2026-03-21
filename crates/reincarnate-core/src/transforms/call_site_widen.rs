@@ -1,9 +1,46 @@
 use std::collections::HashMap;
 
 use crate::error::CoreError;
-use crate::ir::{Module, Type};
+use crate::ir::{Module, Type, TypeDecl, TypeId};
 use crate::pipeline::{Transform, TransformResult};
 use crate::transforms::call_site_flow::collect_call_site_types;
+
+/// Returns true if `caller` is compatible with `param` — i.e., no widening needed.
+///
+/// Two types are compatible when they are equal OR when `caller` is an `Instance(X)`
+/// and `param` is `Instance(Y)` with Y in X's ancestor chain. This handles the case
+/// where a script function's `self` is typed as `GMLObject` (the base) but callers
+/// pass specific subtype instances (`Wall`, `Enemy`, etc.).
+fn is_compatible(module: &Module, caller: &Type, param: &Type) -> bool {
+    if caller == param {
+        return true;
+    }
+    let (Type::Instance(caller_id), Type::Instance(param_id)) = (caller, param) else {
+        return false;
+    };
+    // Walk the ancestor chain of caller_id looking for param_id.
+    is_ancestor_of(module, *param_id, *caller_id)
+}
+
+/// Returns true if `ancestor_id` is equal to `type_id` or appears anywhere in
+/// `type_id`'s parent chain.
+fn is_ancestor_of(module: &Module, ancestor_id: TypeId, type_id: TypeId) -> bool {
+    let mut current = type_id;
+    loop {
+        if current == ancestor_id {
+            return true;
+        }
+        let Some(decl) = module.types.get(current) else {
+            return false;
+        };
+        match decl {
+            TypeDecl::Object {
+                parent: Some(p), ..
+            } => current = *p,
+            _ => return false,
+        }
+    }
+}
 
 /// Interprocedural call-site type widening — widens callee parameter types
 /// that were narrowed by `ConstraintSolve` when callers pass incompatible types.
@@ -98,13 +135,13 @@ impl Transform for CallSiteTypeWiden {
                     continue;
                 }
 
-                // Widen if any non-Unknown caller passes a type that differs
-                // from the current param type. Unknown callers are skipped —
-                // they don't indicate a type conflict (they're already
-                // compatible with any concrete type).
+                // Widen if any non-Unknown caller passes a type that is
+                // incompatible with the current param type. Unknown callers
+                // and Instance subtypes (e.g. Wall passed to GMLObject self)
+                // are skipped — they don't indicate a type conflict.
                 let should_widen = caller_types
                     .iter()
-                    .any(|t| t != &Type::Unknown && t != &param_ty);
+                    .any(|t| t != &Type::Unknown && !is_compatible(&module, t, &param_ty));
 
                 if should_widen {
                     let func = &mut module.functions[func_id];

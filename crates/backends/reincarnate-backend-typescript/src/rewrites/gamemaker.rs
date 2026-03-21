@@ -1333,17 +1333,25 @@ fn try_rewrite_system_call(
 
             // IIFE for ByValue captures: ((cap0, ...) => (_self) => body)(cap_val0, ...)
             let mut all_params = closure_func.params;
-            let cap_params: Vec<(String, Type)> = all_params
-                .split_off(n_reg)
-                .into_iter()
-                .map(|(n, _)| (n, Type::Unknown))
-                .collect();
+            // Preserve the capture param types — they are set by the frontend
+            // (e.g., `_other: GMLObject`) and stripping them to `unknown` would
+            // cause TS18046 errors in the closure body.
+            let cap_params: Vec<(String, Type)> = all_params.split_off(n_reg);
             let reg_params = all_params;
             let cap_vals: Vec<JsExpr> = args.drain(1..).collect();
+            // The outer IIFE returns the inner closure. Compute the correct return
+            // type so TypeScript knows the IIFE produces the right callback type
+            // (e.g. `(p0: GMLObject) => void` for withInstances callbacks).
+            let iife_return_ty = Type::Function(Box::new(reincarnate_core::ir::ty::FunctionSig {
+                params: reg_params.iter().map(|(_, t)| t.clone()).collect(),
+                return_ty: closure_func.return_ty.clone(),
+                defaults: Vec::new(),
+                has_rest_param: closure_func.has_rest_param,
+            }));
             Some(JsExpr::Call {
                 callee: Box::new(JsExpr::ArrowFunction {
                     params: cap_params,
-                    return_ty: Type::Unknown,
+                    return_ty: iife_return_ty,
                     body: vec![crate::js_ast::JsStmt::Return(Some(JsExpr::ArrowFunction {
                         params: reg_params,
                         return_ty: closure_func.return_ty,

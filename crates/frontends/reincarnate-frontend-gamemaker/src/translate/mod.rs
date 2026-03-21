@@ -235,16 +235,27 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
     let mut params = Vec::new();
     let mut defaults = Vec::new();
     if ctx.has_self {
+        // Use the declared class type if available; fall back to GMLObject so
+        // that script functions (class_name = None) get a typed self rather
+        // than unknown, enabling property access type-checking.
         let self_ty = ctx
             .class_name
             .and_then(|name| ctx.instance_types.get(name).copied())
+            .or_else(|| ctx.instance_types.get("GMLObject").copied())
             .map(Type::Instance)
             .unwrap_or(Type::Unknown);
         params.push(self_ty);
         defaults.push(None);
     }
     if ctx.has_other {
-        params.push(Type::Unknown);
+        // `other` is always a GML object instance (e.g. collision partner).
+        let other_ty = ctx
+            .instance_types
+            .get("GMLObject")
+            .copied()
+            .map(Type::Instance)
+            .unwrap_or(Type::Unknown);
+        params.push(other_ty);
         defaults.push(None);
     }
     for _ in 0..arg_count {

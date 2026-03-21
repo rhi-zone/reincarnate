@@ -7,7 +7,7 @@ use super::func::MethodKind;
 use super::func::{CaptureMode, CaptureParam, FuncId, Function, Visibility};
 use super::inst::{CastKind, CmpKind, Inst, Op, Terminator};
 use super::module::{
-    ClassDef, EntryPoint, EnumDef, ExternalImport, Global, Import, Module, StructDef,
+    ClassDef, EntryPoint, EnumDef, ExternalImport, Global, Import, Module, StructDef, TypeDecl,
 };
 use super::ty::{FunctionSig, Type};
 use super::value::{Constant, ValueId};
@@ -771,6 +771,15 @@ impl ModuleBuilder {
     }
 
     pub fn add_class(&mut self, class: ClassDef) {
+        // Wire TypeDecl.parent from ClassDef.super_class so that the subtype
+        // check in CallSiteTypeWiden can traverse the inheritance chain.
+        if let Some(super_name) = &class.super_class {
+            let child_id = self.module.intern_type(&class.name);
+            let parent_id = self.module.intern_type(super_name);
+            if let Some(TypeDecl::Object { parent, .. }) = self.module.types.get_mut(child_id) {
+                *parent = Some(parent_id);
+            }
+        }
         self.module.classes.push(class);
     }
 

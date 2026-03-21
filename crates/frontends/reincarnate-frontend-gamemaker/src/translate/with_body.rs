@@ -274,13 +274,38 @@ pub(super) fn translate_with_body(
     // ByRef would be more faithful to GML semantics (with-bodies are
     // inline code) but requires outer-scope `let` declarations that
     // Mem2Reg may have eliminated.  ByValue is safe for all cases.
+    //
+    // `_other` is a special capture: it holds the outer `self` (the enclosing
+    // event handler's instance), so it should have the outer self's type rather
+    // than Unknown.  The outer self type is the enclosing class (if known) or
+    // GMLObject (the universal base class).
+    let outer_self_ty = if wctx.has_outer_self {
+        wctx.ctx
+            .class_name
+            .and_then(|n| instance_types.get(n).copied())
+            .or_else(|| instance_types.get("GMLObject").copied())
+            .map(Type::Instance)
+            .unwrap_or(Type::Unknown)
+    } else {
+        Type::Unknown
+    };
     let capture_ids = if wctx.captured_names.is_empty() {
         vec![]
     } else {
         fb.add_capture_params(
             wctx.captured_names
                 .iter()
-                .map(|n| (n.clone(), Type::Unknown, CaptureMode::ByValue))
+                .enumerate()
+                .map(|(i, n)| {
+                    // The first capture is `_other` when has_outer_self; give it
+                    // the outer self type.  All other captures stay Unknown.
+                    let ty = if wctx.has_outer_self && i == 0 {
+                        outer_self_ty.clone()
+                    } else {
+                        Type::Unknown
+                    };
+                    (n.clone(), ty, CaptureMode::ByValue)
+                })
                 .collect(),
         )
     };

@@ -10,6 +10,10 @@
       "path": "gamemaker/instance"
     }
   },
+  "runtime_type": {
+    "name": "GameRuntime",
+    "path": "gamemaker/runtime"
+  },
   "scaffold": {
     "imports": [
       {
