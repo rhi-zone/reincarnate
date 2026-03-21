@@ -394,6 +394,43 @@ fn promote_multi_store(func: &mut Function) -> bool {
 
     // Step 3: Phi placement per alloc.
     for (alloc_idx, (ptr, info)) in alloc_infos.iter().enumerate() {
+        // Refine alloc type from stored values when the declared alloc type is Unknown.
+        // ConstraintSolve runs before Mem2Reg and may have narrowed stored value types
+        // to concrete types even when the alloc declaration remained Unknown (due to
+        // circular load-compute-store dependencies that TypeInference can't resolve).
+        let effective_ty = if info.ty == Type::Unknown {
+            let stored_tys: Vec<&Type> = info
+                .stores
+                .iter()
+                .filter_map(|(sid, _)| {
+                    if let Op::Store { value, .. } = &func.insts[*sid].op {
+                        let ty = &func.value_types[*value];
+                        if *ty != Type::Unknown {
+                            Some(ty)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if stored_tys.is_empty() {
+                Type::Unknown
+            } else if stored_tys.iter().all(|t| **t == *stored_tys[0]) {
+                stored_tys[0].clone()
+            } else if stored_tys
+                .iter()
+                .all(|t| matches!(t, Type::Int(_) | Type::UInt(_) | Type::Float(_)))
+            {
+                Type::Float(64)
+            } else {
+                Type::Unknown
+            }
+        } else {
+            info.ty.clone()
+        };
+
         let store_blocks: HashSet<BlockId> = info.stores.iter().map(|(_, b)| *b).collect();
 
         // Iterated dominance frontier worklist.
@@ -411,10 +448,10 @@ fn promote_multi_store(func: &mut Function) -> bool {
 
         // Insert block params for phi nodes.
         for &phi_block in &phi_blocks {
-            let phi_value = func.value_types.push(info.ty.clone());
+            let phi_value = func.value_types.push(effective_ty.clone());
             func.blocks[phi_block].params.push(BlockParam {
                 value: phi_value,
-                ty: info.ty.clone(),
+                ty: effective_ty.clone(),
             });
             phi_values.insert((phi_block, alloc_idx), phi_value);
         }
@@ -450,7 +487,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
         // TypeScript-valid.  GML uninitialized variables are 0/undefined which
         // coerces to 0 in arithmetic, so 0.0 is the semantically correct value.
         let initial_value = {
-            let sentinel_const = match &info.ty {
+            let sentinel_const = match &effective_ty {
                 Type::Bool => Constant::Bool(false),
                 Type::Int(_) => Constant::Int(0),
                 Type::UInt(_) => Constant::UInt(0),
@@ -460,7 +497,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                 // sentinel for reference types).
                 _ => Constant::Null,
             };
-            let v = func.value_types.push(info.ty.clone());
+            let v = func.value_types.push(effective_ty.clone());
             let init_inst_id = func.insts.push(crate::ir::Inst {
                 op: Op::Const(sentinel_const),
                 result: Some(v),

@@ -24,9 +24,12 @@ Reincarnate is a decompiler that produces working, type-safe, high-quality code 
 
 **Look up the spec; don't guess from call sites.** GML: docs.yoyogames.com (source: github.com/YoYoGames/GameMaker-Manual). Flash: AS3 API reference. A decompiled call site may be wrong; the spec is authoritative.
 
-**Fix the real problem.** A workaround avoids fixing the actual cause. Narrow guards on symptoms indicate wrong core logic. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both in TODO.md and leave the code unchanged. Emit-level casts and type widenings that exist only to satisfy the type checker without improving inference are workarounds — they paper over the gap instead of closing it.
+**Fix the real problem.** A workaround avoids fixing the actual cause. Narrow guards on symptoms indicate wrong core logic. If a fix is blocked by a deeper issue, fix the deeper issue first — or document both in TODO.md and leave the code unchanged. Emit-level casts and type widenings that exist only to satisfy the type checker without improving inference are workarounds — they paper over the gap instead of closing it. Specific prohibited patterns:
+- A boolean flag added to a function so it behaves differently in one call site to avoid a regression — fix the regression instead.
+- A secondary pass or iteration loop *inside* a single transform's `apply()` to compensate for stale data from another transform — the pipeline's fixpoint mechanism exists for this; use it.
+- Any branch whose sole purpose is "prevent regression from the other thing I broke" — that branch is the regression.
 
-**The sign of a correct fix is that code gets simpler — never monkeypatch.** A correct fix changes the model so the case can't arise. If a fix requires a "shouldn't happen but does" guard, fix what makes it happen instead. A branch that exists to compensate for upstream failures is a monkeypatch.
+**The sign of a correct fix is that code gets simpler — never monkeypatch.** A correct fix changes the model so the case can't arise. If a fix requires a "shouldn't happen but does" guard, fix what makes it happen instead. A branch that exists to compensate for upstream failures is a monkeypatch. Ad-hoc parameters, mode flags, and special-case branches are all monkeypatches — the correct fix has none of them.
 
 **Conversation is not memory.** Anything said in chat evaporates at session end. If it implies a future behavior change, write it to CLAUDE.md immediately — or it will not happen.
 

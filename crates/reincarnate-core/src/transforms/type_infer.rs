@@ -331,21 +331,74 @@ fn union_type(a: Type, b: Type) -> Type {
     }
 }
 
+/// Returns true if `value` transitively depends on a `Load` from `ptr`.
+///
+/// Used by `build_alloc_types` to detect circular store patterns such as
+/// `store ptr, add(load(ptr), delta)` — the stored value is Unknown because
+/// the alloc is Unknown, not because it is genuinely dynamically typed.
+/// These circular stores must not prevent inference from converging on a
+/// concrete type for `ptr`.
+fn value_depends_on_load_of(
+    value: ValueId,
+    ptr: ValueId,
+    result_to_inst: &HashMap<ValueId, &Inst>,
+) -> bool {
+    use crate::transforms::util::value_operands;
+    let mut visited = HashSet::new();
+    let mut stack = vec![value];
+    while let Some(vid) = stack.pop() {
+        if !visited.insert(vid) {
+            continue;
+        }
+        let Some(inst) = result_to_inst.get(&vid) else {
+            continue;
+        };
+        if let Op::Load(p) = &inst.op {
+            if *p == ptr {
+                return true;
+            }
+        }
+        for operand in value_operands(&inst.op) {
+            stack.push(operand);
+        }
+    }
+    false
+}
+
 /// Build a map from alloc ValueId → stored type, by scanning all Store instructions.
 /// If all stores to a given alloc write the same concrete type, that type is recorded.
 /// If stores write different concrete types, a `Type::Union` is produced.
-/// If any store writes `Unknown`, the alloc is left out of the map (stays Unknown)
-/// because `Unknown` means "any type" and must not be silently dropped by the union.
+/// If any store writes `Unknown` for a reason other than a circular dependency on
+/// the alloc itself, the alloc is left out of the map (stays Unknown).
+///
+/// Circular stores (e.g. `store acc, add(load(acc), delta)`) are Unknown only
+/// because the alloc is currently Unknown — they are unresolved, not genuinely
+/// dynamic.  Skipping them in `has_dynamic_store` lets the inner fixpoint loop
+/// in `infer_function` converge: once the concrete stores type the alloc,
+/// subsequent iterations resolve the circular loads/ops to concrete types.
 fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
+    // Build a reverse map: result ValueId → instruction for circular dep checks.
+    let result_to_inst: HashMap<ValueId, &Inst> = func
+        .insts
+        .values()
+        .filter_map(|inst| Some((inst.result?, inst)))
+        .collect();
+
     let mut alloc_stores: HashMap<ValueId, Option<Type>> = HashMap::new();
-    // Track allocs that receive a Unknown store — these must stay Unknown.
+    // Track allocs that receive a genuinely Unknown store (not merely circular).
     let mut has_dynamic_store: HashSet<ValueId> = HashSet::new();
 
     for inst in func.insts.values() {
         if let Op::Store { ptr, value } = &inst.op {
             let stored_ty = func.value_types[*value].clone();
             if stored_ty == Type::Unknown {
-                has_dynamic_store.insert(*ptr);
+                // A stored Unknown is not genuinely dynamic when it is caused by
+                // a circular dependency on this alloc: the alloc is Unknown →
+                // Load returns Unknown → computed value is Unknown → stored back.
+                // In that case, skip has_dynamic_store so inference can converge.
+                if !value_depends_on_load_of(*value, *ptr, &result_to_inst) {
+                    has_dynamic_store.insert(*ptr);
+                }
                 continue;
             }
             let entry = alloc_stores.entry(*ptr).or_insert(None);
@@ -361,7 +414,7 @@ fn build_alloc_types(func: &Function) -> HashMap<ValueId, Type> {
     alloc_stores
         .into_iter()
         .filter_map(|(ptr, ty)| {
-            // If any store wrote Unknown, don't narrow this alloc.
+            // If any non-circular store wrote Unknown, don't narrow this alloc.
             if has_dynamic_store.contains(&ptr) {
                 return None;
             }
@@ -1877,9 +1930,9 @@ fn infer_function(
                         continue;
                     }
                     let current = func.value_types[param.value].clone();
-                    let unified = union_type(current.clone(), common);
-                    if unified != current {
-                        func.value_types[param.value] = unified;
+                    let new_ty = union_type(current.clone(), common);
+                    if new_ty != current {
+                        func.value_types[param.value] = new_ty;
                         changed = true;
                     }
                 }
@@ -1922,23 +1975,21 @@ fn infer_function(
     // still unresolved (Unknown).  After convergence, any remaining Unknown arg is
     // genuinely dynamic (e.g. a struct-constructor result, or a call whose return
     // type can't be narrowed), so the block param must accommodate it.
-    {
-        let incoming = collect_branch_args(func);
-        for (block_id, block) in func.blocks.iter() {
-            for (i, param) in block.params.iter().enumerate() {
-                if let Some(args) = incoming.get(&(block_id, i)) {
-                    // Null sentinel values (from Mem2Reg) are typed Unknown because
-                    // their alloc had Unknown type before inference.  They are
-                    // placeholder "not yet assigned on this path" markers — not
-                    // genuinely dynamic values — and must not trigger widening.
-                    let has_persistent_dynamic = args.iter().any(|v| {
-                        func.value_types[*v] == Type::Unknown
-                            && !func.null_sentinel_values.contains(v)
-                    });
-                    if has_persistent_dynamic && func.value_types[param.value] != Type::Unknown {
-                        func.value_types[param.value] = Type::Unknown;
-                        any_changed = true;
-                    }
+    //
+    let incoming = collect_branch_args(func);
+    for (block_id, block) in func.blocks.iter() {
+        for (i, param) in block.params.iter().enumerate() {
+            if let Some(args) = incoming.get(&(block_id, i)) {
+                // Null sentinel values (from Mem2Reg) are typed Unknown because
+                // their alloc had Unknown type before inference.  They are
+                // placeholder "not yet assigned on this path" markers — not
+                // genuinely dynamic values — and must not trigger widening.
+                let has_persistent_dynamic = args.iter().any(|v| {
+                    func.value_types[*v] == Type::Unknown && !func.null_sentinel_values.contains(v)
+                });
+                if has_persistent_dynamic && func.value_types[param.value] != Type::Unknown {
+                    func.value_types[param.value] = Type::Unknown;
+                    any_changed = true;
                 }
             }
         }
