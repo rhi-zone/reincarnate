@@ -2031,8 +2031,25 @@ impl Transform for TypeInference {
                 infer_common_type(return_types.into_iter())
             };
             if has_void_return && inferred != Type::Unknown && inferred != Type::Void {
-                // Mixed void + value returns — keep Unknown.
-                continue;
+                if ctx.implicit_return_value {
+                    // GML: Return(None) = implicit 0.0.  If all explicit returns
+                    // are numeric, the implicit return is also numeric (Float(64)),
+                    // so the function returns a number on every path.
+                    fn is_all_numeric(t: &Type) -> bool {
+                        match t {
+                            Type::Int(_) | Type::UInt(_) | Type::Float(_) => true,
+                            Type::Union(vs) => vs.iter().all(is_all_numeric),
+                            _ => false,
+                        }
+                    }
+                    if !is_all_numeric(&inferred) {
+                        continue;
+                    }
+                    // All explicit returns are numeric — proceed to infer Float(64).
+                } else {
+                    // Non-GML: mixed void + value → keep Unknown.
+                    continue;
+                }
             }
             if inferred != Type::Unknown && func.sig.return_ty != inferred {
                 func.sig.return_ty = inferred;
