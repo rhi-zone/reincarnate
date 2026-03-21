@@ -683,7 +683,13 @@ fn infer_inst_type(
                             ctx.resolve_field_type(&name, field)
                                 .unwrap_or(Type::Unknown)
                         }
-                        _ => return None,
+                        _ => {
+                            // getOn("ClassName", "field") — class name is a string constant.
+                            // Look up the field on the named class.
+                            let class_name = const_strings.get(receiver)?;
+                            ctx.resolve_field_type(class_name, field)
+                                .unwrap_or(Type::Unknown)
+                        }
                     }
                 }
                 // GlobalStore is a write-side rule used by build_global_types,
