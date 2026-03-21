@@ -245,6 +245,10 @@ impl Frontend for GameMakerFrontend {
                 value_arg: 1,
             },
         );
+        module.system_call_type_rules.insert(
+            ("GameMaker.Instance".into(), "getField".into()),
+            SystemCallTypeRule::ResolveInstanceField,
+        );
 
         // Register callback-return system calls for the GML engine.
         // withInstances callbacks hide the real return value from the outer function.

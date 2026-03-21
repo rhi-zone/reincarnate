@@ -4,25 +4,27 @@ use crate::error::CoreError;
 use crate::ir::{FieldDef, FuncId, Function, MethodKind, Module, Op, StructDef, Type, Visibility};
 use crate::pipeline::{Transform, TransformResult};
 
-/// Infer struct definitions from constructor `SetField` ops.
+/// Infer struct definitions from constructor and GML create-event `SetField` ops.
 ///
-/// Scans constructor functions (`MethodKind::Constructor`) for
-/// `SetField { object: self_param, field, value }` ops and synthesizes a
-/// `StructDef` entry in `module.structs`.  This makes struct field types
-/// available to `HasField` constraint resolution and type inference before
-/// those passes run.
+/// Scans constructor functions (`MethodKind::Constructor`) and GML create events
+/// (`MethodKind::Instance` where the last `::` segment of `func.name` is `"create"`)
+/// for `SetField { object: self_param, field, value }` ops and synthesizes or augments
+/// a `StructDef` entry in `module.structs`.  This makes struct field types available to
+/// `HasField` constraint resolution and type inference before those passes run.
 ///
 /// Rules:
-/// - Only functions with `method_kind == MethodKind::Constructor` are scanned.
-/// - Only `SetField` ops whose `object` is the first entry-block parameter
-///   (the `self` parameter) are collected.
-/// - If a `StructDef` with the derived name already exists in `module.structs`,
-///   the function is skipped.
-/// - The struct name is taken from `func.class` if present; otherwise the last
-///   `::` segment of `func.name`.
-/// - After building the `StructDef`, the first entry-block param's type and
-///   `sig.params[0]` are updated to `Type::Struct(name)` when they were
-///   `Unknown` or `Var(_)`.
+/// - Functions with `method_kind == MethodKind::Constructor` are scanned.
+/// - Instance methods where the last `::` segment of `func.name` is `"create"` are also
+///   scanned (GML create events initialize instance fields but are tagged Instance).
+/// - Only `SetField` ops whose `object` is the first entry-block parameter (the `self`
+///   parameter) are collected.
+/// - If a `StructDef` with the derived name already exists AND was previously inferred by
+///   this pass, the function is skipped.  Frontend-declared structs (not inferred) are
+///   augmented with user-defined fields.
+/// - The struct name is taken from `func.class` if present; otherwise the last `::` segment
+///   of `func.name`.
+/// - After building the `StructDef`, the first entry-block param's type and `sig.params[0]`
+///   are updated to `Type::Instance(type_id)` when they were `Unknown` or `Var(_)`.
 pub struct ConstructorStructInfer;
 
 /// Determine whether a type should be replaced by an inferred struct type.
@@ -81,12 +83,12 @@ impl Transform for ConstructorStructInfer {
     }
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        // Build a set of already-known struct names so we don't overwrite them.
+        // Build a set of already-known struct names so we can decide whether to
+        // create new or augment existing.
         let known_struct_names: HashSet<String> =
             module.structs.iter().map(|s| s.name.clone()).collect();
 
-        // Collect (struct_name, fields_map) from each constructor.
-        // We collect first and mutate afterwards to avoid borrow conflicts.
+        // Collect (struct_name, fields_map) from each init function.
         struct Inferred {
             name: String,
             fields: Vec<FieldDef>,
@@ -96,13 +98,28 @@ impl Transform for ConstructorStructInfer {
         let mut inferred: Vec<Inferred> = Vec::new();
 
         for (func_id, func) in module.functions.iter() {
-            if func.method_kind != MethodKind::Constructor {
+            // Accept Constructor methods AND Instance methods named "::create"
+            // (GML create events initialize instance fields but are Instance methods).
+            let is_init_fn = func.method_kind == MethodKind::Constructor
+                || (func.method_kind == MethodKind::Instance
+                    && func.class.is_some()
+                    && func.name.rsplit("::").next() == Some("create"));
+            if !is_init_fn {
                 continue;
             }
 
             let name = struct_name(func);
+
+            // Skip if the struct was already fully inferred by a prior pass run.
+            // Frontend-declared structs (inferred == false) should be augmented.
             if known_struct_names.contains(&name) {
-                continue;
+                let already_inferred = module
+                    .find_type(&name)
+                    .map(|id| module.types[id].inferred())
+                    .unwrap_or(false);
+                if already_inferred {
+                    continue;
+                }
             }
 
             // Get the self param (entry block param[0]).
@@ -161,17 +178,46 @@ impl Transform for ConstructorStructInfer {
         let changed = !inferred.is_empty();
 
         for inf in inferred {
-            // Add the StructDef (legacy) and intern the TypeId.
-            module.structs.push(StructDef {
-                name: inf.name.clone(),
-                namespace: Vec::new(),
-                fields: inf.fields.clone(),
-                visibility: Visibility::Public,
-            });
             let type_id = module.intern_type(&inf.name);
-            // Update fields on the TypeDecl.
-            *module.types[type_id].fields_mut() = inf.fields;
-            module.types[type_id].set_inferred(true);
+
+            if known_struct_names.contains(&inf.name) {
+                // Struct was declared by the frontend (e.g. a GML object with
+                // built-in OBJT properties).  We must NOT modify module.structs
+                // here: the backend uses struct fields to emit TypeScript class
+                // properties, and adding create-event fields there would cause
+                // TS2564 (no initializer) and TS2416 (conflict with inherited).
+                //
+                // Instead, only update module.types so TypeInference can resolve
+                // field types for getField calls — module.types fields are *not*
+                // used for class property emission.
+                let existing_fields: Vec<FieldDef> = module
+                    .structs
+                    .iter()
+                    .find(|s| s.name == inf.name)
+                    .map(|s| s.fields.clone())
+                    .unwrap_or_default();
+                let mut merged = existing_fields;
+                for new_field in &inf.fields {
+                    if let Some(ef) = merged.iter_mut().find(|f| f.name == new_field.name) {
+                        ef.ty = merge_field_type(ef.ty.clone(), new_field.ty.clone());
+                    } else {
+                        merged.push(new_field.clone());
+                    }
+                }
+                merged.sort_by(|a, b| a.name.cmp(&b.name));
+                *module.types[type_id].fields_mut() = merged;
+                module.types[type_id].set_inferred(true);
+            } else {
+                // Create new struct.
+                module.structs.push(StructDef {
+                    name: inf.name.clone(),
+                    namespace: Vec::new(),
+                    fields: inf.fields.clone(),
+                    visibility: Visibility::Public,
+                });
+                *module.types[type_id].fields_mut() = inf.fields;
+                module.types[type_id].set_inferred(true);
+            }
 
             // Update the self param type in value_types and sig.params[0].
             let func = &mut module.functions[inf.func_id];
@@ -180,7 +226,6 @@ impl Transform for ConstructorStructInfer {
             let current_ty = func.value_types[entry_block_param_value].clone();
             if is_unresolved(&current_ty) {
                 func.value_types[entry_block_param_value] = Type::Instance(type_id);
-                // Also update the block param's ty field.
                 func.blocks[func.entry].params[0].ty = Type::Instance(type_id);
             }
 
@@ -191,7 +236,6 @@ impl Transform for ConstructorStructInfer {
             }
         }
 
-        // Re-check: if nothing was actually inferred, mark unchanged.
         if !changed {
             return Ok(TransformResult {
                 module,
@@ -266,8 +310,9 @@ mod tests {
     }
 
     #[test]
-    fn skips_existing_struct() {
+    fn augments_existing_non_inferred_struct() {
         let (mut module, _func_id) = make_constructor_with_fields(&[("x", Type::Float(64))]);
+        // Push a pre-existing struct (frontend-declared, not via intern_type) with no fields.
         module.structs.push(StructDef {
             name: "MyClass".to_string(),
             namespace: Vec::new(),
@@ -275,9 +320,21 @@ mod tests {
             visibility: Visibility::Public,
         });
         let result = ConstructorStructInfer.apply(module).unwrap();
-        // Should still be only 1 struct (the one we added, not a new inferred one).
+        // Should still be only 1 struct entry (not duplicated).
         assert_eq!(result.module.structs.len(), 1);
-        assert!(!result.changed);
+        // The pass ran and augmented, so changed should be true.
+        assert!(result.changed);
+        // module.structs is NOT updated for pre-existing (frontend-declared) structs to
+        // avoid causing the backend to emit unwanted class property declarations.
+        // Only module.types is updated for type-inference-only field resolution.
+        assert_eq!(result.module.structs[0].fields.len(), 0);
+        // The field "x" should be in module.types for inference.
+        let type_id = result
+            .module
+            .find_type("MyClass")
+            .expect("MyClass should be interned");
+        assert_eq!(result.module.types[type_id].fields().len(), 1);
+        assert_eq!(result.module.types[type_id].fields()[0].name, "x");
     }
 
     #[test]
@@ -325,5 +382,33 @@ mod tests {
         // No fields collected from non-self SetField.
         assert!(!result.changed);
         assert!(result.module.structs.is_empty());
+    }
+
+    #[test]
+    fn infers_struct_from_gml_create_event() {
+        // Instance method named "::create" with a class set — should be treated as init fn.
+        let sig = FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("Enemy::create", sig, Visibility::Public);
+        fb.set_class(vec![], "Enemy".to_string(), MethodKind::Instance);
+
+        let self_val = fb.param(0);
+        let val = fb.const_float(100.0);
+        fb.set_field(self_val, "hp", val);
+        fb.ret(None);
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        let module = mb.build();
+
+        let result = ConstructorStructInfer.apply(module).unwrap();
+        assert!(result.changed);
+        let structs = &result.module.structs;
+        assert_eq!(structs.len(), 1);
+        assert_eq!(structs[0].name, "Enemy");
+        assert_eq!(structs[0].fields[0].name, "hp");
     }
 }

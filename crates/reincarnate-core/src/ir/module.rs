@@ -361,6 +361,10 @@ pub enum SystemCallTypeRule {
     /// the value being stored.  Used by `build_global_types` to collect
     /// global variable types without hardcoding engine-specific system names.
     GlobalStore { name_arg: usize, value_arg: usize },
+    /// First arg is a receiver `Instance(id)`, second arg is a const string
+    /// field name.  Result type is the field's static type from the module's
+    /// struct definitions.
+    ResolveInstanceField,
 }
 
 /// A module — the top-level compilation unit.

@@ -52,6 +52,27 @@ impl ModuleContext {
                 .collect();
             struct_fields.insert(s.name.clone(), fields);
         }
+        // Also read inference-only fields from module.types (TypeDecl::Object).
+        // These include fields inferred by ConstructorStructInfer from GML create
+        // events — they are stored in module.types but NOT in module.structs to
+        // avoid causing the backend to emit unwanted class property declarations.
+        // module.structs entries (if any) take priority; module.types entries
+        // only fill in fields not already provided by module.structs.
+        for (_, decl) in module.types.iter() {
+            if let crate::ir::module::TypeDecl::Object {
+                name: Some(name),
+                fields,
+                ..
+            } = decl
+            {
+                if !fields.is_empty() {
+                    let entry = struct_fields.entry(name.clone()).or_default();
+                    for f in fields {
+                        entry.entry(f.name.clone()).or_insert_with(|| f.ty.clone());
+                    }
+                }
+            }
+        }
 
         let global_types = module
             .globals
@@ -647,6 +668,19 @@ fn infer_inst_type(
                         .get(name.as_str())
                         .cloned()
                         .unwrap_or(Type::Unknown)
+                }
+                Some(SystemCallTypeRule::ResolveInstanceField) => {
+                    let receiver = args.first()?;
+                    let field_vid = args.get(1)?;
+                    let field = const_strings.get(field_vid)?;
+                    match &func.value_types[*receiver] {
+                        Type::Instance(id) => {
+                            let name = interner.name_of(*id).to_string();
+                            ctx.resolve_field_type(&name, field)
+                                .unwrap_or(Type::Unknown)
+                        }
+                        _ => return None,
+                    }
                 }
                 // GlobalStore is a write-side rule used by build_global_types,
                 // not a result-type rule — no type to infer here.

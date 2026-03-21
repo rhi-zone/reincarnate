@@ -317,6 +317,9 @@ impl<'a> EmitCtx<'a> {
                 if propagated_sources.contains(vid) {
                     continue; // absorbed side-effecting inlines — never standalone stmts
                 }
+                if func.null_sentinel_values.contains(vid) {
+                    continue; // sentinels are never emitted as standalone stmts
+                }
                 let ty = func.value_types[*vid].clone();
                 name_types
                     .entry(name.clone())
