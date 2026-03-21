@@ -417,6 +417,10 @@ impl Transform for DeadCodeElimination {
         "dead-code-elimination"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["redundant-cast-elimination"]
+    }
+
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let mut changed = false;
         for func_id in module.functions.keys().collect::<Vec<_>>() {

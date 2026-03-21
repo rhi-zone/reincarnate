@@ -242,7 +242,7 @@ fn full_pipeline_well_formed() {
     let module = mb.build();
 
     let config = PassConfig::default();
-    let pipeline = super::default_pipeline(&config);
+    let pipeline = super::build_pipeline(&config);
     let result = pipeline.run(module).unwrap();
 
     let func = &result.functions[FuncId::new(0)];
@@ -281,13 +281,13 @@ fn full_pipeline_idempotent() {
     let config = PassConfig::default();
 
     // First run.
-    let pipeline1 = super::default_pipeline(&config);
+    let pipeline1 = super::build_pipeline(&config);
     let result1 = pipeline1.run(module).unwrap();
     let func1 = &result1.functions[FuncId::new(0)];
     assert_well_formed(func1);
 
     // Second run on the already-optimized module.
-    let pipeline2 = super::default_pipeline(&config);
+    let pipeline2 = super::build_pipeline(&config);
     let result2 = pipeline2.run(result1).unwrap();
     let func2 = &result2.functions[FuncId::new(0)];
     assert_well_formed(func2);

@@ -894,6 +894,10 @@ impl Transform for CoroutineLowering {
         "coroutine-lowering"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["type-inference"]
+    }
+
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let mut changed = false;
 

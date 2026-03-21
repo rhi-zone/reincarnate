@@ -102,6 +102,10 @@ impl Transform for RedundantCastElimination {
         "redundant-cast-elimination"
     }
 
+    fn requires(&self) -> &[&str] {
+        &["type-inference", "mem2reg", "constant-folding"]
+    }
+
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
         let mut changed = false;
         for func_id in module.functions.keys().collect::<Vec<_>>() {

@@ -88,26 +88,18 @@ impl Transform for Box<dyn PureIrPass> {
 /// Maximum number of fixpoint iterations before giving up.
 const MAX_FIXPOINT_ITERATIONS: usize = 100;
 
-/// Valid pass names for `--dump-ir-after`, in pipeline order.
+/// Descriptor for a single transform pass in the standard pipeline.
 ///
-/// Order must match `default_pipeline` in `transforms/mod.rs` exactly —
-/// the pipeline stops after the named pass, so a wrong order causes
-/// `--dump-ir-after <pass>` to stop at the wrong point.
-pub const VALID_PASS_NAMES: &[&str] = &[
-    "frontend",
-    "constructor-struct-infer",
-    "type-inference",
-    "call-site-type-flow",
-    "constraint-solve",
-    "call-site-type-widen",
-    "call-site-arity-widen",
-    "constant-folding",
-    "cfg-simplify",
-    "coroutine-lowering",
-    "mem2reg",
-    "redundant-cast-elimination",
-    "dead-code-elimination",
-];
+/// Used by [`TransformPipeline::from_descriptors`] to build a pipeline
+/// with dependency-driven ordering and invalidation expansion.
+pub struct PassDescriptor {
+    /// Kebab-case name matching [`Transform::name()`].
+    pub name: &'static str,
+    /// Create a fresh instance of this pass.
+    pub factory: fn() -> Box<dyn Transform>,
+    /// Whether this pass is enabled by the given config.
+    pub config_enabled: fn(&super::config::PassConfig) -> bool,
+}
 
 /// An ordered sequence of transforms to apply.
 pub struct TransformPipeline {
@@ -139,6 +131,39 @@ impl TransformPipeline {
     /// reports changes, or until the iteration cap is reached.
     pub fn set_fixpoint(&mut self, enabled: bool) {
         self.fixpoint = enabled;
+    }
+
+    /// Build a pipeline by topo-sorting enabled passes and expanding invalidations.
+    ///
+    /// Enabled passes (those where `descriptor.config_enabled(config)` is true)
+    /// are sorted in topological order according to their `requires()` declarations,
+    /// with ties broken by registration order in `descriptors`. Invalidation
+    /// expansion then inserts re-runs of invalidated passes where needed so that
+    /// every pass that `requires` an invalidated pass gets a fresh run.
+    pub fn from_descriptors(
+        descriptors: &[PassDescriptor],
+        config: &super::config::PassConfig,
+    ) -> Self {
+        let enabled: Vec<Box<dyn Transform>> = descriptors
+            .iter()
+            .filter(|d| (d.config_enabled)(config))
+            .map(|d| (d.factory)())
+            .collect();
+
+        let ordered = topo_sort(enabled, descriptors);
+        let expanded = expand_invalidations(ordered, descriptors);
+
+        Self {
+            transforms: expanded,
+            fixpoint: config.fixpoint,
+        }
+    }
+
+    /// Returns the name of each pass in execution order.
+    ///
+    /// Used by the CLI to validate `--dump-ir-after` arguments.
+    pub fn pass_names(&self) -> Vec<&str> {
+        self.transforms.iter().map(|t| t.name()).collect()
     }
 
     /// Validate that all `requires()` and `invalidates()` declarations are
@@ -276,6 +301,163 @@ impl TransformPipeline {
             stopped_early: false,
         })
     }
+}
+
+/// Sort enabled passes into topological order using Kahn's algorithm.
+///
+/// Edges are derived from `requires()` declarations: if `B.requires()` contains
+/// `A.name()` and A is enabled, then A must appear before B.
+///
+/// Ties in in-degree-0 candidates are broken by registration order in
+/// `descriptors`, so the output is deterministic and matches the natural
+/// pipeline order when no dependencies force a different arrangement.
+///
+/// Passes whose `requires()` entries are all absent from the enabled set
+/// are treated as having no unsatisfied dependencies (the dependency is
+/// simply not in the pipeline and is ignored). This allows passing a subset
+/// of the full pipeline without errors.
+///
+/// Panics if a dependency cycle is detected among the enabled passes.
+fn topo_sort(
+    passes: Vec<Box<dyn Transform>>,
+    descriptors: &[PassDescriptor],
+) -> Vec<Box<dyn Transform>> {
+    let desc_idx: std::collections::HashMap<&str, usize> = descriptors
+        .iter()
+        .enumerate()
+        .map(|(i, d)| (d.name, i))
+        .collect();
+
+    let enabled_names: std::collections::HashSet<String> =
+        passes.iter().map(|p| p.name().to_string()).collect();
+
+    let n = passes.len();
+    let mut result = Vec::with_capacity(n);
+    let mut remaining: Vec<Option<Box<dyn Transform>>> = passes.into_iter().map(Some).collect();
+
+    let mut added_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    loop {
+        // Find all passes whose `requires()` entries that are enabled are
+        // all already in `added_names`.
+        let mut candidates: Vec<usize> = (0..remaining.len())
+            .filter(|&i| {
+                if let Some(p) = &remaining[i] {
+                    p.requires()
+                        .iter()
+                        .filter(|r| enabled_names.contains(**r))
+                        .all(|r| added_names.contains(*r))
+                } else {
+                    false
+                }
+            })
+            .collect();
+
+        if candidates.is_empty() {
+            break;
+        }
+
+        // Break ties by descriptor registration order.
+        candidates.sort_by_key(|&i| {
+            desc_idx
+                .get(remaining[i].as_ref().unwrap().name())
+                .copied()
+                .unwrap_or(usize::MAX)
+        });
+
+        for i in candidates {
+            if let Some(p) = remaining[i].take() {
+                added_names.insert(p.name().to_string());
+                result.push(p);
+            }
+        }
+    }
+
+    // Check for cycles: any remaining Some entries have unresolvable deps.
+    let leftover: Vec<String> = remaining
+        .iter()
+        .filter_map(|opt| opt.as_ref().map(|p| p.name().to_string()))
+        .collect();
+    if !leftover.is_empty() {
+        panic!(
+            "dependency cycle detected among passes: {}",
+            leftover.join(", ")
+        );
+    }
+
+    result
+}
+
+/// Expand invalidations: for each pass P that declares `invalidates(Q)`,
+/// if any later pass R requires Q but Q does not appear between P and R,
+/// insert a fresh Q pass before R.
+///
+/// Repeats until no more insertions are needed.
+fn expand_invalidations(
+    mut passes: Vec<Box<dyn Transform>>,
+    descriptors: &[PassDescriptor],
+) -> Vec<Box<dyn Transform>> {
+    let mut changed = true;
+    while changed {
+        changed = false;
+        'outer: for i in 0..passes.len() {
+            for inv_name in passes[i].invalidates() {
+                // Find the first position j > i where passes[j].requires()
+                // contains inv_name.
+                let first_needer = passes[i + 1..]
+                    .iter()
+                    .position(|p| p.requires().contains(inv_name));
+
+                let Some(rel_pos) = first_needer else {
+                    continue;
+                };
+                let abs_first_needer = i + 1 + rel_pos;
+
+                // If inv_name already appears between i and abs_first_needer,
+                // the requirement is already satisfied.
+                let already_present = passes[i + 1..abs_first_needer]
+                    .iter()
+                    .any(|p| p.name() == *inv_name);
+
+                if already_present {
+                    continue;
+                }
+
+                // Look up the factory for inv_name.
+                let Some(factory) = descriptors
+                    .iter()
+                    .find(|d| d.name == *inv_name)
+                    .map(|d| d.factory)
+                else {
+                    // inv_name is not in the registry (disabled or unknown) — skip.
+                    continue;
+                };
+
+                let fresh = factory();
+                let fresh_requires: Vec<&str> = fresh.requires().to_vec();
+
+                // Insert after the last dep of fresh in (i, abs_first_needer),
+                // so the inserted pass's own requires() are already satisfied.
+                let insert_at = {
+                    let mut best = i + 1;
+                    for dep_name in &fresh_requires {
+                        for j in (i + 1..abs_first_needer).rev() {
+                            if passes[j].name() == *dep_name {
+                                best = best.max(j + 1);
+                                break;
+                            }
+                        }
+                    }
+                    best
+                };
+
+                passes.insert(insert_at, fresh);
+                changed = true;
+                break 'outer;
+            }
+        }
+    }
+    passes
 }
 
 /// Dump IR for all functions in `module` that pass the debug filter.

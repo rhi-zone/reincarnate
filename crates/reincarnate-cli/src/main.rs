@@ -17,10 +17,10 @@ use reincarnate_core::ir::Module;
 use reincarnate_core::pipeline::{
     link_modules, resolve_preset, Backend, BackendInput, CheckSummary, Checker, CheckerInput,
     CheckerOutput, DebugConfig, Diagnostic, DiagnosticCode, Frontend, FrontendInput, PassConfig,
-    PipelineOutput, RcDiagnostic, RuntimePackage, VALID_PASS_NAMES,
+    PipelineOutput, RcDiagnostic, RuntimePackage,
 };
 use reincarnate_core::project::{AssetMapping, EngineOrigin, ProjectManifest, TargetBackend};
-use reincarnate_core::transforms::default_pipeline;
+use reincarnate_core::transforms::build_pipeline;
 use std::collections::HashMap;
 
 mod cache;
@@ -583,7 +583,7 @@ fn cmd_extract(manifest_path: &Path, skip_passes: &[String]) -> Result<()> {
 
     let skip_refs: Vec<&str> = skip_passes.iter().map(|s| s.as_str()).collect();
     let config = PassConfig::from_skip_list(&skip_refs);
-    let mut pipeline = default_pipeline(&config);
+    let mut pipeline = build_pipeline(&config);
     for extra in output.frontend_passes {
         pipeline.add_pure(extra);
     }
@@ -771,7 +771,7 @@ fn cmd_emit(
     if fixpoint {
         pass_config.fixpoint = true;
     }
-    let mut pipeline = default_pipeline(&pass_config);
+    let mut pipeline = build_pipeline(&pass_config);
     for extra in output.frontend_passes {
         pipeline.add_pure(extra);
     }
@@ -2208,7 +2208,7 @@ fn cmd_stress(
                 };
 
             // Build a fresh pipeline for this run.
-            let mut pipeline = reincarnate_core::transforms::default_pipeline(&pass_config);
+            let mut pipeline = reincarnate_core::transforms::build_pipeline(&pass_config);
             for extra in frontend_passes {
                 pipeline.add_pure(extra);
             }
@@ -2502,11 +2502,18 @@ fn main() -> Result<()> {
         } => {
             // Validate --dump-ir-after pass name early so the error is clear.
             if let Some(pass) = dump_ir_after.as_deref() {
-                if !VALID_PASS_NAMES.contains(&pass) {
+                let valid: Vec<&str> = std::iter::once("frontend")
+                    .chain(
+                        reincarnate_core::transforms::all_passes()
+                            .iter()
+                            .map(|d| d.name),
+                    )
+                    .collect();
+                if !valid.contains(&pass) {
                     bail!(
                         "unknown pass {:?} for --dump-ir-after\nValid pass names: {}",
                         pass,
-                        VALID_PASS_NAMES.join(", ")
+                        valid.join(", ")
                     );
                 }
             }

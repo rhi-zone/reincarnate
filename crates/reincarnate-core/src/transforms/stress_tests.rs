@@ -390,7 +390,7 @@ fn stress_int_to_bool_promotion() {
 #[test]
 fn stress_full_pipeline_varied_shapes() {
     use crate::pipeline::PassConfig;
-    use crate::transforms::default_pipeline;
+    use crate::transforms::build_pipeline;
 
     let config = PassConfig::default();
     let shapes: Vec<crate::ir::Function> = vec![
@@ -411,7 +411,7 @@ fn stress_full_pipeline_varied_shapes() {
         mb.add_function(func);
         let module = mb.build();
 
-        let pipeline = default_pipeline(&config);
+        let pipeline = build_pipeline(&config);
         let result = pipeline.run(module).unwrap();
         let func = &result.functions[FuncId::new(0)];
         assert_well_formed(func);
