@@ -299,6 +299,34 @@ fn is_js_ident(s: &str) -> bool {
     chars.all(|c| c == '_' || c == '$' || unicode_ident::is_xid_continue(c))
 }
 
+/// Merge two IR types for the purpose of a shared TypeScript `let` declaration.
+///
+/// When multiple values share a source-level name (e.g. a loop counter `i`
+/// used across SSA phi nodes and stored values), their IR types may differ
+/// even though they all map to the same TypeScript type.  This function merges
+/// them without unnecessarily widening to `unknown`:
+///
+/// - Equal types → keep as-is.
+/// - Both numeric (Int / UInt / Float, or a Union of numerics) → `Float(64)`
+///   (all map to TypeScript `number`).
+/// - Any other mismatch → `Unknown` (TypeScript `unknown`).
+pub(super) fn merge_coalesce_type(a: Type, b: Type) -> Type {
+    if a == b {
+        return a;
+    }
+    fn is_numeric(t: &Type) -> bool {
+        match t {
+            Type::Int(_) | Type::UInt(_) | Type::Float(_) => true,
+            Type::Union(vs) => vs.iter().all(is_numeric),
+            _ => false,
+        }
+    }
+    if is_numeric(&a) && is_numeric(&b) {
+        return Type::Float(64);
+    }
+    Type::Unknown
+}
+
 /// Return true if `init_ty` is assignment-compatible with `decl_ty` for
 /// TypeScript purposes.
 fn types_coalesce_compatible(decl_ty: &Type, init_ty: &Type) -> bool {

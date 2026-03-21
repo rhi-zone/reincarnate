@@ -1917,8 +1917,14 @@ fn infer_function(
         for (block_id, block) in func.blocks.iter() {
             for (i, param) in block.params.iter().enumerate() {
                 if let Some(args) = incoming.get(&(block_id, i)) {
-                    let has_persistent_dynamic =
-                        args.iter().any(|v| func.value_types[*v] == Type::Unknown);
+                    // Null sentinel values (from Mem2Reg) are typed Unknown because
+                    // their alloc had Unknown type before inference.  They are
+                    // placeholder "not yet assigned on this path" markers — not
+                    // genuinely dynamic values — and must not trigger widening.
+                    let has_persistent_dynamic = args.iter().any(|v| {
+                        func.value_types[*v] == Type::Unknown
+                            && !func.null_sentinel_values.contains(v)
+                    });
                     if has_persistent_dynamic && func.value_types[param.value] != Type::Unknown {
                         func.value_types[param.value] = Type::Unknown;
                         any_changed = true;

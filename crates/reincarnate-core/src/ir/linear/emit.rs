@@ -7,8 +7,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::resolve::ResolveCtx;
 use super::{
-    is_deferrable, is_js_ident, is_memory_write, is_side_effecting_op, strip_trailing_continue,
-    types_coalesce_compatible, LinearStmt,
+    is_deferrable, is_js_ident, is_memory_write, is_side_effecting_op, merge_coalesce_type,
+    strip_trailing_continue, types_coalesce_compatible, LinearStmt,
 };
 use crate::entity::{EntityRef, PrimaryMap};
 use crate::ir::ast::{BinOp, Expr, Stmt, UnaryOp};
@@ -324,9 +324,7 @@ impl<'a> EmitCtx<'a> {
                 name_types
                     .entry(name.clone())
                     .and_modify(|existing| {
-                        if *existing != ty {
-                            *existing = Type::Unknown;
-                        }
+                        *existing = merge_coalesce_type(existing.clone(), ty.clone());
                     })
                     .or_insert(ty);
             }
