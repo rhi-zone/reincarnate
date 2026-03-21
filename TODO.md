@@ -4,6 +4,103 @@ Completed items archived in [COMPLETED.md](COMPLETED.md).
 
 Per-engine roadmaps (gaps, runtime coverage, open work) live in [`docs/targets/`](docs/targets/). This file tracks in-flight and near-term work across all active engines.
 
+## Engine-Specific Logic in `reincarnate-core` (HIGH PRIORITY — MUST FIX BEFORE FURTHER INFERENCE WORK)
+
+**Law 2 violation:** `reincarnate-core` is supposed to be engine-agnostic — frontends know
+the source engine, backends know the target language, core knows neither. Several core
+transforms currently contain GML-specific logic with no GML acknowledgment, making them
+silently wrong for other source languages and hiding real inference gaps behind workarounds.
+
+### Confirmed violations (production code, not tests or comments)
+
+**1. `transforms/call_site_flow.rs:110` — hardcoded GML function name**
+
+```rust
+Op::Call { func: fname, args } if fname == "array_length" => {
+    if args.first().map(|a| tracked.contains(a)).unwrap_or(false) {
+        return true;
+    }
+}
+```
+
+`"array_length"` is a GML stdlib name. It has no business appearing in a core pass.
+Any language that happens to have a function with this name gets silently different behavior.
+
+**Fix:** expose an `array_length_fns: HashSet<String>` (or similar) field on `Module`,
+populated by the GML frontend. Core reads the set; names stay in the frontend.
+
+**2. `transforms/constraint_collect.rs:243-245` — `Op::Add` excluded for GML reasons**
+
+```rust
+// Op::Add is excluded — overloaded for string concatenation in GML,
+// so result type cannot be assumed to match operand types.
+Op::Add(_, _) => {}
+```
+
+`Op::Add` is excluded from constraint collection across ALL languages because GML overloads
+`+` for string concatenation. Flash/AS3 has the same overloading issue, so the exclusion
+happens to be correct for both — but the reasoning is GML-specific and the fix is wrong:
+the correct solution is to model `Add` as a builtin call with an overloaded signature
+(Phase 9 / RuntimeRegistry), not to silently drop all arithmetic constraints.
+
+**Fix:** This is a real limitation of the current Op-based IR. Document it clearly as a
+known gap. The real fix is Phase 9 (arithmetic ops as typed builtin calls). Until then,
+the comment should reference Phase 9, not GML.
+
+**3. `transforms/constraint_solve.rs` — memory coherence block is a GML-specific
+backward-inference monkeypatch (added 2026-03-22, commit 75de59e)**
+
+The block scans `Store`/`Load` instructions, finds allocs whose stored values are Unknown
+but whose load results ConstraintSolve typed as numeric, and back-propagates the numeric
+type to the stored values. Rationale: `getInstanceField` always returns Unknown even when
+the field is provably numeric (e.g., when the loaded value is used as `loaded - 1`).
+
+This is wrong for three reasons:
+- It is GML-specific (`getInstanceField` is a GML runtime call), but lives in a general
+  core pass with no `grep for GML` hit.
+- It is a monkeypatch: the root cause is that `ResolveInstanceField` returns Unknown when
+  the receiver is Unknown (line 737 in type_infer.rs: `_.unwrap_or(Type::Unknown)`).
+  The fix belongs in receiver-type propagation, not post-solve backward inference.
+- Backward inference from *use* to *definition* fights the forward dataflow invariant:
+  a value's type should come from its defining instruction, not from downstream uses.
+
+**Fix:** Remove the memory coherence block. The correct fix is to make the receiver
+Unknown chain resolvable — either by propagating Instance types through Unknown receivers
+via `HasField`-style constraints (Phase 7 / HM inference), or by adding a dedicated pass
+that infers receiver types from cross-object field access patterns. Until that fix exists,
+the gap must remain visible (as Unknown in the IR and RC diagnostics) rather than silently
+papered over.
+
+**Note on `constraint_collect.rs:243` `Op::Add` exclusion:** the comment "overloaded for
+string concatenation in GML" should say "overloaded for string concatenation in GML and
+AS3 — correct general behavior is Phase 9 (arithmetic ops as typed builtin calls)."
+
+### Why "fix the root cause" is the right call
+
+Every one of these workarounds papers over a gap that would otherwise be visible as
+`Unknown` in the IR and as RC diagnostics. The gap IS the signal — it tells you exactly
+where inference needs improvement. Hiding it in core passes:
+- Makes the RC diagnostic counts wrong (unknown-by-inference looks like known)
+- Blocks Phase 9 (RuntimeRegistry) by making the current workarounds load-bearing
+- Violates Law 2 (engine-specific logic in core)
+- Creates false confidence that inference is better than it is
+
+### Action items
+
+- [ ] **Remove memory coherence block from `constraint_solve.rs`** — it was added
+  2026-03-22 as a workaround; revert or remove. Let Unknown propagate visibly.
+- [ ] **Fix `call_site_flow.rs:110`** — move `"array_length"` to a `Module` field
+  populated by GML frontend; core reads the set.
+- [ ] **Fix `constraint_collect.rs:243` comment** — update to reference Phase 9, not GML.
+- [ ] **Root-cause fix for `ResolveInstanceField` with Unknown receiver** — the real
+  source of Dead Estate's ~1,500+ remaining Unknown instance field reads. Design: when
+  receiver is Unknown but field name is a constant, emit a `HasField(receiver, field,
+  result)` constraint into the HM solver. The solver can then match the field against known
+  struct schemas. This is the Phase 7 path; until then these remain visible Unknown values
+  with RC diagnostics.
+
+---
+
 ## Inference Improvement Loop (ACTIVE)
 
 **Workflow:** diagnose with `--dump-inference-failures` → identify next fix → implement → measure → repeat.
