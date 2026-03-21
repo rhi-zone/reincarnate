@@ -80,6 +80,17 @@ fn recover_defaults(func: &mut Function) -> bool {
 
     for m in &matches {
         func.sig.defaults[m.param_idx] = Some(m.constant.clone());
+        // Also narrow the param type when it's currently Unknown.  TypeInference
+        // runs after this pass and will propagate the concrete type into the body.
+        if matches!(func.sig.params[m.param_idx], Type::Unknown) {
+            let ty = type_of_constant(&m.constant);
+            func.sig.params[m.param_idx] = ty.clone();
+            // Update the entry block param as well.
+            if let Some(bp) = func.blocks[func.entry].params.get_mut(m.param_idx) {
+                func.value_types[bp.value] = ty.clone();
+                bp.ty = ty;
+            }
+        }
     }
 
     // DCE the undefined-check blocks: replace each BrIf with an unconditional
@@ -177,6 +188,18 @@ fn set_variadic_defaults(func: &mut Function) -> bool {
         changed = true;
     }
     changed
+}
+
+/// Return the concrete IR type for a constant value.
+fn type_of_constant(c: &Constant) -> Type {
+    match c {
+        Constant::Bool(_) => Type::Bool,
+        Constant::Int(_) => Type::Int(64),
+        Constant::UInt(_) => Type::UInt(64),
+        Constant::Float(_) => Type::Float(64),
+        Constant::String(_) => Type::String,
+        Constant::Null => Type::Unknown,
+    }
 }
 
 /// Return the type-appropriate zero/default constant for a given IR type.
@@ -442,6 +465,8 @@ mod tests {
         assert_eq!(func.sig.defaults.len(), 2); // self + arg0
         assert_eq!(func.sig.defaults[0], None); // self
         assert_eq!(func.sig.defaults[1], Some(Constant::Float(0.0))); // arg0
+                                                                      // Param type should be narrowed from Unknown to Float(64).
+        assert_eq!(func.sig.params[1], Type::Float(64));
     }
 
     #[test]
