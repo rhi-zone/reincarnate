@@ -52,7 +52,7 @@ cargo clippy --all-targets --all-features -- -D warnings && cargo test -- --incl
 ```
 Always pass `--include-ignored`. Edit all files first, then build once.
 
-**Never invoke `tsc`, `tsgo`, or `bunx tsc` directly — not even to check a single runtime file.** Always use `cargo run -p reincarnate-cli -- check --manifest <path>`. Running `tsc` directly on large games (DoL, TRC) triggers earlyoom. Flags: `--filter-code TS2345`, `--filter-file foo.ts`, `--filter-message "..."`, `--examples -1`. Stdout = diagnostics; stderr = progress. Never `2>&1`.
+`cargo run -p reincarnate-cli -- check --manifest <path>` is the replacement for `tsc`. Flags: `--filter-code TS2345`, `--filter-file foo.ts`, `--filter-message "..."`, `--examples -1`. Stdout = diagnostics; stderr = progress. Never `2>&1`.
 
 **Implementation always goes through agents.** The main context is for coordination only — decisions, review, direction. Every edit, write, and build command belongs in an agent.
 
