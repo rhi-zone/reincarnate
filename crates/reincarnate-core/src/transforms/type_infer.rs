@@ -673,8 +673,12 @@ fn infer_inst_type(
                     let receiver = args.first()?;
                     let field_vid = args.get(1)?;
                     let field = const_strings.get(field_vid)?;
+                    // Both Instance(id) and ClassRef(id) can be used as receivers
+                    // for field access.  In GMS1, class refs and instance refs are
+                    // the same concept (an object ID); in GMS2 a ClassRef used as
+                    // a value holds a reference to the singleton global instance.
                     match &func.value_types[*receiver] {
-                        Type::Instance(id) => {
+                        Type::Instance(id) | Type::ClassRef(id) => {
                             let name = interner.name_of(*id).to_string();
                             ctx.resolve_field_type(&name, field)
                                 .unwrap_or(Type::Unknown)

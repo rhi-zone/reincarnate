@@ -249,6 +249,14 @@ impl Frontend for GameMakerFrontend {
             ("GameMaker.Instance".into(), "getField".into()),
             SystemCallTypeRule::ResolveInstanceField,
         );
+        // getOn reads a field from an arbitrary object reference (cross-object
+        // field access, `other.field`, `with`-target fields, etc.).  The
+        // argument layout mirrors getField: args[0] = receiver, args[1] = field
+        // name.  When the receiver is Instance-typed, resolve the field type.
+        module.system_call_type_rules.insert(
+            ("GameMaker.Instance".into(), "getOn".into()),
+            SystemCallTypeRule::ResolveInstanceField,
+        );
 
         // Register callback-return system calls for the GML engine.
         // withInstances callbacks hide the real return value from the outer function.

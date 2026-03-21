@@ -474,8 +474,21 @@ fn print_params(
             } else {
                 ty
             };
+            let is_rest = has_rest_param && i == params.len() - 1;
             if infer_dynamic && matches!(ty, Type::Unknown) {
                 format!("{prefix}{}{default_suffix}", sanitize_ident(name))
+            } else if is_rest {
+                // Rest parameters must be array types: `...args: T[]`.
+                // Wrap the effective type in `[]` unless it is already an array.
+                let rest_ty = match effective_ty {
+                    Type::Array(_) => print_type(effective_ty),
+                    other => format!("{}[]", print_type(other)),
+                };
+                format!(
+                    "{prefix}{}: {}{default_suffix}",
+                    sanitize_ident(name),
+                    rest_ty
+                )
             } else {
                 format!(
                     "{prefix}{}: {}{default_suffix}",
