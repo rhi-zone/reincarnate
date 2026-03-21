@@ -339,14 +339,20 @@ fn types_coalesce_compatible(decl_ty: &Type, init_ty: &Type) -> bool {
     if matches!(decl_ty, Type::Instance(_)) {
         return false;
     }
+    // Unknown annotations are suppressed when an init value exists: TypeScript
+    // infers from the init expression. If the init returns `any` (e.g. a runtime
+    // call like `getInstanceField`), TS infers `any` — operations work without
+    // narrowing. If the init is a concrete type, TS infers that type directly.
+    // Adding `: unknown` overrides both, forcing callers to narrow unnecessarily.
+    if matches!(decl_ty, Type::Unknown) {
+        return false;
+    }
     if decl_ty == init_ty {
         return true;
     }
     match (decl_ty, init_ty) {
-        // Decl is Unknown (any): always accept any init type.
         // Init is Unknown (any): do NOT impose a concrete decl annotation — let
         // TypeScript infer `any` from the init expression instead.
-        (Type::Unknown, _) => true,
         (Type::Option(inner), ty) | (ty, Type::Option(inner)) => inner.as_ref() == ty,
         _ => false,
     }

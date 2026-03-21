@@ -2114,6 +2114,70 @@ impl Transform for TypeInference {
             }
         }
 
+        // Return type propagation: derived class methods with Unknown return types
+        // inherit the return type from the nearest ancestor that has a concrete
+        // return type for the same method name.
+        //
+        // This resolves TS2416 override incompatibilities where one override in a
+        // hierarchy inferred a concrete type (e.g. `number | undefined`) while
+        // another couldn't infer anything (Unknown) — TypeScript requires all
+        // overrides to be mutually assignable.
+        //
+        // We iterate to a fixpoint since a method may need to propagate through
+        // multiple levels of the hierarchy (grandchild → child → parent).
+        loop {
+            // Build a fresh (class, bare_name) → return_type map from the current
+            // state of all functions (not from `ctx` which is pre-inference stale).
+            let current_method_types: HashMap<(String, String), Type> = module
+                .functions
+                .iter()
+                .filter_map(|(id, f)| {
+                    let class = f.class.as_ref()?.clone();
+                    let fname = module.func_name(id);
+                    let bare = fname.rsplit("::").next()?.to_string();
+                    Some(((class, bare), f.sig.return_ty.clone()))
+                })
+                .collect();
+
+            let mut any_propagated = false;
+            let func_ids: Vec<_> = module.functions.keys().collect();
+            for id in func_ids {
+                let func = &module.functions[id];
+                if func.sig.return_ty != Type::Unknown {
+                    continue;
+                }
+                let class = match &func.class {
+                    Some(c) => c.clone(),
+                    None => continue,
+                };
+                let fname = module.func_name(id);
+                let bare = match fname.rsplit("::").next() {
+                    Some(b) => b.to_string(),
+                    None => continue,
+                };
+                // Walk up the class hierarchy to find a concrete return type.
+                let mut ancestor = ctx.class_hierarchy.get(&class).and_then(|o| o.as_deref());
+                let mut found_ty = None;
+                while let Some(anc) = ancestor {
+                    if let Some(ty) = current_method_types.get(&(anc.to_string(), bare.clone())) {
+                        if *ty != Type::Unknown {
+                            found_ty = Some(ty.clone());
+                            break;
+                        }
+                    }
+                    ancestor = ctx.class_hierarchy.get(anc).and_then(|o| o.as_deref());
+                }
+                if let Some(ty) = found_ty {
+                    module.functions[id].sig.return_ty = ty;
+                    changed = true;
+                    any_propagated = true;
+                }
+            }
+            if !any_propagated {
+                break;
+            }
+        }
+
         // Phase 3: cross-function global type inference from write sites.
         //
         // Iterate up to MAX_GLOBAL_INFERENCE_PASSES times. Each pass may
