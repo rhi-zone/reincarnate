@@ -18,7 +18,7 @@ use datawin::DataWin;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
 use reincarnate_core::ir::func::{MethodKind, Visibility};
-use reincarnate_core::ir::module::{Global, SystemCallTypeRule};
+use reincarnate_core::ir::module::{Global, Module, SystemCallTypeRule};
 use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
 use reincarnate_core::project::EngineOrigin;
@@ -223,7 +223,15 @@ impl Frontend for GameMakerFrontend {
         let mut module = mb.build();
 
         // Populate extern sigs from the GML builtin signature table.
-        for (name, sig) in builtins_generated::gml_builtins() {
+        // `Type::Unknown` in the generated table means the generator didn't
+        // have enough information to determine the type — these are inference
+        // gaps, not genuine source-language opacity.  Replace them with fresh
+        // type variables so the solver can attempt to infer them from call
+        // sites.  Genuinely opaque types (e.g. explicitly typed enum returns)
+        // are represented with concrete types in the generated file and are
+        // not affected.
+        for (name, mut sig) in builtins_generated::gml_builtins() {
+            freshen_unknown_types_in_sig(&mut sig, &mut module);
             module.extern_sigs.insert(name.to_string(), sig);
         }
 
@@ -694,15 +702,33 @@ fn register_globals(dw: &DataWin, vari: &datawin::chunks::vari::Vari, mb: &mut M
         // instance_type == -5 means global.
         if entry.instance_type == -5 {
             if let Ok(name) = dw.resolve_string(entry.name) {
+                let ty = mb.fresh_var();
                 mb.add_global(Global {
                     name,
-                    ty: Type::Unknown,
+                    ty,
                     visibility: Visibility::Public,
                     mutable: true,
                     init: None,
                 });
             }
         }
+    }
+}
+
+/// Replace `Type::Unknown` in a [`FunctionSig`] with fresh type variables.
+///
+/// `Type::Unknown` in `builtins_generated.rs` means the generator did not
+/// have enough type information from the GameMaker manual HTML — these are
+/// inference gaps.  This function replaces them with `module.fresh_var()`
+/// so the constraint solver can attempt to resolve them from call sites.
+fn freshen_unknown_types_in_sig(sig: &mut FunctionSig, module: &mut Module) {
+    for ty in &mut sig.params {
+        if *ty == Type::Unknown {
+            *ty = module.fresh_var();
+        }
+    }
+    if sig.return_ty == Type::Unknown {
+        sig.return_ty = module.fresh_var();
     }
 }
 

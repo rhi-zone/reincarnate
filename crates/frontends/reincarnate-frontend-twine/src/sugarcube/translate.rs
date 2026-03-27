@@ -202,8 +202,8 @@ impl TranslateCtx {
     /// Read `setup.field` as `SugarCube.Setup.get("field")`.
     fn setup_get(&mut self, field: &str) -> ValueId {
         let n = self.fb.const_string(field);
-        self.fb
-            .system_call("SugarCube.Setup", "get", &[n], Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.system_call("SugarCube.Setup", "get", &[n], ty)
     }
 
     /// Write `setup.field = value` as `SugarCube.Setup.set("field", value)`.
@@ -224,7 +224,8 @@ impl TranslateCtx {
             self.temp_vars.insert(name.to_string(), alloc);
             return alloc;
         }
-        let alloc = self.fb.alloc(Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let alloc = self.fb.alloc(ty);
         self.fb.name_value(alloc, format!("_{name}"));
         self.temp_vars.insert(name.to_string(), alloc);
         alloc
@@ -259,8 +260,9 @@ impl TranslateCtx {
                 // Comparing a link object with === in a switch is almost never meaningful,
                 // but we emit correctly for completeness.
                 let src = self.fb.const_string(s.as_str());
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("SugarCube.Engine", "parseLink", &[src], Type::Unknown)
+                    .system_call("SugarCube.Engine", "parseLink", &[src], ty)
             }
         }
     }
@@ -288,8 +290,8 @@ impl TranslateCtx {
                     self.func_name, &pp.js, trimmed
                 );
                 let m = self.fb.const_string(format!("parse error: {trimmed}"));
-                self.fb
-                    .system_call("SugarCube.Engine", "error", &[m], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("SugarCube.Engine", "error", &[m], ty)
             }
         }
     }
@@ -327,8 +329,8 @@ impl TranslateCtx {
                 self.func_name, &pp.js, trimmed
             );
             let m = self.fb.const_string(format!("parse error: {trimmed}"));
-            self.fb
-                .system_call("SugarCube.Engine", "error", &[m], Type::Unknown);
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("SugarCube.Engine", "error", &[m], ty);
         }
     }
 
@@ -358,18 +360,17 @@ impl TranslateCtx {
                 let flags_str = lit.regex.flags.to_string();
                 let flags = self.fb.const_string(&flags_str);
                 let regexp_name = self.fb.const_string("RegExp");
-                let regexp = self.fb.system_call(
-                    "SugarCube.Engine",
-                    "resolve",
-                    &[regexp_name],
-                    Type::Unknown,
-                );
+                let resolve_ty = self.fb.fresh_var();
+                let regexp =
+                    self.fb
+                        .system_call("SugarCube.Engine", "resolve", &[regexp_name], resolve_ty);
                 let mut new_args = vec![regexp, pattern];
                 if !flags_str.is_empty() {
                     new_args.push(flags);
                 }
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("SugarCube.Engine", "new", &new_args, Type::Unknown)
+                    .system_call("SugarCube.Engine", "new", &new_args, ty)
             }
             js::Expression::TemplateLiteral(tl) => self.lower_template_literal(tl, pp),
             js::Expression::Identifier(ident) => {
@@ -377,16 +378,16 @@ impl TranslateCtx {
                 // Check SugarCube variable sigils
                 if let Some(var_name) = name.strip_prefix('$') {
                     let n = self.fb.const_string(var_name);
-                    return self
-                        .fb
-                        .system_call("SugarCube.State", "get", &[n], Type::Unknown);
+                    let ty = self.fb.fresh_var();
+                    return self.fb.system_call("SugarCube.State", "get", &[n], ty);
                 }
                 if let Some(stripped) = name.strip_prefix('_') {
                     // Temp variable (only if followed by alphanumeric, which the
                     // identifier always is since _ alone isn't a SugarCube var)
                     if !stripped.is_empty() {
                         let alloc = self.get_or_create_temp(stripped);
-                        return self.fb.load(alloc, Type::Unknown);
+                        let ty = self.fb.fresh_var();
+                        return self.fb.load(alloc, ty);
                     }
                 }
                 // Check if identifier is a known local parameter
@@ -399,18 +400,19 @@ impl TranslateCtx {
                 }
                 // Bare identifier — global function ref or runtime lookup
                 let n = self.fb.const_string(name);
-                self.fb
-                    .system_call("SugarCube.Engine", "resolve", &[n], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("SugarCube.Engine", "resolve", &[n], ty)
             }
             js::Expression::StaticMemberExpression(mem) => {
                 let obj = self.lower_oxc_expr(&mem.object, pp);
-                self.fb
-                    .get_field(obj, mem.property.name.as_str(), Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.get_field(obj, mem.property.name.as_str(), ty)
             }
             js::Expression::ComputedMemberExpression(mem) => {
                 let obj = self.lower_oxc_expr(&mem.object, pp);
                 let idx = self.lower_oxc_expr(&mem.expression, pp);
-                self.fb.get_index(obj, idx, Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.get_index(obj, idx, ty)
             }
             js::Expression::CallExpression(call) => {
                 let args: Vec<ValueId> = call
@@ -419,7 +421,8 @@ impl TranslateCtx {
                     .map(|a| self.lower_oxc_argument(a, pp))
                     .collect();
                 let callee = self.lower_oxc_expr(&call.callee, pp);
-                self.fb.call_indirect(callee, &args, Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.call_indirect(callee, &args, ty)
             }
             js::Expression::NewExpression(new) => {
                 let callee = self.lower_oxc_expr(&new.callee, pp);
@@ -427,8 +430,9 @@ impl TranslateCtx {
                 for a in &new.arguments {
                     all_args.push(self.lower_oxc_argument(a, pp));
                 }
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("SugarCube.Engine", "new", &all_args, Type::Unknown)
+                    .system_call("SugarCube.Engine", "new", &all_args, ty)
             }
             js::Expression::UnaryExpression(unary) => self.lower_oxc_unary(unary, pp),
             js::Expression::UpdateExpression(update) => self.lower_oxc_update(update, pp),
@@ -456,7 +460,8 @@ impl TranslateCtx {
                         _ => self.lower_oxc_expr(e.to_expression(), pp),
                     })
                     .collect();
-                self.fb.array_init(&vals, Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.array_init(&vals, ty)
             }
             js::Expression::ObjectExpression(obj) => {
                 let fields: Vec<(String, ValueId)> = obj
@@ -484,7 +489,8 @@ impl TranslateCtx {
                 // Lower tag(template) as a call
                 let tag = self.lower_oxc_expr(&tagged.tag, pp);
                 let tl_val = self.lower_template_literal(&tagged.quasi, pp);
-                self.fb.call_indirect(tag, &[tl_val], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.call_indirect(tag, &[tl_val], ty)
             }
             js::Expression::ChainExpression(chain) => {
                 // Optional chaining: a?.b, a?.(), a?.[b]
@@ -510,8 +516,8 @@ impl TranslateCtx {
             | js::Expression::V8IntrinsicExpression(_) => {
                 // Unsupported expression types — emit error
                 let m = self.fb.const_string("unsupported expression");
-                self.fb
-                    .system_call("SugarCube.Engine", "error", &[m], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("SugarCube.Engine", "error", &[m], ty)
             }
         }
     }
@@ -544,13 +550,13 @@ impl TranslateCtx {
             }
             if pp.clone_positions.contains(&expr_start) {
                 let val = self.lower_oxc_expr(&unary.argument, pp);
-                return self
-                    .fb
-                    .system_call("SugarCube.Engine", "clone", &[val], Type::Unknown);
+                let ty = self.fb.fresh_var();
+                return self.fb.system_call("SugarCube.Engine", "clone", &[val], ty);
             }
         }
 
         let val = self.lower_oxc_expr(&unary.argument, pp);
+        let ty = self.fb.fresh_var();
         match unary.operator {
             js::UnaryOperator::UnaryNegation => self.fb.neg(val),
             js::UnaryOperator::UnaryPlus => self.fb.coerce(val, Type::Float(64)),
@@ -566,7 +572,7 @@ impl TranslateCtx {
             }
             js::UnaryOperator::Delete => {
                 self.fb
-                    .system_call("SugarCube.Engine", "delete", &[val], Type::Unknown)
+                    .system_call("SugarCube.Engine", "delete", &[val], ty)
             }
         }
     }
@@ -582,12 +588,13 @@ impl TranslateCtx {
                 let name = ident.name.as_str();
                 if let Some(var_name) = name.strip_prefix('$') {
                     let n = self.fb.const_string(var_name);
-                    self.fb
-                        .system_call("SugarCube.State", "get", &[n], Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.system_call("SugarCube.State", "get", &[n], ty)
                 } else if let Some(stripped) = name.strip_prefix('_') {
                     if !stripped.is_empty() {
                         let alloc = self.get_or_create_temp(stripped);
-                        self.fb.load(alloc, Type::Unknown)
+                        let ty = self.fb.fresh_var();
+                        self.fb.load(alloc, ty)
                     } else {
                         self.fb.const_null()
                     }
@@ -595,8 +602,8 @@ impl TranslateCtx {
                     param_val
                 } else {
                     let n = self.fb.const_string(name);
-                    self.fb
-                        .system_call("SugarCube.Engine", "resolve", &[n], Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.system_call("SugarCube.Engine", "resolve", &[n], ty)
                 }
             }
             _ => {
@@ -607,13 +614,14 @@ impl TranslateCtx {
                                 return self.setup_get(mem.property.name.as_str());
                             }
                             let obj = self.lower_oxc_expr(&mem.object, pp);
-                            self.fb
-                                .get_field(obj, mem.property.name.as_str(), Type::Unknown)
+                            let ty = self.fb.fresh_var();
+                            self.fb.get_field(obj, mem.property.name.as_str(), ty)
                         }
                         js::MemberExpression::ComputedMemberExpression(mem) => {
                             let obj = self.lower_oxc_expr(&mem.object, pp);
                             let idx = self.lower_oxc_expr(&mem.expression, pp);
-                            self.fb.get_index(obj, idx, Type::Unknown)
+                            let ty = self.fb.fresh_var();
+                            self.fb.get_index(obj, idx, ty)
                         }
                         _ => self.fb.const_null(),
                     }
@@ -646,6 +654,7 @@ impl TranslateCtx {
     fn lower_oxc_binary(&mut self, bin: &js::BinaryExpression<'_>, pp: &Preprocessed) -> ValueId {
         let lhs = self.lower_oxc_expr(&bin.left, pp);
         let rhs = self.lower_oxc_expr(&bin.right, pp);
+        let ty = self.fb.fresh_var();
 
         match bin.operator {
             js::BinaryOperator::Addition => self.fb.add(lhs, rhs),
@@ -655,7 +664,7 @@ impl TranslateCtx {
             js::BinaryOperator::Remainder => self.fb.rem(lhs, rhs),
             js::BinaryOperator::Exponential => {
                 self.fb
-                    .system_call("SugarCube.Engine", "pow", &[lhs, rhs], Type::Unknown)
+                    .system_call("SugarCube.Engine", "pow", &[lhs, rhs], ty)
             }
             js::BinaryOperator::Equality => {
                 self.fb
@@ -678,7 +687,7 @@ impl TranslateCtx {
             js::BinaryOperator::ShiftRight => self.fb.shr(lhs, rhs),
             js::BinaryOperator::ShiftRightZeroFill => {
                 self.fb
-                    .system_call("SugarCube.Engine", "ushr", &[lhs, rhs], Type::Unknown)
+                    .system_call("SugarCube.Engine", "ushr", &[lhs, rhs], ty)
             }
             js::BinaryOperator::In => {
                 self.fb
@@ -697,7 +706,8 @@ impl TranslateCtx {
                 let lhs = self.lower_oxc_expr(&log.left, pp);
                 let rhs_block = self.fb.create_block();
                 let merge_block = self.fb.create_block();
-                let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+                let ty = self.fb.fresh_var();
+                let merge_params = self.fb.add_block_params(merge_block, &[ty]);
                 let merge_param = merge_params[0];
                 self.fb.br_if(lhs, rhs_block, &[], merge_block, &[lhs]);
                 self.fb.switch_to_block(rhs_block);
@@ -710,7 +720,8 @@ impl TranslateCtx {
                 let lhs = self.lower_oxc_expr(&log.left, pp);
                 let rhs_block = self.fb.create_block();
                 let merge_block = self.fb.create_block();
-                let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+                let ty = self.fb.fresh_var();
+                let merge_params = self.fb.add_block_params(merge_block, &[ty]);
                 let merge_param = merge_params[0];
                 self.fb.br_if(lhs, merge_block, &[lhs], rhs_block, &[]);
                 self.fb.switch_to_block(rhs_block);
@@ -726,7 +737,8 @@ impl TranslateCtx {
                         .system_call("SugarCube.Engine", "is_nullish", &[lhs], Type::Bool);
                 let rhs_block = self.fb.create_block();
                 let merge_block = self.fb.create_block();
-                let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+                let ty = self.fb.fresh_var();
+                let merge_params = self.fb.add_block_params(merge_block, &[ty]);
                 let merge_param = merge_params[0];
                 self.fb.br_if(is_null, rhs_block, &[], merge_block, &[lhs]);
                 self.fb.switch_to_block(rhs_block);
@@ -747,7 +759,8 @@ impl TranslateCtx {
         let then_block = self.fb.create_block();
         let else_block = self.fb.create_block();
         let merge_block = self.fb.create_block();
-        let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+        let ty = self.fb.fresh_var();
+        let merge_params = self.fb.add_block_params(merge_block, &[ty]);
         let merge_param = merge_params[0];
         self.fb.br_if(cond_val, then_block, &[], else_block, &[]);
         self.fb.switch_to_block(then_block);
@@ -785,6 +798,7 @@ impl TranslateCtx {
         lhs: ValueId,
         rhs: ValueId,
     ) -> ValueId {
+        let ty = self.fb.fresh_var();
         match op {
             js::AssignmentOperator::Addition => self.fb.add(lhs, rhs),
             js::AssignmentOperator::Subtraction => self.fb.sub(lhs, rhs),
@@ -793,7 +807,7 @@ impl TranslateCtx {
             js::AssignmentOperator::Remainder => self.fb.rem(lhs, rhs),
             js::AssignmentOperator::Exponential => {
                 self.fb
-                    .system_call("SugarCube.Engine", "pow", &[lhs, rhs], Type::Unknown)
+                    .system_call("SugarCube.Engine", "pow", &[lhs, rhs], ty)
             }
             js::AssignmentOperator::BitwiseAnd => self.fb.bit_and(lhs, rhs),
             js::AssignmentOperator::BitwiseOR => self.fb.bit_or(lhs, rhs),
@@ -802,7 +816,7 @@ impl TranslateCtx {
             js::AssignmentOperator::ShiftRight => self.fb.shr(lhs, rhs),
             js::AssignmentOperator::ShiftRightZeroFill => {
                 self.fb
-                    .system_call("SugarCube.Engine", "ushr", &[lhs, rhs], Type::Unknown)
+                    .system_call("SugarCube.Engine", "ushr", &[lhs, rhs], ty)
             }
             js::AssignmentOperator::LogicalAnd
             | js::AssignmentOperator::LogicalOr
@@ -825,19 +839,20 @@ impl TranslateCtx {
                 let name = ident.name.as_str();
                 if let Some(var_name) = name.strip_prefix('$') {
                     let n = self.fb.const_string(var_name);
-                    self.fb
-                        .system_call("SugarCube.State", "get", &[n], Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.system_call("SugarCube.State", "get", &[n], ty)
                 } else if let Some(stripped) = name.strip_prefix('_') {
                     if !stripped.is_empty() {
                         let alloc = self.get_or_create_temp(stripped);
-                        self.fb.load(alloc, Type::Unknown)
+                        let ty = self.fb.fresh_var();
+                        self.fb.load(alloc, ty)
                     } else {
                         self.fb.const_null()
                     }
                 } else {
                     let n = self.fb.const_string(name);
-                    self.fb
-                        .system_call("SugarCube.Engine", "resolve", &[n], Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.system_call("SugarCube.Engine", "resolve", &[n], ty)
                 }
             }
             js::AssignmentTarget::StaticMemberExpression(mem) => {
@@ -845,13 +860,14 @@ impl TranslateCtx {
                     return self.setup_get(mem.property.name.as_str());
                 }
                 let obj = self.lower_oxc_expr(&mem.object, pp);
-                self.fb
-                    .get_field(obj, mem.property.name.as_str(), Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.get_field(obj, mem.property.name.as_str(), ty)
             }
             js::AssignmentTarget::ComputedMemberExpression(mem) => {
                 let obj = self.lower_oxc_expr(&mem.object, pp);
                 let idx = self.lower_oxc_expr(&mem.expression, pp);
-                self.fb.get_index(obj, idx, Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.get_index(obj, idx, ty)
             }
             _ => self.fb.const_null(),
         }
@@ -1001,7 +1017,8 @@ impl TranslateCtx {
             .temp_vars
             .iter()
             .map(|(name, &alloc_id)| {
-                let val = self.fb.load(alloc_id, Type::Unknown);
+                let ty = self.fb.fresh_var();
+                let val = self.fb.load(alloc_id, ty);
                 (name.clone(), val)
             })
             .collect();
@@ -1010,9 +1027,11 @@ impl TranslateCtx {
         let capture_vals: Vec<ValueId> = outer_temps.iter().map(|(_, v)| *v).collect();
 
         // --- 2. Build the closure FunctionBuilder ---
+        let param_types: Vec<Type> = (0..params.len()).map(|_| self.fb.fresh_var()).collect();
+        let ret_ty = self.fb.fresh_var();
         let sig = FunctionSig {
-            params: vec![Type::Unknown; params.len()],
-            return_ty: Type::Unknown,
+            params: param_types,
+            return_ty: ret_ty,
             defaults: vec![],
             has_rest_param: false,
         };
@@ -1027,9 +1046,13 @@ impl TranslateCtx {
         }
 
         // Register capture params (appended after regular params in entry block).
+        let cap_types: Vec<Type> = (0..outer_temps.len())
+            .map(|_| self.fb.fresh_var())
+            .collect();
         let capture_spec: Vec<(String, Type, CaptureMode)> = outer_temps
             .iter()
-            .map(|(name, _)| (format!("cap_{name}"), Type::Unknown, CaptureMode::ByValue))
+            .zip(cap_types)
+            .map(|((name, _), ty)| (format!("cap_{name}"), ty, CaptureMode::ByValue))
             .collect();
         let cap_ids = arrow_fb.add_capture_params(capture_spec);
 
@@ -1039,7 +1062,8 @@ impl TranslateCtx {
         let mut arrow_temp_vars = HashMap::new();
         for (i, (name, _)) in outer_temps.iter().enumerate() {
             let cap_val = cap_ids[i];
-            let alloc = arrow_fb.alloc(Type::Unknown);
+            let ty = arrow_fb.fresh_var();
+            let alloc = arrow_fb.alloc(ty);
             arrow_fb.store(alloc, cap_val);
             arrow_temp_vars.insert(name.clone(), alloc);
         }
@@ -1078,10 +1102,10 @@ impl TranslateCtx {
         let mut func = built.build();
         func.method_kind = MethodKind::Closure;
         self.setter_callbacks.push(func);
+        let ty = self.fb.fresh_var();
 
         // --- 4. Emit Op::MakeClosure in the outer builder ---
-        self.fb
-            .make_closure(&arrow_name, &capture_vals, Type::Unknown)
+        self.fb.make_closure(&arrow_name, &capture_vals, ty)
     }
 
     fn lower_oxc_statement(&mut self, stmt: &js::Statement<'_>, pp: &Preprocessed) {
@@ -1165,9 +1189,10 @@ impl TranslateCtx {
             }
             js::Statement::ForInStatement(for_in) => {
                 let right = self.lower_oxc_expr(&for_in.right, pp);
-                let iter =
-                    self.fb
-                        .system_call("SugarCube.Engine", "iterate", &[right], Type::Unknown);
+                let iter_ty = self.fb.fresh_var();
+                let iter = self
+                    .fb
+                    .system_call("SugarCube.Engine", "iterate", &[right], iter_ty);
                 let header = self.fb.create_block();
                 let body_block = self.fb.create_block();
                 let exit = self.fb.create_block();
@@ -1181,12 +1206,10 @@ impl TranslateCtx {
                 );
                 self.fb.br_if(has_next, body_block, &[], exit, &[]);
                 self.fb.switch_to_block(body_block);
-                let next_key = self.fb.system_call(
-                    "SugarCube.Engine",
-                    "iterator_next_key",
-                    &[iter],
-                    Type::Unknown,
-                );
+                let next_ty = self.fb.fresh_var();
+                let next_key =
+                    self.fb
+                        .system_call("SugarCube.Engine", "iterator_next_key", &[iter], next_ty);
                 self.store_for_binding(&for_in.left, next_key, pp);
                 self.lower_oxc_statement(&for_in.body, pp);
                 self.fb.br(header, &[]);
@@ -1194,9 +1217,10 @@ impl TranslateCtx {
             }
             js::Statement::ForOfStatement(for_of) => {
                 let right = self.lower_oxc_expr(&for_of.right, pp);
-                let iter =
-                    self.fb
-                        .system_call("SugarCube.Engine", "iterate", &[right], Type::Unknown);
+                let iter_ty = self.fb.fresh_var();
+                let iter = self
+                    .fb
+                    .system_call("SugarCube.Engine", "iterate", &[right], iter_ty);
                 let header = self.fb.create_block();
                 let body_block = self.fb.create_block();
                 let exit = self.fb.create_block();
@@ -1210,11 +1234,12 @@ impl TranslateCtx {
                 );
                 self.fb.br_if(has_next, body_block, &[], exit, &[]);
                 self.fb.switch_to_block(body_block);
+                let next_ty = self.fb.fresh_var();
                 let next_val = self.fb.system_call(
                     "SugarCube.Engine",
                     "iterator_next_value",
                     &[iter],
-                    Type::Unknown,
+                    next_ty,
                 );
                 self.store_for_binding(&for_of.left, next_val, pp);
                 self.lower_oxc_statement(&for_of.body, pp);
@@ -1336,17 +1361,20 @@ impl TranslateCtx {
                     let call_block = self.fb.create_block();
                     let merge_block = self.fb.create_block();
                     let null = self.fb.const_null();
-                    let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+                    let ty = self.fb.fresh_var();
+                    let merge_params = self.fb.add_block_params(merge_block, &[ty]);
                     let merge_param = merge_params[0];
                     self.fb
                         .br_if(is_null, merge_block, &[null], call_block, &[]);
                     self.fb.switch_to_block(call_block);
-                    let result = self.fb.call_indirect(callee, &args, Type::Unknown);
+                    let ty = self.fb.fresh_var();
+                    let result = self.fb.call_indirect(callee, &args, ty);
                     self.fb.br(merge_block, &[result]);
                     self.fb.switch_to_block(merge_block);
                     merge_param
                 } else {
-                    self.fb.call_indirect(callee, &args, Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.call_indirect(callee, &args, ty)
                 }
             }
             js::ChainElement::StaticMemberExpression(mem) => {
@@ -1358,20 +1386,20 @@ impl TranslateCtx {
                     let access_block = self.fb.create_block();
                     let merge_block = self.fb.create_block();
                     let null = self.fb.const_null();
-                    let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+                    let ty = self.fb.fresh_var();
+                    let merge_params = self.fb.add_block_params(merge_block, &[ty]);
                     let merge_param = merge_params[0];
                     self.fb
                         .br_if(is_null, merge_block, &[null], access_block, &[]);
                     self.fb.switch_to_block(access_block);
-                    let result = self
-                        .fb
-                        .get_field(obj, mem.property.name.as_str(), Type::Unknown);
+                    let field_ty = self.fb.fresh_var();
+                    let result = self.fb.get_field(obj, mem.property.name.as_str(), field_ty);
                     self.fb.br(merge_block, &[result]);
                     self.fb.switch_to_block(merge_block);
                     merge_param
                 } else {
-                    self.fb
-                        .get_field(obj, mem.property.name.as_str(), Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.get_field(obj, mem.property.name.as_str(), ty)
                 }
             }
             js::ChainElement::ComputedMemberExpression(mem) => {
@@ -1384,23 +1412,26 @@ impl TranslateCtx {
                     let access_block = self.fb.create_block();
                     let merge_block = self.fb.create_block();
                     let null = self.fb.const_null();
-                    let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+                    let ty = self.fb.fresh_var();
+                    let merge_params = self.fb.add_block_params(merge_block, &[ty]);
                     let merge_param = merge_params[0];
                     self.fb
                         .br_if(is_null, merge_block, &[null], access_block, &[]);
                     self.fb.switch_to_block(access_block);
-                    let result = self.fb.get_index(obj, idx, Type::Unknown);
+                    let ty = self.fb.fresh_var();
+                    let result = self.fb.get_index(obj, idx, ty);
                     self.fb.br(merge_block, &[result]);
                     self.fb.switch_to_block(merge_block);
                     merge_param
                 } else {
-                    self.fb.get_index(obj, idx, Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.get_index(obj, idx, ty)
                 }
             }
             js::ChainElement::PrivateFieldExpression(_) => {
                 let m = self.fb.const_string("unsupported: private field");
-                self.fb
-                    .system_call("SugarCube.Engine", "error", &[m], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("SugarCube.Engine", "error", &[m], ty)
             }
             js::ChainElement::TSNonNullExpression(e) => {
                 // TypeScript non-null assertion (x!) — just lower the inner expression
@@ -1512,7 +1543,8 @@ impl TranslateCtx {
             self.temp_vars = saved_temps;
             self.setter_callbacks.push(built_fb.build());
 
-            let setter_ref = self.fb.global_ref(&setter_name, Type::Unknown);
+            let ty = self.fb.fresh_var();
+            let setter_ref = self.fb.global_ref(&setter_name, ty);
             args.push(setter_ref);
         }
 
@@ -1809,7 +1841,8 @@ impl TranslateCtx {
         self.fb.br(header_block, &[]);
 
         self.fb.switch_to_block(header_block);
-        let current = self.fb.load(alloc, Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let current = self.fb.load(alloc, ty);
         let cond = self.fb.cmp(CmpKind::Lt, current, end_val);
         self.fb.br_if(cond, body_block, &[], exit_block, &[]);
 
@@ -1820,7 +1853,8 @@ impl TranslateCtx {
         self.fb.br(latch_block, &[]);
 
         self.fb.switch_to_block(latch_block);
-        let cur = self.fb.load(alloc, Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let cur = self.fb.load(alloc, ty);
         let one = self.fb.const_float(1.0);
         let next = self.fb.add(cur, one);
         self.fb.store(alloc, next);
@@ -1838,9 +1872,10 @@ impl TranslateCtx {
     ) {
         let coll = self.lower_expr(collection);
 
+        let iter_ty = self.fb.fresh_var();
         let iter = self
             .fb
-            .system_call("SugarCube.Engine", "iterate", &[coll], Type::Unknown);
+            .system_call("SugarCube.Engine", "iterate", &[coll], iter_ty);
 
         let header_block = self.fb.create_block();
         let body_block = self.fb.create_block();
@@ -1855,22 +1890,18 @@ impl TranslateCtx {
         self.fb.br_if(has_next, body_block, &[], exit_block, &[]);
 
         self.fb.switch_to_block(body_block);
-        let next_val = self.fb.system_call(
-            "SugarCube.Engine",
-            "iterator_next_value",
-            &[iter],
-            Type::Unknown,
-        );
+        let val_ty = self.fb.fresh_var();
+        let next_val =
+            self.fb
+                .system_call("SugarCube.Engine", "iterator_next_value", &[iter], val_ty);
         let val_alloc = self.get_or_create_temp(value_var);
         self.fb.store(val_alloc, next_val);
 
         if let Some(kv) = key_var {
-            let next_key = self.fb.system_call(
-                "SugarCube.Engine",
-                "iterator_next_key",
-                &[iter],
-                Type::Unknown,
-            );
+            let key_ty = self.fb.fresh_var();
+            let next_key =
+                self.fb
+                    .system_call("SugarCube.Engine", "iterator_next_key", &[iter], key_ty);
             let key_alloc = self.get_or_create_temp(kv);
             self.fb.store(key_alloc, next_key);
         }
@@ -2340,10 +2371,10 @@ fn init_temp_vars_from_state(ctx: &mut TranslateCtx, names: &[String]) {
             continue; // already initialised (e.g. `_args`)
         }
         let sc_name = ctx.fb.const_string(format!("_{name}"));
-        let state_val = ctx
-            .fb
-            .system_call("SugarCube.State", "get", &[sc_name], Type::Unknown);
-        let alloc = ctx.fb.alloc(Type::Unknown);
+        let ty = ctx.fb.fresh_var();
+        let state_val = ctx.fb.system_call("SugarCube.State", "get", &[sc_name], ty);
+        let ty = ctx.fb.fresh_var();
+        let alloc = ctx.fb.alloc(ty);
         ctx.fb.name_value(alloc, format!("_{name}"));
         ctx.fb.store(alloc, state_val);
         ctx.pre_inited_temps.insert(name.clone(), alloc);
@@ -2397,9 +2428,10 @@ pub fn translate_widget(
 
     // Initialize _args from State (explicit, always first)
     let args_name = ctx.fb.const_string("_args");
+    let ty = ctx.fb.fresh_var();
     let args_val = ctx
         .fb
-        .system_call("SugarCube.State", "get", &[args_name], Type::Unknown);
+        .system_call("SugarCube.State", "get", &[args_name], ty);
     let alloc = ctx.get_or_create_temp("args");
     ctx.fb.store(alloc, args_val);
 

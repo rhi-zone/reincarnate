@@ -64,8 +64,9 @@ pub fn translate_method_body(
             continue; // Already have entry block.
         }
         if exception_entries.contains(&start) {
-            // Exception handlers receive the caught exception as a Unknown parameter.
-            let (block, _params) = fb.create_block_with_params(&[Type::Unknown]);
+            // Exception handlers receive the caught exception as an inferred-type parameter.
+            let exc_ty = fb.fresh_var();
+            let (block, _params) = fb.create_block_with_params(&[exc_ty]);
             block_map.insert(start, block);
         } else {
             let block = fb.create_block();
@@ -83,7 +84,8 @@ pub fn translate_method_body(
     fb.switch_to_block(fb.entry_block());
 
     for i in 0..num_locals {
-        let slot = fb.alloc(Type::Unknown);
+        let slot_ty = fb.fresh_var();
+        let slot = fb.alloc(slot_ty);
         if i < num_params {
             let param_val = fb.param(i);
             fb.store(slot, param_val);
@@ -151,7 +153,8 @@ pub fn translate_method_body(
         activation_slot_names
             .iter()
             .map(|(&slot_id, name)| {
-                let alloc = fb.alloc(Type::Unknown);
+                let ty = fb.fresh_var();
+                let alloc = fb.alloc(ty);
                 fb.name_value(alloc, name.clone());
                 (slot_id, alloc)
             })
@@ -653,7 +656,8 @@ fn translate_op(
         Op::GetLocal { index } => {
             let idx = *index as usize;
             if idx < locals.len() {
-                let v = fb.load(locals[idx], Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.load(locals[idx], ty);
                 stack.push(v);
             }
         }
@@ -776,7 +780,8 @@ fn translate_op(
         Op::IncLocal { index } => {
             let idx = *index as usize;
             if idx < locals.len() {
-                let val = fb.load(locals[idx], Type::Unknown);
+                let ty = fb.fresh_var();
+                let val = fb.load(locals[idx], ty);
                 let one = fb.const_float(1.0);
                 let inc = fb.add(val, one);
                 fb.store(locals[idx], inc);
@@ -785,7 +790,8 @@ fn translate_op(
         Op::IncLocalI { index } => {
             let idx = *index as usize;
             if idx < locals.len() {
-                let val = fb.load(locals[idx], Type::Unknown);
+                let ty = fb.fresh_var();
+                let val = fb.load(locals[idx], ty);
                 let val = fb.cast(val, Type::Int(32));
                 let one = fb.const_int(1);
                 let inc = fb.add(val, one);
@@ -795,7 +801,8 @@ fn translate_op(
         Op::DecLocal { index } => {
             let idx = *index as usize;
             if idx < locals.len() {
-                let val = fb.load(locals[idx], Type::Unknown);
+                let ty = fb.fresh_var();
+                let val = fb.load(locals[idx], ty);
                 let one = fb.const_float(1.0);
                 let dec = fb.sub(val, one);
                 fb.store(locals[idx], dec);
@@ -804,7 +811,8 @@ fn translate_op(
         Op::DecLocalI { index } => {
             let idx = *index as usize;
             if idx < locals.len() {
-                let val = fb.load(locals[idx], Type::Unknown);
+                let ty = fb.fresh_var();
+                let val = fb.load(locals[idx], ty);
                 let val = fb.cast(val, Type::Int(32));
                 let one = fb.const_int(1);
                 let dec = fb.sub(val, one);
@@ -1062,7 +1070,8 @@ fn translate_op(
         }
         Op::GetOuterScope { index } => {
             let idx = fb.const_int(*index as i64);
-            let v = fb.system_call("Flash.Scope", "getOuterScope", &[idx], Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Scope", "getOuterScope", &[idx], ty);
             stack.push(v);
         }
 
@@ -1072,9 +1081,10 @@ fn translate_op(
         Op::GetProperty { index } => {
             let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
+                let ty = fb.fresh_var();
                 let v = match prop {
-                    PropertyAccess::Named(name) => fb.get_field(obj, &name, Type::Unknown),
-                    PropertyAccess::Indexed(idx) => fb.get_index(obj, idx, Type::Unknown),
+                    PropertyAccess::Named(name) => fb.get_field(obj, &name, ty),
+                    PropertyAccess::Indexed(idx) => fb.get_index(obj, idx, ty),
                 };
                 stack.push(v);
             }
@@ -1112,12 +1122,14 @@ fn translate_op(
             if let Some(obj) = stack.pop() {
                 if *activation_vid == Some(obj) {
                     if let Some(&alloc) = activation_allocs.get(index) {
-                        let v = fb.load(alloc, Type::Unknown);
+                        let ty = fb.fresh_var();
+                        let v = fb.load(alloc, ty);
                         stack.push(v);
                     } else {
                         // Unknown activation slot — fall back to field access.
                         let slot_name = format!("slot{index}");
-                        let v = fb.get_field(obj, &slot_name, Type::Unknown);
+                        let ty = fb.fresh_var();
+                        let v = fb.get_field(obj, &slot_name, ty);
                         stack.push(v);
                     }
                 } else {
@@ -1126,7 +1138,8 @@ fn translate_op(
                         .get(index)
                         .cloned()
                         .unwrap_or_else(|| format!("slot{index}"));
-                    let v = fb.get_field(obj, &slot_name, Type::Unknown);
+                    let ty = fb.fresh_var();
+                    let v = fb.get_field(obj, &slot_name, ty);
                     stack.push(v);
                 }
             }
@@ -1151,13 +1164,15 @@ fn translate_op(
         }
         Op::GetGlobalSlot { index } => {
             let name = format!("global_slot{index}");
-            let v = fb.global_ref(&name, Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.global_ref(&name, ty);
             stack.push(v);
         }
         Op::SetGlobalSlot { index } => {
             if let Some(val) = stack.pop() {
                 let name = format!("global_slot{index}");
-                let ptr = fb.global_ref(&name, Type::Unknown);
+                let ty = fb.fresh_var();
+                let ptr = fb.global_ref(&name, ty);
                 fb.store(ptr, val);
             }
         }
@@ -1168,7 +1183,8 @@ fn translate_op(
                     PropertyAccess::Named(name) => fb.const_string(&name),
                     PropertyAccess::Indexed(idx) => idx,
                 };
-                let v = fb.system_call("Flash.Class", "getSuper", &[obj, name_val], Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Class", "getSuper", &[obj, name_val], ty);
                 stack.push(v);
             }
         }
@@ -1188,8 +1204,10 @@ fn translate_op(
             // GetLex is always statically named (AVM2 spec: no runtime multinames).
             let name = resolve_multiname_index(pool, index);
             let name_val = fb.const_string(&name);
-            let v = fb.system_call("Flash.Scope", "findPropStrict", &[name_val], Type::Unknown);
-            let result = fb.get_field(v, &name, Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Scope", "findPropStrict", &[name_val], ty);
+            let ty = fb.fresh_var();
+            let result = fb.get_field(v, &name, ty);
             class_value_hints.insert(result, name);
             stack.push(result);
         }
@@ -1203,7 +1221,8 @@ fn translate_op(
                 PropertyAccess::Named(name) => fb.const_string(&name),
                 PropertyAccess::Indexed(idx) => idx,
             };
-            let v = fb.system_call("Flash.Scope", "findProperty", &[name_val], Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Scope", "findProperty", &[name_val], ty);
             stack.push(v);
         }
         Op::FindPropStrict { index } => {
@@ -1212,7 +1231,8 @@ fn translate_op(
                 PropertyAccess::Named(ref name) => fb.const_string(name),
                 PropertyAccess::Indexed(idx) => idx,
             };
-            let v = fb.system_call("Flash.Scope", "findPropStrict", &[name_val], Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Scope", "findPropStrict", &[name_val], ty);
             if let PropertyAccess::Named(name) = prop {
                 class_value_hints.insert(v, name);
             }
@@ -1221,7 +1241,8 @@ fn translate_op(
         Op::FindDef { index } => {
             let name = resolve_multiname_index(pool, index);
             let name_val = fb.const_string(&name);
-            let v = fb.system_call("Flash.Scope", "findDef", &[name_val], Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Scope", "findDef", &[name_val], ty);
             stack.push(v);
         }
 
@@ -1233,19 +1254,21 @@ fn translate_op(
             let args = pop_n(stack, n);
             let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
+                let ty = fb.fresh_var();
                 match prop {
                     PropertyAccess::Named(ref name) if name.starts_with("flash.utils::") => {
                         let method = name.rsplit("::").next().unwrap_or(name);
-                        let v = fb.system_call("Flash.Utils", method, &args, Type::Unknown);
+                        let v = fb.system_call("Flash.Utils", method, &args, ty);
                         stack.push(v);
                     }
                     PropertyAccess::Named(name) => {
-                        let v = fb.call_method(obj, &name, &args, Type::Unknown);
+                        let v = fb.call_method(obj, &name, &args, ty);
                         stack.push(v);
                     }
                     PropertyAccess::Indexed(idx) => {
-                        let callee = fb.get_index(obj, idx, Type::Unknown);
-                        let v = fb.call_indirect(callee, &args, Type::Unknown);
+                        let callee_ty = fb.fresh_var();
+                        let callee = fb.get_index(obj, idx, callee_ty);
+                        let v = fb.call_indirect(callee, &args, ty);
                         stack.push(v);
                     }
                 }
@@ -1265,7 +1288,8 @@ fn translate_op(
                         fb.call_method(obj, &name, &args, Type::Void);
                     }
                     PropertyAccess::Indexed(idx) => {
-                        let callee = fb.get_index(obj, idx, Type::Unknown);
+                        let ty = fb.fresh_var();
+                        let callee = fb.get_index(obj, idx, ty);
                         fb.call_indirect(callee, &args, Type::Void);
                     }
                 }
@@ -1276,19 +1300,21 @@ fn translate_op(
             let args = pop_n(stack, n);
             let prop = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
+                let ty = fb.fresh_var();
                 match prop {
                     PropertyAccess::Named(ref name) if name.starts_with("flash.utils::") => {
                         let method = name.rsplit("::").next().unwrap_or(name);
-                        let v = fb.system_call("Flash.Utils", method, &args, Type::Unknown);
+                        let v = fb.system_call("Flash.Utils", method, &args, ty);
                         stack.push(v);
                     }
                     PropertyAccess::Named(name) => {
-                        let v = fb.call_method(obj, &name, &args, Type::Unknown);
+                        let v = fb.call_method(obj, &name, &args, ty);
                         stack.push(v);
                     }
                     PropertyAccess::Indexed(idx) => {
-                        let callee = fb.get_index(obj, idx, Type::Unknown);
-                        let v = fb.call_indirect(callee, &args, Type::Unknown);
+                        let callee_ty = fb.fresh_var();
+                        let callee = fb.get_index(obj, idx, callee_ty);
+                        let v = fb.call_indirect(callee, &args, ty);
                         stack.push(v);
                     }
                 }
@@ -1305,7 +1331,8 @@ fn translate_op(
                 };
                 let mut call_args = vec![obj, name_val];
                 call_args.extend(args);
-                let v = fb.system_call("Flash.Class", "callSuper", &call_args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Class", "callSuper", &call_args, ty);
                 stack.push(v);
             }
         }
@@ -1328,7 +1355,8 @@ fn translate_op(
             let args = pop_n(stack, n);
             if let Some(receiver) = stack.pop() {
                 let func_name = format!("method{}", index.0);
-                let v = fb.call_method(receiver, &func_name, &args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.call_method(receiver, &func_name, &args, ty);
                 stack.push(v);
             }
         }
@@ -1337,7 +1365,8 @@ fn translate_op(
             let args = pop_n(stack, n);
             if let Some(receiver) = stack.pop() {
                 let func_name = format!("disp{index}");
-                let v = fb.call_method(receiver, &func_name, &args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.call_method(receiver, &func_name, &args, ty);
                 stack.push(v);
             }
         }
@@ -1347,7 +1376,8 @@ fn translate_op(
             if let (Some(receiver), Some(callee)) = (stack.pop(), stack.pop()) {
                 let mut call_args = vec![receiver];
                 call_args.extend(args);
-                let v = fb.call_indirect(callee, &call_args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.call_indirect(callee, &call_args, ty);
                 stack.push(v);
             }
         }
@@ -1361,7 +1391,8 @@ fn translate_op(
             if let Some(obj) = stack.pop() {
                 let mut call_args = vec![obj];
                 call_args.extend(args);
-                let v = fb.system_call("Flash.Object", "construct", &call_args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Object", "construct", &call_args, ty);
                 stack.push(v);
             }
         }
@@ -1370,13 +1401,15 @@ fn translate_op(
             let args = pop_n(stack, n);
             let prop_access = resolve_property(pool, index, stack)?;
             if let Some(obj) = stack.pop() {
+                let prop_ty = fb.fresh_var();
                 let prop = match prop_access {
-                    PropertyAccess::Named(name) => fb.get_field(obj, &name, Type::Unknown),
-                    PropertyAccess::Indexed(idx) => fb.get_index(obj, idx, Type::Unknown),
+                    PropertyAccess::Named(name) => fb.get_field(obj, &name, prop_ty),
+                    PropertyAccess::Indexed(idx) => fb.get_index(obj, idx, prop_ty),
                 };
                 let mut call_args = vec![prop];
                 call_args.extend(args);
-                let v = fb.system_call("Flash.Object", "construct", &call_args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Object", "construct", &call_args, ty);
                 stack.push(v);
             }
         }
@@ -1397,7 +1430,8 @@ fn translate_op(
             // Pops num_args * 2 values (name, value pairs)
             let n = (*num_args as usize) * 2;
             let pairs = pop_n(stack, n);
-            let v = fb.system_call("Flash.Object", "newObject", &pairs, Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Object", "newObject", &pairs, ty);
             stack.push(v);
         }
         Op::NewArray { num_args } => {
@@ -1409,7 +1443,8 @@ fn translate_op(
         Op::NewActivation => {
             // Always emit the activation SystemCall so scope-chain access
             // (PushScope/GetScopeObject/GetProperty) still works.
-            let v = fb.system_call("Flash.Scope", "newActivation", &[], Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Scope", "newActivation", &[], ty);
             if !activation_allocs.is_empty() {
                 // No closures: GetSlot/SetSlot will use per-slot Allocs instead.
                 // Track the activation ValueId so we can intercept those ops.
@@ -1483,24 +1518,22 @@ fn translate_op(
             } else {
                 fb.const_string(format!("anon_func{}", index.0))
             };
-            let v = fb.system_call("Flash.Object", "newFunction", &[name_val], Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Object", "newFunction", &[name_val], ty);
             stack.push(v);
         }
         Op::NewClass { index } => {
             let base = stack.pop().unwrap_or_else(|| fb.const_null());
             let class_name = format!("class{}", index.0);
             let name_val = fb.const_string(&class_name);
-            let v = fb.system_call("Flash.Class", "initClass", &[base, name_val], Type::Unknown);
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Class", "initClass", &[base, name_val], ty);
             stack.push(v);
         }
         Op::NewCatch { index } => {
             let idx_val = fb.const_int(index.0 as i64);
-            let v = fb.system_call(
-                "Flash.Exception",
-                "newCatchScope",
-                &[idx_val],
-                Type::Unknown,
-            );
+            let ty = fb.fresh_var();
+            let v = fb.system_call("Flash.Exception", "newCatchScope", &[idx_val], ty);
             stack.push(v);
         }
         Op::ApplyType { num_types } => {
@@ -1509,7 +1542,8 @@ fn translate_op(
             if let Some(base) = stack.pop() {
                 let mut args = vec![base];
                 args.extend(type_args);
-                let v = fb.system_call("Flash.Object", "applyType", &args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Object", "applyType", &args, ty);
                 stack.push(v);
             }
         }
@@ -1785,7 +1819,8 @@ fn translate_op(
         // ====================================================================
         Op::HasNext => {
             if let (Some(idx_val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let v = fb.system_call("Flash.Iterator", "hasNext", &[obj, idx_val], Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Iterator", "hasNext", &[obj, idx_val], ty);
                 stack.push(v);
             }
         }
@@ -1796,22 +1831,27 @@ fn translate_op(
             let obj_idx = *object_register as usize;
             let idx_idx = *index_register as usize;
             let obj = if obj_idx < locals.len() {
-                fb.load(locals[obj_idx], Type::Unknown)
+                let ty = fb.fresh_var();
+                fb.load(locals[obj_idx], ty)
             } else {
                 fb.const_null()
             };
             let idx = if idx_idx < locals.len() {
-                fb.load(locals[idx_idx], Type::Unknown)
+                let ty = fb.fresh_var();
+                fb.load(locals[idx_idx], ty)
             } else {
                 fb.const_null()
             };
             // hasNext2 returns [updatedObj, newIndex, hasMore]
-            let result = fb.system_call("Flash.Iterator", "hasNext2", &[obj, idx], Type::Unknown);
+            let ty = fb.fresh_var();
+            let result = fb.system_call("Flash.Iterator", "hasNext2", &[obj, idx], ty);
             let idx0 = fb.const_int(0);
             let idx1 = fb.const_int(1);
             let idx2 = fb.const_int(2);
-            let new_obj = fb.get_index(result, idx0, Type::Unknown);
-            let new_idx = fb.get_index(result, idx1, Type::Unknown);
+            let ty = fb.fresh_var();
+            let new_obj = fb.get_index(result, idx0, ty);
+            let ty = fb.fresh_var();
+            let new_idx = fb.get_index(result, idx1, ty);
             let has_more = fb.get_index(result, idx2, Type::Bool);
             if obj_idx < locals.len() {
                 fb.store(locals[obj_idx], new_obj);
@@ -1823,19 +1863,15 @@ fn translate_op(
         }
         Op::NextName => {
             if let (Some(idx_val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let v =
-                    fb.system_call("Flash.Iterator", "nextName", &[obj, idx_val], Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Iterator", "nextName", &[obj, idx_val], ty);
                 stack.push(v);
             }
         }
         Op::NextValue => {
             if let (Some(idx_val), Some(obj)) = (stack.pop(), stack.pop()) {
-                let v = fb.system_call(
-                    "Flash.Iterator",
-                    "nextValue",
-                    &[obj, idx_val],
-                    Type::Unknown,
-                );
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.Iterator", "nextValue", &[obj, idx_val], ty);
                 stack.push(v);
             }
         }
@@ -1940,7 +1976,8 @@ fn translate_op(
         }
         Op::CheckFilter => {
             if let Some(val) = stack.pop() {
-                let v = fb.system_call("Flash.XML", "checkFilter", &[val], Type::Unknown);
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.XML", "checkFilter", &[val], ty);
                 stack.push(v);
             }
         }
@@ -1951,12 +1988,8 @@ fn translate_op(
                     PropertyAccess::Named(name) => fb.const_string(&name),
                     PropertyAccess::Indexed(idx) => idx,
                 };
-                let v = fb.system_call(
-                    "Flash.XML",
-                    "getDescendants",
-                    &[obj, name_val],
-                    Type::Unknown,
-                );
+                let ty = fb.fresh_var();
+                let v = fb.system_call("Flash.XML", "getDescendants", &[obj, name_val], ty);
                 stack.push(v);
             }
         }

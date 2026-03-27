@@ -114,10 +114,15 @@ impl Transform for CallSiteArityWiden {
 
             let extra = max_arity - current_count;
 
+            // Extra params have no type information — the call sites provide
+            // untyped GML values and no constraint can be formed.  Unknown is
+            // correct here (genuine opacity, not an inference gap).
+            let fresh_types: Vec<Type> = vec![Type::Unknown; extra];
+
             // Extend sig.params and sig.defaults.
             let func = &mut module.functions[func_id];
-            for _ in 0..extra {
-                func.sig.params.push(Type::Unknown);
+            for ty in &fresh_types {
+                func.sig.params.push(ty.clone());
                 // Ensure defaults vec is long enough, then set None for the
                 // new params (they use the Unknown/null GML default).
                 // Extend existing defaults to align with the new param count.
@@ -131,12 +136,9 @@ impl Transform for CallSiteArityWiden {
 
             // Extend entry block params with matching ValueIds.
             let entry = func.entry;
-            for _ in 0..extra {
-                let value = func.value_types.push(Type::Unknown);
-                func.blocks[entry].params.push(BlockParam {
-                    value,
-                    ty: Type::Unknown,
-                });
+            for ty in fresh_types {
+                let value = func.value_types.push(ty.clone());
+                func.blocks[entry].params.push(BlockParam { value, ty });
             }
 
             changed = true;

@@ -3,9 +3,10 @@ use std::collections::{HashMap, HashSet};
 use datawin::bytecode::decode::{Instruction, Operand};
 use datawin::bytecode::opcode::Opcode;
 use datawin::bytecode::types::InstanceType;
+use reincarnate_core::entity::EntityRef as _;
 use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{CaptureMode, Function, MethodKind, Visibility};
-use reincarnate_core::ir::ty::{FunctionSig, Type};
+use reincarnate_core::ir::ty::{FunctionSig, Type, TypeVarId};
 use reincarnate_core::ir::value::ValueId;
 
 use super::cfg::setup_blocks;
@@ -248,17 +249,27 @@ pub(super) fn translate_with_body(
     // When the with-target is a known OBJT, type _self as that class.
     // Otherwise fall back to GMLObject — all GML instances extend it,
     // so field access via the `[key: string]: any` index signature works.
+    // Pre-builder type variable counter: used for FunctionSig construction before
+    // FunctionBuilder is available. The constraint solver ignores TypeVarId values —
+    // only is_concrete() matters — so counter collisions across functions are safe.
+    let mut pre_tv: u32 = 0;
+    let mut pre_fresh = || {
+        let ty = Type::Var(TypeVarId::new(pre_tv));
+        pre_tv += 1;
+        ty
+    };
+
     let instance_types = wctx.ctx.instance_types;
     let self_ty = wctx
         .instance_class
         .and_then(|n| instance_types.get(n).copied())
         .or_else(|| instance_types.get("GMLObject").copied())
         .map(Type::Instance)
-        .unwrap_or(Type::Unknown);
-    // Use Unknown return type when the body contains "return X inside with" pattern
-    // (exit PopEnv with sentinel Branch offset). TypeInference will refine further.
+        .unwrap_or_else(&mut pre_fresh);
+    // Use a fresh type variable for the return type when the body contains
+    // "return X inside with" (exit PopEnv with sentinel Branch offset).
     let closure_return_ty = if wctx.has_return_in_with {
-        Type::Unknown
+        pre_fresh()
     } else {
         Type::Void
     };
@@ -285,27 +296,32 @@ pub(super) fn translate_with_body(
             .and_then(|n| instance_types.get(n).copied())
             .or_else(|| instance_types.get("GMLObject").copied())
             .map(Type::Instance)
-            .unwrap_or(Type::Unknown)
+            .unwrap_or_else(|| fb.fresh_var())
     } else {
-        Type::Unknown
+        fb.fresh_var()
     };
+    // Pre-allocate capture types before calling add_capture_params to avoid
+    // double-borrowing fb inside the map closure.
+    let capture_types: Vec<Type> = wctx
+        .captured_names
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            if wctx.has_outer_self && i == 0 {
+                outer_self_ty.clone()
+            } else {
+                fb.fresh_var()
+            }
+        })
+        .collect();
     let capture_ids = if wctx.captured_names.is_empty() {
         vec![]
     } else {
         fb.add_capture_params(
             wctx.captured_names
                 .iter()
-                .enumerate()
-                .map(|(i, n)| {
-                    // The first capture is `_other` when has_outer_self; give it
-                    // the outer self type.  All other captures stay Unknown.
-                    let ty = if wctx.has_outer_self && i == 0 {
-                        outer_self_ty.clone()
-                    } else {
-                        Type::Unknown
-                    };
-                    (n.clone(), ty, CaptureMode::ByValue)
-                })
+                .zip(capture_types)
+                .map(|(n, ty)| (n.clone(), ty, CaptureMode::ByValue))
                 .collect(),
         )
     };
@@ -331,7 +347,8 @@ pub(super) fn translate_with_body(
     // These are not GML locals so they aren't in ctx.local_names / allocate_locals.
     for name in wctx.captured_names {
         if name.starts_with("_argument") && !locals.contains_key(name) {
-            let slot = fb.alloc(Type::Unknown);
+            let ty = fb.fresh_var();
+            let slot = fb.alloc(ty);
             locals.insert(name.clone(), slot);
         }
     }
@@ -345,7 +362,8 @@ pub(super) fn translate_with_body(
         let slot = if let Some(&s) = locals.get(name) {
             s
         } else {
-            let s = fb.alloc(Type::Unknown);
+            let ty = fb.fresh_var();
+            let s = fb.alloc(ty);
             fb.name_value(s, name.clone());
             locals.insert(name.clone(), s);
             s

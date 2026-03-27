@@ -173,7 +173,7 @@ pub(super) fn setup_blocks(
             block_map.insert(off, block);
             let depth = block_entry_depths.get(&off).copied().unwrap_or(0);
             if depth > 0 {
-                let types: Vec<Type> = vec![Type::Unknown; depth];
+                let types: Vec<Type> = (0..depth).map(|_| fb.fresh_var()).collect();
                 let params = fb.add_block_params(block, &types);
                 block_params.insert(off, params);
             }

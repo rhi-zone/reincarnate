@@ -52,6 +52,8 @@ pub fn passage_func_name(name: &str) -> String {
 /// Translate a parsed Harlowe passage AST into an IR Function.
 pub fn translate_passage(name: &str, ast: &PassageAst, source: &str) -> TranslateResult {
     let func_name = passage_func_name(name);
+    // The h param is the Harlowe renderer — type defined by the TypeScript
+    // runtime, not inferable from passage source.  Genuine opacity → Unknown.
     let sig = FunctionSig {
         params: vec![Type::Unknown],
         return_ty: Type::Void,
@@ -199,7 +201,8 @@ impl TranslateCtx {
                 args.push(self.fb.const_string(k));
                 args.push(self.fb.const_string(v));
             }
-            self.fb.system_call("Harlowe.H", "el", &args, Type::Unknown);
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.H", "el", &args, ty);
         } else {
             let mut args = child_vals;
             // Shorthand tags shouldn't have extra attrs, but pass them through el() if present
@@ -210,10 +213,11 @@ impl TranslateCtx {
                     args.push(self.fb.const_string(k));
                     args.push(self.fb.const_string(v));
                 }
-                self.fb.system_call("Harlowe.H", "el", &args, Type::Unknown);
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "el", &args, ty);
             } else {
-                self.fb
-                    .system_call("Harlowe.H", method, &args, Type::Unknown);
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", method, &args, ty);
             }
         }
 
@@ -289,9 +293,9 @@ impl TranslateCtx {
             self.collect_html_children_as_values(nodes, open_idx + 1, tag);
 
         let val = if method != "el" && attrs.is_empty() {
+            let ty = self.fb.fresh_var();
             // Shorthand (strong, em, etc.) without extra attrs
-            self.fb
-                .system_call("Harlowe.H", method, &child_vals, Type::Unknown)
+            self.fb.system_call("Harlowe.H", method, &child_vals, ty)
         } else {
             // Generic el() or shorthand with attrs → fall back to el()
             let tag_val = self.fb.const_string(tag);
@@ -301,7 +305,8 @@ impl TranslateCtx {
                 args.push(self.fb.const_string(k));
                 args.push(self.fb.const_string(v));
             }
-            self.fb.system_call("Harlowe.H", "el", &args, Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.H", "el", &args, ty)
         };
 
         (val, children_end)
@@ -313,8 +318,8 @@ impl TranslateCtx {
             NodeKind::Text(text) => {
                 if !text.is_empty() {
                     let s = self.fb.const_string(text);
-                    self.fb
-                        .system_call("Harlowe.H", "text", &[s], Type::Unknown);
+                    let ty = self.fb.fresh_var();
+                    self.fb.system_call("Harlowe.H", "text", &[s], ty);
                 }
             }
             NodeKind::Macro(mac) => {
@@ -327,13 +332,14 @@ impl TranslateCtx {
             NodeKind::Link(link) => {
                 let text = self.fb.const_string(&link.text);
                 let passage = self.fb.const_string(&link.passage);
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("Harlowe.H", "link", &[text, passage], Type::Unknown);
+                    .system_call("Harlowe.H", "link", &[text, passage], ty);
             }
             NodeKind::VarInterp(name) => {
                 let val = self.load_variable(name);
-                self.fb
-                    .system_call("Harlowe.H", "printVal", &[val], Type::Unknown);
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "printVal", &[val], ty);
             }
             NodeKind::HtmlOpen { tag, attrs } => {
                 // Standalone open tag without matching close — emit as element
@@ -350,7 +356,8 @@ impl TranslateCtx {
                 self.emit_changer_apply(name, hook);
             }
             NodeKind::LineBreak => {
-                self.fb.system_call("Harlowe.H", "br", &[], Type::Unknown);
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "br", &[], ty);
             }
             NodeKind::NamedHook { name, body } => {
                 if name.is_empty() {
@@ -363,8 +370,8 @@ impl TranslateCtx {
                     let children = self.lower_children_as_values(body);
                     let mut args = vec![name_val];
                     args.extend(children);
-                    self.fb
-                        .system_call("Harlowe.H", "namedHook", &args, Type::Unknown);
+                    let ty = self.fb.fresh_var();
+                    self.fb.system_call("Harlowe.H", "namedHook", &args, ty);
                 }
             }
         }
@@ -378,10 +385,8 @@ impl TranslateCtx {
                     None
                 } else {
                     let s = self.fb.const_string(text);
-                    Some(
-                        self.fb
-                            .system_call("Harlowe.H", "text", &[s], Type::Unknown),
-                    )
+                    let ty = self.fb.fresh_var();
+                    Some(self.fb.system_call("Harlowe.H", "text", &[s], ty))
                 }
             }
             NodeKind::Macro(mac) => self.lower_macro_as_value(mac),
@@ -395,17 +400,16 @@ impl TranslateCtx {
             NodeKind::Link(link) => {
                 let text = self.fb.const_string(&link.text);
                 let passage = self.fb.const_string(&link.passage);
+                let ty = self.fb.fresh_var();
                 Some(
                     self.fb
-                        .system_call("Harlowe.H", "link", &[text, passage], Type::Unknown),
+                        .system_call("Harlowe.H", "link", &[text, passage], ty),
                 )
             }
             NodeKind::VarInterp(name) => {
                 let val = self.load_variable(name);
-                Some(
-                    self.fb
-                        .system_call("Harlowe.H", "printVal", &[val], Type::Unknown),
-                )
+                let ty = self.fb.fresh_var();
+                Some(self.fb.system_call("Harlowe.H", "printVal", &[val], ty))
             }
             NodeKind::HtmlOpen { tag, attrs } => {
                 Some(self.lower_standalone_element_as_value(tag, attrs))
@@ -416,7 +420,10 @@ impl TranslateCtx {
             NodeKind::ChangerApply { name, hook } => {
                 Some(self.lower_changer_apply_as_value(name, hook))
             }
-            NodeKind::LineBreak => Some(self.fb.system_call("Harlowe.H", "br", &[], Type::Unknown)),
+            NodeKind::LineBreak => {
+                let ty = self.fb.fresh_var();
+                Some(self.fb.system_call("Harlowe.H", "br", &[], ty))
+            }
             NodeKind::NamedHook { name, body } => {
                 if name.is_empty() {
                     // Anonymous right-sided hook — emit body inline, no value
@@ -429,10 +436,8 @@ impl TranslateCtx {
                     let children = self.lower_children_as_values(body);
                     let mut args = vec![name_val];
                     args.extend(children);
-                    Some(
-                        self.fb
-                            .system_call("Harlowe.H", "namedHook", &args, Type::Unknown),
-                    )
+                    let ty = self.fb.fresh_var();
+                    Some(self.fb.system_call("Harlowe.H", "namedHook", &args, ty))
                 }
             }
         }
@@ -443,14 +448,14 @@ impl TranslateCtx {
     fn load_variable(&mut self, name: &str) -> ValueId {
         if let Some(stripped) = name.strip_prefix('$') {
             let n = self.fb.const_string(stripped);
-            self.fb
-                .system_call("Harlowe.State", "get", &[n], Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.State", "get", &[n], ty)
         } else if let Some(stripped) = name.strip_prefix('_') {
             self.get_or_load_temp(stripped)
         } else {
             let n = self.fb.const_string(name);
-            self.fb
-                .system_call("Harlowe.State", "get", &[n], Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.State", "get", &[n], ty)
         }
     }
 
@@ -461,7 +466,8 @@ impl TranslateCtx {
             args.push(self.fb.const_string(k));
             args.push(self.fb.const_string(v));
         }
-        self.fb.system_call("Harlowe.H", "el", &args, Type::Unknown);
+        let ty = self.fb.fresh_var();
+        self.fb.system_call("Harlowe.H", "el", &args, ty);
     }
 
     fn lower_standalone_element_as_value(
@@ -475,7 +481,8 @@ impl TranslateCtx {
             args.push(self.fb.const_string(k));
             args.push(self.fb.const_string(v));
         }
-        self.fb.system_call("Harlowe.H", "el", &args, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.system_call("Harlowe.H", "el", &args, ty)
     }
 
     fn emit_void_element(&mut self, tag: &str, attrs: &[(String, String)]) {
@@ -484,8 +491,14 @@ impl TranslateCtx {
 
     fn lower_void_element(&mut self, tag: &str, attrs: &[(String, String)]) -> ValueId {
         match tag {
-            "br" => self.fb.system_call("Harlowe.H", "br", &[], Type::Unknown),
-            "hr" => self.fb.system_call("Harlowe.H", "hr", &[], Type::Unknown),
+            "br" => {
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "br", &[], ty)
+            }
+            "hr" => {
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "hr", &[], ty)
+            }
             "img" => {
                 let src = attrs
                     .iter()
@@ -493,8 +506,8 @@ impl TranslateCtx {
                     .map(|(_, v)| v.as_str())
                     .unwrap_or("");
                 let src_val = self.fb.const_string(src);
-                self.fb
-                    .system_call("Harlowe.H", "img", &[src_val], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "img", &[src_val], ty)
             }
             _ => {
                 let tag_val = self.fb.const_string(tag);
@@ -503,8 +516,8 @@ impl TranslateCtx {
                     args.push(self.fb.const_string(k));
                     args.push(self.fb.const_string(v));
                 }
-                self.fb
-                    .system_call("Harlowe.H", "voidEl", &args, Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "voidEl", &args, ty)
             }
         }
     }
@@ -523,10 +536,11 @@ impl TranslateCtx {
             let tag_val = self.fb.const_string(tag);
             let mut args = vec![tag_val];
             args.extend(children);
-            self.fb.system_call("Harlowe.H", "el", &args, Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.H", "el", &args, ty)
         } else {
-            self.fb
-                .system_call("Harlowe.H", method, &children, Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.H", method, &children, ty)
         }
     }
 
@@ -537,8 +551,8 @@ impl TranslateCtx {
     fn lower_changer_apply_as_value(&mut self, name: &str, hook: &[Node]) -> ValueId {
         let changer = if let Some(stripped) = name.strip_prefix('$') {
             let n = self.fb.const_string(stripped);
-            self.fb
-                .system_call("Harlowe.State", "get", &[n], Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.State", "get", &[n], ty)
         } else {
             let stripped = name.strip_prefix('_').unwrap_or(name);
             self.get_or_load_temp(stripped)
@@ -546,8 +560,8 @@ impl TranslateCtx {
         let children: Vec<ValueId> = self.lower_children_as_values(hook);
         let mut args = vec![changer];
         args.extend(children);
-        self.fb
-            .system_call("Harlowe.H", "styled", &args, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.system_call("Harlowe.H", "styled", &args, ty)
     }
 
     /// Lower children as values (for element method arguments).
@@ -601,17 +615,19 @@ impl TranslateCtx {
         if let Some(var_name) = mac.name.strip_prefix('$') {
             let callee_val = {
                 let n = self.fb.const_string(var_name);
-                self.fb
-                    .system_call("Harlowe.State", "get", &[n], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.State", "get", &[n], ty)
             };
             let arg_vals: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
-            self.fb.call_indirect(callee_val, &arg_vals, Type::Unknown);
+            let ty = self.fb.fresh_var();
+            self.fb.call_indirect(callee_val, &arg_vals, ty);
             return;
         }
         if let Some(var_name) = mac.name.strip_prefix('_') {
             let callee_val = self.get_or_load_temp(var_name);
             let arg_vals: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
-            self.fb.call_indirect(callee_val, &arg_vals, Type::Unknown);
+            let ty = self.fb.fresh_var();
+            self.fb.call_indirect(callee_val, &arg_vals, ty);
             return;
         }
         match mac.name.as_str() {
@@ -828,16 +844,18 @@ impl TranslateCtx {
         if let Some(var_name) = mac.name.strip_prefix('$') {
             let callee_val = {
                 let n = self.fb.const_string(var_name);
-                self.fb
-                    .system_call("Harlowe.State", "get", &[n], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.State", "get", &[n], ty)
             };
             let arg_vals: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
-            return Some(self.fb.call_indirect(callee_val, &arg_vals, Type::Unknown));
+            let ty = self.fb.fresh_var();
+            return Some(self.fb.call_indirect(callee_val, &arg_vals, ty));
         }
         if let Some(var_name) = mac.name.strip_prefix('_') {
             let callee_val = self.get_or_load_temp(var_name);
             let arg_vals: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
-            return Some(self.fb.call_indirect(callee_val, &arg_vals, Type::Unknown));
+            let ty = self.fb.fresh_var();
+            return Some(self.fb.call_indirect(callee_val, &arg_vals, ty));
         }
         match mac.name.as_str() {
             // State macros don't produce values
@@ -869,10 +887,8 @@ impl TranslateCtx {
             "print" => {
                 if let Some(arg) = mac.args.first() {
                     let val = self.lower_expr(arg);
-                    Some(
-                        self.fb
-                            .system_call("Harlowe.H", "printVal", &[val], Type::Unknown),
-                    )
+                    let ty = self.fb.fresh_var();
+                    Some(self.fb.system_call("Harlowe.H", "printVal", &[val], ty))
                 } else {
                     None
                 }
@@ -1126,8 +1142,9 @@ impl TranslateCtx {
             let name = self.fb.const_string("a");
             let mut args = vec![name];
             args.extend(item_args);
+            let ty = self.fb.fresh_var();
             self.fb
-                .system_call("Harlowe.Engine", "value_macro", &args, Type::Unknown)
+                .system_call("Harlowe.Engine", "value_macro", &args, ty)
         };
 
         // Build callback: (h: Context, _item: any) => void
@@ -1221,7 +1238,8 @@ impl TranslateCtx {
                 Type::Bool => self.fb.const_bool(true),
                 _ => {
                     // Identity transform: return the item unchanged.
-                    self.fb.load(alloc, Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.load(alloc, ty)
                 }
             }
         };
@@ -1235,7 +1253,8 @@ impl TranslateCtx {
         self.callbacks.push(func);
 
         // --- 4. Emit Op::MakeClosure ---
-        self.fb.make_closure(&cb_name, &capture_vals, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.make_closure(&cb_name, &capture_vals, ty)
     }
 
     /// Build a two-parameter fold callback `(item, acc) => body`.
@@ -1250,8 +1269,8 @@ impl TranslateCtx {
 
         // --- 2. Build the closure FunctionBuilder ---
         let sig = FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![self.fb.fresh_var(), self.fb.fresh_var()],
+            return_ty: self.fb.fresh_var(),
             defaults: vec![],
             has_rest_param: false,
         };
@@ -1270,13 +1289,15 @@ impl TranslateCtx {
         self.init_captured_temps(&outer_temps, &cap_ids);
 
         // Bind item parameter.
-        let item_alloc = self.fb.alloc(Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let item_alloc = self.fb.alloc(ty);
         self.fb.name_value(item_alloc, format!("_{item_var}"));
         self.fb.store(item_alloc, item_param);
         self.temp_vars.insert(item_var.to_string(), item_alloc);
 
         // Bind accumulator parameter.
-        let acc_alloc = self.fb.alloc(Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let acc_alloc = self.fb.alloc(ty);
         self.fb.name_value(acc_alloc, format!("_{acc_var}"));
         self.fb.store(acc_alloc, acc_param);
         self.temp_vars.insert(acc_var.to_string(), acc_alloc);
@@ -1292,20 +1313,21 @@ impl TranslateCtx {
         self.callbacks.push(func);
 
         // --- 4. Emit Op::MakeClosure ---
-        self.fb.make_closure(&cb_name, &capture_vals, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.make_closure(&cb_name, &capture_vals, ty)
     }
 
     /// Infer the element type from a list of lowered collection values.
     ///
     /// If any value has type `Array(T)`, returns `T`. Otherwise returns `Unknown`.
     /// Used to give lambda parameters a more precise type than `Unknown`.
-    fn infer_element_type(&self, item_vals: &[ValueId]) -> Type {
+    fn infer_element_type(&mut self, item_vals: &[ValueId]) -> Type {
         for &val in item_vals {
             if let Type::Array(elem_ty) = self.fb.value_type(val) {
                 return *elem_ty;
             }
         }
-        Type::Unknown
+        self.fb.fresh_var()
     }
 
     /// Lower a collection op whose first argument is a predicate lambda.
@@ -1353,8 +1375,9 @@ impl TranslateCtx {
         let n = self.fb.const_string(name);
         let mut call_args = vec![n, pred_val];
         call_args.extend(item_vals);
+        let ty = self.fb.fresh_var();
         self.fb
-            .system_call("Harlowe.Engine", "collection_op", &call_args, Type::Unknown)
+            .system_call("Harlowe.Engine", "collection_op", &call_args, ty)
     }
 
     fn build_for_callback(
@@ -1370,7 +1393,7 @@ impl TranslateCtx {
 
         // --- 2. Build the closure FunctionBuilder ---
         let sig = FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
+            params: vec![self.fb.fresh_var(), self.fb.fresh_var()],
             return_ty: Type::Void,
             defaults: vec![],
             has_rest_param: false,
@@ -1392,7 +1415,8 @@ impl TranslateCtx {
         self.init_captured_temps(&outer_temps, &cap_ids);
 
         // Store the loop variable param into an alloc so temp var accesses work.
-        let alloc = self.fb.alloc(Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let alloc = self.fb.alloc(ty);
         self.fb.name_value(alloc, format!("_{loop_var}"));
         self.fb.store(alloc, item_param);
         self.temp_vars.insert(loop_var.to_string(), alloc);
@@ -1419,7 +1443,8 @@ impl TranslateCtx {
         self.callbacks.push(func);
 
         // --- 4. Emit Op::MakeClosure ---
-        self.fb.make_closure(name, &capture_vals, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.make_closure(name, &capture_vals, ty)
     }
 
     // ── (goto:) ────────────────────────────────────────────────────
@@ -1447,8 +1472,8 @@ impl TranslateCtx {
     fn emit_print(&mut self, mac: &MacroNode) {
         if let Some(arg) = mac.args.first() {
             let val = self.lower_expr(arg);
-            self.fb
-                .system_call("Harlowe.H", "printVal", &[val], Type::Unknown);
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.H", "printVal", &[val], ty);
         }
     }
 
@@ -1465,11 +1490,12 @@ impl TranslateCtx {
             if let Some(ref hook) = mac.hook {
                 let cb_name = self.make_callback_name("link");
                 let cb_ref = self.build_callback(&cb_name, hook);
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("Harlowe.H", "linkCb", &[text, cb_ref], Type::Unknown)
+                    .system_call("Harlowe.H", "linkCb", &[text, cb_ref], ty)
             } else {
-                self.fb
-                    .system_call("Harlowe.H", "printVal", &[text], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "printVal", &[text], ty)
             }
         } else {
             // No args — emit nothing, return a dummy
@@ -1485,12 +1511,13 @@ impl TranslateCtx {
         if mac.args.len() >= 2 {
             let text = self.lower_expr(&mac.args[0]);
             let passage = self.lower_expr(&mac.args[1]);
+            let ty = self.fb.fresh_var();
             self.fb
-                .system_call("Harlowe.H", "link", &[text, passage], Type::Unknown)
+                .system_call("Harlowe.H", "link", &[text, passage], ty)
         } else if let Some(arg) = mac.args.first() {
             let text = self.lower_expr(arg);
-            self.fb
-                .system_call("Harlowe.H", "link", &[text, text], Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.H", "link", &[text, text], ty)
         } else {
             self.fb.const_bool(false)
         }
@@ -1597,21 +1624,21 @@ impl TranslateCtx {
         };
 
         // Compose all changers left-to-right via `plus()`.
-        let composed = changer_vals
-            .into_iter()
-            .reduce(|a, b| {
-                self.fb
-                    .system_call("Harlowe.Engine", "plus", &[a, b], Type::Unknown)
+        let composed = {
+            let mut acc = changer_vals.into_iter();
+            let first = acc.next().expect("at least one changer");
+            acc.fold(first, |a, b| {
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.Engine", "plus", &[a, b], ty)
             })
-            .expect("at least one changer");
+        };
 
         // Apply composed changer to the hook children.
         let children = self.lower_children_as_values(&hook_nodes);
         let mut args = vec![composed];
         args.extend(children);
-        let result = self
-            .fb
-            .system_call("Harlowe.H", "styled", &args, Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let result = self.fb.system_call("Harlowe.H", "styled", &args, ty);
 
         // When using remaining sibling nodes as implicit hook, consume all of them.
         let end = if has_hook { i } else { nodes.len() };
@@ -1646,32 +1673,30 @@ impl TranslateCtx {
                     let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
                     let mut changer_args = vec![changer_name];
                     changer_args.extend(args);
+                    let changer_ty = self.fb.fresh_var();
                     let changer = self.fb.system_call(
                         "Harlowe.Engine",
                         "create_changer",
                         &changer_args,
-                        Type::Unknown,
+                        changer_ty,
                     );
                     let children: Vec<ValueId> = self.lower_children_as_values(hook);
                     let mut styled_args = vec![changer];
                     styled_args.extend(children);
-                    return Some(self.fb.system_call(
-                        "Harlowe.H",
-                        "styled",
-                        &styled_args,
-                        Type::Unknown,
-                    ));
+                    let ty = self.fb.fresh_var();
+                    return Some(self.fb.system_call("Harlowe.H", "styled", &styled_args, ty));
                 }
                 // Changer in expression context (no hook)
                 let changer_name = self.fb.const_string(&mac.name);
                 let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
                 let mut call_args = vec![changer_name];
                 call_args.extend(args);
+                let ty = self.fb.fresh_var();
                 return Some(self.fb.system_call(
                     "Harlowe.Engine",
                     "create_changer",
                     &call_args,
-                    Type::Unknown,
+                    ty,
                 ));
             }
         };
@@ -1689,10 +1714,11 @@ impl TranslateCtx {
                     a
                 }
             };
+            let ty = self.fb.fresh_var();
 
             Some(
                 self.fb
-                    .system_call("Harlowe.H", builder_name, &call_args, Type::Unknown),
+                    .system_call("Harlowe.H", builder_name, &call_args, ty),
             )
         } else {
             // Changer in expression context (no hook) → create_changer value
@@ -1700,12 +1726,11 @@ impl TranslateCtx {
             let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
             let mut call_args = vec![changer_name];
             call_args.extend(args);
-            Some(self.fb.system_call(
-                "Harlowe.Engine",
-                "create_changer",
-                &call_args,
-                Type::Unknown,
-            ))
+            let ty = self.fb.fresh_var();
+            Some(
+                self.fb
+                    .system_call("Harlowe.Engine", "create_changer", &call_args, ty),
+            )
         }
     }
 
@@ -1725,8 +1750,9 @@ impl TranslateCtx {
         if let Some(ref hook) = mac.hook {
             let cb_name = self.make_callback_name("live");
             let cb_ref = self.build_callback(&cb_name, hook);
+            let ty = self.fb.fresh_var();
             self.fb
-                .system_call("Harlowe.H", "live", &[interval, cb_ref], Type::Unknown)
+                .system_call("Harlowe.H", "live", &[interval, cb_ref], ty)
         } else {
             self.fb.const_bool(false)
         }
@@ -1736,10 +1762,10 @@ impl TranslateCtx {
 
     fn emit_value_macro_standalone(&mut self, mac: &MacroNode) {
         let val = self.lower_value_macro_as_value(mac);
+        let ty = self.fb.fresh_var();
         // If it has a hook, the styled call already emitted; otherwise print it
         if mac.hook.is_none() {
-            self.fb
-                .system_call("Harlowe.H", "printVal", &[val], Type::Unknown);
+            self.fb.system_call("Harlowe.H", "printVal", &[val], ty);
         }
     }
 
@@ -1748,16 +1774,17 @@ impl TranslateCtx {
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
         let mut call_args = vec![name];
         call_args.extend(args);
-        let result =
-            self.fb
-                .system_call("Harlowe.Engine", "value_macro", &call_args, Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let result = self
+            .fb
+            .system_call("Harlowe.Engine", "value_macro", &call_args, ty);
         if let Some(ref hook) = mac.hook {
             // Value macro with hook — use styled()
             let children: Vec<ValueId> = self.lower_children_as_values(hook);
             let mut styled_args = vec![result];
             styled_args.extend(children);
-            self.fb
-                .system_call("Harlowe.H", "styled", &styled_args, Type::Unknown)
+            let ty = self.fb.fresh_var();
+            self.fb.system_call("Harlowe.H", "styled", &styled_args, ty)
         } else {
             result
         }
@@ -1768,8 +1795,9 @@ impl TranslateCtx {
     fn lower_save_game(&mut self, mac: &MacroNode) {
         if let Some(arg) = mac.args.first() {
             let slot = self.lower_expr(arg);
+            let ty = self.fb.fresh_var();
             self.fb
-                .system_call("Harlowe.Engine", "save_game", &[slot], Type::Unknown);
+                .system_call("Harlowe.Engine", "save_game", &[slot], ty);
         }
     }
 
@@ -1785,7 +1813,8 @@ impl TranslateCtx {
 
     fn lower_simple_command(&mut self, mac: &MacroNode, system: &str, method: &str) {
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
-        self.fb.system_call(system, method, &args, Type::Unknown);
+        let ty = self.fb.fresh_var();
+        self.fb.system_call(system, method, &args, ty);
     }
 
     // ── DOM macros ─────────────────────────────────────────────────
@@ -1884,8 +1913,8 @@ impl TranslateCtx {
                 self.fb
                     .system_call("Harlowe.Engine", "link_rerun", &[text, cb_ref], Type::Void);
             } else {
-                self.fb
-                    .system_call("Harlowe.H", "printVal", &[text], Type::Unknown);
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "printVal", &[text], ty);
             }
         }
     }
@@ -1902,8 +1931,8 @@ impl TranslateCtx {
                 self.fb
                     .system_call("Harlowe.Engine", "link_reveal", &[text, cb_ref], Type::Void);
             } else {
-                self.fb
-                    .system_call("Harlowe.H", "printVal", &[text], Type::Unknown);
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.H", "printVal", &[text], ty);
             }
         }
     }
@@ -1968,11 +1997,13 @@ impl TranslateCtx {
         if let Some(arg) = mac.args.first() {
             // Filter predicate provided (e.g. `where its tags contains "tag"`)
             let filter = self.lower_expr(arg);
+            let ty = self.fb.fresh_var();
             self.fb
-                .system_call("Harlowe.Engine", "open_storylets", &[filter], Type::Unknown)
+                .system_call("Harlowe.Engine", "open_storylets", &[filter], ty)
         } else {
+            let ty = self.fb.fresh_var();
             self.fb
-                .system_call("Harlowe.Engine", "open_storylets", &[], Type::Unknown)
+                .system_call("Harlowe.Engine", "open_storylets", &[], ty)
         }
     }
 
@@ -2096,8 +2127,9 @@ impl TranslateCtx {
         let args: Vec<ValueId> = mac.args.iter().map(|a| self.lower_expr(a)).collect();
         let mut call_args = vec![name];
         call_args.extend(args);
+        let ty = self.fb.fresh_var();
         self.fb
-            .system_call("Harlowe.Engine", "unknown_macro", &call_args, Type::Unknown);
+            .system_call("Harlowe.Engine", "unknown_macro", &call_args, ty);
 
         if let Some(ref hook) = mac.hook {
             self.emit_content(hook);
@@ -2118,6 +2150,7 @@ impl TranslateCtx {
         let capture_vals: Vec<ValueId> = outer_temps.iter().map(|(_, v)| *v).collect();
 
         // --- 2. Build the closure FunctionBuilder ---
+        // h param is the Harlowe renderer — type defined by TS runtime, opaque.
         let sig = FunctionSig {
             params: vec![Type::Unknown],
             return_ty: Type::Void,
@@ -2150,7 +2183,8 @@ impl TranslateCtx {
         self.callbacks.push(func);
 
         // --- 4. Emit Op::MakeClosure ---
-        self.fb.make_closure(name, &capture_vals, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.make_closure(name, &capture_vals, ty)
     }
 
     /// Lower `(macro: type _p0, type _p1, ...)[body]` to a TypeScript arrow function closure.
@@ -2184,10 +2218,11 @@ impl TranslateCtx {
         let capture_vals: Vec<ValueId> = outer_temps.iter().map(|(_, v)| *v).collect();
 
         // --- 2. Build the FunctionBuilder: one param per declared macro parameter ---
-        let param_types = vec![Type::Unknown; params.len()];
+        let param_types: Vec<Type> = (0..params.len()).map(|_| self.fb.fresh_var()).collect();
+        let return_ty = self.fb.fresh_var();
         let sig = FunctionSig {
             params: param_types,
-            return_ty: Type::Unknown,
+            return_ty,
             defaults: vec![],
             has_rest_param: false,
         };
@@ -2211,7 +2246,8 @@ impl TranslateCtx {
         for (i, param_name) in params.iter().enumerate() {
             let pv = self.fb.param(i);
             self.fb.name_value(pv, format!("_{param_name}"));
-            let alloc = self.fb.alloc(Type::Unknown);
+            let ty = self.fb.fresh_var();
+            let alloc = self.fb.alloc(ty);
             self.fb.name_value(alloc, format!("_{param_name}"));
             self.fb.store(alloc, pv);
             self.temp_vars.insert(param_name.clone(), alloc);
@@ -2231,7 +2267,8 @@ impl TranslateCtx {
         self.callbacks.push(func);
 
         // --- 4. Emit Op::MakeClosure ---
-        self.fb.make_closure(name, &capture_vals, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.make_closure(name, &capture_vals, ty)
     }
 
     // ── Temp variable helpers ──────────────────────────────────────
@@ -2240,7 +2277,8 @@ impl TranslateCtx {
         if let Some(&alloc) = self.temp_vars.get(name) {
             return alloc;
         }
-        let alloc = self.fb.alloc(Type::Unknown);
+        let ty = self.fb.fresh_var();
+        let alloc = self.fb.alloc(ty);
         self.fb.name_value(alloc, format!("_{name}"));
         self.temp_vars.insert(name.to_string(), alloc);
         alloc
@@ -2248,7 +2286,8 @@ impl TranslateCtx {
 
     fn get_or_load_temp(&mut self, name: &str) -> ValueId {
         let alloc = self.get_or_create_temp(name);
-        self.fb.load(alloc, Type::Unknown)
+        let ty = self.fb.fresh_var();
+        self.fb.load(alloc, ty)
     }
 
     /// Load all outer temp var values in the current builder (creation-time snapshot).
@@ -2264,13 +2303,18 @@ impl TranslateCtx {
             .temp_vars
             .iter()
             .map(|(name, &alloc_id)| {
-                let val = self.fb.load(alloc_id, Type::Unknown);
+                let ty = self.fb.fresh_var();
+                let val = self.fb.load(alloc_id, ty);
                 (name.clone(), val)
             })
             .collect();
+        let cap_types: Vec<Type> = (0..outer_temps.len())
+            .map(|_| self.fb.fresh_var())
+            .collect();
         let spec: Vec<(String, Type, CaptureMode)> = outer_temps
             .iter()
-            .map(|(name, _)| (format!("cap_{name}"), Type::Unknown, CaptureMode::ByValue))
+            .zip(cap_types)
+            .map(|((name, _), ty)| (format!("cap_{name}"), ty, CaptureMode::ByValue))
             .collect();
         (outer_temps, spec)
     }
@@ -2281,7 +2325,8 @@ impl TranslateCtx {
     /// Mem2Reg will later promote the single-store allocs to direct references.
     fn init_captured_temps(&mut self, outer_temps: &[(String, ValueId)], cap_ids: &[ValueId]) {
         for (i, (name, _)) in outer_temps.iter().enumerate() {
-            let alloc = self.fb.alloc(Type::Unknown);
+            let ty = self.fb.fresh_var();
+            let alloc = self.fb.alloc(ty);
             self.fb.store(alloc, cap_ids[i]);
             self.temp_vars.insert(name.clone(), alloc);
         }
@@ -2297,35 +2342,39 @@ impl TranslateCtx {
             ExprKind::It => {
                 // Inside a `via` lambda, `it` is the closure parameter stored as "it".
                 if let Some(&alloc) = self.temp_vars.get("it") {
-                    return self.fb.load(alloc, Type::Unknown);
+                    let ty = self.fb.fresh_var();
+                    return self.fb.load(alloc, ty);
                 }
                 if let Some(ref target) = self.set_target.clone() {
                     self.lower_expr(target)
                 } else {
-                    self.fb
-                        .system_call("Harlowe.State", "get_it", &[], Type::Unknown)
+                    let ty = self.fb.fresh_var();
+                    self.fb.system_call("Harlowe.State", "get_it", &[], ty)
                 }
             }
             ExprKind::StoryVar(name) => {
                 let n = self.fb.const_string(name.as_str());
-                self.fb
-                    .system_call("Harlowe.State", "get", &[n], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.State", "get", &[n], ty)
             }
             ExprKind::TempVar(name) => self.get_or_load_temp(name),
             ExprKind::Ident(name) => {
                 // Harlowe keyword variables: special built-in values usable without ()
                 match name.as_str() {
                     "visits" => {
+                        let ty = self.fb.fresh_var();
                         self.fb
-                            .system_call("Harlowe.State", "current_visits", &[], Type::Unknown)
+                            .system_call("Harlowe.State", "current_visits", &[], ty)
                     }
                     "time" => {
+                        let ty = self.fb.fresh_var();
                         self.fb
-                            .system_call("Harlowe.State", "elapsed_time", &[], Type::Unknown)
+                            .system_call("Harlowe.State", "elapsed_time", &[], ty)
                     }
-                    "turns" => self
-                        .fb
-                        .system_call("Harlowe.State", "turns", &[], Type::Unknown),
+                    "turns" => {
+                        let ty = self.fb.fresh_var();
+                        self.fb.system_call("Harlowe.State", "turns", &[], ty)
+                    }
                     // `pos` — 1-based position inside lambda callbacks (via, for, enchant).
                     // When we're inside a lambda, it's bound in temp_vars as "pos".
                     "pos" => {
@@ -2352,22 +2401,16 @@ impl TranslateCtx {
             ExprKind::Possessive { object, property } => {
                 let obj = self.lower_expr(object);
                 let prop = self.lower_expr(property);
-                self.fb.system_call(
-                    "Harlowe.Engine",
-                    "get_property",
-                    &[obj, prop],
-                    Type::Unknown,
-                )
+                let ty = self.fb.fresh_var();
+                self.fb
+                    .system_call("Harlowe.Engine", "get_property", &[obj, prop], ty)
             }
             ExprKind::Of { property, object } => {
                 let obj = self.lower_expr(object);
                 let prop = self.lower_expr(property);
-                self.fb.system_call(
-                    "Harlowe.Engine",
-                    "get_property",
-                    &[obj, prop],
-                    Type::Unknown,
-                )
+                let ty = self.fb.fresh_var();
+                self.fb
+                    .system_call("Harlowe.Engine", "get_property", &[obj, prop], ty)
             }
             ExprKind::Paren(inner) => self.lower_expr(inner),
             // Named hook selector `?name` → CSS selector string for querySelectorAll
@@ -2385,17 +2428,15 @@ impl TranslateCtx {
             // dynamic macro args) where no context type is available.
             ExprKind::Lambda { var, filter } => {
                 // Generic context: no positional index available (use `with_pos: false`).
-                self.build_lambda_callback(
-                    var,
-                    filter.as_deref(),
-                    Type::Unknown,
-                    Type::Unknown,
-                    false,
-                )
+                let item_ty = self.fb.fresh_var();
+                let ret_ty = self.fb.fresh_var();
+                self.build_lambda_callback(var, filter.as_deref(), item_ty, ret_ty, false)
             }
             ExprKind::ViaLambda(body) => {
                 // `via expr` — key-extractor lambda: `(it) => expr`. No position param.
-                self.build_lambda_callback("it", Some(body), Type::Unknown, Type::Unknown, false)
+                let item_ty = self.fb.fresh_var();
+                let ret_ty = self.fb.fresh_var();
+                self.build_lambda_callback("it", Some(body), item_ty, ret_ty, false)
             }
             ExprKind::FoldLambda {
                 item_var,
@@ -2406,7 +2447,8 @@ impl TranslateCtx {
             ExprKind::DynCall { callee, args } => {
                 let callee_val = self.lower_expr(callee);
                 let arg_vals: Vec<ValueId> = args.iter().map(|a| self.lower_expr(a)).collect();
-                self.fb.call_indirect(callee_val, &arg_vals, Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.call_indirect(callee_val, &arg_vals, ty)
             }
             // `(macro: type _param, ...)[body]` in expression position.
             // Re-parse the hook body text (captured by the expression lexer) and build a closure.
@@ -2444,11 +2486,12 @@ impl TranslateCtx {
                 // Determine if it's a story or temp var.
                 let is_story = matches!(&target.kind, ExprKind::StoryVar(_));
                 let is_story_val = self.fb.const_bool(is_story);
+                let ty = self.fb.fresh_var();
                 self.fb.system_call(
                     "Harlowe.State",
                     "bind_ref",
                     &[name_val, is_story_val, two_way_val],
-                    Type::Unknown,
+                    ty,
                 )
             }
             ExprKind::Error(_) => self.fb.const_bool(false),
@@ -2467,12 +2510,9 @@ impl TranslateCtx {
             Ordinal::Range { from, to } => {
                 let from_val = self.lower_range_end(from);
                 let to_val = self.lower_range_end(to);
-                self.fb.system_call(
-                    "Harlowe.Engine",
-                    "make_range",
-                    &[from_val, to_val],
-                    Type::Unknown,
-                )
+                let ty = self.fb.fresh_var();
+                self.fb
+                    .system_call("Harlowe.Engine", "make_range", &[from_val, to_val], ty)
             }
         }
     }
@@ -2510,16 +2550,16 @@ impl TranslateCtx {
 
         let lhs = self.lower_expr(left);
         let rhs = self.lower_expr(right);
+        let ty = self.fb.fresh_var();
 
         match op {
             BinaryOp::Add | BinaryOp::Plus => {
                 self.fb
-                    .system_call("Harlowe.Engine", "plus", &[lhs, rhs], Type::Unknown)
+                    .system_call("Harlowe.Engine", "plus", &[lhs, rhs], ty)
             }
-            BinaryOp::Sub => {
-                self.fb
-                    .system_call("Harlowe.Engine", "minus", &[lhs, rhs], Type::Unknown)
-            }
+            BinaryOp::Sub => self
+                .fb
+                .system_call("Harlowe.Engine", "minus", &[lhs, rhs], ty),
             BinaryOp::Mul => self.fb.mul(lhs, rhs),
             BinaryOp::Div => self.fb.div(lhs, rhs),
             BinaryOp::Mod => self.fb.rem(lhs, rhs),
@@ -2574,7 +2614,8 @@ impl TranslateCtx {
 
         let rhs_block = self.fb.create_block();
         let merge_block = self.fb.create_block();
-        let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+        let ty = self.fb.fresh_var();
+        let merge_params = self.fb.add_block_params(merge_block, &[ty]);
         let merge_param = merge_params[0];
 
         self.fb.br_if(lhs, rhs_block, &[], merge_block, &[lhs]);
@@ -2592,7 +2633,8 @@ impl TranslateCtx {
 
         let rhs_block = self.fb.create_block();
         let merge_block = self.fb.create_block();
-        let merge_params = self.fb.add_block_params(merge_block, &[Type::Unknown]);
+        let ty = self.fb.fresh_var();
+        let merge_params = self.fb.add_block_params(merge_block, &[ty]);
         let merge_param = merge_params[0];
 
         self.fb.br_if(lhs, merge_block, &[lhs], rhs_block, &[]);
@@ -2627,49 +2669,45 @@ impl TranslateCtx {
                 return self.lower_predicate_collection_op(name, args, Type::Bool);
             }
             "altered" | "sortedby" => {
-                return self.lower_predicate_collection_op(name, args, Type::Unknown);
+                let ty = self.fb.fresh_var();
+                return self.lower_predicate_collection_op(name, args, ty);
             }
             _ => {}
         }
 
         let lowered_args: Vec<ValueId> = args.iter().map(|a| self.lower_expr(a)).collect();
+        let ty = self.fb.fresh_var();
 
         match name {
-            "random" => {
-                self.fb
-                    .system_call("Harlowe.Engine", "random", &lowered_args, Type::Unknown)
-            }
-            "either" => {
-                self.fb
-                    .system_call("Harlowe.Engine", "either", &lowered_args, Type::Unknown)
-            }
-            "str" | "string" => {
-                self.fb
-                    .system_call("Harlowe.Engine", "str", &lowered_args, Type::Unknown)
-            }
-            "num" | "number" => {
-                self.fb
-                    .system_call("Harlowe.Engine", "num", &lowered_args, Type::Unknown)
-            }
-            "a" | "array" => {
-                self.fb
-                    .system_call("Harlowe.Engine", "array", &lowered_args, Type::Unknown)
-            }
-            "dm" | "datamap" => {
-                self.fb
-                    .system_call("Harlowe.Engine", "datamap", &lowered_args, Type::Unknown)
-            }
-            "ds" | "dataset" => {
-                self.fb
-                    .system_call("Harlowe.Engine", "dataset", &lowered_args, Type::Unknown)
-            }
+            "random" => self
+                .fb
+                .system_call("Harlowe.Engine", "random", &lowered_args, ty),
+            "either" => self
+                .fb
+                .system_call("Harlowe.Engine", "either", &lowered_args, ty),
+            "str" | "string" => self
+                .fb
+                .system_call("Harlowe.Engine", "str", &lowered_args, ty),
+            "num" | "number" => self
+                .fb
+                .system_call("Harlowe.Engine", "num", &lowered_args, ty),
+            "a" | "array" => self
+                .fb
+                .system_call("Harlowe.Engine", "array", &lowered_args, ty),
+            "dm" | "datamap" => self
+                .fb
+                .system_call("Harlowe.Engine", "datamap", &lowered_args, ty),
+            "ds" | "dataset" => self
+                .fb
+                .system_call("Harlowe.Engine", "dataset", &lowered_args, ty),
             "round" | "floor" | "ceil" | "abs" | "min" | "max" | "sqrt" | "sin" | "cos" | "tan"
             | "log" | "log10" | "log2" | "exp" | "pow" | "sign" | "clamp" | "lerp" | "trunc" => {
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("Harlowe.Engine", "math", &call_args, Type::Unknown)
+                    .system_call("Harlowe.Engine", "math", &call_args, ty)
             }
             "upperfirst" | "lowerfirst" | "strreversed" | "stringreversed" | "trimmed"
             | "words" | "strnth" | "stringnth" | "strrepeated" | "stringrepeated" | "strfind"
@@ -2678,8 +2716,9 @@ impl TranslateCtx {
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("Harlowe.Engine", "str_op", &call_args, Type::Unknown)
+                    .system_call("Harlowe.Engine", "str_op", &call_args, ty)
             }
             "sorted" | "reversed" | "rotated" | "shuffled" | "range" | "folded" | "interlaced"
             | "repeated" | "joined" | "subarray" | "substring" | "lowercase" | "uppercase"
@@ -2698,38 +2737,37 @@ impl TranslateCtx {
                 let n = self.fb.const_string(canonical);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("Harlowe.Engine", "collection_op", &call_args, Type::Unknown)
+                    .system_call("Harlowe.Engine", "collection_op", &call_args, ty)
             }
-            "openstorylets" | "storyletsof" => self.fb.system_call(
-                "Harlowe.Engine",
-                "open_storylets",
-                &lowered_args,
-                Type::Unknown,
-            ),
-            "savedgames" => self.fb.system_call(
-                "Harlowe.Engine",
-                "saved_games",
-                &lowered_args,
-                Type::Unknown,
-            ),
-            "passage" => self.fb.system_call(
-                "Harlowe.Engine",
-                "current_passage",
-                &lowered_args,
-                Type::Unknown,
-            ),
+            "openstorylets" | "storyletsof" => {
+                let ty = self.fb.fresh_var();
+                self.fb
+                    .system_call("Harlowe.Engine", "open_storylets", &lowered_args, ty)
+            }
+            "savedgames" => {
+                let ty = self.fb.fresh_var();
+                self.fb
+                    .system_call("Harlowe.Engine", "saved_games", &lowered_args, ty)
+            }
+            "passage" => {
+                let ty = self.fb.fresh_var();
+                self.fb
+                    .system_call("Harlowe.Engine", "current_passage", &lowered_args, ty)
+            }
             "visits" | "turns" | "time" | "history" => {
                 let n = self.fb.const_string(name);
-                self.fb
-                    .system_call("Harlowe.Engine", "meta", &[n], Type::Unknown)
+                let ty = self.fb.fresh_var();
+                self.fb.system_call("Harlowe.Engine", "meta", &[n], ty)
             }
             "rgb" | "rgba" | "hsl" | "hsla" | "lch" | "lcha" | "complement" | "mix" => {
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("Harlowe.Engine", "color_op", &call_args, Type::Unknown)
+                    .system_call("Harlowe.Engine", "color_op", &call_args, ty)
             }
             // `(macro:)` without a hook body in expression position — should not happen
             // if the expression parser correctly captures `[body]` via `ExprKind::MacroDef`.
@@ -2739,19 +2777,17 @@ impl TranslateCtx {
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
-                self.fb.system_call(
-                    "Harlowe.Engine",
-                    "create_changer",
-                    &call_args,
-                    Type::Unknown,
-                )
+                let ty = self.fb.fresh_var();
+                self.fb
+                    .system_call("Harlowe.Engine", "create_changer", &call_args, ty)
             }
             _ => {
                 let n = self.fb.const_string(name);
                 let mut call_args = vec![n];
                 call_args.extend(lowered_args);
+                let ty = self.fb.fresh_var();
                 self.fb
-                    .system_call("Harlowe.Engine", "call", &call_args, Type::Unknown)
+                    .system_call("Harlowe.Engine", "call", &call_args, ty)
             }
         }
     }
@@ -2970,7 +3006,7 @@ You're at the **plaza**
     fn test_lambda_in_find_builds_callback() {
         use reincarnate_core::ir::inst::Op;
         // (find: each _x where _x > 5, ...$arr) should produce:
-        // - a lambda callback: Unknown param (since $arr is Unknown, elem type unknown)
+        // - a lambda callback: open type-var param (elem type unknown, solver may infer)
         //   but Bool return type (inferred because `find` is a predicate op)
         // - a collection_op("find", ...) syscall in the main func
         let ast = parser::parse("(set: $found to (find: each _x where _x > 5, ...$arr))");
@@ -2988,7 +3024,8 @@ You're at the **plaza**
             1,
             "find lambda takes only (item) param, no pos"
         );
-        assert_eq!(cb.sig.params[0], Type::Unknown);
+        // Elem type is an open type var (inference gap, not genuine opacity).
+        assert!(matches!(cb.sig.params[0], Type::Var(_)));
         assert_eq!(cb.sig.return_ty, Type::Bool);
         // Main func should have a collection_op("find", ...) call
         let func = &result.func;

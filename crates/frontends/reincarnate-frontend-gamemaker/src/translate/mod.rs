@@ -3,11 +3,12 @@ use std::collections::{HashMap, HashSet};
 use datawin::bytecode::decode::{self, Instruction, Operand};
 use datawin::bytecode::opcode::Opcode;
 use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableRef};
+use reincarnate_core::entity::EntityRef as _;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{Function, Visibility};
 use reincarnate_core::ir::inst::CmpKind;
-use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
+use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId, TypeVarId};
 use reincarnate_core::ir::value::ValueId;
 
 mod cfg;
@@ -232,6 +233,16 @@ fn build_signature(ctx: &TranslateCtx) -> FunctionSig {
 }
 
 fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig {
+    // Pre-builder type variable counter: used before FunctionBuilder is available.
+    // The constraint solver ignores TypeVarId numeric values — only is_concrete()
+    // matters — so per-invocation collisions are safe.
+    let mut tv: u32 = 0;
+    let mut fresh = || {
+        let ty = Type::Var(TypeVarId::new(tv));
+        tv += 1;
+        ty
+    };
+
     let mut params = Vec::new();
     let mut defaults = Vec::new();
     if ctx.has_self {
@@ -243,7 +254,7 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
             .and_then(|name| ctx.instance_types.get(name).copied())
             .or_else(|| ctx.instance_types.get("GMLObject").copied())
             .map(Type::Instance)
-            .unwrap_or(Type::Unknown);
+            .unwrap_or_else(&mut fresh);
         params.push(self_ty);
         defaults.push(None);
     }
@@ -254,18 +265,18 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
             .get("GMLObject")
             .copied()
             .map(Type::Instance)
-            .unwrap_or(Type::Unknown);
+            .unwrap_or_else(&mut fresh);
         params.push(other_ty);
         defaults.push(None);
     }
     for _ in 0..arg_count {
-        params.push(Type::Unknown);
+        params.push(fresh());
         defaults.push(None);
     }
     FunctionSig {
         params,
         defaults,
-        return_ty: Type::Unknown,
+        return_ty: fresh(),
         ..Default::default()
     }
 }
@@ -394,7 +405,8 @@ fn arg_name(ctx: &TranslateCtx, i: u16) -> Option<String> {
 fn allocate_locals(fb: &mut FunctionBuilder, ctx: &TranslateCtx) -> HashMap<String, ValueId> {
     let mut locals = HashMap::new();
     for (_, name) in ctx.local_names {
-        let slot = fb.alloc(Type::Unknown);
+        let ty = fb.fresh_var();
+        let slot = fb.alloc(ty);
         fb.name_value(slot, name.clone());
         locals.insert(name.clone(), slot);
     }
@@ -723,7 +735,8 @@ fn run_translation_loop(
                     // locals as `_argumentN` (an alloc slot).  Load from there.
                     if let Some(&slot) = locals.get(&captured_key) {
                         captured_names.push(captured_key);
-                        capture_vals.push(fb.load(slot, Type::Unknown));
+                        let ty = fb.fresh_var();
+                        capture_vals.push(fb.load(slot, ty));
                     } else {
                         // Top-level: argument is a formal param of the outer function.
                         let outer_idx = outer_arg_offset + n;
@@ -738,7 +751,8 @@ fn run_translation_loop(
                     let &slot = locals
                         .get(name)
                         .expect("captured local must have an alloc slot");
-                    capture_vals.push(fb.load(slot, Type::Unknown));
+                    let ty = fb.fresh_var();
+                    capture_vals.push(fb.load(slot, ty));
                 }
 
                 // Determine the class of the with-target (if it's a typed OBJT pushref).
@@ -769,9 +783,10 @@ fn run_translation_loop(
                 // Emit: withInstances(target, closure).
                 // When the closure uses "return X inside with", type the call as Unknown
                 // so the outer function can propagate the return value.
-                let closure_val = fb.make_closure(&inner_name, &capture_vals, Type::Unknown);
+                let closure_ty = fb.fresh_var();
+                let closure_val = fb.make_closure(&inner_name, &capture_vals, closure_ty);
                 let with_return_ty = if has_return_in_with {
-                    Type::Unknown
+                    fb.fresh_var()
                 } else {
                     Type::Void
                 };

@@ -673,7 +673,8 @@ fn translate_call_op(
                 // (which the backend rewrites to `global`) and set the flag
                 // so the PushI -9 skip fires for InstanceType::Stacktop too.
                 if func_name == "@@Global@@" && argc == 0 {
-                    let result = fb.call("@@Global@@", &[], Type::Unknown);
+                    let ty = fb.fresh_var();
+                    let result = fb.call("@@Global@@", &[], ty);
                     gml_sizes.insert(result, 4);
                     stack.push(result);
                     *global_scope_on_stack = true;
@@ -707,9 +708,9 @@ fn translate_call_op(
                         .get("GMLObject")
                         .copied()
                         .map(Type::Instance)
-                        .unwrap_or(Type::Unknown)
+                        .unwrap_or_else(|| fb.fresh_var())
                 } else {
-                    Type::Unknown
+                    fb.fresh_var()
                 };
                 let result = fb.call(&func_name, &args, ret_ty);
                 gml_sizes.insert(result, 4); // Call returns Variable (16 bytes)
@@ -725,7 +726,8 @@ fn translate_call_op(
                 for _ in 0..argc {
                     args.push(pop(stack, inst)?);
                 }
-                let result = fb.call_indirect(callee, &args, Type::Unknown);
+                let ty = fb.fresh_var();
+                let result = fb.call_indirect(callee, &args, ty);
                 gml_sizes.insert(result, 4); // CallV returns Variable (16 bytes)
                 stack.push(result);
             }
@@ -865,7 +867,8 @@ fn translate_break_op(
                 let index = pop(stack, inst)?;
                 let index = fb.try_peel_int_coerce(index);
                 let array = pop(stack, inst)?;
-                let val = fb.get_index(array, index, Type::Unknown);
+                let ty = fb.fresh_var();
+                let val = fb.get_index(array, index, ty);
                 gml_sizes.insert(val, 4); // Variable (16 bytes)
                 stack.push(val);
             }
@@ -999,9 +1002,9 @@ fn translate_break_op(
                         .get(&func_name)
                         .copied()
                         .map(Type::ClassRef)
-                        .unwrap_or(Type::Unknown)
+                        .unwrap_or_else(|| fb.fresh_var())
                 } else {
-                    Type::Unknown
+                    fb.fresh_var()
                 };
                 let val = fb.global_ref(&func_name, ref_ty);
                 gml_sizes.insert(val, 4); // Variable (16 bytes)

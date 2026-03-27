@@ -20,6 +20,14 @@ pub struct FunctionBuilder {
     name: String,
     func: Function,
     current_block: BlockId,
+    /// Per-builder counter for allocating [`Type::Var`] via [`fresh_var`].
+    ///
+    /// The constraint solver ignores the numeric value of [`TypeVarId`] when
+    /// processing a function's `value_types` — it only checks
+    /// [`is_concrete`][crate::transforms::constraint_collect::is_concrete].
+    /// A per-builder counter therefore produces unique markers within one
+    /// `FunctionBuilder` session without requiring a module-level allocation.
+    next_type_var: u32,
 }
 
 impl FunctionBuilder {
@@ -67,6 +75,7 @@ impl FunctionBuilder {
             name,
             func,
             current_block: entry,
+            next_type_var: 0,
         }
     }
 
@@ -718,6 +727,26 @@ impl FunctionBuilder {
     pub fn spread(&mut self, value: ValueId) -> ValueId {
         let ty = self.value_type(value);
         self.emit(Op::Spread(value), ty)
+    }
+
+    /// Allocate a unique [`Type::Var`] for a value whose type the frontend
+    /// does not yet know.
+    ///
+    /// The constraint solver treats any `Type::Var(_)` as an open inference
+    /// target, regardless of the numeric [`TypeVarId`] value.  This builder
+    /// maintains its own per-instance counter so that two calls within the
+    /// same function do not alias each other in the function signature or
+    /// block params.
+    ///
+    /// Use this instead of `Type::Unknown` when the type is an inference gap
+    /// (the solver may resolve it); use `Type::Unknown` when the source
+    /// language type is genuinely opaque (e.g. AS3 `*`, GML untyped globals).
+    pub fn fresh_var(&mut self) -> Type {
+        use super::ty::TypeVarId;
+        use crate::entity::EntityRef as _;
+        let id = TypeVarId::new(self.next_type_var);
+        self.next_type_var += 1;
+        Type::Var(id)
     }
 }
 
