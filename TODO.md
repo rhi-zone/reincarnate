@@ -87,10 +87,12 @@ where inference needs improvement. Hiding it in core passes:
 
 ### Action items
 
-- [ ] **Remove memory coherence block from `constraint_solve.rs`** — it was added
-  2026-03-22 as a workaround; revert or remove. Let Unknown propagate visibly.
-- [ ] **Fix `call_site_flow.rs:110`** — move `"array_length"` to a `Module` field
-  populated by GML frontend; core reads the set.
+- [x] **Remove memory coherence block from `constraint_solve.rs`** — done 2026-03-27
+  (commit 4a10069). The block had zero effect on error counts when removed; the
+  "GML-specific" characterization turned out to be wrong (it affected all frontends equally,
+  but removal showed it was not load-bearing for any of them either).
+- [x] **Fix `call_site_flow.rs:110`** — done 2026-03-27 (commit 4a10069). Moved
+  `"array_length"` to `Module::array_like_fns`, populated by GML frontend.
 - [ ] **Fix `constraint_collect.rs:243` comment** — update to reference Phase 9, not GML.
 - [ ] **Root-cause fix for `ResolveInstanceField` with Unknown receiver** — the real
   source of Dead Estate's ~1,500+ remaining Unknown instance field reads. Design: when
@@ -173,19 +175,13 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   `ds_map`, SugarCube state vars). High impact, high effort.
 - [ ] **Union on conflict** — replace `force_rebind(Unknown)` with `Union(t1, t2)`.
   Prerequisite for safely relaxing interprocedural constraint guards.
-- [x] **Constructor struct inference pass exists** (`ConstructorStructInfer`). Scans
-  `SetField { object: self_param }` ops in constructor-like functions (constructors and
-  `::create` event methods) and emits `StructDef` entries into `module.structs`.
-  **Limitation**: pass runs BEFORE `TypeInference` (registration order), so the values
-  being stored to fields are still `Unknown` when scanned. The inferred struct defs
-  therefore have mostly `Unknown` field types — not useful for resolving `GetField` results.
-  **Root fix**: make `ConstructorStructInfer` require `type-inference` and invalidate it,
-  forcing a two-phase run: TypeInference → ConstructorStructInfer → TypeInference (re-run).
-  This was attempted but causes regressions because `TypeInference` is not monotone: a
-  second run can overwrite types inferred by `ConstraintSolve` (which runs between the
-  first and second TypeInference). **Blocked by**: TypeInference needs to be monotone
-  (only improve Unknown → concrete, never regress a previously solved type) before the
-  two-phase ordering is safe.
+- [x] **Constructor struct inference two-phase ordering** — done 2026-03-27
+  (commits de21c14 + 2fb1b74). `ConstructorStructInfer` now declares
+  `requires(["type-inference"])` and `invalidates(["type-inference"])`, forcing three
+  TypeInference runs. The previously-blocking regression (ConstraintSolve arithmetic
+  narrowing widened back to Unknown by CallSiteTypeWiden) was fixed first by making numeric
+  types mutually compatible in `is_compatible` (de21c14). Results: Dead Estate −488,
+  Schism −594, TRC −251, DoL −449, MaxManos −71, 12BetterThan6 −40.
 - [ ] **HasField reverse-index (last resort).** After the fixpoint loop exhausts all
   `Equal` and `HasField` constraints, any `HasField { ty: Var(v), field: "x" }` where
   `v` is still unbound means no other constraint resolved `v`'s struct type. At that
