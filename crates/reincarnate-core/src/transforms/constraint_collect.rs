@@ -463,7 +463,8 @@ pub struct ConstraintSet {
 /// considered concrete.
 pub(crate) fn is_concrete(ty: &Type) -> bool {
     match ty {
-        Type::Unknown | Type::Var(_) => false,
+        Type::Unknown => true, // decided: inference exhausted, not a free variable
+        Type::Var(_) => false,
         Type::Array(elem) => is_concrete(elem),
         Type::Map(k, v) => is_concrete(k) && is_concrete(v),
         Type::Option(inner) => is_concrete(inner),
