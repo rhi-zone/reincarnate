@@ -783,6 +783,15 @@ impl ModuleBuilder {
         self.module.classes.push(class);
     }
 
+    /// Allocate a unique [`Type::Var`] for use when the frontend does not yet
+    /// know a value's type.
+    ///
+    /// Delegates to [`Module::fresh_var`].  Two unknown-type values built via
+    /// separate calls will not alias.
+    pub fn fresh_var(&mut self) -> crate::ir::ty::Type {
+        self.module.fresh_var()
+    }
+
     /// Intern a named type and return its [`TypeId`].
     ///
     /// Useful when constructing test modules that need `Type::Instance(id)`

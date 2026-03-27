@@ -437,10 +437,10 @@ pub struct ConstraintSet {
     /// Map from [`ValueId`] → [`TypeVarId`].
     ///
     /// Pre-populated during initialisation:
-    /// - Concrete ground types get a fresh var that is immediately bound to
-    ///   that type.
-    /// - [`Type::Unknown`] and [`Type::Var`] get fresh,
-    ///   unbound vars (inference targets).
+    /// - Concrete ground types (including [`Type::Unknown`]) get a fresh var
+    ///   that is immediately bound to that type — prior knowledge the solver
+    ///   can only confirm, never weaken.
+    /// - [`Type::Var`] values get fresh, unbound vars (open inference targets).
     pub value_vars: HashMap<ValueId, TypeVarId>,
     /// TypeVarId allocated for the function's return type.
     ///
@@ -513,9 +513,11 @@ pub fn collect_function(
     for (vid, ty) in func.value_types.iter() {
         let var = arena.fresh();
         if is_concrete(ty) {
+            // Concrete types (including Unknown) seed the solver: bind the
+            // var immediately so inference can only confirm, never weaken.
             arena.bind(var, ty.clone());
         }
-        // Unknown / Unknown / Var(_) → leave unbound (inference target).
+        // Type::Var(_) → fresh unbound var, open for inference.
         value_vars.insert(vid, var);
     }
 
