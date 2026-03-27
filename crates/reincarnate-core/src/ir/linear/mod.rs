@@ -238,24 +238,16 @@ pub fn lower_function_linear(
 
 /// Whether an instruction is pure enough to defer for inlining.
 fn is_deferrable(op: &Op) -> bool {
+    // Builtin arithmetic/logic calls (prefixed "builtin.") are pure — they
+    // map to native operators in the backend and carry no side effects.
+    if let Op::Call { func, .. } = op {
+        if func.starts_with("builtin.") {
+            return true;
+        }
+    }
     matches!(
         op,
         Op::Const(_)
-            | Op::Add(..)
-            | Op::Sub(..)
-            | Op::Mul(..)
-            | Op::Div(..)
-            | Op::Rem(..)
-            | Op::Neg(..)
-            | Op::Not(..)
-            | Op::BoolAnd(..)
-            | Op::BoolOr(..)
-            | Op::BitAnd(..)
-            | Op::BitOr(..)
-            | Op::BitXor(..)
-            | Op::BitNot(..)
-            | Op::Shl(..)
-            | Op::Shr(..)
             | Op::Cmp(..)
             | Op::Cast(..)
             | Op::GetField { .. }

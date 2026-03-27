@@ -183,7 +183,7 @@ fn fold_binary_bitwise(op_name: &str, a: &Constant, b: &Constant) -> Option<Cons
 /// - `x & 0`     / `0 & x`     → `0`      (zero is absorbing for integer AND)
 /// - `x | -1`    / `-1 | x`    → `-1`     (-1 / all-ones is absorbing for integer OR)
 ///
-/// Note: Bool AND/OR absorbing cases are handled by `Op::BoolAnd`/`Op::BoolOr` in `try_fold`.
+/// Note: Bool AND/OR absorbing cases are handled by `builtin.and_bool`/`builtin.or_bool` builtins in `try_fold`.
 fn fold_bitwise_absorbing(op_name: &str, known: &Constant) -> Option<Constant> {
     match (op_name, known) {
         ("and", Constant::Int(0)) => Some(Constant::Int(0)),
@@ -287,120 +287,156 @@ fn fold_cast(c: &Constant, ty: &Type) -> Option<Constant> {
 /// Returns the folded constant if successful.
 fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
     match op {
-        // Binary arithmetic
-        Op::Add(a, b) => fold_binary_arith("add", consts.get(a)?, consts.get(b)?),
-        Op::Sub(a, b) => fold_binary_arith("sub", consts.get(a)?, consts.get(b)?),
-        Op::Mul(a, b) => fold_binary_arith("mul", consts.get(a)?, consts.get(b)?),
-        Op::Div(a, b) => fold_binary_arith("div", consts.get(a)?, consts.get(b)?),
-        Op::Rem(a, b) => fold_binary_arith("rem", consts.get(a)?, consts.get(b)?),
-
-        // Unary negation
-        Op::Neg(a) => {
-            let c = consts.get(a)?;
-            match c {
-                Constant::Int(x) => Some(Constant::Int(x.wrapping_neg())),
-                Constant::UInt(x) => Some(Constant::Int(-(*x as i64))),
-                Constant::Float(x) => Some(Constant::Float(-x)),
-                _ => None,
-            }
-        }
-
-        // Binary bitwise
-        Op::BitAnd(a, b) => {
-            if let (Some(ca), Some(cb)) = (consts.get(a), consts.get(b)) {
-                // Try exact-type fold first; fall back to absorbing element on type mismatch.
-                fold_binary_bitwise("and", ca, cb)
-                    .or_else(|| fold_bitwise_absorbing("and", ca))
-                    .or_else(|| fold_bitwise_absorbing("and", cb))
-            } else if let Some(ca) = consts.get(a) {
-                fold_bitwise_absorbing("and", ca)
-            } else if let Some(cb) = consts.get(b) {
-                fold_bitwise_absorbing("and", cb)
-            } else {
-                None
-            }
-        }
-        Op::BitOr(a, b) => {
-            if let (Some(ca), Some(cb)) = (consts.get(a), consts.get(b)) {
-                fold_binary_bitwise("or", ca, cb)
-                    .or_else(|| fold_bitwise_absorbing("or", ca))
-                    .or_else(|| fold_bitwise_absorbing("or", cb))
-            } else if let Some(ca) = consts.get(a) {
-                fold_bitwise_absorbing("or", ca)
-            } else if let Some(cb) = consts.get(b) {
-                fold_bitwise_absorbing("or", cb)
-            } else {
-                None
-            }
-        }
-        Op::BitXor(a, b) => fold_binary_bitwise("xor", consts.get(a)?, consts.get(b)?),
-        Op::Shl(a, b) => fold_binary_bitwise("shl", consts.get(a)?, consts.get(b)?),
-        Op::Shr(a, b) => fold_binary_bitwise("shr", consts.get(a)?, consts.get(b)?),
-
-        // Unary bitwise not
-        Op::BitNot(a) => {
-            let c = consts.get(a)?;
-            match c {
-                Constant::Int(x) => Some(Constant::Int(!x)),
-                Constant::UInt(x) => Some(Constant::UInt(!x)),
-                _ => None,
-            }
-        }
-
         // Comparison
         Op::Cmp(kind, a, b) => fold_cmp(*kind, consts.get(a)?, consts.get(b)?),
-
-        // Logical not — folds Bool, Int, UInt, Float, and String using JS truthiness.
-        Op::Not(a) => match consts.get(a)? {
-            Constant::Bool(v) => Some(Constant::Bool(!v)),
-            Constant::Int(v) => Some(Constant::Bool(*v == 0)),
-            Constant::UInt(v) => Some(Constant::Bool(*v == 0)),
-            Constant::Float(v) => Some(Constant::Bool(*v == 0.0)),
-            Constant::String(s) => Some(Constant::Bool(s.is_empty())),
-            Constant::Null => Some(Constant::Bool(true)),
-        },
-
-        // Boolean AND/OR: short-circuit absorbing elements, then full fold.
-        Op::BoolAnd(a, b) => match (consts.get(a), consts.get(b)) {
-            (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => {
-                Some(Constant::Bool(false))
-            }
-            (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => Some(Constant::Bool(*x && *y)),
-            (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => None,
-            _ => None,
-        },
-        Op::BoolOr(a, b) => match (consts.get(a), consts.get(b)) {
-            (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => {
-                Some(Constant::Bool(true))
-            }
-            (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => Some(Constant::Bool(*x || *y)),
-            (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => None,
-            _ => None,
-        },
 
         // Cast
         Op::Cast(a, ty, _) => fold_cast(consts.get(a)?, ty),
 
-        // Pure type-conversion function calls: int(x), uint(x), real(x), string(x)
-        Op::Call { func, args } if args.len() == 1 => {
-            let c = consts.get(&args[0])?;
-            match (func.as_str(), c) {
-                ("int", Constant::Int(x)) => Some(Constant::Int(*x)),
-                ("int", Constant::UInt(x)) => Some(Constant::Int(*x as i64)),
-                ("int", Constant::Float(x)) => Some(Constant::Int(*x as i64)),
-                ("uint", Constant::Int(x)) => Some(Constant::UInt(*x as u64)),
-                ("uint", Constant::UInt(x)) => Some(Constant::UInt(*x)),
-                ("uint", Constant::Float(x)) => Some(Constant::UInt(*x as u64)),
-                ("real", Constant::Int(x)) => Some(Constant::Float(*x as f64)),
-                ("real", Constant::UInt(x)) => Some(Constant::Float(*x as f64)),
-                ("real", Constant::Float(x)) => Some(Constant::Float(*x)),
-                ("string", Constant::Int(x)) => Some(Constant::String(x.to_string())),
-                ("string", Constant::UInt(x)) => Some(Constant::String(x.to_string())),
-                ("string", Constant::Float(x)) => Some(Constant::String(x.to_string())),
-                ("string", Constant::String(_)) => Some(c.clone()),
-                ("string", Constant::Bool(b)) => {
-                    Some(Constant::String(if *b { "1" } else { "0" }.into()))
+        // Builtin arithmetic/logic calls and type-conversion function calls.
+        Op::Call { func, args } => {
+            // Derive the base operation name (strip "builtin." prefix and type suffix).
+            let base = if let Some(rest) = func.strip_prefix("builtin.") {
+                // Strip the last "_TYPE" suffix (e.g. "add_f64" → "add").
+                rest.rsplit_once('_').map(|(b, _)| b).unwrap_or(rest)
+            } else {
+                func.as_str()
+            };
+
+            match (base, args.as_slice()) {
+                // Binary arithmetic builtins
+                ("add", [a, b]) => fold_binary_arith("add", consts.get(a)?, consts.get(b)?),
+                ("sub", [a, b]) => fold_binary_arith("sub", consts.get(a)?, consts.get(b)?),
+                ("mul", [a, b]) => fold_binary_arith("mul", consts.get(a)?, consts.get(b)?),
+                ("div", [a, b]) => fold_binary_arith("div", consts.get(a)?, consts.get(b)?),
+                ("rem", [a, b]) => fold_binary_arith("rem", consts.get(a)?, consts.get(b)?),
+
+                // Unary negation
+                ("neg", [a]) => {
+                    let c = consts.get(a)?;
+                    match c {
+                        Constant::Int(x) => Some(Constant::Int(x.wrapping_neg())),
+                        Constant::UInt(x) => Some(Constant::Int(-(*x as i64))),
+                        Constant::Float(x) => Some(Constant::Float(-x)),
+                        _ => None,
+                    }
                 }
+
+                // Binary bitwise builtins
+                ("bitand", [a, b]) => {
+                    if let (Some(ca), Some(cb)) = (consts.get(a), consts.get(b)) {
+                        fold_binary_bitwise("and", ca, cb)
+                            .or_else(|| fold_bitwise_absorbing("and", ca))
+                            .or_else(|| fold_bitwise_absorbing("and", cb))
+                    } else if let Some(ca) = consts.get(a) {
+                        fold_bitwise_absorbing("and", ca)
+                    } else if let Some(cb) = consts.get(b) {
+                        fold_bitwise_absorbing("and", cb)
+                    } else {
+                        None
+                    }
+                }
+                ("bitor", [a, b]) => {
+                    if let (Some(ca), Some(cb)) = (consts.get(a), consts.get(b)) {
+                        fold_binary_bitwise("or", ca, cb)
+                            .or_else(|| fold_bitwise_absorbing("or", ca))
+                            .or_else(|| fold_bitwise_absorbing("or", cb))
+                    } else if let Some(ca) = consts.get(a) {
+                        fold_bitwise_absorbing("or", ca)
+                    } else if let Some(cb) = consts.get(b) {
+                        fold_bitwise_absorbing("or", cb)
+                    } else {
+                        None
+                    }
+                }
+                ("bitxor", [a, b]) => fold_binary_bitwise("xor", consts.get(a)?, consts.get(b)?),
+                ("shl", [a, b]) => fold_binary_bitwise("shl", consts.get(a)?, consts.get(b)?),
+                ("shr", [a, b]) => fold_binary_bitwise("shr", consts.get(a)?, consts.get(b)?),
+
+                // Unary bitwise not
+                ("bitnot", [a]) => {
+                    let c = consts.get(a)?;
+                    match c {
+                        Constant::Int(x) => Some(Constant::Int(!x)),
+                        Constant::UInt(x) => Some(Constant::UInt(!x)),
+                        _ => None,
+                    }
+                }
+
+                // Logical not — folds Bool, Int, UInt, Float, and String using JS truthiness.
+                ("not", [a]) => match consts.get(a)? {
+                    Constant::Bool(v) => Some(Constant::Bool(!v)),
+                    Constant::Int(v) => Some(Constant::Bool(*v == 0)),
+                    Constant::UInt(v) => Some(Constant::Bool(*v == 0)),
+                    Constant::Float(v) => Some(Constant::Bool(*v == 0.0)),
+                    Constant::String(s) => Some(Constant::Bool(s.is_empty())),
+                    Constant::Null => Some(Constant::Bool(true)),
+                },
+
+                // Boolean AND/OR: short-circuit absorbing elements, then full fold.
+                ("and", [a, b]) => match (consts.get(a), consts.get(b)) {
+                    (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => {
+                        Some(Constant::Bool(false))
+                    }
+                    (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => {
+                        Some(Constant::Bool(*x && *y))
+                    }
+                    (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => None,
+                    _ => None,
+                },
+                ("or", [a, b]) => match (consts.get(a), consts.get(b)) {
+                    (Some(Constant::Bool(true)), _) | (_, Some(Constant::Bool(true))) => {
+                        Some(Constant::Bool(true))
+                    }
+                    (Some(Constant::Bool(x)), Some(Constant::Bool(y))) => {
+                        Some(Constant::Bool(*x || *y))
+                    }
+                    (Some(Constant::Bool(false)), _) | (_, Some(Constant::Bool(false))) => None,
+                    _ => None,
+                },
+
+                // Pure type-conversion function calls: int(x), uint(x), real(x), string(x)
+                ("int", [a]) => {
+                    let c = consts.get(a)?;
+                    match c {
+                        Constant::Int(x) => Some(Constant::Int(*x)),
+                        Constant::UInt(x) => Some(Constant::Int(*x as i64)),
+                        Constant::Float(x) => Some(Constant::Int(*x as i64)),
+                        _ => None,
+                    }
+                }
+                ("uint", [a]) => {
+                    let c = consts.get(a)?;
+                    match c {
+                        Constant::Int(x) => Some(Constant::UInt(*x as u64)),
+                        Constant::UInt(x) => Some(Constant::UInt(*x)),
+                        Constant::Float(x) => Some(Constant::UInt(*x as u64)),
+                        _ => None,
+                    }
+                }
+                ("real", [a]) => {
+                    let c = consts.get(a)?;
+                    match c {
+                        Constant::Int(x) => Some(Constant::Float(*x as f64)),
+                        Constant::UInt(x) => Some(Constant::Float(*x as f64)),
+                        Constant::Float(x) => Some(Constant::Float(*x)),
+                        _ => None,
+                    }
+                }
+                ("string", [a]) => {
+                    let c = consts.get(a)?;
+                    match c {
+                        Constant::Int(x) => Some(Constant::String(x.to_string())),
+                        Constant::UInt(x) => Some(Constant::String(x.to_string())),
+                        Constant::Float(x) => Some(Constant::String(x.to_string())),
+                        Constant::String(_) => Some(c.clone()),
+                        Constant::Bool(b) => {
+                            Some(Constant::String(if *b { "1" } else { "0" }.into()))
+                        }
+                        _ => None,
+                    }
+                }
+
                 _ => None,
             }
         }
@@ -427,9 +463,13 @@ fn fold_not_cmp(func: &mut Function) -> bool {
         .keys()
         .filter_map(|inst_id| {
             let inst = &func.insts[inst_id];
-            if let Op::Not(inner) = &inst.op {
-                let &(kind, a, b) = cmp_defs.get(inner)?;
-                return Some((inst_id, kind.inverse(), a, b));
+            // Match builtin.not_bool(inner) — the canonical not-of-cmp pattern.
+            if let Op::Call { func: fname, args } = &inst.op {
+                if fname.starts_with("builtin.not") && args.len() == 1 {
+                    let inner = args[0];
+                    let &(kind, a, b) = cmp_defs.get(&inner)?;
+                    return Some((inst_id, kind.inverse(), a, b));
+                }
             }
             None
         })
@@ -699,7 +739,11 @@ mod tests {
         fb.ret(Some(div));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, div).op, Op::Div(_, _)));
+        assert!(
+            matches!(&find_inst_for(&func, div).op, Op::Call { func: f, .. } if f.starts_with("builtin.div")),
+            "expected div builtin call, got {:?}",
+            &find_inst_for(&func, div).op
+        );
     }
 
     /// `param + 3` stays unfolded (non-constant operand).
@@ -717,7 +761,11 @@ mod tests {
         fb.ret(Some(sum));
 
         let func = apply_fold(fb.build());
-        assert!(matches!(&find_inst_for(&func, sum).op, Op::Add(_, _)));
+        assert!(
+            matches!(&find_inst_for(&func, sum).op, Op::Call { func: f, .. } if f.starts_with("builtin.add")),
+            "expected add builtin call, got {:?}",
+            &find_inst_for(&func, sum).op
+        );
     }
 
     /// `neg(42)` folds to `Int(-42)`.
@@ -1002,7 +1050,11 @@ mod tests {
             &find_inst_for(&func, fold_me).op,
             Op::Const(Constant::Int(10))
         ));
-        assert!(matches!(&find_inst_for(&func, keep_me).op, Op::Add(_, _)));
+        assert!(
+            matches!(&find_inst_for(&func, keep_me).op, Op::Call { func: f, .. } if f.starts_with("builtin.add")),
+            "expected add builtin call, got {:?}",
+            &find_inst_for(&func, keep_me).op
+        );
     }
 
     /// i64::MAX + 1 wraps correctly (wrapping_add).

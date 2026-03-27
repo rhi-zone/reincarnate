@@ -119,8 +119,9 @@ fn find_reachable_blocks(func: &Function) -> HashSet<BlockId> {
 
 /// Returns true if the instruction has side effects and must be kept.
 fn has_side_effects(op: &Op) -> bool {
-    matches!(
-        op,
+    match op {
+        // Builtin arithmetic/logic ops are pure — no side effects.
+        Op::Call { func, .. } if func.starts_with("builtin.") => false,
         Op::Yield(_)
             // Mutation
             | Op::Store { .. }
@@ -133,8 +134,9 @@ fn has_side_effects(op: &Op) -> bool {
             | Op::MethodCall { .. }
             // Coroutine operations
             | Op::CoroutineCreate { .. }
-            | Op::CoroutineResume(_)
-    )
+            | Op::CoroutineResume(_) => true,
+        _ => false,
+    }
 }
 
 /// Phase 3 & 4: Mark live instructions and rewrite the function.
@@ -734,12 +736,12 @@ mod tests {
         let has_mul = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Mul(_, _)));
+            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: f, .. } if f.starts_with("builtin.mul")));
         assert!(!has_mul, "dead mul should be eliminated");
         let has_add = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(func.insts[id].op, Op::Add(_, _)));
+            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: f, .. } if f.starts_with("builtin.add")));
         assert!(has_add, "live add should be preserved");
     }
 

@@ -152,94 +152,10 @@ fn fmt_op(op: &Op, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "const ")?;
             fmt_constant(c, f)
         }
-        Op::Add(a, b) => {
-            write!(f, "add ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::Sub(a, b) => {
-            write!(f, "sub ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::Mul(a, b) => {
-            write!(f, "mul ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::Div(a, b) => {
-            write!(f, "div ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::Rem(a, b) => {
-            write!(f, "rem ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::Neg(a) => {
-            write!(f, "neg ")?;
-            fmt_value(*a, f)
-        }
-        Op::BitAnd(a, b) => {
-            write!(f, "bit_and ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::BitOr(a, b) => {
-            write!(f, "bit_or ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::BitXor(a, b) => {
-            write!(f, "bit_xor ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::BitNot(a) => {
-            write!(f, "bit_not ")?;
-            fmt_value(*a, f)
-        }
-        Op::Shl(a, b) => {
-            write!(f, "shl ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::Shr(a, b) => {
-            write!(f, "shr ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
         Op::Cmp(kind, a, b) => {
             write!(f, "cmp.")?;
             fmt_cmp_kind(*kind, f)?;
             write!(f, " ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::Not(a) => {
-            write!(f, "not ")?;
-            fmt_value(*a, f)
-        }
-        Op::BoolAnd(a, b) => {
-            write!(f, "bool_and ")?;
-            fmt_value(*a, f)?;
-            write!(f, ", ")?;
-            fmt_value(*b, f)
-        }
-        Op::BoolOr(a, b) => {
-            write!(f, "bool_or ")?;
             fmt_value(*a, f)?;
             write!(f, ", ")?;
             fmt_value(*b, f)
@@ -292,9 +208,17 @@ fn fmt_op(op: &Op, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             fmt_value(*value, f)
         }
         Op::Call { func, args } => {
-            write!(f, "call {func:?}(")?;
-            fmt_value_list(args, f)?;
-            write!(f, ")")
+            // Pretty-print builtin arithmetic/logic ops with their mnemonic
+            // (e.g. `builtin.add_i64` → `add`), stripping the type suffix.
+            if let Some(rest) = func.strip_prefix("builtin.") {
+                let mnemonic = rest.rfind('_').map(|i| &rest[..i]).unwrap_or(rest);
+                write!(f, "{mnemonic} ")?;
+                fmt_value_list(args, f)
+            } else {
+                write!(f, "call {func:?}(")?;
+                fmt_value_list(args, f)?;
+                write!(f, ")")
+            }
         }
         Op::CallIndirect { callee, args } => {
             write!(f, "call_indirect ")?;

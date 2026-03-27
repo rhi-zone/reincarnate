@@ -253,14 +253,24 @@ fn coerce_bool_arithmetic(
 ) -> bool {
     let result_map = result_inst_map(func);
 
-    // Collect all arithmetic ops where at least one operand needs coercion.
+    // Collect all arithmetic builtin calls where at least one operand needs coercion.
+    // These are Op::Call { func: "builtin.add_*" / "builtin.sub_*" / ... } with 2 args.
+    let arith_prefixes = [
+        "builtin.add",
+        "builtin.sub",
+        "builtin.mul",
+        "builtin.div",
+        "builtin.rem",
+    ];
     let targets: Vec<(InstId, ValueId, ValueId, bool, bool)> = func
         .insts
         .iter()
         .filter_map(|(id, inst)| {
             let (a, b) = match &inst.op {
-                Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
-                    (*a, *b)
+                Op::Call { func: fname, args }
+                    if args.len() == 2 && arith_prefixes.iter().any(|p| fname.starts_with(p)) =>
+                {
+                    (args[0], args[1])
                 }
                 _ => return None,
             };
@@ -301,12 +311,11 @@ fn coerce_bool_arithmetic(
         } else {
             rhs
         };
-        match &mut func.insts[inst_id].op {
-            Op::Add(a, b) | Op::Sub(a, b) | Op::Mul(a, b) | Op::Div(a, b) | Op::Rem(a, b) => {
-                *a = new_lhs;
-                *b = new_rhs;
+        if let Op::Call { args, .. } = &mut func.insts[inst_id].op {
+            if args.len() == 2 {
+                args[0] = new_lhs;
+                args[1] = new_rhs;
             }
-            _ => {}
         }
     }
 

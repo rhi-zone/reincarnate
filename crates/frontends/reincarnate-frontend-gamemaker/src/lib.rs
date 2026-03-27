@@ -222,6 +222,10 @@ impl Frontend for GameMakerFrontend {
 
         let mut module = mb.build();
 
+        // Register typed arithmetic / logic builtins so the constraint
+        // collector can emit accurate type constraints for Op::Call sites.
+        register_gml_arithmetic_builtins(&mut module);
+
         // Populate extern sigs from the GML builtin signature table.
         // `Type::Unknown` in the generated table means the generator didn't
         // have enough information to determine the type — these are inference
@@ -297,6 +301,75 @@ impl Frontend for GameMakerFrontend {
             ],
         })
     }
+}
+
+/// Register typed arithmetic and logic builtins on the module.
+///
+/// The GML frontend emits `Op::Call { func: "builtin.add_f64", ... }` etc.
+/// for arithmetic instructions.  These registrations give the constraint
+/// collector proper typed signatures so it can emit accurate type constraints.
+///
+/// The backend recognises the `"builtin."` prefix and emits native operators
+/// rather than function calls, so these stubs never appear in the output.
+fn register_gml_arithmetic_builtins(module: &mut Module) {
+    use reincarnate_core::ir::ty::FunctionSig;
+
+    // Helper: build a binary sig (param_ty, param_ty) -> return_ty.
+    let bin = |p: Type, r: Type| FunctionSig {
+        params: vec![p.clone(), p],
+        return_ty: r,
+        ..Default::default()
+    };
+    // Helper: build a unary sig (param_ty,) -> return_ty.
+    let un = |p: Type, r: Type| FunctionSig {
+        params: vec![p],
+        return_ty: r,
+        ..Default::default()
+    };
+
+    // Add
+    module.register_builtin("builtin.add_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_builtin("builtin.add_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_builtin("builtin.add_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.add_i64", bin(Type::Int(64), Type::Int(64)));
+    module.register_builtin("builtin.add_str", bin(Type::String, Type::String));
+    // Sub
+    module.register_builtin("builtin.sub_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_builtin("builtin.sub_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_builtin("builtin.sub_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.sub_i64", bin(Type::Int(64), Type::Int(64)));
+    // Mul
+    module.register_builtin("builtin.mul_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_builtin("builtin.mul_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_builtin("builtin.mul_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.mul_i64", bin(Type::Int(64), Type::Int(64)));
+    // Div
+    module.register_builtin("builtin.div_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_builtin("builtin.div_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_builtin("builtin.div_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.div_i64", bin(Type::Int(64), Type::Int(64)));
+    // Rem
+    module.register_builtin("builtin.rem_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_builtin("builtin.rem_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_builtin("builtin.rem_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.rem_i64", bin(Type::Int(64), Type::Int(64)));
+    // Neg (unary)
+    module.register_builtin("builtin.neg_f64", un(Type::Float(64), Type::Float(64)));
+    module.register_builtin("builtin.neg_f32", un(Type::Float(32), Type::Float(32)));
+    module.register_builtin("builtin.neg_i32", un(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.neg_i64", un(Type::Int(64), Type::Int(64)));
+    // Not (unary boolean)
+    module.register_builtin("builtin.not_bool", un(Type::Bool, Type::Bool));
+    // Boolean and/or
+    module.register_builtin("builtin.and_bool", bin(Type::Bool, Type::Bool));
+    module.register_builtin("builtin.or_bool", bin(Type::Bool, Type::Bool));
+    // Bitwise (GML only uses i32)
+    module.register_builtin("builtin.bitand_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.bitor_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.bitxor_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.bitnot_i32", un(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.shl_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_builtin("builtin.shr_i32", bin(Type::Int(32), Type::Int(32)));
 }
 
 /// Translate scripts from SCPT chunk.

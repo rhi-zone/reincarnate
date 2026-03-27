@@ -554,138 +554,8 @@ impl<'a> EmitCtx<'a> {
         Some(match op {
             Op::Const(c) => Expr::Literal(c.clone()),
 
-            Op::Add(a, b) => Expr::Binary {
-                op: BinOp::Add,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::Sub(a, b) => Expr::Binary {
-                op: BinOp::Sub,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::Mul(a, b) => Expr::Binary {
-                op: BinOp::Mul,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::Div(a, b) => Expr::Binary {
-                op: BinOp::Div,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::Rem(a, b) => Expr::Binary {
-                op: BinOp::Rem,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::Neg(a) => Expr::Unary {
-                op: UnaryOp::Neg,
-                expr: Box::new(self.build_val(*a)),
-            },
-
-            Op::BitAnd(a, b) => {
-                // TypeScript rejects `boolean & boolean` (TS2447). Cast both
-                // operands to Number to preserve bitwise integer semantics:
-                // `Number(true) & Number(false) = 1 & 0 = 0`.
-                if matches!(self.func.value_types[*a], Type::Bool)
-                    || matches!(self.func.value_types[*b], Type::Bool)
-                {
-                    Expr::Binary {
-                        op: BinOp::BitAnd,
-                        lhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(*a)),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                        rhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(*b)),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                    }
-                } else {
-                    Expr::Binary {
-                        op: BinOp::BitAnd,
-                        lhs: Box::new(self.build_val(*a)),
-                        rhs: Box::new(self.build_val(*b)),
-                    }
-                }
-            }
-            Op::BitOr(a, b) => {
-                // Same TS2447 fix: cast boolean operands to Number before `|`.
-                if matches!(self.func.value_types[*a], Type::Bool)
-                    || matches!(self.func.value_types[*b], Type::Bool)
-                {
-                    Expr::Binary {
-                        op: BinOp::BitOr,
-                        lhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(*a)),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                        rhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(*b)),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                    }
-                } else {
-                    Expr::Binary {
-                        op: BinOp::BitOr,
-                        lhs: Box::new(self.build_val(*a)),
-                        rhs: Box::new(self.build_val(*b)),
-                    }
-                }
-            }
-            Op::BitXor(a, b) => {
-                // Boolean XOR is equivalent to `!==`; `^` on booleans is a
-                // TypeScript error (TS2447).
-                if matches!(self.func.value_types[*a], Type::Bool)
-                    || matches!(self.func.value_types[*b], Type::Bool)
-                {
-                    Expr::Cmp {
-                        kind: CmpKind::Ne,
-                        lhs: Box::new(self.build_val(*a)),
-                        rhs: Box::new(self.build_val(*b)),
-                    }
-                } else {
-                    Expr::Binary {
-                        op: BinOp::BitXor,
-                        lhs: Box::new(self.build_val(*a)),
-                        rhs: Box::new(self.build_val(*b)),
-                    }
-                }
-            }
-            Op::BitNot(a) => Expr::Unary {
-                op: UnaryOp::BitNot,
-                expr: Box::new(self.build_val(*a)),
-            },
-            Op::Shl(a, b) => Expr::Binary {
-                op: BinOp::Shl,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::Shr(a, b) => Expr::Binary {
-                op: BinOp::Shr,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-
             Op::Cmp(kind, a, b) => Expr::Cmp {
                 kind: *kind,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-
-            Op::Not(a) => Expr::Not(Box::new(self.build_val(*a))),
-            Op::BoolAnd(a, b) => Expr::Binary {
-                op: BinOp::BoolAnd,
-                lhs: Box::new(self.build_val(*a)),
-                rhs: Box::new(self.build_val(*b)),
-            },
-            Op::BoolOr(a, b) => Expr::Binary {
-                op: BinOp::BoolOr,
                 lhs: Box::new(self.build_val(*a)),
                 rhs: Box::new(self.build_val(*b)),
             },
@@ -774,10 +644,20 @@ impl<'a> EmitCtx<'a> {
                 }
             }
 
-            Op::Call { func: fname, args } => Expr::Call {
-                func: fname.clone(),
-                args: args.iter().map(|a| self.build_val(*a)).collect(),
-            },
+            Op::Call { func: fname, args } => {
+                // Typed arithmetic / logic builtins are emitted as native
+                // target-language operators rather than function calls.
+                // Recognised by the "builtin." prefix; the suffix encodes the
+                // operation name (e.g. "builtin.add_f64", "builtin.not_bool").
+                if let Some(builtin_op) = fname.strip_prefix("builtin.") {
+                    self.build_builtin_expr(builtin_op, args)
+                } else {
+                    Expr::Call {
+                        func: fname.clone(),
+                        args: args.iter().map(|a| self.build_val(*a)).collect(),
+                    }
+                }
+            }
             Op::CallIndirect { callee, args } => {
                 let callee_ty = self.func.value_types[*callee].clone();
                 let callee_expr = self.build_val(*callee);
@@ -937,6 +817,158 @@ impl<'a> EmitCtx<'a> {
     }
 
     /// Negate a condition: invert Cmp if lazy-inlined, else wrap in Not.
+    /// Map a `builtin.*` name to a target-language expression.
+    ///
+    /// The `op_name` argument is the part after `"builtin."` (e.g. `"add_f64"`
+    /// or `"not_bool"`).  Binary ops take exactly 2 args; unary ops take 1.
+    ///
+    /// For bitwise ops on boolean operands the backend applies the same TS2447
+    /// workaround (cast to Number) that the old Op::BitAnd/BitOr/BitXor arms
+    /// applied before the IR variants were removed.
+    fn build_builtin_expr(&mut self, op_name: &str, args: &[ValueId]) -> Expr {
+        // Derive the base op (before the type suffix) by stripping the "_TYPE" suffix.
+        let base = op_name
+            .rsplit_once('_')
+            .map(|(base, _)| base)
+            .unwrap_or(op_name);
+
+        match base {
+            // Binary arithmetic
+            "add" => Expr::Binary {
+                op: BinOp::Add,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            "sub" => Expr::Binary {
+                op: BinOp::Sub,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            "mul" => Expr::Binary {
+                op: BinOp::Mul,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            "div" => Expr::Binary {
+                op: BinOp::Div,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            "rem" => Expr::Binary {
+                op: BinOp::Rem,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            // Unary arithmetic
+            "neg" => Expr::Unary {
+                op: UnaryOp::Neg,
+                expr: Box::new(self.build_val(args[0])),
+            },
+            // Bitwise binary — apply TS2447 bool-operand workaround for & and |.
+            "bitand" => {
+                if matches!(self.func.value_types[args[0]], Type::Bool)
+                    || matches!(self.func.value_types[args[1]], Type::Bool)
+                {
+                    Expr::Binary {
+                        op: BinOp::BitAnd,
+                        lhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(args[0])),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                        rhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(args[1])),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                    }
+                } else {
+                    Expr::Binary {
+                        op: BinOp::BitAnd,
+                        lhs: Box::new(self.build_val(args[0])),
+                        rhs: Box::new(self.build_val(args[1])),
+                    }
+                }
+            }
+            "bitor" => {
+                if matches!(self.func.value_types[args[0]], Type::Bool)
+                    || matches!(self.func.value_types[args[1]], Type::Bool)
+                {
+                    Expr::Binary {
+                        op: BinOp::BitOr,
+                        lhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(args[0])),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                        rhs: Box::new(Expr::Cast {
+                            expr: Box::new(self.build_val(args[1])),
+                            ty: Type::Float(64),
+                            kind: CastKind::Coerce,
+                        }),
+                    }
+                } else {
+                    Expr::Binary {
+                        op: BinOp::BitOr,
+                        lhs: Box::new(self.build_val(args[0])),
+                        rhs: Box::new(self.build_val(args[1])),
+                    }
+                }
+            }
+            "bitxor" => {
+                // Boolean XOR is `!==` (TS2447 on `^`).
+                if matches!(self.func.value_types[args[0]], Type::Bool)
+                    || matches!(self.func.value_types[args[1]], Type::Bool)
+                {
+                    Expr::Cmp {
+                        kind: CmpKind::Ne,
+                        lhs: Box::new(self.build_val(args[0])),
+                        rhs: Box::new(self.build_val(args[1])),
+                    }
+                } else {
+                    Expr::Binary {
+                        op: BinOp::BitXor,
+                        lhs: Box::new(self.build_val(args[0])),
+                        rhs: Box::new(self.build_val(args[1])),
+                    }
+                }
+            }
+            "bitnot" => Expr::Unary {
+                op: UnaryOp::BitNot,
+                expr: Box::new(self.build_val(args[0])),
+            },
+            "shl" => Expr::Binary {
+                op: BinOp::Shl,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            "shr" => Expr::Binary {
+                op: BinOp::Shr,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            // Boolean logic
+            "not" => Expr::Not(Box::new(self.build_val(args[0]))),
+            "and" => Expr::Binary {
+                op: BinOp::BoolAnd,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            "or" => Expr::Binary {
+                op: BinOp::BoolOr,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
+            // Unknown builtin — fall back to a function call so the output is
+            // at least syntactically valid (the name won't exist at runtime,
+            // but a compile error is better than a panic).
+            _ => Expr::Call {
+                func: format!("builtin.{op_name}"),
+                args: args.iter().map(|&a| self.build_val(a)).collect(),
+            },
+        }
+    }
+
     /// Build a condition expression, wrapping void-typed values in a dynamic
     /// cast.  TypeScript disallows void expressions as boolean conditions
     /// (TS1345), so `void_call()` must become `(void_call() as any)`.

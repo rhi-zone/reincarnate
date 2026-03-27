@@ -539,11 +539,19 @@ pub fn collect_function(
 
     // -----------------------------------------------------------------------
     // Build function name → FunctionSig map for Call/MethodCall constraints.
+    // Includes registered builtins (e.g. "builtin.add_f64") so that typed
+    // arithmetic calls receive proper constraints from their declared sigs.
     // -----------------------------------------------------------------------
     let func_sigs: HashMap<&str, &FunctionSig> = module
         .functions
         .keys()
         .map(|fid| (module.func_name(fid), &module.functions[fid].sig))
+        .chain(
+            module
+                .builtins
+                .iter()
+                .map(|(name, sig)| (name.as_str(), sig)),
+        )
         .collect();
 
     // -----------------------------------------------------------------------
@@ -663,114 +671,6 @@ pub fn collect_function(
                         if let Some(&gvar) = global_name_vars.get(name.as_str()) {
                             constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
                         }
-                    }
-                }
-
-                // Op::Add is excluded — overloaded for string concatenation in GML and AS3,
-                // so result type cannot be assumed to match operand types. Correct general
-                // behavior is Phase 9 (arithmetic ops as typed builtin calls).
-                Op::Add(_, _) => {}
-
-                // Interim: propagate operand type to result. Phase 9 replaces with builtin signatures.
-                Op::Sub(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::Mul(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::Div(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::Rem(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::BitAnd(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::BitOr(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::BitXor(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::Shl(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                Op::Shr(a, b) => {
-                    if let (Some(a_var), Some(b_var), Some(rv)) = (
-                        var_for(*a, &value_vars),
-                        var_for(*b, &value_vars),
-                        result_var,
-                    ) {
-                        constraints.push(TypeConstraint::Equal(rv.clone(), a_var));
-                        constraints.push(TypeConstraint::Equal(rv, b_var));
-                    }
-                }
-                // Interim: propagate operand type to result. Phase 9 replaces with builtin signatures.
-                Op::Neg(a) => {
-                    if let (Some(a_var), Some(rv)) = (var_for(*a, &value_vars), result_var) {
-                        constraints.push(TypeConstraint::Equal(rv, a_var));
-                    }
-                }
-                Op::BitNot(a) => {
-                    if let (Some(a_var), Some(rv)) = (var_for(*a, &value_vars), result_var) {
-                        constraints.push(TypeConstraint::Equal(rv, a_var));
                     }
                 }
 
@@ -966,13 +866,6 @@ pub fn collect_function(
 
                 // Comparison — result is Bool.
                 Op::Cmp(_, _, _) => {
-                    if let Some(rv) = result_var {
-                        constraints.push(TypeConstraint::Equal(rv, Type::Bool));
-                    }
-                }
-
-                // Boolean logic — operands and result are Bool.
-                Op::Not(_) | Op::BoolAnd(_, _) | Op::BoolOr(_, _) => {
                     if let Some(rv) = result_var {
                         constraints.push(TypeConstraint::Equal(rv, Type::Bool));
                     }

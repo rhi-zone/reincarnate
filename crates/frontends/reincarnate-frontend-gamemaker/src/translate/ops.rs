@@ -258,58 +258,81 @@ fn translate_arithmetic_op(
     gml_sizes: &mut HashMap<ValueId, u8>,
 ) -> Result<(), String> {
     let result_units = gml_slot_units(inst.type1).max(gml_slot_units(inst.type2));
+    // Derive the return type from type1 (primary type tag on the instruction).
+    let ret_ty = datatype_to_ir_type(inst.type1);
 
     match inst.opcode {
         Opcode::Add => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.add(a, b);
+            // Use the explicit type suffix from the GML instruction type tag.
+            let suffix = type_suffix_for(inst.type1);
+            let r = fb.call(format!("builtin.add_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Sub => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.sub(a, b);
+            let suffix = type_suffix_for(inst.type1);
+            let r = fb.call(format!("builtin.sub_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Mul => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.mul(a, b);
+            let suffix = type_suffix_for(inst.type1);
+            let r = fb.call(format!("builtin.mul_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Div => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.div(a, b);
+            let suffix = type_suffix_for(inst.type1);
+            let r = fb.call(format!("builtin.div_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Rem | Opcode::Mod => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.rem(a, b);
+            let suffix = type_suffix_for(inst.type1);
+            let r = fb.call(format!("builtin.rem_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Neg => {
             let a = pop(stack, inst)?;
-            let r = fb.neg(a);
+            let suffix = type_suffix_for(inst.type1);
+            let r = fb.call(format!("builtin.neg_{suffix}"), &[a], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Not => {
             let a = pop(stack, inst)?;
-            let r = fb.not(a);
+            // GML `!` always operates on Bool.
+            let r = fb.call("builtin.not_bool", &[a], Type::Bool);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         _ => unreachable!(),
     }
     Ok(())
+}
+
+/// Return the type suffix used in builtin names for a given GML DataType.
+fn type_suffix_for(dt: DataType) -> &'static str {
+    match dt {
+        DataType::Double => "f64",
+        DataType::Float => "f32",
+        DataType::Int32 | DataType::Int16 => "i32",
+        DataType::Int64 => "i64",
+        DataType::Bool => "bool",
+        DataType::String => "str",
+        _ => "any",
+    }
 }
 
 // ============================================================
@@ -334,9 +357,11 @@ fn translate_bitwise_cmp_op(
             let a = pop(stack, inst)?;
             // GML uses one And opcode for both `&&` (Bool operands) and `&` (Int operands).
             let r = if inst.type1 == DataType::Bool {
-                fb.bool_and(a, b)
+                fb.call("builtin.and_bool", &[a, b], Type::Bool)
             } else {
-                fb.bit_and(a, b)
+                let suffix = type_suffix_for(inst.type1);
+                let ret_ty = datatype_to_ir_type(inst.type1);
+                fb.call(format!("builtin.bitand_{suffix}"), &[a, b], ret_ty)
             };
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -346,9 +371,11 @@ fn translate_bitwise_cmp_op(
             let a = pop(stack, inst)?;
             // GML uses one Or opcode for both `||` (Bool operands) and `|` (Int operands).
             let r = if inst.type1 == DataType::Bool {
-                fb.bool_or(a, b)
+                fb.call("builtin.or_bool", &[a, b], Type::Bool)
             } else {
-                fb.bit_or(a, b)
+                let suffix = type_suffix_for(inst.type1);
+                let ret_ty = datatype_to_ir_type(inst.type1);
+                fb.call(format!("builtin.bitor_{suffix}"), &[a, b], ret_ty)
             };
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -356,21 +383,27 @@ fn translate_bitwise_cmp_op(
         Opcode::Xor => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.bit_xor(a, b);
+            let suffix = type_suffix_for(inst.type1);
+            let ret_ty = datatype_to_ir_type(inst.type1);
+            let r = fb.call(format!("builtin.bitxor_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Shl => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.shl(a, b);
+            let suffix = type_suffix_for(inst.type1);
+            let ret_ty = datatype_to_ir_type(inst.type1);
+            let r = fb.call(format!("builtin.shl_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Shr => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let r = fb.shr(a, b);
+            let suffix = type_suffix_for(inst.type1);
+            let ret_ty = datatype_to_ir_type(inst.type1);
+            let r = fb.call(format!("builtin.shr_{suffix}"), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }

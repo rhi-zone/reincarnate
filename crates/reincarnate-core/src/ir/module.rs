@@ -426,6 +426,18 @@ pub struct Module {
     /// TypeInference merges these into both `func_return_types` and `func_sigs`.
     #[serde(default, skip_serializing)]
     pub extern_sigs: HashMap<String, FunctionSig>,
+    /// Typed arithmetic/logic builtin signatures, keyed by name (e.g. `"builtin.add_f64"`).
+    ///
+    /// Registered by frontends before translation.  The constraint collector
+    /// merges these into `func_sigs` so that `Op::Call` to a builtin name
+    /// receives proper typed constraints (return type and param types).
+    ///
+    /// The linear emitter recognises the `"builtin."` prefix and maps each
+    /// name to its target-language operator instead of emitting a function call.
+    ///
+    /// Not serialised — rebuilt by the frontend on every run.
+    #[serde(default, skip_serializing)]
+    pub builtins: HashMap<String, FunctionSig>,
     /// Room creation code: maps room index → function name.
     /// Populated by frontends so the scaffold can wire up per-room init functions.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -771,6 +783,7 @@ impl Module {
             external_type_defs: BTreeMap::new(),
             external_function_sigs: BTreeMap::new(),
             extern_sigs: HashMap::new(),
+            builtins: HashMap::new(),
             room_creation_code: BTreeMap::new(),
             initial_room_name: None,
             sprite_names: Vec::new(),
@@ -787,6 +800,19 @@ impl Module {
             array_like_fns: HashSet::new(),
             next_type_var: 0,
         }
+    }
+
+    /// Register a typed builtin function (e.g. `"builtin.add_f64"`).
+    ///
+    /// Frontends call this before translation to declare the typed arithmetic
+    /// and logic builtins they will emit as `Op::Call`.  The constraint
+    /// collector merges `module.builtins` into its `func_sigs` map so that
+    /// these calls receive proper typed constraints.
+    ///
+    /// The backend recognises the `"builtin."` prefix and emits the
+    /// corresponding target-language operator rather than a function call.
+    pub fn register_builtin(&mut self, name: &str, sig: FunctionSig) {
+        self.builtins.insert(name.to_string(), sig);
     }
 
     /// Allocate a unique [`Type::Var`] for use by frontends that do not yet

@@ -181,7 +181,10 @@ impl GmlInstanceTypeFlow {
                 func.insts[inst_id].result = Some(typecheck_vid);
 
                 let not_inst_id = func.insts.push(Inst {
-                    op: Op::Not(typecheck_vid),
+                    op: Op::Call {
+                        func: "builtin.not_bool".into(),
+                        args: vec![typecheck_vid],
+                    },
                     result: original_vid,
                     span: None,
                 });

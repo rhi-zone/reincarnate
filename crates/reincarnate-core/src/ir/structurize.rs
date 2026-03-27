@@ -493,13 +493,15 @@ impl<'a> Structurizer<'a> {
         false
     }
 
-    /// If `cond` is produced by `Not(inner)` in `block`, return `inner`.
+    /// If `cond` is produced by a boolean `not` builtin call in `block`, return the inner value.
     fn strip_not(&self, block: BlockId, cond: ValueId) -> Option<ValueId> {
         for &inst_id in &self.func.blocks[block].insts {
             let inst = &self.func.insts[inst_id];
             if inst.result == Some(cond) {
-                if let Op::Not(inner) = &inst.op {
-                    return Some(*inner);
+                if let Op::Call { func, args } = &inst.op {
+                    if func.starts_with("builtin.not") && args.len() == 1 {
+                        return Some(args[0]);
+                    }
                 }
                 break;
             }
@@ -1736,9 +1738,16 @@ fn is_boolean_inverse(func: &Function, a: ValueId, b: ValueId) -> bool {
         .insts
         .iter()
         .find_map(|(_, inst)| (inst.result == Some(b)).then_some(&inst.op));
+    let is_not_of = |op: &Op, val: ValueId| {
+        if let Op::Call { func, args } = op {
+            func.starts_with("builtin.not") && args.len() == 1 && args[0] == val
+        } else {
+            false
+        }
+    };
     match (a_op, b_op) {
-        (Some(Op::Not(inner)), _) if *inner == b => true,
-        (_, Some(Op::Not(inner))) if *inner == a => true,
+        (Some(a_op), _) if is_not_of(a_op, b) => true,
+        (_, Some(b_op)) if is_not_of(b_op, a) => true,
         (Some(Op::Cmp(k1, x1, y1)), Some(Op::Cmp(k2, x2, y2))) => {
             values_equivalent(func, *x1, *x2)
                 && values_equivalent(func, *y1, *y2)

@@ -237,6 +237,10 @@ fn collect_bool_demands(
         match &inst.op {
             // External function call: check param types from runtime sigs
             Op::Call { func: name, args } => {
+                // builtin.not_bool operand is boolean
+                if name.starts_with("builtin.not") && args.len() == 1 {
+                    demands.push(args[0]);
+                }
                 if let Some(param_types) = external_param_types.get(name.as_str()) {
                     for (i, arg) in args.iter().enumerate() {
                         if param_types.get(i) == Some(&Type::Bool) {
@@ -270,10 +274,6 @@ fn collect_bool_demands(
                         }
                     }
                 }
-            }
-            // Not operand is boolean
-            Op::Not(operand) => {
-                demands.push(*operand);
             }
             _ => {}
         }

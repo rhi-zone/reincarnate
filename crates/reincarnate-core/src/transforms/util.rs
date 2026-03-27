@@ -26,19 +26,7 @@ pub fn branch_targets(term: &Terminator) -> Vec<BlockId> {
 pub fn value_operands(op: &Op) -> Vec<ValueId> {
     match op {
         Op::Const(_) => vec![],
-        Op::Add(a, b)
-        | Op::Sub(a, b)
-        | Op::Mul(a, b)
-        | Op::Div(a, b)
-        | Op::Rem(a, b)
-        | Op::BitAnd(a, b)
-        | Op::BitOr(a, b)
-        | Op::BitXor(a, b)
-        | Op::Shl(a, b)
-        | Op::Shr(a, b)
-        | Op::BoolAnd(a, b)
-        | Op::BoolOr(a, b) => vec![*a, *b],
-        Op::Neg(a) | Op::BitNot(a) | Op::Not(a) | Op::Spread(a) => vec![*a],
+        Op::Spread(a) => vec![*a],
         Op::Select {
             cond,
             on_true,
@@ -89,22 +77,7 @@ pub fn substitute_values_in_op(op: &mut Op, subst: &HashMap<ValueId, ValueId>) {
 
     match op {
         Op::Const(_) => {}
-        Op::Add(a, b)
-        | Op::Sub(a, b)
-        | Op::Mul(a, b)
-        | Op::Div(a, b)
-        | Op::Rem(a, b)
-        | Op::BitAnd(a, b)
-        | Op::BitOr(a, b)
-        | Op::BitXor(a, b)
-        | Op::Shl(a, b)
-        | Op::Shr(a, b)
-        | Op::BoolAnd(a, b)
-        | Op::BoolOr(a, b) => {
-            sub(a);
-            sub(b);
-        }
-        Op::Neg(a) | Op::BitNot(a) | Op::Not(a) | Op::Spread(a) => sub(a),
+        Op::Spread(a) => sub(a),
         Op::Select {
             cond,
             on_true,

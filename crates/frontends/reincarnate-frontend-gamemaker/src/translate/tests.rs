@@ -772,12 +772,21 @@ fn test_arithmetic_add_sub_mul() {
         translate_code_entry(&bytecode, "test_arith", &ctx).expect("translation failed");
     let ops = collect_ops(&func);
 
-    let add_count = ops.iter().filter(|op| matches!(op, Op::Add(_, _))).count();
-    let sub_count = ops.iter().filter(|op| matches!(op, Op::Sub(_, _))).count();
-    let mul_count = ops.iter().filter(|op| matches!(op, Op::Mul(_, _))).count();
-    assert_eq!(add_count, 3, "expected 3 Add ops; ops: {ops:?}");
-    assert_eq!(sub_count, 1, "expected 1 Sub op; ops: {ops:?}");
-    assert_eq!(mul_count, 1, "expected 1 Mul op; ops: {ops:?}");
+    let add_count = ops
+        .iter()
+        .filter(|op| matches!(op, Op::Call { func: f, .. } if f.starts_with("builtin.add")))
+        .count();
+    let sub_count = ops
+        .iter()
+        .filter(|op| matches!(op, Op::Call { func: f, .. } if f.starts_with("builtin.sub")))
+        .count();
+    let mul_count = ops
+        .iter()
+        .filter(|op| matches!(op, Op::Call { func: f, .. } if f.starts_with("builtin.mul")))
+        .count();
+    assert_eq!(add_count, 3, "expected 3 add builtin calls; ops: {ops:?}");
+    assert_eq!(sub_count, 1, "expected 1 sub builtin call; ops: {ops:?}");
+    assert_eq!(mul_count, 1, "expected 1 mul builtin call; ops: {ops:?}");
 }
 
 // -----------------------------------------------------------------------

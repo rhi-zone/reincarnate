@@ -68,33 +68,8 @@ pub enum Op {
     /// Load a compile-time constant.
     Const(Constant),
 
-    // -- Arithmetic --
-    Add(ValueId, ValueId),
-    Sub(ValueId, ValueId),
-    Mul(ValueId, ValueId),
-    Div(ValueId, ValueId),
-    Rem(ValueId, ValueId),
-    Neg(ValueId),
-
-    // -- Bitwise --
-    BitAnd(ValueId, ValueId),
-    BitOr(ValueId, ValueId),
-    BitXor(ValueId, ValueId),
-    BitNot(ValueId),
-    Shl(ValueId, ValueId),
-    Shr(ValueId, ValueId),
-
     // -- Comparison --
     Cmp(CmpKind, ValueId, ValueId),
-
-    // -- Logic --
-    Not(ValueId),
-    /// Eager boolean AND: `a & b` where both operands are `Bool`.
-    /// GML's `&&` on bool operands. Distinct from `BitAnd` (integer bitwise).
-    BoolAnd(ValueId, ValueId),
-    /// Eager boolean OR: `a | b` where both operands are `Bool`.
-    /// GML's `||` on bool operands. Distinct from `BitOr` (integer bitwise).
-    BoolOr(ValueId, ValueId),
     /// Conditional select: `cond ? on_true : on_false`
     Select {
         cond: ValueId,
@@ -206,22 +181,7 @@ impl Op {
     pub fn variant_name(&self) -> &'static str {
         match self {
             Op::Const(_) => "Const",
-            Op::Add(..) => "Add",
-            Op::Sub(..) => "Sub",
-            Op::Mul(..) => "Mul",
-            Op::Div(..) => "Div",
-            Op::Rem(..) => "Rem",
-            Op::Neg(_) => "Neg",
-            Op::BitAnd(..) => "BitAnd",
-            Op::BitOr(..) => "BitOr",
-            Op::BitXor(..) => "BitXor",
-            Op::BitNot(_) => "BitNot",
-            Op::Shl(..) => "Shl",
-            Op::Shr(..) => "Shr",
             Op::Cmp(..) => "Cmp",
-            Op::Not(_) => "Not",
-            Op::BoolAnd(..) => "BoolAnd",
-            Op::BoolOr(..) => "BoolOr",
             Op::Select { .. } => "Select",
             Op::Alloc(_) => "Alloc",
             Op::Load(_) => "Load",

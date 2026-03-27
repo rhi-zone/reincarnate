@@ -344,71 +344,172 @@ impl FunctionBuilder {
     }
 
     // ========================================================================
-    // Arithmetic
+    // Arithmetic (emit typed builtin calls)
     // ========================================================================
 
+    /// Select the `builtin.*` suffix for a given type.
+    /// Unknown/variable types use the "any" suffix, which maps to an untyped
+    /// operator in the backend (no signature constraints are emitted).
+    fn builtin_type_suffix(ty: &Type) -> &'static str {
+        match ty {
+            Type::Float(64) => "f64",
+            Type::Float(32) => "f32",
+            Type::Int(32) => "i32",
+            Type::Int(64) => "i64",
+            Type::String => "str",
+            Type::Bool => "bool",
+            _ => "any",
+        }
+    }
+
+    /// Emit a binary arithmetic builtin call, deriving the builtin name from
+    /// the type of the first operand (e.g. `Float(64)` → `"builtin.add_f64"`).
     pub fn add(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Add(a, b), ty)
+        let name = format!("builtin.add_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn sub(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Sub(a, b), ty)
+        let name = format!("builtin.sub_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn mul(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Mul(a, b), ty)
+        let name = format!("builtin.mul_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn div(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Div(a, b), ty)
+        let name = format!("builtin.div_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn rem(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Rem(a, b), ty)
+        let name = format!("builtin.rem_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn neg(&mut self, a: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Neg(a), ty)
+        let name = format!("builtin.neg_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a],
+            },
+            ty,
+        )
     }
 
     // ========================================================================
-    // Bitwise
+    // Bitwise (emit typed builtin calls)
     // ========================================================================
 
     pub fn bit_and(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::BitAnd(a, b), ty)
+        let name = format!("builtin.bitand_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn bit_or(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::BitOr(a, b), ty)
+        let name = format!("builtin.bitor_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn bit_xor(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::BitXor(a, b), ty)
+        let name = format!("builtin.bitxor_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn bit_not(&mut self, a: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::BitNot(a), ty)
+        let name = format!("builtin.bitnot_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a],
+            },
+            ty,
+        )
     }
 
     pub fn shl(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Shl(a, b), ty)
+        let name = format!("builtin.shl_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     pub fn shr(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        self.emit(Op::Shr(a, b), ty)
+        let name = format!("builtin.shr_{}", Self::builtin_type_suffix(&ty));
+        self.emit(
+            Op::Call {
+                func: name,
+                args: vec![a, b],
+            },
+            ty,
+        )
     }
 
     // ========================================================================
@@ -420,15 +521,33 @@ impl FunctionBuilder {
     }
 
     pub fn not(&mut self, a: ValueId) -> ValueId {
-        self.emit(Op::Not(a), Type::Bool)
+        self.emit(
+            Op::Call {
+                func: "builtin.not_bool".into(),
+                args: vec![a],
+            },
+            Type::Bool,
+        )
     }
 
     pub fn bool_and(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.emit(Op::BoolAnd(a, b), Type::Bool)
+        self.emit(
+            Op::Call {
+                func: "builtin.and_bool".into(),
+                args: vec![a, b],
+            },
+            Type::Bool,
+        )
     }
 
     pub fn bool_or(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.emit(Op::BoolOr(a, b), Type::Bool)
+        self.emit(
+            Op::Call {
+                func: "builtin.or_bool".into(),
+                args: vec![a, b],
+            },
+            Type::Bool,
+        )
     }
 
     // ========================================================================
@@ -942,7 +1061,7 @@ mod tests {
         // The add instruction should have a result.
         let add_inst = &func.insts[entry.insts[0]];
         assert!(add_inst.result.is_some());
-        assert!(matches!(add_inst.op, Op::Add(_, _)));
+        assert!(matches!(&add_inst.op, Op::Call { func: f, .. } if f.starts_with("builtin.add")));
 
         // The terminator should be Return.
         assert!(matches!(entry.terminator, Terminator::Return(Some(_))));
