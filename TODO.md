@@ -388,17 +388,38 @@ They must not be conflated at the solver level. The heuristic that detects
 `any[]` with `any`. With proper HM, `_bodypart = Array(_bodypart)` triggers the occurs
 check → `Dynamic`; no heuristic needed.
 
-**Crescent constraint mapping.** Crescent's 7 constraint kinds map to IR ops:
-- `C_ARITH` → not a distinct kind in our solver (see design decision below)
-- `C_COMPARE` → `Op::Cmp` — result is always `Bool`; emit `Equal(result, Bool)`
-- `C_HAS_FIELD` → `Op::GetField/SetField`
-- `C_CALLABLE` → `Op::Call/MethodCall/CallIndirect` **and arithmetic ops** (see below)
-- `C_UNIFY` → assignment ops, phi merges (block args)
-- `C_SUB` → subtype constraints (narrower than unify; handles coercions)
-- `C_RETURN` → `Op::Return`
+**IR-native constraint kinds (derived from Op variants, not 1:1 with Crescent).**
+Crescent is prior art but our constraint kinds are derived from what the IR needs —
+no more, no less. The minimal set:
 
-**Design decision (2026-03-20): `C_ARITH` is not a distinct constraint kind. Arithmetic
-ops are calls to builtins with declared signatures; `Callable` handles them uniformly.**
+- `Callable(func, args, result)` — `Op::Call`, `Op::MethodCall`, `Op::CallIndirect`,
+  arithmetic ops (`Add`, `Sub`, `Mul`, `Div`, `Mod`, `Not`, `BoolAnd`, `BoolOr`,
+  `Cmp`), and `GetIndex`. All resolved against declared signatures.
+- `HasField(obj, field, result)` — `Op::GetField`, `Op::SetField`
+- `Equal(a, b)` — phi merges / block args, `Op::Return` (links to return slot)
+- `Bind(value, ty)` — `Op::Const` (literal type), `Op::Cast` (explicit override),
+  `Op::MakeClosure` (sig is known at construction)
+
+**No `C_COMPARE`, no `C_ARITH`, no `C_SUB` as distinct kinds.** Rationale:
+
+- `Cmp` is `Callable(builtin_cmp, [a, b], result)` — signature `(T, T) -> Bool`.
+  The "operands must match" constraint falls out of the polymorphic signature
+  naturally; no special `Equal(a, b)` rule needed. Result always `Bool` falls out
+  of the declared return type.
+- `Not`/`BoolAnd`/`BoolOr` are `Callable` against `(Bool) -> Bool` /
+  `(Bool, Bool) -> Bool` signatures. No special case.
+- Arithmetic ops (`Add`, `Sub`, etc.) are `Callable` against declared builtin
+  signatures (Phase 9). No `C_ARITH` — Crescent needs it for Lua metamethods;
+  our IR has no metamethods.
+- `C_SUB` (subtype / coercion): deferred. `Cast` is handled by `Bind` (direct type
+  override). If subtype constraints are needed (e.g. for inheritance), add then.
+
+**`Store`/`Load`/`Alloc` generate no constraints** — Mem2Reg eliminates them before
+the solver runs. Control flow ops (`Br`, `CondBr`) generate no constraints.
+
+**Design decision (2026-03-20, refined 2026-03-27): `C_ARITH` is not a distinct
+constraint kind. Arithmetic ops are calls to builtins with declared signatures;
+`Callable` handles them uniformly.**
 
 Crescent needs `C_ARITH` because Lua has metamethods — the constraint means "find
 `__add` on the operand type and unify result with the metamethod return." Our IR has no
