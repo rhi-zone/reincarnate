@@ -9,8 +9,14 @@ use crate::pipeline::{Transform, TransformResult};
 /// Scans constructor functions (`MethodKind::Constructor`) and GML create events
 /// (`MethodKind::Instance` where the last `::` segment of `func.name` is `"create"`)
 /// for `SetField { object: self_param, field, value }` ops and synthesizes or augments
-/// a `StructDef` entry in `module.structs`.  Runs before `TypeInference` so that field
-/// types are available to the solver.
+/// a `StructDef` entry in `module.structs`.
+///
+/// Runs BEFORE `TypeInference` by registration order — `TypeInference` sees the struct
+/// defs that this pass produces.  Because this pass runs before TypeInference, the field
+/// types it infers come from raw value types before full inference, which means they may
+/// be `Unknown` when TypeInference hasn't resolved the stored value yet.  This is a
+/// known limitation: `GetField` ops on self-assigned fields may remain `Unknown` until
+/// a subsequent pass resolves them.  See TODO.md for the tracked gap.
 ///
 /// Rules:
 /// - Functions with `method_kind == MethodKind::Constructor` are scanned.

@@ -5,14 +5,34 @@ use crate::ir::{Module, Type, TypeDecl, TypeId};
 use crate::pipeline::{Transform, TransformResult};
 use crate::transforms::call_site_flow::collect_call_site_types;
 
+/// Returns true if `ty` is a numeric type (Int, UInt, Float) or a Union of such.
+///
+/// All numeric types map to `number` in TypeScript, so they are mutually compatible
+/// for the purposes of call-site widening.
+fn is_numeric(ty: &Type) -> bool {
+    match ty {
+        Type::Int(_) | Type::UInt(_) | Type::Float(_) => true,
+        Type::Union(types) => types.iter().all(is_numeric),
+        _ => false,
+    }
+}
+
 /// Returns true if `caller` is compatible with `param` — i.e., no widening needed.
 ///
 /// Two types are compatible when they are equal OR when `caller` is an `Instance(X)`
 /// and `param` is `Instance(Y)` with Y in X's ancestor chain. This handles the case
 /// where a script function's `self` is typed as `GMLObject` (the base) but callers
 /// pass specific subtype instances (`Wall`, `Enemy`, etc.).
+///
+/// Numeric types (Int/UInt/Float or Union thereof) are also mutually compatible — all
+/// map to `number` in TypeScript. ConstraintSolve's intra-procedural narrowing (e.g.
+/// `Float(64)` from arithmetic) takes precedence over callers' int/float representation
+/// differences, which are often just constant artifacts.
 fn is_compatible(module: &Module, caller: &Type, param: &Type) -> bool {
     if caller == param {
+        return true;
+    }
+    if is_numeric(caller) && is_numeric(param) {
         return true;
     }
     let (Type::Instance(caller_id), Type::Instance(param_id)) = (caller, param) else {
@@ -465,6 +485,58 @@ mod tests {
         assert_eq!(target.sig.params[0], Type::Unknown);
     }
 
+    // ---- Numeric callers do not widen a numeric param ----
+
+    /// Param is Float(64) (ConstraintSolve narrowed via arithmetic `i -= 1000`).
+    /// Callers pass Int(64) and Union([Int(64), Float(64)]). All are numeric →
+    /// no widening. All numeric types map to `number` in TypeScript.
+    #[test]
+    fn numeric_callers_do_not_widen_numeric_param() {
+        let mut mb = ModuleBuilder::new("test");
+
+        // Callee: fn target(x: Float(64)) — narrowed by ConstraintSolve
+        let callee_sig = FunctionSig {
+            params: vec![Type::Float(64)],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
+        callee.ret(None);
+        mb.add_function(callee.build());
+
+        // Caller A: passes Int(64)
+        let sig = FunctionSig {
+            params: vec![],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut caller_a = FunctionBuilder::new("caller_a", sig, Visibility::Private);
+        let n = caller_a.const_int(42);
+        caller_a.call("target", &[n], Type::Void);
+        caller_a.ret(None);
+        mb.add_function(caller_a.build());
+
+        // Caller B: passes Union([Int(64), Float(64)])
+        let sig_b = FunctionSig {
+            params: vec![Type::Union(vec![Type::Int(64), Type::Float(64)])],
+            return_ty: Type::Void,
+            ..Default::default()
+        };
+        let mut caller_b = FunctionBuilder::new("caller_b", sig_b, Visibility::Private);
+        let p = caller_b.param(0);
+        caller_b.call("target", &[p], Type::Void);
+        caller_b.ret(None);
+        mb.add_function(caller_b.build());
+
+        let result = run(mb);
+        assert!(
+            !result.changed,
+            "numeric callers should not widen a numeric param"
+        );
+        let target = &result.module.functions[FuncId::new(0)];
+        assert_eq!(target.sig.params[0], Type::Float(64));
+    }
+
     // ---- ClassRef conflict (the playerIsCharacter scenario) ----
 
     /// Param is Int(64) (ConstraintSolve narrowed via cmp.eq against an i64),
@@ -538,11 +610,11 @@ mod tests {
             ..Default::default()
         };
 
-        // Caller passes (String, Float) — y has incompatible type
+        // Caller passes (String, String) — y has incompatible type (String ≠ Int(64))
         let mut caller = FunctionBuilder::new("caller", sig, Visibility::Private);
         let s = caller.const_string("hi");
-        let f = caller.const_float(1.0);
-        caller.call("target", &[s, f], Type::Void);
+        let s2 = caller.const_string("wrong");
+        caller.call("target", &[s, s2], Type::Void);
         caller.ret(None);
         mb.add_function(caller.build());
 
