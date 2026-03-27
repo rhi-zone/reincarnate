@@ -45,7 +45,6 @@ fn make_ctx<'a>(
         self_object_index: None,
         ancestor_indices: HashSet::new(),
         script_names,
-        is_event_handler: false,
         is_with_body: false,
         with_body_has_return: false,
         // Tests exercise GMS2.3+ bytecode by default (shared blobs, Break signals, etc.).

@@ -70,12 +70,6 @@ pub struct TranslateCtx<'a> {
     pub ancestor_indices: HashSet<usize>,
     /// Set of clean script names (for injecting self at call sites).
     pub script_names: &'a HashSet<String>,
-    /// True when this function is a GML event handler (create, step, draw, destroy,
-    /// alarm, collision, etc.).  The GML runtime calls event handlers and discards
-    /// the return value entirely, so the return type is `Type::Void`.  Script
-    /// functions (free functions, constructors) may have real return values and
-    /// must not have this set.
-    pub is_event_handler: bool,
     /// True when translating a with-body closure (extracted from a PushEnv/PopEnv pair).
     /// In this context, a PopEnv instruction is an early-exit signal — the outer with-loop
     /// is managed by `withInstances`, so we do NOT emit `withEnd()` for PopEnv.
@@ -279,18 +273,10 @@ fn build_signature_with_args(ctx: &TranslateCtx, arg_count: u16) -> FunctionSig 
         params.push(fresh());
         defaults.push(None);
     }
-    // Event handlers are fire-and-forget: the GML runtime discards their return
-    // value.  Declaring the return type as Void lets the constraint solver keep
-    // it Void even when the body contains `return 0;` (early-exit idiom).
-    let return_ty = if ctx.is_event_handler {
-        Type::Void
-    } else {
-        fresh()
-    };
     FunctionSig {
         params,
         defaults,
-        return_ty,
+        return_ty: fresh(),
         ..Default::default()
     }
 }
