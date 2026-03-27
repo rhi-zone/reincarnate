@@ -254,8 +254,9 @@ pub fn collect_function(
                     }
                 }
 
-                // Op::Add is excluded — overloaded for string concatenation in GML,
-                // so result type cannot be assumed to match operand types.
+                // Op::Add is excluded — overloaded for string concatenation in GML and AS3,
+                // so result type cannot be assumed to match operand types. Correct general
+                // behavior is Phase 9 (arithmetic ops as typed builtin calls).
                 Op::Add(_, _) => {}
 
                 // Interim: propagate operand type to result. Phase 9 replaces with builtin signatures.

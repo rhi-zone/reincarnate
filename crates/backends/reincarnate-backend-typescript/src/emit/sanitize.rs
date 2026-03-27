@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use reincarnate_core::ir::{Constant, FuncId, Module, Op};
+use reincarnate_core::ir::{Constant, FuncId, Module, NameInterner, Op};
 
 /// JS/TS reserved words that cannot be used as identifiers.
 ///
@@ -101,6 +101,10 @@ pub(crate) fn sanitize_ident(name: &str) -> String {
 /// Rename free functions whose sanitized name collides with a class name or
 /// global variable name, avoiding TS2308/TS2440 duplicate-export errors.
 /// Renames both `func.name` and all `Op::Call` references throughout the module.
+///
+/// A `NameInterner` is seeded with all class names and sanitized global names so
+/// that free function names that collide with those reserved names, or with each
+/// other, get unique `_2`, `_3`, … suffixes.
 pub(super) fn rename_colliding_free_funcs(
     module: &mut Module,
     free_funcs: &[FuncId],
@@ -111,18 +115,29 @@ pub(super) fn rename_colliding_free_funcs(
         .iter()
         .map(|g| sanitize_ident(&g.name))
         .collect();
-    // Build (old_name → new_name) pairs for colliding free functions.
+
+    // Seed the interner with all names that must not be used by free functions.
+    let reserved = known_classes
+        .iter()
+        .cloned()
+        .chain(sanitized_global_names.iter().cloned());
+    let mut interner = NameInterner::with_reserved(reserved);
+
+    // Intern each free function's sanitized name. Functions whose sanitized name
+    // does not collide get it back unchanged; colliding ones get a unique suffix.
     let renames: HashMap<String, String> = free_funcs
         .iter()
         .filter_map(|&fid| {
             let raw = sanitize_ident(&module.functions[fid].name);
-            if known_classes.contains(&raw) || sanitized_global_names.contains(&raw) {
-                Some((module.functions[fid].name.clone(), format!("{raw}__fn")))
+            let interned = interner.intern(raw.clone());
+            if interned != raw {
+                Some((module.functions[fid].name.clone(), interned))
             } else {
                 None
             }
         })
         .collect();
+
     if !renames.is_empty() {
         // Rename the function definitions (both Function::name and NameTable).
         for fid in free_funcs {

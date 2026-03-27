@@ -2,6 +2,7 @@ use std::fmt::Write;
 use std::path::PathBuf;
 
 use datawin::DataWin;
+use reincarnate_core::ir::NameInterner;
 use reincarnate_core::project::{Asset, AssetCatalog, AssetKind};
 
 use crate::assets::detect_audio_extension;
@@ -128,19 +129,13 @@ fn generate_sprites(dw: &DataWin, catalog: &mut AssetCatalog) {
     // type (e.g. `322`) rather than `number | undefined` under noUncheckedIndexedAccess.
     // Deduplicate keys: if two sprites strip to the same PascalCase name, append _2, _3…
     out.push_str("export const Sprites = {\n");
-    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut interner = NameInterner::new();
     for (i, sprite) in sprt.sprites.iter().enumerate() {
         let raw = dw
             .resolve_string(sprite.name)
             .unwrap_or_else(|_| format!("spr_{i}"));
         let base_key = naming::sprite_name_to_pascal(&raw);
-        let count = seen.entry(base_key.clone()).or_insert(0);
-        *count += 1;
-        let key = if *count > 1 {
-            format!("{base_key}_{count}")
-        } else {
-            base_key
-        };
+        let key = interner.intern(base_key);
         // Emit as a plain identifier when valid, otherwise as a quoted string key.
         // A valid JS identifier starts with [a-zA-Z_$] and continues with [a-zA-Z0-9_$].
         // serde_json::to_string provides correct JSON string escaping for quoted keys.
@@ -426,19 +421,13 @@ fn generate_rooms(dw: &DataWin, catalog: &mut AssetCatalog, obj_names: &[String]
     // Rooms enum: PascalCase name → index (as const for exact literal types).
     // Deduplicate keys: if two rooms strip to the same PascalCase name, append _2, _3…
     out.push_str("export const Rooms = {\n");
-    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut interner = NameInterner::new();
     for (i, entry) in room.rooms.iter().enumerate() {
         let raw = dw
             .resolve_string(entry.name)
             .unwrap_or_else(|_| format!("room_{i}"));
         let base_key = naming::room_name_to_pascal(&raw);
-        let count = seen.entry(base_key.clone()).or_insert(0);
-        *count += 1;
-        let key = if *count > 1 {
-            format!("{base_key}_{count}")
-        } else {
-            base_key
-        };
+        let key = interner.intern(base_key);
         let key_token = if is_valid_js_ident(&key) {
             key
         } else {
@@ -469,15 +458,9 @@ fn generate_objects(catalog: &mut AssetCatalog, obj_names: &[String]) {
     // name, append _2, _3, … to the second and subsequent occurrences.  The
     // first occurrence keeps the original GML name so lookups by the canonical
     // name still resolve correctly.
-    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut interner = NameInterner::new();
     for (i, name) in obj_names.iter().enumerate() {
-        let count = seen.entry(name.clone()).or_insert(0);
-        *count += 1;
-        let key = if *count > 1 {
-            format!("{name}_{count}")
-        } else {
-            name.clone()
-        };
+        let key = interner.intern(name.clone());
         // Use quoted string keys so names like "3platgen" are valid TypeScript.
         let escaped = key.replace('\\', "\\\\").replace('"', "\\\"");
         let _ = writeln!(out, "  \"{escaped}\": {i},");
