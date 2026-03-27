@@ -51,18 +51,24 @@ pub struct StructDef {
 pub struct TypeInterner<'a> {
     types: &'a mut PrimaryMap<TypeId, TypeDecl>,
     type_names: &'a mut HashMap<String, TypeId>,
+    name_table_type_names: &'a mut PrimaryMap<TypeId, Option<String>>,
 }
 
 impl<'a> TypeInterner<'a> {
-    /// Construct an interner from raw mutable references to the two type-index fields.
+    /// Construct an interner from raw mutable references to the three type-index fields.
     ///
     /// Useful when the caller has already split the `Module` borrow (e.g. via
     /// `std::mem::take`) and cannot call `Module::type_interner_mut`.
     pub fn from_parts(
         types: &'a mut PrimaryMap<TypeId, TypeDecl>,
         type_names: &'a mut HashMap<String, TypeId>,
+        name_table_type_names: &'a mut PrimaryMap<TypeId, Option<String>>,
     ) -> Self {
-        Self { types, type_names }
+        Self {
+            types,
+            type_names,
+            name_table_type_names,
+        }
     }
 
     /// Get or create a [`TypeId`] for the given named Object type.
@@ -78,6 +84,7 @@ impl<'a> TypeInterner<'a> {
             class_ref: None,
             inferred: false,
         });
+        self.name_table_type_names.push(Some(name.to_string()));
         self.type_names.insert(name.to_string(), id);
         id
     }
@@ -106,6 +113,7 @@ impl<'a> TypeInterner<'a> {
             class_ref: None,
             inferred: false,
         });
+        self.name_table_type_names.push(Some(name.to_string()));
         self.type_names.insert(key, id);
         Type::ClassRef(id)
     }
@@ -117,10 +125,15 @@ impl<'a> TypeInterner<'a> {
 
     /// Look up the name of an already-interned TypeId.
     ///
+    /// Reads from the `NameTable` type_names, which is the authoritative source.
+    ///
     /// # Panics
-    /// Panics if the TypeId is not in the arena, or if the TypeDecl has no name.
+    /// Panics if the TypeId has no name.
     pub fn name_of(&self, id: TypeId) -> &str {
-        self.types[id].name_expect()
+        self.name_table_type_names
+            .get(id)
+            .and_then(|n| n.as_deref())
+            .expect("TypeId has no name in NameTable")
     }
 
     /// Check if a TypeId exists (is a valid interned id).
@@ -528,16 +541,20 @@ impl Module {
         }
     }
 
-    /// Rebuild the `type_names` reverse index from `types`.
+    /// Rebuild the `type_names` reverse index and `name_table.type_names` from `types`.
     ///
     /// Called after deserialization (which populates `types` but skips
-    /// `type_names`) and after any direct mutation of `types`.
+    /// `type_names` and may lack `name_table.type_names` in old IR files)
+    /// and after any direct mutation of `types`.
     pub fn rebuild_type_index(&mut self) {
         self.type_names.clear();
+        self.name_table.type_names = PrimaryMap::new();
         for (id, td) in self.types.iter() {
-            if let Some(name) = td.name() {
-                self.type_names.insert(name.to_string(), id);
+            let name = td.name().map(str::to_string);
+            if let Some(ref n) = name {
+                self.type_names.insert(n.clone(), id);
             }
+            self.name_table.type_names.push(name);
         }
     }
 
@@ -557,6 +574,7 @@ impl Module {
             class_ref: None,
             inferred: false,
         });
+        self.name_table.type_names.push(Some(name.to_string()));
         self.type_names.insert(name.to_string(), id);
         id
     }
@@ -574,6 +592,7 @@ impl Module {
             name: Some(name.to_string()),
             variants,
         });
+        self.name_table.type_names.push(Some(name.to_string()));
         self.type_names.insert(name.to_string(), id);
         id
     }
@@ -603,8 +622,16 @@ impl Module {
             class_ref: None,
             inferred: false,
         });
+        self.name_table.type_names.push(Some(name.to_string()));
         self.type_names.insert(key, id);
         Type::ClassRef(id)
+    }
+
+    /// Look up the optional name of a type by its `TypeId`.
+    ///
+    /// Returns `None` if the type is anonymous or the ID is not in the NameTable.
+    pub fn type_name_opt(&self, id: TypeId) -> Option<&str> {
+        self.name_table.type_name(id)
     }
 
     /// Look up the name of a type by its `TypeId`.
@@ -612,7 +639,7 @@ impl Module {
     /// # Panics
     /// Panics if the `TypeId` is not in the type arena or the TypeDecl has no name.
     pub fn type_name(&self, id: TypeId) -> &str {
-        self.types[id].name_expect()
+        self.name_table.type_name_expect(id)
     }
 
     /// Find a `TypeId` by name without creating a new entry.
@@ -629,6 +656,7 @@ impl Module {
         TypeInterner {
             types: &mut self.types,
             type_names: &mut self.type_names,
+            name_table_type_names: &mut self.name_table.type_names,
         }
     }
 

@@ -2033,14 +2033,20 @@ impl Transform for TypeInference {
         // &module borrow (via ctx/func iteration) alongside &mut to these fields.
         let mut tmp_types = std::mem::take(&mut module.types);
         let mut tmp_type_names = std::mem::take(&mut module.type_names);
+        let mut tmp_nt_type_names = std::mem::take(&mut module.name_table.type_names);
         {
-            let mut interner = TypeInterner::from_parts(&mut tmp_types, &mut tmp_type_names);
+            let mut interner = TypeInterner::from_parts(
+                &mut tmp_types,
+                &mut tmp_type_names,
+                &mut tmp_nt_type_names,
+            );
             for func in module.functions.keys().collect::<Vec<_>>() {
                 changed |= infer_function(&mut module.functions[func], &ctx, &mut interner);
             }
         }
         module.types = tmp_types;
         module.type_names = tmp_type_names;
+        module.name_table.type_names = tmp_nt_type_names;
 
         // Sync narrowed entry-block param types back to sig.params so that
         // cross-function passes (ConstraintSolve) see the inferred types.
@@ -2195,10 +2201,12 @@ impl Transform for TypeInference {
             let (inferred_globals, new_structs, new_indexed, conflicts) = {
                 let mut tmp_t = std::mem::take(&mut module.types);
                 let mut tmp_tn = std::mem::take(&mut module.type_names);
-                let mut interner = TypeInterner::from_parts(&mut tmp_t, &mut tmp_tn);
+                let mut tmp_nttn = std::mem::take(&mut module.name_table.type_names);
+                let mut interner = TypeInterner::from_parts(&mut tmp_t, &mut tmp_tn, &mut tmp_nttn);
                 let result = build_global_types(&module, &mut interner);
                 module.types = tmp_t;
                 module.type_names = tmp_tn;
+                module.name_table.type_names = tmp_nttn;
                 result
             };
             last_conflicts = conflicts;
@@ -2276,14 +2284,20 @@ impl Transform for TypeInference {
             }
             let mut tmp_types2 = std::mem::take(&mut module.types);
             let mut tmp_type_names2 = std::mem::take(&mut module.type_names);
+            let mut tmp_nt_type_names2 = std::mem::take(&mut module.name_table.type_names);
             {
-                let mut interner2 = TypeInterner::from_parts(&mut tmp_types2, &mut tmp_type_names2);
+                let mut interner2 = TypeInterner::from_parts(
+                    &mut tmp_types2,
+                    &mut tmp_type_names2,
+                    &mut tmp_nt_type_names2,
+                );
                 for func in module.functions.keys().collect::<Vec<_>>() {
                     changed |= infer_function(&mut module.functions[func], &ctx, &mut interner2);
                 }
             }
             module.types = tmp_types2;
             module.type_names = tmp_type_names2;
+            module.name_table.type_names = tmp_nt_type_names2;
         }
 
         // Emit RC0004 diagnostics for write-site type conflicts detected in the

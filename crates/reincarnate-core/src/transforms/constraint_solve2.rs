@@ -978,12 +978,20 @@ impl Transform for ConstraintSolve2 {
         use crate::pipeline::checker::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
         let mut changed = false;
         let mut new_diagnostics: Vec<Diagnostic> = Vec::new();
-        for ((func, update), data) in module
-            .functions
-            .values_mut()
+        let func_ids: Vec<FuncId> = module.functions.keys().collect();
+        // Pre-collect function names to avoid borrow conflicts in the update loop.
+        let func_names: Vec<String> = func_ids
+            .iter()
+            .map(|&fid| module.func_name(fid).to_string())
+            .collect();
+        for (((func_id, fname), update), data) in func_ids
+            .iter()
+            .copied()
+            .zip(func_names.iter())
             .zip(func_updates.iter())
             .zip(func_data.iter())
         {
+            let func = &mut module.functions[func_id];
             for &(idx, ref new_ty) in &update.updates {
                 let vid = ValueId::new(idx as u32);
                 if &func.value_types[vid] != new_ty {
@@ -1030,8 +1038,9 @@ impl Transform for ConstraintSolve2 {
                     // Conflict: TypeInference set a concrete return type that
                     // differs from what the constraint solver inferred.  Keep
                     // sig.return_ty unchanged and report the disagreement.
+                    let existing_ret_ty = func.sig.return_ty.clone();
                     new_diagnostics.push(Diagnostic {
-                        file: func.name.clone(),
+                        file: fname.clone(),
                         line: 0,
                         col: 0,
                         code: DiagnosticCode::Rc(RcDiagnostic::InferenceConflict),
@@ -1039,8 +1048,8 @@ impl Transform for ConstraintSolve2 {
                         message: format!(
                             "return type inferred as {:?} by constraint solver conflicts with {:?} from TypeInference (keeping {:?})",
                             resolved_ret,
-                            func.sig.return_ty,
-                            func.sig.return_ty,
+                            existing_ret_ty,
+                            existing_ret_ty,
                         ),
                     });
                 }

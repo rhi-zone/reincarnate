@@ -7,14 +7,14 @@ use crate::pipeline::{Transform, TransformResult};
 /// Infer struct definitions from constructor and GML create-event `SetField` ops.
 ///
 /// Scans constructor functions (`MethodKind::Constructor`) and GML create events
-/// (`MethodKind::Instance` where the last `::` segment of `func.name` is `"create"`)
+/// (`MethodKind::Instance` where the last `::` segment of the function name is `"create"`)
 /// for `SetField { object: self_param, field, value }` ops and synthesizes or augments
 /// a `StructDef` entry in `module.structs`.  Runs before `TypeInference` so that field
 /// types are available to the solver.
 ///
 /// Rules:
 /// - Functions with `method_kind == MethodKind::Constructor` are scanned.
-/// - Instance methods where the last `::` segment of `func.name` is `"create"` are also
+/// - Instance methods where the last `::` segment of the function name is `"create"` are also
 ///   scanned (GML create events initialize instance fields but are tagged Instance).
 /// - Only `SetField` ops whose `object` is the first entry-block parameter (the `self`
 ///   parameter) are collected.
@@ -22,7 +22,7 @@ use crate::pipeline::{Transform, TransformResult};
 ///   this pass, the function is skipped.  Frontend-declared structs (not inferred) are
 ///   augmented with user-defined fields.
 /// - The struct name is taken from `func.class` if present; otherwise the last `::` segment
-///   of `func.name`.
+///   of the function name (read from `module.func_name`).
 /// - After building the `StructDef`, the first entry-block param's type and `sig.params[0]`
 ///   are updated to `Type::Instance(type_id)` when they were `Unknown` or `Var(_)`.
 pub struct ConstructorStructInfer;
@@ -60,16 +60,15 @@ fn merge_field_type(existing: Type, new_ty: Type) -> Type {
 }
 
 /// Derive the struct name for a constructor function.
-fn struct_name(func: &Function) -> String {
+fn struct_name(func: &Function, func_name: &str) -> String {
     if let Some(class) = &func.class {
         return class.clone();
     }
     // Strip any `::` namespace prefix: take the last segment.
-    let name = &func.name;
-    if let Some(pos) = name.rfind("::") {
-        name[pos + 2..].to_string()
+    if let Some(pos) = func_name.rfind("::") {
+        func_name[pos + 2..].to_string()
     } else {
-        name.clone()
+        func_name.to_string()
     }
 }
 
@@ -98,17 +97,18 @@ impl Transform for ConstructorStructInfer {
         let mut inferred: Vec<Inferred> = Vec::new();
 
         for (func_id, func) in module.functions.iter() {
+            let func_name = module.func_name(func_id);
             // Accept Constructor methods AND Instance methods named "::create"
             // (GML create events initialize instance fields but are Instance methods).
             let is_init_fn = func.method_kind == MethodKind::Constructor
                 || (func.method_kind == MethodKind::Instance
                     && func.class.is_some()
-                    && func.name.rsplit("::").next() == Some("create"));
+                    && func_name.rsplit("::").next() == Some("create"));
             if !is_init_fn {
                 continue;
             }
 
-            let name = struct_name(func);
+            let name = struct_name(func, func_name);
 
             // Skip if the struct was already fully inferred by a prior pass run.
             // Frontend-declared structs (inferred == false) should be augmented.
