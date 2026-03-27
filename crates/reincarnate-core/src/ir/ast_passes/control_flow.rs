@@ -1096,6 +1096,73 @@ fn is_var_plus_one(expr: &Expr, var_name: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Loop -> While normalization
+// ---------------------------------------------------------------------------
+
+/// Rewrite `while (true) { if (cond) { break; } ...rest }` to
+/// `while (!cond) { ...rest }`.
+///
+/// This is the most common loop pattern produced by the structurizer: a
+/// general `Loop` node whose only exit is a leading guard.  Applying this
+/// pass before `promote_while_to_for` lets the promotion pass see the
+/// resulting `While` and potentially lift it further to a `For`.
+///
+/// Recurses into all nested statement bodies.
+pub fn rewrite_loop_to_while(body: &mut [Stmt]) {
+    for stmt in body.iter_mut() {
+        recurse_into_stmt(stmt, rewrite_loop_to_while);
+
+        let replacement = try_rewrite_loop_to_while(stmt);
+        if let Some(new_stmt) = replacement {
+            *stmt = new_stmt;
+        }
+    }
+}
+
+/// Try to match `Loop { [If { cond, [Break], [] }, ...rest] }` and rewrite.
+fn try_rewrite_loop_to_while(stmt: &Stmt) -> Option<Stmt> {
+    let body = match stmt {
+        Stmt::Loop { body } => body,
+        _ => return None,
+    };
+
+    if body.is_empty() {
+        return None;
+    }
+
+    let (while_cond, rest) = match &body[0] {
+        // `if (cond) { break; }` → `while (!cond) { ...rest }`
+        Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } if else_body.is_empty()
+            && then_body.len() == 1
+            && matches!(then_body[0], Stmt::Break) =>
+        {
+            (super::negate_expr(cond.clone()), &body[1..])
+        }
+        // `if (cond) { } else { break; }` → `while (cond) { ...rest }`
+        Stmt::If {
+            cond,
+            then_body,
+            else_body,
+        } if then_body.is_empty()
+            && else_body.len() == 1
+            && matches!(else_body[0], Stmt::Break) =>
+        {
+            (cond.clone(), &body[1..])
+        }
+        _ => return None,
+    };
+
+    Some(Stmt::While {
+        cond: while_cond,
+        body: rest.to_vec(),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // While -> For loop promotion
 // ---------------------------------------------------------------------------
 
@@ -2084,5 +2151,123 @@ mod tests {
             )),
             "First for-loop init must be an Assign, not a VarDecl: {body:?}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // rewrite_loop_to_while tests
+    // -----------------------------------------------------------------------
+
+    /// `while(true) { if (cond) { break; } ...rest }` → `while (!cond) { ...rest }`
+    #[test]
+    fn loop_to_while_leading_break_guard() {
+        let mut body = vec![Stmt::Loop {
+            body: vec![
+                Stmt::If {
+                    cond: var("done"),
+                    then_body: vec![Stmt::Break],
+                    else_body: vec![],
+                },
+                assign(var("x"), int(1)),
+            ],
+        }];
+
+        rewrite_loop_to_while(&mut body);
+
+        match &body[0] {
+            Stmt::While { cond, body: wb } => {
+                // Condition should be negated: !done
+                assert!(
+                    matches!(cond, Expr::Not(_)),
+                    "Expected negated cond, got: {cond:?}"
+                );
+                assert_eq!(wb.len(), 1, "Body should contain the rest stmt");
+            }
+            other => panic!("Expected While, got: {other:?}"),
+        }
+    }
+
+    /// `while(true) { if (cond) {{ }} else {{ break; }} ...rest }` → `while (cond) { ...rest }`
+    #[test]
+    fn loop_to_while_leading_continue_guard() {
+        let mut body = vec![Stmt::Loop {
+            body: vec![
+                Stmt::If {
+                    cond: var("running"),
+                    then_body: vec![],
+                    else_body: vec![Stmt::Break],
+                },
+                assign(var("y"), int(2)),
+            ],
+        }];
+
+        rewrite_loop_to_while(&mut body);
+
+        match &body[0] {
+            Stmt::While { cond, body: wb } => {
+                assert_eq!(*cond, var("running"), "Condition should be unchanged");
+                assert_eq!(wb.len(), 1, "Body should contain the rest stmt");
+            }
+            other => panic!("Expected While, got: {other:?}"),
+        }
+    }
+
+    /// A `Loop` with no leading guard must not be rewritten.
+    #[test]
+    fn loop_to_while_no_guard_unchanged() {
+        let mut body = vec![Stmt::Loop {
+            body: vec![assign(var("x"), int(0))],
+        }];
+
+        rewrite_loop_to_while(&mut body);
+
+        assert!(
+            matches!(&body[0], Stmt::Loop { .. }),
+            "Should remain a Loop"
+        );
+    }
+
+    /// An empty `Loop` must not be rewritten.
+    #[test]
+    fn loop_to_while_empty_unchanged() {
+        let mut body = vec![Stmt::Loop { body: vec![] }];
+
+        rewrite_loop_to_while(&mut body);
+
+        assert!(
+            matches!(&body[0], Stmt::Loop { .. }),
+            "Empty Loop should remain unchanged"
+        );
+    }
+
+    /// The pass must recurse into nested loops.
+    #[test]
+    fn loop_to_while_recurses_into_nested() {
+        let mut body = vec![Stmt::While {
+            cond: var("outer"),
+            body: vec![Stmt::Loop {
+                body: vec![
+                    Stmt::If {
+                        cond: var("inner_done"),
+                        then_body: vec![Stmt::Break],
+                        else_body: vec![],
+                    },
+                    assign(var("z"), int(3)),
+                ],
+            }],
+        }];
+
+        rewrite_loop_to_while(&mut body);
+
+        match &body[0] {
+            Stmt::While {
+                body: outer_body, ..
+            } => {
+                assert!(
+                    matches!(&outer_body[0], Stmt::While { .. }),
+                    "Inner Loop should have been rewritten to While: {outer_body:?}"
+                );
+            }
+            other => panic!("Expected outer While, got: {other:?}"),
+        }
     }
 }

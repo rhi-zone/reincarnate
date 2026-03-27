@@ -26,7 +26,8 @@ pub use cleanup::{
 };
 pub use control_flow::{
     lower_output_nodes, promote_while_to_for, rewrite_compound_assign, rewrite_foreach_loops,
-    rewrite_minmax, rewrite_post_increment, rewrite_ternary, simplify_ternary_to_logical,
+    rewrite_loop_to_while, rewrite_minmax, rewrite_post_increment, rewrite_ternary,
+    simplify_ternary_to_logical,
 };
 pub use variables::{
     fold_single_use_consts, forward_substitute, inline_ordered_single_use, merge_decl_init,
