@@ -564,7 +564,7 @@ impl Transform for ConstantFolding {
     }
 
     fn requires(&self) -> &[&str] {
-        &["type-inference"]
+        &["constraint-solve-hm"]
     }
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {

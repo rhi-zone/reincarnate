@@ -660,7 +660,7 @@ impl Transform for Mem2Reg {
     }
 
     fn invalidates(&self) -> &[&str] {
-        &["type-inference", "constant-folding"]
+        &["constraint-solve-hm", "constant-folding"]
     }
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {

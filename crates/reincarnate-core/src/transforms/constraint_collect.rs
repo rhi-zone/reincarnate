@@ -1,13 +1,17 @@
-//! Constraint collection pass (HM type-inference Phase 2).
+//! Constraint collection pass (HM type-inference).
 //!
 //! Walks every IR function and emits [`TypeConstraint`] values for every [`Op`]
 //! that carries type information.  No solving happens here — collection only.
 //!
 //! The collected constraints are stored in [`ConstraintSet`] values, one per
 //! function, and accumulated in [`ConstraintCollect::constraint_sets`].
+//!
+//! This module also owns the [`TypeVarArena`] and HM unifier primitives
+//! ([`resolve`], [`occurs`], [`bind_var`], [`unify`]) used by the solver pass.
 
 use std::collections::{HashMap, HashSet};
 
+use crate::entity::EntityRef;
 use crate::error::CoreError;
 use crate::ir::block::BlockId;
 use crate::ir::inst::Op;
@@ -15,7 +19,412 @@ use crate::ir::module::SystemCallTypeRule;
 use crate::ir::ty::{FunctionSig, Type, TypeConstraint, TypeVarId};
 use crate::ir::{Constant, Function, Module, ValueId};
 use crate::pipeline::{Transform, TransformResult};
-use crate::transforms::constraint_solve2::TypeVarArena;
+
+// ---------------------------------------------------------------------------
+// TypeVarArena
+// ---------------------------------------------------------------------------
+
+/// Allocator for fresh [`TypeVarId`] values.
+///
+/// Each variable tracks:
+/// - `level` — the generalization scope level at which it was created
+/// - `binding` — `None` if unbound, `Some(ty)` if resolved
+pub struct TypeVarArena {
+    levels: Vec<u32>,
+    bindings: Vec<Option<Type>>,
+    current_level: u32,
+}
+
+impl Default for TypeVarArena {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TypeVarArena {
+    /// Create a new arena at level 0.
+    pub fn new() -> Self {
+        Self {
+            levels: Vec::new(),
+            bindings: Vec::new(),
+            current_level: 0,
+        }
+    }
+
+    /// Allocate a fresh type variable at the current level.
+    pub fn fresh(&mut self) -> TypeVarId {
+        let id = TypeVarId::new(self.levels.len() as u32);
+        self.levels.push(self.current_level);
+        self.bindings.push(None);
+        id
+    }
+
+    /// Enter a new generalization scope (increment level).
+    pub fn enter_level(&mut self) {
+        self.current_level += 1;
+    }
+
+    /// Exit the current generalization scope (decrement level).
+    ///
+    /// # Panics
+    /// Panics if already at level 0.
+    pub fn exit_level(&mut self) {
+        assert!(self.current_level > 0, "exit_level called at level 0");
+        self.current_level -= 1;
+    }
+
+    /// Return the level at which `id` was created.
+    pub fn level_of(&self, id: TypeVarId) -> u32 {
+        self.levels[id.index() as usize]
+    }
+
+    /// Return the binding of `id`, if any.
+    pub fn binding_of(&self, id: TypeVarId) -> Option<&Type> {
+        self.bindings[id.index() as usize].as_ref()
+    }
+
+    /// Bind `id` to `ty`.
+    ///
+    /// # Panics
+    /// Panics if `id` is already bound.
+    pub fn bind(&mut self, id: TypeVarId, ty: Type) {
+        let idx = id.index() as usize;
+        assert!(
+            self.bindings[idx].is_none(),
+            "bind: type variable {:?} is already bound",
+            id
+        );
+        self.bindings[idx] = Some(ty);
+    }
+
+    /// Overwrite the binding of `id` unconditionally.
+    ///
+    /// Used to poison a TypeVar that was already bound when a conflicting
+    /// concrete type is unified against it.  Unlike [`bind`], this does not
+    /// assert that `id` is unbound.
+    pub fn force_rebind(&mut self, id: TypeVarId, ty: Type) {
+        self.bindings[id.index() as usize] = Some(ty);
+    }
+
+    /// Lower the level of `id` to `new_level` (only if currently higher).
+    pub(crate) fn lower_level(&mut self, id: TypeVarId, new_level: u32) {
+        let idx = id.index() as usize;
+        if self.levels[idx] > new_level {
+            self.levels[idx] = new_level;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// resolve
+// ---------------------------------------------------------------------------
+
+/// Walk `ty`, substituting any bound [`Type::Var`] with its binding (recursively).
+///
+/// Unbound variables remain as [`Type::Var`].
+pub fn resolve(ty: Type, arena: &TypeVarArena) -> Type {
+    match ty {
+        Type::Var(id) => match arena.binding_of(id) {
+            Some(bound) => resolve(bound.clone(), arena),
+            None => Type::Var(id),
+        },
+        Type::Array(elem) => Type::Array(Box::new(resolve(*elem, arena))),
+        Type::Map(k, v) => Type::Map(Box::new(resolve(*k, arena)), Box::new(resolve(*v, arena))),
+        Type::Option(inner) => Type::Option(Box::new(resolve(*inner, arena))),
+        Type::Tuple(elems) => Type::Tuple(elems.into_iter().map(|t| resolve(t, arena)).collect()),
+        Type::Function(sig) => {
+            let params = sig.params.into_iter().map(|p| resolve(p, arena)).collect();
+            let return_ty = resolve(sig.return_ty, arena);
+            Type::Function(Box::new(FunctionSig {
+                params,
+                return_ty,
+                defaults: sig.defaults,
+                has_rest_param: sig.has_rest_param,
+            }))
+        }
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => Type::Coroutine {
+            yield_ty: Box::new(resolve(*yield_ty, arena)),
+            return_ty: Box::new(resolve(*return_ty, arena)),
+        },
+        Type::Union(variants) => {
+            Type::Union(variants.into_iter().map(|t| resolve(t, arena)).collect())
+        }
+        // Leaf types — no nested type variables.
+        t @ (Type::Void
+        | Type::Bool
+        | Type::Int(_)
+        | Type::UInt(_)
+        | Type::Float(_)
+        | Type::String
+        | Type::Instance(_)
+        | Type::ClassRef(_)
+        | Type::Unknown) => t,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// occurs
+// ---------------------------------------------------------------------------
+
+/// Return `true` if `id` appears free in `ty` (after resolving through `arena`).
+///
+/// Used to prevent the creation of infinite (recursive) types.
+pub fn occurs(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
+    let resolved = resolve(ty.clone(), arena);
+    occurs_resolved(id, &resolved, arena)
+}
+
+fn occurs_resolved(id: TypeVarId, ty: &Type, arena: &TypeVarArena) -> bool {
+    match ty {
+        Type::Var(other) => *other == id,
+        Type::Array(elem) => occurs(id, elem, arena),
+        Type::Map(k, v) => occurs(id, k, arena) || occurs(id, v, arena),
+        Type::Option(inner) => occurs(id, inner, arena),
+        Type::Tuple(elems) => elems.iter().any(|t| occurs(id, t, arena)),
+        Type::Function(sig) => {
+            sig.params.iter().any(|p| occurs(id, p, arena)) || occurs(id, &sig.return_ty, arena)
+        }
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => occurs(id, yield_ty, arena) || occurs(id, return_ty, arena),
+        Type::Union(variants) => variants.iter().any(|t| occurs(id, t, arena)),
+        Type::Void
+        | Type::Bool
+        | Type::Int(_)
+        | Type::UInt(_)
+        | Type::Float(_)
+        | Type::String
+        | Type::Instance(_)
+        | Type::ClassRef(_)
+        | Type::Unknown => false,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// collect_free_vars (internal)
+// ---------------------------------------------------------------------------
+
+fn collect_free_vars(ty: &Type, arena: &TypeVarArena, out: &mut Vec<TypeVarId>) {
+    match ty {
+        Type::Var(id) => match arena.binding_of(*id) {
+            Some(bound) => collect_free_vars(&bound.clone(), arena, out),
+            None => {
+                if !out.contains(id) {
+                    out.push(*id);
+                }
+            }
+        },
+        Type::Array(elem) => collect_free_vars(elem, arena, out),
+        Type::Map(k, v) => {
+            collect_free_vars(k, arena, out);
+            collect_free_vars(v, arena, out);
+        }
+        Type::Option(inner) => collect_free_vars(inner, arena, out),
+        Type::Tuple(elems) => {
+            for t in elems {
+                collect_free_vars(t, arena, out);
+            }
+        }
+        Type::Function(sig) => {
+            for p in &sig.params {
+                collect_free_vars(p, arena, out);
+            }
+            collect_free_vars(&sig.return_ty, arena, out);
+        }
+        Type::Coroutine {
+            yield_ty,
+            return_ty,
+        } => {
+            collect_free_vars(yield_ty, arena, out);
+            collect_free_vars(return_ty, arena, out);
+        }
+        Type::Union(variants) => {
+            for t in variants {
+                collect_free_vars(t, arena, out);
+            }
+        }
+        Type::Void
+        | Type::Bool
+        | Type::Int(_)
+        | Type::UInt(_)
+        | Type::Float(_)
+        | Type::String
+        | Type::Instance(_)
+        | Type::ClassRef(_)
+        | Type::Unknown => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// UnifyError
+// ---------------------------------------------------------------------------
+
+/// Error returned by [`bind_var`] or [`unify`] on failure.
+#[derive(Debug)]
+pub enum UnifyError {
+    /// Binding `var` to `ty` would create an infinite type.
+    OccursCheck { var: TypeVarId, ty: Type },
+}
+
+// ---------------------------------------------------------------------------
+// bind_var
+// ---------------------------------------------------------------------------
+
+/// Bind type variable `id` to `ty`, with occurs check and level adjustment.
+///
+/// - Same-variable self-binding is a no-op.
+/// - Recursive types (occurs check failure) are bound to [`Type::Unknown`] and
+///   return `Ok(())` — recursive structure = genuine opacity.
+/// - Free variables in `ty` whose level exceeds `id`'s level are lowered to
+///   prevent escaping a generalization scope.
+/// - On success, `arena.bind(id, ty)` is called.
+pub fn bind_var(id: TypeVarId, ty: Type, arena: &mut TypeVarArena) -> Result<(), UnifyError> {
+    let ty = resolve(ty, arena);
+
+    if let Type::Var(other) = ty {
+        if other == id {
+            return Ok(());
+        }
+        // Bind to other var — level adjustment only (no occurs check needed for Var→Var).
+        let target_level = arena.level_of(id);
+        arena.lower_level(other, target_level);
+        arena.bind(id, Type::Var(other));
+        return Ok(());
+    }
+
+    if occurs(id, &ty, arena) {
+        arena.bind(id, Type::Unknown);
+        return Ok(());
+    }
+
+    let target_level = arena.level_of(id);
+    let mut free_vars: Vec<TypeVarId> = Vec::new();
+    collect_free_vars(&ty, arena, &mut free_vars);
+    for fv in free_vars {
+        arena.lower_level(fv, target_level);
+    }
+
+    arena.bind(id, ty);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// unify
+// ---------------------------------------------------------------------------
+
+/// HM unification of two [`Type`] values.
+///
+/// Returns the unified type on success.  On a concrete-type mismatch (neither
+/// is a type variable or absorbing type) returns [`Type::Unknown`] — the
+/// conflict is the conservative fallback.
+///
+/// TypeVar poisoning: when `a` or `b` is a bound TypeVar that resolves to a
+/// conflicting concrete type, that TypeVar is force-rebound to `Unknown` so
+/// that later reads of the same TypeVar see `Unknown` rather than the stale
+/// first-bound concrete type.
+pub fn unify(a: Type, b: Type, arena: &mut TypeVarArena) -> Result<Type, UnifyError> {
+    let a_var = if let Type::Var(id) = &a {
+        Some(*id)
+    } else {
+        None
+    };
+    let b_var = if let Type::Var(id) = &b {
+        Some(*id)
+    } else {
+        None
+    };
+
+    let a = resolve(a, arena);
+    let b = resolve(b, arena);
+
+    match (a, b) {
+        (a, b) if a == b => Ok(a),
+        (Type::Unknown, _) | (_, Type::Unknown) => Ok(Type::Unknown),
+        (Type::Union(_), _) | (_, Type::Union(_)) => Ok(Type::Unknown),
+
+        (Type::Var(id), b) => {
+            bind_var(id, b.clone(), arena)?;
+            Ok(arena.binding_of(id).cloned().unwrap_or(b))
+        }
+        (a, Type::Var(id)) => {
+            bind_var(id, a.clone(), arena)?;
+            Ok(arena.binding_of(id).cloned().unwrap_or(a))
+        }
+
+        (Type::Array(ea), Type::Array(eb)) => {
+            let elem = unify(*ea, *eb, arena)?;
+            Ok(Type::Array(Box::new(elem)))
+        }
+        (Type::Map(ka, va), Type::Map(kb, vb)) => {
+            let k = unify(*ka, *kb, arena)?;
+            let v = unify(*va, *vb, arena)?;
+            Ok(Type::Map(Box::new(k), Box::new(v)))
+        }
+        (Type::Option(ia), Type::Option(ib)) => {
+            let inner = unify(*ia, *ib, arena)?;
+            Ok(Type::Option(Box::new(inner)))
+        }
+        (Type::Tuple(ta), Type::Tuple(tb)) => {
+            if ta.len() != tb.len() {
+                return Ok(Type::Union(vec![Type::Tuple(ta), Type::Tuple(tb)]));
+            }
+            let mut result = Vec::with_capacity(ta.len());
+            for (a, b) in ta.into_iter().zip(tb) {
+                result.push(unify(a, b, arena)?);
+            }
+            Ok(Type::Tuple(result))
+        }
+        (Type::Function(sa), Type::Function(sb)) => {
+            if sa.params.len() != sb.params.len() {
+                return Ok(Type::Union(vec![Type::Function(sa), Type::Function(sb)]));
+            }
+            let mut params = Vec::with_capacity(sa.params.len());
+            for (pa, pb) in sa.params.into_iter().zip(sb.params) {
+                params.push(unify(pa, pb, arena)?);
+            }
+            let return_ty = unify(sa.return_ty, sb.return_ty, arena)?;
+            Ok(Type::Function(Box::new(FunctionSig {
+                params,
+                return_ty,
+                defaults: sa.defaults,
+                has_rest_param: sa.has_rest_param,
+            })))
+        }
+        (
+            Type::Coroutine {
+                yield_ty: ya,
+                return_ty: ra,
+            },
+            Type::Coroutine {
+                yield_ty: yb,
+                return_ty: rb,
+            },
+        ) => {
+            let yield_ty = unify(*ya, *yb, arena)?;
+            let return_ty = unify(*ra, *rb, arena)?;
+            Ok(Type::Coroutine {
+                yield_ty: Box::new(yield_ty),
+                return_ty: Box::new(return_ty),
+            })
+        }
+
+        // Concrete-type mismatch — fall back to Unknown.
+        // Poison bound TypeVars so they return Unknown on future resolve().
+        (_a, _b) => {
+            if let Some(id) = a_var {
+                arena.force_rebind(id, Type::Unknown);
+            }
+            if let Some(id) = b_var {
+                arena.force_rebind(id, Type::Unknown);
+            }
+            Ok(Type::Unknown)
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // ConstraintSet

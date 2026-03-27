@@ -7,8 +7,8 @@ use crate::ir::{CmpKind, FuncId, Op, Type, Visibility};
 use crate::pipeline::{PassConfig, Transform};
 use crate::transforms::util::test_helpers::assert_well_formed;
 use crate::transforms::{
-    CfgSimplify, ConstantFolding, DeadCodeElimination, Mem2Reg, RedundantCastElimination,
-    TypeInference,
+    CfgSimplify, ConstantFolding, ConstraintSolveHM, DeadCodeElimination, Mem2Reg,
+    RedundantCastElimination,
 };
 
 /// ConstantFolding folds `1 + 2` → `3`, leaving the original Const(1) and Const(2)
@@ -58,11 +58,11 @@ fn const_fold_then_dce() {
     );
 }
 
-/// TypeInference refines a Unknown param to Bool via comparison, making
-/// a Cast(v, Bool) redundant. RedundantCastElim should then eliminate it
+/// ConstraintSolveHM infers that a Cmp result is Bool (from the Cmp constraint),
+/// making a Cast(v, Bool) redundant. RedundantCastElim should then eliminate it
 /// entirely, substituting all uses with the source value.
 #[test]
-fn type_infer_then_red_cast_elim() {
+fn hm_solver_then_red_cast_elim() {
     let sig = FunctionSig {
         params: vec![Type::Int(64)],
         return_ty: Type::Bool,
@@ -80,15 +80,12 @@ fn type_infer_then_red_cast_elim() {
     mb.add_function(func);
     let module = mb.build();
 
-    // Type inference should confirm cmp_result is Bool.
-    let r1 = TypeInference.apply(module).unwrap();
+    // HM solver should confirm cmp_result is Bool.
+    let r1 = ConstraintSolveHM.apply(module).unwrap();
 
     // Redundant cast elimination should eliminate Cast(Bool, Bool) entirely.
     let r2 = RedundantCastElimination.apply(r1.module).unwrap();
-    assert!(
-        r2.changed,
-        "cast should become redundant after type inference"
-    );
+    assert!(r2.changed, "cast should become redundant after HM solver");
 
     let func = &r2.module.functions[FuncId::new(0)];
     assert_well_formed(func);

@@ -13,8 +13,8 @@ use crate::ir::{FuncId, Type, Visibility};
 use crate::pipeline::Transform;
 use crate::transforms::util::test_helpers::assert_well_formed;
 use crate::transforms::{
-    CfgSimplify, ConstantFolding, ConstraintSolve, DeadCodeElimination, IntToBoolPromotion,
-    Mem2Reg, RedundantCastElimination, TypeInference,
+    CfgSimplify, ConstantFolding, ConstraintSolveHM, DeadCodeElimination, IntToBoolPromotion,
+    Mem2Reg, RedundantCastElimination,
 };
 
 /// All types we test with.
@@ -336,11 +336,11 @@ fn stress_mem2reg_alloc_patterns() {
     }
 }
 
-// ---- TypeInference stress tests ----
+// ---- ConstraintSolveHM stress tests ----
 
 #[test]
-fn stress_type_infer_varied_shapes() {
-    let pass = TypeInference;
+fn stress_constraint_solve_hm_varied_shapes() {
+    let pass = ConstraintSolveHM;
     for ty in TYPES {
         stress_pass(&pass, build_linear_chain(3, ty.clone()));
         stress_pass(&pass, build_diamond(ty.clone()));
@@ -349,11 +349,9 @@ fn stress_type_infer_varied_shapes() {
     }
 }
 
-// ---- ConstraintSolve stress tests ----
-
 #[test]
-fn stress_constraint_solve_varied() {
-    let pass = ConstraintSolve;
+fn stress_constraint_solve_hm_multi_function() {
+    let pass = ConstraintSolveHM;
     for ty in TYPES {
         stress_pass_module(
             &pass,

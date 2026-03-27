@@ -103,7 +103,7 @@ impl Transform for RedundantCastElimination {
     }
 
     fn requires(&self) -> &[&str] {
-        &["type-inference", "mem2reg", "constant-folding"]
+        &["constraint-solve-hm", "mem2reg", "constant-folding"]
     }
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {

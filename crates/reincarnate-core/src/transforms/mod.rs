@@ -1,32 +1,24 @@
-pub mod call_site_flow;
-pub mod call_site_widen;
 pub mod cfg_simplify;
 pub mod const_fold;
 pub mod constraint_collect;
-pub mod constraint_solve;
-pub mod constraint_solve2;
+pub mod constraint_solve_hm;
 pub mod constructor_struct_infer;
 pub mod coroutine_lower;
 pub mod dce;
 pub mod int_to_bool;
 pub mod mem2reg;
 pub mod red_cast_elim;
-pub mod type_infer;
 pub mod util;
 
-pub use call_site_flow::CallSiteTypeFlow;
-pub use call_site_widen::CallSiteTypeWiden;
 pub use cfg_simplify::CfgSimplify;
 pub use const_fold::ConstantFolding;
-pub use constraint_solve::ConstraintSolve;
-pub use constraint_solve2::ConstraintSolve2;
+pub use constraint_solve_hm::ConstraintSolveHM;
 pub use constructor_struct_infer::ConstructorStructInfer;
 pub use coroutine_lower::CoroutineLowering;
 pub use dce::DeadCodeElimination;
 pub use int_to_bool::IntToBoolPromotion;
 pub use mem2reg::Mem2Reg;
 pub use red_cast_elim::RedundantCastElimination;
-pub use type_infer::TypeInference;
 
 use crate::pipeline::{PassConfig, PassDescriptor, TransformPipeline};
 
@@ -47,29 +39,9 @@ pub fn all_passes() -> Vec<PassDescriptor> {
             config_enabled: |c| c.constructor_struct_infer,
         },
         PassDescriptor {
-            name: "type-inference",
-            factory: || Box::new(TypeInference),
-            config_enabled: |c| c.type_inference,
-        },
-        PassDescriptor {
-            name: "call-site-type-flow",
-            factory: || Box::new(CallSiteTypeFlow),
-            config_enabled: |c| c.call_site_flow,
-        },
-        PassDescriptor {
-            name: "constraint-solve",
-            factory: || Box::new(ConstraintSolve),
-            config_enabled: |c| c.constraint_solve,
-        },
-        PassDescriptor {
-            name: "constraint-solve2",
-            factory: || Box::new(ConstraintSolve2),
-            config_enabled: |c| c.constraint_solve2,
-        },
-        PassDescriptor {
-            name: "call-site-type-widen",
-            factory: || Box::new(CallSiteTypeWiden),
-            config_enabled: |c| c.call_site_widen,
+            name: "constraint-solve-hm",
+            factory: || Box::new(ConstraintSolveHM),
+            config_enabled: |c| c.constraint_solve_hm,
         },
         PassDescriptor {
             name: "constant-folding",
@@ -108,7 +80,7 @@ pub fn all_passes() -> Vec<PassDescriptor> {
 ///
 /// Enabled passes are topo-sorted by their `requires()` declarations and
 /// expanded by their `invalidates()` declarations, so re-runs (e.g. the
-/// second TypeInference and ConstantFolding after Mem2Reg) are inserted
+/// second ConstraintSolveHM and ConstantFolding after Mem2Reg) are inserted
 /// automatically without any hardcoded ordering logic.
 pub fn build_pipeline(config: &PassConfig) -> TransformPipeline {
     let descriptors = all_passes();
@@ -125,8 +97,8 @@ mod pipeline_order_tests {
     use super::*;
 
     /// Verify that the default pipeline produces the expected pass order,
-    /// including automatic re-runs of TypeInference and ConstantFolding (after
-    /// Mem2Reg) via invalidation expansion.
+    /// including automatic re-runs of ConstraintSolveHM and ConstantFolding
+    /// (after Mem2Reg) via invalidation expansion.
     #[test]
     fn default_pipeline_pass_order() {
         let config = PassConfig::default();
@@ -138,10 +110,10 @@ mod pipeline_order_tests {
             .iter()
             .position(|&n| n == "mem2reg")
             .expect("mem2reg missing");
-        let pos_ti: Vec<usize> = names
+        let pos_hm: Vec<usize> = names
             .iter()
             .enumerate()
-            .filter(|(_, &n)| n == "type-inference")
+            .filter(|(_, &n)| n == "constraint-solve-hm")
             .map(|(i, _)| i)
             .collect();
         let pos_cf: Vec<usize> = names
@@ -151,20 +123,20 @@ mod pipeline_order_tests {
             .map(|(i, _)| i)
             .collect();
 
-        // TypeInference must appear twice: once before Mem2Reg, once after.
+        // ConstraintSolveHM must appear twice: once before Mem2Reg, once after.
         assert_eq!(
-            pos_ti.len(),
+            pos_hm.len(),
             2,
-            "expected 2 type-inference runs, got {:?}",
-            pos_ti
+            "expected 2 constraint-solve-hm runs, got {:?}",
+            pos_hm
         );
         assert!(
-            pos_ti[0] < pos_mem2reg,
-            "first type-inference must be before mem2reg"
+            pos_hm[0] < pos_mem2reg,
+            "first constraint-solve-hm must be before mem2reg"
         );
         assert!(
-            pos_ti[1] > pos_mem2reg,
-            "second type-inference must be after mem2reg"
+            pos_hm[1] > pos_mem2reg,
+            "second constraint-solve-hm must be after mem2reg"
         );
 
         // ConstantFolding must appear twice: once before Mem2Reg, once after.
@@ -183,13 +155,16 @@ mod pipeline_order_tests {
             "second constant-folding must be after mem2reg"
         );
 
-        // RedundantCastElimination must appear after the last TypeInference and
-        // last ConstantFolding.
+        // RedundantCastElimination must appear after the last ConstraintSolveHM
+        // and last ConstantFolding.
         let pos_rce = names
             .iter()
             .position(|&n| n == "redundant-cast-elimination")
             .expect("redundant-cast-elimination missing");
-        assert!(pos_rce > pos_ti[1], "rce must be after last type-inference");
+        assert!(
+            pos_rce > pos_hm[1],
+            "rce must be after last constraint-solve-hm"
+        );
         assert!(
             pos_rce > pos_cf[1],
             "rce must be after last constant-folding"

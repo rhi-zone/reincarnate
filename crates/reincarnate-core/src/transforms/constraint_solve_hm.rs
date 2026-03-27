@@ -1,0 +1,789 @@
+//! HM-style constraint solver pass (`ConstraintSolveHM`).
+//!
+//! This pass replaces the old `TypeInference`, `CallSiteTypeFlow`,
+//! `CallSiteTypeWiden`, `ConstraintSolve`, and `ConstraintSolve2` passes with
+//! a single engine-agnostic Hindley-Milner constraint solver.
+//!
+//! # Architecture
+//!
+//! 1. **Global allocation**: allocate one [`TypeVarId`] per global variable
+//!    name in a single shared [`TypeVarArena`], binding concrete globals
+//!    immediately.
+//! 2. **Constraint collection**: call [`collect_function`] for every function,
+//!    passing the shared arena and global-name → TypeVar map.  Each function's
+//!    value vars are allocated into the same arena, enabling cross-function
+//!    constraints.
+//! 3. **Interprocedural linking**: emit [`TypeConstraint::Equal`] constraints
+//!    between caller argument vars and callee parameter vars, and between
+//!    caller result vars and callee return vars.
+//! 4. **Fixpoint solving**: process constraints in a worklist loop, deferring
+//!    `HasField` and `Callable` constraints until the object/callee type is
+//!    resolved.
+//! 5. **Write-back**: resolve every value's TypeVar and write the result back
+//!    into `func.value_types`. Unresolved vars write `Type::Unknown`.
+
+use std::collections::HashMap;
+
+use crate::entity::EntityRef;
+use crate::error::CoreError;
+use crate::ir::inst::Op;
+use crate::ir::module::SystemCallTypeRule;
+use crate::ir::ty::{TypeConstraint, TypeId};
+use crate::ir::{Constant, FuncId, Module, Type, ValueId};
+use crate::pipeline::{Transform, TransformResult};
+use crate::transforms::constraint_collect::{
+    collect_function, is_concrete, resolve, unify, TypeVarArena,
+};
+
+/// Build a map from struct name → field name → field type from a module.
+fn build_struct_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
+    let mut map: HashMap<String, HashMap<String, Type>> = HashMap::new();
+    for s in &module.structs {
+        let fields: HashMap<String, Type> = s
+            .fields
+            .iter()
+            .map(|f| (f.name.clone(), f.ty.clone()))
+            .collect();
+        map.insert(s.name.clone(), fields);
+    }
+    map
+}
+
+/// HM-unifier–based constraint solver pass.
+///
+/// Replaces `TypeInference`, `CallSiteTypeFlow`, `CallSiteTypeWiden`,
+/// `ConstraintSolve`, and `ConstraintSolve2` with a single engine-agnostic
+/// pass.  See module-level documentation for the full algorithm.
+pub struct ConstraintSolveHM;
+
+/// Process a single [`TypeConstraint`], potentially emitting deferred
+/// secondary constraints (from `HasField` / `Callable` resolution).
+fn process_constraint(
+    c: TypeConstraint,
+    arena: &mut TypeVarArena,
+    struct_fields: &HashMap<String, HashMap<String, Type>>,
+    type_id_to_name: &HashMap<TypeId, String>,
+    deferred: &mut Vec<TypeConstraint>,
+) {
+    match c {
+        TypeConstraint::Equal(a, b) => {
+            let _ = unify(a, b, arena);
+        }
+        TypeConstraint::Subtype { sub, sup } => {
+            // Phase 1: treat as equality.
+            let _ = unify(sub, sup, arena);
+        }
+        TypeConstraint::HasField {
+            ty,
+            field,
+            field_ty,
+        } => {
+            let resolved_ty = resolve(ty, arena);
+            match resolved_ty {
+                Type::Instance(id) => {
+                    if let Some(name) = type_id_to_name.get(&id) {
+                        if let Some(fields) = struct_fields.get(name) {
+                            if let Some(ft) = fields.get(&field) {
+                                deferred.push(TypeConstraint::Equal(field_ty, ft.clone()));
+                            }
+                        }
+                    }
+                    // Unknown field — skip; don't invent a type.
+                }
+                Type::Var(_) => {
+                    // Object type not yet resolved — re-defer.
+                    deferred.push(TypeConstraint::HasField {
+                        ty: resolved_ty,
+                        field,
+                        field_ty,
+                    });
+                }
+                _ => {
+                    // Unknown or other — no useful info.
+                }
+            }
+        }
+        TypeConstraint::Callable { ty, args, ret } => {
+            let resolved_ty = resolve(ty, arena);
+            if let Type::Function(sig) = resolved_ty {
+                for (arg_ty, param_ty) in args.into_iter().zip(sig.params.iter().cloned()) {
+                    deferred.push(TypeConstraint::Equal(arg_ty, param_ty));
+                }
+                deferred.push(TypeConstraint::Equal(ret, sig.return_ty.clone()));
+            } else if matches!(resolved_ty, Type::Var(_)) {
+                // Callee type not yet resolved — re-defer.
+                deferred.push(TypeConstraint::Callable {
+                    ty: resolved_ty,
+                    args,
+                    ret,
+                });
+            }
+            // Other — no useful info.
+        }
+    }
+}
+
+/// Check whether a callee parameter value is used as a collection (array or map)
+/// in the callee's body.  Used to suppress interprocedural narrowing that would
+/// incorrectly convert array/map params to scalar types.
+fn param_used_as_collection(
+    func: &crate::ir::Function,
+    param_val: ValueId,
+    array_like_fns: &std::collections::HashSet<String>,
+) -> bool {
+    for block in func.blocks.values() {
+        for &inst_id in &block.insts {
+            let inst = &func.insts[inst_id];
+            match &inst.op {
+                Op::GetIndex { collection, .. } if *collection == param_val => {
+                    return true;
+                }
+                Op::SetIndex { collection, .. } if *collection == param_val => {
+                    return true;
+                }
+                Op::GetField { object, field } if *object == param_val && field == "length" => {
+                    return true;
+                }
+                Op::Call { func: callee, args } if args.contains(&param_val) => {
+                    if array_like_fns.contains(callee.as_str()) {
+                        return true;
+                    }
+                }
+                Op::MethodCall {
+                    receiver,
+                    method,
+                    args,
+                } if (*receiver == param_val || args.contains(&param_val)) => {
+                    if array_like_fns.contains(method.as_str()) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+/// Check whether a callee parameter value is used with field access in the callee's body.
+fn param_used_with_field_access(
+    func: &crate::ir::Function,
+    param_val: ValueId,
+    array_like_fns: &std::collections::HashSet<String>,
+) -> bool {
+    for block in func.blocks.values() {
+        for &inst_id in &block.insts {
+            let inst = &func.insts[inst_id];
+            match &inst.op {
+                Op::GetField { object, .. } if *object == param_val => {
+                    return true;
+                }
+                Op::SetField { object, .. } if *object == param_val => {
+                    return true;
+                }
+                Op::GetIndex { collection, .. } if *collection == param_val => {
+                    return true;
+                }
+                Op::SetIndex { collection, .. } if *collection == param_val => {
+                    return true;
+                }
+                _ => {}
+            }
+        }
+    }
+    // Also check collection usage (field access implies collection usage is fine to suppress).
+    param_used_as_collection(func, param_val, array_like_fns)
+}
+
+impl Transform for ConstraintSolveHM {
+    fn name(&self) -> &str {
+        "constraint-solve-hm"
+    }
+
+    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
+        let struct_fields = build_struct_fields(&module);
+        let type_id_to_name: HashMap<TypeId, String> = module
+            .types
+            .iter()
+            .filter_map(|(id, td)| td.name().map(|n| (id, n.to_string())))
+            .collect();
+
+        // -----------------------------------------------------------------------
+        // Step 1: allocate one TypeVarId per global name in a shared arena.
+        // -----------------------------------------------------------------------
+        let mut arena = TypeVarArena::new();
+        let mut global_name_vars: HashMap<String, crate::ir::ty::TypeVarId> = HashMap::new();
+
+        // Pre-allocate TypeVarIds for all declared globals, binding concrete ones.
+        for g in &module.globals {
+            let v = arena.fresh();
+            if is_concrete(&g.ty) {
+                arena.bind(v, g.ty.clone());
+            }
+            global_name_vars.insert(g.name.clone(), v);
+        }
+
+        // Pre-scan functions for undeclared global names used in SystemCall ops.
+        if !module.system_call_type_rules.is_empty() {
+            for func in module.functions.values() {
+                let const_strings: HashMap<ValueId, &str> = func
+                    .insts
+                    .values()
+                    .filter_map(|inst| {
+                        if let Op::Const(Constant::String(s)) = &inst.op {
+                            Some((inst.result?, s.as_str()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                for inst in func.insts.values() {
+                    if let Op::SystemCall {
+                        system,
+                        method,
+                        args,
+                    } = &inst.op
+                    {
+                        let key = (system.clone(), method.clone());
+                        let name_arg = match module.system_call_type_rules.get(&key) {
+                            Some(SystemCallTypeRule::GlobalStore { name_arg, .. }) => *name_arg,
+                            Some(
+                                SystemCallTypeRule::ResolveGlobalType
+                                | SystemCallTypeRule::ResolveGlobalTypeStructOnly { .. },
+                            ) => 0,
+                            _ => continue,
+                        };
+                        if name_arg < args.len() {
+                            if let Some(name) = const_strings.get(&args[name_arg]) {
+                                global_name_vars
+                                    .entry(name.to_string())
+                                    .or_insert_with(|| arena.fresh());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Step 2: collect constraints from all functions into the shared arena.
+        // -----------------------------------------------------------------------
+        struct FuncData {
+            value_vars: HashMap<ValueId, crate::ir::ty::TypeVarId>,
+            return_var: crate::ir::ty::TypeVarId,
+        }
+
+        let mut all_constraints: Vec<TypeConstraint> = Vec::new();
+        let mut func_data: Vec<FuncData> = Vec::new();
+
+        for (_, func) in module.functions.iter() {
+            let set = collect_function(func, &module, &mut arena, &global_name_vars);
+            all_constraints.extend(set.constraints);
+            func_data.push(FuncData {
+                value_vars: set.value_vars,
+                return_var: set.return_var,
+            });
+        }
+
+        // -----------------------------------------------------------------------
+        // Step 3: emit interprocedural call-site constraints.
+        //
+        // For every Op::Call and Op::MethodCall, link the caller's argument
+        // type vars to the callee's entry block param type vars in the shared
+        // arena.  This allows the HM unifier to flow concrete types from
+        // callers into callees (and vice versa) across function boundaries.
+        //
+        // Self-calls (recursive) are skipped to avoid circular reasoning.
+        // Params used as collections (GetIndex, .length) are skipped to avoid
+        // over-narrowing arrays/maps to numeric types.
+        // -----------------------------------------------------------------------
+        {
+            let name_to_idx: HashMap<&str, (usize, FuncId)> = module
+                .functions
+                .keys()
+                .enumerate()
+                .map(|(idx, fid)| (module.func_name(fid), (idx, fid)))
+                .collect();
+
+            for (caller_idx, (fid, func)) in module.functions.iter().enumerate() {
+                let caller_name = module.func_name(fid);
+                let caller_data = &func_data[caller_idx];
+
+                for block in func.blocks.values() {
+                    for &inst_id in &block.insts {
+                        let inst = &func.insts[inst_id];
+
+                        match &inst.op {
+                            Op::Call {
+                                func: callee_name,
+                                args,
+                            } => {
+                                if callee_name == caller_name {
+                                    continue;
+                                }
+                                if let Some(&(callee_idx, callee_fid)) =
+                                    name_to_idx.get(callee_name.as_str())
+                                {
+                                    let callee_func = &module.functions[callee_fid];
+                                    let callee_data = &func_data[callee_idx];
+                                    let entry = callee_func.entry;
+                                    let entry_params = &callee_func.blocks[entry].params;
+
+                                    for (i, &arg) in args.iter().enumerate() {
+                                        if i >= entry_params.len() {
+                                            break;
+                                        }
+                                        // Skip Unknown args — abstentions should not
+                                        // pull the callee param toward Unknown.
+                                        let arg_ty = &func.value_types[arg];
+                                        if matches!(arg_ty, Type::Unknown) {
+                                            continue;
+                                        }
+                                        let param_val = entry_params[i].value;
+                                        // Skip already-concrete callee params.
+                                        let param_ty = &callee_func.value_types[param_val];
+                                        if is_concrete(param_ty) {
+                                            continue;
+                                        }
+                                        let is_struct_arg =
+                                            matches!(arg_ty, Type::Instance(_) | Type::ClassRef(_));
+                                        let is_self_param = i == 0;
+                                        if is_self_param {
+                                            if !is_struct_arg
+                                                && param_used_as_collection(
+                                                    callee_func,
+                                                    param_val,
+                                                    &module.array_like_fns,
+                                                )
+                                            {
+                                                continue;
+                                            }
+                                        } else if !is_struct_arg
+                                            && param_used_with_field_access(
+                                                callee_func,
+                                                param_val,
+                                                &module.array_like_fns,
+                                            )
+                                        {
+                                            continue;
+                                        }
+                                        if let (Some(&arg_var), Some(&param_var)) = (
+                                            caller_data.value_vars.get(&arg),
+                                            callee_data.value_vars.get(&param_val),
+                                        ) {
+                                            all_constraints.push(TypeConstraint::Equal(
+                                                Type::Var(arg_var),
+                                                Type::Var(param_var),
+                                            ));
+                                        }
+                                    }
+
+                                    // Link caller result ← callee return_var.
+                                    // Skip Void callees — propagating Void to the
+                                    // caller result would produce spurious type errors.
+                                    if let Some(result) = inst.result {
+                                        if !matches!(callee_func.sig.return_ty, Type::Void) {
+                                            if let Some(&result_var) =
+                                                caller_data.value_vars.get(&result)
+                                            {
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    Type::Var(result_var),
+                                                    Type::Var(callee_data.return_var),
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Op::MethodCall {
+                                method,
+                                args,
+                                receiver,
+                            } => {
+                                if method == caller_name {
+                                    continue;
+                                }
+                                if let Some(&(callee_idx, callee_fid)) =
+                                    name_to_idx.get(method.as_str())
+                                {
+                                    let callee_func = &module.functions[callee_fid];
+                                    let callee_data = &func_data[callee_idx];
+                                    let entry = callee_func.entry;
+                                    let entry_params = &callee_func.blocks[entry].params;
+
+                                    // Link receiver to param[0] (self).
+                                    if !entry_params.is_empty() {
+                                        let recv_ty = &func.value_types[*receiver];
+                                        let param_val = entry_params[0].value;
+                                        let param_ty = &callee_func.value_types[param_val];
+                                        if !matches!(recv_ty, Type::Unknown)
+                                            && !is_concrete(param_ty)
+                                            && !param_used_as_collection(
+                                                callee_func,
+                                                param_val,
+                                                &module.array_like_fns,
+                                            )
+                                        {
+                                            if let (Some(&recv_var), Some(&param_var)) = (
+                                                caller_data.value_vars.get(receiver),
+                                                callee_data.value_vars.get(&param_val),
+                                            ) {
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    Type::Var(recv_var),
+                                                    Type::Var(param_var),
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    // Link args to params[1..] (skip self).
+                                    for (i, &arg) in args.iter().enumerate() {
+                                        let param_idx = i + 1;
+                                        if param_idx >= entry_params.len() {
+                                            break;
+                                        }
+                                        let arg_ty = &func.value_types[arg];
+                                        if matches!(arg_ty, Type::Unknown) {
+                                            continue;
+                                        }
+                                        let param_val = entry_params[param_idx].value;
+                                        let param_ty = &callee_func.value_types[param_val];
+                                        if is_concrete(param_ty) {
+                                            continue;
+                                        }
+                                        let is_struct_arg =
+                                            matches!(arg_ty, Type::Instance(_) | Type::ClassRef(_));
+                                        if !is_struct_arg
+                                            && param_used_with_field_access(
+                                                callee_func,
+                                                param_val,
+                                                &module.array_like_fns,
+                                            )
+                                        {
+                                            continue;
+                                        }
+                                        if let (Some(&arg_var), Some(&param_var)) = (
+                                            caller_data.value_vars.get(&arg),
+                                            callee_data.value_vars.get(&param_val),
+                                        ) {
+                                            all_constraints.push(TypeConstraint::Equal(
+                                                Type::Var(arg_var),
+                                                Type::Var(param_var),
+                                            ));
+                                        }
+                                    }
+
+                                    // Link caller result ← callee return_var.
+                                    if let Some(result) = inst.result {
+                                        if !matches!(callee_func.sig.return_ty, Type::Void) {
+                                            if let Some(&result_var) =
+                                                caller_data.value_vars.get(&result)
+                                            {
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    Type::Var(result_var),
+                                                    Type::Var(callee_data.return_var),
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Step 4: solve all constraints jointly.
+        //
+        // `HasField { ty: Var(_) }` and `Callable { ty: Var(_) }` constraints
+        // cannot be resolved until the object/callee type variable is bound by
+        // a later `Equal` constraint. We run a fixpoint loop: each pass
+        // processes the pending list, and any constraint that still cannot be
+        // resolved is re-deferred. We stop when either:
+        //   (a) the deferred list is empty (all resolved), or
+        //   (b) a full pass made no progress (deferred list no shorter than before).
+        // -----------------------------------------------------------------------
+        let mut pending: Vec<TypeConstraint> = all_constraints;
+        loop {
+            let pending_count = pending.len();
+            let mut deferred: Vec<TypeConstraint> = Vec::new();
+            for c in pending {
+                process_constraint(
+                    c,
+                    &mut arena,
+                    &struct_fields,
+                    &type_id_to_name,
+                    &mut deferred,
+                );
+            }
+            if deferred.is_empty() {
+                break;
+            }
+            if deferred.len() >= pending_count {
+                break;
+            }
+            pending = deferred;
+        }
+
+        // -----------------------------------------------------------------------
+        // Step 5: collect per-function value-type updates.
+        //
+        // For every value that was an inference target (Unknown or Var), resolve
+        // its TypeVar and collect the result. If still unresolved (Var), write
+        // Unknown — inference exhausted.
+        // -----------------------------------------------------------------------
+        struct FuncUpdate {
+            updates: Vec<(usize, Type)>,
+        }
+
+        let func_updates: Vec<FuncUpdate> = module
+            .functions
+            .values()
+            .zip(func_data.iter())
+            .map(|(func, data)| {
+                let mut updates: Vec<(usize, Type)> = Vec::new();
+                for (vid, var_id) in &data.value_vars {
+                    let old_ty = &func.value_types[*vid];
+                    // Only update values that were inference targets.
+                    if !matches!(old_ty, Type::Unknown | Type::Var(_)) {
+                        continue;
+                    }
+                    let resolved = resolve(Type::Var(*var_id), &arena);
+                    // Map unresolved Var → Unknown (inference exhausted).
+                    let new_ty = if matches!(&resolved, Type::Var(_)) {
+                        Type::Unknown
+                    } else {
+                        resolved
+                    };
+                    if new_ty != *old_ty {
+                        updates.push((vid.index() as usize, new_ty));
+                    }
+                }
+                FuncUpdate { updates }
+            })
+            .collect();
+
+        // -----------------------------------------------------------------------
+        // Step 6: apply per-function updates (value_types, sig.params, block
+        // param types, sig.return_ty).
+        // -----------------------------------------------------------------------
+        use crate::pipeline::checker::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
+        let mut changed = false;
+        let mut new_diagnostics: Vec<Diagnostic> = Vec::new();
+        let func_ids: Vec<FuncId> = module.functions.keys().collect();
+        let func_names: Vec<String> = func_ids
+            .iter()
+            .map(|&fid| module.func_name(fid).to_string())
+            .collect();
+        for (((func_id, fname), update), data) in func_ids
+            .iter()
+            .copied()
+            .zip(func_names.iter())
+            .zip(func_updates.iter())
+            .zip(func_data.iter())
+        {
+            let func = &mut module.functions[func_id];
+            for &(idx, ref new_ty) in &update.updates {
+                let vid = ValueId::new(idx as u32);
+                if &func.value_types[vid] != new_ty {
+                    func.value_types[vid] = new_ty.clone();
+                    changed = true;
+                }
+            }
+
+            // Sync entry block param.ty and sig.params for params that the
+            // solver narrowed from Unknown to concrete. Do NOT overwrite
+            // already-concrete values.
+            let entry = func.entry;
+            let entry_param_count = func.blocks[entry].params.len();
+            for i in 0..entry_param_count {
+                let p_value = func.blocks[entry].params[i].value;
+                let p_ty = func.blocks[entry].params[i].ty.clone();
+                let vty = func.value_types[p_value].clone();
+                // Sync block param.ty ← value_types (only Unknown→concrete).
+                if matches!(p_ty, Type::Unknown)
+                    && is_concrete(&vty)
+                    && !matches!(vty, Type::Unknown)
+                {
+                    func.blocks[entry].params[i].ty = vty.clone();
+                    changed = true;
+                }
+                // Sync sig.params ← value_types (only Unknown→concrete).
+                if i < func.sig.params.len()
+                    && matches!(func.sig.params[i], Type::Unknown)
+                    && is_concrete(&vty)
+                    && !matches!(vty, Type::Unknown)
+                {
+                    func.sig.params[i] = vty.clone();
+                    changed = true;
+                }
+            }
+
+            // Sync sig.return_ty ← resolved return_var (only Unknown→concrete).
+            let resolved_ret = resolve(Type::Var(data.return_var), &arena);
+            let concrete_ret = if matches!(&resolved_ret, Type::Var(_)) {
+                None
+            } else {
+                Some(resolved_ret)
+            };
+            if let Some(ret) = concrete_ret {
+                if is_concrete(&ret) && !matches!(ret, Type::Unknown) {
+                    if matches!(func.sig.return_ty, Type::Unknown) {
+                        func.sig.return_ty = ret;
+                        changed = true;
+                    } else if func.sig.return_ty != ret {
+                        let existing_ret_ty = func.sig.return_ty.clone();
+                        new_diagnostics.push(Diagnostic {
+                            file: fname.clone(),
+                            line: 0,
+                            col: 0,
+                            code: DiagnosticCode::Rc(RcDiagnostic::InferenceConflict),
+                            severity: Severity::Warning,
+                            message: format!(
+                                "return type inferred as {:?} by HM solver conflicts with {:?} (keeping {:?})",
+                                ret,
+                                existing_ret_ty,
+                                existing_ret_ty,
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        module.diagnostics.append(&mut new_diagnostics);
+
+        // -----------------------------------------------------------------------
+        // Step 7: write back improved global types to module.globals.
+        //
+        // Only update declared globals that were Unknown and now have a more
+        // concrete resolved type.
+        // -----------------------------------------------------------------------
+        for g in &mut module.globals {
+            if let Some(&var_id) = global_name_vars.get(&g.name) {
+                if matches!(g.ty, Type::Unknown) {
+                    let resolved = resolve(Type::Var(var_id), &arena);
+                    if is_concrete(&resolved) && !matches!(resolved, Type::Unknown | Type::Var(_)) {
+                        g.ty = resolved;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------------
+        // Step 8: emit inference failure diagnostics for values that remain
+        // Unknown after solving.
+        // -----------------------------------------------------------------------
+        {
+            let mut step8_diagnostics: Vec<Diagnostic> = Vec::new();
+
+            for ((fid, func), data) in module.functions.iter().zip(func_data.iter()) {
+                let mut value_op: HashMap<ValueId, &'static str> = HashMap::new();
+                for inst in func.insts.values() {
+                    if let Some(result) = inst.result {
+                        value_op.insert(result, inst.op.variant_name());
+                    }
+                }
+
+                let func_name = module.func_name(fid).to_string();
+
+                for (vid, &var_id) in &data.value_vars {
+                    if !matches!(func.value_types[*vid], Type::Unknown) {
+                        continue;
+                    }
+
+                    let op_name = match value_op.get(vid) {
+                        Some(&name) => name,
+                        None => continue,
+                    };
+                    if op_name == "Alloc" || op_name == "Load" {
+                        continue;
+                    }
+
+                    let binding = arena.binding_of(var_id);
+                    let (code, message) = if binding.is_none() {
+                        (
+                            DiagnosticCode::Rc(RcDiagnostic::InferenceNoConstraints),
+                            format!(
+                                "value {:?} remains Unknown: no constraints (produced by Op::{})",
+                                vid, op_name
+                            ),
+                        )
+                    } else {
+                        (
+                            DiagnosticCode::Rc(RcDiagnostic::InferenceInheritedUnknown),
+                            format!(
+                                "value {:?} remains Unknown: all constraints resolved to Unknown (produced by Op::{})",
+                                vid, op_name
+                            ),
+                        )
+                    };
+
+                    step8_diagnostics.push(Diagnostic {
+                        file: func_name.clone(),
+                        line: 0,
+                        col: 0,
+                        code,
+                        severity: Severity::Warning,
+                        message,
+                    });
+                }
+            }
+
+            module.diagnostics.append(&mut step8_diagnostics);
+        }
+
+        Ok(TransformResult { module, changed })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
+    use crate::ir::func::Visibility;
+    use crate::ir::ty::{FunctionSig, Type};
+    use crate::pipeline::Transform;
+
+    fn make_simple_module() -> Module {
+        let sig = FunctionSig {
+            params: vec![Type::Float(64)],
+            return_ty: Type::Float(64),
+            ..Default::default()
+        };
+        let mut fb = FunctionBuilder::new("simple", sig, Visibility::Public);
+        let x = fb.param(0);
+        let one = fb.const_float(1.0);
+        let _sum = fb.add(x, one);
+        fb.ret(Some(x));
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(fb.build());
+        mb.build()
+    }
+
+    #[test]
+    fn hm_solver_runs_on_simple_module() {
+        let module = make_simple_module();
+        let pass = ConstraintSolveHM;
+        let result = pass.apply(module).expect("apply failed");
+        // Should complete without panic and mark changed.
+        // The function has Float(64) params so nothing to infer.
+        let _ = result;
+    }
+
+    #[test]
+    fn hm_solver_empty_module() {
+        let module = Module::new("empty".into());
+        let pass = ConstraintSolveHM;
+        let result = pass.apply(module).expect("apply failed");
+        assert!(!result.changed);
+    }
+}

@@ -895,7 +895,7 @@ impl Transform for CoroutineLowering {
     }
 
     fn requires(&self) -> &[&str] {
-        &["type-inference"]
+        &["constraint-solve-hm"]
     }
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {

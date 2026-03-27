@@ -81,21 +81,12 @@ impl DebugConfig {
 #[derive(Debug, Clone)]
 pub struct PassConfig {
     /// Infer struct definitions from constructor `SetField` ops.
-    /// Runs before `TypeInference` so field types are available to the solver.
+    /// Runs before `ConstraintSolveHM` so field types are available to the solver.
     pub constructor_struct_infer: bool,
-    pub type_inference: bool,
-    pub call_site_flow: bool,
-    pub constraint_solve: bool,
-    /// HM-style constraint solver (phase 2 redesign). Runs after
-    /// `constraint_solve` as a coexistence test pass. Default: false (opt-in
-    /// during development). Will replace `constraint_solve` once coverage
-    /// matches or exceeds the heuristic passes on all test games.
-    pub constraint_solve2: bool,
-    /// Widen params narrowed by ConstraintSolve when callers pass incompatible
-    /// types. Runs immediately after `constraint_solve`. Requires both
-    /// `call_site_flow` and `constraint_solve` to have run for useful results,
-    /// but is not gated on them (it is a no-op on already-Unknown params).
-    pub call_site_widen: bool,
+    /// HM-style constraint solver. Replaces the old `TypeInference`,
+    /// `CallSiteTypeFlow`, `CallSiteTypeWiden`, `ConstraintSolve`, and
+    /// `ConstraintSolve2` passes.
+    pub constraint_solve_hm: bool,
     pub constant_folding: bool,
     pub cfg_simplify: bool,
     pub coroutine_lowering: bool,
@@ -110,12 +101,7 @@ impl Default for PassConfig {
     fn default() -> Self {
         Self {
             constructor_struct_infer: true,
-            type_inference: true,
-            call_site_flow: true,
-            constraint_solve: true,
-            constraint_solve2: true,
-            call_site_widen: true,
-
+            constraint_solve_hm: true,
             constant_folding: true,
             cfg_simplify: true,
             coroutine_lowering: true,
@@ -132,11 +118,7 @@ impl PassConfig {
     ///
     /// Pass names correspond to `Transform::name()` values:
     /// - `"constructor-struct-infer"`
-    /// - `"type-inference"`
-    /// - `"call-site-type-flow"`
-    /// - `"constraint-solve"`
-    /// - `"call-site-type-widen"`
-    /// - `"call-site-arity-widen"`
+    /// - `"constraint-solve-hm"`
     /// - `"constant-folding"`
     /// - `"cfg-simplify"`
     /// - `"coroutine-lowering"`
@@ -161,12 +143,7 @@ impl PassConfig {
     pub fn set_skip(&mut self, name: &str) -> bool {
         match name {
             "constructor-struct-infer" => self.constructor_struct_infer = false,
-            "type-inference" => self.type_inference = false,
-            "call-site-type-flow" => self.call_site_flow = false,
-            "constraint-solve" => self.constraint_solve = false,
-            "constraint-solve2" => self.constraint_solve2 = false,
-            "call-site-type-widen" => self.call_site_widen = false,
-
+            "constraint-solve-hm" => self.constraint_solve_hm = false,
             "constant-folding" => self.constant_folding = false,
             "cfg-simplify" => self.cfg_simplify = false,
             "coroutine-lowering" => self.coroutine_lowering = false,
@@ -349,12 +326,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
             PassConfig {
                 // Structural passes — needed for correct output.
                 constructor_struct_infer: true,
-                type_inference: true,
-                call_site_flow: true,
-                constraint_solve: true,
-                constraint_solve2: false,
-                call_site_widen: true,
-
+                constraint_solve_hm: true,
                 coroutine_lowering: true,
                 mem2reg: true,
                 // Optimization passes — disabled for literal.
@@ -385,8 +357,7 @@ mod tests {
     #[test]
     fn default_enables_all() {
         let config = PassConfig::default();
-        assert!(config.type_inference);
-        assert!(config.constraint_solve);
+        assert!(config.constraint_solve_hm);
         assert!(config.constant_folding);
         assert!(config.cfg_simplify);
         assert!(config.coroutine_lowering);
@@ -397,7 +368,7 @@ mod tests {
     #[test]
     fn skip_list_disables_passes() {
         let config = PassConfig::from_skip_list(&["constant-folding"]);
-        assert!(config.type_inference);
+        assert!(config.constraint_solve_hm);
         assert!(!config.constant_folding);
         assert!(config.cfg_simplify);
         assert!(config.coroutine_lowering);
@@ -407,10 +378,7 @@ mod tests {
     #[test]
     fn skip_list_all() {
         let config = PassConfig::from_skip_list(&[
-            "type-inference",
-            "call-site-type-flow",
-            "constraint-solve",
-            "call-site-type-widen",
+            "constraint-solve-hm",
             "constant-folding",
             "cfg-simplify",
             "coroutine-lowering",
@@ -419,10 +387,7 @@ mod tests {
             "dead-code-elimination",
             "fixpoint",
         ]);
-        assert!(!config.type_inference);
-        assert!(!config.call_site_flow);
-        assert!(!config.constraint_solve);
-        assert!(!config.call_site_widen);
+        assert!(!config.constraint_solve_hm);
         assert!(!config.constant_folding);
         assert!(!config.cfg_simplify);
         assert!(!config.coroutine_lowering);
@@ -435,7 +400,7 @@ mod tests {
     #[test]
     fn skip_list_unknown_ignored() {
         let config = PassConfig::from_skip_list(&["nonexistent"]);
-        assert!(config.type_inference);
+        assert!(config.constraint_solve_hm);
         assert!(config.constant_folding);
         assert!(config.cfg_simplify);
     }
@@ -455,7 +420,7 @@ mod tests {
     fn preset_literal() {
         let (pass, lowering) = resolve_preset("literal", &[]).unwrap();
         // Structural passes still on.
-        assert!(pass.type_inference);
+        assert!(pass.constraint_solve_hm);
         assert!(pass.mem2reg);
         assert!(pass.coroutine_lowering);
         // Optimization passes off.
