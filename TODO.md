@@ -175,13 +175,13 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   `ds_map`, SugarCube state vars). High impact, high effort.
 - [ ] **Union on conflict** — replace `force_rebind(Unknown)` with `Union(t1, t2)`.
   Prerequisite for safely relaxing interprocedural constraint guards.
-- [x] **Constructor struct inference two-phase ordering** — done 2026-03-27
-  (commits de21c14 + 2fb1b74). `ConstructorStructInfer` now declares
-  `requires(["type-inference"])` and `invalidates(["type-inference"])`, forcing three
-  TypeInference runs. The previously-blocking regression (ConstraintSolve arithmetic
-  narrowing widened back to Unknown by CallSiteTypeWiden) was fixed first by making numeric
-  types mutually compatible in `is_compatible` (de21c14). Results: Dead Estate −488,
-  Schism −594, TRC −251, DoL −449, MaxManos −71, 12BetterThan6 −40.
+- [ ] **Constructor struct inference two-phase ordering** — attempted 2026-03-27,
+  reverted (commits adc64a1 + cf22f72). The two-phase ordering (CSI
+  requires+invalidates type-inference) causes a 4-error regression on Dead Estate
+  (1601→1605, verified with full clean build). Root cause not yet identified — need to
+  find which 4 errors are new before re-attempting. The companion numeric-compatibility
+  fix in `CallSiteTypeWiden` was also reverted: treating Int/Float as mutually compatible
+  is target-language knowledge (TypeScript `number`) baked into core — Law 2 violation.
 - [ ] **HasField reverse-index (last resort).** After the fixpoint loop exhausts all
   `Equal` and `HasField` constraints, any `HasField { ty: Var(v), field: "x" }` where
   `v` is still unbound means no other constraint resolved `v`'s struct type. At that
