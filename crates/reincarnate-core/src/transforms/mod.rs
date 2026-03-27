@@ -138,10 +138,6 @@ mod pipeline_order_tests {
             .iter()
             .position(|&n| n == "mem2reg")
             .expect("mem2reg missing");
-        let pos_csi = names
-            .iter()
-            .position(|&n| n == "constructor-struct-infer")
-            .expect("constructor-struct-infer missing");
         let pos_ti: Vec<usize> = names
             .iter()
             .enumerate()
@@ -155,27 +151,22 @@ mod pipeline_order_tests {
             .map(|(i, _)| i)
             .collect();
 
-        // TypeInference must appear three times:
-        // (1) before ConstructorStructInfer (which requires it),
-        // (2) after ConstructorStructInfer (which invalidates it) and before Mem2Reg,
-        // (3) after Mem2Reg (which invalidates it).
+        // TypeInference must appear twice:
+        // (1) before Mem2Reg (the main inference run), and
+        // (2) after Mem2Reg (which invalidates it).
         assert_eq!(
             pos_ti.len(),
-            3,
-            "expected 3 type-inference runs, got {:?}",
+            2,
+            "expected 2 type-inference runs, got {:?}",
             pos_ti
         );
         assert!(
-            pos_ti[0] < pos_csi,
-            "first type-inference must be before constructor-struct-infer"
+            pos_ti[0] < pos_mem2reg,
+            "first type-inference must be before mem2reg"
         );
         assert!(
-            pos_ti[1] > pos_csi && pos_ti[1] < pos_mem2reg,
-            "second type-inference must be after constructor-struct-infer and before mem2reg"
-        );
-        assert!(
-            pos_ti[2] > pos_mem2reg,
-            "third type-inference must be after mem2reg"
+            pos_ti[1] > pos_mem2reg,
+            "second type-inference must be after mem2reg"
         );
 
         // ConstantFolding must appear twice: once before Mem2Reg, once after.
@@ -200,7 +191,7 @@ mod pipeline_order_tests {
             .iter()
             .position(|&n| n == "redundant-cast-elimination")
             .expect("redundant-cast-elimination missing");
-        assert!(pos_rce > pos_ti[2], "rce must be after last type-inference");
+        assert!(pos_rce > pos_ti[1], "rce must be after last type-inference");
         assert!(
             pos_rce > pos_cf[1],
             "rce must be after last constant-folding"
