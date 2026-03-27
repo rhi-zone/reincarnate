@@ -750,6 +750,7 @@ impl Transform for ConstraintSolve2 {
                                                     && param_used_as_collection(
                                                         callee_func,
                                                         param_val,
+                                                        &module.array_like_fns,
                                                     )
                                                 {
                                                     continue;
@@ -758,6 +759,7 @@ impl Transform for ConstraintSolve2 {
                                                 && param_used_with_field_access(
                                                     callee_func,
                                                     param_val,
+                                                    &module.array_like_fns,
                                                 )
                                             {
                                                 continue;
@@ -819,7 +821,11 @@ impl Transform for ConstraintSolve2 {
                                             let param_ty = &callee_func.value_types[param_val];
                                             if !matches!(recv_ty, Type::Unknown)
                                                 && !is_concrete(param_ty)
-                                                && !param_used_as_collection(callee_func, param_val)
+                                                && !param_used_as_collection(
+                                                    callee_func,
+                                                    param_val,
+                                                    &module.array_like_fns,
+                                                )
                                             {
                                                 if let (Some(&recv_var), Some(&param_var)) = (
                                                     caller_data.value_vars.get(receiver),
@@ -856,6 +862,7 @@ impl Transform for ConstraintSolve2 {
                                                 && param_used_with_field_access(
                                                     callee_func,
                                                     param_val,
+                                                    &module.array_like_fns,
                                                 )
                                             {
                                                 continue;

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
 use crate::ir::{Function, Module, Op, Type, ValueId};
@@ -86,10 +86,18 @@ pub(crate) fn collect_call_site_types(module: &Module) -> Observations {
 }
 
 /// Check if a parameter value is used as a collection in the function body —
-/// i.e. via `GetIndex(param, _)` or `GetField(param, "length")`. If so,
-/// narrowing it to a non-collection type (e.g. Float(64)) would cause
+/// i.e. via `GetIndex(param, _)`, `GetField(param, "length")`, or a call to
+/// any function in `array_like_fns` with the param as the first argument.
+/// If so, narrowing it to a non-collection type (e.g. Float(64)) would cause
 /// `.length` / `[i]` to produce type errors in the emitted code.
-pub(crate) fn param_used_as_collection(func: &Function, param_value: ValueId) -> bool {
+///
+/// `array_like_fns` is populated by frontends (e.g. GML sets `"array_length"`)
+/// and read from `Module::array_like_fns`.
+pub(crate) fn param_used_as_collection(
+    func: &Function,
+    param_value: ValueId,
+    array_like_fns: &HashSet<String>,
+) -> bool {
     let tracked: Vec<ValueId> = vec![param_value];
 
     for block in func.blocks.values() {
@@ -104,10 +112,7 @@ pub(crate) fn param_used_as_collection(func: &Function, param_value: ValueId) ->
                         return true;
                     }
                 }
-                // GML's `array_length(arr)` is emitted as `arr.length` in TypeScript.
-                // In the IR it's a Call, not a GetField — check explicitly so that
-                // narrowing to Float(64) is suppressed when the body calls array_length.
-                Op::Call { func: fname, args } if fname == "array_length" => {
+                Op::Call { func: fname, args } if array_like_fns.contains(fname) => {
                     if args.first().map(|a| tracked.contains(a)).unwrap_or(false) {
                         return true;
                     }
@@ -120,17 +125,24 @@ pub(crate) fn param_used_as_collection(func: &Function, param_value: ValueId) ->
 }
 
 /// Check if a parameter value is used with field access (`GetField`),
-/// index access (`GetIndex`), or `array_length` in the function body.
+/// index access (`GetIndex`), or any array-like function in the function body.
 ///
 /// Broader than [`param_used_as_collection`]: catches any `.field` access,
 /// not just `.length`. Used by `ConstraintSolve2` to avoid narrowing params
 /// that the body treats as objects or collections — unifying with a scalar
 /// type from callers would make all field accesses type errors.
 ///
+/// `array_like_fns` is populated by frontends (e.g. GML sets `"array_length"`)
+/// and read from `Module::array_like_fns`.
+///
 /// NOT used by `CallSiteTypeFlow` because GML `self` params always have
 /// field accesses — the narrower collection check is sufficient there since
 /// `self` narrowing to `Struct(ClassName)` is safe.
-pub(crate) fn param_used_with_field_access(func: &Function, param_value: ValueId) -> bool {
+pub(crate) fn param_used_with_field_access(
+    func: &Function,
+    param_value: ValueId,
+    array_like_fns: &HashSet<String>,
+) -> bool {
     for block in func.blocks.values() {
         for &inst_id in &block.insts {
             let inst = &func.insts[inst_id];
@@ -147,7 +159,7 @@ pub(crate) fn param_used_with_field_access(func: &Function, param_value: ValueId
                 Op::SetField { object, .. } if *object == param_value => {
                     return true;
                 }
-                Op::Call { func: fname, args } if fname == "array_length" => {
+                Op::Call { func: fname, args } if array_like_fns.contains(fname) => {
                     if args.first().map(|a| *a == param_value).unwrap_or(false) {
                         return true;
                     }
@@ -248,7 +260,7 @@ impl Transform for CallSiteTypeFlow {
                         let entry = func.entry;
                         if param_idx < func.blocks[entry].params.len() {
                             let param_val = func.blocks[entry].params[param_idx].value;
-                            if param_used_as_collection(func, param_val) {
+                            if param_used_as_collection(func, param_val, &module.array_like_fns) {
                                 continue;
                             }
                         }

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::error::CoreError;
 use crate::ir::ty::{parse_type_notation, FunctionSig, TypeId};
@@ -898,75 +898,6 @@ fn solve_function(func: &mut Function, ctx: &ConstraintModuleContext) -> bool {
     for (vid, ty) in updates {
         func.value_types[vid] = ty;
         changed = true;
-    }
-
-    // Memory coherence: propagate concrete numeric load types back to
-    // Unknown-typed stored values for the same alloc ptr.
-    //
-    // ConstraintSolve narrows load results via arithmetic constraints
-    // (e.g. `sub(loaded, Int)` → loaded: Int) but does not link stored
-    // values to load results in the union-find (doing so at constraint-
-    // generation time would let BrIf Bool constraints flow back to stored
-    // values, causing regressions).  Now that the union-find is solved and
-    // `func.value_types` is updated, we can safely propagate: only numeric
-    // load types are applied, so Bool loads (from BrIf conditions) are
-    // never pushed back to stored values.
-    {
-        // Collect per-alloc: unknown stored values, concrete numeric loads, and
-        // whether any load produced a non-numeric (including Unknown) type.
-        let mut alloc_unknown_stores: HashMap<ValueId, Vec<ValueId>> = HashMap::new();
-        let mut alloc_numeric_load_tys: HashMap<ValueId, Vec<Type>> = HashMap::new();
-        let mut alloc_has_non_numeric_load: HashSet<ValueId> = HashSet::new();
-        for inst in func.insts.values() {
-            match &inst.op {
-                Op::Store { ptr, value } => {
-                    if matches!(func.value_types[*value], Type::Unknown) {
-                        alloc_unknown_stores.entry(*ptr).or_default().push(*value);
-                    }
-                }
-                Op::Load(ptr) => {
-                    if let Some(r) = inst.result {
-                        let ty = &func.value_types[r];
-                        if matches!(ty, Type::Int(_) | Type::UInt(_) | Type::Float(_)) {
-                            alloc_numeric_load_tys
-                                .entry(*ptr)
-                                .or_default()
-                                .push(ty.clone());
-                        } else {
-                            // Non-numeric load (Unknown, Bool, Instance, etc.) —
-                            // mark alloc as having mixed-type loads; numeric
-                            // propagation would be unsound.
-                            alloc_has_non_numeric_load.insert(*ptr);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        for (ptr, stored_vals) in &alloc_unknown_stores {
-            // Only propagate when ALL loads are numeric — skip allocs that also
-            // have non-numeric or Unknown loads from the same pointer.
-            if alloc_has_non_numeric_load.contains(ptr) {
-                continue;
-            }
-            if let Some(load_tys) = alloc_numeric_load_tys.get(ptr) {
-                // Compute consistent numeric type: all same → use it; all numeric → Float(64).
-                let target_ty = if load_tys.iter().all(|t| *t == load_tys[0]) {
-                    load_tys[0].clone()
-                } else if load_tys
-                    .iter()
-                    .all(|t| matches!(t, Type::Int(_) | Type::UInt(_) | Type::Float(_)))
-                {
-                    Type::Float(64)
-                } else {
-                    continue;
-                };
-                for &sv in stored_vals {
-                    func.value_types[sv] = target_ty.clone();
-                    changed = true;
-                }
-            }
-        }
     }
 
     // Sync BlockParam.ty fields with value_types.

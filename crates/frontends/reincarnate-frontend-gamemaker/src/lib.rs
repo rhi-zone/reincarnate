@@ -264,6 +264,12 @@ impl Frontend for GameMakerFrontend {
             .callback_return_calls
             .insert(("GameMaker.Instance".into(), "withInstances".into()), ());
 
+        // Register array-like functions: `array_length(arr)` is emitted as
+        // `arr.length` in TypeScript, but in the IR it is a Call op, not a
+        // GetField.  Core passes use this set to suppress narrowing of the
+        // argument to a scalar type, exactly as they would for `.length` access.
+        module.array_like_fns.insert("array_length".to_string());
+
         let obj_names_set: HashSet<String> = obj_names.iter().cloned().collect();
 
         Ok(FrontendOutput {

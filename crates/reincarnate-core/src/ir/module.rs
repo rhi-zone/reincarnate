@@ -493,6 +493,18 @@ pub struct Module {
     /// key access does not produce TS7053 errors.
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
     pub string_indexed_structs: HashSet<String>,
+    /// Function names that should be treated as array-length-like by core passes.
+    ///
+    /// When a value is passed as the first argument to any function in this set,
+    /// that value is treated as a collection (suppressing narrowing to scalar
+    /// types in `CallSiteTypeFlow` and `ConstraintSolve2`).
+    ///
+    /// Populated by frontends. GML sets `["array_length"]` because
+    /// `array_length(arr)` is emitted as `arr.length` and the IR uses a `Call`
+    /// op rather than `GetField`. Core passes read this set instead of
+    /// hardcoding engine-specific function names.
+    #[serde(default, skip_serializing_if = "HashSet::is_empty")]
+    pub array_like_fns: HashSet<String>,
 }
 
 impl Module {
@@ -736,6 +748,7 @@ impl Module {
             diagnostics: Vec::new(),
             implicit_return_value: false,
             string_indexed_structs: HashSet::new(),
+            array_like_fns: HashSet::new(),
         }
     }
 }
