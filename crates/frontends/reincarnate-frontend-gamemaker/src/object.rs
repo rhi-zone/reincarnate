@@ -139,6 +139,8 @@ pub fn translate_objects(
                         self_object_index: Some(obj_idx),
                         ancestor_indices: build_ancestor_chain(&objt.objects, obj_idx),
                         script_names,
+                        // Event handlers: GML runtime discards return value entirely.
+                        is_event_handler: true,
                         is_with_body: false,
                         with_body_has_return: false,
                         bytecode_version: bc_version,

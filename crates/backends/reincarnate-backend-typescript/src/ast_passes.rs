@@ -1731,6 +1731,122 @@ fn is_boolean_expr(expr: &JsExpr) -> bool {
     )
 }
 
+/// Returns `true` if the expression is free of observable side effects.
+///
+/// Conservative: returns `false` for anything that might call user code or
+/// mutate state (calls, assignments, field writes, etc.).
+fn is_pure_expr(expr: &JsExpr) -> bool {
+    match expr {
+        JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This => true,
+        JsExpr::Cast { expr, .. } | JsExpr::Unary { expr, .. } | JsExpr::Not(expr) => {
+            is_pure_expr(expr)
+        }
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs } => is_pure_expr(lhs) && is_pure_expr(rhs),
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => is_pure_expr(cond) && is_pure_expr(then_val) && is_pure_expr(else_val),
+        JsExpr::Field { object, .. } => is_pure_expr(object),
+        JsExpr::Index { collection, index } => is_pure_expr(collection) && is_pure_expr(index),
+        JsExpr::TypeCheck { expr, .. } | JsExpr::NonNull(expr) | JsExpr::Spread(expr) => {
+            is_pure_expr(expr)
+        }
+        _ => false, // calls, new, assignments, generators, etc. — assume side-effecting
+    }
+}
+
+/// Rewrite `return <expr>;` statements in a void function body:
+///
+/// - `return <pure-expr>;`        → `return;`  (early exit, value discarded, no side effects)
+/// - `return <effect-expr>;`      → `<expr>; return;` (preserve side effects, then exit)
+/// - `return;` / `return undefined;` (bare) → kept as-is (already correct void return)
+///
+/// After this rewrite, strips any trailing bare `return;` from the top-level
+/// body since it is a no-op in a void function.
+///
+/// Only call this for functions where `return_ty == Type::Void`.
+pub fn strip_void_returns(func: &mut JsFunction) {
+    rewrite_void_returns_in_body(&mut func.body);
+    // Strip trailing bare return; at the top level.
+    if matches!(func.body.last(), Some(JsStmt::Return(None))) {
+        func.body.pop();
+    }
+}
+
+/// Recursively rewrite `return <expr>;` statements within a body for void context.
+fn rewrite_void_returns_in_body(body: &mut Vec<JsStmt>) {
+    let mut i = 0;
+    while i < body.len() {
+        // Check for `return <expr>;` without holding a reference into `body`.
+        let is_return_value = matches!(&body[i], JsStmt::Return(Some(_)));
+        if is_return_value {
+            // Extract the expression by removing and re-inserting.
+            let expr = if let JsStmt::Return(Some(e)) = body.remove(i) {
+                e
+            } else {
+                unreachable!()
+            };
+            if is_pure_expr(&expr) {
+                // Pure value — no side effects to preserve.  Just exit.
+                body.insert(i, JsStmt::Return(None));
+                i += 1;
+            } else {
+                // Side-effecting expression — evaluate for side effects, then exit.
+                body.insert(i, JsStmt::Return(None));
+                body.insert(i, JsStmt::Expr(expr));
+                i += 2;
+            }
+        } else {
+            match &mut body[i] {
+                JsStmt::If {
+                    then_body,
+                    else_body,
+                    ..
+                } => {
+                    rewrite_void_returns_in_body(then_body);
+                    rewrite_void_returns_in_body(else_body);
+                }
+                JsStmt::While { body: b, .. }
+                | JsStmt::Loop { body: b }
+                | JsStmt::ForOf { body: b, .. } => {
+                    rewrite_void_returns_in_body(b);
+                }
+                JsStmt::For {
+                    init,
+                    body: b,
+                    update,
+                    ..
+                } => {
+                    rewrite_void_returns_in_body(init);
+                    rewrite_void_returns_in_body(b);
+                    rewrite_void_returns_in_body(update);
+                }
+                JsStmt::Switch {
+                    cases,
+                    default_body,
+                    ..
+                } => {
+                    for (_, case_body) in cases {
+                        rewrite_void_returns_in_body(case_body);
+                    }
+                    rewrite_void_returns_in_body(default_body);
+                }
+                JsStmt::Dispatch { blocks, .. } => {
+                    for (_, block_body) in blocks {
+                        rewrite_void_returns_in_body(block_body);
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+    }
+}
+
 /// Extract the system namespace and string literal from a text call statement.
 fn extract_text_call(stmt: &JsStmt) -> Option<(String, String)> {
     if let JsStmt::Expr(JsExpr::SystemCall {
