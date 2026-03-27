@@ -32,7 +32,7 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 
 **1. Pipeline Stage Isolation.** The IR is the only channel between pipeline stages. Everything a backend needs must be in the IR — extend it rather than route around it.
 
-**2. Engine Specificity at Boundaries.** Frontends know the source engine. Backends know the target language. Core knows neither. Engine-specific logic in core is in the wrong place. This includes named engine functions hardcoded in transforms, backward inference that compensates for engine-specific gaps, and any logic whose behavior changes based on which engine produced the IR.
+**2. Engine Specificity at Boundaries.** Frontends know the source engine. Backends know the target language. Core knows neither — not GML, not TypeScript. Engine-specific logic in core is in the wrong place. This includes named engine functions hardcoded in transforms, backward inference that compensates for engine-specific gaps, any logic whose behavior changes based on which engine produced the IR, and any logic that encodes target-language assumptions (e.g. "Int and Float are both `number`").
 
 **3. Behavioral Equivalence.** Emitted code produces identical observable output for any input. Preserve source-language bugs.
 
