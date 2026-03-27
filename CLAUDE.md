@@ -48,9 +48,11 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 
 **Batch cargo commands:**
 ```bash
-cargo clippy --all-targets --all-features -- -D warnings && cargo test -- --include-ignored
+cargo clippy --all-targets --all-features -- -D warnings && cargo test -q -- --include-ignored
 ```
 Always pass `--include-ignored`. Edit all files first, then build once.
+
+**Complexity ratchet:** after any change to `reincarnate-core/src/transforms/`, run `normalize ratchet check` to verify no file's cyclomatic complexity increased. A complexity increase means a monkeypatch was added — real fixes simplify the model.
 
 `cargo run -p reincarnate-cli -- check --manifest <path>` is the replacement for `tsc`. Flags: `--filter-code TS2345`, `--filter-file foo.ts`, `--filter-message "..."`, `--examples -1`. Stdout = diagnostics; stderr = progress. Never `2>&1`.
 
