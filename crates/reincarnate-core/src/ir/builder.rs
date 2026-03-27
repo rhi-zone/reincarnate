@@ -651,7 +651,15 @@ impl FunctionBuilder {
     }
 
     pub fn load(&mut self, ptr: ValueId, ty: Type) -> ValueId {
-        self.emit(Op::Load(ptr), ty)
+        // Unknown on a load result is always an inference gap — the type is
+        // determinable from the alloc cell constraints.  Use a fresh TypeVar
+        // so the solver can propagate the alloc's concrete type to this load.
+        let actual_ty = if matches!(ty, Type::Unknown) {
+            self.fresh_var()
+        } else {
+            ty
+        };
+        self.emit(Op::Load(ptr), actual_ty)
     }
 
     pub fn store(&mut self, ptr: ValueId, value: ValueId) {

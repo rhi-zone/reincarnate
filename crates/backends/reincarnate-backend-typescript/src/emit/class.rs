@@ -281,6 +281,11 @@ pub(super) fn emit_function(
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
     crate::ast_passes::simplify_boolean_returns(&mut js_func.body);
     crate::ast_passes::hoist_else_after_terminal(&mut js_func.body);
+    // For void functions, rewrite `return <expr>;` into `<expr>; return;` (or
+    // `return;` for pure values) and strip the trailing bare `return;`.
+    if js_func.return_ty == Type::Void {
+        crate::ast_passes::strip_void_returns(&mut js_func);
+    }
     // Rewrite calls to free functions: prepend `_rt` as first argument.
     // Includes recursive self-calls — do NOT remove self from the set.
     if !free_func_names.is_empty() {

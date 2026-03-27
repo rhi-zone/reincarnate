@@ -628,6 +628,12 @@ pub fn collect_function(
     // -----------------------------------------------------------------------
     // Phase 2 — walk blocks and emit constraints per Op.
     // -----------------------------------------------------------------------
+
+    // Map from alloc result ValueId → cell TypeVar (shared across all loads/stores
+    // through the same alloc). Allocs are always in the entry block (hoisted by
+    // hoist_allocs) so the map is populated before any loads/stores are processed.
+    let mut alloc_cell_vars: HashMap<ValueId, TypeVarId> = HashMap::new();
+
     for (block_id, block) in func.blocks.iter() {
         // -- Block param phi-merge constraints --------------------------------
         // For every predecessor that branches to this block, emit Equal
@@ -887,8 +893,42 @@ pub fn collect_function(
                     }
                 }
 
-                // All other ops — no useful type constraint to emit at this
-                // stage (allocs, stores, loads, etc.).
+                // Alloc — record the cell TypeVar for this allocation slot.
+                Op::Alloc(inner_ty) => {
+                    if let Some(alloc_result) = inst.result {
+                        let cell_var = if let Type::Var(id) = inner_ty {
+                            *id
+                        } else {
+                            let fresh = arena.fresh();
+                            if is_concrete(inner_ty) {
+                                constraints.push(TypeConstraint::Equal(
+                                    Type::Var(fresh),
+                                    inner_ty.clone(),
+                                ));
+                            }
+                            fresh
+                        };
+                        alloc_cell_vars.insert(alloc_result, cell_var);
+                    }
+                }
+
+                // Store — unify the cell type with the stored value's type.
+                Op::Store { ptr, value } => {
+                    if let Some(&cell_var) = alloc_cell_vars.get(ptr) {
+                        if let Some(val_var) = var_for(*value, &value_vars) {
+                            constraints.push(TypeConstraint::Equal(Type::Var(cell_var), val_var));
+                        }
+                    }
+                }
+
+                // Load — unify the result type with the cell type.
+                Op::Load(ptr) => {
+                    if let (Some(rv), Some(&cell_var)) = (result_var, alloc_cell_vars.get(ptr)) {
+                        constraints.push(TypeConstraint::Equal(rv, Type::Var(cell_var)));
+                    }
+                }
+
+                // All other ops — no useful type constraint to emit at this stage.
                 _ => {}
             }
         }

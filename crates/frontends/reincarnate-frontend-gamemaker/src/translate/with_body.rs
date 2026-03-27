@@ -390,6 +390,9 @@ pub(super) fn translate_with_body(
         self_object_index: ctx.self_object_index,
         ancestor_indices: ctx.ancestor_indices.clone(),
         script_names: ctx.script_names,
+        // With-body closures are not event handlers — they have their own return
+        // type inferred from the body.
+        is_event_handler: false,
         // This IS a with-body closure — PopEnv inside is an early-exit signal,
         // not a loop-control instruction (the loop is managed by withInstances).
         is_with_body: true,
