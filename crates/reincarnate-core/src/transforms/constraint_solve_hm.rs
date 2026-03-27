@@ -579,7 +579,7 @@ impl Transform for ConstraintSolveHM {
             .iter()
             .map(|&fid| module.func_name(fid).to_string())
             .collect();
-        for (((func_id, fname), update), data) in func_ids
+        for (((func_id, _fname), update), data) in func_ids
             .iter()
             .copied()
             .zip(func_names.iter())
@@ -595,63 +595,32 @@ impl Transform for ConstraintSolveHM {
                 }
             }
 
-            // Sync entry block param.ty and sig.params for params that the
-            // solver narrowed from Unknown to concrete. Do NOT overwrite
-            // already-concrete values.
+            // Sync entry block param.ty and sig.params from value_types.
+            // Write unconditionally — the solver is authoritative. Skip only if
+            // the resolved type is still Var (solver never touched this value).
             let entry = func.entry;
             let entry_param_count = func.blocks[entry].params.len();
             for i in 0..entry_param_count {
                 let p_value = func.blocks[entry].params[i].value;
-                let p_ty = func.blocks[entry].params[i].ty.clone();
                 let vty = func.value_types[p_value].clone();
-                // Sync block param.ty ← value_types (only Unknown→concrete).
-                if matches!(p_ty, Type::Unknown)
-                    && !matches!(vty, Type::Unknown)
-                    && is_concrete(&vty)
-                {
-                    func.blocks[entry].params[i].ty = vty.clone();
-                    changed = true;
-                }
-                // Sync sig.params ← value_types (only Unknown→concrete).
-                if i < func.sig.params.len()
-                    && matches!(func.sig.params[i], Type::Unknown)
-                    && !matches!(vty, Type::Unknown)
-                    && is_concrete(&vty)
-                {
-                    func.sig.params[i] = vty.clone();
-                    changed = true;
+                if !matches!(vty, Type::Var(_)) {
+                    if func.blocks[entry].params[i].ty != vty {
+                        func.blocks[entry].params[i].ty = vty.clone();
+                        changed = true;
+                    }
+                    if i < func.sig.params.len() && func.sig.params[i] != vty {
+                        func.sig.params[i] = vty;
+                        changed = true;
+                    }
                 }
             }
 
-            // Sync sig.return_ty ← resolved return_var (only Unknown→concrete).
+            // Sync sig.return_ty ← resolved return_var.
+            // Skip only if still Var (solver never constrained the return).
             let resolved_ret = resolve(Type::Var(data.return_var), &arena);
-            let concrete_ret = if matches!(&resolved_ret, Type::Var(_)) {
-                None
-            } else {
-                Some(resolved_ret)
-            };
-            if let Some(ret) = concrete_ret {
-                if !matches!(ret, Type::Unknown) && is_concrete(&ret) {
-                    if matches!(func.sig.return_ty, Type::Unknown) {
-                        func.sig.return_ty = ret;
-                        changed = true;
-                    } else if func.sig.return_ty != ret {
-                        let existing_ret_ty = func.sig.return_ty.clone();
-                        new_diagnostics.push(Diagnostic {
-                            file: fname.clone(),
-                            line: 0,
-                            col: 0,
-                            code: DiagnosticCode::Rc(RcDiagnostic::InferenceConflict),
-                            severity: Severity::Warning,
-                            message: format!(
-                                "return type inferred as {:?} by HM solver conflicts with {:?} (keeping {:?})",
-                                ret,
-                                existing_ret_ty,
-                                existing_ret_ty,
-                            ),
-                        });
-                    }
-                }
+            if !matches!(resolved_ret, Type::Var(_)) && func.sig.return_ty != resolved_ret {
+                func.sig.return_ty = resolved_ret;
+                changed = true;
             }
         }
         module.diagnostics.append(&mut new_diagnostics);
@@ -664,12 +633,10 @@ impl Transform for ConstraintSolveHM {
         // -----------------------------------------------------------------------
         for g in &mut module.globals {
             if let Some(&var_id) = global_name_vars.get(&g.name) {
-                if matches!(g.ty, Type::Unknown) {
-                    let resolved = resolve(Type::Var(var_id), &arena);
-                    if !matches!(resolved, Type::Unknown | Type::Var(_)) {
-                        g.ty = resolved;
-                        changed = true;
-                    }
+                let resolved = resolve(Type::Var(var_id), &arena);
+                if !matches!(resolved, Type::Var(_)) && g.ty != resolved {
+                    g.ty = resolved;
+                    changed = true;
                 }
             }
         }
