@@ -33,9 +33,9 @@ use crate::pipeline::{PassConfig, PassDescriptor, TransformPipeline};
 /// All known transform passes in the standard pipeline, in preferred
 /// registration order.
 ///
-/// Registration order determines execution order for passes without
-/// `requires()` dependencies. Passes with `requires()` declarations are
-/// topo-sorted after their dependencies.
+/// The actual execution order is determined by topo-sort on `requires()`
+/// declarations plus invalidation expansion. Registration order is used only
+/// as a tie-breaker when multiple passes have in-degree zero simultaneously.
 ///
 /// Note: `IntToBoolPromotion` is frontend-injected via
 /// `FrontendOutput::frontend_passes` and is NOT included here.
@@ -109,7 +109,7 @@ pub fn all_passes() -> Vec<PassDescriptor> {
 /// Enabled passes are topo-sorted by their `requires()` declarations and
 /// expanded by their `invalidates()` declarations, so re-runs (e.g. the
 /// second TypeInference and ConstantFolding after Mem2Reg) are inserted
-/// automatically.
+/// automatically without any hardcoded ordering logic.
 pub fn build_pipeline(config: &PassConfig) -> TransformPipeline {
     let descriptors = all_passes();
     TransformPipeline::from_descriptors(&descriptors, config)
@@ -151,9 +151,7 @@ mod pipeline_order_tests {
             .map(|(i, _)| i)
             .collect();
 
-        // TypeInference must appear twice:
-        // (1) before Mem2Reg (the main inference run), and
-        // (2) after Mem2Reg (which invalidates it).
+        // TypeInference must appear twice: once before Mem2Reg, once after.
         assert_eq!(
             pos_ti.len(),
             2,
