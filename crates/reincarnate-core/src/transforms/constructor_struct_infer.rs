@@ -11,12 +11,11 @@ use crate::pipeline::{Transform, TransformResult};
 /// for `SetField { object: self_param, field, value }` ops and synthesizes or augments
 /// a `StructDef` entry in `module.structs`.
 ///
-/// Runs BEFORE `TypeInference` by registration order — `TypeInference` sees the struct
-/// defs that this pass produces.  Because this pass runs before TypeInference, the field
-/// types it infers come from raw value types before full inference, which means they may
-/// be `Unknown` when TypeInference hasn't resolved the stored value yet.  This is a
-/// known limitation: `GetField` ops on self-assigned fields may remain `Unknown` until
-/// a subsequent pass resolves them.  See TODO.md for the tracked gap.
+/// Runs AFTER the first `TypeInference` pass (declared via `requires`) and invalidates
+/// it, triggering a second `TypeInference` run.  The two-phase ordering ensures that
+/// field types are concrete when the second `TypeInference` resolves `GetField` ops:
+/// the first run types the stored values; this pass reads those types for field defs;
+/// the second run propagates them to `GetField` results.
 ///
 /// Rules:
 /// - Functions with `method_kind == MethodKind::Constructor` are scanned.
@@ -86,6 +85,14 @@ impl Transform for ConstructorStructInfer {
 
     fn run_once(&self) -> bool {
         true
+    }
+
+    fn requires(&self) -> &[&str] {
+        &["type-inference"]
+    }
+
+    fn invalidates(&self) -> &[&str] {
+        &["type-inference"]
     }
 
     fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
