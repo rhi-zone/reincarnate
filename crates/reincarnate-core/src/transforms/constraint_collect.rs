@@ -173,10 +173,24 @@ pub fn collect_function(
         })
         .collect();
 
+    // ResolveInstanceField (e.g. GameMaker.Instance.getField / getOn): emit HasField
+    // constraints so the solver can propagate field types once the receiver type is known.
+    let field_rules: HashSet<(&str, &str)> = module
+        .system_call_type_rules
+        .iter()
+        .filter_map(|((sys, meth), rule)| {
+            if matches!(rule, SystemCallTypeRule::ResolveInstanceField) {
+                Some((sys.as_str(), meth.as_str()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
     // Const-string map: ValueId → string literal value.
     // Only built when there are SystemCall rules to process.
     let const_strings: HashMap<ValueId, &str> =
-        if store_rules.is_empty() && resolve_rules.is_empty() {
+        if store_rules.is_empty() && resolve_rules.is_empty() && field_rules.is_empty() {
             HashMap::new()
         } else {
             func.insts
@@ -441,6 +455,24 @@ pub fn collect_function(
                         ) {
                             if let Some(&gvar) = global_name_vars.get(name) {
                                 constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
+                            }
+                        }
+                    } else if field_rules.contains(&key) {
+                        // ResolveInstanceField: emit HasField so the solver can propagate the
+                        // field type once the receiver type is known (deferred if still Var).
+                        // args[0] = receiver, args[1] = field name (const string).
+                        if let (Some(recv_var), Some(rv)) = (
+                            args.first().and_then(|&v| var_for(v, &value_vars)),
+                            result_var,
+                        ) {
+                            if let Some(field) =
+                                args.get(1).and_then(|&v| const_strings.get(&v).copied())
+                            {
+                                constraints.push(TypeConstraint::HasField {
+                                    ty: recv_var,
+                                    field: field.to_string(),
+                                    field_ty: rv,
+                                });
                             }
                         }
                     }

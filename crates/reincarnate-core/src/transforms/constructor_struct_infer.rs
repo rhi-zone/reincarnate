@@ -9,8 +9,8 @@ use crate::pipeline::{Transform, TransformResult};
 /// Scans constructor functions (`MethodKind::Constructor`) and GML create events
 /// (`MethodKind::Instance` where the last `::` segment of `func.name` is `"create"`)
 /// for `SetField { object: self_param, field, value }` ops and synthesizes or augments
-/// a `StructDef` entry in `module.structs`.  This makes struct field types available to
-/// `HasField` constraint resolution and type inference before those passes run.
+/// a `StructDef` entry in `module.structs`.  Runs before `TypeInference` so that field
+/// types are available to the solver.
 ///
 /// Rules:
 /// - Functions with `method_kind == MethodKind::Constructor` are scanned.

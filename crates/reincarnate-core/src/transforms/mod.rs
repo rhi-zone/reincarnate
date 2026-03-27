@@ -125,8 +125,8 @@ mod pipeline_order_tests {
     use super::*;
 
     /// Verify that the default pipeline produces the expected pass order,
-    /// including automatic re-runs of TypeInference and ConstantFolding
-    /// after Mem2Reg via invalidation expansion.
+    /// including automatic re-runs of TypeInference and ConstantFolding (after
+    /// Mem2Reg) via invalidation expansion.
     #[test]
     fn default_pipeline_pass_order() {
         let config = PassConfig::default();
@@ -183,19 +183,16 @@ mod pipeline_order_tests {
             "second constant-folding must be after mem2reg"
         );
 
-        // RedundantCastElimination must appear after the second TypeInference and
-        // second ConstantFolding.
+        // RedundantCastElimination must appear after the last TypeInference and
+        // last ConstantFolding.
         let pos_rce = names
             .iter()
             .position(|&n| n == "redundant-cast-elimination")
             .expect("redundant-cast-elimination missing");
-        assert!(
-            pos_rce > pos_ti[1],
-            "rce must be after second type-inference"
-        );
+        assert!(pos_rce > pos_ti[1], "rce must be after last type-inference");
         assert!(
             pos_rce > pos_cf[1],
-            "rce must be after second constant-folding"
+            "rce must be after last constant-folding"
         );
 
         // DeadCodeElimination must be last.
