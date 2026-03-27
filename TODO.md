@@ -2818,9 +2818,10 @@ Two runtime errors block DOL (Degrees of Lewdity) from running:
 
   **Correct fix order**:
   - Phase A: recognize stdlib identifiers in `lower_oxc_expr` → `Identifier` arm and emit
-    typed `SystemCall`s (no IR changes needed).
+    typed `SystemCall`s (no IR changes needed). **Attempted and reverted** (commit b24f88d,
+    reverted 8f2f055, same day) — reason not recorded. Needs re-investigation before retry.
   - Phase B: add a link/transform pass that resolves `Engine.resolve(name) → CallIndirect`
-    to `Op::Call` for all names present in the module's function table.
+    to `Op::Call` for all names present in the module's function table. **Blocked on Phase A.**
   - Phase C: remove `cast_unknown_indirect_callee` once Phase A+B cover all cases in DoL/TRC;
     remaining genuine unknowns (`globalThis` functions not in IR) are the only legitimate
     remaining use of Engine.resolve.
