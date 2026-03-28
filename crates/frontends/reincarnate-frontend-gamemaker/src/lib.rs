@@ -328,48 +328,48 @@ fn register_gml_arithmetic_builtins(module: &mut Module) {
     };
 
     // Add
-    module.register_builtin("builtin.add_f64", bin(Type::Float(64), Type::Float(64)));
-    module.register_builtin("builtin.add_f32", bin(Type::Float(32), Type::Float(32)));
-    module.register_builtin("builtin.add_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.add_i64", bin(Type::Int(64), Type::Int(64)));
-    module.register_builtin("builtin.add_str", bin(Type::String, Type::String));
+    module.register_runtime("builtin.add_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_runtime("builtin.add_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_runtime("builtin.add_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.add_i64", bin(Type::Int(64), Type::Int(64)));
+    module.register_runtime("builtin.add_str", bin(Type::String, Type::String));
     // Sub
-    module.register_builtin("builtin.sub_f64", bin(Type::Float(64), Type::Float(64)));
-    module.register_builtin("builtin.sub_f32", bin(Type::Float(32), Type::Float(32)));
-    module.register_builtin("builtin.sub_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.sub_i64", bin(Type::Int(64), Type::Int(64)));
+    module.register_runtime("builtin.sub_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_runtime("builtin.sub_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_runtime("builtin.sub_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.sub_i64", bin(Type::Int(64), Type::Int(64)));
     // Mul
-    module.register_builtin("builtin.mul_f64", bin(Type::Float(64), Type::Float(64)));
-    module.register_builtin("builtin.mul_f32", bin(Type::Float(32), Type::Float(32)));
-    module.register_builtin("builtin.mul_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.mul_i64", bin(Type::Int(64), Type::Int(64)));
+    module.register_runtime("builtin.mul_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_runtime("builtin.mul_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_runtime("builtin.mul_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.mul_i64", bin(Type::Int(64), Type::Int(64)));
     // Div
-    module.register_builtin("builtin.div_f64", bin(Type::Float(64), Type::Float(64)));
-    module.register_builtin("builtin.div_f32", bin(Type::Float(32), Type::Float(32)));
-    module.register_builtin("builtin.div_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.div_i64", bin(Type::Int(64), Type::Int(64)));
+    module.register_runtime("builtin.div_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_runtime("builtin.div_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_runtime("builtin.div_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.div_i64", bin(Type::Int(64), Type::Int(64)));
     // Rem
-    module.register_builtin("builtin.rem_f64", bin(Type::Float(64), Type::Float(64)));
-    module.register_builtin("builtin.rem_f32", bin(Type::Float(32), Type::Float(32)));
-    module.register_builtin("builtin.rem_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.rem_i64", bin(Type::Int(64), Type::Int(64)));
+    module.register_runtime("builtin.rem_f64", bin(Type::Float(64), Type::Float(64)));
+    module.register_runtime("builtin.rem_f32", bin(Type::Float(32), Type::Float(32)));
+    module.register_runtime("builtin.rem_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.rem_i64", bin(Type::Int(64), Type::Int(64)));
     // Neg (unary)
-    module.register_builtin("builtin.neg_f64", un(Type::Float(64), Type::Float(64)));
-    module.register_builtin("builtin.neg_f32", un(Type::Float(32), Type::Float(32)));
-    module.register_builtin("builtin.neg_i32", un(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.neg_i64", un(Type::Int(64), Type::Int(64)));
+    module.register_runtime("builtin.neg_f64", un(Type::Float(64), Type::Float(64)));
+    module.register_runtime("builtin.neg_f32", un(Type::Float(32), Type::Float(32)));
+    module.register_runtime("builtin.neg_i32", un(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.neg_i64", un(Type::Int(64), Type::Int(64)));
     // Not (unary boolean)
-    module.register_builtin("builtin.not_bool", un(Type::Bool, Type::Bool));
+    module.register_runtime("builtin.not_bool", un(Type::Bool, Type::Bool));
     // Boolean and/or
-    module.register_builtin("builtin.and_bool", bin(Type::Bool, Type::Bool));
-    module.register_builtin("builtin.or_bool", bin(Type::Bool, Type::Bool));
+    module.register_runtime("builtin.and_bool", bin(Type::Bool, Type::Bool));
+    module.register_runtime("builtin.or_bool", bin(Type::Bool, Type::Bool));
     // Bitwise (GML only uses i32)
-    module.register_builtin("builtin.bitand_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.bitor_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.bitxor_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.bitnot_i32", un(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.shl_i32", bin(Type::Int(32), Type::Int(32)));
-    module.register_builtin("builtin.shr_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.bitand_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.bitor_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.bitxor_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.bitnot_i32", un(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.shl_i32", bin(Type::Int(32), Type::Int(32)));
+    module.register_runtime("builtin.shr_i32", bin(Type::Int(32), Type::Int(32)));
 }
 
 /// Translate scripts from SCPT chunk.

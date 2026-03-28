@@ -546,12 +546,6 @@ pub fn collect_function(
         .functions
         .keys()
         .map(|fid| (module.func_name(fid), &module.functions[fid].sig))
-        .chain(
-            module
-                .builtins
-                .iter()
-                .map(|(name, sig)| (name.as_str(), sig)),
-        )
         .collect();
 
     // -----------------------------------------------------------------------

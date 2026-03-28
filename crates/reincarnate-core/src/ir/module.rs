@@ -6,7 +6,9 @@ use crate::entity::PrimaryMap;
 use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
+use super::block::{Block, BlockId};
 use super::func::{FuncId, Function, MethodKind, Visibility};
+use super::inst::Terminator;
 use super::name_table::NameTable;
 use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
 use super::value::Constant;
@@ -426,18 +428,20 @@ pub struct Module {
     /// TypeInference merges these into both `func_return_types` and `func_sigs`.
     #[serde(default, skip_serializing)]
     pub extern_sigs: HashMap<String, FunctionSig>,
-    /// Typed arithmetic/logic builtin signatures, keyed by name (e.g. `"builtin.add_f64"`).
+    /// Registry mapping stdlib/builtin function names to their `FuncId` in
+    /// `module.functions`.
     ///
-    /// Registered by frontends before translation.  The constraint collector
-    /// merges these into `func_sigs` so that `Op::Call` to a builtin name
-    /// receives proper typed constraints (return type and param types).
+    /// Populated by frontends via [`Module::register_runtime`] before
+    /// translation.  Runtime functions are real `Function` entries (with an
+    /// empty stub body) so the constraint collector sees them automatically
+    /// when it iterates `module.functions`.
     ///
     /// The linear emitter recognises the `"builtin."` prefix and maps each
     /// name to its target-language operator instead of emitting a function call.
     ///
     /// Not serialised — rebuilt by the frontend on every run.
-    #[serde(default, skip_serializing)]
-    pub builtins: HashMap<String, FunctionSig>,
+    #[serde(skip)]
+    pub runtime_registry: HashMap<String, FuncId>,
     /// Room creation code: maps room index → function name.
     /// Populated by frontends so the scaffold can wire up per-room init functions.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -783,7 +787,7 @@ impl Module {
             external_type_defs: BTreeMap::new(),
             external_function_sigs: BTreeMap::new(),
             extern_sigs: HashMap::new(),
-            builtins: HashMap::new(),
+            runtime_registry: HashMap::new(),
             room_creation_code: BTreeMap::new(),
             initial_room_name: None,
             sprite_names: Vec::new(),
@@ -802,17 +806,59 @@ impl Module {
         }
     }
 
-    /// Register a typed builtin function (e.g. `"builtin.add_f64"`).
+    /// Register a runtime/builtin function (e.g. `"builtin.add_f64"`).
     ///
-    /// Frontends call this before translation to declare the typed arithmetic
-    /// and logic builtins they will emit as `Op::Call`.  The constraint
-    /// collector merges `module.builtins` into its `func_sigs` map so that
-    /// these calls receive proper typed constraints.
+    /// Creates a stub `Function` with the given name and signature and an
+    /// empty entry block (`Terminator::Return(None)`), pushes it into
+    /// `module.functions` and `name_table.func_names`, and records the
+    /// name → `FuncId` mapping in `runtime_registry`.
     ///
-    /// The backend recognises the `"builtin."` prefix and emits the
+    /// Frontends call this before translation to declare typed arithmetic,
+    /// logic, and stdlib builtins they will emit as `Op::Call`.  Because the
+    /// stub is a real `Function`, the constraint collector picks it up
+    /// automatically when it iterates `module.functions` — no separate chain
+    /// is needed.
+    ///
+    /// The linear emitter recognises the `"builtin."` prefix and emits the
     /// corresponding target-language operator rather than a function call.
-    pub fn register_builtin(&mut self, name: &str, sig: FunctionSig) {
-        self.builtins.insert(name.to_string(), sig);
+    pub fn register_runtime(&mut self, name: impl Into<String>, sig: FunctionSig) -> FuncId {
+        let name = name.into();
+        let entry_block = Block {
+            params: Vec::new(),
+            insts: Vec::new(),
+            terminator: Terminator::Return(None),
+        };
+        let mut blocks: crate::entity::PrimaryMap<BlockId, Block> =
+            crate::entity::PrimaryMap::new();
+        let entry = blocks.push(entry_block);
+        let func = Function {
+            name: name.clone(),
+            sig,
+            visibility: Visibility::Public,
+            namespace: Vec::new(),
+            class: None,
+            method_kind: MethodKind::Free,
+            blocks,
+            insts: crate::entity::PrimaryMap::new(),
+            value_types: crate::entity::PrimaryMap::new(),
+            entry,
+            coroutine: None,
+            value_names: HashMap::new(),
+            capture_params: Vec::new(),
+            null_sentinel_values: std::collections::HashSet::new(),
+        };
+        let name_id = self.name_table.func_names.push(name.clone());
+        let id = self.functions.push(func);
+        debug_assert_eq!(id, name_id);
+        self.runtime_registry.insert(name, id);
+        id
+    }
+
+    /// Look up the `FuncId` of a previously registered runtime function.
+    ///
+    /// Returns `None` if no runtime function with this name has been registered.
+    pub fn lookup_runtime(&self, name: &str) -> Option<FuncId> {
+        self.runtime_registry.get(name).copied()
     }
 
     /// Allocate a unique [`Type::Var`] for use by frontends that do not yet
