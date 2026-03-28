@@ -25,9 +25,9 @@ pub(super) fn translate_push(
     preceded_by_dup: bool,
 ) -> Result<(), String> {
     match &inst.operand {
-        Operand::Int16(v) => stack.push(fb.const_int(*v as i64)),
-        Operand::Int32(v) => stack.push(fb.const_int(*v as i64)),
-        Operand::Int64(v) => stack.push(fb.const_int(*v)),
+        Operand::Int16(v) => stack.push(fb.const_int(*v as i64, 32)),
+        Operand::Int32(v) => stack.push(fb.const_int(*v as i64, 32)),
+        Operand::Int64(v) => stack.push(fb.const_int(*v, 64)),
         Operand::Double(v) => stack.push(fb.const_float(*v)),
         Operand::Float(v) => stack.push(fb.const_float(*v as f64)),
         Operand::Bool(v) => stack.push(fb.const_bool(*v)), // Push.Bool: valid per spec, not emitted by real GML compilers
@@ -109,7 +109,7 @@ pub(super) fn translate_push_variable(
                 let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                     fb.const_string(name)
                 } else {
-                    fb.const_int(obj_idx)
+                    fb.const_int(obj_idx, 64)
                 };
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
@@ -147,7 +147,7 @@ pub(super) fn translate_push_variable(
         let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
             fb.const_string(name)
         } else {
-            fb.const_int(instance as i64)
+            fb.const_int(instance as i64, 64)
         };
         let name_val = fb.const_string(&var_name);
         let args: Vec<ValueId> = if is_scalar {
@@ -275,7 +275,7 @@ pub(super) fn translate_push_variable(
                 let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                     fb.const_string(name)
                 } else {
-                    fb.const_int(obj_idx)
+                    fb.const_int(obj_idx, 64)
                 };
                 let name_val = fb.const_string(&var_name);
                 let args: Vec<ValueId> = if is_scalar {
@@ -307,7 +307,7 @@ pub(super) fn translate_push_variable(
             let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
                 fb.const_string(name)
             } else {
-                fb.const_int(instance as i64)
+                fb.const_int(instance as i64, 64)
             };
             let name_val = fb.const_string(&var_name);
             let args: Vec<ValueId> = if is_scalar {
@@ -503,7 +503,7 @@ pub(super) fn translate_push_variable(
                     let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                         fb.const_string(name)
                     } else {
-                        fb.const_int(obj_idx)
+                        fb.const_int(obj_idx, 64)
                     };
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
@@ -554,7 +554,7 @@ pub(super) fn translate_push_variable(
                 let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
                     fb.const_string(name)
                 } else {
-                    fb.const_int(instance as i64)
+                    fb.const_int(instance as i64, 64)
                 };
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
@@ -636,7 +636,7 @@ pub(super) fn translate_pop(
                     let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                         fb.const_string(name)
                     } else {
-                        fb.const_int(obj_idx)
+                        fb.const_int(obj_idx, 64)
                     };
                     let name_val = fb.const_string(&var_name);
                     fb.gml_syscall(
@@ -758,7 +758,7 @@ pub(super) fn translate_pop(
                         }
                     } else {
                         // No self param (e.g. room creation code): use setField syscall.
-                        let self_id = fb.const_int(-1);
+                        let self_id = fb.const_int(-1, 64);
                         let name_val = fb.const_string(&var_name);
                         let args: Vec<ValueId> = if is_scalar {
                             vec![self_id, name_val, value]
@@ -772,7 +772,7 @@ pub(super) fn translate_pop(
                     let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                         fb.const_string(name)
                     } else {
-                        fb.const_int(obj_idx)
+                        fb.const_int(obj_idx, 64)
                     };
                     let name_val = fb.const_string(&var_name);
                     let args: Vec<ValueId> = if is_scalar {
@@ -798,7 +798,7 @@ pub(super) fn translate_pop(
                 let obj_id = if let Some(name) = ctx.obj_names.get(*instance as usize) {
                     fb.const_string(name)
                 } else {
-                    fb.const_int(*instance as i64)
+                    fb.const_int(*instance as i64, 64)
                 };
                 let name_val = fb.const_string(&var_name);
                 let args: Vec<ValueId> = if is_scalar {
@@ -973,7 +973,7 @@ pub(super) fn translate_pop(
                         let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                             fb.const_string(name)
                         } else {
-                            fb.const_int(obj_idx)
+                            fb.const_int(obj_idx, 64)
                         };
                         let name_val = fb.const_string(&var_name);
                         fb.gml_syscall(
@@ -1006,7 +1006,7 @@ pub(super) fn translate_pop(
                     let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
                         fb.const_string(name)
                     } else {
-                        fb.const_int(instance as i64)
+                        fb.const_int(instance as i64, 64)
                     };
                     let name_val = fb.const_string(&var_name);
                     fb.gml_syscall(

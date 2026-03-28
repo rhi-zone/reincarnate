@@ -41,7 +41,7 @@ fn build_linear_chain(n: usize, ty: Type) -> crate::ir::Function {
         let next_block = fb.create_block();
         fb.br(next_block, &[]);
         fb.switch_to_block(next_block);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         current = fb.add(current, one);
     }
 
@@ -67,7 +67,7 @@ fn build_diamond(ty: Type) -> crate::ir::Function {
     fb.br_if(cond, then_b, &[], else_b, &[]);
 
     fb.switch_to_block(then_b);
-    let one = fb.const_int(1);
+    let one = fb.const_int(1, 64);
     let sum = fb.add(val, one);
     fb.br(merge, &[sum]);
 
@@ -101,7 +101,7 @@ fn build_loop(ty: Type) -> crate::ir::Function {
     fb.br_if(cond, body, &[], exit, &[]);
 
     fb.switch_to_block(body);
-    let one = fb.const_int(1);
+    let one = fb.const_int(1, 64);
     let next = fb.add(header_params[0], one);
     fb.br(header, &[next]);
 
@@ -157,11 +157,11 @@ fn build_bool_return() -> crate::ir::Function {
     fb.br_if(cond, then_b, &[], else_b, &[]);
 
     fb.switch_to_block(then_b);
-    let one = fb.const_int(1);
+    let one = fb.const_int(1, 64);
     fb.ret(Some(one));
 
     fb.switch_to_block(else_b);
-    let zero = fb.const_int(0);
+    let zero = fb.const_int(0, 64);
     fb.ret(Some(zero));
 
     fb.build()
@@ -197,7 +197,7 @@ fn build_nested_diamond(depth: usize) -> crate::ir::Function {
         fb.switch_to_block(merge);
     }
 
-    let val = fb.const_int(42);
+    let val = fb.const_int(42, 64);
     fb.ret(Some(val));
     fb.build()
 }

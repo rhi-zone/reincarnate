@@ -760,7 +760,7 @@ pub fn add(v0: i64, v1: i64) -> i64 {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("consts", sig, Visibility::Private);
-        fb.const_int(42);
+        fb.const_int(42, 64);
         fb.const_string("hello");
         fb.const_bool(true);
         fb.const_null();
@@ -816,8 +816,8 @@ fn consts() -> void {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("draw", sig, Visibility::Private);
-        let x = fb.const_int(10);
-        let y = fb.const_int(20);
+        let x = fb.const_int(10, 64);
+        let y = fb.const_int(20, 64);
         fb.system_call("Graphics", "drawRect", &[x, y], Type::Void);
         fb.ret(None);
         let func = fb.build();

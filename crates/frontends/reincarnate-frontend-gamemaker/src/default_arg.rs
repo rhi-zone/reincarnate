@@ -387,7 +387,7 @@ mod tests {
         match c {
             Constant::Null => fb.const_null(),
             Constant::Bool(b) => fb.const_bool(*b),
-            Constant::Int(n) => fb.const_int(*n),
+            Constant::Int(n) => fb.const_int(*n, 64),
             Constant::UInt(n) => fb.const_uint(*n),
             Constant::Float(f) => fb.const_float(*f),
             Constant::String(s) => fb.const_string(s.as_str()),

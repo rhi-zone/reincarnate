@@ -990,7 +990,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         let _resume = fb.yield_(Some(val), Type::Unknown);
         fb.ret(None);
         let mut func = fb.build();
@@ -1082,9 +1082,9 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("gen2", sig, Visibility::Public);
-        let v1 = fb.const_int(1);
+        let v1 = fb.const_int(1, 64);
         let _r1 = fb.yield_(Some(v1), Type::Unknown);
-        let v2 = fb.const_int(2);
+        let v2 = fb.const_int(2, 64);
         let _r2 = fb.yield_(Some(v2), Type::Unknown);
         fb.ret(None);
         let mut func = fb.build();
@@ -1128,7 +1128,7 @@ mod tests {
         fb.switch_to_block(loop_block);
         let _resume = fb.yield_(Some(counter), Type::Unknown);
         // Use counter after yield — it should be saved as a cross-yield live value.
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         let _next = fb.add(counter, one);
         fb.br(exit_block, &[]);
 
@@ -1184,7 +1184,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb2 = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
-        let arg = fb2.const_int(10);
+        let arg = fb2.const_int(10, 64);
         let _coro = fb2.coroutine_create("gen", &[arg], Type::Int(64), Type::Void);
         fb2.ret(None);
         let caller_func = fb2.build();
@@ -1226,7 +1226,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
-        let v = fb.const_int(1);
+        let v = fb.const_int(1, 64);
         let _r = fb.yield_(Some(v), Type::Unknown);
         fb.ret(None);
         let mut gen_func = fb.build();
@@ -1322,7 +1322,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
-        let val = fb.const_int(99);
+        let val = fb.const_int(99, 64);
         let _r = fb.yield_(Some(val), Type::Unknown);
         fb.ret(None);
         let mut func = fb.build();
@@ -1364,12 +1364,12 @@ mod tests {
         fb.br_if(cond, then_b, &[], else_b, &[]);
 
         fb.switch_to_block(then_b);
-        let v1 = fb.const_int(1);
+        let v1 = fb.const_int(1, 64);
         let _r1 = fb.yield_(Some(v1), Type::Unknown);
         fb.br(merge, &[]);
 
         fb.switch_to_block(else_b);
-        let v2 = fb.const_int(2);
+        let v2 = fb.const_int(2, 64);
         let _r2 = fb.yield_(Some(v2), Type::Unknown);
         fb.br(merge, &[]);
 
@@ -1405,7 +1405,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
         for i in 1..=3 {
-            let v = fb.const_int(i);
+            let v = fb.const_int(i, 64);
             let _r = fb.yield_(Some(v), Type::Unknown);
         }
         fb.ret(None);
@@ -1441,10 +1441,10 @@ mod tests {
         let mut fb = FunctionBuilder::new("gen", sig, Visibility::Public);
 
         // Define a value before yield.
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         let _r = fb.yield_(Some(val), Type::Unknown);
         // Use val after yield — it must be saved.
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         let _sum = fb.add(val, one);
         fb.ret(None);
 

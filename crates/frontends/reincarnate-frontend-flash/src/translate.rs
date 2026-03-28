@@ -582,11 +582,11 @@ fn translate_op(
         // ====================================================================
         Op::PushByte { value } => {
             // AVM2 pushbyte sign-extends: 0xFF is -1, not 255
-            let v = fb.const_int(*value as i8 as i64);
+            let v = fb.const_int(*value as i8 as i64, 64);
             stack.push(v);
         }
         Op::PushShort { value } => {
-            let v = fb.const_int(*value as i64);
+            let v = fb.const_int(*value as i64, 64);
             stack.push(v);
         }
         Op::PushInt { value } => {
@@ -596,7 +596,7 @@ fn translate_op(
             } else {
                 0
             };
-            let v = fb.const_int(val);
+            let v = fb.const_int(val, 64);
             stack.push(v);
         }
         Op::PushUint { value } => {
@@ -757,7 +757,7 @@ fn translate_op(
         Op::IncrementI => {
             if let Some(a) = stack.pop() {
                 let a = fb.cast(a, Type::Int(32));
-                let one = fb.const_int(1);
+                let one = fb.const_int(1, 64);
                 let v = fb.add(a, one);
                 stack.push(v);
             }
@@ -772,7 +772,7 @@ fn translate_op(
         Op::DecrementI => {
             if let Some(a) = stack.pop() {
                 let a = fb.cast(a, Type::Int(32));
-                let one = fb.const_int(1);
+                let one = fb.const_int(1, 64);
                 let v = fb.sub(a, one);
                 stack.push(v);
             }
@@ -793,7 +793,7 @@ fn translate_op(
                 let ty = fb.fresh_var();
                 let val = fb.load(locals[idx], ty);
                 let val = fb.cast(val, Type::Int(32));
-                let one = fb.const_int(1);
+                let one = fb.const_int(1, 64);
                 let inc = fb.add(val, one);
                 fb.store(locals[idx], inc);
             }
@@ -814,7 +814,7 @@ fn translate_op(
                 let ty = fb.fresh_var();
                 let val = fb.load(locals[idx], ty);
                 let val = fb.cast(val, Type::Int(32));
-                let one = fb.const_int(1);
+                let one = fb.const_int(1, 64);
                 let dec = fb.sub(val, one);
                 fb.store(locals[idx], dec);
             }
@@ -1069,7 +1069,7 @@ fn translate_op(
             stack.push(v);
         }
         Op::GetOuterScope { index } => {
-            let idx = fb.const_int(*index as i64);
+            let idx = fb.const_int(*index as i64, 64);
             let ty = fb.fresh_var();
             let v = fb.system_call("Flash.Scope", "getOuterScope", &[idx], ty);
             stack.push(v);
@@ -1531,7 +1531,7 @@ fn translate_op(
             stack.push(v);
         }
         Op::NewCatch { index } => {
-            let idx_val = fb.const_int(index.0 as i64);
+            let idx_val = fb.const_int(index.0 as i64, 64);
             let ty = fb.fresh_var();
             let v = fb.system_call("Flash.Exception", "newCatchScope", &[idx_val], ty);
             stack.push(v);
@@ -1845,9 +1845,9 @@ fn translate_op(
             // hasNext2 returns [updatedObj, newIndex, hasMore]
             let ty = fb.fresh_var();
             let result = fb.system_call("Flash.Iterator", "hasNext2", &[obj, idx], ty);
-            let idx0 = fb.const_int(0);
-            let idx1 = fb.const_int(1);
-            let idx2 = fb.const_int(2);
+            let idx0 = fb.const_int(0, 64);
+            let idx1 = fb.const_int(1, 64);
+            let idx2 = fb.const_int(2, 64);
             let ty = fb.fresh_var();
             let new_obj = fb.get_index(result, idx0, ty);
             let ty = fb.fresh_var();

@@ -724,7 +724,7 @@ mod tests {
         let param = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
         fb.store(ptr, param);
-        let two = fb.const_int(2);
+        let two = fb.const_int(2, 64);
         fb.store(ptr, two);
         let loaded = fb.load(ptr, Type::Int(64));
         fb.ret(Some(loaded));
@@ -735,7 +735,7 @@ mod tests {
         // Plus the initial Const(Null) inserted by multi-store at entry start.
         // But we should check the Return references the const 2.
         if let Terminator::Return(Some(v)) = &func.blocks[entry].terminator {
-            // Should reference the const_int(2) value, not the param.
+            // Should reference the const_int(2, 64) value, not the param.
             assert_eq!(*v, two, "return should reference const 2");
         } else {
             panic!("expected Return");
@@ -768,12 +768,12 @@ mod tests {
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
-        let ten = fb.const_int(10);
+        let ten = fb.const_int(10, 64);
         fb.store(ptr, ten);
         fb.br(merge_block, &[]);
 
         fb.switch_to_block(else_block);
-        let twenty = fb.const_int(20);
+        let twenty = fb.const_int(20, 64);
         fb.store(ptr, twenty);
         fb.br(merge_block, &[]);
 
@@ -831,7 +831,7 @@ mod tests {
         let cond = fb.param(0);
 
         let ptr = fb.alloc(Type::Int(64));
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         fb.store(ptr, zero);
 
         let header = fb.create_block();
@@ -845,7 +845,7 @@ mod tests {
         fb.br_if(cond, body, &[], exit, &[]);
 
         fb.switch_to_block(body);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         let sum = fb.add(loaded, one);
         fb.store(ptr, sum);
         fb.br(header, &[]);
@@ -893,7 +893,7 @@ mod tests {
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
         let v_load = fb.load(ptr, Type::Int(64)); // load before store
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         let v_result = fb.add(v_load, one); // computed from load result
         fb.store(ptr, v_result); // 1 store
         let v_ret = fb.load(ptr, Type::Int(64)); // load after store
@@ -923,9 +923,9 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("escaped", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.store(ptr, one);
-        let two = fb.const_int(2);
+        let two = fb.const_int(2, 64);
         fb.store(ptr, two);
         // Pass the alloc ptr to a call — this escapes it.
         let _call_result = fb.call("consume", &[ptr], Type::Void);
@@ -1049,11 +1049,11 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
-        let a = fb.const_int(10);
+        let a = fb.const_int(10, 64);
         fb.store(ptr, a);
-        let b = fb.const_int(20);
+        let b = fb.const_int(20, 64);
         fb.store(ptr, b);
-        let c = fb.const_int(30);
+        let c = fb.const_int(30, 64);
         fb.store(ptr, c);
         let loaded = fb.load(ptr, Type::Int(64));
         fb.ret(Some(loaded));
@@ -1079,7 +1079,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let ptr = fb.alloc(Type::Int(64));
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.store(ptr, one);
         let _call = fb.call("escape", &[ptr], Type::Void);
         let loaded = fb.load(ptr, Type::Int(64));
@@ -1105,7 +1105,7 @@ mod tests {
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
-        let init = fb.const_int(0);
+        let init = fb.const_int(0, 64);
         fb.store(ptr, init);
 
         let then_b = fb.create_block();
@@ -1115,12 +1115,12 @@ mod tests {
         fb.br_if(cond, then_b, &[], else_b, &[]);
 
         fb.switch_to_block(then_b);
-        let ten = fb.const_int(10);
+        let ten = fb.const_int(10, 64);
         fb.store(ptr, ten);
         fb.br(merge, &[]);
 
         fb.switch_to_block(else_b);
-        let twenty = fb.const_int(20);
+        let twenty = fb.const_int(20, 64);
         fb.store(ptr, twenty);
         fb.br(merge, &[]);
 
@@ -1175,7 +1175,7 @@ mod tests {
         fb.br_if(cond, body, &[], exit, &[]);
 
         fb.switch_to_block(body);
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         fb.store(ptr, val);
         fb.br(header, &[]);
 
@@ -1217,7 +1217,7 @@ mod tests {
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
-        let init = fb.const_int(0);
+        let init = fb.const_int(0, 64);
         fb.store(ptr, init);
 
         let header = fb.create_block();
@@ -1230,7 +1230,7 @@ mod tests {
         fb.br_if(cond, body, &[], exit, &[]);
 
         fb.switch_to_block(body);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.store(ptr, one);
         fb.br(header, &[]);
 

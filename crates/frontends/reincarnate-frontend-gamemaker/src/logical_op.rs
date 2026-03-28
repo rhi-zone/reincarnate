@@ -335,7 +335,7 @@ mod tests {
 
         // block3 (shared else): v_zero = const 0; br block4(v_zero)
         fb.switch_to_block(block3);
-        let v_zero = fb.const_int(0);
+        let v_zero = fb.const_int(0, 64);
         fb.br(block4, &[v_zero]);
 
         // block4: return v_merge
@@ -438,7 +438,7 @@ mod tests {
 
         // block2: v_zero = const 0; br block3(v_zero)  ← trivially falsy, sole pred
         fb.switch_to_block(block2);
-        let v_zero = fb.const_int(0);
+        let v_zero = fb.const_int(0, 64);
         fb.br(block3, &[v_zero]);
 
         // block3(v_counter: i64): BrIf(v_cond) → block4, block5
@@ -447,7 +447,7 @@ mod tests {
 
         // block4: v_one = const 1; br block3(v_one)  ← back-edge → block3 is loop header
         fb.switch_to_block(block4);
-        let v_one = fb.const_int(1);
+        let v_one = fb.const_int(1, 64);
         let _ = v_counter; // used structurally as the loop param, not in body here
         fb.br(block3, &[v_one]);
 
@@ -506,7 +506,7 @@ mod tests {
 
         // block1: v1 = const 1; br block2(v1)  ← trivially pure, truthy
         fb.switch_to_block(block1);
-        let v1 = fb.const_int(1);
+        let v1 = fb.const_int(1, 64);
         fb.br(block2, &[v1]);
 
         // block2(v_m): use v_m in a non-trivial way, then return

@@ -833,7 +833,7 @@ mod tests {
         let (block_c, _c_params) = fb.create_block_with_params(&[Type::Int(64)]);
 
         // entry: const 42, br B(42)
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         fb.br(block_b, &[val]);
 
         // B(p0): br C(p0) — identity forwarding
@@ -871,8 +871,8 @@ mod tests {
         let (block_c, c_params) = fb.create_block_with_params(&[Type::Int(64), Type::Int(64)]);
 
         // entry: br B(10, 20)
-        let v10 = fb.const_int(10);
-        let v20 = fb.const_int(20);
+        let v10 = fb.const_int(10, 64);
+        let v20 = fb.const_int(20, 64);
         fb.br(block_b, &[v10, v20]);
 
         // B(p0, p1): br C(p1, p0) — swapped
@@ -912,7 +912,7 @@ mod tests {
 
         // B: const 42, return 42
         fb.switch_to_block(block_b);
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         fb.ret(Some(val));
 
         let func = apply_cfg_simplify(fb.build());
@@ -1102,7 +1102,7 @@ mod tests {
         let else_block = fb.create_block();
 
         // entry: const 42, br_if → then / else
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         let cond = fb.const_bool(true);
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
@@ -1142,8 +1142,8 @@ mod tests {
         let then_block = fb.create_block();
         let else_block = fb.create_block();
 
-        let val_a = fb.const_int(1);
-        let val_b = fb.const_int(2);
+        let val_a = fb.const_int(1, 64);
+        let val_b = fb.const_int(2, 64);
         let cond = fb.const_bool(true);
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
@@ -1188,10 +1188,10 @@ mod tests {
         let then_block = fb.create_block();
         let else_block = fb.create_block();
 
-        let shared_a = fb.const_int(10);
-        let shared_c = fb.const_int(30);
-        let diff_then = fb.const_int(20);
-        let diff_else = fb.const_int(21);
+        let shared_a = fb.const_int(10, 64);
+        let shared_c = fb.const_int(30, 64);
+        let diff_then = fb.const_int(20, 64);
+        let diff_else = fb.const_int(21, 64);
         let cond = fb.const_bool(true);
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
@@ -1413,7 +1413,7 @@ mod tests {
         fb.ret(None);
 
         fb.switch_to_block(dead);
-        let v = fb.const_int(42);
+        let v = fb.const_int(42, 64);
         fb.ret(Some(v));
 
         let func = apply_cfg_simplify(fb.build());
@@ -1619,8 +1619,8 @@ mod tests {
         let else_b = fb.create_block();
         let (merge, merge_params) = fb.create_block_with_params(&[Type::Int(64)]);
 
-        let a = fb.const_int(42);
-        let b = fb.const_int(99);
+        let a = fb.const_int(42, 64);
+        let b = fb.const_int(99, 64);
         fb.br_if(cond, then_b, &[], else_b, &[]);
 
         fb.switch_to_block(then_b);
@@ -1655,8 +1655,8 @@ mod tests {
         let else_b = fb.create_block();
         let (merge, merge_params) = fb.create_block_with_params(&[Type::Int(64)]);
 
-        let a = fb.const_int(10);
-        let b = fb.const_int(20);
+        let a = fb.const_int(10, 64);
+        let b = fb.const_int(20, 64);
         fb.br_if(cond, then_b, &[], else_b, &[]);
 
         fb.switch_to_block(then_b);

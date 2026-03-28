@@ -21,8 +21,8 @@ fn const_fold_then_dce() {
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-    let a = fb.const_int(1);
-    let b = fb.const_int(2);
+    let a = fb.const_int(1, 64);
+    let b = fb.const_int(2, 64);
     let sum = fb.add(a, b);
     fb.ret(Some(sum));
     let func = fb.build();
@@ -70,7 +70,7 @@ fn hm_solver_then_red_cast_elim() {
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
     let p = fb.param(0);
-    let zero = fb.const_int(0);
+    let zero = fb.const_int(0, 64);
     let cmp_result = fb.cmp(CmpKind::Eq, p, zero); // produces Bool
     let cast = fb.cast(cmp_result, Type::Bool); // redundant: Bool -> Bool
     fb.ret(Some(cast));
@@ -113,11 +113,11 @@ fn mem2reg_then_dce() {
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
     let ptr = fb.alloc(Type::Int(64));
-    let val = fb.const_int(42);
+    let val = fb.const_int(42, 64);
     fb.store(ptr, val);
     let loaded = fb.load(ptr, Type::Int(64));
     // Add a dead intermediate so DCE has something to remove.
-    let dead = fb.const_int(999);
+    let dead = fb.const_int(999, 64);
     let _dead_add = fb.add(dead, dead);
     fb.ret(Some(loaded));
     let func = fb.build();
@@ -160,7 +160,7 @@ fn cfg_simplify_then_mem2reg() {
     };
     let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
     let ptr = fb.alloc(Type::Int(64));
-    let val = fb.const_int(99);
+    let val = fb.const_int(99, 64);
     fb.store(ptr, val);
 
     // Create an empty forwarding block.
@@ -208,8 +208,8 @@ fn full_pipeline_well_formed() {
     let ptr = fb.alloc(Type::Int(64));
 
     // Constant arithmetic that can be folded.
-    let a = fb.const_int(10);
-    let b = fb.const_int(20);
+    let a = fb.const_int(10, 64);
+    let b = fb.const_int(20, 64);
     let sum = fb.add(a, b);
     fb.store(ptr, sum);
 
@@ -220,12 +220,12 @@ fn full_pipeline_well_formed() {
     fb.br_if(cond, then_b, &[], else_b, &[]);
 
     fb.switch_to_block(then_b);
-    let val_t = fb.const_int(1);
+    let val_t = fb.const_int(1, 64);
     fb.store(ptr, val_t);
     fb.br(merge, &[]);
 
     fb.switch_to_block(else_b);
-    let val_f = fb.const_int(0);
+    let val_f = fb.const_int(0, 64);
     fb.store(ptr, val_f);
     fb.br(merge, &[]);
 
@@ -262,11 +262,11 @@ fn full_pipeline_idempotent() {
     fb.br_if(cond, then_b, &[], else_b, &[]);
 
     fb.switch_to_block(then_b);
-    let one = fb.const_int(1);
+    let one = fb.const_int(1, 64);
     fb.ret(Some(one));
 
     fb.switch_to_block(else_b);
-    let zero = fb.const_int(0);
+    let zero = fb.const_int(0, 64);
     fb.ret(Some(zero));
 
     let func = fb.build();

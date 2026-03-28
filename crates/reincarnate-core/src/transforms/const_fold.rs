@@ -650,8 +650,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(2);
-        let b = fb.const_int(3);
+        let a = fb.const_int(2, 64);
+        let b = fb.const_int(3, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
 
@@ -692,8 +692,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(5);
-        let b = fb.const_int(10);
+        let a = fb.const_int(5, 64);
+        let b = fb.const_int(10, 64);
         let cmp = fb.cmp(CmpKind::Lt, a, b);
         fb.ret(Some(cmp));
 
@@ -733,8 +733,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(5);
-        let b = fb.const_int(0);
+        let a = fb.const_int(5, 64);
+        let b = fb.const_int(0, 64);
         let div = fb.div(a, b);
         fb.ret(Some(div));
 
@@ -756,7 +756,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
-        let b = fb.const_int(3);
+        let b = fb.const_int(3, 64);
         let sum = fb.add(param, b);
         fb.ret(Some(sum));
 
@@ -777,7 +777,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(42);
+        let a = fb.const_int(42, 64);
         let result = fb.neg(a);
         fb.ret(Some(result));
 
@@ -798,7 +798,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         let cmp = fb.cmp(CmpKind::Ge, param, one);
         let result = fb.not(cmp);
         fb.ret(Some(result));
@@ -845,8 +845,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(2);
-        let b = fb.const_int(3);
+        let a = fb.const_int(2, 64);
+        let b = fb.const_int(3, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
         assert_idempotent(&ConstantFolding, fb.build());
@@ -861,8 +861,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(0xFF);
-        let b = fb.const_int(0x0F);
+        let a = fb.const_int(0xFF, 64);
+        let b = fb.const_int(0x0F, 64);
         let result = fb.bit_and(a, b);
         fb.ret(Some(result));
 
@@ -982,14 +982,14 @@ mod tests {
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
-        let a = fb.const_int(2);
-        let b = fb.const_int(3);
+        let a = fb.const_int(2, 64);
+        let b = fb.const_int(3, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
 
         fb.switch_to_block(else_block);
-        let c = fb.const_int(10);
-        let d = fb.const_int(20);
+        let c = fb.const_int(10, 64);
+        let d = fb.const_int(20, 64);
         let product = fb.mul(c, d);
         fb.ret(Some(product));
 
@@ -1013,10 +1013,10 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(1);
-        let b = fb.const_int(2);
+        let a = fb.const_int(1, 64);
+        let b = fb.const_int(2, 64);
         let sum = fb.add(a, b);
-        let c = fb.const_int(3);
+        let c = fb.const_int(3, 64);
         let product = fb.mul(sum, c);
         fb.ret(Some(product));
 
@@ -1039,7 +1039,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let param = fb.param(0);
-        let c = fb.const_int(5);
+        let c = fb.const_int(5, 64);
         let fold_me = fb.add(c, c); // foldable: 5+5=10
         let keep_me = fb.add(param, c); // not foldable: param+5
         let result = fb.add(fold_me, keep_me);
@@ -1066,8 +1066,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(i64::MAX);
-        let b = fb.const_int(1);
+        let a = fb.const_int(i64::MAX, 64);
+        let b = fb.const_int(1, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
 
@@ -1110,9 +1110,9 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let mut acc = fb.const_int(0);
+        let mut acc = fb.const_int(0, 64);
         for i in 1..=10 {
-            let c = fb.const_int(i);
+            let c = fb.const_int(i, 64);
             acc = fb.add(acc, c);
         }
         fb.ret(Some(acc));
@@ -1134,7 +1134,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let c = fb.const_int(16777215);
+        let c = fb.const_int(16777215, 64);
         let n = fb.not(c);
         fb.ret(Some(n));
 
@@ -1154,7 +1154,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let c = fb.const_int(0);
+        let c = fb.const_int(0, 64);
         let n = fb.not(c);
         fb.ret(Some(n));
 
@@ -1174,7 +1174,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let c = fb.const_int(42);
+        let c = fb.const_int(42, 64);
         let n1 = fb.not(c);
         let n2 = fb.not(n1);
         fb.ret(Some(n2));

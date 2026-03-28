@@ -2501,11 +2501,11 @@ impl TranslateCtx {
     fn lower_ordinal(&mut self, ord: &Ordinal) -> ValueId {
         match ord {
             // 1-based forward: runtime does `obj[prop - 1]`
-            Ordinal::Nth(n) => self.fb.const_int(*n as i64),
+            Ordinal::Nth(n) => self.fb.const_int(*n as i64, 64),
             // Reverse: runtime does `obj[obj.length + prop]` (prop is negative)
-            Ordinal::NthLast(n) => self.fb.const_int(-(*n as i64)),
+            Ordinal::NthLast(n) => self.fb.const_int(-(*n as i64), 64),
             // last = -1
-            Ordinal::Last => self.fb.const_int(-1),
+            Ordinal::Last => self.fb.const_int(-1, 64),
             Ordinal::Length => self.fb.const_string("length"),
             Ordinal::Range { from, to } => {
                 let from_val = self.lower_range_end(from);
@@ -2519,9 +2519,9 @@ impl TranslateCtx {
 
     fn lower_range_end(&mut self, end: &RangeEnd) -> ValueId {
         match end {
-            RangeEnd::Nth(n) => self.fb.const_int(*n as i64),
-            RangeEnd::NthLast(n) => self.fb.const_int(-(*n as i64)),
-            RangeEnd::Last => self.fb.const_int(-1),
+            RangeEnd::Nth(n) => self.fb.const_int(*n as i64, 64),
+            RangeEnd::NthLast(n) => self.fb.const_int(-(*n as i64), 64),
+            RangeEnd::Last => self.fb.const_int(-1, 64),
         }
     }
 

@@ -201,8 +201,8 @@ fn system_call() {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
-        let x = fb.const_int(100);
-        let y = fb.const_int(200);
+        let x = fb.const_int(100, 64);
+        let y = fb.const_int(200, 64);
         fb.system_call("renderer", "clear", &[x, y], Type::Void);
         fb.ret(None);
         mb.add_function(fb.build());
@@ -268,7 +268,7 @@ fn constants_all_types() {
         fb.call("use_val", &[b], Type::Void);
         let c = fb.const_bool(false);
         fb.call("use_val", &[c], Type::Void);
-        let d = fb.const_int(42);
+        let d = fb.const_int(42, 64);
         fb.call("use_val", &[d], Type::Void);
         let e = fb.const_float(3.125);
         fb.call("use_val", &[e], Type::Void);
@@ -300,8 +300,8 @@ fn array_and_struct_init() {
         };
         let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
 
-        let a = fb.const_int(1);
-        let b = fb.const_int(2);
+        let a = fb.const_int(1, 64);
+        let b = fb.const_int(2, 64);
         let arr = fb.array_init(&[a, b], Type::Int(64));
         fb.call("use_val", &[arr], Type::Void);
 
@@ -512,17 +512,17 @@ fn emit_for_loop() {
         let body = fb.create_block();
         let exit = fb.create_block();
 
-        let v_init = fb.const_int(0);
+        let v_init = fb.const_int(0, 64);
         fb.br(header, &[v_init]);
 
         fb.switch_to_block(header);
         let v_i = header_vals[0];
-        let v_n = fb.const_int(10);
+        let v_n = fb.const_int(10, 64);
         let v_cond = fb.cmp(CmpKind::Lt, v_i, v_n);
         fb.br_if(v_cond, body, &[], exit, &[]);
 
         fb.switch_to_block(body);
-        let v_one = fb.const_int(1);
+        let v_one = fb.const_int(1, 64);
         let v_next = fb.add(v_i, v_one);
         fb.br(header, &[v_next]);
 
@@ -1024,7 +1024,7 @@ fn construct_super_emits_super_call() {
     fb.set_class(Vec::new(), "Child".into(), MethodKind::Constructor);
     let this = fb.param(0);
     // Place a field init before constructSuper — mimics AVM2 constructor order
-    let val = fb.const_int(0);
+    let val = fb.const_int(0, 64);
     fb.set_field(this, "x", val);
     fb.system_call("Flash.Class", "constructSuper", &[this], Type::Void);
     fb.ret(None);
@@ -1578,7 +1578,7 @@ fn find_property_set_field_resolves_to_bare_assignment() {
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let name = fb.const_string("X");
         let scope = fb.system_call("Flash.Scope", "findProperty", &[name], Type::Unknown);
-        let val = fb.const_int(5);
+        let val = fb.const_int(5, 64);
         fb.set_field(scope, "X", val);
         fb.ret(None);
         mb.add_function(fb.build());

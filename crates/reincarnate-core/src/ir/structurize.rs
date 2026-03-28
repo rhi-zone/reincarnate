@@ -2003,17 +2003,17 @@ mod tests {
         let body = fb.create_block();
         let exit = fb.create_block();
 
-        let v_init = fb.const_int(0);
+        let v_init = fb.const_int(0, 64);
         fb.br(header, &[v_init]);
 
         fb.switch_to_block(header);
         let v_i = header_vals[0];
-        let v_n = fb.const_int(10);
+        let v_n = fb.const_int(10, 64);
         let v_cond = fb.cmp(CmpKind::Lt, v_i, v_n);
         fb.br_if(v_cond, body, &[], exit, &[]);
 
         fb.switch_to_block(body);
-        let v_one = fb.const_int(1);
+        let v_one = fb.const_int(1, 64);
         let v_next = fb.add(v_i, v_one);
         fb.br(header, &[v_next]);
 
@@ -2262,11 +2262,11 @@ mod tests {
         fb.br_if(cond, then_mid, &[], else_mid, &[]);
 
         fb.switch_to_block(then_mid);
-        let v1 = fb.const_int(1);
+        let v1 = fb.const_int(1, 64);
         fb.br(merge, &[v1]);
 
         fb.switch_to_block(else_mid);
-        let v2 = fb.const_int(2);
+        let v2 = fb.const_int(2, 64);
         fb.br(merge, &[v2]);
 
         fb.switch_to_block(merge);
@@ -2441,9 +2441,9 @@ mod tests {
         let x = fb.param(0);
         let y = fb.param(1);
 
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         let v_ge = fb.cmp(CmpKind::Ge, x, zero);
-        let zero2 = fb.const_int(0);
+        let zero2 = fb.const_int(0, 64);
         let v_lt = fb.cmp(CmpKind::Lt, x, zero2);
 
         let rhs_block = fb.create_block();
@@ -2453,7 +2453,7 @@ mod tests {
         fb.br_if(v_lt, merge, &[v_ge], rhs_block, &[]);
 
         fb.switch_to_block(rhs_block);
-        let sixty = fb.const_int(60);
+        let sixty = fb.const_int(60, 64);
         let v_rhs = fb.cmp(CmpKind::Ge, y, sixty);
         fb.br(merge, &[v_rhs]);
 
@@ -2512,9 +2512,9 @@ mod tests {
         let x = fb.param(0);
         let y = fb.param(1);
 
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         let v_lt = fb.cmp(CmpKind::Lt, x, zero);
-        let zero2 = fb.const_int(0);
+        let zero2 = fb.const_int(0, 64);
         let v_ge = fb.cmp(CmpKind::Ge, x, zero2);
 
         let rhs_block = fb.create_block();
@@ -2524,7 +2524,7 @@ mod tests {
         fb.br_if(v_lt, rhs_block, &[], merge, &[v_ge]);
 
         fb.switch_to_block(rhs_block);
-        let sixty = fb.const_int(60);
+        let sixty = fb.const_int(60, 64);
         let v_rhs = fb.cmp(CmpKind::Ge, y, sixty);
         fb.br(merge, &[v_rhs]);
 
@@ -2581,7 +2581,7 @@ mod tests {
         let x = fb.param(0);
         let y = fb.param(1);
 
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         let v_bool = fb.cmp(CmpKind::Ge, x, zero);
         let v_not = fb.not(v_bool);
 
@@ -2591,7 +2591,7 @@ mod tests {
         fb.br_if(v_not, merge, &[v_bool], rhs_block, &[]);
 
         fb.switch_to_block(rhs_block);
-        let sixty = fb.const_int(60);
+        let sixty = fb.const_int(60, 64);
         let v_rhs = fb.cmp(CmpKind::Ge, y, sixty);
         fb.br(merge, &[v_rhs]);
 
@@ -2660,7 +2660,7 @@ mod tests {
         // exit_path: store something, then br exit
         fb.switch_to_block(exit_path);
         let ptr = fb.alloc(Type::Int(64));
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         fb.store(ptr, val);
         fb.br(exit, &[]);
 
@@ -2743,15 +2743,15 @@ mod tests {
         );
 
         fb.switch_to_block(case0);
-        let v1 = fb.const_int(10);
+        let v1 = fb.const_int(10, 64);
         fb.br(merge, &[v1]);
 
         fb.switch_to_block(case1);
-        let v2 = fb.const_int(20);
+        let v2 = fb.const_int(20, 64);
         fb.br(merge, &[v2]);
 
         fb.switch_to_block(default_blk);
-        let v3 = fb.const_int(30);
+        let v3 = fb.const_int(30, 64);
         fb.br(merge, &[v3]);
 
         fb.switch_to_block(merge);
@@ -2835,12 +2835,12 @@ mod tests {
 
         fb.switch_to_block(exit_prep);
         let ptr = fb.alloc(Type::Int(64));
-        let val = fb.const_int(99);
+        let val = fb.const_int(99, 64);
         fb.store(ptr, val);
         fb.br(post_loop, &[]);
 
         fb.switch_to_block(post_loop);
-        let result = fb.const_int(42);
+        let result = fb.const_int(42, 64);
         fb.ret(Some(result));
 
         let mut func = fb.build();
@@ -2931,14 +2931,14 @@ mod tests {
         let (header, header_vals) = fb.create_block_with_params(&[Type::Int(64)]);
         let exit = fb.create_block();
 
-        let count_init = fb.const_int(3);
+        let count_init = fb.const_int(3, 64);
         fb.br(header, &[count_init]);
 
         fb.switch_to_block(header);
         let count = header_vals[0];
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         let count_next = fb.sub(count, one);
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         let cond = fb.cmp(CmpKind::Gt, count_next, zero);
         fb.br_if(cond, header, &[count_next], exit, &[]);
 

@@ -270,7 +270,7 @@ mod tests {
                 Type::Float(64) => fb.const_float(0.0),
                 Type::Bool => fb.const_bool(false),
                 Type::String => fb.const_string(""),
-                _ => fb.const_int(0),
+                _ => fb.const_int(0, 64),
             };
             fb.set_field(self_val, *field_name, val);
         }
@@ -370,7 +370,7 @@ mod tests {
 
         let _self_val = fb.param(0);
         let other = fb.param(1); // not self
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         fb.set_field(other, "x", val);
         fb.ret(None);
 

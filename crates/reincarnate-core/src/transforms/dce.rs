@@ -463,8 +463,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(1);
-        let b = fb.const_int(2);
+        let a = fb.const_int(1, 64);
+        let b = fb.const_int(2, 64);
         let _sum = fb.add(a, b); // unused
         fb.ret(None);
 
@@ -487,8 +487,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(1);
-        let b = fb.const_int(2);
+        let a = fb.const_int(1, 64);
+        let b = fb.const_int(2, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
 
@@ -525,7 +525,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(1);
+        let a = fb.const_int(1, 64);
         let _b = fb.add(a, a); // unused chain
         fb.ret(None);
 
@@ -552,12 +552,12 @@ mod tests {
 
         // then_block returns 1
         fb.switch_to_block(then_block);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.ret(Some(one));
 
         // else_block returns 2 — should be unreachable
         fb.switch_to_block(else_block);
-        let two = fb.const_int(2);
+        let two = fb.const_int(2, 64);
         fb.ret(Some(two));
 
         let func = apply_dce(fb.build());
@@ -610,8 +610,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let _a = fb.const_int(1);
-        let _b = fb.const_int(2);
+        let _a = fb.const_int(1, 64);
+        let _b = fb.const_int(2, 64);
         fb.ret(None);
         assert_idempotent(&DeadCodeElimination, fb.build());
     }
@@ -633,7 +633,7 @@ mod tests {
 
         // Put some instructions in the dead block.
         fb.switch_to_block(dead_block);
-        let a = fb.const_int(42);
+        let a = fb.const_int(42, 64);
         fb.ret(Some(a));
 
         let func = apply_dce(fb.build());
@@ -652,7 +652,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let _dead = fb.const_int(99); // unused
+        let _dead = fb.const_int(99, 64); // unused
         fb.ret(None);
 
         let func = apply_dce(fb.build());
@@ -698,7 +698,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let mut v = fb.const_int(1);
+        let mut v = fb.const_int(1, 64);
         for _ in 0..9 {
             let next = fb.add(v, v);
             v = next;
@@ -725,7 +725,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let p = fb.param(0);
-        let c = fb.const_int(2);
+        let c = fb.const_int(2, 64);
         let live_use = fb.add(p, c); // feeds return
         let _dead_use = fb.mul(p, c); // unused
         fb.ret(Some(live_use));
@@ -757,7 +757,7 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
         let cond = fb.param(0);
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
 
         // Build 4 sequential merge blocks, forwarding `val` through each.
         // entry → if/else → merge1(val) → if/else → merge2(val) → ... → ret

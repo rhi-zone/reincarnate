@@ -321,10 +321,8 @@ impl FunctionBuilder {
         self.emit(Op::Const(c), ty)
     }
 
-    pub fn const_int(&mut self, value: i64) -> ValueId {
-        let c = Constant::Int(value);
-        let ty = c.ty();
-        self.emit(Op::Const(c), ty)
+    pub fn const_int(&mut self, value: i64, bits: u8) -> ValueId {
+        self.emit(Op::Const(Constant::Int(value)), Type::Int(bits))
     }
 
     pub fn const_uint(&mut self, value: u64) -> ValueId {

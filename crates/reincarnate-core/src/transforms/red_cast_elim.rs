@@ -146,7 +146,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let val = fb.const_int(1); // Int(64)
+        let val = fb.const_int(1, 64); // Int(64)
         let cast = fb.cast(val, Type::Bool);
         fb.ret(Some(cast));
 
@@ -167,8 +167,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(1);
-        let b = fb.const_int(1);
+        let a = fb.const_int(1, 64);
+        let b = fb.const_int(1, 64);
         let val = fb.cmp(crate::ir::CmpKind::Eq, a, b);
         let cast = fb.cast(val, Type::Bool);
         fb.ret(Some(cast));
@@ -185,8 +185,8 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let a = fb.const_int(1);
-        let b = fb.const_int(1);
+        let a = fb.const_int(1, 64);
+        let b = fb.const_int(1, 64);
         let val = fb.cmp(crate::ir::CmpKind::Eq, a, b);
         let cast = fb.cast(val, Type::Bool);
         fb.ret(Some(cast));
@@ -363,7 +363,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let val = fb.const_int(1); // Type::Int(64)
+        let val = fb.const_int(1, 64); // Type::Int(64)
         let cast = fb.cast(val, Type::Bool);
         fb.ret(Some(cast));
         let func = fb.build();

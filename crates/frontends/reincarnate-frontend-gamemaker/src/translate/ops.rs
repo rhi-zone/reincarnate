@@ -931,11 +931,11 @@ fn translate_break_op(
                 } else if *compound_popaf_pending {
                     *compound_popaf_pending = false;
                     let idx = pop(stack, inst)?;
-                    let arr = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
+                    let arr = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6, 64));
                     (arr, idx)
                 } else {
                     let arr = pop(stack, inst)?;
-                    let idx = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6));
+                    let idx = pop(stack, inst).unwrap_or_else(|_| fb.const_int(-6, 64));
                     (arr, idx)
                 };
                 fb.set_index(array, index, value);
@@ -1049,7 +1049,7 @@ fn translate_break_op(
             }
             _ => {
                 // Unknown break signal, emit as system call.
-                let sig_val = fb.const_int(signal as i64);
+                let sig_val = fb.const_int(signal as i64, 64);
                 fb.gml_syscall("GameMaker.Debug", "break", &[sig_val], Type::Void);
             }
         }

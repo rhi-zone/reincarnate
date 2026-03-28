@@ -285,10 +285,10 @@ mod tests {
         let else_block = fb.create_block();
         fb.br_if(cond, then_block, &[], else_block, &[]);
         fb.switch_to_block(then_block);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.ret(Some(one));
         fb.switch_to_block(else_block);
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         fb.ret(Some(zero));
         assert_idempotent(&BoolLiteralReturn, fb.build());
     }
@@ -308,11 +308,11 @@ mod tests {
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.ret(Some(one));
 
         fb.switch_to_block(else_block);
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         fb.ret(Some(zero));
 
         let func = fb.build();
@@ -345,7 +345,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("get_count", sig, Visibility::Public);
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         fb.ret(Some(val));
         let func = fb.build();
 
@@ -398,11 +398,11 @@ mod tests {
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.br(merge_block, &[one]);
 
         fb.switch_to_block(else_block);
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         fb.br(merge_block, &[zero]);
 
         fb.switch_to_block(merge_block);
@@ -430,7 +430,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("is_ready", sig, Visibility::Public);
-        let val = fb.const_int(1);
+        let val = fb.const_int(1, 64);
         fb.ret(Some(val));
         let bool_func = fb.build();
 
@@ -500,11 +500,11 @@ mod tests {
         fb.br_if(cond, then_b, &[], else_b, &[]);
 
         fb.switch_to_block(then_b);
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         fb.ret(Some(zero));
 
         fb.switch_to_block(else_b);
-        let two = fb.const_int(2);
+        let two = fb.const_int(2, 64);
         fb.ret(Some(two));
 
         let mut mb = ModuleBuilder::new("test");
@@ -552,7 +552,7 @@ mod tests {
         fb.br_if(c1, b1, &[], b2, &[]);
 
         fb.switch_to_block(b1);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.ret(Some(one));
 
         fb.switch_to_block(b2);
@@ -560,7 +560,7 @@ mod tests {
 
         fb.switch_to_block(b3);
         // Returns 42 on a third path — poisons the whole function.
-        let forty_two = fb.const_int(42);
+        let forty_two = fb.const_int(42, 64);
         fb.ret(Some(forty_two));
 
         let mut mb = ModuleBuilder::new("test");
@@ -591,11 +591,11 @@ mod tests {
         fb.br_if(c1, then1, &[], else1, &[]);
 
         fb.switch_to_block(then1);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.br(merge1, &[one]);
 
         fb.switch_to_block(else1);
-        let zero = fb.const_int(0);
+        let zero = fb.const_int(0, 64);
         fb.br(merge1, &[zero]);
 
         // Level 2: branch again, forwarding the merge1 param into merge2.
@@ -609,7 +609,7 @@ mod tests {
         fb.br(merge2, &[m1[0]]);
 
         fb.switch_to_block(else2);
-        let zero2 = fb.const_int(0);
+        let zero2 = fb.const_int(0, 64);
         fb.br(merge2, &[zero2]);
 
         fb.switch_to_block(merge2);
@@ -634,7 +634,7 @@ mod tests {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Public);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         let copied = fb.copy(one);
         fb.ret(Some(copied));
 
@@ -663,11 +663,11 @@ mod tests {
         fb.br_if(cond, then_block, &[], else_block, &[]);
 
         fb.switch_to_block(then_block);
-        let one = fb.const_int(1);
+        let one = fb.const_int(1, 64);
         fb.ret(Some(one));
 
         fb.switch_to_block(else_block);
-        let val = fb.const_int(42);
+        let val = fb.const_int(42, 64);
         fb.ret(Some(val));
 
         let func = fb.build();

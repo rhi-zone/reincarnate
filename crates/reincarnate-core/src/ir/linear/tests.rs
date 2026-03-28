@@ -74,7 +74,7 @@ fn linearize_constant_def() {
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
-    let c = fb.const_int(42);
+    let c = fb.const_int(42, 64);
     fb.ret(Some(c));
     let func = fb.build();
 
@@ -106,7 +106,7 @@ fn resolve_constant_classified() {
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let a = fb.param(0);
-    let c = fb.const_int(42);
+    let c = fb.const_int(42, 64);
     let sum = fb.add(a, c);
     fb.ret(Some(sum));
     let func = fb.build();
@@ -239,7 +239,7 @@ fn full_pipeline_constant_inlining() {
     };
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
     let a = fb.param(0);
-    let c = fb.const_int(42);
+    let c = fb.const_int(42, 64);
     let sum = fb.add(a, c);
     fb.ret(Some(sum));
     let func = fb.build();
@@ -466,12 +466,12 @@ fn loop_init_assigns_emitted() {
     let body_block = fb.create_block();
     let exit = fb.create_block();
 
-    let v_init = fb.const_int(0);
+    let v_init = fb.const_int(0, 64);
     fb.br(header, &[v_init]);
 
     fb.switch_to_block(header);
     let v_i = header_vals[0];
-    let v_ten = fb.const_int(10);
+    let v_ten = fb.const_int(10, 64);
     let v_cond = fb.cmp(CmpKind::Lt, v_i, v_ten);
     fb.br_if(v_cond, body_block, &[], exit, &[]);
 
@@ -881,7 +881,7 @@ fn flush_scoped_to_prevent_use_before_def() {
     fb.br_if(cond, then_block, &[], merge, &[]);
 
     fb.switch_to_block(then_block);
-    let zero = fb.const_int(0);
+    let zero = fb.const_int(0, 64);
     fb.set_field(obj, "x", zero);
     fb.br(merge, &[]);
 
@@ -984,7 +984,7 @@ fn inverted_cmp_not_wrapped_in_not() {
 
     fb.switch_to_block(else_block);
     let ptr = fb.alloc(Type::Int(64));
-    let val = fb.const_int(1);
+    let val = fb.const_int(1, 64);
     fb.store(ptr, val);
     fb.br(merge, &[]);
 
@@ -1158,7 +1158,7 @@ fn while_loop_condition_hoisted() {
     fb.br(header, &[]);
 
     fb.switch_to_block(header);
-    let ten = fb.const_int(10);
+    let ten = fb.const_int(10, 64);
     let v_cond = fb.cmp(CmpKind::Lt, n, ten);
     fb.br_if(v_cond, body_block, &[], exit, &[]);
 
@@ -1455,13 +1455,13 @@ fn logical_or_in_branch_no_duplicate_decl() {
 
     // block_or_head: first part of logical OR
     fb.switch_to_block(block_or_head);
-    let five = fb.const_int(5);
+    let five = fb.const_int(5, 64);
     let v_a = fb.cmp(CmpKind::Lt, p0, five);
     fb.br_if(v_a, merge, &[v_a], block_or_rhs, &[]);
 
     // block_or_rhs: second part of logical OR
     fb.switch_to_block(block_or_rhs);
-    let five2 = fb.const_int(5);
+    let five2 = fb.const_int(5, 64);
     let v_b = fb.cmp(CmpKind::Lt, p1, five2);
     fb.br(merge, &[v_b]);
 
