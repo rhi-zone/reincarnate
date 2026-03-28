@@ -1234,7 +1234,13 @@ fn emit_free_functions_file(
         .copied()
         .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
         .collect();
-    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
+    // Pre-build effective lowering config with intrinsic_calls populated from
+    // the module so that Op::Call with intrinsic functions is lowered to
+    // Expr::SystemCall by the linear emitter (same as emit_class_functions does).
+    let effective_lowering = lowering_config_for_engine(lowering_config, engine, Some(module));
+    let effective_lowering_ref: &LoweringConfig = &effective_lowering;
+    let closure_bodies =
+        compile_closures(&closure_fids, module, effective_lowering_ref, engine, debug);
     let no_sys_aliases = BTreeMap::new();
     for &fid in free_funcs {
         if module.functions[fid].method_kind != MethodKind::Closure {
@@ -1244,7 +1250,7 @@ fn emit_free_functions_file(
                 class_names,
                 known_classes,
                 mutable_global_names,
-                lowering_config,
+                effective_lowering_ref,
                 engine,
                 &module.sprite_names,
                 &object_ts_names,
