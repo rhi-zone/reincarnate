@@ -13232,6 +13232,17 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
             },
         ),
         (
+            "int",
+            FunctionSig {
+                params: vec![
+                    Type::Float(64), // val
+                ],
+                return_ty: Type::Int(32),
+                defaults: vec![],
+                has_rest_param: false,
+            },
+        ),
+        (
             "int64",
             FunctionSig {
                 params: vec![
@@ -20846,7 +20857,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
             "real",
             FunctionSig {
                 params: vec![
-                    Type::String, // string
+                    Type::Unknown, // val
                 ],
                 return_ty: Type::Float(64),
                 defaults: vec![],

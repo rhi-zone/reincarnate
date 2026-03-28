@@ -112,20 +112,23 @@ export function point_distance(x1: number, y1: number, x2: number, y2: number): 
   return Math.sqrt(dx * dx + dy * dy);
 }
 export function point_direction(x1: number, y1: number, x2: number, y2: number): number {
-  return Math.atan2(y1 - y2, x2 - x1) * 180 / Math.PI;
+  return Math.atan2(y1 - y2, x2 - x1) * RAD_TO_DEG;
 }
 
 // ---- Degree-based trig ----
 
-export function dsin(val: number): number { return Math.sin(val * Math.PI / 180); }
-export function dcos(val: number): number { return Math.cos(val * Math.PI / 180); }
-export function dtan(val: number): number { return Math.tan(val * Math.PI / 180); }
-export function darcsin(val: number): number { return Math.asin(val) * 180 / Math.PI; }
-export function darccos(val: number): number { return Math.acos(val) * 180 / Math.PI; }
-export function darctan(val: number): number { return Math.atan(val) * 180 / Math.PI; }
-export function darctan2(y: number, x: number): number { return Math.atan2(y, x) * 180 / Math.PI; }
-export function degtorad(deg: number): number { return deg * Math.PI / 180; }
-export function radtodeg(rad: number): number { return rad * 180 / Math.PI; }
+const DEG_TO_RAD = Math.PI / 180;
+const RAD_TO_DEG = 180 / Math.PI;
+
+export function dsin(val: number): number { return Math.sin(val * DEG_TO_RAD); }
+export function dcos(val: number): number { return Math.cos(val * DEG_TO_RAD); }
+export function dtan(val: number): number { return Math.tan(val * DEG_TO_RAD); }
+export function darcsin(val: number): number { return Math.asin(val) * RAD_TO_DEG; }
+export function darccos(val: number): number { return Math.acos(val) * RAD_TO_DEG; }
+export function darctan(val: number): number { return Math.atan(val) * RAD_TO_DEG; }
+export function darctan2(y: number, x: number): number { return Math.atan2(y, x) * RAD_TO_DEG; }
+export function degtorad(deg: number): number { return deg * DEG_TO_RAD; }
+export function radtodeg(rad: number): number { return rad * RAD_TO_DEG; }
 export function lengthdir_x(len: number, dir: number): number { return len * dcos(dir); }
 export function lengthdir_y(len: number, dir: number): number { return -len * dsin(dir); }
 
@@ -135,9 +138,9 @@ export function int64(n: number): number { return n | 0; }
 // ---- Type conversion ----
 
 /** Truncate to 32-bit signed integer. */
-export function int(n: unknown): number { return (n as number) | 0; }
+export function int(n: unknown): number { return Number(n) | 0; }
 /** Truncate to 32-bit unsigned integer. */
-export function uint(n: unknown): number { return (n as number) >>> 0; }
+export function uint(n: unknown): number { return Number(n) >>> 0; }
 /** Convert to number (GML real). */
 export function real(n: any): number { return Number(n); }
 /** Convert to string (GML string). Optional second arg is decimal places; extra args ignored. */
@@ -147,7 +150,7 @@ export function median(...nums: number[]): number {
   const mid = sorted.length >> 1;
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
-export function arctan(x: number): number { return Math.atan(x) * 180 / Math.PI; }
+export function arctan(x: number): number { return Math.atan(x) * RAD_TO_DEG; }
 export function arctan2(y: number, x: number): number { return Math.atan2(y, x); }
 
 export function dot_product(x1: number, y1: number, x2: number, y2: number): number { return x1 * x2 + y1 * y2; }
