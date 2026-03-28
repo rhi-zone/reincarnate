@@ -1049,7 +1049,6 @@ impl Transform for ConstraintCollect {
 
     fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
         let mut sets: Vec<ConstraintSet> = Vec::with_capacity(module.functions.len());
-        let any_functions = !module.functions.is_empty();
         let empty_globals: HashMap<String, TypeVarId> = HashMap::new();
 
         for (_, func) in module.functions.iter() {
@@ -1062,8 +1061,10 @@ impl Transform for ConstraintCollect {
         *self.constraint_sets.borrow_mut() = sets;
 
         Ok(TransformResult {
+            // Pure analysis pass — no IR mutation. changed=false so fixpoint
+            // mode is driven solely by constraint_solve_hm's write-backs.
             module,
-            changed: any_functions,
+            changed: false,
         })
     }
 }
@@ -1131,7 +1132,10 @@ mod tests {
         let result = pass.apply(module).expect("apply failed");
         let sets = pass.constraint_sets.borrow();
         assert_eq!(sets.len(), 1, "expected 1 constraint set");
-        assert!(result.changed, "expected changed=true");
+        assert!(
+            !result.changed,
+            "pure analysis pass must not report changed"
+        );
     }
 
     #[test]
