@@ -236,7 +236,7 @@ impl Frontend for GameMakerFrontend {
         // not affected.
         for (name, mut sig) in builtins_generated::gml_builtins() {
             freshen_unknown_types_in_sig(&mut sig, &mut module);
-            module.extern_sigs.insert(name.to_string(), sig);
+            module.register_runtime(name.to_string(), sig);
         }
 
         // GML implicitly returns 0.0 from every function even without an

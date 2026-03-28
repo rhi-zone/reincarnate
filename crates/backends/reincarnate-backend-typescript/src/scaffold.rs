@@ -541,14 +541,24 @@ fn generate_main(
 /// Emit import statements for a single module, collecting heuristic entry
 /// point candidates along the way.
 fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut Option<String>) {
+    // Runtime stubs (registered via Module::register_runtime) are IR-only entries
+    // used by the constraint collector — they are never emitted as TypeScript
+    // declarations and must not appear in import lists.
+    let runtime_ids: std::collections::HashSet<FuncId> =
+        module.runtime_registry.values().copied().collect();
     if module.classes.is_empty() {
         // Flat module — import public functions directly.
         // Skip closures: they're inlined at their call site and not emitted as
         // top-level exports.
         let public_funcs: Vec<_> = module
             .functions
-            .values()
-            .filter(|f| f.visibility == Visibility::Public && f.method_kind != MethodKind::Closure)
+            .iter()
+            .filter(|(fid, f)| {
+                !runtime_ids.contains(fid)
+                    && f.visibility == Visibility::Public
+                    && f.method_kind != MethodKind::Closure
+            })
+            .map(|(_, f)| f)
             .collect();
         if public_funcs.is_empty() {
             return;
@@ -605,6 +615,7 @@ fn emit_module_imports(module: &Module, out: &mut String, heuristic_entry: &mut 
             .collect();
         for (fid, func) in module.functions.iter() {
             if !class_methods.contains(&fid)
+                && !runtime_ids.contains(&fid)
                 && func.visibility == Visibility::Public
                 && func.method_kind != MethodKind::Closure
             {

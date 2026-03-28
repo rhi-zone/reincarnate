@@ -423,11 +423,6 @@ pub struct Module {
     /// Used by type inference and constraint solving to infer return types.
     #[serde(default, skip_serializing)]
     pub external_function_sigs: BTreeMap<String, ExternalMethodSig>,
-    /// Engine-declared function signatures (params + return type) for external/builtin functions.
-    /// Not serialized — populated by frontends at translate time.
-    /// TypeInference merges these into both `func_return_types` and `func_sigs`.
-    #[serde(default, skip_serializing)]
-    pub extern_sigs: HashMap<String, FunctionSig>,
     /// Registry mapping stdlib/builtin function names to their `FuncId` in
     /// `module.functions`.
     ///
@@ -786,7 +781,6 @@ impl Module {
             external_imports: BTreeMap::new(),
             external_type_defs: BTreeMap::new(),
             external_function_sigs: BTreeMap::new(),
-            extern_sigs: HashMap::new(),
             runtime_registry: HashMap::new(),
             room_creation_code: BTreeMap::new(),
             initial_room_name: None,

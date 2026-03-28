@@ -101,10 +101,14 @@ pub(super) fn group_by_class(module: &Module) -> (Vec<ClassGroup>, Vec<FuncId>) 
         });
     }
 
+    // Exclude runtime stubs registered via Module::register_runtime — they are
+    // IR-only entries used by the constraint collector and must not be emitted
+    // as TypeScript function declarations.
+    let runtime_ids: HashSet<FuncId> = module.runtime_registry.values().copied().collect();
     let free: Vec<FuncId> = module
         .functions
         .keys()
-        .filter(|fid| !claimed.contains(fid))
+        .filter(|fid| !claimed.contains(fid) && !runtime_ids.contains(fid))
         .collect();
 
     (groups, free)
