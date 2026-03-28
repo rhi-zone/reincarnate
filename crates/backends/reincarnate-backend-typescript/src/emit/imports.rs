@@ -51,16 +51,67 @@ pub(super) fn relative_import_path(from: &[String], to: &[String]) -> String {
 
 pub(super) fn collect_system_names_from_funcs<'a>(
     funcs: impl Iterator<Item = &'a Function>,
+    // Optional map from intrinsic `Op::Call` function names to their system name.
+    // Used to find system modules for GML intrinsic calls (which are `Op::Call`
+    // rather than `Op::SystemCall` after Phase 3a migration).
+    intrinsic_to_system: Option<&std::collections::HashMap<String, String>>,
 ) -> BTreeSet<String> {
     let mut used = BTreeSet::new();
     for func in funcs {
         for (_inst_id, inst) in func.insts.iter() {
-            if let Op::SystemCall { system, .. } = &inst.op {
-                used.insert(system.clone());
+            match &inst.op {
+                Op::SystemCall { system, .. } => {
+                    used.insert(system.clone());
+                }
+                Op::Call { func: name, .. } => {
+                    if let Some(map) = intrinsic_to_system {
+                        if let Some(system) = map.get(name.as_str()) {
+                            used.insert(system.clone());
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
     used
+}
+
+/// Build the full intrinsic calls map: call name → (system, method).
+///
+/// Used by `collect_type_refs_from_function` to handle `Op::Call` with
+/// intrinsic names the same way as the equivalent `Op::SystemCall`.
+pub(super) fn build_intrinsic_calls_map(module: &Module) -> HashMap<String, (String, String)> {
+    module
+        .runtime_registry
+        .iter()
+        .filter_map(|(name, &fid)| {
+            let func = &module.functions[fid];
+            func.intrinsic.as_ref().map(|kind| {
+                let (system, method) = kind.system_method();
+                (name.clone(), (system.to_string(), method.to_string()))
+            })
+        })
+        .collect()
+}
+
+/// Build the `intrinsic_to_system` map used by `collect_system_names_from_funcs`.
+///
+/// Maps each registered intrinsic call name (e.g. `"GameMaker.Instance.getField"`)
+/// to its system name (e.g. `"GameMaker.Instance"`).  Only functions with an
+/// `IntrinsicKind` are included.
+pub(super) fn build_intrinsic_to_system(module: &Module) -> HashMap<String, String> {
+    module
+        .runtime_registry
+        .iter()
+        .filter_map(|(name, &fid)| {
+            let func = &module.functions[fid];
+            func.intrinsic.as_ref().map(|kind| {
+                let (system, _method) = kind.system_method();
+                (name.clone(), system.to_string())
+            })
+        })
+        .collect()
 }
 
 /// Emit runtime imports for flat modules (files directly in `output_dir`).
@@ -72,9 +123,11 @@ pub(super) fn emit_runtime_imports(
     stateful_system_aliases: &mut BTreeMap<String, String>,
 ) {
     let all_funcs = || module.functions.iter().map(|(_id, f)| f);
-    let systems = collect_system_names_from_funcs(all_funcs());
+    let intrinsic_to_system = build_intrinsic_to_system(module);
+    let systems = collect_system_names_from_funcs(all_funcs(), Some(&intrinsic_to_system));
     emit_runtime_imports_with_prefix(systems, out, ".", runtime_config, stateful_system_aliases);
-    let calls = collect_call_names_from_funcs(all_funcs(), engine);
+    let intrinsic_calls = build_intrinsic_calls_map(module);
+    let calls = collect_call_names_from_funcs(all_funcs(), engine, Some(&intrinsic_calls));
     let mut _flat_stateful = BTreeSet::new();
     emit_function_imports_with_prefix(&calls, out, ".", runtime_config, &mut _flat_stateful);
 }
@@ -220,15 +273,37 @@ pub(super) fn strip_unused_namespace_imports(out: &mut String) {
 /// Collect all direct `Call` function names from a set of IR functions,
 /// plus any bare function names introduced by engine-specific rewrites
 /// or backend cast printing (e.g. `int(x)` from `Coerce + Int(32)`).
+///
+/// `intrinsic_calls`: optional map from intrinsic call names (e.g.
+/// `"GameMaker.Instance.getField"`) to their `(system, method)` pairs.
+/// When provided, intrinsic names are excluded from the free-function import
+/// set (they lower to `Expr::SystemCall`, not free-function calls), and any
+/// secondary names introduced by the engine rewrite pass are added instead.
 pub(super) fn collect_call_names_from_funcs<'a>(
     funcs: impl Iterator<Item = &'a Function>,
     engine: EngineKind,
+    intrinsic_calls: Option<&HashMap<String, (String, String)>>,
 ) -> BTreeSet<String> {
     let mut used = BTreeSet::new();
     for func in funcs {
         for (_inst_id, inst) in func.insts.iter() {
             match &inst.op {
                 Op::Call { func: name, .. } => {
+                    // If this is a registered intrinsic, emit the names that the
+                    // rewrite pass will introduce (same as Op::SystemCall did) rather
+                    // than the intrinsic name itself (which lowers to Expr::SystemCall).
+                    if let Some((system, method)) =
+                        intrinsic_calls.and_then(|m| m.get(name.as_str()))
+                    {
+                        if engine == EngineKind::GameMaker {
+                            for introduced in
+                                crate::rewrites::gamemaker::rewrite_introduced_calls(system, method)
+                            {
+                                used.insert((*introduced).to_string());
+                            }
+                        }
+                        continue;
+                    }
                     // Sanitize the raw IR name (e.g. `@@SetStatic@@` → `__SetStatic__`)
                     // so it matches the sanitized names stored in runtime.json.
                     used.insert(sanitize_ident(name));
@@ -528,6 +603,7 @@ pub(super) fn collect_class_references(
     }
 
     // Scan all method bodies for type references.
+    let intrinsic_calls = build_intrinsic_calls_map(module);
     for &fid in &group.methods {
         let func = &module.functions[fid];
         collect_type_refs_from_function(
@@ -543,6 +619,7 @@ pub(super) fn collect_class_references(
             unique_static_field_map,
             &module.object_names,
             engine,
+            Some(&intrinsic_calls),
             &mut refs,
         );
     }
@@ -551,6 +628,11 @@ pub(super) fn collect_class_references(
 }
 
 /// Scan a function's instructions and signature for type references.
+///
+/// `intrinsic_calls`: optional map from intrinsic `Op::Call` function names to
+/// `(system, method)` pairs.  Used to handle GML intrinsic calls (which appear
+/// as `Op::Call` in the IR after Phase 3a) with the same import logic as the
+/// equivalent `Op::SystemCall` variants they replaced.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn collect_type_refs_from_function(
     func: &Function,
@@ -565,6 +647,7 @@ pub(super) fn collect_type_refs_from_function(
     unique_static_field_map: &HashMap<String, String>,
     object_names: &[String],
     engine: EngineKind,
+    intrinsic_calls: Option<&HashMap<String, (String, String)>>,
     refs: &mut RefSets,
 ) {
     use reincarnate_core::ir::Constant;
@@ -829,6 +912,70 @@ pub(super) fn collect_type_refs_from_function(
                     // GameMaker SystemCalls not matching the Instance guard above
                     // don't introduce class-constructor imports.
                     EngineKind::GameMaker => {}
+                }
+            }
+            // Intrinsic Op::Call — same import logic as the equivalent Op::SystemCall.
+            // After Phase 3a, GML syscalls appear as Op::Call with a registered
+            // intrinsic name (e.g. "GameMaker.Instance.getField").  The linear
+            // lowering pass will convert them to Expr::SystemCall, so the TS rewrite
+            // passes see the same patterns as before — but we must collect imports here
+            // in the core-IR scanner the same way we do for Op::SystemCall.
+            Op::Call {
+                func: call_name,
+                args,
+            } if intrinsic_calls
+                .and_then(|m| m.get(call_name.as_str()))
+                .is_some() =>
+            {
+                let (system, method) = intrinsic_calls
+                    .and_then(|m| m.get(call_name.as_str()))
+                    .unwrap();
+                match engine {
+                    EngineKind::GameMaker
+                        if system == "GameMaker.Instance"
+                            && (method == "getField"
+                                || method == "setField"
+                                || method == "getOn"
+                                || method == "setOn")
+                            && !args.is_empty() =>
+                    {
+                        if let Some(&obj_idx) = args.first().and_then(|v| const_ints.get(v)) {
+                            if obj_idx >= 0 {
+                                if let Some(obj_name) = object_names.get(obj_idx as usize) {
+                                    if obj_name != self_name {
+                                        if let Some(entry) = registry.lookup(obj_name) {
+                                            refs.value_refs.insert(entry.short_name.clone());
+                                        } else if external_imports.contains_key(obj_name.as_str()) {
+                                            refs.ext_value_refs.insert(obj_name.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if method == "getOn" || method == "setOn" {
+                            crate::rewrites::gamemaker::collect_gamemaker_instance_refs(
+                                args,
+                                &const_strings,
+                                self_name,
+                                self_ts_name,
+                                registry,
+                                external_imports,
+                                refs,
+                            );
+                        }
+                    }
+                    EngineKind::GameMaker
+                        if system == "GameMaker.Global"
+                            && (method == "get" || method == "set")
+                            && !args.is_empty() =>
+                    {
+                        if let Some(field_name) = args.first().and_then(|v| const_strings.get(v)) {
+                            if global_names.contains(*field_name) {
+                                refs.globals_used.insert(field_name.to_string());
+                            }
+                        }
+                    }
+                    _ => {}
                 }
             }
             // GlobalRef to a known class (OBJT in GameMaker) → class constructor

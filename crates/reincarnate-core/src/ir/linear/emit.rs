@@ -651,6 +651,14 @@ impl<'a> EmitCtx<'a> {
                 // operation name (e.g. "builtin.add_f64", "builtin.not_bool").
                 if let Some(builtin_op) = fname.strip_prefix("builtin.") {
                     self.build_builtin_expr(builtin_op, args)
+                } else if let Some((system, method)) = self.config.intrinsic_calls.get(fname) {
+                    // Intrinsic call: lower to Expr::SystemCall so that all
+                    // existing engine-specific backend rewrite passes work unchanged.
+                    Expr::SystemCall {
+                        system: system.clone(),
+                        method: method.clone(),
+                        args: args.iter().map(|a| self.build_val(*a)).collect(),
+                    }
                 } else {
                     Expr::Call {
                         func: fname.clone(),

@@ -334,18 +334,31 @@ fn promote_demands(
 ///
 /// The set of (system, method) pairs is populated by frontends via
 /// `Module::callback_return_calls` — no engine-specific names are hardcoded here.
+///
+/// `callback_return_intrinsics`: canonical names (e.g. `"GameMaker.Instance.withInstances"`)
+/// of intrinsic `Op::Call` functions that are also callback-return calls.  After Phase 3a,
+/// GML syscalls appear as `Op::Call` rather than `Op::SystemCall`.
 fn function_has_callback_return_call(
     func: &Function,
     callback_return_calls: &BTreeMap<(String, String), ()>,
+    callback_return_intrinsics: &std::collections::BTreeSet<String>,
 ) -> bool {
-    if callback_return_calls.is_empty() {
+    if callback_return_calls.is_empty() && callback_return_intrinsics.is_empty() {
         return false;
     }
     for inst_id in func.insts.keys() {
-        if let Op::SystemCall { system, method, .. } = &func.insts[inst_id].op {
-            if callback_return_calls.contains_key(&(system.clone(), method.clone())) {
-                return true;
+        match &func.insts[inst_id].op {
+            Op::SystemCall { system, method, .. } => {
+                if callback_return_calls.contains_key(&(system.clone(), method.clone())) {
+                    return true;
+                }
             }
+            Op::Call { func: name, .. } => {
+                if callback_return_intrinsics.contains(name.as_str()) {
+                    return true;
+                }
+            }
+            _ => {}
         }
     }
     false
@@ -356,6 +369,7 @@ fn function_has_callback_return_call(
 fn infer_bool_return(
     func: &mut Function,
     callback_return_calls: &BTreeMap<(String, String), ()>,
+    callback_return_intrinsics: &std::collections::BTreeSet<String>,
 ) -> bool {
     if func.sig.return_ty != Type::Unknown {
         return false;
@@ -364,7 +378,7 @@ fn infer_bool_return(
     // Skip functions that contain callback-return system calls — the real
     // return value may come from inside a callback and is not visible in the
     // outer function's Op::Return instructions.
-    if function_has_callback_return_call(func, callback_return_calls) {
+    if function_has_callback_return_call(func, callback_return_calls, callback_return_intrinsics) {
         return false;
     }
 
@@ -500,8 +514,30 @@ impl Transform for IntToBoolPromotion {
 
         // Phase 4: Infer Bool return types
         let callback_return_calls = &module.callback_return_calls;
+        // Derive canonical intrinsic call names that are callback-return calls.
+        // After Phase 3a, GML syscalls appear as Op::Call with canonical names
+        // (e.g. "GameMaker.Instance.withInstances") rather than Op::SystemCall.
+        let callback_return_intrinsics: std::collections::BTreeSet<String> = module
+            .runtime_registry
+            .iter()
+            .filter_map(|(name, &fid)| {
+                module.functions[fid].intrinsic.as_ref().and_then(|kind| {
+                    let (sys, meth) = kind.system_method();
+                    let key = (sys.to_string(), meth.to_string());
+                    if callback_return_calls.contains_key(&key) {
+                        Some(name.clone())
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
-            if infer_bool_return(&mut module.functions[func_id], callback_return_calls) {
+            if infer_bool_return(
+                &mut module.functions[func_id],
+                callback_return_calls,
+                &callback_return_intrinsics,
+            ) {
                 changed = true;
             }
         }

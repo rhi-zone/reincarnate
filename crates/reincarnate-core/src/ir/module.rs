@@ -7,7 +7,7 @@ use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
 use super::block::{Block, BlockId};
-use super::func::{FuncId, Function, MethodKind, Visibility};
+use super::func::{FuncId, Function, IntrinsicKind, MethodKind, Visibility};
 use super::inst::Terminator;
 use super::name_table::NameTable;
 use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
@@ -846,12 +846,33 @@ impl Module {
             value_names: HashMap::new(),
             capture_params: Vec::new(),
             null_sentinel_values: std::collections::HashSet::new(),
+            type_rule: None,
+            intrinsic: None,
         };
         let name_id = self.name_table.func_names.push(name.clone());
         let id = self.functions.push(func);
         debug_assert_eq!(id, name_id);
         self.runtime_registry.insert(name, id);
         id
+    }
+
+    /// Register an intrinsic function — like [`register_runtime`] but also sets
+    /// [`Function::intrinsic`] and [`Function::type_rule`] on the stub.
+    ///
+    /// Frontends call this to declare engine syscall replacements that the linear
+    /// emitter will lower back to `Expr::SystemCall { system, method }` so that
+    /// all existing backend rewrite passes work unchanged.
+    pub fn register_runtime_intrinsic(
+        &mut self,
+        name: impl Into<String>,
+        sig: FunctionSig,
+        intrinsic: IntrinsicKind,
+        type_rule: Option<SystemCallTypeRule>,
+    ) -> FuncId {
+        let fid = self.register_runtime(name, sig);
+        self.functions[fid].intrinsic = Some(intrinsic);
+        self.functions[fid].type_rule = type_rule;
+        fid
     }
 
     /// Look up the `FuncId` of a previously registered runtime function.

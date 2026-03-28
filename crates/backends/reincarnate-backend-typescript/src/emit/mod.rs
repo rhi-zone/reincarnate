@@ -26,8 +26,9 @@ pub(crate) use sanitize::sanitize_ident;
 // Use items from sub-modules within this module.
 use class::{compile_closures, emit_class, emit_function, emit_functions, group_by_class};
 use imports::{
-    collect_all_struct_names, collect_call_names_from_funcs, collect_class_references,
-    collect_global_type_imports, collect_system_names_from_funcs, collect_type_refs_from_function,
+    build_intrinsic_calls_map, build_intrinsic_to_system, collect_all_struct_names,
+    collect_call_names_from_funcs, collect_class_references, collect_global_type_imports,
+    collect_system_names_from_funcs, collect_type_refs_from_function,
     compute_transitive_value_imports, emit_external_imports, emit_free_function_imports,
     emit_function_imports_with_prefix, emit_imports, emit_intra_imports, emit_runtime_imports,
     emit_runtime_imports_for, relative_import_path, strip_unused_namespace_imports,
@@ -72,18 +73,50 @@ fn detect_engine(runtime_config: Option<&RuntimeConfig>) -> EngineKind {
 ///   Also sets `foreach_iterator_system = "Flash.Iterator"` (HasNext2 for-of pattern).
 /// - GML: sets `wrap_class_refs_as_any = true` so that `ClassRef`-typed GlobalRef
 ///   values get `as any` at each use site (GML object names double as integer indices).
+///   When `module` is provided, also populates `intrinsic_calls` from registered intrinsics
+///   so that `Op::Call` with an intrinsic function is lowered to `Expr::SystemCall`.
+///   When `module` is `None` and `intrinsic_calls` is already populated (e.g. caller
+///   pre-built the config), the existing map is preserved.
 /// - Twine: sets `output_node_system = ("Harlowe.H", "h")` so that Harlowe output-node
 ///   SystemCalls are lowered to `h.method()` MethodCalls before optimization.
-fn lowering_config_for_engine(
-    config: &LoweringConfig,
+pub(crate) fn lowering_config_for_engine<'a>(
+    config: &'a LoweringConfig,
     engine: EngineKind,
-) -> std::borrow::Cow<'_, LoweringConfig> {
+    module: Option<&Module>,
+) -> std::borrow::Cow<'a, LoweringConfig> {
     let needs_flash = engine == EngineKind::Flash
         && (config.scope_lookup_systems.is_empty()
             || config.foreach_iterator_system.is_none()
             || !config.construct_string_coerce
             || !config.coerce_index_types);
-    let needs_gml = engine == EngineKind::GameMaker && !config.wrap_class_refs_as_any;
+    // Build intrinsic_calls map for GML: name → (system, method).
+    // Only when we have the module AND the map isn't already populated.
+    let gml_intrinsic_calls: Option<std::collections::HashMap<String, (String, String)>> =
+        if engine == EngineKind::GameMaker && config.intrinsic_calls.is_empty() {
+            if let Some(m) = module {
+                let map: std::collections::HashMap<String, (String, String)> = m
+                    .runtime_registry
+                    .iter()
+                    .filter_map(|(name, &fid)| {
+                        m.functions[fid].intrinsic.as_ref().map(|k| {
+                            let (sys, meth) = k.system_method();
+                            (name.clone(), (sys.to_string(), meth.to_string()))
+                        })
+                    })
+                    .collect();
+                if map.is_empty() {
+                    None
+                } else {
+                    Some(map)
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+    let needs_gml = engine == EngineKind::GameMaker
+        && (!config.wrap_class_refs_as_any || gml_intrinsic_calls.is_some());
     let needs_twine = engine == EngineKind::Twine
         && (config.output_node_system.is_none()
             || config.cast_narrowed_syscall_results_for.is_empty()
@@ -98,6 +131,9 @@ fn lowering_config_for_engine(
         }
         if needs_gml {
             c.wrap_class_refs_as_any = true;
+            if let Some(map) = gml_intrinsic_calls {
+                c.intrinsic_calls = map;
+            }
         }
         if needs_twine {
             c.output_node_system = Some(("Harlowe.H".to_string(), "h".to_string()));
@@ -779,7 +815,8 @@ fn emit_class_file(
 
     let mut out = String::new();
     let class_funcs = || group.methods.iter().map(|&fid| &module.functions[fid]);
-    let all_systems = collect_system_names_from_funcs(class_funcs());
+    let intrinsic_to_system = build_intrinsic_to_system(module);
+    let all_systems = collect_system_names_from_funcs(class_funcs(), Some(&intrinsic_to_system));
     // For Flash class files, generic shims and Flash.Memory are accessed via
     // `this._shims` — strip them from the import set (no module-level singleton
     // import needed).
@@ -807,7 +844,8 @@ fn emit_class_file(
         let _ = writeln!(out, "import type {{ FlashShims }} from \"{pref}/runtime\";");
         out.push('\n');
     }
-    let calls = collect_call_names_from_funcs(class_funcs(), engine);
+    let intrinsic_calls_class = build_intrinsic_calls_map(module);
+    let calls = collect_call_names_from_funcs(class_funcs(), engine, Some(&intrinsic_calls_class));
     let func_prefix = "../".repeat(depth + 1);
     let func_prefix = func_prefix.trim_end_matches('/');
     let mut stateful_names = BTreeSet::new();
@@ -1068,7 +1106,9 @@ fn emit_free_functions_file(
         .filter(|(raw, ts)| raw != ts)
         .map(|(raw, ts)| (raw.clone(), ts.clone()))
         .collect();
-    let all_free_systems = collect_system_names_from_funcs(free_fn_iter());
+    let intrinsic_to_system = build_intrinsic_to_system(module);
+    let all_free_systems =
+        collect_system_names_from_funcs(free_fn_iter(), Some(&intrinsic_to_system));
     // Flash.Memory is per-instance (accessed via _shims) — no module-level import.
     let systems = if engine == EngineKind::Flash {
         all_free_systems
@@ -1080,7 +1120,8 @@ fn emit_free_functions_file(
     };
     let mut _free_sys_aliases = BTreeMap::new();
     emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
-    let calls = collect_call_names_from_funcs(free_fn_iter(), engine);
+    let intrinsic_calls_free = build_intrinsic_calls_map(module);
+    let calls = collect_call_names_from_funcs(free_fn_iter(), engine, Some(&intrinsic_calls_free));
     let mut free_stateful_names = BTreeSet::new();
     emit_function_imports_with_prefix(
         &calls,
@@ -1123,6 +1164,7 @@ fn emit_free_functions_file(
     }
 
     // Scan free functions for external class references.
+    let intrinsic_calls_free = build_intrinsic_calls_map(module);
     let mut refs = RefSets::default();
     for &fid in free_funcs {
         let func = &module.functions[fid];
@@ -1139,6 +1181,7 @@ fn emit_free_functions_file(
             &HashMap::new(),
             &object_ts_names,
             engine,
+            Some(&intrinsic_calls_free),
             &mut refs,
         );
     }
@@ -1285,7 +1328,12 @@ pub fn emit_module_to_dir(
     rename_colliding_free_funcs(module, &free_funcs, &known_classes);
 
     // Rename local variables that shadow imported function names (e.g. `int`).
-    let imported_names = collect_call_names_from_funcs(module.functions.values(), engine);
+    let intrinsic_calls_global = build_intrinsic_calls_map(module);
+    let imported_names = collect_call_names_from_funcs(
+        module.functions.values(),
+        engine,
+        Some(&intrinsic_calls_global),
+    );
     rename_shadowing_locals(module, &imported_names);
 
     // Rebuild free_func_names after potential renames.

@@ -9,7 +9,7 @@
 //! This module also owns the [`TypeVarArena`] and HM unifier primitives
 //! ([`resolve`], [`occurs`], [`bind_var`], [`unify`]) used by the solver pass.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::entity::EntityRef;
 use crate::error::CoreError;
@@ -488,6 +488,72 @@ pub(crate) fn is_concrete(ty: &Type) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Type-rule constraint emission helper
+// ---------------------------------------------------------------------------
+
+/// Emit type constraints for a `SystemCallTypeRule` applied to a call site.
+///
+/// Used by both the `Op::SystemCall` and intrinsic `Op::Call` handlers so
+/// the rule dispatch logic is not duplicated.
+#[allow(clippy::too_many_arguments)]
+fn emit_type_rule_constraints(
+    rule: &SystemCallTypeRule,
+    args: &[ValueId],
+    result_var: Option<Type>,
+    const_strings: &HashMap<ValueId, &str>,
+    global_name_vars: &HashMap<String, TypeVarId>,
+    value_vars: &HashMap<ValueId, TypeVarId>,
+    constraints: &mut Vec<TypeConstraint>,
+) {
+    // Inline var_for: map a ValueId to its TypeVar as a Type::Var.
+    let var_for = |v: ValueId| -> Option<Type> { value_vars.get(&v).copied().map(Type::Var) };
+    match rule {
+        SystemCallTypeRule::GlobalStore {
+            name_arg,
+            value_arg,
+        } => {
+            if let Some(name) = args
+                .get(*name_arg)
+                .and_then(|&v| const_strings.get(&v).copied())
+            {
+                if let Some(&gvar) = global_name_vars.get(name) {
+                    if let Some(val_var) = args.get(*value_arg).and_then(|&v| var_for(v)) {
+                        constraints.push(TypeConstraint::Equal(val_var, Type::Var(gvar)));
+                    }
+                }
+            }
+        }
+        SystemCallTypeRule::ResolveGlobalType => {
+            if let (Some(name), Some(rv)) = (
+                args.first().and_then(|&v| const_strings.get(&v).copied()),
+                result_var,
+            ) {
+                if let Some(&gvar) = global_name_vars.get(name) {
+                    constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
+                }
+            }
+        }
+        SystemCallTypeRule::ResolveInstanceField => {
+            // args[0] = receiver, args[1] = field name (const string).
+            if let (Some(recv_var), Some(rv)) = (args.first().and_then(|&v| var_for(v)), result_var)
+            {
+                if let Some(field) = args.get(1).and_then(|&v| const_strings.get(&v).copied()) {
+                    constraints.push(TypeConstraint::HasField {
+                        ty: recv_var,
+                        field: field.to_string(),
+                        field_ty: rv,
+                    });
+                }
+            }
+        }
+        // Other rules don't emit constraints in the collector.
+        SystemCallTypeRule::ResolveGlobalTypeStructOnly { .. }
+        | SystemCallTypeRule::ResolveClassName
+        | SystemCallTypeRule::ConstructFromFirstArgType => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
 // collect_function
 // ---------------------------------------------------------------------------
 
@@ -548,63 +614,24 @@ pub fn collect_function(
         .map(|fid| (module.func_name(fid), &module.functions[fid].sig))
         .collect();
 
-    // -----------------------------------------------------------------------
-    // Pre-compute SystemCall rule tables and const-string map.
-    //
-    // These are used in Phase 2 to emit GlobalStore / ResolveGlobalType
-    // constraints that link write/read values to global TypeVars.
-    // -----------------------------------------------------------------------
-    let store_rules: HashMap<(&str, &str), (usize, usize)> = module
-        .system_call_type_rules
+    // Intrinsic Op::Call rule lookup: call name → type rule.
+    // Intrinsic functions registered via `register_runtime_intrinsic` carry a
+    // `type_rule` on the Function rather than in system_call_type_rules.
+    let intrinsic_type_rules: HashMap<&str, &SystemCallTypeRule> = module
+        .runtime_registry
         .iter()
-        .filter_map(|((sys, meth), rule)| {
-            if let SystemCallTypeRule::GlobalStore {
-                name_arg,
-                value_arg,
-            } = rule
-            {
-                Some(((sys.as_str(), meth.as_str()), (*name_arg, *value_arg)))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // Only ResolveGlobalType (e.g. State.get) emits Equal constraints.
-    // ResolveGlobalTypeStructOnly (e.g. Engine.resolve) is excluded: it is
-    // also used for JS built-ins whose default TS overload returns `unknown`,
-    // so linking those calls through a shared global TypeVar causes false
-    // TS2571 regressions when unrelated uses constrain the TypeVar unexpectedly.
-    let resolve_rules: HashSet<(&str, &str)> = module
-        .system_call_type_rules
-        .iter()
-        .filter_map(|((sys, meth), rule)| {
-            if matches!(rule, SystemCallTypeRule::ResolveGlobalType) {
-                Some((sys.as_str(), meth.as_str()))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    // ResolveInstanceField (e.g. GameMaker.Instance.getField / getOn): emit HasField
-    // constraints so the solver can propagate field types once the receiver type is known.
-    let field_rules: HashSet<(&str, &str)> = module
-        .system_call_type_rules
-        .iter()
-        .filter_map(|((sys, meth), rule)| {
-            if matches!(rule, SystemCallTypeRule::ResolveInstanceField) {
-                Some((sys.as_str(), meth.as_str()))
-            } else {
-                None
-            }
+        .filter_map(|(name, &fid)| {
+            module.functions[fid]
+                .type_rule
+                .as_ref()
+                .map(|rule| (name.as_str(), rule))
         })
         .collect();
 
     // Const-string map: ValueId → string literal value.
-    // Only built when there are SystemCall rules to process.
+    // Only built when there are SystemCall or intrinsic-Call rules to process.
     let const_strings: HashMap<ValueId, &str> =
-        if store_rules.is_empty() && resolve_rules.is_empty() && field_rules.is_empty() {
+        if module.system_call_type_rules.is_empty() && intrinsic_type_rules.is_empty() {
             HashMap::new()
         } else {
             func.insts
@@ -736,63 +763,31 @@ pub fn collect_function(
                     }
                 }
 
-                // SystemCall — emit GlobalStore / ResolveGlobalType constraints.
-                //
-                // GlobalStore: the written value's type must equal the global's type.
-                // ResolveGlobalType: the result's type must equal the global's type.
-                // Both use the global's shared TypeVarId from global_name_vars.
+                // SystemCall — emit GlobalStore / ResolveGlobalType / ResolveInstanceField
+                // constraints.  The rule is looked up directly in system_call_type_rules.
                 Op::SystemCall {
                     system,
                     method,
                     args,
                 } => {
-                    let key = (system.as_str(), method.as_str());
-                    if let Some(&(name_arg, value_arg)) = store_rules.get(&key) {
-                        if let Some(name) = args
-                            .get(name_arg)
-                            .and_then(|&v| const_strings.get(&v).copied())
-                        {
-                            if let Some(&gvar) = global_name_vars.get(name) {
-                                if let Some(val_var) =
-                                    args.get(value_arg).and_then(|&v| var_for(v, &value_vars))
-                                {
-                                    constraints
-                                        .push(TypeConstraint::Equal(val_var, Type::Var(gvar)));
-                                }
-                            }
-                        }
-                    } else if resolve_rules.contains(&key) {
-                        if let (Some(name), Some(rv)) = (
-                            args.first().and_then(|&v| const_strings.get(&v).copied()),
+                    let key = (system.clone(), method.clone());
+                    if let Some(rule) = module.system_call_type_rules.get(&key) {
+                        emit_type_rule_constraints(
+                            rule,
+                            args,
                             result_var,
-                        ) {
-                            if let Some(&gvar) = global_name_vars.get(name) {
-                                constraints.push(TypeConstraint::Equal(rv, Type::Var(gvar)));
-                            }
-                        }
-                    } else if field_rules.contains(&key) {
-                        // ResolveInstanceField: emit HasField so the solver can propagate the
-                        // field type once the receiver type is known (deferred if still Var).
-                        // args[0] = receiver, args[1] = field name (const string).
-                        if let (Some(recv_var), Some(rv)) = (
-                            args.first().and_then(|&v| var_for(v, &value_vars)),
-                            result_var,
-                        ) {
-                            if let Some(field) =
-                                args.get(1).and_then(|&v| const_strings.get(&v).copied())
-                            {
-                                constraints.push(TypeConstraint::HasField {
-                                    ty: recv_var,
-                                    field: field.to_string(),
-                                    field_ty: rv,
-                                });
-                            }
-                        }
+                            &const_strings,
+                            global_name_vars,
+                            &value_vars,
+                            &mut constraints,
+                        );
                     }
                 }
 
                 // Call — constrain result to callee's return type and args to
                 // callee's param types (when those types are concrete).
+                // Also apply GlobalStore / ResolveGlobalType / ResolveInstanceField rules
+                // for registered intrinsic calls (Phase 3a: formerly Op::SystemCall).
                 Op::Call {
                     func: callee_name,
                     args,
@@ -816,6 +811,18 @@ pub fn collect_function(
                                 }
                             }
                         }
+                    }
+                    // Intrinsic type rules: same constraint logic as Op::SystemCall.
+                    if let Some(rule) = intrinsic_type_rules.get(callee_name.as_str()) {
+                        emit_type_rule_constraints(
+                            rule,
+                            args,
+                            result_var,
+                            &const_strings,
+                            global_name_vars,
+                            &value_vars,
+                            &mut constraints,
+                        );
                     }
                 }
 

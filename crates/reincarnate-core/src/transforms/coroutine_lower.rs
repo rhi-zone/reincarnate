@@ -512,6 +512,8 @@ fn build_resume_function(
         value_names: std::collections::HashMap::new(),
         capture_params: Vec::new(),
         null_sentinel_values: std::collections::HashSet::new(),
+        type_rule: None,
+        intrinsic: None,
     }
 }
 

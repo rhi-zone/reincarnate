@@ -461,14 +461,13 @@ fn test_popenv_fall_through_reaches_post_with_code() {
         "MakeClosure must appear for with-block; ops: {ops:?}"
     );
 
-    // withInstances syscall must appear.
-    let has_with_instances = ops.iter().any(|op| {
-        matches!(op, Op::SystemCall { system, method, .. }
-            if system == "GameMaker.Instance" && method == "withInstances")
-    });
+    // withInstances intrinsic call must appear.
+    let has_with_instances = ops.iter().any(
+        |op| matches!(op, Op::Call { func, .. } if func == "GameMaker.Instance.withInstances"),
+    );
     assert!(
         has_with_instances,
-        "withInstances syscall must appear; ops: {ops:?}"
+        "withInstances intrinsic call must appear; ops: {ops:?}"
     );
 
     // An extra closure function must have been extracted.
@@ -503,7 +502,7 @@ fn test_popenv_fall_through_reaches_post_with_code() {
 /// GMS1 encodes `argument[N]` as a 2D array read with `ref_type=0`:
 ///   PushI -1 (dim2), PushI N (dim1), Push.v.v argument
 /// The translator must recognize this and map it to the Nth function parameter,
-/// not emit a `SystemCall("GameMaker.Instance", "getField", ...)`.
+/// not emit an intrinsic call `Op::Call { func: "GameMaker.Instance.getField", ... }`.
 #[test]
 fn test_argument_2d_array_push_maps_to_param() {
     // offset 0: PushI.i -1     (dim2, don't care)   4 bytes
@@ -540,14 +539,14 @@ fn test_argument_2d_array_push_maps_to_param() {
     let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx).expect("translation failed");
     let ops = collect_ops(&func);
 
-    // Must NOT fall back to a SystemCall (getField / getOn).
+    // Must NOT fall back to an intrinsic call (getField / getOn).
     let has_syscall = ops.iter().any(|op| {
-        matches!(op, Op::SystemCall { system, method, .. }
-            if system == "GameMaker.Instance" && (method == "getField" || method == "getOn"))
+        matches!(op, Op::Call { func, .. }
+            if func == "GameMaker.Instance.getField" || func == "GameMaker.Instance.getOn")
     });
     assert!(
         !has_syscall,
-        "argument[N] must map to param, not syscall; ops: {ops:?}"
+        "argument[N] must map to param, not intrinsic call; ops: {ops:?}"
     );
 
     // The function must have been given 2 params (argument0, argument1)

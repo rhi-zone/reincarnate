@@ -8,8 +8,68 @@ use crate::entity::PrimaryMap;
 use super::block::{Block, BlockId};
 use super::coroutine::CoroutineInfo;
 use super::inst::{Inst, InstId, Op};
+use super::module::SystemCallTypeRule;
 use super::ty::{FunctionSig, Type};
 use super::value::ValueId;
+
+/// The native backend behavior for an intrinsic function.
+///
+/// When a `Function` has `intrinsic: Some(kind)`, the IR-to-AST linear emitter
+/// translates `Op::Call { func: name, args }` into `Expr::SystemCall { system, method, args }`
+/// so that all existing engine-specific rewrite passes work unchanged.
+///
+/// The (system, method) mapping is defined by [`IntrinsicKind::system_method`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum IntrinsicKind {
+    // GameMaker engine intrinsics — see `system_method()` for (system, method) mapping.
+    GameMakerGetField,
+    GameMakerSetField,
+    GameMakerGetOn,
+    GameMakerSetOn,
+    GameMakerGetOther,
+    GameMakerSetOther,
+    GameMakerGetAll,
+    GameMakerSetAll,
+    GameMakerWithInstances,
+    GameMakerGlobalGet,
+    GameMakerGlobalSet,
+    GameMakerArgumentGet,
+    GameMakerDebugBreak,
+}
+
+impl IntrinsicKind {
+    /// Return the `(system, method)` pair that this intrinsic maps to.
+    ///
+    /// Used by the linear emitter to lower `Op::Call` with an intrinsic function
+    /// into `Expr::SystemCall { system, method, args }` so that all downstream
+    /// engine-specific rewrite passes remain unchanged.
+    pub fn system_method(&self) -> (&'static str, &'static str) {
+        match self {
+            IntrinsicKind::GameMakerGetField => ("GameMaker.Instance", "getField"),
+            IntrinsicKind::GameMakerSetField => ("GameMaker.Instance", "setField"),
+            IntrinsicKind::GameMakerGetOn => ("GameMaker.Instance", "getOn"),
+            IntrinsicKind::GameMakerSetOn => ("GameMaker.Instance", "setOn"),
+            IntrinsicKind::GameMakerGetOther => ("GameMaker.Instance", "getOther"),
+            IntrinsicKind::GameMakerSetOther => ("GameMaker.Instance", "setOther"),
+            IntrinsicKind::GameMakerGetAll => ("GameMaker.Instance", "getAll"),
+            IntrinsicKind::GameMakerSetAll => ("GameMaker.Instance", "setAll"),
+            IntrinsicKind::GameMakerWithInstances => ("GameMaker.Instance", "withInstances"),
+            IntrinsicKind::GameMakerGlobalGet => ("GameMaker.Global", "get"),
+            IntrinsicKind::GameMakerGlobalSet => ("GameMaker.Global", "set"),
+            IntrinsicKind::GameMakerArgumentGet => ("GameMaker.Argument", "get"),
+            IntrinsicKind::GameMakerDebugBreak => ("GameMaker.Debug", "break"),
+        }
+    }
+
+    /// Return the canonical call name used in `Op::Call { func: name }`.
+    ///
+    /// Formed as `system + "." + method` where the system already uses dots,
+    /// e.g. `"GameMaker.Instance.getField"`.
+    pub fn call_name(&self) -> String {
+        let (system, method) = self.system_method();
+        format!("{system}.{method}")
+    }
+}
 
 define_entity!(FuncId);
 
@@ -105,6 +165,26 @@ pub struct Function {
     /// would need to be either serialized or the sentinel logic made reconstructable.
     #[serde(skip)]
     pub null_sentinel_values: HashSet<ValueId>,
+    /// Type rule for syscall-replacement functions.
+    ///
+    /// When set, the constraint collector and HM solver use this rule to infer
+    /// the result type of `Op::Call` invocations targeting this function,
+    /// exactly as they would for `Op::SystemCall` entries in `system_call_type_rules`.
+    ///
+    /// `None` for regular (non-intrinsic) functions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub type_rule: Option<SystemCallTypeRule>,
+    /// Intrinsic kind — how the backend should emit this function.
+    ///
+    /// When `Some`, the linear emitter lowers `Op::Call { func: name }` to
+    /// `Expr::SystemCall { system, method, args }` using [`IntrinsicKind::system_method`],
+    /// so that all existing engine-specific rewrite passes work unchanged.
+    ///
+    /// `None` for regular functions (emitted as a plain call).
+    ///
+    /// Not serialized — rebuilt by the frontend on every run.
+    #[serde(skip)]
+    pub intrinsic: Option<IntrinsicKind>,
 }
 
 impl Function {

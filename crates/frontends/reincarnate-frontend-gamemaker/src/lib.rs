@@ -17,7 +17,7 @@ use std::fs;
 use datawin::DataWin;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
-use reincarnate_core::ir::func::{MethodKind, Visibility};
+use reincarnate_core::ir::func::{IntrinsicKind, MethodKind, Visibility};
 use reincarnate_core::ir::module::{Global, Module, SystemCallTypeRule};
 use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
@@ -245,30 +245,11 @@ impl Frontend for GameMakerFrontend {
         // may still use the result.
         module.implicit_return_value = true;
 
-        // Register SystemCall type inference rules for the GML engine.
-        module.system_call_type_rules.insert(
-            ("GameMaker.Global".into(), "get".into()),
-            SystemCallTypeRule::ResolveGlobalType,
-        );
-        module.system_call_type_rules.insert(
-            ("GameMaker.Global".into(), "set".into()),
-            SystemCallTypeRule::GlobalStore {
-                name_arg: 0,
-                value_arg: 1,
-            },
-        );
-        module.system_call_type_rules.insert(
-            ("GameMaker.Instance".into(), "getField".into()),
-            SystemCallTypeRule::ResolveInstanceField,
-        );
-        // getOn reads a field from an arbitrary object reference (cross-object
-        // field access, `other.field`, `with`-target fields, etc.).  The
-        // argument layout mirrors getField: args[0] = receiver, args[1] = field
-        // name.  When the receiver is Instance-typed, resolve the field type.
-        module.system_call_type_rules.insert(
-            ("GameMaker.Instance".into(), "getOn".into()),
-            SystemCallTypeRule::ResolveInstanceField,
-        );
+        // Register GML syscall intrinsics.  Each intrinsic is a typed Op::Call
+        // whose IntrinsicKind encodes the (system, method) pair.  The linear
+        // lowering pass maps them back to Expr::SystemCall so all downstream
+        // rewrite passes see the same patterns as before.
+        register_gml_syscall_intrinsics(&mut module);
 
         // Register callback-return system calls for the GML engine.
         // withInstances callbacks hide the real return value from the outer function.
@@ -1163,4 +1144,113 @@ fn add_extension_stubs(
 
         mb.add_function(fb.build());
     }
+}
+
+/// Register all GML syscall intrinsics on the module.
+///
+/// Each intrinsic is assigned an [`IntrinsicKind`] so the linear lowering pass
+/// can emit it as `Expr::SystemCall { system, method, args }` rather than a
+/// free-function call.  The type rules are attached to the function so the
+/// constraint collector can handle `Op::Call` for these exactly as it did for
+/// the equivalent `Op::SystemCall` ops.
+///
+/// Signatures use empty param lists to avoid adding new sig-based constraints
+/// (the type rules handle all necessary inference).
+fn register_gml_syscall_intrinsics(module: &mut Module) {
+    // Getter sig: unknown return type, no params (type rules handle inference).
+    let getter = FunctionSig {
+        return_ty: Type::Unknown,
+        ..Default::default()
+    };
+    // Void setter sig.
+    let setter = FunctionSig::default();
+
+    // GameMaker.Instance field accessors.
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.getField",
+        getter.clone(),
+        IntrinsicKind::GameMakerGetField,
+        Some(SystemCallTypeRule::ResolveInstanceField),
+    );
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.setField",
+        setter.clone(),
+        IntrinsicKind::GameMakerSetField,
+        None,
+    );
+    // GameMaker.Instance cross-object field accessors.
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.getOn",
+        getter.clone(),
+        IntrinsicKind::GameMakerGetOn,
+        Some(SystemCallTypeRule::ResolveInstanceField),
+    );
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.setOn",
+        setter.clone(),
+        IntrinsicKind::GameMakerSetOn,
+        None,
+    );
+    // GameMaker.Instance other/all accessors.
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.getOther",
+        getter.clone(),
+        IntrinsicKind::GameMakerGetOther,
+        None,
+    );
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.setOther",
+        setter.clone(),
+        IntrinsicKind::GameMakerSetOther,
+        None,
+    );
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.getAll",
+        getter.clone(),
+        IntrinsicKind::GameMakerGetAll,
+        None,
+    );
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.setAll",
+        setter.clone(),
+        IntrinsicKind::GameMakerSetAll,
+        None,
+    );
+    // GameMaker.Instance.withInstances — callback return type varies.
+    module.register_runtime_intrinsic(
+        "GameMaker.Instance.withInstances",
+        getter.clone(),
+        IntrinsicKind::GameMakerWithInstances,
+        None,
+    );
+    // GameMaker.Global get/set.
+    module.register_runtime_intrinsic(
+        "GameMaker.Global.get",
+        getter.clone(),
+        IntrinsicKind::GameMakerGlobalGet,
+        Some(SystemCallTypeRule::ResolveGlobalType),
+    );
+    module.register_runtime_intrinsic(
+        "GameMaker.Global.set",
+        setter.clone(),
+        IntrinsicKind::GameMakerGlobalSet,
+        Some(SystemCallTypeRule::GlobalStore {
+            name_arg: 0,
+            value_arg: 1,
+        }),
+    );
+    // GameMaker.Argument.get.
+    module.register_runtime_intrinsic(
+        "GameMaker.Argument.get",
+        getter.clone(),
+        IntrinsicKind::GameMakerArgumentGet,
+        None,
+    );
+    // GameMaker.Debug.break.
+    module.register_runtime_intrinsic(
+        "GameMaker.Debug.break",
+        setter,
+        IntrinsicKind::GameMakerDebugBreak,
+        None,
+    );
 }

@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "path": "crates/reincarnate-core/src/transforms/bool_literal_return.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 155.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/call_site_flow.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 141.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/call_site_widen.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 83.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/cfg_simplify.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 381.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/const_fold.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 446.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/constraint_collect.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 350.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/constraint_solve2.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 387.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/constraint_solve.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 427.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/constructor_struct_infer.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 96.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/coroutine_lower.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 215.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/dce.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 230.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/interaction_tests.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 12.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/int_to_bool.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 294.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/mem2reg.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 354.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/mod.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 11.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/red_cast_elim.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 78.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/stress_tests.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 86.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/type_infer.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 848.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/util.rs",
+      "metric": "complexity",
+      "aggregate": "sum",
+      "value": 225.0
+    }
+  ]
+}

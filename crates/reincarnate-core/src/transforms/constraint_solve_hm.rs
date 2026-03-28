@@ -266,6 +266,71 @@ impl Transform for ConstraintSolveHM {
             }
         }
 
+        // Pre-scan for undeclared global names used in intrinsic Op::Call ops
+        // (Phase 3a: GML syscalls registered via register_runtime_intrinsic carry
+        // their type rule on Function::type_rule rather than system_call_type_rules).
+        let intrinsic_has_globals = module.runtime_registry.values().any(|&fid| {
+            matches!(
+                module.functions[fid].type_rule,
+                Some(
+                    SystemCallTypeRule::GlobalStore { .. }
+                        | SystemCallTypeRule::ResolveGlobalType
+                        | SystemCallTypeRule::ResolveGlobalTypeStructOnly { .. }
+                )
+            )
+        });
+        if intrinsic_has_globals {
+            // Build name → name_arg index map for intrinsics with global rules.
+            let intrinsic_global_rules: HashMap<&str, usize> = module
+                .runtime_registry
+                .iter()
+                .filter_map(|(name, &fid)| {
+                    let name_arg = match module.functions[fid].type_rule {
+                        Some(SystemCallTypeRule::GlobalStore { name_arg, .. }) => name_arg,
+                        Some(
+                            SystemCallTypeRule::ResolveGlobalType
+                            | SystemCallTypeRule::ResolveGlobalTypeStructOnly { .. },
+                        ) => 0,
+                        _ => return None,
+                    };
+                    Some((name.as_str(), name_arg))
+                })
+                .collect();
+
+            for func in module.functions.values() {
+                let const_strings: HashMap<ValueId, &str> = func
+                    .insts
+                    .values()
+                    .filter_map(|inst| {
+                        if let Op::Const(Constant::String(s)) = &inst.op {
+                            Some((inst.result?, s.as_str()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                for inst in func.insts.values() {
+                    if let Op::Call {
+                        func: call_name,
+                        args,
+                    } = &inst.op
+                    {
+                        let Some(&name_arg) = intrinsic_global_rules.get(call_name.as_str()) else {
+                            continue;
+                        };
+                        if name_arg < args.len() {
+                            if let Some(name) = const_strings.get(&args[name_arg]) {
+                                global_name_vars
+                                    .entry(name.to_string())
+                                    .or_insert_with(|| arena.fresh());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // -----------------------------------------------------------------------
         // Step 2: collect constraints from all functions into the shared arena.
         // -----------------------------------------------------------------------

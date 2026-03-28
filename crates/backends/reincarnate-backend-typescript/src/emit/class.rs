@@ -135,7 +135,14 @@ pub(super) fn emit_functions(
         .copied()
         .filter(|&fid| module.functions[fid].method_kind == MethodKind::Closure)
         .collect();
-    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
+    // Pre-build effective lowering config with GML intrinsic_calls populated from
+    // the module so that Op::Call with intrinsic functions is lowered to
+    // Expr::SystemCall by the linear emitter. This config is passed to all
+    // downstream emit functions so they don't need direct module access.
+    let effective_lowering = lowering_config_for_engine(lowering_config, engine, Some(module));
+    let effective_lowering_ref: &LoweringConfig = &effective_lowering;
+    let closure_bodies =
+        compile_closures(&closure_fids, module, effective_lowering_ref, engine, debug);
     let object_ts_names = resolve_object_ts_names(&module.object_names, class_names);
     let name_map: HashMap<String, String> = module
         .object_names
@@ -154,7 +161,7 @@ pub(super) fn emit_functions(
                 class_names,
                 known_classes,
                 mutable_global_names,
-                lowering_config,
+                effective_lowering_ref,
                 engine,
                 &module.sprite_names,
                 &object_ts_names,
@@ -207,7 +214,7 @@ pub(super) fn emit_function(
 
     func.hoist_allocs();
     let shape = structurize::structurize(func);
-    let effective_config = lowering_config_for_engine(lowering_config, engine);
+    let effective_config = lowering_config_for_engine(lowering_config, engine, None);
     let ast = linear::lower_function_linear(
         func,
         &func.name,
@@ -631,8 +638,19 @@ pub(super) fn emit_class(
                 module.classes.iter().any(|c| c.name == base)
             });
 
+    // Pre-build effective lowering config with GML intrinsic_calls so that
+    // Op::Call with intrinsic functions is lowered to Expr::SystemCall.
+    let effective_lowering_for_class =
+        lowering_config_for_engine(lowering_config, engine, Some(module));
+    let effective_lowering_class_ref: &LoweringConfig = &effective_lowering_for_class;
     // Compile closure bodies for inlining as arrow functions.
-    let closure_bodies = compile_closures(&closure_fids, module, lowering_config, engine, debug);
+    let closure_bodies = compile_closures(
+        &closure_fids,
+        module,
+        effective_lowering_class_ref,
+        engine,
+        debug,
+    );
     let object_ts_names = resolve_object_ts_names(&module.object_names, class_names);
     let name_map: HashMap<String, String> = module
         .object_names
@@ -680,7 +698,7 @@ pub(super) fn emit_class(
             &closure_bodies,
             known_classes,
             &class_meta.unique_static_field_map,
-            lowering_config,
+            effective_lowering_class_ref,
             engine,
             &module.sprite_names,
             &object_ts_names,
@@ -841,7 +859,7 @@ pub(super) fn compile_closures(
 ) -> HashMap<String, JsFunction> {
     use reincarnate_core::ir::linear;
 
-    let effective_config = lowering_config_for_engine(lowering_config, engine);
+    let effective_config = lowering_config_for_engine(lowering_config, engine, Some(module));
     let mut result = HashMap::new();
     for &fid in closure_fids {
         let func = &mut module.functions[fid];
@@ -941,7 +959,7 @@ fn emit_class_method(
 
     func.hoist_allocs();
     let shape = structurize::structurize(func);
-    let effective_config = lowering_config_for_engine(lowering_config, engine);
+    let effective_config = lowering_config_for_engine(lowering_config, engine, None);
     let ast = linear::lower_function_linear(
         func,
         &func.name,

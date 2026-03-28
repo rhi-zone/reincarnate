@@ -804,7 +804,7 @@ fn run_translation_loop(
                 } else {
                     Type::Void
                 };
-                let with_result = fb.system_call(
+                let with_result = fb.gml_syscall(
                     "GameMaker.Instance",
                     "withInstances",
                     &[target_obj, closure_val],
