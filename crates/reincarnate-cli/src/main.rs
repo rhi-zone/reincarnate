@@ -234,6 +234,11 @@ enum Command {
         #[arg(long)]
         function: Option<String>,
     },
+    /// Look up a GML function in the local manual.
+    GmlDocs {
+        /// The GML function name to look up (e.g. "string", "array_length").
+        function: String,
+    },
     /// Inspect the runtime.json for a project: list signatures, show a specific
     /// function signature, or validate the runtime config.
     InspectRuntime {
@@ -2466,6 +2471,309 @@ fn cmd_list(sort: &SortOrder, json: bool) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
+// gml-docs command
+// ---------------------------------------------------------------------------
+
+/// Walk `dir` recursively looking for a file named `<name>.htm` (case-sensitive).
+fn find_htm_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    let target = format!("{}.htm", name);
+    let entries = fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_name = entry.file_name();
+        let file_name_str = file_name.to_string_lossy();
+        if path.is_dir() {
+            if let Some(found) = find_htm_file(&path, name) {
+                return Some(found);
+            }
+        } else if file_name_str == target {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Walk up from `start` until we find a directory containing `.gml-manual`.
+fn find_gml_manual_root(start: &Path) -> Option<PathBuf> {
+    let mut dir = if start.is_dir() {
+        start.to_path_buf()
+    } else {
+        start.parent()?.to_path_buf()
+    };
+    loop {
+        let candidate = dir.join(".gml-manual");
+        if candidate.is_dir() {
+            return Some(candidate);
+        }
+        if !dir.pop() {
+            return None;
+        }
+    }
+}
+
+/// Strip all HTML tags from `s`.
+fn strip_tags(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut in_tag = false;
+    for ch in s.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Decode common HTML entities.
+fn decode_entities(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&#160;", " ")
+}
+
+/// Strip tags and decode entities, then trim whitespace.
+fn clean(s: &str) -> String {
+    decode_entities(&strip_tags(s))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn cmd_gml_docs(function: &str) -> Result<()> {
+    // Locate the .gml-manual directory by walking up from the current executable.
+    let manual_root = if let Ok(exe) = std::env::current_exe() {
+        find_gml_manual_root(&exe)
+    } else {
+        None
+    }
+    .or_else(|| {
+        // Fall back to walking up from the current working directory.
+        std::env::current_dir()
+            .ok()
+            .and_then(|cwd| find_gml_manual_root(&cwd))
+    })
+    .or_else(|| {
+        // Fall back to $GML_MANUAL_PATH env var.
+        std::env::var("GML_MANUAL_PATH")
+            .ok()
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+    });
+
+    let manual_root = manual_root
+        .ok_or_else(|| anyhow::anyhow!("Could not find .gml-manual directory. Set GML_MANUAL_PATH to the .gml-manual directory."))?;
+
+    let contents_dir = manual_root.join("Manual").join("contents");
+    if !contents_dir.is_dir() {
+        bail!(
+            "Expected Manual/contents/ under {}, but it does not exist.",
+            manual_root.display()
+        );
+    }
+
+    let htm_path = find_htm_file(&contents_dir, function)
+        .ok_or_else(|| anyhow::anyhow!("No manual page found for '{}'.", function))?;
+
+    let html = fs::read_to_string(&htm_path)
+        .with_context(|| format!("Failed to read {}", htm_path.display()))?;
+
+    // -----------------------------------------------------------------------
+    // Parse the HTML into structured sections.
+    // -----------------------------------------------------------------------
+
+    // 1. One-line description: the first <p>...</p> after the <h1>.
+    let description = {
+        let after_h1 = html.find("</h1>").map(|i| &html[i + 5..]).unwrap_or(&html);
+        // Find the first <p> tag that has actual text (skip empty ones).
+        let mut desc = String::new();
+        let mut search = after_h1;
+        while let Some(p_start) = search.find("<p") {
+            // Find the closing >
+            if let Some(tag_end) = search[p_start..].find('>') {
+                let content_start = p_start + tag_end + 1;
+                if let Some(p_end) = search[content_start..].find("</p>") {
+                    let raw = &search[content_start..content_start + p_end];
+                    let text = clean(raw);
+                    if !text.is_empty() && !text.chars().all(|c| c == ' ') {
+                        // Take just the first sentence.
+                        let first_sentence = text
+                            .split(". ")
+                            .next()
+                            .map(|s| {
+                                if s.ends_with('.') {
+                                    s.to_string()
+                                } else {
+                                    format!("{}.", s)
+                                }
+                            })
+                            .unwrap_or_else(|| text.clone());
+                        desc = first_sentence;
+                        break;
+                    }
+                    search = &search[content_start + p_end + 4..];
+                } else {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+        desc
+    };
+
+    // 2. Syntax line: the <p class="code"> immediately after "Syntax:" heading.
+    let syntax = {
+        let mut s = String::new();
+        if let Some(syn_pos) = html.to_lowercase().find(">syntax:") {
+            let after = &html[syn_pos..];
+            if let Some(code_start) = after.find("<p class=\"code\">") {
+                let inner_start = code_start + "<p class=\"code\">".len();
+                let inner = &after[inner_start..];
+                if let Some(code_end) = inner.find("</p>") {
+                    s = clean(&inner[..code_end]);
+                }
+            }
+        }
+        s
+    };
+
+    // 3. Argument table: rows in <table> with 3 <td> columns.
+    let args: Vec<(String, String, String)> = {
+        let mut rows = Vec::new();
+        // Find the table (skip the header row with <th>).
+        let mut search = html.as_str();
+        while let Some(tr_start) = search.find("<tr>") {
+            let after_tr = &search[tr_start + 4..];
+            if let Some(tr_end) = after_tr.find("</tr>") {
+                let row_html = &after_tr[..tr_end];
+                // Collect all <td>...</td> contents.
+                let mut cells: Vec<String> = Vec::new();
+                let mut cell_search = row_html;
+                while let Some(td_start) = cell_search.find("<td>") {
+                    let inner_start = td_start + 4;
+                    let inner = &cell_search[inner_start..];
+                    if let Some(td_end) = inner.find("</td>") {
+                        cells.push(clean(&inner[..td_end]));
+                        cell_search = &inner[td_end + 5..];
+                    } else {
+                        break;
+                    }
+                }
+                if cells.len() == 3
+                    && !cells[0].is_empty()
+                    && !cells[1].is_empty()
+                    && !cells[2].is_empty()
+                {
+                    rows.push((cells[0].clone(), cells[1].clone(), cells[2].clone()));
+                }
+                search = &after_tr[tr_end + 5..];
+            } else {
+                break;
+            }
+        }
+        rows
+    };
+
+    // 4. Return type: the <p class="code"> immediately after "Returns:" heading.
+    let returns = {
+        let mut r = String::new();
+        if let Some(ret_pos) = html.to_lowercase().find(">returns:") {
+            let after = &html[ret_pos..];
+            if let Some(code_start) = after.find("<p class=\"code\">") {
+                let inner_start = code_start + "<p class=\"code\">".len();
+                let inner = &after[inner_start..];
+                if let Some(code_end) = inner.find("</p>") {
+                    r = clean(&inner[..code_end]);
+                }
+            }
+        }
+        r
+    };
+
+    // 5. First example: the <p class="code"> immediately after the first "Example" heading.
+    let example = {
+        let mut ex = String::new();
+        // Match "example:" or "example 1:" (case-insensitive)
+        let lower = html.to_lowercase();
+        // Find ">example" then find the next <p class="code">
+        if let Some(ex_pos) = lower.find(">example") {
+            let after = &html[ex_pos..];
+            if let Some(code_start) = after.find("<p class=\"code\">") {
+                let inner_start = code_start + "<p class=\"code\">".len();
+                let inner = &after[inner_start..];
+                if let Some(code_end) = inner.find("</p>") {
+                    // Preserve line breaks for code: replace <br> variants with newline
+                    let raw = &inner[..code_end];
+                    let with_newlines = raw
+                        .replace("<br />\n", "\n")
+                        .replace("<br/>", "\n")
+                        .replace("<br />", "\n")
+                        .replace("<br>", "\n");
+                    let lines: Vec<String> = with_newlines
+                        .lines()
+                        .map(|l| decode_entities(&strip_tags(l)).trim().to_string())
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    ex = lines.join("\n  ");
+                }
+            }
+        }
+        ex
+    };
+
+    // -----------------------------------------------------------------------
+    // Print output (Markdown).
+    // -----------------------------------------------------------------------
+    println!("## `{}`", function);
+    if !description.is_empty() {
+        println!();
+        println!("{}", description);
+    }
+    println!();
+
+    if !syntax.is_empty() {
+        println!("**Syntax**");
+        println!();
+        println!("```gml");
+        println!("{}", syntax);
+        println!("```");
+        println!();
+    }
+
+    if !args.is_empty() {
+        println!("**Arguments**");
+        println!();
+        println!("| Name | Type | Description |");
+        println!("|------|------|-------------|");
+        for (name, ty, desc) in &args {
+            println!("| `{}` | {} | {} |", name, ty, desc);
+        }
+        println!();
+    }
+
+    if !returns.is_empty() {
+        println!("**Returns:** {}", returns);
+        println!();
+    }
+
+    if !example.is_empty() {
+        println!("**Example**");
+        println!();
+        println!("```gml");
+        println!("{}", example);
+        println!("```");
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
@@ -2617,5 +2925,6 @@ fn main() -> Result<()> {
             let path = resolve_target(target.as_deref(), manifest.as_deref())?;
             cmd_inspect_runtime(&path, sig.as_deref(), *list_sigs, *validate)
         }
+        Command::GmlDocs { function } => cmd_gml_docs(function),
     }
 }
