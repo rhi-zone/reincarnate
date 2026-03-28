@@ -1573,6 +1573,20 @@ remains if edited independently; consider symlink or build-time copy if it recur
 
 - [x] **Pipeline fixpoint stress tester** — Implemented 2026-02-28. `reincarnate stress [--runs N] [--skip-pass P] [--preset P]` runs the pipeline N times (default 5), reports fixpoint convergence or oscillation (detects matches against any prior run, not just adjacent), and per-run changed function count.
 
+## API / Interface Tech Debt Audit (HIGH PRIORITY)
+
+Audit the entire codebase for awkward APIs, fragmented interfaces, and places where the right fix was avoided in favor of an easier one. The bar: if a fresh reader would reasonably ask "why does this exist separately?" or "why does this take this parameter?", it's a candidate. Specifically look for:
+
+- Methods that exist only because callers were too numerous to update (e.g. `foo_variant()` alongside `foo()` that should have replaced it)
+- Parameters added to avoid breaking existing callers instead of updating them
+- Parallel data structures that should be unified (e.g. two maps that always move together)
+- `Option<&T>` parameters that are always `Some` or always `None` in practice
+- Traits with a single implementor (abstraction that never paid off)
+- Builder methods that silently assume defaults (width, depth, kind) that callers should be forced to state
+- Any `_v2`, `_new`, `_impl`, `_inner` suffix naming
+
+For each finding: state the correct API, estimate the refactor scope, and add as a tracked item. Do not add workaround items — only correct-fix items. Flag anything where the scope is large enough to warrant its own phase in the Incremental Rewrite Plan.
+
 ## TODO.md Staleness Audit (HIGH PRIORITY)
 
 - [x] **Audit TODO.md for stale items** (2026-03-11)
