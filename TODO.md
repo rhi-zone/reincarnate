@@ -226,9 +226,12 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
       - `reincarnate-cli/main.rs` — debug/dump code.
     - [ ] **5c part 3 — TypeDecl::name field removal.** `TypeDecl::Object.name` and `TypeDecl::Enum.name` still exist; all call sites of `TypeDecl::name()` / `TypeDecl::name_expect()` use them. These can be removed once all call sites are migrated to `module.name_table.type_name(id)` / `module.type_name(id)`. Deferred because most sites lack clean access to `TypeId`. Globals, fields, and enum variants lack typed IDs and cannot migrate until `GlobalId`/`FieldId` are introduced.
 - [x] **Phase 6 — Declarative pass manager.** `requires`/`invalidates` declarations replace implicit ordering. Gate: same.
-- [ ] **Phase 7 — HM inference.** Single-pass constraint collection + solve replaces four coupled passes. `IntToBoolPromotion` ported. Gate: same or better.
+- [x] **Phase 7 — HM inference.** Single-pass constraint collection + solve replaces four coupled passes (`type_infer`, `call_site_flow`, `call_site_widen`, `constraint_solve`, `constraint_solve2` deleted). `is_concrete(Unknown) = true`; `Type::Var` for inference gaps; unconditional write-back; alloc/store/load cell constraints; void event handlers + `strip_void_returns`. Gate: 13,496 → 8,102 errors (−40%).
 - [ ] **Phase 8 — Core AST + reconstruction pipeline.** Structurizer → Core AST; forward substitution; `ForEach` lifting. Gate: emitted code measurably cleaner.
-- [ ] **Phase 9 — Runtime as IR.** GML runtime expressed as IR functions; `RuntimeRegistry` linkage. Gate: same output, M+N architecture.
+  > `rewrite_loop_to_while` wired up (was implemented but not registered). `promote_while_to_for` already active.
+- [ ] **Phase 9 — Runtime as IR.** GML stdlib expressed as IR *functions with bodies*; `RuntimeRegistry` maps stdlib names to `FuncId`s. Frontends emit the runtime the same way they emit game code — same `Function` struct, same pipeline. Backends emit runtime functions like any other function; no per-backend runtime package. Intrinsics (single primitive op in every target: `abs`, `floor`, `sqrt`) get `Function::intrinsic: Option<IntrinsicKind>` and a small backend lookup table instead of a body. Deletes `runtime/gamemaker/runtime.ts` as handwritten source (it becomes generated output). Gate: same output, M+N architecture (not M×N).
+  > **Arithmetic slice done** (2026-03-28): `Op::Add/Sub/Mul/Div/Rem/Neg/Not/BoolAnd/BoolOr/BitAnd/BitOr/BitXor/BitNot/Shl/Shr` removed; GML frontend registers typed arithmetic builtins (`builtin.add_f64`, etc.) via `Module::register_builtin()`; `Module::builtins: HashMap<String, FunctionSig>` feeds constraint collector. Remaining: full stdlib bodies, `RuntimeRegistry` as `FuncId`-keyed map, `IntrinsicKind` annotation, Phase 3 unblock.
+  > **Blocked on**: `RuntimeRegistry` (FuncId-keyed stdlib map), then Phase 3 (`SystemCall` ban).
 
 ### Out of scope until designed
 
