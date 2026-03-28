@@ -18,8 +18,11 @@
 //! Guard: the non-trivial branch must have real (non-const) computation, to
 //! avoid converting genuine ternaries like `cond ? 1 : 2` to `cond || 2`.
 
+use std::collections::HashSet;
+
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::Block;
+use reincarnate_core::ir::func::FuncId;
 use reincarnate_core::ir::inst::Terminator;
 use reincarnate_core::ir::{BlockId, Constant, Function, Module, Op, ValueId};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
@@ -31,12 +34,26 @@ impl Transform for GmlLogicalOpNormalize {
         "gml-logical-op-normalize"
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        let mut changed = false;
-        for func in module.functions.values_mut() {
-            changed |= normalize_logical_ops(func);
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
+        for func_id in module.functions.keys().collect::<Vec<_>>() {
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
+            if normalize_logical_ops(&mut module.functions[func_id]) {
+                changed_funcs.insert(func_id);
+            }
         }
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 
@@ -348,7 +365,7 @@ mod tests {
         let module = mb.build();
 
         // Run the normalization pass.
-        let result = GmlLogicalOpNormalize.apply(module).unwrap();
+        let result = GmlLogicalOpNormalize.apply(module, None).unwrap();
         // The pass should have changed something: it creates a bypass block for block1's
         // inner BrIf (cond_b) and redirects its else_target to the new bypass.
         assert!(
@@ -460,7 +477,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = GmlLogicalOpNormalize.apply(module).unwrap();
+        let result = GmlLogicalOpNormalize.apply(module, None).unwrap();
 
         let func = result.module.functions.values().next().unwrap();
 
@@ -519,7 +536,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = GmlLogicalOpNormalize.apply(module).unwrap();
+        let result = GmlLogicalOpNormalize.apply(module, None).unwrap();
         // The pass must NOT modify block1's Br arg — it's a plain if-then, not ||.
         let func = result.module.functions.values().next().unwrap();
         let b1 = &func.blocks[block1];

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use crate::error::CoreError;
+use crate::ir::func::FuncId;
 use crate::ir::{Constant, Function, Module, Op, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 
@@ -218,26 +219,44 @@ impl Transform for BoolLiteralReturn {
         "bool-literal-return"
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        let mut changed = false;
-        let mut changed_funcs: HashSet<String> = HashSet::new();
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        let mut changed_funcs_set: HashSet<FuncId> = HashSet::new();
+        let mut changed_func_names: HashSet<String> = HashSet::new();
 
         // Phase 1: analyze & rewrite each function.
         for func_id in module.functions.keys().collect::<Vec<_>>() {
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
             if infer_bool_return(&mut module.functions[func_id]) {
-                changed_funcs.insert(module.functions[func_id].name.clone());
-                changed = true;
+                changed_func_names.insert(module.functions[func_id].name.clone());
+                changed_funcs_set.insert(func_id);
             }
         }
 
         // Phase 2: propagate return types to call sites.
-        if !changed_funcs.is_empty() {
+        // This must run over all functions (callers may be outside the dirty set).
+        if !changed_func_names.is_empty() {
             for func_id in module.functions.keys().collect::<Vec<_>>() {
-                changed |= propagate_call_types(&mut module.functions[func_id], &changed_funcs);
+                if propagate_call_types(
+                    &mut module.functions[func_id],
+                    &changed_func_names,
+                ) {
+                    changed_funcs_set.insert(func_id);
+                }
             }
         }
 
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs_set.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs: changed_funcs_set,
+        })
     }
 }
 
@@ -266,7 +285,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -321,7 +340,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
@@ -353,7 +372,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(!result.changed);
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
@@ -377,7 +396,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -414,7 +433,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(result.changed);
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
@@ -450,7 +469,7 @@ mod tests {
         mb.add_function(caller_func);
         let module = mb.build();
 
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(result.changed);
 
         let caller = &result.module.functions[FuncId::new(1)];
@@ -479,7 +498,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -510,7 +529,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(!result.changed, "0 and 2 should not be converted to Bool");
     }
 
@@ -529,7 +548,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -565,7 +584,7 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
-        let result = BoolLiteralReturn.apply(mb.build()).unwrap();
+        let result = BoolLiteralReturn.apply(mb.build(), None).unwrap();
         assert!(
             !result.changed,
             "mix of 0/1 and 42 should NOT become Bool"
@@ -617,7 +636,7 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
-        let result = BoolLiteralReturn.apply(mb.build()).unwrap();
+        let result = BoolLiteralReturn.apply(mb.build(), None).unwrap();
         assert!(result.changed, "multi-level block param flow of 0/1 should become Bool");
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
@@ -640,7 +659,7 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
-        let result = BoolLiteralReturn.apply(mb.build()).unwrap();
+        let result = BoolLiteralReturn.apply(mb.build(), None).unwrap();
         assert!(result.changed, "Copy of int 1 should trace back to bool leaf");
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
@@ -676,7 +695,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = BoolLiteralReturn.apply(module).unwrap();
+        let result = BoolLiteralReturn.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 }

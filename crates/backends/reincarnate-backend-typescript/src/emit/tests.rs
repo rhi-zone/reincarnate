@@ -348,7 +348,7 @@ fn mem2reg_plus_emit_eliminates_alloc_store_load() {
     let module = mb.build();
 
     // Run mem2reg IR pass, then emit.
-    let mut result = Mem2Reg.apply(module).unwrap();
+    let mut result = Mem2Reg.apply(module, None).unwrap();
     let mut diagnostics = Vec::new();
     let out = emit_module_to_string(
         &mut result.module,

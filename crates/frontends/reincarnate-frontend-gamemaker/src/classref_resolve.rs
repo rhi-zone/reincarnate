@@ -11,9 +11,10 @@
 //! Every backend then sees already-resolved class references in the IR,
 //! instead of having to reimplement the lookup logic per backend.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use reincarnate_core::error::CoreError;
+use reincarnate_core::ir::func::FuncId;
 use reincarnate_core::ir::inst::{CastKind, Inst, InstId, Op};
 use reincarnate_core::ir::ty::{Type, TypeId};
 use reincarnate_core::ir::{Constant, Function, Module, ValueId};
@@ -35,11 +36,16 @@ impl Transform for GmlClassRefResolve {
         true
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
         if module.object_names.is_empty() || module.external_function_sigs.is_empty() {
             return Ok(TransformResult {
                 module,
                 changed: false,
+                changed_funcs: HashSet::new(),
             });
         }
 
@@ -67,6 +73,7 @@ impl Transform for GmlClassRefResolve {
             return Ok(TransformResult {
                 module,
                 changed: false,
+                changed_funcs: HashSet::new(),
             });
         }
 
@@ -85,13 +92,24 @@ impl Transform for GmlClassRefResolve {
             })
             .collect();
 
-        let mut changed = false;
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
 
-        for func in module.functions.values_mut() {
-            changed |= resolve_function(func, &classref_params, &object_names, &classref_type_ids);
+        for func_id in module.functions.keys().collect::<Vec<_>>() {
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
+            let func = &mut module.functions[func_id];
+            if resolve_function(func, &classref_params, &object_names, &classref_type_ids) {
+                changed_funcs.insert(func_id);
+            }
         }
 
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 

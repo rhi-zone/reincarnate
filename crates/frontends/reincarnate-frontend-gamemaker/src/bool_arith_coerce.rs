@@ -29,6 +29,7 @@ use std::collections::{HashMap, HashSet};
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockId;
+use reincarnate_core::ir::func::FuncId;
 use reincarnate_core::ir::inst::{CastKind, CmpKind, Inst, InstId, Op, Terminator};
 use reincarnate_core::ir::module::StructDef;
 use reincarnate_core::ir::ty::{parse_type_notation, Type};
@@ -47,7 +48,11 @@ impl Transform for GmlBoolArithCoerce {
         true
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
         // Pre-collect callee names that return Bool (Fix A).
         let bool_returning: HashSet<String> = module
             .functions
@@ -93,17 +98,33 @@ impl Transform for GmlBoolArithCoerce {
             })
             .collect();
 
-        let mut changed = false;
-        for func in module.functions.values_mut() {
-            changed |= coerce_bool_arithmetic(func, &bool_returning, &dynamic_declared_fields);
-            changed |= coerce_bool_br_args(func);
-            changed |= coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
-            changed |= coerce_bool_call_args(func, &callee_param_types);
-            changed |= coerce_call_args_general(func, &callee_param_types, &external_param_types);
-            changed |= coerce_bool_cmp_operands(func, &bool_returning, &dynamic_declared_fields);
-            changed |= coerce_noone_sentinel(func);
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
+        for func_id in module.functions.keys().collect::<Vec<_>>() {
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
+            let func = &mut module.functions[func_id];
+            let mut func_changed = false;
+            func_changed |= coerce_bool_arithmetic(func, &bool_returning, &dynamic_declared_fields);
+            func_changed |= coerce_bool_br_args(func);
+            func_changed |=
+                coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
+            func_changed |= coerce_bool_call_args(func, &callee_param_types);
+            func_changed |=
+                coerce_call_args_general(func, &callee_param_types, &external_param_types);
+            func_changed |=
+                coerce_bool_cmp_operands(func, &bool_returning, &dynamic_declared_fields);
+            func_changed |= coerce_noone_sentinel(func);
+            if func_changed {
+                changed_funcs.insert(func_id);
+            }
         }
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 

@@ -209,7 +209,7 @@ fn stress_pass<T: Transform>(pass: &T, func: crate::ir::Function) {
     let module = mb.build();
 
     // First application.
-    let r1 = pass.apply(module).unwrap();
+    let r1 = pass.apply(module, None).unwrap();
     let func1 = &r1.module.functions[FuncId::new(0)];
     assert_well_formed(func1);
 
@@ -220,7 +220,7 @@ fn stress_pass<T: Transform>(pass: &T, func: crate::ir::Function) {
     }
 
     // Second application — should be idempotent.
-    let r2 = pass.apply(module2).unwrap();
+    let r2 = pass.apply(module2, None).unwrap();
     assert!(
         !r2.changed,
         "{} not idempotent on stress input",
@@ -240,7 +240,7 @@ fn stress_pass_module<T: Transform>(
     mb.add_function(func2);
     let module = mb.build();
 
-    let r1 = pass.apply(module).unwrap();
+    let r1 = pass.apply(module, None).unwrap();
     for func in r1.module.functions.values() {
         assert_well_formed(func);
     }
@@ -250,7 +250,7 @@ fn stress_pass_module<T: Transform>(
         func.compact_insts();
     }
 
-    let r2 = pass.apply(module2).unwrap();
+    let r2 = pass.apply(module2, None).unwrap();
     assert!(
         !r2.changed,
         "{} not idempotent on stress input",

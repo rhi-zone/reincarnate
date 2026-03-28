@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::entity::EntityRef;
 use crate::error::CoreError;
 use crate::ir::block::BlockParam;
+use crate::ir::func::FuncId;
 use crate::ir::structurize::{build_cfg, compute_dominators_lt};
 use crate::ir::value::Constant;
 use crate::ir::{BlockId, Function, InstId, Module, Op, Type, ValueId};
@@ -655,6 +656,10 @@ impl Transform for Mem2Reg {
         "mem2reg"
     }
 
+    fn run_once(&self) -> bool {
+        true
+    }
+
     fn requires(&self) -> &[&str] {
         &["coroutine-lowering"]
     }
@@ -663,12 +668,26 @@ impl Transform for Mem2Reg {
         &["constraint-solve-hm", "constant-folding"]
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        let mut changed = false;
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
-            changed |= promote_function(&mut module.functions[func_id]);
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
+            if promote_function(&mut module.functions[func_id]) {
+                changed_funcs.insert(func_id);
+            }
         }
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 
@@ -684,7 +703,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
         let module = mb.build();
-        let result = Mem2Reg.apply(module).unwrap();
+        let result = Mem2Reg.apply(module, None).unwrap();
         result.module.functions[FuncId::new(0)].clone()
     }
 
@@ -983,14 +1002,14 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let r1 = Mem2Reg.apply(module).unwrap();
+        let r1 = Mem2Reg.apply(module, None).unwrap();
         assert!(r1.changed);
         // Compact to remove dead instructions left by promotion.
         let mut module = r1.module;
         for func in module.functions.values_mut() {
             func.compact_insts();
         }
-        let r2 = Mem2Reg.apply(module).unwrap();
+        let r2 = Mem2Reg.apply(module, None).unwrap();
         assert!(!r2.changed, "mem2reg should be idempotent after compaction");
     }
 
@@ -1010,7 +1029,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = Mem2Reg.apply(module).unwrap();
+        let result = Mem2Reg.apply(module, None).unwrap();
         assert!(!result.changed, "no alloc/copy to eliminate → unchanged");
     }
 

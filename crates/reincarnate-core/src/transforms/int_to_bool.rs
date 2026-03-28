@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::error::CoreError;
+use crate::ir::func::FuncId;
 use crate::ir::ty::{parse_type_notation, TypeId};
 use crate::ir::{Constant, Function, Module, Op, Type, ValueId};
 use crate::pipeline::{PureIrPass, Transform, TransformResult};
@@ -446,8 +447,12 @@ impl Transform for IntToBoolPromotion {
         "int-to-bool-promotion"
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        let mut changed = false;
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
 
         // Build external param type map once
         let external_param_types = build_external_param_types(&module.external_function_sigs);
@@ -503,13 +508,18 @@ impl Transform for IntToBoolPromotion {
 
         // Phase 1-3: Promote demanded values in each function
         for func_id in module.functions.keys().collect::<Vec<_>>() {
-            changed |= promote_demands(
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
+            if promote_demands(
                 &mut module.functions[func_id],
                 &external_param_types,
                 &internal_sigs,
                 &struct_fields,
                 &type_id_to_name,
-            );
+            ) {
+                changed_funcs.insert(func_id);
+            }
         }
 
         // Phase 4: Infer Bool return types
@@ -533,12 +543,15 @@ impl Transform for IntToBoolPromotion {
             })
             .collect();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
             if infer_bool_return(
                 &mut module.functions[func_id],
                 callback_return_calls,
                 &callback_return_intrinsics,
             ) {
-                changed = true;
+                changed_funcs.insert(func_id);
             }
         }
 
@@ -546,6 +559,7 @@ impl Transform for IntToBoolPromotion {
         // Bool return type (whether inferred in this run or pre-existing), ensure the
         // call-site result value is also typed Bool. This fixes TS2322 errors of the form
         // `let xx: number = bool_returning_func(...)`.
+        // Propagation must run over ALL functions (callers may be outside the dirty set).
         let all_bool_return_funcs: HashSet<String> = module
             .functions
             .keys()
@@ -555,8 +569,9 @@ impl Transform for IntToBoolPromotion {
 
         if !all_bool_return_funcs.is_empty() {
             for func_id in module.functions.keys().collect::<Vec<_>>() {
-                changed |=
-                    propagate_call_types(&mut module.functions[func_id], &all_bool_return_funcs);
+                if propagate_call_types(&mut module.functions[func_id], &all_bool_return_funcs) {
+                    changed_funcs.insert(func_id);
+                }
             }
 
             // Re-run demand promotion with newly Bool-typed call results
@@ -576,17 +591,24 @@ impl Transform for IntToBoolPromotion {
                 .collect();
 
             for func_id in module.functions.keys().collect::<Vec<_>>() {
-                changed |= promote_demands(
+                if promote_demands(
                     &mut module.functions[func_id],
                     &external_param_types,
                     &updated_internal_sigs,
                     &struct_fields,
                     &type_id_to_name,
-                );
+                ) {
+                    changed_funcs.insert(func_id);
+                }
             }
         }
 
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 
@@ -617,7 +639,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -647,7 +669,7 @@ mod tests {
             },
         );
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
@@ -686,7 +708,7 @@ mod tests {
             },
         );
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
@@ -722,7 +744,7 @@ mod tests {
             },
         );
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -765,7 +787,7 @@ mod tests {
             },
         );
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
         // The merge value should be typed Bool
@@ -798,7 +820,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
@@ -836,7 +858,7 @@ mod tests {
         mb.add_function(caller_func);
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
         let caller = &result.module.functions[FuncId::new(1)];
@@ -872,7 +894,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
@@ -900,7 +922,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
     }
 
@@ -934,7 +956,7 @@ mod tests {
         mb.add_function(caller);
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
     }
 
@@ -974,7 +996,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -1010,7 +1032,7 @@ mod tests {
             .callback_return_calls
             .insert(("GameMaker.Instance".into(), "withInstances".into()), ());
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         // Return type must NOT be changed to Bool
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
@@ -1044,7 +1066,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         // Return type must NOT be changed to Bool
         assert_eq!(
             result.module.functions[FuncId::new(0)].sig.return_ty,
@@ -1082,7 +1104,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
@@ -1120,7 +1142,7 @@ mod tests {
             },
         );
 
-        let result = IntToBoolPromotion.apply(module).unwrap();
+        let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
         // 42 should still be Int, 1 should be Bool

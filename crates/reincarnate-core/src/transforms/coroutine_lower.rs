@@ -900,8 +900,12 @@ impl Transform for CoroutineLowering {
         &["constraint-solve-hm"]
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        let mut changed = false;
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
 
         // Collect coroutine function IDs first.
         let coroutine_funcs: Vec<(FuncId, String)> = module
@@ -915,6 +919,9 @@ impl Transform for CoroutineLowering {
             .collect();
 
         for (func_id, func_name) in &coroutine_funcs {
+            if dirty.is_some_and(|d| !d.contains(func_id)) {
+                continue;
+            }
             let func = &module.functions[*func_id];
             let coroutine_info = func.coroutine.clone().unwrap();
             let struct_name = format!("{func_name}_state");
@@ -926,7 +933,7 @@ impl Transform for CoroutineLowering {
             if yield_points.is_empty() {
                 // No yields — clear coroutine flag but don't rewrite.
                 module.functions[*func_id].coroutine = None;
-                changed = true;
+                changed_funcs.insert(*func_id);
                 continue;
             }
 
@@ -961,10 +968,15 @@ impl Transform for CoroutineLowering {
                 func_name,
             );
 
-            changed = true;
+            changed_funcs.insert(*func_id);
         }
 
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 
@@ -976,7 +988,7 @@ mod tests {
     use crate::ir::coroutine::CoroutineInfo;
 
     fn apply_lowering(module: Module) -> (Module, bool) {
-        let result = CoroutineLowering.apply(module).unwrap();
+        let result = CoroutineLowering.apply(module, None).unwrap();
         (result.module, result.changed)
     }
 
@@ -1021,7 +1033,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = CoroutineLowering.apply(module).unwrap();
+        let result = CoroutineLowering.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -1031,7 +1043,7 @@ mod tests {
         let module = build_simple_yield_module();
         let (module, changed) = apply_lowering(module);
         assert!(changed);
-        let result = CoroutineLowering.apply(module).unwrap();
+        let result = CoroutineLowering.apply(module, None).unwrap();
         assert!(!result.changed, "second apply should report no changes");
     }
 

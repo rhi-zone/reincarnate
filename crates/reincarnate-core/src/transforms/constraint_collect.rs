@@ -9,11 +9,12 @@
 //! This module also owns the [`TypeVarArena`] and HM unifier primitives
 //! ([`resolve`], [`occurs`], [`bind_var`], [`unify`]) used by the solver pass.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::entity::EntityRef;
 use crate::error::CoreError;
 use crate::ir::block::BlockId;
+use crate::ir::func::FuncId;
 use crate::ir::inst::Op;
 use crate::ir::module::SystemCallTypeRule;
 use crate::ir::ty::{FunctionSig, Type, TypeConstraint, TypeVarId};
@@ -1047,7 +1048,11 @@ impl Transform for ConstraintCollect {
         "constraint-collect"
     }
 
-    fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
+    fn apply(
+        &self,
+        module: Module,
+        _dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
         let mut sets: Vec<ConstraintSet> = Vec::with_capacity(module.functions.len());
         let empty_globals: HashMap<String, TypeVarId> = HashMap::new();
 
@@ -1065,6 +1070,7 @@ impl Transform for ConstraintCollect {
             // mode is driven solely by constraint_solve_hm's write-backs.
             module,
             changed: false,
+            changed_funcs: HashSet::new(),
         })
     }
 }
@@ -1129,7 +1135,7 @@ mod tests {
     fn transform_stores_constraint_sets() {
         let module = make_simple_module();
         let pass = ConstraintCollect::new();
-        let result = pass.apply(module).expect("apply failed");
+        let result = pass.apply(module, None).expect("apply failed");
         let sets = pass.constraint_sets.borrow();
         assert_eq!(sets.len(), 1, "expected 1 constraint set");
         assert!(
@@ -1142,7 +1148,7 @@ mod tests {
     fn empty_module_produces_no_sets() {
         let module = Module::new("empty".into());
         let pass = ConstraintCollect::new();
-        let result = pass.apply(module).expect("apply failed");
+        let result = pass.apply(module, None).expect("apply failed");
         let sets = pass.constraint_sets.borrow();
         assert_eq!(sets.len(), 0);
         assert!(!result.changed, "expected changed=false for empty module");

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::CoreError;
+use crate::ir::func::FuncId;
 use crate::ir::value::ValueId;
 use crate::ir::{Function, Module, Op};
 use crate::pipeline::{Transform, TransformResult};
@@ -106,12 +107,26 @@ impl Transform for RedundantCastElimination {
         &["constraint-solve-hm", "mem2reg", "constant-folding"]
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        let mut changed = false;
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
-            changed |= elim_function(&mut module.functions[func_id]);
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
+            if elim_function(&mut module.functions[func_id]) {
+                changed_funcs.insert(func_id);
+            }
         }
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 
@@ -153,7 +168,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = RedundantCastElimination.apply(module).unwrap();
+        let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(!result.changed);
     }
 
@@ -196,7 +211,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = RedundantCastElimination.apply(module).unwrap();
+        let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];
@@ -232,7 +247,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = RedundantCastElimination.apply(module).unwrap();
+        let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(result.changed, "same-type coerce should be eliminated");
         let func = &result.module.functions[FuncId::new(0)];
         let live = live_inst_ids(func);
@@ -258,7 +273,7 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let module = mb.build();
-        let result = RedundantCastElimination.apply(module).unwrap();
+        let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(result.changed);
         let func = &result.module.functions[FuncId::new(0)];
         let live = live_inst_ids(func);
@@ -293,7 +308,7 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
-        let result = RedundantCastElimination.apply(mb.build()).unwrap();
+        let result = RedundantCastElimination.apply(mb.build(), None).unwrap();
         assert!(!result.changed, "Unknown -> Int cast is NOT redundant");
     }
 
@@ -314,7 +329,7 @@ mod tests {
         fb.ret(Some(cast));
 
         mb.add_function(fb.build());
-        let result = RedundantCastElimination.apply(mb.build()).unwrap();
+        let result = RedundantCastElimination.apply(mb.build(), None).unwrap();
         assert!(
             result.changed,
             "NullableCoerce(Foo, Foo) should be redundant"
@@ -342,7 +357,7 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
-        let result = RedundantCastElimination.apply(mb.build()).unwrap();
+        let result = RedundantCastElimination.apply(mb.build(), None).unwrap();
         assert!(
             result.changed,
             "Coerce(Int(32), Int(32)) should be redundant"
@@ -372,7 +387,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
 
-        let result = RedundantCastElimination.apply(module).unwrap();
+        let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(!result.changed);
 
         let func = &result.module.functions[FuncId::new(0)];

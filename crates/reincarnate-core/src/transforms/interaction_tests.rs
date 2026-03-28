@@ -32,11 +32,11 @@ fn const_fold_then_dce() {
     let module = mb.build();
 
     // Fold constants.
-    let r1 = ConstantFolding.apply(module).unwrap();
+    let r1 = ConstantFolding.apply(module, None).unwrap();
     assert!(r1.changed, "should fold 1+2");
 
     // The original Const(1) and Const(2) are now dead. DCE removes them.
-    let r2 = DeadCodeElimination.apply(r1.module).unwrap();
+    let r2 = DeadCodeElimination.apply(r1.module, None).unwrap();
     assert!(r2.changed, "DCE should remove dead constants after folding");
 
     let func = &r2.module.functions[FuncId::new(0)];
@@ -81,10 +81,10 @@ fn hm_solver_then_red_cast_elim() {
     let module = mb.build();
 
     // HM solver should confirm cmp_result is Bool.
-    let r1 = ConstraintSolveHM.apply(module).unwrap();
+    let r1 = ConstraintSolveHM.apply(module, None).unwrap();
 
     // Redundant cast elimination should eliminate Cast(Bool, Bool) entirely.
-    let r2 = RedundantCastElimination.apply(r1.module).unwrap();
+    let r2 = RedundantCastElimination.apply(r1.module, None).unwrap();
     assert!(r2.changed, "cast should become redundant after HM solver");
 
     let func = &r2.module.functions[FuncId::new(0)];
@@ -127,7 +127,7 @@ fn mem2reg_then_dce() {
     let module = mb.build();
 
     // Mem2Reg promotes to SSA (Load substituted with stored value, removed from blocks).
-    let r1 = Mem2Reg.apply(module).unwrap();
+    let r1 = Mem2Reg.apply(module, None).unwrap();
     assert!(r1.changed);
     let func = &r1.module.functions[FuncId::new(0)];
     // Check block-owned instructions (not the full arena, which retains dead entries).
@@ -142,7 +142,7 @@ fn mem2reg_then_dce() {
     );
 
     // DCE removes the dead constant and add.
-    let r2 = DeadCodeElimination.apply(r1.module).unwrap();
+    let r2 = DeadCodeElimination.apply(r1.module, None).unwrap();
     assert!(r2.changed, "DCE should remove dead ops after mem2reg");
 
     let func = &r2.module.functions[FuncId::new(0)];
@@ -181,11 +181,11 @@ fn cfg_simplify_then_mem2reg() {
     let module = mb.build();
 
     // Simplify CFG first.
-    let r1 = CfgSimplify.apply(module).unwrap();
+    let r1 = CfgSimplify.apply(module, None).unwrap();
     assert!(r1.changed, "should merge empty forwarding block");
 
     // Now Mem2Reg on the simplified CFG.
-    let r2 = Mem2Reg.apply(r1.module).unwrap();
+    let r2 = Mem2Reg.apply(r1.module, None).unwrap();
     assert!(
         r2.changed,
         "mem2reg should promote after CFG simplification"

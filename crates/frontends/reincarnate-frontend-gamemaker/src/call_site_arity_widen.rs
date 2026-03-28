@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::block::BlockParam;
+use reincarnate_core::ir::func::FuncId;
 use reincarnate_core::ir::{Module, Op, Type};
 use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 
@@ -81,9 +82,13 @@ impl Transform for CallSiteArityWiden {
         true
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
+    fn apply(
+        &self,
+        mut module: Module,
+        _dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
         let max_arities = collect_max_arities(&module);
-        let mut changed = false;
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
 
         // Build a name → func_id map for write-back.
         let name_to_id: HashMap<String, _> = module
@@ -141,10 +146,15 @@ impl Transform for CallSiteArityWiden {
                 func.blocks[entry].params.push(BlockParam { value, ty });
             }
 
-            changed = true;
+            changed_funcs.insert(func_id);
         }
 
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 
@@ -159,7 +169,7 @@ mod tests {
     use reincarnate_core::ir::{FuncId, Type, Visibility};
 
     fn run(mb: ModuleBuilder) -> TransformResult {
-        CallSiteArityWiden.apply(mb.build()).unwrap()
+        CallSiteArityWiden.apply(mb.build(), None).unwrap()
     }
 
     /// Callee declares 1 param; caller passes 2 → widens to 2 params.

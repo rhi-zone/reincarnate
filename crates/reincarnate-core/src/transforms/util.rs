@@ -504,9 +504,9 @@ pub(crate) mod test_helpers {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
         let module = mb.build();
-        let r1 = pass.apply(module).unwrap();
+        let r1 = pass.apply(module, None).unwrap();
         assert_well_formed(&r1.module.functions[FuncId::new(0)]);
-        let r2 = pass.apply(r1.module).unwrap();
+        let r2 = pass.apply(r1.module, None).unwrap();
         assert!(
             !r2.changed,
             "{} not idempotent: second apply still reports changes",
@@ -520,7 +520,7 @@ pub(crate) mod test_helpers {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
         let module = mb.build();
-        let result = pass.apply(module).unwrap();
+        let result = pass.apply(module, None).unwrap();
         (
             result.changed,
             result.module.functions[FuncId::new(0)].clone(),

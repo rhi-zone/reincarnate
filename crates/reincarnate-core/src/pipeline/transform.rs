@@ -1,5 +1,8 @@
+use std::collections::HashSet;
+
 use super::config::DebugConfig;
 use crate::error::CoreError;
+use crate::ir::func::FuncId;
 use crate::ir::Module;
 
 /// Result of applying a transform pass.
@@ -7,6 +10,9 @@ pub struct TransformResult {
     pub module: Module,
     /// Whether the pass modified the module.
     pub changed: bool,
+    /// Which functions were modified in this pass. Empty means none changed.
+    /// Used by fixpoint mode to limit re-runs to dirty functions only.
+    pub changed_funcs: HashSet<FuncId>,
 }
 
 /// Output of the transform pipeline.
@@ -27,7 +33,16 @@ pub trait Transform {
 
     /// Apply this transform to a module, returning the transformed module
     /// and whether any changes were made.
-    fn apply(&self, module: Module) -> Result<TransformResult, CoreError>;
+    ///
+    /// `dirty` is an optional set of function IDs that were modified by a
+    /// previous pass. `None` means "process all functions" (first iteration or
+    /// pass doesn't support incremental). `Some(set)` means "only process
+    /// functions in this set".
+    fn apply(
+        &self,
+        module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError>;
 
     /// If true, the pipeline skips this pass on fixpoint iterations after the
     /// first. Use for interprocedural passes whose evidence becomes circular
@@ -68,8 +83,12 @@ impl Transform for Box<dyn PureIrPass> {
         (**self).name()
     }
 
-    fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
-        (**self).apply(module)
+    fn apply(
+        &self,
+        module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        (**self).apply(module, dirty)
     }
 
     fn run_once(&self) -> bool {
@@ -186,6 +205,13 @@ impl TransformPipeline {
             name_positions.entry(t.name()).or_default().push(i);
         }
 
+        let run_once_names: std::collections::HashSet<&str> = self
+            .transforms
+            .iter()
+            .filter(|t| t.run_once())
+            .map(|t| t.name())
+            .collect();
+
         for (i, t) in self.transforms.iter().enumerate() {
             // Check requires: every required pass must have at least one
             // occurrence before position i.
@@ -205,6 +231,13 @@ impl TransformPipeline {
             // pass must either (a) not be in the pipeline at all, or (b) have
             // at least one occurrence after position i.
             for &inv in t.invalidates() {
+                assert!(
+                    !run_once_names.contains(inv),
+                    "pass {:?} invalidates {:?} but {:?} is run_once — structural passes must not be invalidated",
+                    t.name(),
+                    inv,
+                    inv,
+                );
                 if let Some(positions) = name_positions.get(inv) {
                     // The invalidated pass is in the pipeline. It must have a
                     // re-run after this pass.
@@ -262,23 +295,68 @@ impl TransformPipeline {
             // In fixpoint mode we can't meaningfully stop mid-iteration, so we
             // run to completion and ignore `dump_ir_after`.  The non-fixpoint
             // single-pass path below handles the interactive debug workflow.
-            for iteration in 0..MAX_FIXPOINT_ITERATIONS {
+            let mut dirty: Option<HashSet<FuncId>> = None; // None = all dirty on first iteration
+
+            let mut first_iteration = true;
+            let mut iterations_remaining = MAX_FIXPOINT_ITERATIONS;
+            loop {
+                assert!(
+                    iterations_remaining > 0,
+                    "fixpoint did not converge after {MAX_FIXPOINT_ITERATIONS} iterations"
+                );
+                iterations_remaining -= 1;
                 let mut any_changed = false;
+                let mut next_dirty: HashSet<FuncId> = HashSet::new();
+                // Whether any module-level (non-per-function-tracked) change occurred.
+                // When true, we pass None to all passes in the next iteration so
+                // they run without filtering, even if next_dirty is empty.
+                let mut module_level_changed = false;
+
                 for transform in &self.transforms {
-                    if iteration > 0 && transform.run_once() {
+                    if !first_iteration && transform.run_once() {
                         continue;
                     }
-                    let result = transform.apply(module)?;
+                    // On first iteration pass None (all functions). After that pass dirty set,
+                    // but only if no module-level change occurred (which would invalidate
+                    // the per-function dirty tracking).
+                    let pass_dirty = if first_iteration || module_level_changed {
+                        None
+                    } else {
+                        dirty.as_ref().map(|d| d as &HashSet<FuncId>)
+                    };
+                    // Skip pass entirely if dirty set is empty and no module-level changes
+                    // (nothing for it to do).
+                    if pass_dirty.is_some_and(|d| d.is_empty()) {
+                        continue;
+                    }
+                    let result = transform.apply(module, pass_dirty)?;
+                    if result.changed {
+                        if result.changed_funcs.is_empty() {
+                            // Pass changed something but didn't track which functions.
+                            // Mark module-level change so next iteration doesn't filter.
+                            module_level_changed = true;
+                        } else {
+                            next_dirty.extend(result.changed_funcs.iter().copied());
+                        }
+                    }
                     any_changed |= result.changed;
                     module = result.module;
                 }
+                first_iteration = false;
                 if !any_changed {
                     break;
+                }
+                // If a module-level change occurred, reset dirty to None so the
+                // next iteration runs all passes without filtering.
+                if module_level_changed {
+                    dirty = None;
+                } else {
+                    dirty = Some(next_dirty);
                 }
             }
         } else {
             for transform in &self.transforms {
-                module = transform.apply(module)?.module;
+                module = transform.apply(module, None)?.module;
                 if stop_after == Some(transform.name()) {
                     dump_ir_functions(&module, debug);
                     return Ok(PipelineOutput {
@@ -434,6 +512,13 @@ fn expand_invalidations(
                 };
 
                 let fresh = factory();
+                assert!(
+                    !fresh.run_once(),
+                    "pass {:?} invalidates {:?} but {:?} is run_once — it cannot be re-inserted",
+                    passes[i].name(),
+                    inv_name,
+                    inv_name,
+                );
                 let fresh_requires: Vec<&str> = fresh.requires().to_vec();
 
                 // Insert after the last dep of fresh in (i, abs_first_needer),
@@ -510,7 +595,11 @@ mod tests {
             self.name
         }
 
-        fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
+        fn apply(
+            &self,
+            module: Module,
+            _dirty: Option<&HashSet<FuncId>>,
+        ) -> Result<TransformResult, CoreError> {
             let prev = self
                 .changes_left
                 .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| {
@@ -523,6 +612,7 @@ mod tests {
             Ok(TransformResult {
                 module,
                 changed: prev.is_ok(),
+                changed_funcs: HashSet::new(),
             })
         }
     }
@@ -588,10 +678,15 @@ mod tests {
             self.name
         }
 
-        fn apply(&self, module: Module) -> Result<TransformResult, CoreError> {
+        fn apply(
+            &self,
+            module: Module,
+            _dirty: Option<&HashSet<FuncId>>,
+        ) -> Result<TransformResult, CoreError> {
             Ok(TransformResult {
                 module,
                 changed: false,
+                changed_funcs: HashSet::new(),
             })
         }
 

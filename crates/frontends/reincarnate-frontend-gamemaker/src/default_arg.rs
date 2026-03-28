@@ -29,7 +29,10 @@
 //! The body check is left in place — it's redundant but harmless; removing it
 //! would require block rewriting which isn't worth the complexity.
 
+use std::collections::HashSet;
+
 use reincarnate_core::error::CoreError;
+use reincarnate_core::ir::func::FuncId;
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::inst::Terminator;
 use reincarnate_core::ir::ty::Type;
@@ -43,13 +46,29 @@ impl Transform for GmlDefaultArgRecovery {
         "gml-default-arg-recovery"
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
-        let mut changed = false;
-        for func in module.functions.values_mut() {
-            changed |= recover_defaults(func);
-            changed |= set_variadic_defaults(func);
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
+        let mut changed_funcs: HashSet<FuncId> = HashSet::new();
+        for func_id in module.functions.keys().collect::<Vec<_>>() {
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
+            let func = &mut module.functions[func_id];
+            let mut func_changed = recover_defaults(func);
+            func_changed |= set_variadic_defaults(func);
+            if func_changed {
+                changed_funcs.insert(func_id);
+            }
         }
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs.is_empty();
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs,
+        })
     }
 }
 
@@ -458,7 +477,7 @@ mod tests {
     fn test_single_default() {
         let module = build_test_function(&[Constant::Float(0.0)]);
         let pass = GmlDefaultArgRecovery;
-        let result = pass.apply(module).unwrap();
+        let result = pass.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions.values().next().unwrap();
@@ -477,7 +496,7 @@ mod tests {
             Constant::Bool(false),
         ]);
         let pass = GmlDefaultArgRecovery;
-        let result = pass.apply(module).unwrap();
+        let result = pass.apply(module, None).unwrap();
         assert!(result.changed);
 
         let func = &result.module.functions.values().next().unwrap();
@@ -511,7 +530,7 @@ mod tests {
         let module = mb.build();
 
         let pass = GmlDefaultArgRecovery;
-        let result = pass.apply(module).unwrap();
+        let result = pass.apply(module, None).unwrap();
         // Even without an explicit pattern, set_variadic_defaults fills arg1 with 0.0.
         assert!(result.changed);
         let func = result.module.functions.values().next().unwrap();

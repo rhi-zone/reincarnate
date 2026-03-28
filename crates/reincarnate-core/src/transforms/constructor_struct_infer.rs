@@ -81,7 +81,11 @@ impl Transform for ConstructorStructInfer {
         true
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
+    fn apply(
+        &self,
+        mut module: Module,
+        _dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
         // Build a set of already-known struct names so we can decide whether to
         // create new or augment existing.
         let known_struct_names: HashSet<String> =
@@ -240,10 +244,15 @@ impl Transform for ConstructorStructInfer {
             return Ok(TransformResult {
                 module,
                 changed: false,
+                changed_funcs: HashSet::new(),
             });
         }
 
-        Ok(TransformResult { module, changed })
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs: HashSet::new(),
+        })
     }
 }
 
@@ -285,7 +294,7 @@ mod tests {
     fn infers_struct_from_constructor() {
         let (module, _func_id) =
             make_constructor_with_fields(&[("x", Type::Float(64)), ("y", Type::Float(64))]);
-        let result = ConstructorStructInfer.apply(module).unwrap();
+        let result = ConstructorStructInfer.apply(module, None).unwrap();
         assert!(result.changed);
         let structs = &result.module.structs;
         assert_eq!(structs.len(), 1);
@@ -298,7 +307,7 @@ mod tests {
     #[test]
     fn updates_self_param_type() {
         let (module, func_id) = make_constructor_with_fields(&[("hp", Type::Float(64))]);
-        let result = ConstructorStructInfer.apply(module).unwrap();
+        let result = ConstructorStructInfer.apply(module, None).unwrap();
         let module = result.module;
         let func = &module.functions[func_id];
         let type_id = module
@@ -319,7 +328,7 @@ mod tests {
             fields: vec![],
             visibility: Visibility::Public,
         });
-        let result = ConstructorStructInfer.apply(module).unwrap();
+        let result = ConstructorStructInfer.apply(module, None).unwrap();
         // Should still be only 1 struct entry (not duplicated).
         assert_eq!(result.module.structs.len(), 1);
         // The pass ran and augmented, so changed should be true.
@@ -352,7 +361,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = ConstructorStructInfer.apply(module).unwrap();
+        let result = ConstructorStructInfer.apply(module, None).unwrap();
         assert!(!result.changed);
         assert!(result.module.structs.is_empty());
     }
@@ -378,7 +387,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = ConstructorStructInfer.apply(module).unwrap();
+        let result = ConstructorStructInfer.apply(module, None).unwrap();
         // No fields collected from non-self SetField.
         assert!(!result.changed);
         assert!(result.module.structs.is_empty());
@@ -404,7 +413,7 @@ mod tests {
         mb.add_function(fb.build());
         let module = mb.build();
 
-        let result = ConstructorStructInfer.apply(module).unwrap();
+        let result = ConstructorStructInfer.apply(module, None).unwrap();
         assert!(result.changed);
         let structs = &result.module.structs;
         assert_eq!(structs.len(), 1);

@@ -22,7 +22,7 @@
 //! 5. **Write-back**: resolve every value's TypeVar and write the result back
 //!    into `func.value_types`. Unresolved vars write `Type::Unknown`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::entity::EntityRef;
 use crate::error::CoreError;
@@ -200,7 +200,11 @@ impl Transform for ConstraintSolveHM {
         "constraint-solve-hm"
     }
 
-    fn apply(&self, mut module: Module) -> Result<TransformResult, CoreError> {
+    fn apply(
+        &self,
+        mut module: Module,
+        dirty: Option<&HashSet<FuncId>>,
+    ) -> Result<TransformResult, CoreError> {
         let struct_fields = build_struct_fields(&module);
         let type_id_to_name: HashMap<TypeId, String> = module
             .types
@@ -635,9 +639,14 @@ impl Transform for ConstraintSolveHM {
         // -----------------------------------------------------------------------
         // Step 6: apply per-function updates (value_types, sig.params, block
         // param types, sig.return_ty).
+        //
+        // When `dirty` is Some, only write back to functions in the dirty set.
+        // Constraint collection above still read all functions, so the global
+        // type environment is always fully built. The `changed_funcs` set
+        // tracks which functions' value_types or sig actually changed.
         // -----------------------------------------------------------------------
         use crate::pipeline::checker::{Diagnostic, DiagnosticCode, RcDiagnostic, Severity};
-        let mut changed = false;
+        let mut changed_funcs_set: HashSet<FuncId> = HashSet::new();
         let mut new_diagnostics: Vec<Diagnostic> = Vec::new();
         let func_ids: Vec<FuncId> = module.functions.keys().collect();
         let func_names: Vec<String> = func_ids
@@ -651,12 +660,16 @@ impl Transform for ConstraintSolveHM {
             .zip(func_updates.iter())
             .zip(func_data.iter())
         {
+            // In dirty-aware mode, only write back to functions in the dirty set.
+            if dirty.is_some_and(|d| !d.contains(&func_id)) {
+                continue;
+            }
             let func = &mut module.functions[func_id];
             for &(idx, ref new_ty) in &update.updates {
                 let vid = ValueId::new(idx as u32);
                 if &func.value_types[vid] != new_ty {
                     func.value_types[vid] = new_ty.clone();
-                    changed = true;
+                    changed_funcs_set.insert(func_id);
                 }
             }
 
@@ -671,11 +684,11 @@ impl Transform for ConstraintSolveHM {
                 if !matches!(vty, Type::Var(_)) {
                     if func.blocks[entry].params[i].ty != vty {
                         func.blocks[entry].params[i].ty = vty.clone();
-                        changed = true;
+                        changed_funcs_set.insert(func_id);
                     }
                     if i < func.sig.params.len() && func.sig.params[i] != vty {
                         func.sig.params[i] = vty;
-                        changed = true;
+                        changed_funcs_set.insert(func_id);
                     }
                 }
             }
@@ -685,7 +698,7 @@ impl Transform for ConstraintSolveHM {
             let resolved_ret = resolve(Type::Var(data.return_var), &arena);
             if !matches!(resolved_ret, Type::Var(_)) && func.sig.return_ty != resolved_ret {
                 func.sig.return_ty = resolved_ret;
-                changed = true;
+                changed_funcs_set.insert(func_id);
             }
         }
         module.diagnostics.append(&mut new_diagnostics);
@@ -696,12 +709,13 @@ impl Transform for ConstraintSolveHM {
         // Only update declared globals that were Unknown and now have a more
         // concrete resolved type.
         // -----------------------------------------------------------------------
+        let mut globals_changed = false;
         for g in &mut module.globals {
             if let Some(&var_id) = global_name_vars.get(&g.name) {
                 let resolved = resolve(Type::Var(var_id), &arena);
                 if !matches!(resolved, Type::Var(_)) && g.ty != resolved {
                     g.ty = resolved;
-                    changed = true;
+                    globals_changed = true;
                 }
             }
         }
@@ -769,7 +783,12 @@ impl Transform for ConstraintSolveHM {
             module.diagnostics.append(&mut step8_diagnostics);
         }
 
-        Ok(TransformResult { module, changed })
+        let changed = !changed_funcs_set.is_empty() || globals_changed;
+        Ok(TransformResult {
+            module,
+            changed,
+            changed_funcs: changed_funcs_set,
+        })
     }
 }
 
@@ -805,7 +824,7 @@ mod tests {
     fn hm_solver_runs_on_simple_module() {
         let module = make_simple_module();
         let pass = ConstraintSolveHM;
-        let result = pass.apply(module).expect("apply failed");
+        let result = pass.apply(module, None).expect("apply failed");
         // Should complete without panic and mark changed.
         // The function has Float(64) params so nothing to infer.
         let _ = result;
@@ -815,7 +834,7 @@ mod tests {
     fn hm_solver_empty_module() {
         let module = Module::new("empty".into());
         let pass = ConstraintSolveHM;
-        let result = pass.apply(module).expect("apply failed");
+        let result = pass.apply(module, None).expect("apply failed");
         assert!(!result.changed);
     }
 }
