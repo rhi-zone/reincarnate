@@ -355,7 +355,7 @@ pub(crate) mod test_helpers {
     use super::*;
     use crate::entity::EntityRef;
     use crate::ir::builder::ModuleBuilder;
-    use crate::ir::{BlockId, FuncId, Function, ValueId};
+    use crate::ir::{BlockId, Function, ValueId};
     use crate::pipeline::Transform;
     use std::collections::HashSet;
 
@@ -502,29 +502,26 @@ pub(crate) mod test_helpers {
     /// the second run reports no changes (idempotent).
     pub fn assert_idempotent<T: Transform>(pass: &T, func: Function) {
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
         let r1 = pass.apply(module, None).unwrap();
-        assert_well_formed(&r1.module.functions[FuncId::new(0)]);
+        assert_well_formed(&r1.module.functions[fid]);
         let r2 = pass.apply(r1.module, None).unwrap();
         assert!(
             !r2.changed,
             "{} not idempotent: second apply still reports changes",
             pass.name()
         );
-        assert_well_formed(&r2.module.functions[FuncId::new(0)]);
+        assert_well_formed(&r2.module.functions[fid]);
     }
 
     /// Apply a transform to a function, returning the (changed, Function) pair.
     pub fn apply_transform<T: Transform>(pass: &T, func: Function) -> (bool, Function) {
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
         let result = pass.apply(module, None).unwrap();
-        (
-            result.changed,
-            result.module.functions[FuncId::new(0)].clone(),
-        )
+        (result.changed, result.module.functions[fid].clone())
     }
 }
 

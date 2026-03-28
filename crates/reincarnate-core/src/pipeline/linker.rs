@@ -330,6 +330,7 @@ mod tests {
         let names: HashSet<&str> = table.all_symbols().map(|s| s.name.as_str()).collect();
         assert!(names.contains("f1"));
         assert!(names.contains("f2"));
-        assert_eq!(names.len(), 2);
+        // The module also contains NUM_CORE_BUILTINS pre-registered builtin stubs.
+        assert_eq!(names.len(), 2 + Module::NUM_CORE_BUILTINS as usize);
     }
 }

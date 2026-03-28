@@ -1158,7 +1158,10 @@ mod tests {
         let module = mb.build();
 
         assert_eq!(module.name, "test_module");
-        assert_eq!(module.functions.len(), 1);
+        assert_eq!(
+            module.functions.len(),
+            Module::NUM_CORE_BUILTINS as usize + 1
+        );
         assert_eq!(module.func_name(fid), "main");
         assert_eq!(module.globals.len(), 1);
         assert_eq!(module.globals[0].name, "counter");

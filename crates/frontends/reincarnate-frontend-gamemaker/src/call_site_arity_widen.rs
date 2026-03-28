@@ -163,10 +163,9 @@ impl PureIrPass for CallSiteArityWiden {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reincarnate_core::entity::EntityRef;
     use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
     use reincarnate_core::ir::ty::FunctionSig;
-    use reincarnate_core::ir::{FuncId, Type, Visibility};
+    use reincarnate_core::ir::{Type, Visibility};
 
     fn run(mb: ModuleBuilder) -> TransformResult {
         CallSiteArityWiden.apply(mb.build(), None).unwrap()
@@ -184,7 +183,7 @@ mod tests {
         };
         let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
         callee.ret(None);
-        mb.add_function(callee.build());
+        let target_fid = mb.add_function(callee.build());
 
         let caller_sig = FunctionSig {
             params: vec![],
@@ -201,7 +200,7 @@ mod tests {
         let result = run(mb);
         assert!(result.changed);
 
-        let target = &result.module.functions[FuncId::new(0)];
+        let target = &result.module.functions[target_fid];
         assert_eq!(target.sig.params.len(), 2);
         assert_eq!(target.sig.params[1], Type::Unknown);
         // New param should have a Null default.
@@ -227,7 +226,7 @@ mod tests {
         };
         let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
         callee.ret(None);
-        mb.add_function(callee.build());
+        let target_fid = mb.add_function(callee.build());
 
         let caller_sig = FunctionSig {
             params: vec![],
@@ -243,7 +242,7 @@ mod tests {
 
         let result = run(mb);
         assert!(!result.changed);
-        let target = &result.module.functions[FuncId::new(0)];
+        let target = &result.module.functions[target_fid];
         assert_eq!(target.sig.params.len(), 2);
     }
 
@@ -260,7 +259,7 @@ mod tests {
         };
         let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
         callee.ret(None);
-        mb.add_function(callee.build());
+        let target_fid = mb.add_function(callee.build());
 
         let caller_sig = FunctionSig {
             params: vec![],
@@ -277,7 +276,7 @@ mod tests {
 
         let result = run(mb);
         assert!(!result.changed);
-        let target = &result.module.functions[FuncId::new(0)];
+        let target = &result.module.functions[target_fid];
         assert_eq!(target.sig.params.len(), 1);
     }
 
@@ -293,7 +292,7 @@ mod tests {
         };
         let mut callee = FunctionBuilder::new("target", callee_sig, Visibility::Private);
         callee.ret(None);
-        mb.add_function(callee.build());
+        let target_fid = mb.add_function(callee.build());
 
         let sig = FunctionSig {
             params: vec![],
@@ -320,7 +319,7 @@ mod tests {
 
         let result = run(mb);
         assert!(result.changed);
-        let target = &result.module.functions[FuncId::new(0)];
+        let target = &result.module.functions[target_fid];
         assert_eq!(target.sig.params.len(), 3);
     }
 }

@@ -704,7 +704,7 @@ mod tests {
         mb.add_function(func);
         let module = mb.build();
         let result = Mem2Reg.apply(module, None).unwrap();
-        result.module.functions[FuncId::new(0)].clone()
+        result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)].clone()
     }
 
     #[test]

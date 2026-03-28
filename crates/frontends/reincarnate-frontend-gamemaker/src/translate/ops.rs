@@ -323,11 +323,14 @@ fn translate_arithmetic_op(
 }
 
 /// Return the type suffix used in builtin names for a given GML DataType.
+///
+/// `Int32` and `Int16` map to `"f64"` because GML's single numeric type is
+/// Real (Float64) at the source level. The VM uses `Int32`/`Int16` opcodes
+/// internally, but at source semantics those values are all Reals.
 fn type_suffix_for(dt: DataType) -> &'static str {
     match dt {
-        DataType::Double => "f64",
+        DataType::Double | DataType::Int32 | DataType::Int16 => "f64",
         DataType::Float => "f32",
-        DataType::Int32 | DataType::Int16 => "i32",
         DataType::Int64 => "i64",
         DataType::Bool => "bool",
         DataType::String => "str",

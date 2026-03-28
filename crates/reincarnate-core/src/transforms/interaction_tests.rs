@@ -3,7 +3,7 @@
 use crate::entity::EntityRef;
 use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
 use crate::ir::ty::FunctionSig;
-use crate::ir::{CmpKind, FuncId, Op, Type, Visibility};
+use crate::ir::{CmpKind, FuncId, Module, Op, Type, Visibility};
 use crate::pipeline::{PassConfig, Transform};
 use crate::transforms::util::test_helpers::assert_well_formed;
 use crate::transforms::{
@@ -39,7 +39,7 @@ fn const_fold_then_dce() {
     let r2 = DeadCodeElimination.apply(r1.module, None).unwrap();
     assert!(r2.changed, "DCE should remove dead constants after folding");
 
-    let func = &r2.module.functions[FuncId::new(0)];
+    let func = &r2.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func);
 
     // Only the folded Const(3) and Return should remain.
@@ -87,7 +87,7 @@ fn hm_solver_then_red_cast_elim() {
     let r2 = RedundantCastElimination.apply(r1.module, None).unwrap();
     assert!(r2.changed, "cast should become redundant after HM solver");
 
-    let func = &r2.module.functions[FuncId::new(0)];
+    let func = &r2.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func);
     // The cast instruction should not appear in any block.
     let live: std::collections::HashSet<_> = func
@@ -129,7 +129,7 @@ fn mem2reg_then_dce() {
     // Mem2Reg promotes to SSA (Load substituted with stored value, removed from blocks).
     let r1 = Mem2Reg.apply(module, None).unwrap();
     assert!(r1.changed);
-    let func = &r1.module.functions[FuncId::new(0)];
+    let func = &r1.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     // Check block-owned instructions (not the full arena, which retains dead entries).
     let has_load = func.blocks.values().any(|b| {
         b.insts
@@ -145,7 +145,7 @@ fn mem2reg_then_dce() {
     let r2 = DeadCodeElimination.apply(r1.module, None).unwrap();
     assert!(r2.changed, "DCE should remove dead ops after mem2reg");
 
-    let func = &r2.module.functions[FuncId::new(0)];
+    let func = &r2.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func);
 }
 
@@ -191,7 +191,7 @@ fn cfg_simplify_then_mem2reg() {
         "mem2reg should promote after CFG simplification"
     );
 
-    let func = &r2.module.functions[FuncId::new(0)];
+    let func = &r2.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func);
 }
 
@@ -242,7 +242,7 @@ fn full_pipeline_well_formed() {
     let pipeline = super::build_pipeline(&config);
     let result = pipeline.run(module).unwrap();
 
-    let func = &result.functions[FuncId::new(0)];
+    let func = &result.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func);
 }
 
@@ -280,12 +280,12 @@ fn full_pipeline_idempotent() {
     // First run.
     let pipeline1 = super::build_pipeline(&config);
     let result1 = pipeline1.run(module).unwrap();
-    let func1 = &result1.functions[FuncId::new(0)];
+    let func1 = &result1.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func1);
 
     // Second run on the already-optimized module.
     let pipeline2 = super::build_pipeline(&config);
     let result2 = pipeline2.run(result1).unwrap();
-    let func2 = &result2.functions[FuncId::new(0)];
+    let func2 = &result2.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func2);
 }

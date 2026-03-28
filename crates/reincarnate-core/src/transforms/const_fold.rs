@@ -634,17 +634,16 @@ impl Transform for ConstantFolding {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
     use crate::ir::ty::FunctionSig;
-    use crate::ir::{FuncId, Visibility};
+    use crate::ir::Visibility;
 
     fn apply_fold(func: crate::ir::Function) -> crate::ir::Function {
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
         let result = ConstantFolding.apply(module, None).unwrap();
-        result.module.functions[FuncId::new(0)].clone()
+        result.module.functions[fid].clone()
     }
 
     /// Find the instruction that produces a given value.

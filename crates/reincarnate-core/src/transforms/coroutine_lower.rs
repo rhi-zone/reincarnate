@@ -1068,7 +1068,7 @@ mod tests {
         assert!(field_names.contains(&"__done"));
 
         // Function should no longer be a coroutine.
-        let func = &module.functions[FuncId::new(0)];
+        let func = &module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         assert!(func.coroutine.is_none());
 
         // Function should have new signature: (state, resume_val) -> yield_ty.
@@ -1113,7 +1113,7 @@ mod tests {
         assert!(changed);
 
         // Check the switch has 3 cases (states 0, 1, 2).
-        let func = &module.functions[FuncId::new(0)];
+        let func = &module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let entry = func.entry;
         if let Terminator::Switch { cases, .. } = &func.blocks[entry].terminator {
             assert_eq!(cases.len(), 3, "should have 3 states for 2 yields");
@@ -1203,13 +1203,13 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(gen_func);
-        mb.add_function(caller_func);
+        let caller_fid = mb.add_function(caller_func);
         let module = mb.build();
 
         let (module, _) = apply_lowering(module);
 
         // The caller should now have a StructInit instead of CoroutineCreate.
-        let caller = &module.functions[FuncId::new(1)];
+        let caller = &module.functions[caller_fid];
         let has_struct_init = caller
             .insts
             .values()
@@ -1261,13 +1261,13 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(gen_func);
-        mb.add_function(caller_func);
+        let caller_fid = mb.add_function(caller_func);
         let module = mb.build();
 
         let (module, _) = apply_lowering(module);
 
         // The caller should now have a Call instead of CoroutineResume.
-        let caller = &module.functions[FuncId::new(1)];
+        let caller = &module.functions[caller_fid];
         let has_call = caller
             .insts
             .values()
@@ -1349,7 +1349,7 @@ mod tests {
         let (module, changed) = apply_lowering(module);
         assert!(changed);
         // Function should still have a valid switch dispatch.
-        let func = &module.functions[FuncId::new(0)];
+        let func = &module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let entry = func.entry;
         assert!(
             matches!(func.blocks[entry].terminator, Terminator::Switch { .. }),
@@ -1400,7 +1400,7 @@ mod tests {
         let (module, changed) = apply_lowering(module);
         assert!(changed);
         // Should have 3 states (0=entry, 1=yield-in-then, 2=yield-in-else).
-        let func = &module.functions[FuncId::new(0)];
+        let func = &module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let entry = func.entry;
         if let Terminator::Switch { cases, .. } = &func.blocks[entry].terminator {
             assert_eq!(cases.len(), 3, "2 yields → 3 states");
@@ -1433,7 +1433,7 @@ mod tests {
         let (module, changed) = apply_lowering(module);
         assert!(changed);
         // 4 states: 0=entry, 1=after-yield1, 2=after-yield2, 3=after-yield3
-        let func = &module.functions[FuncId::new(0)];
+        let func = &module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let entry = func.entry;
         if let Terminator::Switch { cases, .. } = &func.blocks[entry].terminator {
             assert_eq!(cases.len(), 4, "3 yields → 4 states");

@@ -214,7 +214,7 @@ mod tests {
         let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         // The redundant cast instruction should not be in any block.
         let live = live_inst_ids(func);
         assert!(
@@ -249,7 +249,7 @@ mod tests {
         let module = mb.build();
         let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(result.changed, "same-type coerce should be eliminated");
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let live = live_inst_ids(func);
         assert!(!live
             .iter()
@@ -275,7 +275,7 @@ mod tests {
         let module = mb.build();
         let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(result.changed);
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let live = live_inst_ids(func);
         // Both casts should be removed from blocks.
         assert!(!live.iter().any(|&id| func.insts[id].result == Some(c1)));
@@ -334,7 +334,7 @@ mod tests {
             result.changed,
             "NullableCoerce(Foo, Foo) should be redundant"
         );
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let live = live_inst_ids(func);
         assert!(
             !live.iter().any(|&id| func.insts[id].result == Some(cast)),
@@ -362,7 +362,7 @@ mod tests {
             result.changed,
             "Coerce(Int(32), Int(32)) should be redundant"
         );
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let live = live_inst_ids(func);
         assert!(!live
             .iter()
@@ -390,7 +390,7 @@ mod tests {
         let result = RedundantCastElimination.apply(module, None).unwrap();
         assert!(!result.changed);
 
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let live = live_inst_ids(func);
         let cast_still_live = live.iter().any(|&id| func.insts[id].result == Some(cast));
         assert!(cast_still_live, "non-redundant cast should remain");

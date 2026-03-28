@@ -354,10 +354,15 @@ fn test_2d_array_compound_write_uses_correct_operands() {
     };
 
     // The index must be the constant 5 (original dim1), NOT the Add result.
-    let index_is_const_5 = insts.iter().any(|i| {
-        i.result == Some(*index)
-            && matches!(i.op, Op::Const(reincarnate_core::ir::Constant::Int(5)))
-    });
+    // GML integers arrive as Float(64) constants since Int32/Int16 now emit Float(64).
+    let is_const_5 = |op: &Op| match op {
+        Op::Const(reincarnate_core::ir::Constant::Int(5)) => true,
+        Op::Const(reincarnate_core::ir::Constant::Float(f)) => *f == 5.0,
+        _ => false,
+    };
+    let index_is_const_5 = insts
+        .iter()
+        .any(|i| i.result == Some(*index) && is_const_5(&i.op));
     assert!(index_is_const_5,
         "SetIndex index should be dim1=const(5), not the Add result; index={index:?}, ops={insts:?}");
 
@@ -484,12 +489,13 @@ fn test_popenv_fall_through_reaches_post_with_code() {
     );
 
     // Post-with sentinel (Const 99) must be reachable in the outer function.
-    let has_post_with_sentinel = ops.iter().any(|op| {
-        matches!(
-            op,
-            Op::Const(reincarnate_core::ir::value::Constant::Int(99))
-        )
-    });
+    // GML integers arrive as Float(64) since Int32/Int16 now emit Float(64).
+    let is_const_99 = |op: &Op| match op {
+        Op::Const(reincarnate_core::ir::value::Constant::Int(99)) => true,
+        Op::Const(reincarnate_core::ir::value::Constant::Float(f)) => *f == 99.0,
+        _ => false,
+    };
+    let has_post_with_sentinel = ops.iter().any(is_const_99);
     assert!(
         has_post_with_sentinel,
         "post-with code (Const(99) sentinel) must be reachable; ops: {ops:?}"

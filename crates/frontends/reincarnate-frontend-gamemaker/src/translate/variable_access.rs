@@ -11,6 +11,29 @@ use super::{
     resolve_variable_name, TranslateCtx,
 };
 
+/// Coerce a compile-time constant to an `i64` integer value.
+///
+/// GML integers stored as `Operand::Int32` were historically emitted as
+/// `Constant::Int`, but since we now emit them as `Constant::Float` (because
+/// GML has only one numeric type — `Real` — at the source level), instance
+/// sentinels such as `-9` (self) and `-1` (scalar) arrive as
+/// `Constant::Float(-9.0)` / `Constant::Float(-1.0)`.  This helper accepts
+/// both forms so that downstream pattern-matching is forward-compatible.
+fn const_as_i64(c: &Constant) -> Option<i64> {
+    match c {
+        Constant::Int(n) => Some(*n),
+        Constant::Float(f) => {
+            let i = *f as i64;
+            if i as f64 == *f {
+                Some(i)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
 /// Translate a push instruction.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn translate_push(
@@ -25,8 +48,8 @@ pub(super) fn translate_push(
     preceded_by_dup: bool,
 ) -> Result<(), String> {
     match &inst.operand {
-        Operand::Int16(v) => stack.push(fb.const_int(*v as i64, 32)),
-        Operand::Int32(v) => stack.push(fb.const_int(*v as i64, 32)),
+        Operand::Int16(v) => stack.push(fb.const_float(*v as f64)),
+        Operand::Int32(v) => stack.push(fb.const_float(*v as f64)),
         Operand::Int64(v) => stack.push(fb.const_int(*v, 64)),
         Operand::Double(v) => stack.push(fb.const_float(*v)),
         Operand::Float(v) => stack.push(fb.const_float(*v as f64)),
@@ -90,7 +113,11 @@ pub(super) fn translate_push_variable(
     if is_stacktop_ref(var_ref, instance) {
         let raw_target = pop(stack, inst)?;
         let target = if ctx.has_self {
-            if matches!(fb.try_resolve_const(raw_target), Some(Constant::Int(-9))) {
+            if fb
+                .try_resolve_const(raw_target)
+                .and_then(|c| const_as_i64(&c))
+                == Some(-9)
+            {
                 fb.param(0)
             } else {
                 raw_target
@@ -102,7 +129,7 @@ pub(super) fn translate_push_variable(
             let ty = fb.fresh_var();
             let val = fb.get_field(target, &var_name, ty);
             stack.push(val);
-        } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
+        } else if let Some(obj_idx) = fb.try_resolve_const(target).and_then(|c| const_as_i64(&c)) {
             // Constant integer target = object index pushed before stacktop access.
             // Resolve to getOn(objName, field) for clean class-based access.
             if obj_idx >= 0 {
@@ -143,7 +170,7 @@ pub(super) fn translate_push_variable(
     if is_cross_obj_2d_read(var_ref, instance, rest) {
         let dim1 = pop(stack, inst)?; // first-dimension index (top of stack)
         let _dim2 = pop(stack, inst)?; // orphan dim2 (not used for 1-D slice)
-        let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+        let is_scalar = fb.try_get_const(dim1).and_then(const_as_i64) == Some(-1);
         let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
             fb.const_string(name)
         } else {
@@ -191,8 +218,8 @@ pub(super) fn translate_push_variable(
         }
         if var_name == "argument" {
             // argument[N] → function parameter (or captured argument in a with-body).
-            if let Some(Constant::Int(idx)) = fb.try_get_const(dim1) {
-                let n = *idx as usize;
+            if let Some(idx) = fb.try_get_const(dim1).and_then(const_as_i64) {
+                let n = idx as usize;
                 if let Some(&slot) = locals.get(&format!("_argument{n}")) {
                     // Inside a with-body: argument was captured as a local slot.
                     let ty = fb.fresh_var();
@@ -224,8 +251,11 @@ pub(super) fn translate_push_variable(
             //   dim2 >= 0 → cross-object access; dim2 is the OBJT index of the
             //               target object
             let dim2_scope = fb.try_get_const(dim2).cloned();
-            let is_self_scope = matches!(&dim2_scope, Some(Constant::Int(n)) if *n < 0);
-            let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+            let is_self_scope = dim2_scope
+                .as_ref()
+                .and_then(const_as_i64)
+                .is_some_and(|n| n < 0);
+            let is_scalar = fb.try_get_const(dim1).and_then(const_as_i64) == Some(-1);
             if is_self_scope {
                 // Self-array read: check locals first (GML resolves locals
                 // before instance fields).
@@ -270,7 +300,7 @@ pub(super) fn translate_push_variable(
                         stack.push(indexed);
                     }
                 }
-            } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
+            } else if let Some(obj_idx) = dim2_scope.as_ref().and_then(const_as_i64) {
                 // Cross-object: dim2 is the OBJT index of the target object.
                 let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                     fb.const_string(name)
@@ -303,7 +333,7 @@ pub(super) fn translate_push_variable(
             // the instance field identifies the actual target object.
             // E.g. `AceDoll.charSelect[selected]` uses ref_type=0x10 with
             // instance=AceDoll and dim1=selected pushed on the stack.
-            let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+            let is_scalar = fb.try_get_const(dim1).and_then(const_as_i64) == Some(-1);
             let obj_id = if let Some(name) = ctx.obj_names.get(instance as usize) {
                 fb.const_string(name)
             } else {
@@ -465,7 +495,11 @@ pub(super) fn translate_push_variable(
             // variable access is the "push current struct self" pattern.
             // Resolve to self parameter instead of emitting the literal -9.
             let target = if ctx.has_self {
-                if matches!(fb.try_resolve_const(raw_target), Some(Constant::Int(-9))) {
+                if fb
+                    .try_resolve_const(raw_target)
+                    .and_then(|c| const_as_i64(&c))
+                    == Some(-9)
+                {
                     fb.param(0)
                 } else {
                     raw_target
@@ -475,10 +509,10 @@ pub(super) fn translate_push_variable(
             };
             if var_name == "argument" {
                 // argument[N] → function parameter access
-                if let Some(Constant::Int(idx)) = fb.try_get_const(target) {
+                if let Some(idx) = fb.try_get_const(target).and_then(const_as_i64) {
                     let param_offset =
                         if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
-                    let param = fb.param(param_offset + *idx as usize);
+                    let param = fb.param(param_offset + idx as usize);
                     stack.push(param);
                 } else if let Some(&rest_id) = locals.get("_args") {
                     // Unknown index with rest param — `argument[expr]` → `args[expr]`.
@@ -498,7 +532,9 @@ pub(super) fn translate_push_variable(
                 let ty = fb.fresh_var();
                 let val = fb.get_field(target, &var_name, ty);
                 stack.push(val);
-            } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
+            } else if let Some(obj_idx) =
+                fb.try_resolve_const(target).and_then(|c| const_as_i64(&c))
+            {
                 if obj_idx >= 0 {
                     let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                         fb.const_string(name)
@@ -618,7 +654,11 @@ pub(super) fn translate_pop(
             let raw_target = pop(stack, inst)?; // instance (top of stack)
             let value = pop(stack, inst)?; // value to store (below)
             let target = if ctx.has_self {
-                if matches!(fb.try_resolve_const(raw_target), Some(Constant::Int(-9))) {
+                if fb
+                    .try_resolve_const(raw_target)
+                    .and_then(|c| const_as_i64(&c))
+                    == Some(-9)
+                {
                     fb.param(0)
                 } else {
                     raw_target
@@ -628,7 +668,9 @@ pub(super) fn translate_pop(
             };
             if ctx.has_self && target == fb.param(0) {
                 fb.set_field(target, &var_name, value);
-            } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
+            } else if let Some(obj_idx) =
+                fb.try_resolve_const(target).and_then(|c| const_as_i64(&c))
+            {
                 // Constant integer target = object index pushed before stacktop access.
                 // Resolve to setOn(objName, field, value) for clean class-based access.
 
@@ -693,9 +735,9 @@ pub(super) fn translate_pop(
             };
             if var_name == "argument" {
                 // argument[N] = value → store to function parameter slot (or captured slot).
-                if let Some(Constant::Int(idx)) = fb.try_get_const(dim1) {
-                    if *idx >= 0 {
-                        let n = *idx as usize;
+                if let Some(idx) = fb.try_get_const(dim1).and_then(const_as_i64) {
+                    if idx >= 0 {
+                        let n = idx as usize;
                         if let Some(&slot) = locals.get(&format!("_argument{n}")) {
                             // Inside a with-body: update the captured argument slot.
                             fb.store(slot, value);
@@ -730,8 +772,11 @@ pub(super) fn translate_pop(
                 //   dim2 >= 0 → cross-object write; dim2 is the OBJT index of
                 //               the target object
                 let dim2_scope = fb.try_get_const(dim2).cloned();
-                let is_self_scope = matches!(&dim2_scope, Some(Constant::Int(n)) if *n < 0);
-                let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+                let is_self_scope = dim2_scope
+                    .as_ref()
+                    .and_then(const_as_i64)
+                    .is_some_and(|n| n < 0);
+                let is_scalar = fb.try_get_const(dim1).and_then(const_as_i64) == Some(-1);
                 if is_self_scope {
                     // Self-array write: check locals first (GML resolves
                     // locals before instance fields).
@@ -767,7 +812,7 @@ pub(super) fn translate_pop(
                         };
                         fb.gml_syscall("GameMaker.Instance", "setOn", &args, Type::Void);
                     }
-                } else if let Some(Constant::Int(obj_idx)) = dim2_scope {
+                } else if let Some(obj_idx) = dim2_scope.as_ref().and_then(const_as_i64) {
                     // Cross-object: dim2 is the OBJT index of the target object.
                     let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                         fb.const_string(name)
@@ -794,7 +839,7 @@ pub(super) fn translate_pop(
             } else {
                 // Cross-object indexed write (ref_type != 0, or script context):
                 // instance identifies the actual target object.
-                let is_scalar = matches!(fb.try_get_const(dim1), Some(Constant::Int(-1)));
+                let is_scalar = fb.try_get_const(dim1).and_then(const_as_i64) == Some(-1);
                 let obj_id = if let Some(name) = ctx.obj_names.get(*instance as usize) {
                     fb.const_string(name)
                 } else {
@@ -924,7 +969,11 @@ pub(super) fn translate_pop(
                 let raw_target = pop(stack, inst)?;
                 // In GMS2.3+ struct methods, -9 is the self-reference sentinel.
                 let target = if ctx.has_self {
-                    if matches!(fb.try_resolve_const(raw_target), Some(Constant::Int(-9))) {
+                    if fb
+                        .try_resolve_const(raw_target)
+                        .and_then(|c| const_as_i64(&c))
+                        == Some(-9)
+                    {
                         fb.param(0)
                     } else {
                         raw_target
@@ -934,9 +983,9 @@ pub(super) fn translate_pop(
                 };
                 if var_name == "argument" {
                     // argument[N] = value → store to function parameter slot
-                    if let Some(Constant::Int(idx)) = fb.try_get_const(target) {
-                        if *idx >= 0 {
-                            let n = *idx as usize;
+                    if let Some(idx) = fb.try_get_const(target).and_then(const_as_i64) {
+                        if idx >= 0 {
+                            let n = idx as usize;
                             let param_offset = if ctx.has_self { 1 } else { 0 }
                                 + if ctx.has_other { 1 } else { 0 };
                             if let Some(&slot) = locals.get(&format!("_argument{n}")) {
@@ -968,7 +1017,9 @@ pub(super) fn translate_pop(
                 } else if ctx.has_self && target == fb.param(0) {
                     // Self-field write in struct method — use set_field for clean output.
                     fb.set_field(target, &var_name, value);
-                } else if let Some(Constant::Int(obj_idx)) = fb.try_resolve_const(target) {
+                } else if let Some(obj_idx) =
+                    fb.try_resolve_const(target).and_then(|c| const_as_i64(&c))
+                {
                     if obj_idx >= 0 {
                         let obj_id = if let Some(name) = ctx.obj_names.get(obj_idx as usize) {
                             fb.const_string(name)

@@ -672,7 +672,7 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         // The const should now be Bool(false)
         for inst_id in func.insts.keys() {
             if let Op::Const(Constant::Bool(false)) = &func.insts[inst_id].op {
@@ -711,7 +711,7 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         for inst_id in func.insts.keys() {
             if let Op::Const(Constant::Bool(true)) = &func.insts[inst_id].op {
                 return; // Found it
@@ -791,7 +791,7 @@ mod tests {
         assert!(result.changed);
 
         // The merge value should be typed Bool
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         assert_eq!(func.value_types[merge_vals[0]], Type::Bool);
     }
 
@@ -823,7 +823,9 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
         assert_eq!(
-            result.module.functions[FuncId::new(0)].sig.return_ty,
+            result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)]
+                .sig
+                .return_ty,
             Type::Bool
         );
     }
@@ -855,13 +857,13 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(bool_func);
-        mb.add_function(caller_func);
+        let caller_fid = mb.add_function(caller_func);
         let module = mb.build();
 
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let caller = &result.module.functions[FuncId::new(1)];
+        let caller = &result.module.functions[caller_fid];
         for inst_id in caller.insts.keys() {
             if let Op::Call { func: name, .. } = &caller.insts[inst_id].op {
                 if name == "is_ready" {
@@ -897,7 +899,7 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         for inst_id in func.insts.keys() {
             if let Op::Const(Constant::Bool(true)) = &func.insts[inst_id].op {
                 return;
@@ -1035,7 +1037,9 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         // Return type must NOT be changed to Bool
         assert_eq!(
-            result.module.functions[FuncId::new(0)].sig.return_ty,
+            result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)]
+                .sig
+                .return_ty,
             Type::Unknown,
         );
     }
@@ -1069,7 +1073,9 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         // Return type must NOT be changed to Bool
         assert_eq!(
-            result.module.functions[FuncId::new(0)].sig.return_ty,
+            result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)]
+                .sig
+                .return_ty,
             Type::Unknown,
         );
     }
@@ -1107,7 +1113,7 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         for inst_id in func.insts.keys() {
             if let Op::Const(Constant::Bool(true)) = &func.insts[inst_id].op {
                 return;
@@ -1146,7 +1152,7 @@ mod tests {
         assert!(result.changed);
 
         // 42 should still be Int, 1 should be Bool
-        let func = &result.module.functions[FuncId::new(0)];
+        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         let mut found_int42 = false;
         let mut found_bool_true = false;
         for inst_id in func.insts.keys() {

@@ -1056,7 +1056,15 @@ impl Transform for ConstraintCollect {
         let mut sets: Vec<ConstraintSet> = Vec::with_capacity(module.functions.len());
         let empty_globals: HashMap<String, TypeVarId> = HashMap::new();
 
-        for (_, func) in module.functions.iter() {
+        // Build a set of runtime-registry FuncIds so we can skip builtin stubs.
+        // Builtin stubs have empty bodies and no meaningful constraints to collect.
+        let runtime_func_ids: std::collections::HashSet<FuncId> =
+            module.runtime_registry.values().copied().collect();
+
+        for (fid, func) in module.functions.iter() {
+            if runtime_func_ids.contains(&fid) {
+                continue;
+            }
             // Each function gets its own fresh arena (ConstraintCollect is a
             // pure analysis pass; it does not cross-function-solve globals).
             let mut arena = TypeVarArena::new();
@@ -1087,7 +1095,8 @@ mod tests {
     use crate::ir::ty::{FunctionSig, Type};
 
     /// Build a minimal function: `fn simple(x: f64) -> f64 { return x + 1.0; }`
-    fn make_simple_module() -> Module {
+    /// Returns the module and the FuncId of the added function.
+    fn make_simple_module() -> (Module, crate::ir::func::FuncId) {
         let sig = FunctionSig {
             params: vec![Type::Float(64)],
             return_ty: Type::Float(64),
@@ -1101,14 +1110,14 @@ mod tests {
         fb.ret(Some(sum));
 
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(fb.build());
-        mb.build()
+        let fid = mb.add_function(fb.build());
+        (mb.build(), fid)
     }
 
     #[test]
     fn collect_simple_function_produces_constraints() {
-        let module = make_simple_module();
-        let func = module.functions.values().next().expect("no functions");
+        let (module, fid) = make_simple_module();
+        let func = &module.functions[fid];
         let mut arena = TypeVarArena::new();
         let empty_globals = HashMap::new();
         let set = collect_function(func, &module, &mut arena, &empty_globals);
@@ -1133,7 +1142,7 @@ mod tests {
 
     #[test]
     fn transform_stores_constraint_sets() {
-        let module = make_simple_module();
+        let (module, _) = make_simple_module();
         let pass = ConstraintCollect::new();
         let result = pass.apply(module, None).expect("apply failed");
         let sets = pass.constraint_sets.borrow();

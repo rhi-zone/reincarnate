@@ -765,8 +765,19 @@ impl Module {
         }
     }
 
+    /// Number of core builtin stubs pre-registered in every new [`Module`].
+    ///
+    /// `Module::new()` calls `register_core_builtins()` which populates this
+    /// many entries at the start of `module.functions`.  Test helpers that
+    /// add a single user function and then retrieve it by index should use
+    /// `FuncId::new(Self::NUM_CORE_BUILTINS)` instead of `FuncId::new(0)`.
+    ///
+    /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
+    /// not/and/or bool = 3, 5 bitwise ops × 2 types = 10, bitnot × 2 = 2 → 40.
+    pub const NUM_CORE_BUILTINS: u32 = 40;
+
     pub fn new(name: String) -> Self {
-        Self {
+        let mut module = Self {
             name,
             name_table: NameTable::new(),
             functions: PrimaryMap::new(),
@@ -797,6 +808,72 @@ impl Module {
             string_indexed_structs: HashSet::new(),
             array_like_fns: HashSet::new(),
             next_type_var: 0,
+        };
+        module.register_core_builtins();
+        module
+    }
+
+    /// Register core arithmetic, bitwise, boolean, and string builtins that
+    /// all frontends share.  These stubs give the constraint collector proper
+    /// typed signatures; the linear emitter lowers `"builtin."` calls to native
+    /// target-language operators rather than emitting actual function calls.
+    fn register_core_builtins(&mut self) {
+        // Helper: binary sig (ty, ty) -> ty.
+        let bin = |ty: Type| FunctionSig {
+            params: vec![ty.clone(), ty.clone()],
+            return_ty: ty,
+            ..Default::default()
+        };
+        // Helper: unary sig (ty,) -> ty.
+        let un = |ty: Type| FunctionSig {
+            params: vec![ty.clone()],
+            return_ty: ty,
+            ..Default::default()
+        };
+
+        // Arithmetic: add, sub, mul, div, rem — f64, f32, i32, i64
+        for op in &["add", "sub", "mul", "div", "rem"] {
+            for ty in &[
+                Type::Float(64),
+                Type::Float(32),
+                Type::Int(32),
+                Type::Int(64),
+            ] {
+                let suffix = type_suffix(ty);
+                self.register_runtime(format!("builtin.{op}_{suffix}"), bin(ty.clone()));
+            }
+        }
+        // String concatenation
+        self.register_runtime("builtin.add_str", bin(Type::String));
+
+        // Negation: neg — f64, f32, i32, i64
+        for ty in &[
+            Type::Float(64),
+            Type::Float(32),
+            Type::Int(32),
+            Type::Int(64),
+        ] {
+            let suffix = type_suffix(ty);
+            self.register_runtime(format!("builtin.neg_{suffix}"), un(ty.clone()));
+        }
+
+        // Boolean
+        self.register_runtime("builtin.not_bool", un(Type::Bool));
+        self.register_runtime("builtin.and_bool", bin(Type::Bool));
+        self.register_runtime("builtin.or_bool", bin(Type::Bool));
+
+        // Bitwise: bitand, bitor, bitxor, shl, shr — i32, f64
+        for op in &["bitand", "bitor", "bitxor", "shl", "shr"] {
+            for ty in &[Type::Int(32), Type::Float(64)] {
+                let suffix = type_suffix(ty);
+                self.register_runtime(format!("builtin.{op}_{suffix}"), bin(ty.clone()));
+            }
+        }
+
+        // Bitwise NOT — i32, f64
+        for ty in &[Type::Int(32), Type::Float(64)] {
+            let suffix = type_suffix(ty);
+            self.register_runtime(format!("builtin.bitnot_{suffix}"), un(ty.clone()));
         }
     }
 
@@ -888,6 +965,25 @@ impl Module {
         let id = TypeVarId::new(self.next_type_var);
         self.next_type_var += 1;
         Type::Var(id)
+    }
+}
+
+/// Return the short suffix string used in builtin names for a given type.
+///
+/// Used by [`Module::register_core_builtins`] to build names like
+/// `"builtin.add_f64"` or `"builtin.bitand_i32"`.
+///
+/// # Panics
+/// Panics if `ty` is not one of the scalar types used by core builtins.
+fn type_suffix(ty: &Type) -> &'static str {
+    match ty {
+        Type::Float(64) => "f64",
+        Type::Float(32) => "f32",
+        Type::Int(32) => "i32",
+        Type::Int(64) => "i64",
+        Type::Bool => "bool",
+        Type::String => "str",
+        other => panic!("type_suffix: unsupported type {other:?}"),
     }
 }
 

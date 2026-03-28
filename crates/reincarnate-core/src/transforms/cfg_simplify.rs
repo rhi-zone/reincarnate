@@ -783,18 +783,17 @@ impl Transform for CfgSimplify {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
     use crate::ir::inst::Terminator;
     use crate::ir::ty::FunctionSig;
-    use crate::ir::{FuncId, Type, Visibility};
+    use crate::ir::{Type, Visibility};
 
     fn apply_cfg_simplify(func: Function) -> Function {
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
         let result = CfgSimplify.apply(module, None).unwrap();
-        result.module.functions[FuncId::new(0)].clone()
+        result.module.functions[fid].clone()
     }
 
     /// Empty block forwarded (no params): entry → B → C becomes entry → C,

@@ -9,7 +9,7 @@
 use crate::entity::EntityRef;
 use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
 use crate::ir::ty::FunctionSig;
-use crate::ir::{FuncId, Type, Visibility};
+use crate::ir::{FuncId, Module, Type, Visibility};
 use crate::pipeline::Transform;
 use crate::transforms::util::test_helpers::assert_well_formed;
 use crate::transforms::{
@@ -210,7 +210,7 @@ fn stress_pass<T: Transform>(pass: &T, func: crate::ir::Function) {
 
     // First application.
     let r1 = pass.apply(module, None).unwrap();
-    let func1 = &r1.module.functions[FuncId::new(0)];
+    let func1 = &r1.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
     assert_well_formed(func1);
 
     // Compact to remove dead arena entries before second run.
@@ -226,7 +226,7 @@ fn stress_pass<T: Transform>(pass: &T, func: crate::ir::Function) {
         "{} not idempotent on stress input",
         pass.name()
     );
-    assert_well_formed(&r2.module.functions[FuncId::new(0)]);
+    assert_well_formed(&r2.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)]);
 }
 
 /// Apply a pass to a module with two functions (needed for ConstraintSolve).
@@ -411,7 +411,7 @@ fn stress_full_pipeline_varied_shapes() {
 
         let pipeline = build_pipeline(&config);
         let result = pipeline.run(module).unwrap();
-        let func = &result.functions[FuncId::new(0)];
+        let func = &result.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
         assert_well_formed(func);
     }
 }

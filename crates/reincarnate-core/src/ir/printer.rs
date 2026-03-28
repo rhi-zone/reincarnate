@@ -552,8 +552,12 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
 
-        // Functions
+        // Functions — skip runtime/builtin stubs (they are internal and never
+        // user-visible; the Module printer shows only user-defined functions).
         for (func_id, func) in self.functions.iter() {
+            if self.runtime_registry.contains_key(self.func_name(func_id)) {
+                continue;
+            }
             writeln!(f)?;
             write_function_with_name(f, func, self.func_name(func_id))?;
             writeln!(f)?;

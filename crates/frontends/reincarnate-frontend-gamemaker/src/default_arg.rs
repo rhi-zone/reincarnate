@@ -415,7 +415,7 @@ mod tests {
 
     /// Build a function with the GML default-argument pattern:
     ///   if (arg === self.undefined) arg = default;
-    fn build_test_function(defaults: &[Constant]) -> Module {
+    fn build_test_function(defaults: &[Constant]) -> (Module, reincarnate_core::ir::func::FuncId) {
         // sig: (self, arg0, arg1, ...)
         let n_args = defaults.len();
         let mut params = vec![Type::Unknown]; // self
@@ -469,18 +469,18 @@ mod tests {
 
         let func = fb.build();
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
-        mb.build()
+        let fid = mb.add_function(func);
+        (mb.build(), fid)
     }
 
     #[test]
     fn test_single_default() {
-        let module = build_test_function(&[Constant::Float(0.0)]);
+        let (module, fid) = build_test_function(&[Constant::Float(0.0)]);
         let pass = GmlDefaultArgRecovery;
         let result = pass.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions.values().next().unwrap();
+        let func = &result.module.functions[fid];
         assert_eq!(func.sig.defaults.len(), 2); // self + arg0
         assert_eq!(func.sig.defaults[0], None); // self
         assert_eq!(func.sig.defaults[1], Some(Constant::Float(0.0))); // arg0
@@ -490,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_multiple_defaults() {
-        let module = build_test_function(&[
+        let (module, fid) = build_test_function(&[
             Constant::String("???".to_string()),
             Constant::Float(1.0),
             Constant::Bool(false),
@@ -499,7 +499,7 @@ mod tests {
         let result = pass.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions.values().next().unwrap();
+        let func = &result.module.functions[fid];
         assert_eq!(func.sig.defaults.len(), 4); // self + 3 args
         assert_eq!(func.sig.defaults[0], None);
         assert_eq!(
@@ -526,14 +526,14 @@ mod tests {
         fb.ret(None);
         let func = fb.build();
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
 
         let pass = GmlDefaultArgRecovery;
         let result = pass.apply(module, None).unwrap();
         // Even without an explicit pattern, set_variadic_defaults fills arg1 with 0.0.
         assert!(result.changed);
-        let func = result.module.functions.values().next().unwrap();
+        let func = &result.module.functions[fid];
         assert_eq!(func.sig.defaults[0], None); // self — never gets a default
         assert_eq!(func.sig.defaults[1], Some(Constant::Float(0.0))); // arg0 = 0.0
     }

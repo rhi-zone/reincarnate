@@ -361,7 +361,7 @@ mod tests {
 
         let func = fb.build();
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
 
         // Run the normalization pass.
@@ -373,7 +373,7 @@ mod tests {
             "Pass should create a bypass block for the inner BrIf"
         );
 
-        let func = result.module.functions.values().next().unwrap();
+        let func = &result.module.functions[fid];
 
         // block3's Br arg must still be v_zero — the shared block must NOT be modified.
         let b3 = &func.blocks[block3];
@@ -474,12 +474,12 @@ mod tests {
 
         let func = fb.build();
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
 
         let result = GmlLogicalOpNormalize.apply(module, None).unwrap();
 
-        let func = result.module.functions.values().next().unwrap();
+        let func = &result.module.functions[fid];
 
         // block2's Br arg must remain v_zero — NOT replaced with v_cond.
         let b2 = &func.blocks[block2];
@@ -533,12 +533,12 @@ mod tests {
 
         let func = fb.build();
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
 
         let result = GmlLogicalOpNormalize.apply(module, None).unwrap();
         // The pass must NOT modify block1's Br arg — it's a plain if-then, not ||.
-        let func = result.module.functions.values().next().unwrap();
+        let func = &result.module.functions[fid];
         let b1 = &func.blocks[block1];
         let Terminator::Br { args, .. } = &b1.terminator else {
             panic!("Expected Br terminator in block1");
