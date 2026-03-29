@@ -896,20 +896,21 @@ pub fn collect_function(
                 }
 
                 // Alloc — record the cell TypeVar for this allocation slot.
+                //
+                // Always allocate a fresh arena TypeVar for the cell contents.
+                // The inner_ty carried on the Alloc op uses frontend-local
+                // TypeVarIds (e.g. TypeVarId(5) from build_signature_with_args)
+                // that have no identity in the shared arena — reusing them
+                // directly would alias unrelated TypeVars from earlier functions.
+                // A fresh var is correct: Store constraints bind it to the stored
+                // value's type; Load constraints propagate it to the load result.
                 Op::Alloc(inner_ty) => {
                     if let Some(alloc_result) = inst.result {
-                        let cell_var = if let Type::Var(id) = inner_ty {
-                            *id
-                        } else {
-                            let fresh = arena.fresh();
-                            if is_concrete(inner_ty) {
-                                constraints.push(TypeConstraint::Equal(
-                                    Type::Var(fresh),
-                                    inner_ty.clone(),
-                                ));
-                            }
-                            fresh
-                        };
+                        let cell_var = arena.fresh();
+                        if is_concrete(inner_ty) {
+                            constraints
+                                .push(TypeConstraint::Equal(Type::Var(cell_var), inner_ty.clone()));
+                        }
                         alloc_cell_vars.insert(alloc_result, cell_var);
                     }
                 }

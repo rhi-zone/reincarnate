@@ -1912,10 +1912,26 @@ generic unknown-call spam.
   Bounty: 53/77 `any`. Root cause: ConstraintSolve runs per-function and only propagates
   callee param types → caller arg types, never the reverse. Call sites are the biggest
   untapped source of type info.
-  **Implemented**: `CallSiteTypeFlow` pass in `transforms/call_site_flow.rs`. Runs between
-  TypeInference and ConstraintSolve. Collects argument types from all `Op::Call` and
-  `Op::MethodCall` sites, narrows `Dynamic` params when all callers agree on a concrete type.
-  Skips self-calls, `CallIndirect`, `SystemCall`, and `Dynamic` args.
+  **Implemented then deleted**: `CallSiteTypeFlow` pass implemented (committed), then
+  deleted in Phase 7 (commit 485325d, 2026-03-27) as part of the HM solver replacement.
+  The HM solver was expected to subsume this — see "Retire CallSiteTypeFlow" (Step 4 in
+  the HM plan above). As of Phase 7, 2245 TS18046 ("'argument0' is of type 'unknown'")
+  errors remain — see below.
+- [x] **HM solver: Alloc handler aliased frontend TypeVarIds — root cause of 2245 TS18046
+  errors** — FIXED in `constraint_collect.rs` (`Op::Alloc` handler, 2026-03-29).
+  Root cause: the `Op::Alloc(Type::Var(id))` branch reused the frontend-local `TypeVarId`
+  directly as the cell TypeVar in the shared arena. Frontend TypeVarIds are assigned by a
+  per-function counter (0, 1, 2, ...) in `build_signature_with_args`; they have no identity
+  in the global arena. Reusing `TypeVarId(5)` meant the cell aliased the 5th TypeVar
+  allocated in the very first function's `collect_function` run — an entirely unrelated value.
+  This corrupted Store/Load inference chains across all functions that used Alloc with a
+  `Type::Var` inner type (i.e., all GML locals/params initialized with TypeVars). Fix:
+  always call `arena.fresh()` for the cell TypeVar; emit `Equal(cell, inner_ty)` only when
+  `inner_ty` is concrete. Result: 2245 → 1953 TS18046, 5959 → 4588 total Dead Estate errors.
+  Remaining 1953 TS18046 errors are: loop counters (`i`, `j`, `yy`, `xx`) whose arithmetic
+  chains use `builtin.add_any`/`sub_any` (typed from the first operand, which is Unknown when
+  built), functions with no direct call sites (only `CallIndirect`), and params used as
+  collections (correctly guarded from narrowing).
 - [ ] **CallSiteTypeFlow: union type narrowing (intentionally deferred)** — When callers
   disagree on types (e.g. one passes `string`, another `number`), the param stays `Dynamic`
   rather than being narrowed to `string | number`. Adding union narrowing would require
