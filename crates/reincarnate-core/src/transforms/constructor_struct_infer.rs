@@ -4,18 +4,15 @@ use crate::error::CoreError;
 use crate::ir::{FieldDef, FuncId, Function, MethodKind, Module, Op, StructDef, Type, Visibility};
 use crate::pipeline::{Transform, TransformResult};
 
-/// Infer struct definitions from constructor and GML create-event `SetField` ops.
+/// Infer struct definitions from constructor `SetField` ops.
 ///
-/// Scans constructor functions (`MethodKind::Constructor`) and GML create events
-/// (`MethodKind::Instance` where the last `::` segment of the function name is `"create"`)
-/// for `SetField { object: self_param, field, value }` ops and synthesizes or augments
+/// Scans constructor functions (`MethodKind::Constructor`) for
+/// `SetField { object: self_param, field, value }` ops and synthesizes or augments
 /// a `StructDef` entry in `module.structs`.  Runs before `TypeInference` so that field
 /// types are available to the solver.
 ///
 /// Rules:
 /// - Functions with `method_kind == MethodKind::Constructor` are scanned.
-/// - Instance methods where the last `::` segment of the function name is `"create"` are also
-///   scanned (GML create events initialize instance fields but are tagged Instance).
 /// - Only `SetField` ops whose `object` is the first entry-block parameter (the `self`
 ///   parameter) are collected.
 /// - If a `StructDef` with the derived name already exists AND was previously inferred by
@@ -102,13 +99,8 @@ impl Transform for ConstructorStructInfer {
 
         for (func_id, func) in module.functions.iter() {
             let func_name = module.func_name(func_id);
-            // Accept Constructor methods AND Instance methods named "::create"
-            // (GML create events initialize instance fields but are Instance methods).
-            let is_init_fn = func.method_kind == MethodKind::Constructor
-                || (func.method_kind == MethodKind::Instance
-                    && func.class.is_some()
-                    && func_name.rsplit("::").next() == Some("create"));
-            if !is_init_fn {
+            // Only Constructor methods are scanned for field initialization.
+            if func.method_kind != MethodKind::Constructor {
                 continue;
             }
 
@@ -394,15 +386,15 @@ mod tests {
     }
 
     #[test]
-    fn infers_struct_from_gml_create_event() {
-        // Instance method named "::create" with a class set — should be treated as init fn.
+    fn infers_struct_from_named_constructor() {
+        // Constructor method named "Enemy::create" — should be treated as init fn.
         let sig = FunctionSig {
             params: vec![Type::Unknown],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("Enemy::create", sig, Visibility::Public);
-        fb.set_class(vec![], "Enemy".to_string(), MethodKind::Instance);
+        fb.set_class(vec![], "Enemy".to_string(), MethodKind::Constructor);
 
         let self_val = fb.param(0);
         let val = fb.const_float(100.0);

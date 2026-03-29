@@ -152,10 +152,14 @@ pub fn translate_objects(
                         Ok((mut func, extra_funcs)) => {
                             func.namespace = ns.clone();
                             func.class = Some(obj_name.clone());
-                            // All event handlers are instance methods.
-                            // `create` is called by the runtime after construction,
-                            // not as a JS constructor.
-                            func.method_kind = MethodKind::Instance;
+                            // Create events initialize instance fields and are treated as
+                            // constructors for struct inference. All other event handlers
+                            // are instance methods.
+                            func.method_kind = if event_type_idx == event_type::CREATE {
+                                MethodKind::Constructor
+                            } else {
+                                MethodKind::Instance
+                            };
                             let fid = mb.add_function(func);
                             method_ids.push(fid);
                             // Closure functions extracted from with-bodies: same
