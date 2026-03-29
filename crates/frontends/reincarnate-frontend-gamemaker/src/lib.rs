@@ -9,6 +9,7 @@ mod instance_type_flow;
 mod logical_op;
 pub(crate) mod naming;
 mod object;
+mod runtime_bodies;
 mod translate;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -246,6 +247,11 @@ impl Frontend for GameMakerFrontend {
         // lowering pass maps them back to Expr::SystemCall so all downstream
         // rewrite passes see the same patterns as before.
         register_gml_syscall_intrinsics(&mut module);
+
+        // Attach IR bodies to closed-form math runtime stubs.  The stubs were
+        // registered above by the builtins_generated loop; these bodies replace
+        // their empty entry blocks so the IR inliner can expand them later.
+        runtime_bodies::register_runtime_bodies(&mut module);
 
         // Register callback-return system calls for the GML engine.
         // withInstances callbacks hide the real return value from the outer function.
