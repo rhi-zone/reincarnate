@@ -775,7 +775,7 @@ impl Module {
     /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1,
     /// _any stubs (add/sub/mul/div/rem/neg) = 6 → 40.
-    pub const NUM_CORE_BUILTINS: u32 = 40;
+    pub const NUM_CORE_BUILTINS: u32 = 62;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -912,6 +912,19 @@ impl Module {
                 .collect();
             let any_id = self.register_runtime("builtin.neg_any", un_any());
             self.functions[any_id].specializations = specs;
+        }
+
+        // Math: single-argument f64 → f64.
+        for op in &[
+            "sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "exp", "ln", "log2", "log10",
+            "abs", "floor", "ceil", "round", "trunc", "sign",
+        ] {
+            self.register_runtime(format!("builtin.{op}_f64"), un(Type::Float(64)));
+        }
+
+        // Math: two-argument (f64, f64) → f64.
+        for op in &["atan2", "pow", "hypot", "min", "max"] {
+            self.register_runtime(format!("builtin.{op}_f64"), bin(Type::Float(64)));
         }
     }
 

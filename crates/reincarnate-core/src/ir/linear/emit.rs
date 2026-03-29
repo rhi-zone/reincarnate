@@ -967,6 +967,22 @@ impl<'a> EmitCtx<'a> {
                 lhs: Box::new(self.build_val(args[0])),
                 rhs: Box::new(self.build_val(args[1])),
             },
+            // Math single-argument: emit as Math.<method>(arg0).
+            "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sqrt" | "exp" | "ln" | "log2"
+            | "log10" | "abs" | "floor" | "ceil" | "round" | "trunc" | "sign" => {
+                Expr::SystemCall {
+                    system: "Math".to_string(),
+                    // "ln" maps to Math.log in JS/TS.
+                    method: if base == "ln" { "log" } else { base }.to_string(),
+                    args: vec![self.build_val(args[0])],
+                }
+            }
+            // Math two-argument: emit as Math.<method>(arg0, arg1).
+            "atan2" | "pow" | "hypot" | "min" | "max" => Expr::SystemCall {
+                system: "Math".to_string(),
+                method: base.to_string(),
+                args: vec![self.build_val(args[0]), self.build_val(args[1])],
+            },
             // Unknown builtin — fall back to a function call so the output is
             // at least syntactically valid (the name won't exist at runtime,
             // but a compile error is better than a panic).
