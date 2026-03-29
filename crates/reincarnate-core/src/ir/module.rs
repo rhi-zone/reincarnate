@@ -775,7 +775,7 @@ impl Module {
     /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1,
     /// _any stubs (add/sub/mul/div/rem/neg) = 6 → 40.
-    pub const NUM_CORE_BUILTINS: u32 = 62;
+    pub const NUM_CORE_BUILTINS: u32 = 69;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -926,6 +926,68 @@ impl Module {
         for op in &["atan2", "pow", "hypot", "min", "max"] {
             self.register_runtime(format!("builtin.{op}_f64"), bin(Type::Float(64)));
         }
+
+        // String operations.
+        self.register_runtime(
+            "builtin.string_length_str",
+            FunctionSig {
+                params: vec![Type::String],
+                return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        self.register_runtime(
+            "builtin.string_upper_str",
+            FunctionSig {
+                params: vec![Type::String],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        self.register_runtime(
+            "builtin.string_lower_str",
+            FunctionSig {
+                params: vec![Type::String],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        // string_char_at: (String, Float(64)) -> String  [s, 1-based-index]
+        self.register_runtime(
+            "builtin.string_char_at_str",
+            FunctionSig {
+                params: vec![Type::String, Type::Float(64)],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        // string_index_of: (String, String) -> Float(64)  [needle, haystack]
+        self.register_runtime(
+            "builtin.string_index_of_str",
+            FunctionSig {
+                params: vec![Type::String, Type::String],
+                return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        // string_slice: (String, Float(64), Float(64)) -> String  [s, start, end] 0-based JS slice
+        self.register_runtime(
+            "builtin.string_slice_str",
+            FunctionSig {
+                params: vec![Type::String, Type::Float(64), Type::Float(64)],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        // string_split: (String, String) -> Array(String)  [s, sep]
+        self.register_runtime(
+            "builtin.string_split_str",
+            FunctionSig {
+                params: vec![Type::String, Type::String],
+                return_ty: Type::Array(Box::new(Type::String)),
+                ..Default::default()
+            },
+        );
     }
 
     /// Register a runtime/builtin function (e.g. `"builtin.add_f64"`).

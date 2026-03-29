@@ -983,6 +983,41 @@ impl<'a> EmitCtx<'a> {
                 method: base.to_string(),
                 args: vec![self.build_val(args[0]), self.build_val(args[1])],
             },
+            // String operations
+            "string_length" => Expr::Field {
+                object: Box::new(self.build_val(args[0])),
+                field: "length".to_string(),
+            },
+            "string_upper" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "toUpperCase".to_string(),
+                args: vec![],
+            },
+            "string_lower" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "toLowerCase".to_string(),
+                args: vec![],
+            },
+            "string_char_at" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "charAt".to_string(),
+                args: vec![self.build_val(args[1])],
+            },
+            "string_index_of" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[1])), // haystack
+                method: "indexOf".to_string(),
+                args: vec![self.build_val(args[0])], // needle
+            },
+            "string_slice" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "slice".to_string(),
+                args: vec![self.build_val(args[1]), self.build_val(args[2])],
+            },
+            "string_split" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "split".to_string(),
+                args: vec![self.build_val(args[1])],
+            },
             // Unknown builtin — fall back to a function call so the output is
             // at least syntactically valid (the name won't exist at runtime,
             // but a compile error is better than a panic).

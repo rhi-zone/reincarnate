@@ -67,6 +67,16 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_colour_get_hue(module);
     attach_body_make_color_hsv(module);
     attach_body_make_colour_hsv(module);
+    attach_body_string_length(module);
+    attach_body_string_upper(module);
+    attach_body_string_lower(module);
+    attach_body_string_char_at(module);
+    attach_body_string_copy(module);
+    attach_body_string_pos(module);
+    attach_body_string_delete(module);
+    attach_body_string_insert(module);
+    attach_body_string_replace_all(module);
+    attach_body_string_count(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -2309,6 +2319,383 @@ fn attach_body_make_colour_hsv(module: &mut Module) {
         &[r_final, g_final, b_final],
         Type::Float(64),
     );
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_length(s: String) -> Float(64)  =  s.length
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_length(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_length") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_length", sig, Visibility::Public);
+    let s = b.param(0);
+
+    let result = b.call("builtin.string_length_str", &[s], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_upper(s: String) -> String  =  s.toUpperCase()
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_upper(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_upper") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_upper", sig, Visibility::Public);
+    let s = b.param(0);
+
+    let result = b.call("builtin.string_upper_str", &[s], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_lower(s: String) -> String  =  s.toLowerCase()
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_lower(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_lower") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_lower", sig, Visibility::Public);
+    let s = b.param(0);
+
+    let result = b.call("builtin.string_lower_str", &[s], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_char_at(s: String, index: Float(64)) -> String
+//   GML is 1-based: s.charAt(index - 1)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_char_at(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_char_at") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::Float(64)],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_char_at", sig, Visibility::Public);
+    let s = b.param(0);
+    let index = b.param(1);
+
+    let one = b.const_float(1.0);
+    let idx_zero = b.sub(index, one);
+    let result = b.call("builtin.string_char_at_str", &[s, idx_zero], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_copy(s: String, index: Float(64), count: Float(64)) -> String
+//   GML is 1-based: s.slice(index-1, index-1+count)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_copy(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_copy") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::Float(64), Type::Float(64)],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_copy", sig, Visibility::Public);
+    let s = b.param(0);
+    let index = b.param(1);
+    let count = b.param(2);
+
+    let one = b.const_float(1.0);
+    let start = b.sub(index, one); // index - 1  (0-based start)
+    let end = b.add(start, count); // start + count  (0-based exclusive end)
+    let result = b.call("builtin.string_slice_str", &[s, start, end], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_pos(substr: String, s: String) -> Float(64)
+//   Returns 1-based position, 0 if not found.
+//   JS indexOf returns 0-based (-1 if not found); adding 1 gives GML semantics:
+//   -1 + 1 = 0 (not found), n + 1 = 1-based position.
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_pos(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_pos") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::String],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_pos", sig, Visibility::Public);
+    let substr = b.param(0);
+    let s = b.param(1);
+
+    // builtin.string_index_of_str(needle, haystack) -> 0-based index or -1
+    let idx = b.call("builtin.string_index_of_str", &[substr, s], Type::Float(64));
+    let one = b.const_float(1.0);
+    let result = b.add(idx, one);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_delete(s: String, index: Float(64), count: Float(64)) -> String
+//   s.slice(0, index-1) + s.slice(index-1+count, length)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_delete(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_delete") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::Float(64), Type::Float(64)],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_delete", sig, Visibility::Public);
+    let s = b.param(0);
+    let index = b.param(1);
+    let count = b.param(2);
+
+    let zero = b.const_float(0.0);
+    let one = b.const_float(1.0);
+    let idx_minus1 = b.sub(index, one); // index - 1  (0-based)
+    let tail_start = b.add(idx_minus1, count); // index - 1 + count
+    let len = b.call("builtin.string_length_str", &[s], Type::Float(64));
+
+    let head = b.call(
+        "builtin.string_slice_str",
+        &[s, zero, idx_minus1],
+        Type::String,
+    );
+    let tail = b.call(
+        "builtin.string_slice_str",
+        &[s, tail_start, len],
+        Type::String,
+    );
+    let result = b.add(head, tail);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_insert(substr: String, s: String, index: Float(64)) -> String
+//   s.slice(0, index-1) + substr + s.slice(index-1)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_insert(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_insert") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::String, Type::Float(64)],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_insert", sig, Visibility::Public);
+    let substr = b.param(0);
+    let s = b.param(1);
+    let index = b.param(2);
+
+    let zero = b.const_float(0.0);
+    let one = b.const_float(1.0);
+    let idx_minus1 = b.sub(index, one); // index - 1  (0-based)
+    let len = b.call("builtin.string_length_str", &[s], Type::Float(64));
+
+    let head = b.call(
+        "builtin.string_slice_str",
+        &[s, zero, idx_minus1],
+        Type::String,
+    );
+    let tail = b.call(
+        "builtin.string_slice_str",
+        &[s, idx_minus1, len],
+        Type::String,
+    );
+    // head + substr + tail  (two string concatenations)
+    let head_sub = b.add(head, substr);
+    let result = b.add(head_sub, tail);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_replace_all(str: String, substr: String, newstr: String) -> String
+//   str.split(substr).join(newstr)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_replace_all(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_replace_all") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::String, Type::String],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_replace_all", sig, Visibility::Public);
+    let content = b.param(0);
+    let find = b.param(1);
+    let replace = b.param(2);
+
+    let arr_ty = Type::Array(Box::new(Type::String));
+    let parts = b.call("builtin.string_split_str", &[content, find], arr_ty);
+    let result = b.call_method(parts, "join", &[replace], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+}
+
+// ---------------------------------------------------------------------------
+// string_count(substr: String, s: String) -> Float(64)
+//   s.split(substr).length - 1
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_count(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_count") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::String],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_count", sig, Visibility::Public);
+    let substr = b.param(0);
+    let s = b.param(1);
+
+    let arr_ty = Type::Array(Box::new(Type::String));
+    let parts = b.call("builtin.string_split_str", &[s, substr], arr_ty);
+    let len = b.get_field(parts, "length", Type::Float(64));
+    let one = b.const_float(1.0);
+    let result = b.sub(len, one);
     b.ret(Some(result));
 
     let built = b.build();
