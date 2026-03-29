@@ -1018,6 +1018,35 @@ impl<'a> EmitCtx<'a> {
                 method: "split".to_string(),
                 args: vec![self.build_val(args[1])],
             },
+            "string_char_code_at" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "charCodeAt".to_string(),
+                args: vec![self.build_val(args[1])],
+            },
+            "string_repeat" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "repeat".to_string(),
+                args: vec![self.build_val(args[1])],
+            },
+            "string_replace_first" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "replace".to_string(),
+                args: vec![self.build_val(args[1]), self.build_val(args[2])],
+            },
+            "string_trim" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "trim".to_string(),
+                args: vec![],
+            },
+            "array_length" => Expr::Field {
+                object: Box::new(self.build_val(args[0])),
+                field: "length".to_string(),
+            },
+            "array_contains" => Expr::MethodCall {
+                receiver: Box::new(self.build_val(args[0])),
+                method: "includes".to_string(),
+                args: vec![self.build_val(args[1])],
+            },
             // Unknown builtin — fall back to a function call so the output is
             // at least syntactically valid (the name won't exist at runtime,
             // but a compile error is better than a panic).

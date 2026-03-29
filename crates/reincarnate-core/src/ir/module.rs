@@ -775,7 +775,7 @@ impl Module {
     /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1,
     /// _any stubs (add/sub/mul/div/rem/neg) = 6 → 40.
-    pub const NUM_CORE_BUILTINS: u32 = 69;
+    pub const NUM_CORE_BUILTINS: u32 = 75;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -985,6 +985,60 @@ impl Module {
             FunctionSig {
                 params: vec![Type::String, Type::String],
                 return_ty: Type::Array(Box::new(Type::String)),
+                ..Default::default()
+            },
+        );
+        // string_char_code_at: (String, Float(64)) -> Float(64)  [s, 0-based-index]
+        self.register_runtime(
+            "builtin.string_char_code_at_str",
+            FunctionSig {
+                params: vec![Type::String, Type::Float(64)],
+                return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        // string_repeat: (String, Float(64)) -> String
+        self.register_runtime(
+            "builtin.string_repeat_str",
+            FunctionSig {
+                params: vec![Type::String, Type::Float(64)],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        // string_replace_first: (String, String, String) -> String  [s, find, replace]
+        self.register_runtime(
+            "builtin.string_replace_first_str",
+            FunctionSig {
+                params: vec![Type::String, Type::String, Type::String],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        // string_trim: (String) -> String
+        self.register_runtime(
+            "builtin.string_trim_str",
+            FunctionSig {
+                params: vec![Type::String],
+                return_ty: Type::String,
+                ..Default::default()
+            },
+        );
+        // array_length: (Array(Unknown)) -> Float(64)
+        self.register_runtime(
+            "builtin.array_length_arr",
+            FunctionSig {
+                params: vec![Type::Array(Box::new(Type::Unknown))],
+                return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        // array_contains: (Array(Unknown), Unknown) -> Bool
+        self.register_runtime(
+            "builtin.array_contains_arr",
+            FunctionSig {
+                params: vec![Type::Array(Box::new(Type::Unknown)), Type::Unknown],
+                return_ty: Type::Bool,
                 ..Default::default()
             },
         );

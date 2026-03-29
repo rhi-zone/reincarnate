@@ -77,6 +77,14 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_string_insert(module);
     attach_body_string_replace_all(module);
     attach_body_string_count(module);
+    attach_body_string_ord_at(module);
+    attach_body_string_repeat(module);
+    attach_body_string_replace(module);
+    attach_body_string_hash_to_newline(module);
+    attach_body_string_trim(module);
+    attach_body_array_length(module);
+    attach_body_array_length_1d(module);
+    attach_body_array_contains(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -2755,6 +2763,299 @@ fn attach_body_string_count(module: &mut Module) {
     let len = b.get_field(parts, "length", Type::Float(64));
     let one = b.const_float(1.0);
     let result = b.sub(len, one);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// string_ord_at(str: String, index: Float(64)) -> Float(64)
+//   GML: char code at 1-based index
+//   JS equivalent: str.charCodeAt(index - 1)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_ord_at(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_ord_at") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_ord_at", sig, Visibility::Public);
+    let s = b.param(0);
+    let idx = b.param(1);
+
+    let one = b.const_float(1.0);
+    let idx0 = b.sub(idx, one); // convert 1-based GML index to 0-based JS
+    let result = b.call(
+        "builtin.string_char_code_at_str",
+        &[s, idx0],
+        Type::Float(64),
+    );
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// string_repeat(str: String, count: Float(64)) -> String
+//   JS: str.repeat(count)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_repeat(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_repeat") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::Float(64)],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_repeat", sig, Visibility::Public);
+    let s = b.param(0);
+    let n = b.param(1);
+
+    let result = b.call("builtin.string_repeat_str", &[s, n], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// string_replace(str: String, substr: String, newstr: String) -> String
+//   GML: replaces FIRST occurrence only
+//   JS: str.replace(substr, newstr)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_replace(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_replace") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::String, Type::String],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_replace", sig, Visibility::Public);
+    let s = b.param(0);
+    let sub = b.param(1);
+    let new = b.param(2);
+
+    let result = b.call(
+        "builtin.string_replace_first_str",
+        &[s, sub, new],
+        Type::String,
+    );
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// string_hash_to_newline(string: String) -> String
+//   GML: replaces '#' with newline
+//   JS: str.split('#').join('\n')
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_hash_to_newline(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_hash_to_newline") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_hash_to_newline", sig, Visibility::Public);
+    let s = b.param(0);
+
+    let hash = b.const_string("#");
+    let newline = b.const_string("\n");
+    let arr_ty = Type::Array(Box::new(Type::String));
+    let parts = b.call("builtin.string_split_str", &[s, hash], arr_ty);
+    let result = b.call_method(parts, "join", &[newline], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// string_trim(str: String, substr: Unknown) -> String
+//   GML: trims whitespace (optional 2nd param ignored for whitespace-trim form)
+//   JS: str.trim()
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_trim(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_trim") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::Unknown],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_trim", sig, Visibility::Public);
+    let s = b.param(0);
+    b.param(1); // substr — unused in whitespace-trim form
+
+    let result = b.call("builtin.string_trim_str", &[s], Type::String);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// array_length(array: Array(Unknown)) -> Float(64)
+//   JS: arr.length
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_length(module: &mut Module) {
+    let fid = match module.lookup_runtime("array_length") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let arr_ty = Type::Array(Box::new(Type::Unknown));
+    let sig = FunctionSig {
+        params: vec![arr_ty],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("array_length", sig, Visibility::Public);
+    let arr = b.param(0);
+
+    let result = b.call("builtin.array_length_arr", &[arr], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// array_length_1d(array: Array(Unknown)) -> Float(64)
+//   Alias for array_length; identical behaviour.
+//   JS: arr.length
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_length_1d(module: &mut Module) {
+    let fid = match module.lookup_runtime("array_length_1d") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let arr_ty = Type::Array(Box::new(Type::Unknown));
+    let sig = FunctionSig {
+        params: vec![arr_ty],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("array_length_1d", sig, Visibility::Public);
+    let arr = b.param(0);
+
+    let result = b.call("builtin.array_length_arr", &[arr], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// array_contains(array: Array(Unknown), value: Unknown) -> Bool
+//   GML: checks if value is in array
+//   JS: arr.includes(value)
+// ---------------------------------------------------------------------------
+
+fn attach_body_array_contains(module: &mut Module) {
+    let fid = match module.lookup_runtime("array_contains") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let arr_ty = Type::Array(Box::new(Type::Unknown));
+    let sig = FunctionSig {
+        params: vec![arr_ty, Type::Unknown],
+        return_ty: Type::Bool,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("array_contains", sig, Visibility::Public);
+    let arr = b.param(0);
+    let val = b.param(1);
+
+    let result = b.call("builtin.array_contains_arr", &[arr, val], Type::Bool);
     b.ret(Some(result));
 
     let built = b.build();
