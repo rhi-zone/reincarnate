@@ -504,6 +504,7 @@ fn build_resume_function(
         namespace: orig_func.namespace.clone(),
         class: orig_func.class.clone(),
         method_kind: orig_func.method_kind,
+        specializations: std::collections::HashMap::new(),
         blocks: rb.blocks,
         insts: rb.insts,
         value_types: rb.value_types,

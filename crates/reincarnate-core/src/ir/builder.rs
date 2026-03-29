@@ -61,6 +61,7 @@ impl FunctionBuilder {
             namespace: Vec::new(),
             class: None,
             method_kind: MethodKind::Free,
+            specializations: HashMap::new(),
             blocks,
             insts: PrimaryMap::new(),
             value_types,

@@ -185,6 +185,22 @@ pub struct Function {
     /// Not serialized — rebuilt by the frontend on every run.
     #[serde(skip)]
     pub intrinsic: Option<IntrinsicKind>,
+    /// Typed overload specializations for polymorphic `_any` builtins.
+    ///
+    /// Maps a concrete argument-type signature (ordered list of [`Type`] values,
+    /// one per argument) to the [`FuncId`] of the typed variant that should be
+    /// called when those argument types are known at compile time.
+    ///
+    /// Non-empty only on `builtin.xxx_any` stubs registered by
+    /// [`Module::register_core_builtins`].  All other functions leave this empty.
+    ///
+    /// The `BuiltinOverloadSelect` transform reads this table to replace
+    /// `_any` calls with their concrete typed counterparts without any
+    /// string manipulation or hardcoded type maps.
+    ///
+    /// Not serialized — rebuilt by `register_core_builtins` on every run.
+    #[serde(skip)]
+    pub specializations: HashMap<Vec<Type>, FuncId>,
 }
 
 impl Function {

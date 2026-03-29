@@ -773,8 +773,9 @@ impl Module {
     /// `FuncId::new(Self::NUM_CORE_BUILTINS)` instead of `FuncId::new(0)`.
     ///
     /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
-    /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
-    pub const NUM_CORE_BUILTINS: u32 = 34;
+    /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1,
+    /// _any stubs (add/sub/mul/div/rem/neg) = 6 → 40.
+    pub const NUM_CORE_BUILTINS: u32 = 40;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -830,15 +831,29 @@ impl Module {
             return_ty: ty,
             ..Default::default()
         };
+        // Helper: polymorphic binary sig (Unknown, Unknown) -> Unknown.
+        let bin_any = || FunctionSig {
+            params: vec![Type::Unknown, Type::Unknown],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        // Helper: polymorphic unary sig (Unknown,) -> Unknown.
+        let un_any = || FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+
+        let scalar_types = [
+            Type::Float(64),
+            Type::Float(32),
+            Type::Int(32),
+            Type::Int(64),
+        ];
 
         // Arithmetic: add, sub, mul, div, rem — f64, f32, i32, i64
         for op in &["add", "sub", "mul", "div", "rem"] {
-            for ty in &[
-                Type::Float(64),
-                Type::Float(32),
-                Type::Int(32),
-                Type::Int(64),
-            ] {
+            for ty in &scalar_types {
                 let suffix = type_suffix(ty);
                 self.register_runtime(format!("builtin.{op}_{suffix}"), bin(ty.clone()));
             }
@@ -847,12 +862,7 @@ impl Module {
         self.register_runtime("builtin.add_str", bin(Type::String));
 
         // Negation: neg — f64, f32, i32, i64
-        for ty in &[
-            Type::Float(64),
-            Type::Float(32),
-            Type::Int(32),
-            Type::Int(64),
-        ] {
+        for ty in &scalar_types {
             let suffix = type_suffix(ty);
             self.register_runtime(format!("builtin.neg_{suffix}"), un(ty.clone()));
         }
@@ -872,6 +882,37 @@ impl Module {
 
         // Bitwise NOT — i32 only (same rationale as above).
         self.register_runtime("builtin.bitnot_i32", un(Type::Int(32)));
+
+        // Polymorphic _any stubs — emitted by frontends when argument types are
+        // not yet known.  `BuiltinOverloadSelect` replaces these with the
+        // appropriate typed variant once HM inference resolves the operand types.
+        // The `specializations` table on each stub encodes which typed FuncId to
+        // use for each concrete argument-type signature.
+        for op in &["add", "sub", "mul", "div", "rem"] {
+            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
+                .iter()
+                .map(|ty| {
+                    let suffix = type_suffix(ty);
+                    let fid = self.runtime_registry[&format!("builtin.{op}_{suffix}")];
+                    (vec![ty.clone(), ty.clone()], fid)
+                })
+                .collect();
+            let any_id = self.register_runtime(format!("builtin.{op}_any"), bin_any());
+            self.functions[any_id].specializations = specs;
+        }
+
+        {
+            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
+                .iter()
+                .map(|ty| {
+                    let suffix = type_suffix(ty);
+                    let fid = self.runtime_registry[&format!("builtin.neg_{suffix}")];
+                    (vec![ty.clone()], fid)
+                })
+                .collect();
+            let any_id = self.register_runtime("builtin.neg_any", un_any());
+            self.functions[any_id].specializations = specs;
+        }
     }
 
     /// Register a runtime/builtin function (e.g. `"builtin.add_f64"`).
@@ -906,6 +947,7 @@ impl Module {
             namespace: Vec::new(),
             class: None,
             method_kind: MethodKind::Free,
+            specializations: HashMap::new(),
             blocks,
             insts: crate::entity::PrimaryMap::new(),
             value_types: crate::entity::PrimaryMap::new(),

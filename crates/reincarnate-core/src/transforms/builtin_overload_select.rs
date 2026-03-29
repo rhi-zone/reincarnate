@@ -13,17 +13,16 @@
 //! `add_any(Float64, Float64)` produces `Unknown`.  This pass replaces those
 //! calls once operand types are known from HM inference.
 //!
-//! # Rules
+//! # Mechanism
 //!
-//! Binary ops (`add`, `sub`, `mul`, `div`, `rem`):
-//! - Both operands must have the same concrete type.
-//! - `Float(64)` → `_f64`, `Float(32)` → `_f32`, `Int(32)` → `_i32`, `Int(64)` → `_i64`.
-//! - If operands disagree, are `Unknown`, or have a type not in the map → leave unchanged.
+//! Each `_any` stub registered by `Module::register_core_builtins` carries a
+//! `specializations` table mapping concrete argument-type signatures to the
+//! `FuncId` of the typed variant.  This pass looks up the callee by name in
+//! `module.runtime_registry`, checks whether its `specializations` is non-empty,
+//! collects the live argument types, and — if a match exists — rewrites the
+//! call site to the typed variant and updates the result type.
 //!
-//! Unary op (`neg`):
-//! - Single operand, same type map.
-//!
-//! Result type is set to the matched concrete type.
+//! No string manipulation, no hardcoded type maps.
 
 use std::collections::HashSet;
 
@@ -35,77 +34,52 @@ use crate::pipeline::{Transform, TransformResult};
 /// `BuiltinOverloadSelect` — replaces `builtin.xxx_any` calls with typed variants.
 pub struct BuiltinOverloadSelect;
 
-/// Suffix appended to the base op name for a given operand type.
-fn type_suffix(ty: &Type) -> Option<&'static str> {
-    match ty {
-        Type::Float(64) => Some("f64"),
-        Type::Float(32) => Some("f32"),
-        Type::Int(32) => Some("i32"),
-        Type::Int(64) => Some("i64"),
-        _ => None,
-    }
-}
-
 /// Try to select a typed overload for one instruction in `func`.
 ///
+/// `name_to_fid` is a pre-built map from function name to `FuncId` derived from
+/// `module.runtime_registry`.
+///
 /// Returns `true` if the instruction was rewritten.
-fn try_select(func: &mut Function, inst_id: crate::ir::InstId) -> bool {
+fn try_select(func: &mut Function, inst_id: crate::ir::InstId, module: &Module) -> bool {
     // Clone the op to avoid borrowing issues while we mutate value_types.
     let op = func.insts[inst_id].op.clone();
 
-    let (base_op, new_func_name, result_ty) = match &op {
-        Op::Call { func: fname, args } => {
-            // Must be a "builtin." call ending with "_any".
-            let Some(rest) = fname.strip_prefix("builtin.") else {
-                return false;
-            };
-            let Some(op_name) = rest.strip_suffix("_any") else {
-                return false;
-            };
-
-            match op_name {
-                "add" | "sub" | "mul" | "div" | "rem" => {
-                    if args.len() != 2 {
-                        return false;
-                    }
-                    let ty_a = func.value_types[args[0]].clone();
-                    let ty_b = func.value_types[args[1]].clone();
-                    if ty_a != ty_b {
-                        return false;
-                    }
-                    let Some(suffix) = type_suffix(&ty_a) else {
-                        return false;
-                    };
-                    let new_name = format!("builtin.{}_{}", op_name, suffix);
-                    (op_name.to_string(), new_name, ty_a)
-                }
-                "neg" => {
-                    if args.len() != 1 {
-                        return false;
-                    }
-                    let ty_a = func.value_types[args[0]].clone();
-                    let Some(suffix) = type_suffix(&ty_a) else {
-                        return false;
-                    };
-                    let new_name = format!("builtin.neg_{}", suffix);
-                    ("neg".to_string(), new_name, ty_a)
-                }
-                _ => return false,
-            }
-        }
-        _ => return false,
+    let Op::Call { func: fname, args } = &op else {
+        return false;
     };
 
-    let _ = base_op; // consumed above
+    // Look up the callee FuncId from the runtime registry.
+    let Some(&callee_fid) = module.runtime_registry.get(fname.as_str()) else {
+        return false;
+    };
 
-    // Update the instruction's func name.
-    if let Op::Call { func: fname, .. } = &mut func.insts[inst_id].op {
-        *fname = new_func_name;
+    let callee = &module.functions[callee_fid];
+
+    // Only _any stubs have a non-empty specializations table.
+    if callee.specializations.is_empty() {
+        return false;
+    }
+
+    // Collect concrete argument types from the calling function's value_types.
+    let arg_types: Vec<Type> = args.iter().map(|&v| func.value_types[v].clone()).collect();
+
+    // Look up the specialization for these argument types.
+    let Some(&target_fid) = callee.specializations.get(&arg_types) else {
+        return false;
+    };
+
+    let target = &module.functions[target_fid];
+    let target_name = target.name.clone();
+    let return_ty = target.sig.return_ty.clone();
+
+    // Rewrite the call to the typed variant.
+    if let Op::Call { func: fn_name, .. } = &mut func.insts[inst_id].op {
+        *fn_name = target_name;
     }
 
     // Update the result's value type.
     if let Some(result_vid) = func.insts[inst_id].result {
-        func.value_types[result_vid] = result_ty;
+        func.value_types[result_vid] = return_ty;
     }
 
     true
@@ -114,7 +88,7 @@ fn try_select(func: &mut Function, inst_id: crate::ir::InstId) -> bool {
 /// Apply overload selection to all live instructions in a function.
 ///
 /// Returns `true` if any instruction was rewritten.
-fn select_function(func: &mut Function) -> bool {
+fn select_function(func: &mut Function, module: &Module) -> bool {
     let live_insts: Vec<_> = func
         .blocks
         .values()
@@ -123,7 +97,7 @@ fn select_function(func: &mut Function) -> bool {
 
     let mut changed = false;
     for inst_id in live_insts {
-        if try_select(func, inst_id) {
+        if try_select(func, inst_id, module) {
             changed = true;
         }
     }
@@ -153,8 +127,16 @@ impl Transform for BuiltinOverloadSelect {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
-            if select_function(&mut module.functions[func_id]) {
+            // Split the borrow: we need a mutable reference to module.functions[func_id]
+            // while reading module.runtime_registry and other entries in module.functions
+            // (the callee stubs).  Extract the function, run selection against the rest
+            // of the module, then put it back.
+            let mut func = module.functions[func_id].clone();
+            if select_function(&mut func, &module) {
+                module.functions[func_id] = func;
                 changed_funcs.insert(func_id);
+            } else {
+                // func was cloned; no write needed.
             }
         }
         let changed = !changed_funcs.is_empty();

@@ -6,7 +6,7 @@ define_entity!(TypeVarId);
 define_entity!(TypeId);
 
 /// A resolved type in the IR.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Type {
     /// Void / unit.
     Void,
@@ -55,7 +55,7 @@ pub enum Type {
 }
 
 /// Function signature.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FunctionSig {
     pub params: Vec<Type>,
     pub return_ty: Type,
