@@ -63,6 +63,7 @@ fn process_constraint(
     arena: &mut TypeVarArena,
     struct_fields: &HashMap<String, HashMap<String, Type>>,
     type_id_to_name: &HashMap<TypeId, String>,
+    name_to_type_id: &HashMap<String, TypeId>,
     deferred: &mut Vec<TypeConstraint>,
 ) {
     match c {
@@ -91,12 +92,32 @@ fn process_constraint(
                     // Unknown field — skip; don't invent a type.
                 }
                 Type::Var(_) => {
-                    // Object type not yet resolved — re-defer.
-                    deferred.push(TypeConstraint::HasField {
-                        ty: resolved_ty,
-                        field,
-                        field_ty,
-                    });
+                    // Part 1: if exactly one struct has this field, unify immediately.
+                    let candidates: Vec<TypeId> = name_to_type_id
+                        .iter()
+                        .filter(|(name, _)| {
+                            struct_fields
+                                .get(*name)
+                                .is_some_and(|f| f.contains_key(&field))
+                        })
+                        .map(|(_, &id)| id)
+                        .collect();
+                    if candidates.len() == 1 {
+                        let type_id = candidates[0];
+                        let _ = unify(resolved_ty, Type::Instance(type_id), arena);
+                        if let Some(name) = type_id_to_name.get(&type_id) {
+                            if let Some(ft) = struct_fields.get(name).and_then(|f| f.get(&field)) {
+                                deferred.push(TypeConstraint::Equal(field_ty, ft.clone()));
+                            }
+                        }
+                    } else {
+                        // Object type not yet resolved — re-defer.
+                        deferred.push(TypeConstraint::HasField {
+                            ty: resolved_ty,
+                            field,
+                            field_ty,
+                        });
+                    }
                 }
                 _ => {
                     // Unknown or other — no useful info.
@@ -210,6 +231,10 @@ impl Transform for ConstraintSolveHM {
             .types
             .iter()
             .filter_map(|(id, td)| td.name().map(|n| (id, n.to_string())))
+            .collect();
+        let name_to_type_id: HashMap<String, TypeId> = type_id_to_name
+            .iter()
+            .map(|(&id, name)| (name.clone(), id))
             .collect();
 
         // -----------------------------------------------------------------------
@@ -577,6 +602,7 @@ impl Transform for ConstraintSolveHM {
         //   (b) a full pass made no progress (deferred list no shorter than before).
         // -----------------------------------------------------------------------
         let mut pending: Vec<TypeConstraint> = all_constraints;
+        let stalled_deferred: Vec<TypeConstraint>;
         loop {
             let pending_count = pending.len();
             let mut deferred: Vec<TypeConstraint> = Vec::new();
@@ -586,16 +612,107 @@ impl Transform for ConstraintSolveHM {
                     &mut arena,
                     &struct_fields,
                     &type_id_to_name,
+                    &name_to_type_id,
                     &mut deferred,
                 );
             }
-            if deferred.is_empty() {
-                break;
-            }
-            if deferred.len() >= pending_count {
+            if deferred.is_empty() || deferred.len() >= pending_count {
+                stalled_deferred = deferred;
                 break;
             }
             pending = deferred;
+        }
+
+        // -----------------------------------------------------------------------
+        // Step 4.5: multi-field struct narrowing.
+        //
+        // After the fixpoint loop stalls, group remaining HasField{ty:Var}
+        // constraints by TypeVarId and intersect candidate struct sets across
+        // all fields for the same Var. If the intersection is a singleton,
+        // unify the Var to that struct type and emit field-type constraints.
+        // Then run one more fixpoint pass to propagate the unlocked constraints.
+        // -----------------------------------------------------------------------
+        let mut new_from_narrowing: Vec<TypeConstraint> = Vec::new();
+        {
+            use crate::ir::ty::TypeVarId;
+
+            // Group: TypeVarId → set of field names still unresolved on that var.
+            let mut var_fields: HashMap<TypeVarId, HashSet<String>> = HashMap::new();
+            for c in &stalled_deferred {
+                if let TypeConstraint::HasField {
+                    ty: Type::Var(var_id),
+                    field,
+                    ..
+                } = c
+                {
+                    var_fields.entry(*var_id).or_default().insert(field.clone());
+                }
+            }
+
+            for (var_id, fields) in &var_fields {
+                // Intersect: structs that have ALL the observed fields.
+                let candidates: Vec<TypeId> = name_to_type_id
+                    .iter()
+                    .filter(|(name, _)| {
+                        struct_fields
+                            .get(*name)
+                            .is_some_and(|sf| fields.iter().all(|f| sf.contains_key(f)))
+                    })
+                    .map(|(_, &id)| id)
+                    .collect();
+
+                if candidates.len() == 1 {
+                    let type_id = candidates[0];
+                    let _ = unify(Type::Var(*var_id), Type::Instance(type_id), &mut arena);
+                    // Emit field-type constraints for all HasField constraints on this var.
+                    if let Some(name) = type_id_to_name.get(&type_id) {
+                        if let Some(sf) = struct_fields.get(name) {
+                            for c in &stalled_deferred {
+                                if let TypeConstraint::HasField {
+                                    ty: Type::Var(vid),
+                                    field,
+                                    field_ty,
+                                } = c
+                                {
+                                    if vid == var_id {
+                                        if let Some(ft) = sf.get(field) {
+                                            new_from_narrowing.push(TypeConstraint::Equal(
+                                                field_ty.clone(),
+                                                ft.clone(),
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // If any vars were narrowed, run one more fixpoint pass to propagate.
+        if !new_from_narrowing.is_empty() {
+            let mut pending2 = new_from_narrowing;
+            // Re-include stalled_deferred so newly-narrowed HasField constraints can resolve.
+            pending2.extend(stalled_deferred);
+            loop {
+                let pending_count = pending2.len();
+                let mut deferred: Vec<TypeConstraint> = Vec::new();
+                for c in pending2 {
+                    process_constraint(
+                        c,
+                        &mut arena,
+                        &struct_fields,
+                        &type_id_to_name,
+                        &name_to_type_id,
+                        &mut deferred,
+                    );
+                }
+                if deferred.is_empty() || deferred.len() >= pending_count {
+                    break;
+                }
+                pending2 = deferred;
+            }
         }
 
         // -----------------------------------------------------------------------
