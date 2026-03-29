@@ -4,7 +4,7 @@ use crate::entity::PrimaryMap;
 
 use super::block::{Block, BlockId, BlockParam};
 use super::func::MethodKind;
-use super::func::{CaptureMode, CaptureParam, FuncId, Function, Visibility};
+use super::func::{CaptureMode, CaptureParam, FuncId, Function, InlineHint, Visibility};
 use super::inst::{CastKind, CmpKind, Inst, Op, Terminator};
 use super::module::{
     ClassDef, EntryPoint, EnumDef, ExternalImport, Global, Import, Module, StructDef, TypeDecl,
@@ -72,6 +72,7 @@ impl FunctionBuilder {
             null_sentinel_values: std::collections::HashSet::new(),
             type_rule: None,
             intrinsic: None,
+            inline_hint: InlineHint::Default,
         };
 
         Self {

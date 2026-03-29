@@ -7,7 +7,7 @@ use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
 use super::block::{Block, BlockId};
-use super::func::{FuncId, Function, IntrinsicKind, MethodKind, Visibility};
+use super::func::{FuncId, Function, InlineHint, IntrinsicKind, MethodKind, Visibility};
 use super::inst::Terminator;
 use super::name_table::NameTable;
 use super::ty::{FunctionSig, Type, TypeId, TypeVarId};
@@ -1033,6 +1033,7 @@ impl Module {
             null_sentinel_values: std::collections::HashSet::new(),
             type_rule: None,
             intrinsic: None,
+            inline_hint: InlineHint::Default,
         };
         let name_id = self.name_table.func_names.push(name.clone());
         let id = self.functions.push(func);

@@ -12,6 +12,19 @@ use super::module::SystemCallTypeRule;
 use super::ty::{FunctionSig, Type};
 use super::value::ValueId;
 
+/// Inlining hint for a function.
+///
+/// Set to `Always` on runtime stubs that have IR bodies attached, so the
+/// inliner can substitute the body at every call site.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum InlineHint {
+    /// Always inline this function at every call site.
+    Always,
+    /// Use the default inlining heuristic (do not inline).
+    #[default]
+    Default,
+}
+
 /// The native backend behavior for an intrinsic function.
 ///
 /// When a `Function` has `intrinsic: Some(kind)`, the IR-to-AST linear emitter
@@ -201,6 +214,15 @@ pub struct Function {
     /// Not serialized — rebuilt by `register_core_builtins` on every run.
     #[serde(skip)]
     pub specializations: HashMap<Vec<Type>, FuncId>,
+    /// Inlining hint — whether the inliner should substitute this function's
+    /// body at call sites.
+    ///
+    /// Set to `InlineHint::Always` by `register_runtime_bodies` after attaching
+    /// an IR body to a stub so the inline pass can substitute it everywhere.
+    ///
+    /// Not serialized — rebuilt by the frontend on every run.
+    #[serde(skip)]
+    pub inline_hint: InlineHint,
 }
 
 impl Function {

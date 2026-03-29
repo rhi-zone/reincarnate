@@ -6,6 +6,7 @@ pub mod constraint_solve_hm;
 pub mod constructor_struct_infer;
 pub mod coroutine_lower;
 pub mod dce;
+pub mod inline;
 pub mod int_to_bool;
 pub mod mem2reg;
 pub mod red_cast_elim;
@@ -18,6 +19,7 @@ pub use constraint_solve_hm::ConstraintSolveHM;
 pub use constructor_struct_infer::ConstructorStructInfer;
 pub use coroutine_lower::CoroutineLowering;
 pub use dce::DeadCodeElimination;
+pub use inline::Inline;
 pub use int_to_bool::IntToBoolPromotion;
 pub use mem2reg::Mem2Reg;
 pub use red_cast_elim::RedundantCastElimination;
@@ -49,6 +51,11 @@ pub fn all_passes() -> Vec<PassDescriptor> {
             name: "builtin-overload-select",
             factory: || Box::new(BuiltinOverloadSelect),
             config_enabled: |c| c.builtin_overload_select,
+        },
+        PassDescriptor {
+            name: "inline",
+            factory: || Box::new(Inline),
+            config_enabled: |c| c.inline,
         },
         PassDescriptor {
             name: "constant-folding",
@@ -201,6 +208,20 @@ mod pipeline_order_tests {
             pos_dce,
             names.len() - 1,
             "dead-code-elimination must be last"
+        );
+
+        // Inline must appear after builtin-overload-select and before dce (run_once).
+        let pos_inline = names
+            .iter()
+            .position(|&n| n == "inline")
+            .expect("inline missing");
+        assert!(
+            pos_inline > pos_bos,
+            "inline must be after builtin-overload-select"
+        );
+        assert!(
+            pos_inline < pos_dce,
+            "inline must be before dead-code-elimination"
         );
 
         // validate_ordering must not panic.

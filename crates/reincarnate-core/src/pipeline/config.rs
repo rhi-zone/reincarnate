@@ -91,6 +91,9 @@ pub struct PassConfig {
     /// `_i32`, `_i64`) once operand types are known from HM inference.
     /// Runs after `constraint-solve-hm`.
     pub builtin_overload_select: bool,
+    /// Inline runtime functions marked with `InlineHint::Always` at their call sites.
+    /// Runs after `builtin-overload-select` and before `dead-code-elimination`.
+    pub inline: bool,
     pub constant_folding: bool,
     pub cfg_simplify: bool,
     pub coroutine_lowering: bool,
@@ -107,6 +110,7 @@ impl Default for PassConfig {
             constructor_struct_infer: true,
             constraint_solve_hm: true,
             builtin_overload_select: true,
+            inline: true,
             constant_folding: true,
             cfg_simplify: true,
             coroutine_lowering: true,
@@ -125,6 +129,7 @@ impl PassConfig {
     /// - `"constructor-struct-infer"`
     /// - `"constraint-solve-hm"`
     /// - `"builtin-overload-select"`
+    /// - `"inline"`
     /// - `"constant-folding"`
     /// - `"cfg-simplify"`
     /// - `"coroutine-lowering"`
@@ -151,6 +156,7 @@ impl PassConfig {
             "constructor-struct-infer" => self.constructor_struct_infer = false,
             "constraint-solve-hm" => self.constraint_solve_hm = false,
             "builtin-overload-select" => self.builtin_overload_select = false,
+            "inline" => self.inline = false,
             "constant-folding" => self.constant_folding = false,
             "cfg-simplify" => self.cfg_simplify = false,
             "coroutine-lowering" => self.coroutine_lowering = false,
@@ -348,6 +354,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
                 constructor_struct_infer: true,
                 constraint_solve_hm: true,
                 builtin_overload_select: true,
+                inline: true,
                 coroutine_lowering: true,
                 mem2reg: true,
                 // Optimization passes — disabled for literal.
@@ -400,6 +407,8 @@ mod tests {
     fn skip_list_all() {
         let config = PassConfig::from_skip_list(&[
             "constraint-solve-hm",
+            "builtin-overload-select",
+            "inline",
             "constant-folding",
             "cfg-simplify",
             "coroutine-lowering",
@@ -409,6 +418,8 @@ mod tests {
             "fixpoint",
         ]);
         assert!(!config.constraint_solve_hm);
+        assert!(!config.builtin_overload_select);
+        assert!(!config.inline);
         assert!(!config.constant_folding);
         assert!(!config.cfg_simplify);
         assert!(!config.coroutine_lowering);

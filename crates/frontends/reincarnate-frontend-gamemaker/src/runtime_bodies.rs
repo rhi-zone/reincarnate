@@ -1,7 +1,7 @@
 use std::f64::consts::PI;
 
 use reincarnate_core::ir::builder::FunctionBuilder;
-use reincarnate_core::ir::func::Visibility;
+use reincarnate_core::ir::func::{InlineHint, Visibility};
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::module::Module;
 use reincarnate_core::ir::ty::{FunctionSig, Type};
@@ -112,6 +112,7 @@ fn attach_body_lengthdir_x(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +153,7 @@ fn attach_body_lengthdir_y(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,6 +195,7 @@ fn attach_body_point_distance(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +228,7 @@ fn attach_body_degtorad(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +261,7 @@ fn attach_body_radtodeg(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +295,7 @@ fn attach_body_dsin(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +329,7 @@ fn attach_body_dcos(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +363,7 @@ fn attach_body_dtan(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +397,7 @@ fn attach_body_darcsin(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -422,6 +431,7 @@ fn attach_body_darccos(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -455,6 +465,7 @@ fn attach_body_darctan(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +500,7 @@ fn attach_body_darctan2(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -521,6 +533,7 @@ fn attach_body_arctan2(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -569,6 +582,7 @@ fn attach_body_point_direction(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +614,7 @@ fn attach_body_sqr(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -632,6 +647,7 @@ fn attach_body_power(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -666,6 +682,7 @@ fn attach_body_logn(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -697,6 +714,7 @@ fn attach_body_log2(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -728,6 +746,7 @@ fn attach_body_log10(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -759,6 +778,7 @@ fn attach_body_exp(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -793,6 +813,7 @@ fn attach_body_clamp(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -831,6 +852,7 @@ fn attach_body_lerp(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -862,6 +884,7 @@ fn attach_body_abs(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -893,6 +916,7 @@ fn attach_body_floor(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -924,6 +948,7 @@ fn attach_body_ceil(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -958,6 +983,7 @@ fn attach_body_round(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -989,6 +1015,7 @@ fn attach_body_sign(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,6 +1047,7 @@ fn attach_body_sqrt(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1051,6 +1079,7 @@ fn attach_body_arctan(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1086,6 +1115,7 @@ fn attach_body_frac(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1127,6 +1157,7 @@ fn attach_body_dot_product(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1174,6 +1205,7 @@ fn attach_body_dot_product_3d(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1208,6 +1240,7 @@ fn attach_body_color_get_red(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1244,6 +1277,7 @@ fn attach_body_color_get_green(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1278,6 +1312,7 @@ fn attach_body_color_get_blue(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1318,6 +1353,7 @@ fn attach_body_make_color_rgb(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1350,6 +1386,7 @@ fn attach_body_colour_get_red(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1384,6 +1421,7 @@ fn attach_body_colour_get_green(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1416,6 +1454,7 @@ fn attach_body_colour_get_blue(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1454,6 +1493,7 @@ fn attach_body_make_colour_rgb(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1521,6 +1561,7 @@ fn attach_body_merge_color(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1578,6 +1619,7 @@ fn attach_body_merge_colour(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1628,6 +1670,7 @@ fn attach_body_color_get_value(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1672,6 +1715,7 @@ fn attach_body_colour_get_value(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1739,6 +1783,7 @@ fn attach_body_color_get_saturation(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1797,6 +1842,7 @@ fn attach_body_colour_get_saturation(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -1931,6 +1977,7 @@ fn attach_body_color_get_hue(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2040,6 +2087,7 @@ fn attach_body_colour_get_hue(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2199,6 +2247,7 @@ fn attach_body_make_color_hsv(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2327,6 +2376,7 @@ fn attach_body_make_colour_hsv(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2358,6 +2408,7 @@ fn attach_body_string_length(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2389,6 +2440,7 @@ fn attach_body_string_upper(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2420,6 +2472,7 @@ fn attach_body_string_lower(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2455,6 +2508,7 @@ fn attach_body_string_char_at(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2492,6 +2546,7 @@ fn attach_body_string_copy(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2530,6 +2585,7 @@ fn attach_body_string_pos(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2580,6 +2636,7 @@ fn attach_body_string_delete(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2631,6 +2688,7 @@ fn attach_body_string_insert(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2667,6 +2725,7 @@ fn attach_body_string_replace_all(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }
 
 // ---------------------------------------------------------------------------
@@ -2704,4 +2763,5 @@ fn attach_body_string_count(module: &mut Module) {
     stub.insts = built.insts;
     stub.value_types = built.value_types;
     stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
 }

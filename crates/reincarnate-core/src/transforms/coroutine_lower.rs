@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::entity::{EntityRef, PrimaryMap};
 use crate::error::CoreError;
 use crate::ir::block::{Block, BlockParam};
+use crate::ir::func::InlineHint;
 use crate::ir::inst::Inst;
 use crate::ir::module::{FieldDef, StructDef};
 use crate::ir::ty::{FunctionSig, TypeId};
@@ -515,6 +516,7 @@ fn build_resume_function(
         null_sentinel_values: std::collections::HashSet::new(),
         type_rule: None,
         intrinsic: None,
+        inline_hint: InlineHint::Default,
     }
 }
 
