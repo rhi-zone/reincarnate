@@ -83,12 +83,23 @@ fn inline_function(caller: &mut Function, module: &Module) -> bool {
                     continue;
                 }
                 if callee.blocks.len() != 1 {
-                    eprintln!("[inline] skipping multi-block callee {}", fname);
                     continue;
                 }
                 let callee_block = callee.blocks.values().next().unwrap();
                 // Only inline single-block callees with a simple Return(Some(v)) terminator.
                 if !matches!(callee_block.terminator, Terminator::Return(Some(_))) {
+                    continue;
+                }
+                // Skip inlining if any argument type doesn't exactly match the
+                // callee's parameter type.  Mismatched types (e.g. Unknown where
+                // String is expected) cause existing single-error call-site
+                // diagnostics to multiply into per-operation errors inside the
+                // inlined body — a net regression.
+                let types_match = args
+                    .iter()
+                    .zip(callee.sig.params.iter())
+                    .all(|(&arg_vid, param_ty)| &caller.value_types[arg_vid] == param_ty);
+                if !types_match {
                     continue;
                 }
                 sites.push(InlineSite {
