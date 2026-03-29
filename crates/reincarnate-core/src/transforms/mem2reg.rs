@@ -399,7 +399,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
         // ConstraintSolve runs before Mem2Reg and may have narrowed stored value types
         // to concrete types even when the alloc declaration remained Unknown (due to
         // circular load-compute-store dependencies that TypeInference can't resolve).
-        let effective_ty = if info.ty == Type::Unknown {
+        let effective_ty = if matches!(info.ty, Type::Unknown | Type::Var(_)) {
             let stored_tys: Vec<&Type> = info
                 .stores
                 .iter()
