@@ -1,3 +1,4 @@
+pub mod builtin_overload_select;
 pub mod cfg_simplify;
 pub mod const_fold;
 pub mod constraint_collect;
@@ -10,6 +11,7 @@ pub mod mem2reg;
 pub mod red_cast_elim;
 pub mod util;
 
+pub use builtin_overload_select::BuiltinOverloadSelect;
 pub use cfg_simplify::CfgSimplify;
 pub use const_fold::ConstantFolding;
 pub use constraint_solve_hm::ConstraintSolveHM;
@@ -42,6 +44,11 @@ pub fn all_passes() -> Vec<PassDescriptor> {
             name: "constraint-solve-hm",
             factory: || Box::new(ConstraintSolveHM),
             config_enabled: |c| c.constraint_solve_hm,
+        },
+        PassDescriptor {
+            name: "builtin-overload-select",
+            factory: || Box::new(BuiltinOverloadSelect),
+            config_enabled: |c| c.builtin_overload_select,
         },
         PassDescriptor {
             name: "constant-folding",
@@ -153,6 +160,21 @@ mod pipeline_order_tests {
         assert!(
             pos_cf[1] > pos_mem2reg,
             "second constant-folding must be after mem2reg"
+        );
+
+        // BuiltinOverloadSelect must appear after the first ConstraintSolveHM
+        // and before Mem2Reg (run_once, so appears exactly once).
+        let pos_bos = names
+            .iter()
+            .position(|&n| n == "builtin-overload-select")
+            .expect("builtin-overload-select missing");
+        assert!(
+            pos_bos > pos_hm[0],
+            "builtin-overload-select must be after first constraint-solve-hm"
+        );
+        assert!(
+            pos_bos < pos_mem2reg,
+            "builtin-overload-select must be before mem2reg"
         );
 
         // RedundantCastElimination must appear after the last ConstraintSolveHM

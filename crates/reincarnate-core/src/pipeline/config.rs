@@ -87,6 +87,10 @@ pub struct PassConfig {
     /// `CallSiteTypeFlow`, `CallSiteTypeWiden`, `ConstraintSolve`, and
     /// `ConstraintSolve2` passes.
     pub constraint_solve_hm: bool,
+    /// Replace `builtin.xxx_any` calls with typed variants (`_f64`, `_f32`,
+    /// `_i32`, `_i64`) once operand types are known from HM inference.
+    /// Runs after `constraint-solve-hm`.
+    pub builtin_overload_select: bool,
     pub constant_folding: bool,
     pub cfg_simplify: bool,
     pub coroutine_lowering: bool,
@@ -102,6 +106,7 @@ impl Default for PassConfig {
         Self {
             constructor_struct_infer: true,
             constraint_solve_hm: true,
+            builtin_overload_select: true,
             constant_folding: true,
             cfg_simplify: true,
             coroutine_lowering: true,
@@ -119,6 +124,7 @@ impl PassConfig {
     /// Pass names correspond to `Transform::name()` values:
     /// - `"constructor-struct-infer"`
     /// - `"constraint-solve-hm"`
+    /// - `"builtin-overload-select"`
     /// - `"constant-folding"`
     /// - `"cfg-simplify"`
     /// - `"coroutine-lowering"`
@@ -144,6 +150,7 @@ impl PassConfig {
         match name {
             "constructor-struct-infer" => self.constructor_struct_infer = false,
             "constraint-solve-hm" => self.constraint_solve_hm = false,
+            "builtin-overload-select" => self.builtin_overload_select = false,
             "constant-folding" => self.constant_folding = false,
             "cfg-simplify" => self.cfg_simplify = false,
             "coroutine-lowering" => self.coroutine_lowering = false,
@@ -340,6 +347,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
                 // Structural passes — needed for correct output.
                 constructor_struct_infer: true,
                 constraint_solve_hm: true,
+                builtin_overload_select: true,
                 coroutine_lowering: true,
                 mem2reg: true,
                 // Optimization passes — disabled for literal.

@@ -133,7 +133,7 @@ meaning "we couldn't infer this after exhausting all analysis."
    currently gated on `is_concrete(sig.return_ty)` which blocks the interprocedural bridge
    when callee return type is Unknown (even if `return_var` would resolve to concrete)
 3. Make `is_concrete(Unknown) = true` — then Unknown in output means "confirmed failure"
-4. Retire `CallSiteTypeFlow` and `CallSiteTypeWiden` — subsumed by the unified solver
+4. Retire `CallSiteTypeFlow` and `CallSiteTypeWiden` — subsumed by the unified solver ← DONE (Phase 7)
 
 **Interprocedural bridge gap (Step 2b):** Currently, call result types are only linked to
 callee return types when `sig.return_ty` is concrete. But `sig.return_ty` is TypeInference's
@@ -162,6 +162,38 @@ Dead Estate breakdown (13,496 TS errors, all inference improvements through Step
 
 Note: Cast RC1001s are largely false positives (Phase 1 binds cast targets directly,
 not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
+
+**Error progression (Dead Estate TS errors):**
+- 13,496 → baseline (Phase 7 HM solver)
+- 7,531 → after GML stdlib register_runtime fix (extern_sigs was dead) + arithmetic builtins
+- 6,965 → after Int32/Int16 constants → Float(64) (−566)
+- 5,959 → after Float(64) arithmetic builtins in core (−1,006)
+- 4,588 → after HM Alloc handler TypeVar aliasing fix in constraint_collect.rs (−1,371,
+  commit 2026-03-29): Alloc reused frontend-local TypeVarIds as global arena indices,
+  aliasing unrelated values and corrupting Store/Load inference across all functions
+- 2,859 → after mem2reg Var(_) refinement fix (−1,729, commit 2026-03-29): promote_multi_store
+  only triggered effective-type refinement on Type::Unknown, not Type::Var(_), leaving
+  multi-store allocas with Var-typed cells that emitted as `unknown` even when all stored
+  values were Float(64)
+
+**Current breakdown (2,859 errors, 2026-03-29):**
+- TS2345 (987): unknown arg to typed param — mostly `add_any`/`mul_any` cascade
+- TS18046 (863): variable of unknown type — loop counters (`add_any` back-edge), arg params
+- TS2322 (737): type mismatch — unknowns + a few real errors now surfaced
+- TS2571 (243): property access on unknown — GetField/HasField inference gap
+- TS2538 (15): unknown as index
+- TS2339 (9): property doesn't exist (some real errors)
+
+**Root cause of remaining TS2345/TS18046:** `_any`-suffix builtins (`builtin.add_any`,
+`builtin.mul_any`, etc.) are emitted when GML bytecode uses `DataType::Variable` — GML's
+dynamic type annotation. These builtins have no declared return type (returns Unknown),
+so even `add_any(Float64, Float64)` produces Unknown. Fix: Phase 9 overload selection
+(replace `xxx_any` with `xxx_f64` after operand types are known). A type-rule for `_any`
+ops would work but is a compensation — Phase 9 is the correct fix.
+
+**TS2571 root cause:** `GetField`/`getInstanceField` on Unknown receiver. Caller's struct
+type isn't resolved → field type is Unknown. Fix: HasField reverse-index (TODO below)
+or better ConstructorStructInfer coverage.
 
 ### After inference is solid
 
