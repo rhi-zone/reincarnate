@@ -338,6 +338,35 @@ fn type_suffix_for(dt: DataType) -> &'static str {
     }
 }
 
+/// Emit a binary bitwise builtin (`bitand`, `bitor`, `bitxor`, `shl`, `shr`)
+/// using the `_i32` core variant, inserting Float(64) ↔ Int(32) coercions when
+/// the GML source type is Real (Float64).
+///
+/// GML performs bitwise operations on Reals via implicit ToInt32 coercion:
+/// `a & b` is semantically `float((int(a)) & (int(b)))`.  The core IR only
+/// provides `builtin.<op>_i32` (integer semantics); the coercions are
+/// GML-specific and belong here in the frontend.
+fn emit_gml_bitwise_bin(
+    fb: &mut FunctionBuilder,
+    op: &str,
+    a: ValueId,
+    b: ValueId,
+    ret_ty: Type,
+) -> ValueId {
+    let needs_coerce = matches!(ret_ty, Type::Float(64));
+    let (a_i, b_i) = if needs_coerce {
+        (fb.coerce(a, Type::Int(32)), fb.coerce(b, Type::Int(32)))
+    } else {
+        (a, b)
+    };
+    let r_i = fb.call(format!("builtin.{op}_i32"), &[a_i, b_i], Type::Int(32));
+    if needs_coerce {
+        fb.coerce(r_i, Type::Float(64))
+    } else {
+        r_i
+    }
+}
+
 // ============================================================
 // Bitwise, boolean, comparison
 // ============================================================
@@ -362,9 +391,8 @@ fn translate_bitwise_cmp_op(
             let r = if inst.type1 == DataType::Bool {
                 fb.call("builtin.and_bool", &[a, b], Type::Bool)
             } else {
-                let suffix = type_suffix_for(inst.type1);
                 let ret_ty = datatype_to_ir_type(inst.type1);
-                fb.call(format!("builtin.bitand_{suffix}"), &[a, b], ret_ty)
+                emit_gml_bitwise_bin(fb, "bitand", a, b, ret_ty)
             };
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -376,9 +404,8 @@ fn translate_bitwise_cmp_op(
             let r = if inst.type1 == DataType::Bool {
                 fb.call("builtin.or_bool", &[a, b], Type::Bool)
             } else {
-                let suffix = type_suffix_for(inst.type1);
                 let ret_ty = datatype_to_ir_type(inst.type1);
-                fb.call(format!("builtin.bitor_{suffix}"), &[a, b], ret_ty)
+                emit_gml_bitwise_bin(fb, "bitor", a, b, ret_ty)
             };
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -386,27 +413,24 @@ fn translate_bitwise_cmp_op(
         Opcode::Xor => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let suffix = type_suffix_for(inst.type1);
             let ret_ty = datatype_to_ir_type(inst.type1);
-            let r = fb.call(format!("builtin.bitxor_{suffix}"), &[a, b], ret_ty);
+            let r = emit_gml_bitwise_bin(fb, "bitxor", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Shl => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let suffix = type_suffix_for(inst.type1);
             let ret_ty = datatype_to_ir_type(inst.type1);
-            let r = fb.call(format!("builtin.shl_{suffix}"), &[a, b], ret_ty);
+            let r = emit_gml_bitwise_bin(fb, "shl", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Shr => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let suffix = type_suffix_for(inst.type1);
             let ret_ty = datatype_to_ir_type(inst.type1);
-            let r = fb.call(format!("builtin.shr_{suffix}"), &[a, b], ret_ty);
+            let r = emit_gml_bitwise_bin(fb, "shr", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }

@@ -440,76 +440,82 @@ impl FunctionBuilder {
     // Bitwise (emit typed builtin calls)
     // ========================================================================
 
-    pub fn bit_and(&mut self, a: ValueId, b: ValueId) -> ValueId {
+    /// Emit a binary bitwise builtin using the `_i32` variant.
+    ///
+    /// All source languages perform bitwise operations on integers.  When the
+    /// operand type is not `Int(32)` (e.g. `Float(64)` from GML Reals or
+    /// `Int(64)` from AVM2 numbers), coerce both operands to `Int(32)` before
+    /// the operation and coerce the `Int(32)` result back to the original type.
+    /// This matches the ToInt32 semantics used by every major runtime.
+    fn bitwise_bin(&mut self, op: &str, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        let name = format!("builtin.bitand_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
+        let needs_coerce = !matches!(ty, Type::Int(32));
+        let (ai, bi) = if needs_coerce {
+            (self.coerce(a, Type::Int(32)), self.coerce(b, Type::Int(32)))
+        } else {
+            (a, b)
+        };
+        let r = self.emit(
             Op::Call {
-                func: name,
-                args: vec![a, b],
+                func: format!("builtin.{op}_i32"),
+                args: vec![ai, bi],
             },
-            ty,
-        )
+            Type::Int(32),
+        );
+        if needs_coerce {
+            self.coerce(r, ty)
+        } else {
+            r
+        }
+    }
+
+    /// Emit a unary bitwise NOT builtin using the `_i32` variant.
+    ///
+    /// See [`bitwise_bin`] for the coercion rationale.
+    fn bitwise_un(&mut self, op: &str, a: ValueId) -> ValueId {
+        let ty = self.value_type(a);
+        let needs_coerce = !matches!(ty, Type::Int(32));
+        let ai = if needs_coerce {
+            self.coerce(a, Type::Int(32))
+        } else {
+            a
+        };
+        let r = self.emit(
+            Op::Call {
+                func: format!("builtin.{op}_i32"),
+                args: vec![ai],
+            },
+            Type::Int(32),
+        );
+        if needs_coerce {
+            self.coerce(r, ty)
+        } else {
+            r
+        }
+    }
+
+    pub fn bit_and(&mut self, a: ValueId, b: ValueId) -> ValueId {
+        self.bitwise_bin("bitand", a, b)
     }
 
     pub fn bit_or(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        let ty = self.value_type(a);
-        let name = format!("builtin.bitor_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.bitwise_bin("bitor", a, b)
     }
 
     pub fn bit_xor(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        let ty = self.value_type(a);
-        let name = format!("builtin.bitxor_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.bitwise_bin("bitxor", a, b)
     }
 
     pub fn bit_not(&mut self, a: ValueId) -> ValueId {
-        let ty = self.value_type(a);
-        let name = format!("builtin.bitnot_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a],
-            },
-            ty,
-        )
+        self.bitwise_un("bitnot", a)
     }
 
     pub fn shl(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        let ty = self.value_type(a);
-        let name = format!("builtin.shl_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.bitwise_bin("shl", a, b)
     }
 
     pub fn shr(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        let ty = self.value_type(a);
-        let name = format!("builtin.shr_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.bitwise_bin("shr", a, b)
     }
 
     // ========================================================================

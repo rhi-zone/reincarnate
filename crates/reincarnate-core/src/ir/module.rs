@@ -773,8 +773,8 @@ impl Module {
     /// `FuncId::new(Self::NUM_CORE_BUILTINS)` instead of `FuncId::new(0)`.
     ///
     /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
-    /// not/and/or bool = 3, 5 bitwise ops × 2 types = 10, bitnot × 2 = 2 → 40.
-    pub const NUM_CORE_BUILTINS: u32 = 40;
+    /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
+    pub const NUM_CORE_BUILTINS: u32 = 34;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -862,19 +862,16 @@ impl Module {
         self.register_runtime("builtin.and_bool", bin(Type::Bool));
         self.register_runtime("builtin.or_bool", bin(Type::Bool));
 
-        // Bitwise: bitand, bitor, bitxor, shl, shr — i32, f64
+        // Bitwise: bitand, bitor, bitxor, shl, shr — i32 only.
+        // Float(64) operands are a GML-specific behaviour (bitwise on Reals via
+        // implicit ToInt32 coercion).  The GML frontend coerces Float(64) → Int(32)
+        // before emitting these ops and coerces the Int(32) result back to Float(64).
         for op in &["bitand", "bitor", "bitxor", "shl", "shr"] {
-            for ty in &[Type::Int(32), Type::Float(64)] {
-                let suffix = type_suffix(ty);
-                self.register_runtime(format!("builtin.{op}_{suffix}"), bin(ty.clone()));
-            }
+            self.register_runtime(format!("builtin.{op}_i32"), bin(Type::Int(32)));
         }
 
-        // Bitwise NOT — i32, f64
-        for ty in &[Type::Int(32), Type::Float(64)] {
-            let suffix = type_suffix(ty);
-            self.register_runtime(format!("builtin.bitnot_{suffix}"), un(ty.clone()));
-        }
+        // Bitwise NOT — i32 only (same rationale as above).
+        self.register_runtime("builtin.bitnot_i32", un(Type::Int(32)));
     }
 
     /// Register a runtime/builtin function (e.g. `"builtin.add_f64"`).
