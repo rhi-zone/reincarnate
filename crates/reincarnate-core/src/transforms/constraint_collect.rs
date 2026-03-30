@@ -801,14 +801,18 @@ pub fn collect_function(
                                     .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
                             }
                         }
-                        // Args → callee param types (only concrete).
+                        // Args → callee param types (only concrete, non-Unknown).
+                        // Unknown params are wildcards — they accept any type and must not
+                        // constrain the argument, since Equal(arg_var, Unknown) would
+                        // poison the arg to Unknown and prevent downstream inference.
                         for (i, &arg) in args.iter().enumerate() {
-                            if i < sig.params.len() && is_concrete(&sig.params[i]) {
-                                if let Some(arg_var) = var_for(arg, &value_vars) {
-                                    constraints.push(TypeConstraint::Equal(
-                                        arg_var,
-                                        sig.params[i].clone(),
-                                    ));
+                            if i < sig.params.len() {
+                                let param_ty = &sig.params[i];
+                                if is_concrete(param_ty) && !matches!(param_ty, Type::Unknown) {
+                                    if let Some(arg_var) = var_for(arg, &value_vars) {
+                                        constraints
+                                            .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
+                                    }
                                 }
                             }
                         }
@@ -842,21 +846,25 @@ pub fn collect_function(
                             }
                         }
                         // Receiver → callee param[0] (self).
-                        if !sig.params.is_empty() && is_concrete(&sig.params[0]) {
-                            if let Some(recv_var) = var_for(*receiver, &value_vars) {
-                                constraints
-                                    .push(TypeConstraint::Equal(recv_var, sig.params[0].clone()));
+                        if !sig.params.is_empty() {
+                            let recv_ty = &sig.params[0];
+                            if is_concrete(recv_ty) && !matches!(recv_ty, Type::Unknown) {
+                                if let Some(recv_var) = var_for(*receiver, &value_vars) {
+                                    constraints
+                                        .push(TypeConstraint::Equal(recv_var, recv_ty.clone()));
+                                }
                             }
                         }
-                        // Args → callee params[1..].
+                        // Args → callee params[1..] (only concrete, non-Unknown).
                         for (i, &arg) in args.iter().enumerate() {
                             let param_idx = i + 1;
-                            if param_idx < sig.params.len() && is_concrete(&sig.params[param_idx]) {
-                                if let Some(arg_var) = var_for(arg, &value_vars) {
-                                    constraints.push(TypeConstraint::Equal(
-                                        arg_var,
-                                        sig.params[param_idx].clone(),
-                                    ));
+                            if param_idx < sig.params.len() {
+                                let param_ty = &sig.params[param_idx];
+                                if is_concrete(param_ty) && !matches!(param_ty, Type::Unknown) {
+                                    if let Some(arg_var) = var_for(arg, &value_vars) {
+                                        constraints
+                                            .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
+                                    }
                                 }
                             }
                         }

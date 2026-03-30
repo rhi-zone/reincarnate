@@ -847,6 +847,11 @@ impl<'a> EmitCtx<'a> {
                 lhs: Box::new(self.build_val(args[0])),
                 rhs: Box::new(self.build_val(args[1])),
             },
+            "concat" => Expr::Binary {
+                op: BinOp::Add,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            },
             "sub" => Expr::Binary {
                 op: BinOp::Sub,
                 lhs: Box::new(self.build_val(args[0])),

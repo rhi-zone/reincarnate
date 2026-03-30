@@ -197,8 +197,10 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
 - any[] → unknown[] in ast_printer.rs (e603681): Law 4 fix, surfaces hidden inference gaps
 - number|boolean override widening (class.rs, 13374cb): fixed TS2322 for persistent/visible/solid
 - is_array/is_string/is_real etc. → type predicates (1a15f78): Law 4 fix, TS2339: 9→7
+- Variable-typed bitwise ops → fresh_var result (87be90e): 1,085 → 1,016
+- `add_str` renamed to `concat_str`; Unknown params skip constraint emission in constraint_collect
 
-**Root cause of remaining ~1,360 TS2345/TS18046 errors — architectural plan (2026-03-30):**
+**Root cause of remaining ~1,017 TS errors — architectural plan (2026-03-30):**
 
 `datatype_to_ir_type(DataType::Variable)` in `translate/mod.rs` has a catch-all `_ => Type::Unknown`
 that maps GML's "compiler didn't track the type" tag to `Type::Unknown` (final, solver gives up).
@@ -208,29 +210,38 @@ arithmetic). This is the dominant source of unknown-cascade errors.
 **What `DataType::Variable` means:** NOT semantically dynamic. It is the GML bytecode compiler
 failing to annotate the type. In practice, almost all `Variable`-typed values are numbers (floats).
 
-**The fix — three coupled changes:**
+**The fix — remaining changes:**
 
 1. **`datatype_to_ir_type(DataType::Variable) → Type::Var(fresh_id)`** in `translate/mod.rs`.
    Requires passing `FunctionBuilder` or a `TypeVarAllocator` down to this call site so fresh IDs
-   can be minted per-value.
+   can be minted per-value. **Blocked on refactor: `datatype_to_ir_type` is a free fn without
+   access to `FunctionBuilder`. Needs signature change or a separate helper.**
 
-2. **Variable arithmetic → `builtin.add_f64(Var(x), Var(y))` directly.**
-   `type_suffix_for(DataType::Variable)` currently returns `"any"`, producing `builtin.add_any`
-   calls. Change it to return `"f64"` — a pragmatic approximation that is correct for the
-   overwhelming majority of `DataType::Variable` arithmetic in GML. With `Type::Var` inputs,
-   HM unification then constrains the variables to `Float(64)`.
+2. ~~**Variable arithmetic → `builtin.add_f64(Var(x), Var(y))` directly.**~~ **DONE.**
+   `type_suffix_for(DataType::Variable)` returns `"f64"`. The result type is already `fb.fresh_var()`
+   (line 264 of ops.rs). With `Type::Var` inputs (step 1), HM will propagate Float64 through.
+   `add_any` is registered but unused for `DataType::Variable` ops.
+
+   **Why `add_any` cannot replace `add_f64` for Variable arithmetic:** Attempted 2026-03-31.
+   `add_any` return type is `Unknown`, so all Variable-typed add results become Unknown. With
+   `Variable => "f64"`, results are typed Float64 at IR construction time (baked into the call's
+   return type before HM). Switching to `add_any` degrades typing for cascaded arithmetic chains
+   where intermediate results had no other type source. Net regression: +188 errors. Reverted.
+
+   **String concatenation (`DataType::Variable` add on String operands):** With `Variable => "f64"`,
+   the `add_f64` param constraint conflicts with String-typed args → args poisoned to Unknown,
+   result is still Float64 (wrong for concat). Fix requires step 1: once args are `Type::Var`
+   (not pre-bound Unknown), `add_f64` constraints propagate Float64 forward without conflict for
+   numeric operands. String operands (from `string()` return) would still conflict. The correct
+   long-term fix is a pre-HM pass that detects string operands and emits `concat_str` directly.
+   `builtin.concat_str` is registered and `add_any` has `[String, String] → concat_str`
+   specialization for when this becomes feasible.
 
 3. **Remove `add_any`/`sub_any`/`mul_any`/`div_any`/`mod_any` and their specialization tables
-   from `register_core_builtins()` (`reincarnate-core/src/ir/module.rs`).**
-   These are GML-specific overloading constructs registered in core — a Law 2 violation. After
-   change (2), no `_any` arithmetic builtins are emitted for `DataType::Variable`. If a GML
-   frontend still needs overloaded arithmetic for explicitly-polymorphic builtins, those
-   registrations belong in the GML frontend's module-init code, not in core.
-
-   **Why `add_any(Unknown, Unknown) → Unknown` poisons inference:** `Equal(Var(x), Unknown)`
-   binds x to Unknown permanently — the solver can't refine it. The only safe way to introduce
-   type variables into arithmetic is to use `add_f64(Var(x), Var(y)) → Var(z)` so the solver
-   links x, y, z to `Float(64)`.
+   from `register_arithmetic_any_builtins()` (`reincarnate-core/src/ir/module.rs`).**
+   These are GML-specific overloading constructs — a Law 2 violation. After step 1+2, no `_any`
+   arithmetic builtins are emitted for `DataType::Variable`. Exception: `add_any`'s
+   `[String, String] → concat_str` specialization should be kept (or moved to GML frontend init).
 
 4. **Move `BuiltinOverloadSelect` from `reincarnate-core/src/transforms/` to the GML frontend.**
    This pass post-HM replaces `_any` calls with typed variants via `Function::specializations`.

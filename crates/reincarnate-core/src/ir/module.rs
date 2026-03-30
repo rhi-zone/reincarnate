@@ -772,7 +772,7 @@ impl Module {
     /// add a single user function and then retrieve it by index should use
     /// `FuncId::new(Self::NUM_CORE_BUILTINS)` instead of `FuncId::new(0)`.
     ///
-    /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
+    /// Breakdown: 5 arith ops × 4 types = 20, concat_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
     /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2 → 70.
     /// Note: `_any` polymorphic stubs (6 total) are NOT included — they are registered
@@ -848,7 +848,7 @@ impl Module {
             }
         }
         // String concatenation
-        self.register_runtime("builtin.add_str", bin(Type::String));
+        self.register_runtime("builtin.concat_str", bin(Type::String));
 
         // Negation: neg — f64, f32, i32, i64
         for ty in &scalar_types {
@@ -1047,7 +1047,7 @@ impl Module {
         };
 
         for op in &["add", "sub", "mul", "div", "rem"] {
-            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
+            let mut specs: HashMap<Vec<Type>, FuncId> = scalar_types
                 .iter()
                 .map(|ty| {
                     let suffix = type_suffix(ty);
@@ -1055,6 +1055,10 @@ impl Module {
                     (vec![ty.clone(), ty.clone()], fid)
                 })
                 .collect();
+            if *op == "add" {
+                let concat_id = self.runtime_registry["builtin.concat_str"];
+                specs.insert(vec![Type::String, Type::String], concat_id);
+            }
             let any_id = self.register_runtime(format!("builtin.{op}_any"), bin_any.clone());
             self.functions[any_id].specializations = specs;
         }

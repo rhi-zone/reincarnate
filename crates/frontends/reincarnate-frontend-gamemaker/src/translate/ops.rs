@@ -333,6 +333,7 @@ fn translate_arithmetic_op(
 /// `Int32` and `Int16` map to `"f64"` because GML's single numeric type is
 /// Real (Float64) at the source level. The VM uses `Int32`/`Int16` opcodes
 /// internally, but at source semantics those values are all Reals.
+///
 fn type_suffix_for(dt: DataType) -> &'static str {
     match dt {
         DataType::Double | DataType::Int32 | DataType::Int16 => "f64",
