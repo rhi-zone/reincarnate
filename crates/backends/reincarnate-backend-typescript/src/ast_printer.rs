@@ -670,13 +670,15 @@ fn print_stmt(stmt: &JsStmt, out: &mut String, indent: &str) {
                         // `{}` with no index signature (TS7053 when string-indexed later).
                         // Annotate conservatively so the types are explicit.
                         let annotation = match init {
-                            // Annotate all array literals (empty or non-empty) as `any[]`.
-                            // Without an explicit type annotation TypeScript infers the
-                            // element union (e.g. `(number | boolean)[]` for a mixed
-                            // array), which then causes TS2345 at call-sites that expect
-                            // `number`.  AS3 arrays are untyped at runtime, so `any[]` is
-                            // the faithful representation.
-                            JsExpr::ArrayInit(_) => Some("any[]"),
+                            // Annotate unannotated array literals as `unknown[]`.
+                            // Without an explicit type annotation TypeScript may infer a
+                            // narrow union (e.g. `(number | boolean)[]`) or `never[]`.
+                            // `unknown[]` is the correct honest annotation when the IR type
+                            // is missing — it surfaces real inference gaps rather than
+                            // suppressing them with `any[]` (Law 4 violation).
+                            // Flash/AS3 `any[]` is handled by the IR type path
+                            // (Array(Dynamic) → flash_ts_type → "any").
+                            JsExpr::ArrayInit(_) => Some("unknown[]"),
                             // Any object literal without an explicit type annotation is
                             // treated as a dynamic map. TypeScript would otherwise infer
                             // a narrow structural type (`{}` or `{ k: T; ... }`) with no

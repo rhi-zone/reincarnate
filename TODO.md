@@ -176,13 +176,22 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   multi-store allocas with Var-typed cells that emitted as `unknown` even when all stored
   values were Float(64)
 
-**Current breakdown (2,859 errors, 2026-03-29):**
-- TS2345 (987): unknown arg to typed param — mostly `add_any`/`mul_any` cascade
-- TS18046 (863): variable of unknown type — loop counters (`add_any` back-edge), arg params
-- TS2322 (737): type mismatch — unknowns + a few real errors now surfaced
-- TS2571 (243): property access on unknown — GetField/HasField inference gap
-- TS2538 (15): unknown as index
+**Current breakdown (1,478 errors, 2026-03-30):**
+- TS2345 (588): unknown arg to typed param — mostly `add_any`/`mul_any` cascade
+- TS18046 (543): variable of unknown type — loop counters (`add_any` back-edge), arg params
+- TS2571 (204): property access on unknown — GetField/HasField inference gap
+- TS2322 (108): type mismatches — unknowns + a few real errors
 - TS2339 (9): property doesn't exist (some real errors)
+- TS2538 (9): unknown as index
+- TS2749 (9): value used as type — struct type names not imported/defined
+- TS2304 (4): cannot find name
+- Others (4): TS2355 (missing return), TS2362 (arithmetic LHS), TS2367 (comparison overlap)
+
+**Recent wins (2026-03-30):**
+- GMLObject StructDef + parent-chain inference (21ce264): enabled field type resolution
+  across the GMLObject hierarchy, major reduction in TS2345/TS18046/TS2571
+- super() in derived constructors (5045503): fixed TS17009 (16,161 → 0)
+- strip_void_returns in class methods (72497fc): fixed TS2322 void-return subset (536 → 0)
 
 **Root cause of remaining TS2345/TS18046:** `_any`-suffix builtins (`builtin.add_any`,
 `builtin.mul_any`, etc.) are emitted when GML bytecode uses `DataType::Variable` — GML's
