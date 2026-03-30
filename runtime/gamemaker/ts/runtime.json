@@ -222,10 +222,9 @@
     },
     "_instanceof": {
       "params": [
-        "any",
         "any"
       ],
-      "returns": "boolean"
+      "returns": "string"
     },
     "_typeof": {
       "params": [

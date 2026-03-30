@@ -27,6 +27,3 @@ docs/.vitepress/dist/
 # Cloned reference repos
 .gml-manual/
 
-# Worktrees
-/worktrees/
-.claude/worktrees/
