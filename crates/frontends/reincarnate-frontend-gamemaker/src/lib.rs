@@ -242,6 +242,14 @@ impl Frontend for GameMakerFrontend {
         // may still use the result.
         module.implicit_return_value = true;
 
+        // Register GML-specific polymorphic `_any` arithmetic stubs.
+        // The GML VM uses `DataType::Variable` for most arithmetic, so the
+        // translator emits `builtin.add_any` etc. when operand types are not
+        // yet known.  `BuiltinOverloadSelect` replaces these with typed variants
+        // once HM inference resolves the operand types.  These stubs are not in
+        // `register_core_builtins()` because no other frontend needs them.
+        module.register_arithmetic_any_builtins();
+
         // Register GML syscall intrinsics.  Each intrinsic is a typed Op::Call
         // whose IntrinsicKind encodes the (system, method) pair.  The linear
         // lowering pass maps them back to Expr::SystemCall so all downstream

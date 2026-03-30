@@ -205,13 +205,13 @@ pub struct Function {
     /// called when those argument types are known at compile time.
     ///
     /// Non-empty only on `builtin.xxx_any` stubs registered by
-    /// [`Module::register_core_builtins`].  All other functions leave this empty.
+    /// [`Module::register_arithmetic_any_builtins`].  All other functions leave this empty.
     ///
     /// The `BuiltinOverloadSelect` transform reads this table to replace
     /// `_any` calls with their concrete typed counterparts without any
     /// string manipulation or hardcoded type maps.
     ///
-    /// Not serialized — rebuilt by `register_core_builtins` on every run.
+    /// Not serialized — rebuilt by `register_arithmetic_any_builtins` on every run.
     #[serde(skip)]
     pub specializations: HashMap<Vec<Type>, FuncId>,
     /// Inlining hint — whether the inliner should substitute this function's

@@ -773,9 +773,11 @@ impl Module {
     /// `FuncId::new(Self::NUM_CORE_BUILTINS)` instead of `FuncId::new(0)`.
     ///
     /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
-    /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1,
-    /// _any stubs (add/sub/mul/div/rem/neg) = 6 → 40.
-    pub const NUM_CORE_BUILTINS: u32 = 76;
+    /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
+    /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2 → 70.
+    /// Note: `_any` polymorphic stubs (6 total) are NOT included — they are registered
+    /// by frontends via [`Module::register_arithmetic_any_builtins`] as needed.
+    pub const NUM_CORE_BUILTINS: u32 = 70;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -831,19 +833,6 @@ impl Module {
             return_ty: ty,
             ..Default::default()
         };
-        // Helper: polymorphic binary sig (Unknown, Unknown) -> Unknown.
-        let bin_any = || FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-        // Helper: polymorphic unary sig (Unknown,) -> Unknown.
-        let un_any = || FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-
         let scalar_types = [
             Type::Float(64),
             Type::Float(32),
@@ -882,37 +871,6 @@ impl Module {
 
         // Bitwise NOT — i32 only (same rationale as above).
         self.register_runtime("builtin.bitnot_i32", un(Type::Int(32)));
-
-        // Polymorphic _any stubs — emitted by frontends when argument types are
-        // not yet known.  `BuiltinOverloadSelect` replaces these with the
-        // appropriate typed variant once HM inference resolves the operand types.
-        // The `specializations` table on each stub encodes which typed FuncId to
-        // use for each concrete argument-type signature.
-        for op in &["add", "sub", "mul", "div", "rem"] {
-            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
-                .iter()
-                .map(|ty| {
-                    let suffix = type_suffix(ty);
-                    let fid = self.runtime_registry[&format!("builtin.{op}_{suffix}")];
-                    (vec![ty.clone(), ty.clone()], fid)
-                })
-                .collect();
-            let any_id = self.register_runtime(format!("builtin.{op}_any"), bin_any());
-            self.functions[any_id].specializations = specs;
-        }
-
-        {
-            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
-                .iter()
-                .map(|ty| {
-                    let suffix = type_suffix(ty);
-                    let fid = self.runtime_registry[&format!("builtin.neg_{suffix}")];
-                    (vec![ty.clone()], fid)
-                })
-                .collect();
-            let any_id = self.register_runtime("builtin.neg_any", un_any());
-            self.functions[any_id].specializations = specs;
-        }
 
         // Math: single-argument f64 → f64.
         for op in &[
@@ -1053,6 +1011,68 @@ impl Module {
         );
     }
 
+    /// Register polymorphic `_any` arithmetic builtins and their specialization tables.
+    ///
+    /// These stubs are used by frontends (currently GML only) when an arithmetic
+    /// operand type is not yet known at translation time.  `BuiltinOverloadSelect`
+    /// replaces each `builtin.xxx_any` call with the appropriately-typed variant
+    /// (`_f64`, `_f32`, `_i32`, `_i64`) once HM inference has resolved the operand
+    /// types.
+    ///
+    /// The typed variants (`builtin.add_f64`, etc.) must already be present in
+    /// `module.runtime_registry` — i.e., this must be called after
+    /// `Module::new()` (which calls `register_core_builtins()`).
+    ///
+    /// Not called from `register_core_builtins()` because `_any` overloading is a
+    /// GML-specific concern: the GML VM uses `DataType::Variable` for arithmetic
+    /// whose operand types are not statically tagged.  Non-GML frontends have no
+    /// need for these stubs.
+    pub fn register_arithmetic_any_builtins(&mut self) {
+        let scalar_types = [
+            Type::Float(64),
+            Type::Float(32),
+            Type::Int(32),
+            Type::Int(64),
+        ];
+
+        let bin_any = FunctionSig {
+            params: vec![Type::Unknown, Type::Unknown],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        let un_any = FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+
+        for op in &["add", "sub", "mul", "div", "rem"] {
+            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
+                .iter()
+                .map(|ty| {
+                    let suffix = type_suffix(ty);
+                    let fid = self.runtime_registry[&format!("builtin.{op}_{suffix}")];
+                    (vec![ty.clone(), ty.clone()], fid)
+                })
+                .collect();
+            let any_id = self.register_runtime(format!("builtin.{op}_any"), bin_any.clone());
+            self.functions[any_id].specializations = specs;
+        }
+
+        {
+            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
+                .iter()
+                .map(|ty| {
+                    let suffix = type_suffix(ty);
+                    let fid = self.runtime_registry[&format!("builtin.neg_{suffix}")];
+                    (vec![ty.clone()], fid)
+                })
+                .collect();
+            let any_id = self.register_runtime("builtin.neg_any", un_any);
+            self.functions[any_id].specializations = specs;
+        }
+    }
+
     /// Register a runtime/builtin function (e.g. `"builtin.add_f64"`).
     ///
     /// Creates a stub `Function` with the given name and signature and an
@@ -1148,7 +1168,8 @@ impl Module {
 
 /// Return the short suffix string used in builtin names for a given type.
 ///
-/// Used by [`Module::register_core_builtins`] to build names like
+/// Used by [`Module::register_core_builtins`] and
+/// [`Module::register_arithmetic_any_builtins`] to build names like
 /// `"builtin.add_f64"` or `"builtin.bitand_i32"`.
 ///
 /// # Panics

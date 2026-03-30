@@ -259,7 +259,13 @@ fn translate_arithmetic_op(
 ) -> Result<(), String> {
     let result_units = gml_slot_units(inst.type1).max(gml_slot_units(inst.type2));
     // Derive the return type from type1 (primary type tag on the instruction).
-    let ret_ty = datatype_to_ir_type(inst.type1);
+    // Variable-typed arithmetic has an unknown concrete type at this point; use a
+    // fresh type variable so inference can resolve it rather than emitting Unknown.
+    let ret_ty = if inst.type1 == DataType::Variable {
+        fb.fresh_var()
+    } else {
+        datatype_to_ir_type(inst.type1)
+    };
 
     match inst.opcode {
         Opcode::Add => {
@@ -334,6 +340,7 @@ fn type_suffix_for(dt: DataType) -> &'static str {
         DataType::Int64 => "i64",
         DataType::Bool => "bool",
         DataType::String => "str",
+        DataType::Variable => "f64",
         _ => "any",
     }
 }

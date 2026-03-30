@@ -15,8 +15,8 @@
 //!
 //! # Mechanism
 //!
-//! Each `_any` stub registered by `Module::register_core_builtins` carries a
-//! `specializations` table mapping concrete argument-type signatures to the
+//! Each `_any` stub registered by `Module::register_arithmetic_any_builtins` carries
+//! a `specializations` table mapping concrete argument-type signatures to the
 //! `FuncId` of the typed variant.  This pass looks up the callee by name in
 //! `module.runtime_registry`, checks whether its `specializations` is non-empty,
 //! collects the live argument types, and — if a match exists — rewrites the
@@ -177,7 +177,11 @@ mod tests {
 
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
-        mb.build()
+        let mut module = mb.build();
+        // Register the GML-specific _any stubs so BuiltinOverloadSelect can
+        // find and rewrite the `builtin.xxx_any` call emitted above.
+        module.register_arithmetic_any_builtins();
+        module
     }
 
     fn first_builtin_call_id(module: &Module) -> crate::ir::InstId {

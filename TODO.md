@@ -198,12 +198,54 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
 - number|boolean override widening (class.rs, 13374cb): fixed TS2322 for persistent/visible/solid
 - is_array/is_string/is_real etc. → type predicates (1a15f78): Law 4 fix, TS2339: 9→7
 
-**Root cause of remaining TS2345/TS18046/TS18046:** Function parameters typed `unknown`
-(from GML `DataType::Variable`) and local variables with Unknown IR types. The `add_any`/
-`mul_any` builtins described previously do NOT exist in the current output — that note was
-stale. The actual root cause is: (1) GML `DataType::Variable` parameters get `Unknown` type
-in the IR and are emitted as `unknown` TypeScript params; (2) local variables with Unknown
-IR type have the same issue. Both require better parameter-type inference from call sites.
+**Root cause of remaining ~1,360 TS2345/TS18046 errors — architectural plan (2026-03-30):**
+
+`datatype_to_ir_type(DataType::Variable)` in `translate/mod.rs` has a catch-all `_ => Type::Unknown`
+that maps GML's "compiler didn't track the type" tag to `Type::Unknown` (final, solver gives up).
+It should map to `Type::Var(fresh_id)` (unbound, solver can constrain from call sites and typed
+arithmetic). This is the dominant source of unknown-cascade errors.
+
+**What `DataType::Variable` means:** NOT semantically dynamic. It is the GML bytecode compiler
+failing to annotate the type. In practice, almost all `Variable`-typed values are numbers (floats).
+
+**The fix — three coupled changes:**
+
+1. **`datatype_to_ir_type(DataType::Variable) → Type::Var(fresh_id)`** in `translate/mod.rs`.
+   Requires passing `FunctionBuilder` or a `TypeVarAllocator` down to this call site so fresh IDs
+   can be minted per-value.
+
+2. **Variable arithmetic → `builtin.add_f64(Var(x), Var(y))` directly.**
+   `type_suffix_for(DataType::Variable)` currently returns `"any"`, producing `builtin.add_any`
+   calls. Change it to return `"f64"` — a pragmatic approximation that is correct for the
+   overwhelming majority of `DataType::Variable` arithmetic in GML. With `Type::Var` inputs,
+   HM unification then constrains the variables to `Float(64)`.
+
+3. **Remove `add_any`/`sub_any`/`mul_any`/`div_any`/`mod_any` and their specialization tables
+   from `register_core_builtins()` (`reincarnate-core/src/ir/module.rs`).**
+   These are GML-specific overloading constructs registered in core — a Law 2 violation. After
+   change (2), no `_any` arithmetic builtins are emitted for `DataType::Variable`. If a GML
+   frontend still needs overloaded arithmetic for explicitly-polymorphic builtins, those
+   registrations belong in the GML frontend's module-init code, not in core.
+
+   **Why `add_any(Unknown, Unknown) → Unknown` poisons inference:** `Equal(Var(x), Unknown)`
+   binds x to Unknown permanently — the solver can't refine it. The only safe way to introduce
+   type variables into arithmetic is to use `add_f64(Var(x), Var(y)) → Var(z)` so the solver
+   links x, y, z to `Float(64)`.
+
+4. **Move `BuiltinOverloadSelect` from `reincarnate-core/src/transforms/` to the GML frontend.**
+   This pass post-HM replaces `_any` calls with typed variants via `Function::specializations`.
+   It is GML-specific logic in core — a Law 2 violation. After change (2), it is also no longer
+   needed for the `DataType::Variable` path. It may still be needed for explicitly-polymorphic
+   GML stdlib functions (e.g. `int :: Real | String → Int`); if so, it belongs in the GML
+   frontend's extra_passes, not in core's default transform list.
+
+**`Op::Add` and the constraint_collect exclusion:** `Op::Add` is already removed from the IR as
+of Phase 9 arithmetic slice (2026-03-28). `constraint_collect.rs` still has the exclusion comment
+referencing it (lines 243-245) — clean it up when `BuiltinOverloadSelect` moves.
+
+**Parametric FunctionSig `(T, T) → T`:** NOT needed to unblock this fix. Useful later for
+array element type inference (`array_get(arr: Array<T>, i: Int) → T`), but that requires a
+more substantial IR extension. Defer until array inference becomes a priority.
 
 **TS2571 root cause:** `getInstanceField` on Unknown receiver → field type Unknown.
 Fix: HasField reverse-index (TODO below) or better ConstructorStructInfer coverage.
@@ -1501,6 +1543,21 @@ New findings from this audit:
   Gated behind `LoweringConfig::construct_string_coerce` (default false, Flash backend sets true).
 
 - [x] **`call_site_flow.rs:97` — ClassRef narrowing guard comment updated to be engine-neutral.** (2026-03-11)
+
+- [ ] **`register_core_builtins()` in `module.rs` — `add_any`/`sub_any`/`mul_any`/`div_any`/`mod_any`
+  and their `specializations` tables are GML-specific.** The polymorphic `_any` arithmetic stubs
+  and their overload-selection tables exist only because GML `+` is overloaded for string
+  concatenation. Other languages don't need them. These registrations belong in the GML frontend's
+  module-init code, not in core's `Module::new()`.
+  **Fix:** Move `_any` registrations + specialization tables to GML frontend. Remove from core.
+  **Blocked on:** `DataType::Variable → Type::Var` fix above (after which `_any` is no longer
+  emitted for the dominant Variable-arithmetic path and can be deleted cleanly).
+
+- [ ] **`transforms/builtin_overload_select.rs` — GML-specific pass in core.**
+  Post-HM pass that replaces `_any` calls with typed variants via `Function::specializations`.
+  Uses `specializations` map that only GML frontend populates. No other engine needs this.
+  **Fix:** Move to GML frontend's `extra_passes`. Remove from core transform list.
+  **Blocked on:** same as above.
 
 ### Structural — Dead Code & Config Bugs (CRITICAL/HIGH)
 
