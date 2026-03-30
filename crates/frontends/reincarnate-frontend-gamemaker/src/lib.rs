@@ -19,7 +19,7 @@ use datawin::DataWin;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
 use reincarnate_core::ir::func::{IntrinsicKind, MethodKind, Visibility};
-use reincarnate_core::ir::module::{Global, Module, SystemCallTypeRule};
+use reincarnate_core::ir::module::{FieldDef, Global, Module, StructDef, SystemCallTypeRule};
 use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
 use reincarnate_core::project::EngineOrigin;
@@ -286,6 +286,249 @@ impl Frontend for GameMakerFrontend {
     }
 }
 
+/// Declare the built-in `GMLObject` struct fields on `mb` if not already present.
+///
+/// Called after every `mb.intern_type("GMLObject")` site.  The guard prevents
+/// duplicate entries when the same `mb` is reused across multiple translation
+/// functions (`translate_scripts`, `translate_global_inits`, `translate_room_creation`).
+fn ensure_gml_object_struct(mb: &mut ModuleBuilder) {
+    if mb.has_struct("GMLObject") {
+        return;
+    }
+    mb.add_struct(StructDef {
+        name: "GMLObject".to_string(),
+        namespace: Vec::new(),
+        fields: vec![
+            FieldDef {
+                name: "x".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "y".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "xprevious".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "yprevious".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "xstart".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "ystart".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "direction".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "speed".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "hspeed".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "vspeed".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "gravity".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "gravity_direction".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "friction".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "visible".to_string(),
+                ty: Type::Bool,
+                default: None,
+            },
+            FieldDef {
+                name: "solid".to_string(),
+                ty: Type::Bool,
+                default: None,
+            },
+            FieldDef {
+                name: "persistent".to_string(),
+                ty: Type::Bool,
+                default: None,
+            },
+            FieldDef {
+                name: "depth".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "sprite_index".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_index".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_number".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_speed".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_xscale".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_yscale".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_angle".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_alpha".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "image_blend".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "mask_index".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "object_index".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "id".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "alarm".to_string(),
+                ty: Type::Array(Box::new(Type::Float(64))),
+                default: None,
+            },
+            FieldDef {
+                name: "path_index".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "path_position".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "path_speed".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "path_scale".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "path_orientation".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "path_endaction".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "timeline_index".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "timeline_position".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "timeline_speed".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "timeline_running".to_string(),
+                ty: Type::Bool,
+                default: None,
+            },
+            FieldDef {
+                name: "timeline_loop".to_string(),
+                ty: Type::Bool,
+                default: None,
+            },
+            FieldDef {
+                name: "bbox_left".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "bbox_right".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "bbox_top".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+            FieldDef {
+                name: "bbox_bottom".to_string(),
+                ty: Type::Float(64),
+                default: None,
+            },
+        ],
+        visibility: reincarnate_core::ir::func::Visibility::Public,
+    });
+}
+
 /// Register typed arithmetic and logic builtins on the module.
 ///
 /// The GML frontend emits `Op::Call { func: "builtin.add_f64", ... }` etc.
@@ -334,6 +577,7 @@ fn translate_scripts(
     // GMLObject is the runtime base class for all GML instances; it is not an
     // OBJT entry, so it must be interned explicitly for with-body fallback typing.
     let gml_object_id = mb.intern_type("GMLObject");
+    ensure_gml_object_struct(mb);
     instance_types.insert("GMLObject".to_string(), gml_object_id);
 
     for script in &scpt.scripts {
@@ -498,6 +742,7 @@ fn translate_global_inits(
         .map(|name| (name.clone(), mb.intern_type(name)))
         .collect();
     let gml_object_id = mb.intern_type("GMLObject");
+    ensure_gml_object_struct(mb);
     instance_types.insert("GMLObject".to_string(), gml_object_id);
 
     let mut count = 0;
@@ -597,6 +842,7 @@ fn translate_room_creation(
         .map(|name| (name.clone(), mb.intern_type(name)))
         .collect();
     let gml_object_id = mb.intern_type("GMLObject");
+    ensure_gml_object_struct(mb);
     instance_types.insert("GMLObject".to_string(), gml_object_id);
 
     let mut count = 0;

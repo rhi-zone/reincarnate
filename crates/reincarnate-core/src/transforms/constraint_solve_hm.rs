@@ -27,7 +27,7 @@ use std::collections::{HashMap, HashSet};
 use crate::entity::EntityRef;
 use crate::error::CoreError;
 use crate::ir::inst::Op;
-use crate::ir::module::SystemCallTypeRule;
+use crate::ir::module::{SystemCallTypeRule, TypeDecl};
 use crate::ir::ty::{TypeConstraint, TypeId};
 use crate::ir::{Constant, FuncId, Module, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
@@ -35,8 +35,11 @@ use crate::transforms::constraint_collect::{
     collect_function, is_concrete, resolve, unify, TypeVarArena,
 };
 
-/// Build a map from struct name → field name → field type from a module.
-fn build_struct_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
+/// Build the own-fields map (struct name → field name → field type) from a module.
+///
+/// "Own fields" means only the fields declared directly on each struct, not
+/// inherited from parent types.  Used for struct narrowing discriminants.
+fn build_own_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
     let mut map: HashMap<String, HashMap<String, Type>> = HashMap::new();
     for s in &module.structs {
         let fields: HashMap<String, Type> = s
@@ -49,6 +52,53 @@ fn build_struct_fields(module: &Module) -> HashMap<String, HashMap<String, Type>
     map
 }
 
+/// Build the all-fields map (struct name → field name → field type), merging
+/// own fields with all inherited ancestor fields.
+///
+/// Used for `HasField` resolution — a field access on `Player` resolves via
+/// `GMLObject` when `Player` declares `super_class = "GMLObject"`.
+/// Own fields take priority over inherited fields (shadowing).
+fn build_all_fields(
+    module: &Module,
+    own_fields: &HashMap<String, HashMap<String, Type>>,
+    type_id_to_name: &HashMap<TypeId, String>,
+) -> HashMap<String, HashMap<String, Type>> {
+    let mut all_fields = own_fields.clone();
+
+    for s in &module.structs {
+        // Walk the TypeDecl parent chain and merge ancestor own-fields.
+        // Own fields (already in the map) take priority — use entry().or_insert.
+        let entry = all_fields.entry(s.name.clone()).or_default();
+        let mut current_name: Option<String> = Some(s.name.clone());
+        loop {
+            // Find the TypeId for the current name.
+            let Some(name) = current_name else { break };
+            let Some(&type_id) = module.find_type(&name).as_ref() else {
+                break;
+            };
+            // Look up its parent TypeId.
+            let parent_id = match module.types.get(type_id) {
+                Some(TypeDecl::Object { parent, .. }) => *parent,
+                _ => None,
+            };
+            let Some(pid) = parent_id else { break };
+            // Resolve parent name.
+            let Some(parent_name) = type_id_to_name.get(&pid) else {
+                break;
+            };
+            // Merge parent's own fields (do not overwrite child's own fields).
+            if let Some(parent_own) = own_fields.get(parent_name) {
+                for (fname, fty) in parent_own {
+                    entry.entry(fname.clone()).or_insert_with(|| fty.clone());
+                }
+            }
+            current_name = Some(parent_name.clone());
+        }
+    }
+
+    all_fields
+}
+
 /// HM-unifier–based constraint solver pass.
 ///
 /// Replaces `TypeInference`, `CallSiteTypeFlow`, `CallSiteTypeWiden`,
@@ -58,12 +108,26 @@ pub struct ConstraintSolveHM;
 
 /// Process a single [`TypeConstraint`], potentially emitting deferred
 /// secondary constraints (from `HasField` / `Callable` resolution).
+///
+/// `own_fields`: fields declared directly on each struct — used for struct
+/// narrowing discriminants (inherited fields are not discriminants).
+///
+/// `all_fields`: own + all ancestor fields — used for `HasField` resolution
+/// so that `Player.x` resolves via the `GMLObject` parent.
+///
+/// `non_leaf_type_names`: types that appear as a parent of some other type.
+/// Excluded from narrowing targets — narrowing to a non-leaf base type erases
+/// specificity (seeing `obj.x` means `obj: some subtype of GMLObject`, not
+/// `obj: GMLObject`).
+#[allow(clippy::too_many_arguments)]
 fn process_constraint(
     c: TypeConstraint,
     arena: &mut TypeVarArena,
-    struct_fields: &HashMap<String, HashMap<String, Type>>,
+    own_fields: &HashMap<String, HashMap<String, Type>>,
+    all_fields: &HashMap<String, HashMap<String, Type>>,
     type_id_to_name: &HashMap<TypeId, String>,
     name_to_type_id: &HashMap<String, TypeId>,
+    non_leaf_type_names: &HashSet<String>,
     deferred: &mut Vec<TypeConstraint>,
 ) {
     match c {
@@ -83,7 +147,8 @@ fn process_constraint(
             match resolved_ty {
                 Type::Instance(id) => {
                     if let Some(name) = type_id_to_name.get(&id) {
-                        if let Some(fields) = struct_fields.get(name) {
+                        // Use all_fields: resolves fields inherited from parent types.
+                        if let Some(fields) = all_fields.get(name) {
                             if let Some(ft) = fields.get(&field) {
                                 deferred.push(TypeConstraint::Equal(field_ty, ft.clone()));
                             }
@@ -92,11 +157,17 @@ fn process_constraint(
                     // Unknown field — skip; don't invent a type.
                 }
                 Type::Var(_) => {
-                    // Part 1: if exactly one struct has this field, unify immediately.
+                    // Part 1: if exactly one struct has this field in its own fields,
+                    // unify immediately.  Use own_fields — inherited fields are not
+                    // discriminants; every child would match and produce multiple candidates.
+                    // Only consider leaf types: non-leaf types (those that have subtypes) are
+                    // never valid narrowing targets — seeing obj.x means obj is *some subtype*
+                    // of GMLObject, not GMLObject itself.
                     let candidates: Vec<TypeId> = name_to_type_id
                         .iter()
+                        .filter(|(name, _)| !non_leaf_type_names.contains(*name))
                         .filter(|(name, _)| {
-                            struct_fields
+                            own_fields
                                 .get(*name)
                                 .is_some_and(|f| f.contains_key(&field))
                         })
@@ -106,7 +177,8 @@ fn process_constraint(
                         let type_id = candidates[0];
                         let _ = unify(resolved_ty, Type::Instance(type_id), arena);
                         if let Some(name) = type_id_to_name.get(&type_id) {
-                            if let Some(ft) = struct_fields.get(name).and_then(|f| f.get(&field)) {
+                            // Use all_fields for the field-type constraint once type is known.
+                            if let Some(ft) = all_fields.get(name).and_then(|f| f.get(&field)) {
                                 deferred.push(TypeConstraint::Equal(field_ty, ft.clone()));
                             }
                         }
@@ -226,7 +298,7 @@ impl Transform for ConstraintSolveHM {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
-        let struct_fields = build_struct_fields(&module);
+        let own_fields = build_own_fields(&module);
         let type_id_to_name: HashMap<TypeId, String> = module
             .types
             .iter()
@@ -235,6 +307,25 @@ impl Transform for ConstraintSolveHM {
         let name_to_type_id: HashMap<String, TypeId> = type_id_to_name
             .iter()
             .map(|(&id, name)| (name.clone(), id))
+            .collect();
+        // all_fields: own fields + fields inherited from parent types via TypeDecl parent chain.
+        // Used for HasField resolution — a field access on Player resolves via GMLObject.
+        let all_fields = build_all_fields(&module, &own_fields, &type_id_to_name);
+
+        // Non-leaf types: types that appear as a `parent` of any other type.
+        // These should not be used as narrowing targets — seeing obj.x doesn't mean
+        // obj IS GMLObject, only that it is some GMLObject subtype.
+        let non_leaf_type_names: HashSet<String> = module
+            .types
+            .values()
+            .filter_map(|decl| {
+                if let TypeDecl::Object { parent, .. } = decl {
+                    *parent
+                } else {
+                    None
+                }
+            })
+            .filter_map(|parent_id| type_id_to_name.get(&parent_id).cloned())
             .collect();
 
         // -----------------------------------------------------------------------
@@ -610,9 +701,11 @@ impl Transform for ConstraintSolveHM {
                 process_constraint(
                     c,
                     &mut arena,
-                    &struct_fields,
+                    &own_fields,
+                    &all_fields,
                     &type_id_to_name,
                     &name_to_type_id,
+                    &non_leaf_type_names,
                     &mut deferred,
                 );
             }
@@ -650,11 +743,15 @@ impl Transform for ConstraintSolveHM {
             }
 
             for (var_id, fields) in &var_fields {
-                // Intersect: structs that have ALL the observed fields.
+                // Intersect: structs that have ALL the observed fields in their own
+                // (non-inherited) fields.  Using own_fields as discriminant prevents
+                // every GMLObject child from matching on inherited fields like `x` or `y`.
+                // Only consider leaf types: non-leaf types are never valid narrowing targets.
                 let candidates: Vec<TypeId> = name_to_type_id
                     .iter()
+                    .filter(|(name, _)| !non_leaf_type_names.contains(*name))
                     .filter(|(name, _)| {
-                        struct_fields
+                        own_fields
                             .get(*name)
                             .is_some_and(|sf| fields.iter().all(|f| sf.contains_key(f)))
                     })
@@ -665,8 +762,9 @@ impl Transform for ConstraintSolveHM {
                     let type_id = candidates[0];
                     let _ = unify(Type::Var(*var_id), Type::Instance(type_id), &mut arena);
                     // Emit field-type constraints for all HasField constraints on this var.
+                    // Use all_fields so inherited fields resolve correctly.
                     if let Some(name) = type_id_to_name.get(&type_id) {
-                        if let Some(sf) = struct_fields.get(name) {
+                        if let Some(sf) = all_fields.get(name) {
                             for c in &stalled_deferred {
                                 if let TypeConstraint::HasField {
                                     ty: Type::Var(vid),
@@ -702,9 +800,11 @@ impl Transform for ConstraintSolveHM {
                     process_constraint(
                         c,
                         &mut arena,
-                        &struct_fields,
+                        &own_fields,
+                        &all_fields,
                         &type_id_to_name,
                         &name_to_type_id,
+                        &non_leaf_type_names,
                         &mut deferred,
                     );
                 }

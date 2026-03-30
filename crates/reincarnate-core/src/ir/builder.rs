@@ -942,6 +942,11 @@ impl ModuleBuilder {
         self.module.structs.len()
     }
 
+    /// Return `true` if a [`StructDef`] with the given name is already present.
+    pub fn has_struct(&self, name: &str) -> bool {
+        self.module.structs.iter().any(|s| s.name == name)
+    }
+
     pub fn add_enum(&mut self, def: EnumDef) {
         self.module.enums.push(def);
     }
