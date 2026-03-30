@@ -176,15 +176,17 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   multi-store allocas with Var-typed cells that emitted as `unknown` even when all stored
   values were Float(64)
 
-**Current breakdown (1,495 errors, 2026-03-30):**
-- TS2345 (597): unknown arg to typed param — mostly `add_any`/`mul_any` cascade
-- TS18046 (550): variable of unknown type — loop counters (`add_any` back-edge), arg params
-- TS2571 (216): property access on unknown — GetField/HasField inference gap
-- TS2322 (97): type mismatches — unknowns + a few real errors
-- TS2339 (9): property doesn't exist (some real errors)
-- TS2538 (9): unknown as index
-- TS2749 (9): value used as type — struct type names not imported/defined
-- TS2304 (4): cannot find name
+**Current breakdown (1,482 errors, 2026-03-30):**
+- TS2345 (592): unknown arg to typed param — function parameters typed unknown + local var cascade
+- TS18046 (540): variable of unknown type — unresolved local vars and argument params
+- TS2571 (217): property access on unknown — GetField/HasField inference gap
+- TS2322 (98): type mismatches — unknowns + real errors (number[], number→()=>void, etc.)
+- TS2538 (9): unknown as index — loop counters with unresolved types
+- TS2749 (9): value used as type — GML constructor function structs (Button, Menu, Section,
+  TextPiece, Challenge) emitted as functions, not classes, but used in type annotation positions
+- TS2339 (7): property doesn't exist — `number.length` (array mistyped as number),
+  `{}.length` (is_array return type), `never.object_index` (always-true guard arms)
+- TS2304 (4): cannot find name — Tunneler, anon_381, Menu in object files (not imported)
 - Others (4): TS2355 (missing return), TS2362 (arithmetic LHS), TS2367 (comparison overlap)
 
 **Recent wins (2026-03-30):**
@@ -193,19 +195,33 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
 - super() in derived constructors (5045503): fixed TS17009 (16,161 → 0)
 - strip_void_returns in class methods (72497fc): fixed TS2322 void-return subset (536 → 0)
 - any[] → unknown[] in ast_printer.rs (e603681): Law 4 fix, surfaces hidden inference gaps
-- number|boolean override widening (class.rs): fixed TS2322 for `persistent`/`visible`/`solid`
-  override fields assigned numeric values (11 cases)
+- number|boolean override widening (class.rs, 13374cb): fixed TS2322 for persistent/visible/solid
+- is_array/is_string/is_real etc. → type predicates (1a15f78): Law 4 fix, TS2339: 9→7
 
-**Root cause of remaining TS2345/TS18046:** `_any`-suffix builtins (`builtin.add_any`,
-`builtin.mul_any`, etc.) are emitted when GML bytecode uses `DataType::Variable` — GML's
-dynamic type annotation. These builtins have no declared return type (returns Unknown),
-so even `add_any(Float64, Float64)` produces Unknown. Fix: Phase 9 overload selection
-(replace `xxx_any` with `xxx_f64` after operand types are known). A type-rule for `_any`
-ops would work but is a compensation — Phase 9 is the correct fix.
+**Root cause of remaining TS2345/TS18046/TS18046:** Function parameters typed `unknown`
+(from GML `DataType::Variable`) and local variables with Unknown IR types. The `add_any`/
+`mul_any` builtins described previously do NOT exist in the current output — that note was
+stale. The actual root cause is: (1) GML `DataType::Variable` parameters get `Unknown` type
+in the IR and are emitted as `unknown` TypeScript params; (2) local variables with Unknown
+IR type have the same issue. Both require better parameter-type inference from call sites.
 
-**TS2571 root cause:** `GetField`/`getInstanceField` on Unknown receiver. Caller's struct
-type isn't resolved → field type is Unknown. Fix: HasField reverse-index (TODO below)
-or better ConstructorStructInfer coverage.
+**TS2571 root cause:** `getInstanceField` on Unknown receiver → field type Unknown.
+Fix: HasField reverse-index (TODO below) or better ConstructorStructInfer coverage.
+
+**`getInstanceField` returning `any` — intentional, blocked (Law 4 violation):**
+The runtime method `getInstanceField(...): any` is a documented Law 4 violation with a
+TODO in runtime.ts. Changing to `unknown` requires the emitter to insert casts at call sites
+(e.g., `_rt.getInstanceField(self, "x") as number`) using IR type info for the field result.
+Until the emitter generates these casts, `any` is kept to avoid ~1000 spurious TS18046 errors.
+Track here: unblock by adding `getInstanceField<T>` generic or emit-time `as T` casts.
+
+**GML constructor function struct types (TS2749/TS2304):** Structs like `Button`, `Menu`,
+`Section`, `TextPiece`, `Challenge` are GML 2.3+ constructor functions emitted as TypeScript
+functions, not classes. When the IR has `Type::Instance(id)` for these types and the name
+is used in a TypeScript type annotation position, TypeScript gives TS2749 (value used as type)
+or TS2304 (not imported). Fix: either emit GML constructor function structs as TypeScript
+classes, or when a `Type::Instance(id)` name is not in the ClassRegistry, emit `GMLObject`
+instead of the function name.
 
 ### After inference is solid
 
