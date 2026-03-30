@@ -85,6 +85,14 @@ pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_array_length(module);
     attach_body_array_length_1d(module);
     attach_body_array_contains(module);
+    attach_body_sin(module);
+    attach_body_cos(module);
+    attach_body_tan(module);
+    attach_body_arcsin(module);
+    attach_body_arccos(module);
+    attach_body_ord(module);
+    attach_body_string_byte_at(module);
+    attach_body_chr(module);
 }
 
 // ---------------------------------------------------------------------------
@@ -3056,6 +3064,285 @@ fn attach_body_array_contains(module: &mut Module) {
     let val = b.param(1);
 
     let result = b.call("builtin.array_contains_arr", &[arr, val], Type::Bool);
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// sin(x: f64) -> f64  — radian version
+//   JS: Math.sin(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_sin(module: &mut Module) {
+    let fid = match module.lookup_runtime("sin") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("sin", sig, Visibility::Public);
+    let x = b.param(0);
+
+    let result = b.call("builtin.sin_f64", &[x], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// cos(x: f64) -> f64  — radian version
+//   JS: Math.cos(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_cos(module: &mut Module) {
+    let fid = match module.lookup_runtime("cos") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("cos", sig, Visibility::Public);
+    let x = b.param(0);
+
+    let result = b.call("builtin.cos_f64", &[x], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// tan(x: f64) -> f64  — radian version
+//   JS: Math.tan(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_tan(module: &mut Module) {
+    let fid = match module.lookup_runtime("tan") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("tan", sig, Visibility::Public);
+    let x = b.param(0);
+
+    let result = b.call("builtin.tan_f64", &[x], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// arcsin(x: f64) -> f64  — radian version
+//   JS: Math.asin(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_arcsin(module: &mut Module) {
+    let fid = match module.lookup_runtime("arcsin") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("arcsin", sig, Visibility::Public);
+    let x = b.param(0);
+
+    let result = b.call("builtin.asin_f64", &[x], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// arccos(x: f64) -> f64  — radian version
+//   JS: Math.acos(x)
+// ---------------------------------------------------------------------------
+
+fn attach_body_arccos(module: &mut Module) {
+    let fid = match module.lookup_runtime("arccos") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("arccos", sig, Visibility::Public);
+    let x = b.param(0);
+
+    let result = b.call("builtin.acos_f64", &[x], Type::Float(64));
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// ord(s: String) -> Float(64)
+//   GML: returns the Unicode code point of the first character of s.
+//   JS: s.charCodeAt(0)
+// ---------------------------------------------------------------------------
+
+fn attach_body_ord(module: &mut Module) {
+    let fid = match module.lookup_runtime("ord") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("ord", sig, Visibility::Public);
+    let s = b.param(0);
+
+    let zero = b.const_float(0.0);
+    let result = b.call(
+        "builtin.string_char_code_at_str",
+        &[s, zero],
+        Type::Float(64),
+    );
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// string_byte_at(s: String, pos: Float(64)) -> Float(64)
+//   GML: returns the byte value of the character at 1-based position pos.
+//   JS: s.charCodeAt(pos - 1)
+// ---------------------------------------------------------------------------
+
+fn attach_body_string_byte_at(module: &mut Module) {
+    let fid = match module.lookup_runtime("string_byte_at") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::String, Type::Float(64)],
+        return_ty: Type::Float(64),
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("string_byte_at", sig, Visibility::Public);
+    let s = b.param(0);
+    let pos = b.param(1);
+
+    let one = b.const_float(1.0);
+    let pos_minus_1 = b.sub(pos, one); // convert 1-based GML index to 0-based JS
+    let result = b.call(
+        "builtin.string_char_code_at_str",
+        &[s, pos_minus_1],
+        Type::Float(64),
+    );
+    b.ret(Some(result));
+
+    let built = b.build();
+    let stub = &mut module.functions[fid];
+    stub.blocks = built.blocks;
+    stub.insts = built.insts;
+    stub.value_types = built.value_types;
+    stub.entry = built.entry;
+    stub.inline_hint = InlineHint::Always;
+}
+
+// ---------------------------------------------------------------------------
+// chr(n: Float(64)) -> String
+//   GML: returns the character corresponding to Unicode code point n.
+//   JS: String.fromCharCode(n)
+// ---------------------------------------------------------------------------
+
+fn attach_body_chr(module: &mut Module) {
+    let fid = match module.lookup_runtime("chr") {
+        Some(id) => id,
+        None => return,
+    };
+
+    let sig = FunctionSig {
+        params: vec![Type::Float(64)],
+        return_ty: Type::String,
+        defaults: vec![],
+        has_rest_param: false,
+    };
+
+    let mut b = FunctionBuilder::new("chr", sig, Visibility::Public);
+    let n = b.param(0);
+
+    let result = b.call("builtin.chr_f64", &[n], Type::String);
     b.ret(Some(result));
 
     let built = b.build();

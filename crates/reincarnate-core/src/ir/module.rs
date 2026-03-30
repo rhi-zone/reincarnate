@@ -775,7 +775,7 @@ impl Module {
     /// Breakdown: 5 arith ops × 4 types = 20, add_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1,
     /// _any stubs (add/sub/mul/div/rem/neg) = 6 → 40.
-    pub const NUM_CORE_BUILTINS: u32 = 75;
+    pub const NUM_CORE_BUILTINS: u32 = 76;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -994,6 +994,15 @@ impl Module {
             FunctionSig {
                 params: vec![Type::String, Type::Float(64)],
                 return_ty: Type::Float(64),
+                ..Default::default()
+            },
+        );
+        // chr: (Float(64)) -> String  — emit as String.fromCharCode(n)
+        self.register_runtime(
+            "builtin.chr_f64",
+            FunctionSig {
+                params: vec![Type::Float(64)],
+                return_ty: Type::String,
                 ..Default::default()
             },
         );

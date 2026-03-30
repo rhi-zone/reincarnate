@@ -1047,6 +1047,10 @@ impl<'a> EmitCtx<'a> {
                 method: "includes".to_string(),
                 args: vec![self.build_val(args[1])],
             },
+            "chr" => Expr::Call {
+                func: "String.fromCharCode".to_string(),
+                args: vec![self.build_val(args[0])],
+            },
             // Unknown builtin — fall back to a function call so the output is
             // at least syntactically valid (the name won't exist at runtime,
             // but a compile error is better than a panic).
