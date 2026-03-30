@@ -14,10 +14,10 @@ hero:
       link: /targets/
 
 features:
-  - title: Explant
-    details: Bytecode and script extraction. Decompile Flash, Director, VB6, and more.
-  - title: Hypha
-    details: Game translation with UI overlay. Hook draw calls, render via HTML/CSS.
+  - title: Full Recompilation
+    details: Bytecode and scripts decompiled to IR, type-inferred, optimized, and emitted as idiomatic TypeScript. Not interpretation — real codegen.
+  - title: Replacement Runtime
+    details: Original engine APIs (Flash, GameMaker, Twine) replaced with modern TypeScript implementations. Platform-agnostic — browser or native.
   - title: Preservation First
-    details: Accurate reproduction over improvement. Make the old thing work as-is.
+    details: Accurate reproduction over improvement. Behavioral equivalence is the bar — source-language bugs are preserved, not fixed.
 ---

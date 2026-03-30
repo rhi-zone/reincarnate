@@ -33,8 +33,10 @@ For engines you *can* shim (Ren'Py, RPG Maker, Flash, GMS):
 
 ## Components
 
-- **Explant**: Extract bytecode, decompile scripts, dump assets
-- **Hypha**: Translation pipeline with UI overlay injection
+- **Frontends**: Engine-specific extractors that parse bytecode, decompile scripts, and dump assets into a common IR
+- **Transform pipeline**: Type inference, optimization passes (constant folding, Mem2Reg, DCE), coroutine lowering, and engine-specific IR normalization
+- **Backends**: Code generators targeting TypeScript (active) and Rust (planned)
+- **Replacement runtime**: Modern reimplementation of the original engine's API surface (Flash, GameMaker, Twine)
 
 ## What Reincarnate Is Not
 

@@ -1,5 +1,15 @@
 # Architecture Audit — 2026-03-12
 
+> **Historical snapshot.** This audit reflects the codebase as of 2026-03-12. Significant
+> changes since then include: the full HM type inference pipeline replaced the old
+> TypeInference/CallSiteTypeFlow/ConstraintSolve/CallSiteTypeWiden/CallSiteArityWiden chain
+> (Phases 4–8); `Type::Dynamic` was replaced with `Type::Unknown`; `Op::Copy` and control-flow
+> `Op` variants were removed; `extra_passes` was renamed to `frontend_passes` with the
+> `PureIrPass` marker trait; the `RuntimeRegistry` was added (stdlib functions as real FuncIds);
+> an inliner and `BuiltinOverloadSelect` pass were added. The pipeline is now declarative
+> (topo-sort + invalidation expansion) rather than a hardcoded pass sequence. See
+> `architecture.md` for the current state.
+
 Full end-to-end audit of the Reincarnate pipeline, covering pipeline stages, crate
 boundaries, IR completeness, type system, pass ordering, abstractions, and Law compliance.
 

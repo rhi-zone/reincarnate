@@ -11,28 +11,48 @@ Source binary/scripts
         │
         ▼
    ┌──────────┐
-   │ Frontend  │   (per-engine: Flash, Ren'Py, RPG Maker, etc.)
+   │ Frontend  │   (per-engine: Flash, GameMaker, Twine, etc.)
    └────┬─────┘
-        │  untyped IR
+        │  untyped IR + frontend_passes
         ▼
    ┌──────────┐
-   │   Type    │
-   │ Inference │
-   └────┬─────┘
-        │  typed IR
-        ▼
-   ┌──────────┐
-   │ Transform │   (optimization passes, coroutine lowering, etc.)
-   │  Passes   │
+   │ Transform │   (type inference, optimization, coroutine lowering, etc.)
+   │ Pipeline  │
    └────┬─────┘
         │  optimized typed IR
         ▼
    ┌──────────┐
-   │ Backend   │   (Rust source, TypeScript, etc.)
+   │ Backend   │   (TypeScript; Rust planned)
    └──────────┘
 ```
 
-Frontends parse engine-specific formats and emit untyped IR. Type inference recovers concrete types. Transform passes optimize and lower (e.g., coroutines to state machines). Backends emit target code.
+Frontends parse engine-specific formats and emit untyped IR plus a list of engine-specific `PureIrPass` instances (`frontend_passes`). The transform pipeline runs type inference and optimization. Backends emit target code.
+
+### Transform pipeline passes
+
+The pipeline is **declarative**: passes declare `requires()` and `invalidates()` dependencies; the pipeline topo-sorts them and inserts re-runs automatically when a pass invalidates an earlier one. The current standard passes in registration order (actual execution order is determined by dependency sort):
+
+| Pass | Description | Flags |
+|------|-------------|-------|
+| `constructor-struct-infer` | Infers struct shapes from constructor `SetField` patterns | — |
+| `constraint-solve-hm` | HM unifier — resolves `TypeVar`s from constraints; runs twice (before and after `mem2reg` via invalidation) | — |
+| `builtin-overload-select` | Post-HM: resolves typed builtin variants (e.g. `add_f64` vs `add_str`) | `run_once` |
+| `inline` | Inlines functions with `InlineHint::Always` (stdlib bodies) | `run_once` |
+| `constant-folding` | Algebraic simplification; runs twice (before and after `mem2reg`) | — |
+| `cfg-simplify` | Removes unreachable blocks | — |
+| `coroutine-lowering` | Lowers async/yield to state machines | — |
+| `mem2reg` | Promotes `Alloc`/`Store`/`Load` chains to SSA values | `invalidates: constraint-solve-hm, constant-folding` |
+| `redundant-cast-elimination` | Removes identity and nested casts | — |
+| `dead-code-elimination` | Removes dead instructions and unreachable blocks | — |
+
+After the standard pipeline, `frontend_passes` run in order. These are engine-specific IR normalizations (e.g. GML logical-op pattern restoration) provided by the frontend as `PureIrPass` instances.
+
+### RuntimeRegistry
+
+Stdlib and builtin functions are registered in the `Module::runtime_registry` as real `FuncId`s with typed signatures. This means:
+- The inliner can substitute IR bodies for stdlib functions at call sites
+- `BuiltinOverloadSelect` can resolve the correct typed variant after HM inference
+- Backends emit direct typed calls rather than dynamic dispatch through `Op::SystemCall`
 
 ## Supported Engines
 
@@ -324,14 +344,15 @@ Emits `.ts` files for web deployment. Useful when:
 
 ## Type Inference
 
-Flow-sensitive, Hindley-Milner-ish type recovery. Source languages (ActionScript 3, Lingo, GML, etc.) are often dynamically typed — inference recovers concrete types where possible.
+Hindley-Milner constraint-based type recovery. Source languages (ActionScript 3, Lingo, GML, etc.) are often dynamically typed — inference recovers concrete types where possible.
 
-When inference fails, the type becomes `Dynamic`: a tagged union that backends emit as an enum with runtime dispatch. The goal is to minimize `Dynamic` usage — most well-typed ActionScript 3 code should infer fully.
+When inference fails, the type becomes `Unknown`. `Unknown` is an inference failure, not a legitimate runtime type — the goal is to eliminate it. Most well-typed ActionScript 3 code should infer fully.
 
 Key properties:
-- **Flow-sensitive**: types narrow through conditionals and casts
-- **Constraint-based**: unification over type variables
-- **Fallback**: `Dynamic` when constraints are unsatisfiable or insufficient
+- **Constraint-based**: unification over type variables via an HM solver (`ConstraintSolveHM`)
+- **Struct inference**: `ConstructorStructInfer` recovers object shapes from constructor `SetField` patterns
+- **Builtin overloads**: `BuiltinOverloadSelect` resolves typed arithmetic variants post-HM (e.g. `add_f64` vs `add_str`)
+- **Inlining**: stdlib functions with attached IR bodies are inlined at call sites (`InlineHint::Always`)
 - **Per-function**: inference runs per function, cross-function via signatures
 
 ## Platform Interface
