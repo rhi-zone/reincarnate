@@ -20,7 +20,8 @@
 //!    `HasField` and `Callable` constraints until the object/callee type is
 //!    resolved.
 //! 5. **Write-back**: resolve every value's TypeVar and write the result back
-//!    into `func.value_types`. Unresolved vars write `Type::Unknown`.
+//!    into `func.value_types`. Unresolved vars are left unchanged in the IR;
+//!    only the emit step converts residual `Type::Var` to `unknown`.
 
 use std::collections::{HashMap, HashSet};
 
@@ -819,8 +820,9 @@ impl Transform for ConstraintSolveHM {
         // Step 5: collect per-function value-type updates.
         //
         // For every value that was an inference target (Unknown or Var), resolve
-        // its TypeVar and collect the result. If still unresolved (Var), write
-        // Unknown — inference exhausted.
+        // its TypeVar and collect the result. If still unresolved (Var), leave
+        // the existing type unchanged — the emit step converts residual Var to
+        // `unknown`. Only write back concrete resolved types.
         // -----------------------------------------------------------------------
         struct FuncUpdate {
             updates: Vec<(usize, Type)>,
@@ -839,14 +841,15 @@ impl Transform for ConstraintSolveHM {
                         continue;
                     }
                     let resolved = resolve(Type::Var(*var_id), &arena);
-                    // Map unresolved Var → Unknown (inference exhausted).
-                    let new_ty = if matches!(&resolved, Type::Var(_)) {
-                        Type::Unknown
-                    } else {
-                        resolved
-                    };
-                    if new_ty != *old_ty {
-                        updates.push((vid.index() as usize, new_ty));
+                    // If still unresolved, leave the existing type in place.
+                    // Do not write Type::Unknown — that would conflate
+                    // "unconstrained" with "genuinely unknown" and block
+                    // re-inference on subsequent HM passes.
+                    if matches!(&resolved, Type::Var(_)) {
+                        continue;
+                    }
+                    if resolved != *old_ty {
+                        updates.push((vid.index() as usize, resolved));
                     }
                 }
                 FuncUpdate { updates }

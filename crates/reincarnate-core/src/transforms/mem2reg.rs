@@ -406,7 +406,9 @@ fn promote_multi_store(func: &mut Function) -> bool {
                 .filter_map(|(sid, _)| {
                     if let Op::Store { value, .. } = &func.insts[*sid].op {
                         let ty = &func.value_types[*value];
-                        if *ty != Type::Unknown {
+                        // Exclude unresolved types (Unknown or Var) — treat them
+                        // as abstentions, not as evidence for a concrete type.
+                        if !matches!(ty, Type::Unknown | Type::Var(_)) {
                             Some(ty)
                         } else {
                             None
@@ -492,7 +494,7 @@ fn promote_multi_store(func: &mut Function) -> bool {
                 Type::Bool => Constant::Bool(false),
                 Type::Int(_) => Constant::Int(0),
                 Type::UInt(_) => Constant::UInt(0),
-                Type::Float(_) | Type::Unknown => Constant::Float(0.0),
+                Type::Float(_) | Type::Unknown | Type::Var(_) => Constant::Float(0.0),
                 // Struct / String / Array / opaque: keep null (not used in
                 // arithmetic; a null struct ref is the right uninitialized
                 // sentinel for reference types).

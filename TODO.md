@@ -265,6 +265,35 @@ or TS2304 (not imported). Fix: either emit GML constructor function structs as T
 classes, or when a `Type::Instance(id)` name is not in the ClassRegistry, emit `GMLObject`
 instead of the function name.
 
+**Remaining error breakdown after DataType::Variable fix (2026-03-31, 1,017 errors):**
+Root-cause analysis of the remaining unknown-cascade (sampled 2026-03-31):
+
+- **~400–500: Interprocedural parameter inference (HIGH).** GML script params have no
+  declared type. HM inference runs per-function — it does not flow argument types from call
+  sites back into parameter declarations. A param `argument0: Var(x)` that's always called
+  with a `number` stays `unknown` because `Equal(Var(x_callee), Float(64))` is never added.
+  Fix: collect `Equal(param_ty, arg_ty)` constraints across call boundaries — either as a
+  second-pass over call edges after per-function solving, or by running the solver over a
+  whole-module constraint graph. This is the single highest-leverage remaining fix.
+
+- **~150–200: Parametric array types (HIGH).** All arrays are `Array(Unknown)` — the
+  element type has nowhere to live. `[1.0, 4.0, 7.0]` produces `unknown[]`; indexing yields
+  `unknown`. Fix: `Array(Var(fresh))` for every array allocation, plus `HasElement`
+  constraints so push/get operations constrain the element variable. This is the parametric
+  polymorphism primitive deferred earlier — same mechanism needed for `array_get(arr: Array<T>) → T`.
+  Blocked on extending the IR and solver with `HasElement`.
+
+- **~100–150: User function return types (MEDIUM).** Same interprocedural gap as params —
+  return types not propagated to callers. Largely fixed by the same cross-function constraint
+  pass as params.
+
+- **~50–80: `withInstances` closure captures (MEDIUM).** Closure capture params inherit
+  `unknown` from the captured variable. Follows from fixing the above two.
+
+- **~40–60: Runtime helper signatures (LOW).** `_instanceof` and similar — verified that
+  `builtins_generated.rs` already has correct types; `runtime.json` mismatch was cosmetic.
+  Remaining cases are legitimately dynamic (`ds_map_find_value`).
+
 ### After inference is solid
 
 - [ ] **Phase 8 — Core AST + reconstruction.** Structurizer → Core AST; forward
