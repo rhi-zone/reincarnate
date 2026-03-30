@@ -7,6 +7,6 @@
  * the argument index exceeds the function's declared parameter count.
  */
 
-export function get(_name: string): any {
+export function get(_name: string): number {
     return 0;
 }

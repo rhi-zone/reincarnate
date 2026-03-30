@@ -7,10 +7,10 @@ export function createGlobalAPI(rt: GameRuntime) {
     variable_global_exists(key: string): boolean {
       return key in rt.global;
     },
-    variable_global_get(key: string): any {
+    variable_global_get(key: string): unknown {
       return rt.global[key];
     },
-    variable_global_set(key: string, value: any): void {
+    variable_global_set(key: string, value: unknown): void {
       rt.global[key] = value;
     },
   };
