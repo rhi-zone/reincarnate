@@ -495,6 +495,20 @@ pub(super) fn emit_class(
         } else {
             ""
         };
+        // GML: if an override field is declared as `"*"` (dynamic, number | boolean)
+        // in any external type definition (e.g. GMLObject's `visible`, `persistent`,
+        // `solid`), widen the type to `number | boolean`.  Without this, game code
+        // that initialises `persistent = true` would emit `override persistent: boolean`
+        // which then rejects numeric assignments like `this.persistent = 1.0` (TS2322).
+        if engine == EngineKind::GameMaker && ov == "override " {
+            let is_dynamic_external = module
+                .external_type_defs
+                .values()
+                .any(|ext| ext.fields.get(field.name.as_str()).map(|s| s.as_str()) == Some("*"));
+            if is_dynamic_external {
+                ts = "number | boolean".to_string();
+            }
+        }
         if let Some(val) = &field.default {
             if matches!(val, Constant::Null) && engine != EngineKind::Flash {
                 // Non-Flash: widen type to T | null for strictNullChecks.

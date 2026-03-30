@@ -93,7 +93,7 @@ where inference needs improvement. Hiding it in core passes:
   but removal showed it was not load-bearing for any of them either).
 - [x] **Fix `call_site_flow.rs:110`** — done 2026-03-27 (commit 4a10069). Moved
   `"array_length"` to `Module::array_like_fns`, populated by GML frontend.
-- [ ] **Fix `constraint_collect.rs:243` comment** — update to reference Phase 9, not GML.
+- [x] **Fix `constraint_collect.rs:243` comment** — no GML-specific comment remains in constraint_collect.rs; the referenced comment was removed in a prior refactor.
 - [ ] **Root-cause fix for `ResolveInstanceField` with Unknown receiver** — the real
   source of Dead Estate's ~1,500+ remaining Unknown instance field reads. Design: when
   receiver is Unknown but field name is a constant, emit a `HasField(receiver, field,
@@ -176,11 +176,11 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   multi-store allocas with Var-typed cells that emitted as `unknown` even when all stored
   values were Float(64)
 
-**Current breakdown (1,478 errors, 2026-03-30):**
-- TS2345 (588): unknown arg to typed param — mostly `add_any`/`mul_any` cascade
-- TS18046 (543): variable of unknown type — loop counters (`add_any` back-edge), arg params
-- TS2571 (204): property access on unknown — GetField/HasField inference gap
-- TS2322 (108): type mismatches — unknowns + a few real errors
+**Current breakdown (1,495 errors, 2026-03-30):**
+- TS2345 (597): unknown arg to typed param — mostly `add_any`/`mul_any` cascade
+- TS18046 (550): variable of unknown type — loop counters (`add_any` back-edge), arg params
+- TS2571 (216): property access on unknown — GetField/HasField inference gap
+- TS2322 (97): type mismatches — unknowns + a few real errors
 - TS2339 (9): property doesn't exist (some real errors)
 - TS2538 (9): unknown as index
 - TS2749 (9): value used as type — struct type names not imported/defined
@@ -192,6 +192,9 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   across the GMLObject hierarchy, major reduction in TS2345/TS18046/TS2571
 - super() in derived constructors (5045503): fixed TS17009 (16,161 → 0)
 - strip_void_returns in class methods (72497fc): fixed TS2322 void-return subset (536 → 0)
+- any[] → unknown[] in ast_printer.rs (e603681): Law 4 fix, surfaces hidden inference gaps
+- number|boolean override widening (class.rs): fixed TS2322 for `persistent`/`visible`/`solid`
+  override fields assigned numeric values (11 cases)
 
 **Root cause of remaining TS2345/TS18046:** `_any`-suffix builtins (`builtin.add_any`,
 `builtin.mul_any`, etc.) are emitted when GML bytecode uses `DataType::Variable` — GML's
