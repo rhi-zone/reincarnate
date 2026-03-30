@@ -88,7 +88,7 @@ export function createMathAPI(rt: GameRuntime) {
     return res;
   }
 
-  function choose(...args: any[]): any {
+  function choose(...args: unknown[]): unknown {
     return args[irandom(args.length - 1)];
   }
 
@@ -142,9 +142,9 @@ export function int(n: unknown): number { return Number(n) | 0; }
 /** Truncate to 32-bit unsigned integer. */
 export function uint(n: unknown): number { return Number(n) >>> 0; }
 /** Convert to number (GML real). */
-export function real(n: any): number { return Number(n); }
+export function real(n: unknown): number { return Number(n); }
 /** Convert to string (GML string). Optional second arg is decimal places; extra args ignored. */
-export function string(n: any, ..._rest: any[]): string { return String(n); }
+export function string(n: unknown, ..._rest: unknown[]): string { return String(n); }
 export function median(...nums: number[]): number {
   const sorted = nums.slice().sort((a, b) => a - b);
   const mid = sorted.length >> 1;
@@ -155,4 +155,4 @@ export function arctan2(y: number, x: number): number { return Math.atan2(y, x);
 
 export function dot_product(x1: number, y1: number, x2: number, y2: number): number { return x1 * x2 + y1 * y2; }
 export function math_get_epsilon(): number { return 0.00001; }
-export function is_bool(val: any): boolean { return typeof val === "boolean"; }
+export function is_bool(val: unknown): val is boolean { return typeof val === "boolean"; }

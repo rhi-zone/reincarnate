@@ -1206,17 +1206,17 @@ export class GameRuntime {
 
   // ---- Type-check functions ----
 
-  is_array(val: any): boolean { return Array.isArray(val); }
-  is_string(val: any): boolean { return typeof val === 'string'; }
-  is_real(val: any): boolean { return typeof val === 'number'; }
-  is_undefined(val: any): boolean { return val === undefined; }
-  is_nan(val: any): boolean { return typeof val === 'number' && isNaN(val); }
-  is_infinity(val: any): boolean { return val === Infinity || val === -Infinity; }
-  is_numeric(val: any): boolean { return !isNaN(Number(val)); }
+  is_array(val: unknown): val is unknown[] { return Array.isArray(val); }
+  is_string(val: unknown): val is string { return typeof val === 'string'; }
+  is_real(val: unknown): val is number { return typeof val === 'number'; }
+  is_undefined(val: unknown): val is undefined { return val === undefined; }
+  is_nan(val: unknown): boolean { return typeof val === 'number' && isNaN(val); }
+  is_infinity(val: unknown): boolean { return val === Infinity || val === -Infinity; }
+  is_numeric(val: unknown): boolean { return !isNaN(Number(val)); }
 
   // GML typeof() — returns the GML type name string for a value.
   // Sanitized to _typeof because `typeof` is a JS/TS reserved word.
-  _typeof(val: any): string {
+  _typeof(val: unknown): string {
     if (val === undefined) return "undefined";
     if (val === null) return "null";
     if (typeof val === 'boolean') return "bool";
