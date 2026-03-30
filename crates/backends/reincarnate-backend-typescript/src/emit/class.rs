@@ -1065,6 +1065,10 @@ fn emit_class_method(
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
     crate::ast_passes::simplify_boolean_returns(&mut js_func.body);
     crate::ast_passes::hoist_else_after_terminal(&mut js_func.body);
+    // For void methods, rewrite `return <expr>;` → `<expr>; return;` to satisfy TS2322.
+    if js_func.return_ty == Type::Void {
+        crate::ast_passes::strip_void_returns(&mut js_func);
+    }
     // Rewrite calls to free functions: prepend `this._rt` as first argument.
     if !free_func_names.is_empty() {
         rewrites::prepend_rt_arg_to_free_calls(&mut js_func.body, free_func_names, true);
