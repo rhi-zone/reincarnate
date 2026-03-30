@@ -520,10 +520,11 @@ impl Transform for ConstraintSolveHM {
                                         if i >= entry_params.len() {
                                             break;
                                         }
-                                        // Skip Unknown args — abstentions should not
-                                        // pull the callee param toward Unknown.
+                                        // Skip Unknown/Var args — abstentions and
+                                        // unbound vars should not pull the callee
+                                        // param toward Unknown via Var-Var links.
                                         let arg_ty = &func.value_types[arg];
-                                        if matches!(arg_ty, Type::Unknown) {
+                                        if matches!(arg_ty, Type::Unknown | Type::Var(_)) {
                                             continue;
                                         }
                                         let param_val = entry_params[i].value;
@@ -603,7 +604,7 @@ impl Transform for ConstraintSolveHM {
                                         let recv_ty = &func.value_types[*receiver];
                                         let param_val = entry_params[0].value;
                                         let param_ty = &callee_func.value_types[param_val];
-                                        if !matches!(recv_ty, Type::Unknown)
+                                        if !matches!(recv_ty, Type::Unknown | Type::Var(_))
                                             && !is_concrete(param_ty)
                                             && !param_used_as_collection(
                                                 callee_func,
@@ -630,7 +631,7 @@ impl Transform for ConstraintSolveHM {
                                             break;
                                         }
                                         let arg_ty = &func.value_types[arg];
-                                        if matches!(arg_ty, Type::Unknown) {
+                                        if matches!(arg_ty, Type::Unknown | Type::Var(_)) {
                                             continue;
                                         }
                                         let param_val = entry_params[param_idx].value;
