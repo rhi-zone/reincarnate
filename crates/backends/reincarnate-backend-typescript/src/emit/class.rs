@@ -1079,7 +1079,18 @@ fn emit_class_method(
     {
         rewrites::rewrite_stateful_calls(&mut js_func.body, stateful_names, true);
     }
-    let preamble: Option<String> = None;
+    // GML constructors in derived classes (suppress_super = false) need an explicit
+    // `super()` call before any `this` access.  TypeScript enforces this as TS17009.
+    // The body already contains `super.create()` (from event_inherited), but that is
+    // a method call, not the required constructor call — so we prepend `super()` here.
+    let preamble: Option<String> = if engine == EngineKind::GameMaker
+        && func.method_kind == MethodKind::Constructor
+        && !suppress_super
+    {
+        Some("super();".to_string())
+    } else {
+        None
+    };
     // A method needs `override` if a parent class defines a method with the same name.
     // Constructors and cinit blocks are excluded — TypeScript forbids `override` on them.
     // Static methods ARE eligible for override when the parent class has a same-named static.
