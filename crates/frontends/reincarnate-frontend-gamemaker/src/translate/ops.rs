@@ -398,7 +398,11 @@ fn translate_bitwise_cmp_op(
             let r = if inst.type1 == DataType::Bool {
                 fb.call("builtin.and_bool", &[a, b], Type::Bool)
             } else {
-                let ret_ty = datatype_to_ir_type(inst.type1);
+                let ret_ty = if inst.type1 == DataType::Variable {
+                    fb.fresh_var()
+                } else {
+                    datatype_to_ir_type(inst.type1)
+                };
                 emit_gml_bitwise_bin(fb, "bitand", a, b, ret_ty)
             };
             gml_sizes.insert(r, result_units);
@@ -411,7 +415,11 @@ fn translate_bitwise_cmp_op(
             let r = if inst.type1 == DataType::Bool {
                 fb.call("builtin.or_bool", &[a, b], Type::Bool)
             } else {
-                let ret_ty = datatype_to_ir_type(inst.type1);
+                let ret_ty = if inst.type1 == DataType::Variable {
+                    fb.fresh_var()
+                } else {
+                    datatype_to_ir_type(inst.type1)
+                };
                 emit_gml_bitwise_bin(fb, "bitor", a, b, ret_ty)
             };
             gml_sizes.insert(r, result_units);
@@ -420,7 +428,11 @@ fn translate_bitwise_cmp_op(
         Opcode::Xor => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let ret_ty = datatype_to_ir_type(inst.type1);
+            let ret_ty = if inst.type1 == DataType::Variable {
+                fb.fresh_var()
+            } else {
+                datatype_to_ir_type(inst.type1)
+            };
             let r = emit_gml_bitwise_bin(fb, "bitxor", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -428,7 +440,11 @@ fn translate_bitwise_cmp_op(
         Opcode::Shl => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let ret_ty = datatype_to_ir_type(inst.type1);
+            let ret_ty = if inst.type1 == DataType::Variable {
+                fb.fresh_var()
+            } else {
+                datatype_to_ir_type(inst.type1)
+            };
             let r = emit_gml_bitwise_bin(fb, "shl", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -436,7 +452,11 @@ fn translate_bitwise_cmp_op(
         Opcode::Shr => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let ret_ty = datatype_to_ir_type(inst.type1);
+            let ret_ty = if inst.type1 == DataType::Variable {
+                fb.fresh_var()
+            } else {
+                datatype_to_ir_type(inst.type1)
+            };
             let r = emit_gml_bitwise_bin(fb, "shr", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
