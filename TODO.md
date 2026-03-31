@@ -235,10 +235,9 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    **`build_builtin_expr` suffix-stripping is architecturally wrong.** `rsplit_once('_')` on
    `"add_f64"` → base `"add"` re-derives information that was never correctly encoded in the first
    place. String manipulation on names is not a dispatch mechanism. The correct fix: replace the
-   entire suffix-strip + match with a flat lookup table keyed on the full builtin name
-   (`"add_f64"` → `BinOp::Add`, `"concat_str"` → `BinOp::Add`, etc.). `_any` variants are simply
-   absent from the table and fall through to normal function-call emit. No parsing, no suffix
-   stripping, no accidental matches.
+   entire suffix-strip + match with a flat lookup table keyed on the full builtin name, owned by
+   the TS backend. `_any` variants are simply absent from the table and fall through to normal
+   function-call emit. No parsing, no suffix stripping, no accidental matches.
 
    **Why not Op variants?** Adding `Op::IAdd32`, `Op::FAdd64`, etc. to the IR enum is expensive:
    every pass, transform, and typechecker arm must handle each new variant. The `builtin.*`
@@ -249,6 +248,16 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    but the same body in Rust would be `a.wrapping_add(b)`. IR bodies encode source-language
    semantics, not target-language syntax — a body can't be both. The flat lookup table in the
    backend is the right place for target-language-specific emit forms.
+
+   **`Expr::Binary`/`BinOp` in `ir/ast.rs` are misplaced.** The core AST is intentional as a
+   shared representation: SSA→structured lowering (control flow reconstruction, expression
+   inlining, SSA deconstruction) happens once in core; backends lower the core AST to their own
+   backend-specific AST and then pretty-print. `Expr::Binary` belongs in the TS backend's AST,
+   not the shared core AST. It exists in core only because `build_builtin_expr` produces it there
+   — that is the violation. Core's linear lowering should emit `Expr::Call` for all builtins; the
+   TS backend's lowering step converts `Expr::Call { "add_f64" }` → `Expr::Binary { BinOp::Add }`
+   in its own AST. Without `build_builtin_expr`'s bug, core would not produce `Expr::Binary` for
+   arithmetic at all.
 
    **Hard error for called stubs.** Any IR function that has an empty/stub body and is called must
    be a hard error at emit time. Currently stubs silently fall through to broken call syntax or
