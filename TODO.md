@@ -254,9 +254,15 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
 of Phase 9 arithmetic slice (2026-03-28). `constraint_collect.rs` still has the exclusion comment
 referencing it (lines 243-245) — clean it up when `BuiltinOverloadSelect` moves.
 
-**Parametric FunctionSig `(T, T) → T`:** NOT needed to unblock this fix. Useful later for
-array element type inference (`array_get(arr: Array<T>, i: Int) → T`), but that requires a
-more substantial IR extension. Defer until array inference becomes a priority.
+**Parametric FunctionSig `(T, T) → T`:** This IS needed to fix `Variable => "f64"` correctly.
+The alternative — unified per-call TypeVar constraints `Equal(arg1, T), Equal(arg2, T), Equal(result, T)`
+for `_any` builtins — has the same Unknown-cascade failure: if any arg comes from a source with
+`Unknown` return (e.g. `ds_map_find_value`), its TypeVar is pre-bound to `Unknown`, links to `T`,
+and T poisons the result. With parametric instantiation, the call-site TypeVars would be freshly
+allocated per-call with no pre-bindings, so Unknown inputs would *conflict* with T (correctly)
+rather than silently propagating. Also useful for array element type inference
+(`array_get(arr: Array<T>, i: Int) → T`). Requires a non-trivial IR extension — template TypeVarIds
+in FunctionSig must be distinguishable from solver TypeVarIds in the arena.
 
 **TS2571 root cause:** `getInstanceField` on Unknown receiver → field type Unknown.
 Fix: HasField reverse-index (TODO below) or better ConstructorStructInfer coverage.
