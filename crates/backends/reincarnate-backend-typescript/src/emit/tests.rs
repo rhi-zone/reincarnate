@@ -1774,20 +1774,22 @@ fn call_method_emits_receiver_dot_method() {
 
 #[test]
 fn binop_add_strips_scope_operand() {
-    // findPropStrict("int") + int(x) → int(x)
+    // Binary add where the lhs is a scope lookup → Flash rewrite strips scope.
+    // The scope value is typed as Float(64) so that fb.add emits add_f64 (a typed
+    // binary op) rather than add_any (which now correctly emits as a function call
+    // and would not be eligible for scope-operand stripping).
     let out = build_and_emit(|mb| {
         let sig = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
+            params: vec![Type::Float(64)],
+            return_ty: Type::Float(64),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
         let x = fb.param(0);
-        let name = fb.const_string("int");
-        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Unknown);
-        let int_fn = fb.get_field(scope, "int", Type::Unknown);
-        let casted = fb.call_indirect(int_fn, &[x], Type::Int(64));
-        let sum = fb.add(scope, casted);
+        let name = fb.const_string("sin");
+        // Scope lookup typed as Float(64) — simulates a resolved coercion result.
+        let scope = fb.system_call("Flash.Scope", "findPropStrict", &[name], Type::Float(64));
+        let sum = fb.add(scope, x);
         fb.ret(Some(sum));
         mb.add_function(fb.build());
     });
@@ -1798,8 +1800,8 @@ fn binop_add_strips_scope_operand() {
     );
     // The add should collapse to just the non-scope operand.
     assert!(
-        out.contains("return int(v0);"),
-        "Should resolve to int(x) without scope operand:\n{out}"
+        out.contains("return v0;"),
+        "Should resolve to x without scope operand:\n{out}"
     );
 }
 

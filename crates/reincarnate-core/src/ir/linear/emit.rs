@@ -11,7 +11,7 @@ use super::{
     strip_trailing_continue, types_coalesce_compatible, LinearStmt,
 };
 use crate::entity::{EntityRef, PrimaryMap};
-use crate::ir::ast::{BinOp, Expr, Stmt, UnaryOp};
+use crate::ir::ast::{BinOp, Expr, Stmt};
 use crate::ir::block::BlockId;
 use crate::ir::func::{Function, MethodKind};
 use crate::ir::inst::{CastKind, CmpKind, InstId, Op, Terminator};
@@ -834,49 +834,32 @@ impl<'a> EmitCtx<'a> {
     /// workaround (cast to Number) that the old Op::BitAnd/BitOr/BitXor arms
     /// applied before the IR variants were removed.
     fn build_builtin_expr(&mut self, op_name: &str, args: &[ValueId]) -> Expr {
-        // Derive the base op (before the type suffix) by stripping the "_TYPE" suffix.
+        // Table path: check backend-supplied operator tables first (keyed by full
+        // op name, e.g. "add_f64").  Names absent from both tables fall through to
+        // the special-case arms below.  `_any` variants are intentionally absent
+        // from the tables so they fall through to `Expr::Call`.
+        if let Some(&bin_op) = self.config.builtin_binary_ops.get(op_name) {
+            return Expr::Binary {
+                op: bin_op,
+                lhs: Box::new(self.build_val(args[0])),
+                rhs: Box::new(self.build_val(args[1])),
+            };
+        }
+        if let Some(&un_op) = self.config.builtin_unary_ops.get(op_name) {
+            return Expr::Unary {
+                op: un_op,
+                expr: Box::new(self.build_val(args[0])),
+            };
+        }
+
+        // Special cases that require type inspection or non-operator emit forms.
+        // Strip the "_TYPE" suffix to get the base name for matching.
         let base = op_name
             .rsplit_once('_')
             .map(|(base, _)| base)
             .unwrap_or(op_name);
 
         match base {
-            // Binary arithmetic
-            "add" => Expr::Binary {
-                op: BinOp::Add,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            "concat" => Expr::Binary {
-                op: BinOp::Add,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            "sub" => Expr::Binary {
-                op: BinOp::Sub,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            "mul" => Expr::Binary {
-                op: BinOp::Mul,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            "div" => Expr::Binary {
-                op: BinOp::Div,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            "rem" => Expr::Binary {
-                op: BinOp::Rem,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            // Unary arithmetic
-            "neg" => Expr::Unary {
-                op: UnaryOp::Neg,
-                expr: Box::new(self.build_val(args[0])),
-            },
             // Bitwise binary — apply TS2447 bool-operand workaround for & and |.
             "bitand" => {
                 if matches!(self.func.value_types[args[0]], Type::Bool)
@@ -946,32 +929,8 @@ impl<'a> EmitCtx<'a> {
                     }
                 }
             }
-            "bitnot" => Expr::Unary {
-                op: UnaryOp::BitNot,
-                expr: Box::new(self.build_val(args[0])),
-            },
-            "shl" => Expr::Binary {
-                op: BinOp::Shl,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            "shr" => Expr::Binary {
-                op: BinOp::Shr,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            // Boolean logic
+            // Boolean NOT emits as Expr::Not (no UnaryOp::Not variant exists).
             "not" => Expr::Not(Box::new(self.build_val(args[0]))),
-            "and" => Expr::Binary {
-                op: BinOp::BoolAnd,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
-            "or" => Expr::Binary {
-                op: BinOp::BoolOr,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            },
             // Math single-argument: emit as Math.<method>(arg0).
             "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sqrt" | "exp" | "ln" | "log2"
             | "log10" | "abs" | "floor" | "ceil" | "round" | "trunc" | "sign" => {
