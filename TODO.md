@@ -217,52 +217,49 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    can be minted per-value. **Blocked on refactor: `datatype_to_ir_type` is a free fn without
    access to `FunctionBuilder`. Needs signature change or a separate helper.**
 
-2. ~~**Variable arithmetic → `builtin.add_f64(Var(x), Var(y))` directly.**~~ **DONE.**
-   `type_suffix_for(DataType::Variable)` returns `"f64"`. The result type is already `fb.fresh_var()`
-   (line 264 of ops.rs). With `Type::Var` inputs (step 1), HM will propagate Float64 through.
-   `add_any` is registered but unused for `DataType::Variable` ops.
+2. **`_any` builtins need real IR bodies, not stubs. `Variable => "any"`.**
+   `add_any`/`sub_any`/etc. currently have empty function bodies. They must have IR implementations
+   (type-dispatch logic: if args are String, concat; else numeric op) so that calls which
+   BuiltinOverloadSelect cannot devirtualize fall through to correct runtime behaviour.
+   With real bodies, `type_suffix_for(DataType::Variable)` must return `"any"` — the current
+   `"f64"` is only load-bearing because there is no `add_any` body to call through to.
+   `Variable => "f64"` was attempted as a long-term fix but is wrong: it hardcodes a GML
+   assumption and poisons String-typed args to Unknown on conflict.
 
-   **Why `add_any` cannot replace `add_f64` for Variable arithmetic:** Attempted 2026-03-31.
-   `add_any` return type is `Unknown`, so all Variable-typed add results become Unknown. With
-   `Variable => "f64"`, results are typed Float64 at IR construction time (baked into the call's
-   return type before HM). Switching to `add_any` degrades typing for cascaded arithmetic chains
-   where intermediate results had no other type source. Net regression: +188 errors. Reverted.
+   **BuiltinOverloadSelect is devirtualization, not inference.** It replaces `add_any(a, b)` —
+   a real runtime dispatch — with the inlined operator form (`a + b` via `add_f64`) when static
+   types are known. The dedicated typed variants exist for performance (no runtime type check),
+   not correctness. BuiltinOverloadSelect stays in the pipeline as the devirtualization pass.
+   Move it to the GML frontend's extra_passes (Law 2 — it is GML-specific).
 
-   **String concatenation (`DataType::Variable` add on String operands):** With `Variable => "f64"`,
-   the `add_f64` param constraint conflicts with String-typed args → args poisoned to Unknown,
-   result is still Float64 (wrong for concat). Fix requires step 1: once args are `Type::Var`
-   (not pre-bound Unknown), `add_f64` constraints propagate Float64 forward without conflict for
-   numeric operands. String operands (from `string()` return) would still conflict. The correct
-   long-term fix is a pre-HM pass that detects string operands and emits `concat_str` directly.
-   `builtin.concat_str` is registered and `add_any` has `[String, String] → concat_str`
-   specialization for when this becomes feasible.
+   **`build_builtin_expr` base-strip is wrong for `_any` variants.** `add_any` accidentally hits
+   the `"add"` arm (rsplit_once strips `"_any"` suffix → base `"add"`) and emits as `BinOp::Add`
+   instead of a function call. Fix: `_any` variants must be routed to function-call emit, not the
+   operator arm. Only concrete typed variants (`add_f64`, `add_f32`, etc.) should emit as operators.
 
-3. **Remove `add_any`/`sub_any`/`mul_any`/`div_any`/`mod_any` and their specialization tables
-   from `register_arithmetic_any_builtins()` (`reincarnate-core/src/ir/module.rs`).**
-   These are GML-specific overloading constructs — a Law 2 violation. After step 1+2, no `_any`
-   arithmetic builtins are emitted for `DataType::Variable`. Exception: `add_any`'s
-   `[String, String] → concat_str` specialization should be kept (or moved to GML frontend init).
+   **Hard error for called stubs.** Any IR function that has an empty/stub body and is called must
+   be a hard error at emit time. Currently stubs silently fall through to broken call syntax or
+   accidentally match an operator arm. This must be caught before it reaches the backend.
 
-4. **Move `BuiltinOverloadSelect` from `reincarnate-core/src/transforms/` to the GML frontend.**
-   This pass post-HM replaces `_any` calls with typed variants via `Function::specializations`.
-   It is GML-specific logic in core — a Law 2 violation. After change (2), it is also no longer
-   needed for the `DataType::Variable` path. It may still be needed for explicitly-polymorphic
-   GML stdlib functions (e.g. `int :: Real | String → Int`); if so, it belongs in the GML
-   frontend's extra_passes, not in core's default transform list.
+   **Specializations table → TS overload declarations.** The TS backend should emit TypeScript
+   overload signatures from the `Function::specializations` table automatically. For each entry
+   `[T, T] → typed_variant`, emit `(a: T, b: T): T` before the general implementation. This gives
+   the TS compiler the same devirtualization information as BuiltinOverloadSelect, recovering
+   correct result types even when BuiltinOverloadSelect fires on the IR side.
 
-**`Op::Add` and the constraint_collect exclusion:** `Op::Add` is already removed from the IR as
-of Phase 9 arithmetic slice (2026-03-28). `constraint_collect.rs` still has the exclusion comment
-referencing it (lines 243-245) — clean it up when `BuiltinOverloadSelect` moves.
+3. **Parametric FunctionSig `(T, T) → T` for `_any` builtins.**
+   `add_any`'s FunctionSig should be `(Type::Template(0), Type::Template(0)) → Type::Template(0)`.
+   The constraint collector instantiates fresh TypeVarIds per call site for each template index,
+   emits `Equal(arg_var, T)` / `Equal(result_var, T)` unconditionally (bypassing the `is_concrete`
+   guard), and allows HM to propagate the type through. Unknown inputs *conflict* with T (correctly)
+   rather than silently propagating — the call-site TypeVars are freshly allocated with no
+   pre-bindings. Requires `Type::Template(u32)` variant in the Type enum; template types must
+   never appear in `value_types` (hard error if they do). Also needed for array element type
+   inference (`array_get(arr: Array<T>, i: Int) → T`).
 
-**Parametric FunctionSig `(T, T) → T`:** This IS needed to fix `Variable => "f64"` correctly.
-The alternative — unified per-call TypeVar constraints `Equal(arg1, T), Equal(arg2, T), Equal(result, T)`
-for `_any` builtins — has the same Unknown-cascade failure: if any arg comes from a source with
-`Unknown` return (e.g. `ds_map_find_value`), its TypeVar is pre-bound to `Unknown`, links to `T`,
-and T poisons the result. With parametric instantiation, the call-site TypeVars would be freshly
-allocated per-call with no pre-bindings, so Unknown inputs would *conflict* with T (correctly)
-rather than silently propagating. Also useful for array element type inference
-(`array_get(arr: Array<T>, i: Int) → T`). Requires a non-trivial IR extension — template TypeVarIds
-in FunctionSig must be distinguishable from solver TypeVarIds in the arena.
+   **`Op::Add` and the constraint_collect exclusion:** `Op::Add` is already removed from the IR as
+   of Phase 9 arithmetic slice (2026-03-28). `constraint_collect.rs` still has the exclusion comment
+   referencing it (lines 243-245) — clean it up when BuiltinOverloadSelect moves.
 
 **TS2571 root cause:** `getInstanceField` on Unknown receiver → field type Unknown.
 Fix: HasField reverse-index (TODO below) or better ConstructorStructInfer coverage.
