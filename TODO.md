@@ -232,55 +232,32 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    not correctness. BuiltinOverloadSelect stays in the pipeline as the devirtualization pass.
    Move it to the GML frontend's extra_passes (Law 2 — it is GML-specific).
 
-   **`build_builtin_expr` suffix-stripping: DONE.** (2026-03-31) `rsplit_once` replaced with
-   flat lookup table (`builtin_binary_ops`/`builtin_unary_ops` in `LoweringConfig`) keyed on full
-   builtin names, plus explicit full-name match arms for remaining special cases. `_any` variants
-   correctly fall through to `Expr::Call`. No string manipulation on names remains.
+   **Core AST → backend AST migration: DONE.** (2026-04-01) Complete migration:
+   1. Moved `rewrite_compound_assign`, `rewrite_post_increment`, `promote_while_to_for` to
+      TS backend `ast_passes.rs` (operate on `JsStmt`/`JsExpr` after core→JS lowering).
+   2. Collapsed `build_builtin_expr` to emit `Expr::Call { func: "builtin.{op_name}", args }`
+      for all builtins. TS backend `lower.rs` expands via `lower_builtin()` match table.
+      Bool-operand bitwise ops encoded in name (`bitand_bool_i32`) since backend lacks IR access.
+   3. Promoted `BoolAnd`/`BoolOr` from `BinOp` to `Expr::LogicalAnd`/`Expr::LogicalOr`.
+   4. Moved `BinOp`, `UnaryOp` to `js_ast.rs`; removed `Expr::Binary`, `Expr::Unary`,
+      `Stmt::CompoundAssign` from core AST.
+
+   **Three operations stay in the core AST:**
+   - `Expr::Not` — boolean negation, produced by `negate_expr` during control flow reconstruction
+   - `Expr::LogicalAnd`/`Expr::LogicalOr` — short-circuit `&&`/`||`, recovered by the
+     structurizer from branch patterns and emitted directly by `build_builtin_expr` for
+     `and_bool`/`or_bool`.
+   - `Expr::Cmp` — comparisons, produced from `Op::Cmp` (still a direct IR op, not a builtin).
+     Negation uses `Expr::Not(Cmp(...))`, not CmpKind-flipping.
 
    **Why not Op variants?** Adding `Op::IAdd32`, `Op::FAdd64`, etc. to the IR enum is expensive:
    every pass, transform, and typechecker arm must handle each new variant. The `builtin.*`
-   named-function approach is correct — builtins are functions. The only problem is how the emit
-   layer dispatches them.
+   named-function approach is correct — builtins are functions.
 
    **Why not IR bodies for typed variants?** `add_i32`'s body in TS would be `(a + b) | 0`,
    but the same body in Rust would be `a.wrapping_add(b)`. IR bodies encode source-language
    semantics, not target-language syntax — a body can't be both. The backend is the right place
    for target-language-specific emit forms.
-
-   **Move ALL builtin expansion from core to the TS backend.** `build_builtin_expr` in core
-   should collapse to a single `Expr::Call { func: "builtin.{op_name}", args }` for every
-   builtin — operators, Math functions, string methods, everything. Core doesn't know or care
-   what a builtin becomes in the target language. The TS backend's lowering step
-   (`lower.rs`, which already converts core AST → `JsExpr`/`JsStmt`) handles all conversions:
-   `add_f64` → `a + b`, `add_i32` → `(a + b) | 0`, `sin_f64` → `Math.sin(x)`,
-   `string_length_str` → `.length`, etc. The lookup table type is
-   `HashMap<String, fn(args) → JsExpr>` (or equivalent), not `HashMap<String, BinOp>` — some
-   builtins need complex expression trees, not just a single binary op.
-
-   **Move `Expr::Binary`, `Expr::Unary`, `BinOp`, `UnaryOp` from core AST to TS backend AST.**
-   The core AST (`ir/ast.rs`) is intentional as a shared representation: SSA→structured lowering
-   happens once in core; backends lower the core AST to their own AST and pretty-print. The TS
-   backend already has a parallel AST (`JsExpr`/`JsStmt` in `js_ast.rs`) with its own lowering
-   pass in `lower.rs`. `BinOp`/`UnaryOp` should be owned locally in `js_ast.rs`, not imported
-   from core. `Expr::Binary`/`Expr::Unary` should not exist in the core `Expr` enum.
-
-   **Three operations stay in the core AST:**
-   - `Expr::Not` — boolean negation, produced by `negate_expr` during control flow reconstruction
-   - `Expr::And(lhs, rhs)` / `Expr::Or(lhs, rhs)` — short-circuit `&&`/`||`, recovered by the
-     structurizer from branch patterns. Currently `BinOp::BoolAnd`/`BoolOr` — these become
-     dedicated `Expr` variants when `BinOp` moves to the backend.
-   - `Expr::Cmp` — comparisons, produced from `Op::Cmp` (still a direct IR op, not a builtin).
-     Negation uses `Expr::Not(Cmp(...))`, not CmpKind-flipping.
-
-   **Core AST passes that match on `Expr::Binary` must move to the TS backend:**
-   `rewrite_compound_assign`, `rewrite_post_increment`, `promote_while_to_for` (all in
-   `control_flow.rs`) match on `Expr::Binary` to detect patterns like `x = x + 1`. These become
-   passes on `JsStmt`/`JsExpr` in the TS backend's `ast_passes.rs`, running after core→JS
-   lowering.
-
-   **Operator table ownership.** The `builtin_binary_ops`/`builtin_unary_ops` tables currently
-   live in `LoweringConfig` (core) with `ts_binary_ops()`/`ts_unary_ops()` helpers. These move
-   to the TS backend entirely when `build_builtin_expr` collapses to `Expr::Call`.
 
    **Hard error for called stubs.** Any IR function that has an empty/stub body and is called must
    be a hard error at emit time. Currently stubs silently fall through to broken call syntax or
