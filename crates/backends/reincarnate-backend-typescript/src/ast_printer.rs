@@ -1461,8 +1461,6 @@ fn binop_str(op: BinOp) -> &'static str {
         BinOp::BitXor => "^",
         BinOp::Shl => "<<",
         BinOp::Shr => ">>",
-        BinOp::BoolAnd => "&&",
-        BinOp::BoolOr => "||",
     }
 }
 

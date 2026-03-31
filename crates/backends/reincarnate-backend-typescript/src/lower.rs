@@ -439,10 +439,6 @@ fn lower_builtin(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
         "div_f64" | "div_f32" | "div_i32" | "div_i64" => bin_op(BinOp::Div, args, ctx),
         "rem_f64" | "rem_f32" | "rem_i32" | "rem_i64" => bin_op(BinOp::Rem, args, ctx),
 
-        // --- Boolean binary ---
-        "and_bool" => bin_op(BinOp::BoolAnd, args, ctx),
-        "or_bool" => bin_op(BinOp::BoolOr, args, ctx),
-
         // --- Bitwise binary ---
         "shl_i32" => bin_op(BinOp::Shl, args, ctx),
         "shr_i32" => bin_op(BinOp::Shr, args, ctx),

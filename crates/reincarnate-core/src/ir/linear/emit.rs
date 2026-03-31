@@ -835,6 +835,24 @@ impl<'a> EmitCtx<'a> {
     /// workaround (cast to Number) that the old Op::BitAnd/BitOr/BitXor arms
     /// applied before the IR variants were removed.
     fn build_builtin_expr(&mut self, op_name: &str, args: &[ValueId]) -> Expr {
+        // Short-circuit boolean ops are control flow, not arithmetic — emit
+        // as dedicated AST variants rather than opaque builtin calls.
+        match op_name {
+            "and_bool" => {
+                return Expr::LogicalAnd {
+                    lhs: Box::new(self.build_val(args[0])),
+                    rhs: Box::new(self.build_val(args[1])),
+                };
+            }
+            "or_bool" => {
+                return Expr::LogicalOr {
+                    lhs: Box::new(self.build_val(args[0])),
+                    rhs: Box::new(self.build_val(args[1])),
+                };
+            }
+            _ => {}
+        }
+
         // For bitwise ops, check if either operand is Bool and encode that
         // in the op name so the backend can apply the TS2447 workaround
         // without needing IR access.
