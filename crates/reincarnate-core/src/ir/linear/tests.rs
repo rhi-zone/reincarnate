@@ -373,9 +373,6 @@ fn stmt_contains_var(stmt: &Stmt, name: &str) -> bool {
                 || body_contains_var(update, name)
                 || body_contains_var(body, name)
         }
-        Stmt::CompoundAssign { target, value, .. } => {
-            expr_contains_var(target, name) || expr_contains_var(value, name)
-        }
         _ => false,
     }
 }
@@ -383,9 +380,7 @@ fn stmt_contains_var(stmt: &Stmt, name: &str) -> bool {
 fn expr_contains_var(expr: &Expr, name: &str) -> bool {
     match expr {
         Expr::Var(n) => n == name,
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
-            expr_contains_var(lhs, name) || expr_contains_var(rhs, name)
-        }
+        Expr::Cmp { lhs, rhs, .. } => expr_contains_var(lhs, name) || expr_contains_var(rhs, name),
         Expr::Not(e) | Expr::Cast { expr: e, .. } | Expr::PostIncrement(e) => {
             expr_contains_var(e, name)
         }
@@ -411,7 +406,6 @@ fn expr_contains_var(expr: &Expr, name: &str) -> bool {
         Expr::LogicalAnd { lhs, rhs } | Expr::LogicalOr { lhs, rhs } => {
             expr_contains_var(lhs, name) || expr_contains_var(rhs, name)
         }
-        Expr::Unary { expr: e, .. } => expr_contains_var(e, name),
         Expr::ArrayInit(elems) => elems.iter().any(|e| expr_contains_var(e, name)),
         _ => false,
     }
@@ -1321,7 +1315,7 @@ fn stmt_contains_var_ref(stmt: &Stmt, name: &str) -> bool {
         Stmt::VarDecl { init, .. } => init
             .as_ref()
             .is_some_and(|e| expr_contains_var_ref(e, name)),
-        Stmt::Assign { target, value } | Stmt::CompoundAssign { target, value, .. } => {
+        Stmt::Assign { target, value } => {
             expr_contains_var_ref(target, name) || expr_contains_var_ref(value, name)
         }
         Stmt::Expr(e) | Stmt::Return(Some(e)) => expr_contains_var_ref(e, name),
@@ -1365,11 +1359,10 @@ fn expr_contains_var_ref(expr: &Expr, name: &str) -> bool {
     match expr {
         Expr::Var(n) => n == name,
         Expr::Literal(_) | Expr::GlobalRef(_) => false,
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             expr_contains_var_ref(lhs, name) || expr_contains_var_ref(rhs, name)
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::PostIncrement(inner)

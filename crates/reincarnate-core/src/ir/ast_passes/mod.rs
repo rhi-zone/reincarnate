@@ -183,14 +183,11 @@ pub(crate) fn expr_has_side_effects(expr: &Expr) -> bool {
         | Expr::Yield(_)
         | Expr::PostIncrement(_) => true,
         Expr::Literal(_) | Expr::Var(_) | Expr::GlobalRef(_) => false,
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
-            expr_has_side_effects(lhs) || expr_has_side_effects(rhs)
-        }
+        Expr::Cmp { lhs, rhs, .. } => expr_has_side_effects(lhs) || expr_has_side_effects(rhs),
         Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
             expr_has_side_effects(lhs) || expr_has_side_effects(rhs)
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::Spread(inner) => expr_has_side_effects(inner),
@@ -223,9 +220,6 @@ pub(crate) fn stmt_has_side_effects(stmt: &Stmt) -> bool {
         Stmt::Assign { target, value } => {
             expr_has_side_effects(target) || expr_has_side_effects(value)
         }
-        Stmt::CompoundAssign { target, value, .. } => {
-            expr_has_side_effects(target) || expr_has_side_effects(value)
-        }
         Stmt::Expr(e) => expr_has_side_effects(e),
         Stmt::Return(e) => e.as_ref().is_some_and(expr_has_side_effects),
         // Control flow bodies may contain calls -- conservative barrier.
@@ -254,9 +248,9 @@ pub(crate) fn stmt_has_side_effects(stmt: &Stmt) -> bool {
 //   (reads or writes). Use for scope narrowing: "does this block touch
 //   the variable at all?"
 //
-// - `var_is_reassigned` -- returns true if `name` is *written* (Assign or
-//   CompoundAssign target). Use for loop safety: "is the init value stale
-//   after a back-edge write?"
+// - `var_is_reassigned` -- returns true if `name` is *written* (Assign
+//   target). Use for loop safety: "is the init value stale after a
+//   back-edge write?"
 //
 
 /// Count occurrences of `Var(name)` reads in an expression.
@@ -264,14 +258,13 @@ pub(crate) fn count_var_reads_in_expr(expr: &Expr, name: &str) -> usize {
     match expr {
         Expr::Var(n) => usize::from(n == name),
         Expr::Literal(_) | Expr::GlobalRef(_) => 0,
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             count_var_reads_in_expr(lhs, name) + count_var_reads_in_expr(rhs, name)
         }
         Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
             count_var_reads_in_expr(lhs, name) + count_var_reads_in_expr(rhs, name)
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
@@ -344,10 +337,6 @@ pub(crate) fn count_var_reads_in_stmt(stmt: &Stmt, name: &str) -> usize {
                 count_var_reads_in_expr(target, name)
             };
             target_refs + count_var_reads_in_expr(value, name)
-        }
-        Stmt::CompoundAssign { target, value, .. } => {
-            // CompoundAssign reads AND writes the target, so always count it.
-            count_var_reads_in_expr(target, name) + count_var_reads_in_expr(value, name)
         }
         Stmt::Expr(e) => count_var_reads_in_expr(e, name),
         Stmt::If {
@@ -432,7 +421,7 @@ pub(crate) fn count_var_reads_in_stmt(stmt: &Stmt, name: &str) -> usize {
 }
 
 /// Check whether `name` is reassigned anywhere in `stmts` (including nested bodies).
-/// This catches `Assign { target: Var(name), .. }` and `CompoundAssign { target: Var(name), .. }`.
+/// This catches `Assign { target: Var(name), .. }`.
 pub(crate) fn var_is_reassigned(stmts: &[Stmt], name: &str) -> bool {
     stmts.iter().any(|s| stmt_reassigns_var(s, name))
 }
@@ -440,10 +429,6 @@ pub(crate) fn var_is_reassigned(stmts: &[Stmt], name: &str) -> bool {
 fn stmt_reassigns_var(stmt: &Stmt, name: &str) -> bool {
     match stmt {
         Stmt::Assign {
-            target: Expr::Var(v),
-            ..
-        } if v == name => true,
-        Stmt::CompoundAssign {
             target: Expr::Var(v),
             ..
         } if v == name => true,
@@ -497,7 +482,7 @@ pub(crate) fn substitute_var_in_expr(
 
     match expr {
         Expr::Literal(_) | Expr::GlobalRef(_) | Expr::Var(_) => false,
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             substitute_var_in_expr(lhs, name, replacement)
                 || substitute_var_in_expr(rhs, name, replacement)
         }
@@ -505,8 +490,7 @@ pub(crate) fn substitute_var_in_expr(
             substitute_var_in_expr(lhs, name, replacement)
                 || substitute_var_in_expr(rhs, name, replacement)
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
@@ -583,11 +567,6 @@ pub(crate) fn substitute_var_in_stmt(
                 substitute_var_in_expr(target, name, replacement)
             };
             target_sub || substitute_var_in_expr(value, name, replacement)
-        }
-        Stmt::CompoundAssign { target, value, .. } => {
-            // CompoundAssign reads AND writes the target, so always substitute.
-            substitute_var_in_expr(target, name, replacement)
-                || substitute_var_in_expr(value, name, replacement)
         }
         Stmt::Expr(e) => substitute_var_in_expr(e, name, replacement),
         Stmt::If {
@@ -672,10 +651,6 @@ pub(crate) fn stmt_references_var(stmt: &Stmt, name: &str) -> bool {
             expr_references_var(target, name) || expr_references_var(value, name)
         }
 
-        Stmt::CompoundAssign { target, value, .. } => {
-            expr_references_var(target, name) || expr_references_var(value, name)
-        }
-
         Stmt::Expr(e) => expr_references_var(e, name),
 
         Stmt::If {
@@ -744,14 +719,13 @@ pub(crate) fn expr_references_var(expr: &Expr, name: &str) -> bool {
     match expr {
         Expr::Var(n) => n == name,
         Expr::Literal(_) | Expr::GlobalRef(_) => false,
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             expr_references_var(lhs, name) || expr_references_var(rhs, name)
         }
         Expr::LogicalOr { lhs, rhs } | Expr::LogicalAnd { lhs, rhs } => {
             expr_references_var(lhs, name) || expr_references_var(rhs, name)
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
@@ -797,12 +771,10 @@ pub(crate) fn expr_has_any_var_ref(expr: &Expr) -> bool {
     match expr {
         Expr::Var(_) => true,
         Expr::Literal(_) | Expr::GlobalRef(_) => false,
-        Expr::Binary { lhs, rhs, .. }
-        | Expr::Cmp { lhs, rhs, .. }
+        Expr::Cmp { lhs, rhs, .. }
         | Expr::LogicalOr { lhs, rhs }
         | Expr::LogicalAnd { lhs, rhs } => expr_has_any_var_ref(lhs) || expr_has_any_var_ref(rhs),
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
@@ -867,10 +839,6 @@ fn accumulate_reads_stmt(stmt: &Stmt, counts: &mut HashMap<String, usize>) {
             if !matches!(target, Expr::Var(_)) {
                 accumulate_reads_expr(target, counts);
             }
-            accumulate_reads_expr(value, counts);
-        }
-        Stmt::CompoundAssign { target, value, .. } => {
-            accumulate_reads_expr(target, counts);
             accumulate_reads_expr(value, counts);
         }
         Stmt::Expr(e) => accumulate_reads_expr(e, counts),
@@ -940,7 +908,7 @@ fn accumulate_reads_expr(expr: &Expr, counts: &mut HashMap<String, usize>) {
             *counts.entry(n.clone()).or_default() += 1;
         }
         Expr::Literal(_) | Expr::GlobalRef(_) => {}
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             accumulate_reads_expr(lhs, counts);
             accumulate_reads_expr(rhs, counts);
         }
@@ -948,8 +916,7 @@ fn accumulate_reads_expr(expr: &Expr, counts: &mut HashMap<String, usize>) {
             accumulate_reads_expr(lhs, counts);
             accumulate_reads_expr(rhs, counts);
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
@@ -1127,9 +1094,7 @@ pub(crate) fn is_stable_path(expr: &Expr) -> bool {
 /// the path evaluates to, making it unsafe to sink past.
 pub(crate) fn stmt_assigns_to_prefix_of(stmt: &Stmt, path: &Expr) -> bool {
     match stmt {
-        Stmt::Assign { target, .. } | Stmt::CompoundAssign { target, .. } => {
-            expr_is_prefix_of(target, path)
-        }
+        Stmt::Assign { target, .. } => expr_is_prefix_of(target, path),
         // Other statement types (calls, control flow) are conservatively unsafe.
         _ => stmt_has_side_effects(stmt),
     }
@@ -1169,9 +1134,6 @@ pub(crate) fn count_unconditional_reads(stmt: &Stmt, name: &str) -> usize {
                 count_var_reads_in_expr(target, name)
             };
             t + count_var_reads_in_expr(value, name)
-        }
-        Stmt::CompoundAssign { target, value, .. } => {
-            count_var_reads_in_expr(target, name) + count_var_reads_in_expr(value, name)
         }
         Stmt::Expr(e) => count_var_reads_in_expr(e, name),
         Stmt::Return(e) => e.as_ref().map_or(0, |e| count_var_reads_in_expr(e, name)),
@@ -1217,10 +1179,6 @@ fn collect_names_in_stmt(stmt: &Stmt, names: &mut HashSet<String>) {
             }
         }
         Stmt::Assign { target, value } => {
-            collect_names_in_expr(target, names);
-            collect_names_in_expr(value, names);
-        }
-        Stmt::CompoundAssign { target, value, .. } => {
             collect_names_in_expr(target, names);
             collect_names_in_expr(value, names);
         }
@@ -1315,7 +1273,7 @@ fn collect_names_in_expr(expr: &Expr, names: &mut HashSet<String>) {
             names.insert(n.clone());
         }
         Expr::Literal(_) | Expr::GlobalRef(_) => {}
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             collect_names_in_expr(lhs, names);
             collect_names_in_expr(rhs, names);
         }
@@ -1323,8 +1281,7 @@ fn collect_names_in_expr(expr: &Expr, names: &mut HashSet<String>) {
             collect_names_in_expr(lhs, names);
             collect_names_in_expr(rhs, names);
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)

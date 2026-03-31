@@ -9,11 +9,10 @@ use std::cell::Cell;
 use std::fmt::Write;
 
 use reincarnate_core::entity::PrimaryMap;
-use reincarnate_core::ir::ast::BinOp;
 use reincarnate_core::ir::module::TypeDecl;
-use reincarnate_core::ir::{
-    CastKind, CmpKind, Constant, MethodKind, Type, TypeId, UnaryOp, Visibility,
-};
+use reincarnate_core::ir::{CastKind, CmpKind, Constant, MethodKind, Type, TypeId, Visibility};
+
+use crate::js_ast::{BinOp, UnaryOp};
 
 use crate::emit::sanitize_ident;
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};

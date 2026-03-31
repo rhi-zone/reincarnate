@@ -14,7 +14,7 @@ pub mod structurize;
 pub mod ty;
 pub mod value;
 
-pub use ast::{AstFunction, BinOp, Expr, Stmt, UnaryOp};
+pub use ast::{AstFunction, Expr, Stmt};
 pub use block::{Block, BlockId, BlockParam};
 pub use builder::{FunctionBuilder, ModuleBuilder};
 pub use coroutine::CoroutineInfo;

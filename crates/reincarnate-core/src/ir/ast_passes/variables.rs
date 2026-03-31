@@ -694,7 +694,7 @@ fn try_narrow_batch(body: &mut Vec<Stmt>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ast::{BinOp, Expr, Stmt};
+    use crate::ir::ast::{Expr, Stmt};
     use crate::ir::value::Constant;
 
     fn var(name: &str) -> Expr {
@@ -800,10 +800,9 @@ mod tests {
             uninit_decl("x"),
             assign(
                 var("y"),
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("x")),
-                    rhs: Box::new(int(1)),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("x"), int(1)],
                 },
             ),
             assign(var("x"), int(5)),
@@ -819,10 +818,9 @@ mod tests {
             uninit_decl("x"),
             assign(
                 var("x"),
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("x")),
-                    rhs: Box::new(int(1)),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("x"), int(1)],
                 },
             ),
         ];
@@ -878,10 +876,9 @@ mod tests {
             assign(var("y"), int(5)),
             assign(
                 var("x"),
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("y")),
-                    rhs: Box::new(int(1)),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("y"), int(1)],
                 },
             ),
         ];
@@ -966,10 +963,9 @@ mod tests {
         let mut body = vec![
             const_decl(
                 "v",
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("a")),
-                    rhs: Box::new(var("b")),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("a"), var("b")],
                 },
             ),
             assign(var("x"), var("v")),
@@ -986,10 +982,9 @@ mod tests {
             const_decl("a", int(1)),
             const_decl(
                 "b",
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("a")),
-                    rhs: Box::new(int(2)),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("a"), int(2)],
                 },
             ),
             assign(var("x"), var("b")),
@@ -999,7 +994,7 @@ mod tests {
         assert!(matches!(
             &body[0],
             Stmt::Assign {
-                value: Expr::Binary { .. },
+                value: Expr::Call { .. },
                 ..
             }
         ));
@@ -1010,26 +1005,23 @@ mod tests {
         let mut body = vec![
             const_decl(
                 "a",
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("x")),
-                    rhs: Box::new(int(1)),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("x"), int(1)],
                 },
             ),
             const_decl(
                 "b",
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("y")),
-                    rhs: Box::new(int(2)),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("y"), int(2)],
                 },
             ),
             assign(
                 var("z"),
-                Expr::Binary {
-                    op: BinOp::Add,
-                    lhs: Box::new(var("a")),
-                    rhs: Box::new(var("b")),
+                Expr::Call {
+                    func: "builtin.add_i32".to_string(),
+                    args: vec![var("a"), var("b")],
                 },
             ),
         ];
@@ -1059,10 +1051,9 @@ mod tests {
             const_decl("v35", var("HP")),
             assign(
                 var("HP"),
-                Expr::Binary {
-                    op: BinOp::Sub,
-                    lhs: Box::new(var("v35")),
-                    rhs: Box::new(var("v11")),
+                Expr::Call {
+                    func: "builtin.sub_i32".to_string(),
+                    args: vec![var("v35"), var("v11")],
                 },
             ),
         ];
@@ -1072,11 +1063,12 @@ mod tests {
             Stmt::Assign { target, value } => {
                 assert_eq!(*target, var("HP"));
                 match value {
-                    Expr::Binary { lhs, rhs, .. } => {
-                        assert_eq!(**lhs, var("HP"));
-                        assert_eq!(**rhs, var("v11"));
+                    Expr::Call { func, args } => {
+                        assert_eq!(func, "builtin.sub_i32");
+                        assert_eq!(args[0], var("HP"));
+                        assert_eq!(args[1], var("v11"));
                     }
-                    other => panic!("Expected Binary, got: {other:?}"),
+                    other => panic!("Expected Call, got: {other:?}"),
                 }
             }
             other => panic!("Expected Assign, got: {other:?}"),
@@ -1185,10 +1177,9 @@ mod tests {
                     }),
                     assign(
                         var("count"),
-                        Expr::Binary {
-                            op: BinOp::Sub,
-                            lhs: Box::new(var("count")),
-                            rhs: Box::new(int(1)),
+                        Expr::Call {
+                            func: "builtin.sub_i32".to_string(),
+                            args: vec![var("count"), int(1)],
                         },
                     ),
                     Stmt::If {

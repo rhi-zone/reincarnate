@@ -5,8 +5,10 @@
 //! resolution, SystemCall → native JS constructs, etc.) are handled by a
 //! separate post-lowering rewrite pass (e.g. `rewrites::flash`).
 
-use reincarnate_core::ir::ast::{AstFunction, BinOp, Expr, Stmt};
-use reincarnate_core::ir::{CastKind, CmpKind, Type, UnaryOp};
+use reincarnate_core::ir::ast::{AstFunction, Expr, Stmt};
+use reincarnate_core::ir::{CastKind, CmpKind, Type};
+
+use crate::js_ast::{BinOp, UnaryOp};
 
 use crate::js_ast::{JsExpr, JsFunction, JsStmt};
 
@@ -68,12 +70,6 @@ fn lower_stmt(stmt: &Stmt, ctx: &LowerCtx) -> JsStmt {
 
         Stmt::Assign { target, value } => JsStmt::Assign {
             target: lower_expr(target, ctx),
-            value: lower_expr(value, ctx),
-        },
-
-        Stmt::CompoundAssign { target, op, value } => JsStmt::CompoundAssign {
-            target: lower_expr(target, ctx),
-            op: *op,
             value: lower_expr(value, ctx),
         },
 
@@ -169,17 +165,6 @@ fn lower_expr(expr: &Expr, ctx: &LowerCtx) -> JsExpr {
             }
             JsExpr::Var(name.clone())
         }
-
-        Expr::Binary { op, lhs, rhs } => JsExpr::Binary {
-            op: *op,
-            lhs: Box::new(lower_expr(lhs, ctx)),
-            rhs: Box::new(lower_expr(rhs, ctx)),
-        },
-
-        Expr::Unary { op, expr: inner } => JsExpr::Unary {
-            op: *op,
-            expr: Box::new(lower_expr(inner, ctx)),
-        },
 
         Expr::Cmp { kind, lhs, rhs } => JsExpr::Cmp {
             kind: *kind,

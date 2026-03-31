@@ -19,14 +19,6 @@ pub enum Expr {
     Literal(Constant),
     /// Named variable reference.
     Var(String),
-    /// Binary operation: `lhs op rhs`.
-    Binary {
-        op: BinOp,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    /// Unary operation: `op expr`.
-    Unary { op: UnaryOp, expr: Box<Expr> },
     /// Comparison: `lhs cmp rhs`.
     Cmp {
         kind: CmpKind,
@@ -102,28 +94,6 @@ pub enum Expr {
     MakeClosure { func: String, captures: Vec<Expr> },
 }
 
-/// Binary arithmetic/bitwise operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BinOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Rem,
-    BitAnd,
-    BitOr,
-    BitXor,
-    Shl,
-    Shr,
-}
-
-/// Unary operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum UnaryOp {
-    Neg,
-    BitNot,
-}
-
 /// A high-level statement.
 #[derive(Debug, Clone)]
 pub enum Stmt {
@@ -136,12 +106,6 @@ pub enum Stmt {
     },
     /// Assignment: `target = value;`
     Assign { target: Expr, value: Expr },
-    /// Compound assignment: `target op= value;`
-    CompoundAssign {
-        target: Expr,
-        op: BinOp,
-        value: Expr,
-    },
     /// Expression statement (side-effecting call, void return).
     Expr(Expr),
     /// If/else.

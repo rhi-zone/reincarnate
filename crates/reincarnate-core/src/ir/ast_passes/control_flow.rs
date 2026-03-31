@@ -30,10 +30,6 @@ fn lower_output_nodes_in_stmt(stmt: &mut Stmt, system: &str, receiver_var: &str)
             lower_output_nodes_in_expr(target, system, receiver_var);
             lower_output_nodes_in_expr(value, system, receiver_var);
         }
-        Stmt::CompoundAssign { target, value, .. } => {
-            lower_output_nodes_in_expr(target, system, receiver_var);
-            lower_output_nodes_in_expr(value, system, receiver_var);
-        }
         Stmt::Expr(e) => lower_output_nodes_in_expr(e, system, receiver_var),
         Stmt::If {
             cond,
@@ -86,7 +82,7 @@ fn lower_output_nodes_in_stmt(stmt: &mut Stmt, system: &str, receiver_var: &str)
 fn lower_output_nodes_in_expr(expr: &mut Expr, system: &str, receiver_var: &str) {
     // Post-order: recurse first, then try to rewrite this node.
     match expr {
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             lower_output_nodes_in_expr(lhs, system, receiver_var);
             lower_output_nodes_in_expr(rhs, system, receiver_var);
         }
@@ -94,8 +90,7 @@ fn lower_output_nodes_in_expr(expr: &mut Expr, system: &str, receiver_var: &str)
             lower_output_nodes_in_expr(lhs, system, receiver_var);
             lower_output_nodes_in_expr(rhs, system, receiver_var);
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::Spread(inner) => {
@@ -338,10 +333,6 @@ fn simplify_ternary_in_stmt(stmt: &mut Stmt) {
             simplify_ternary_in_expr(target);
             simplify_ternary_in_expr(value);
         }
-        Stmt::CompoundAssign { target, value, .. } => {
-            simplify_ternary_in_expr(target);
-            simplify_ternary_in_expr(value);
-        }
         Stmt::Expr(e) => {
             simplify_ternary_in_expr(e);
         }
@@ -403,7 +394,7 @@ fn simplify_ternary_in_expr(expr: &mut Expr) {
     // Recurse into sub-expressions first (bottom-up).
     match expr {
         Expr::Literal(_) | Expr::Var(_) | Expr::GlobalRef(_) => {}
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             simplify_ternary_in_expr(lhs);
             simplify_ternary_in_expr(rhs);
         }
@@ -411,8 +402,7 @@ fn simplify_ternary_in_expr(expr: &mut Expr) {
             simplify_ternary_in_expr(lhs);
             simplify_ternary_in_expr(rhs);
         }
-        Expr::Unary { expr: inner, .. }
-        | Expr::Cast { expr: inner, .. }
+        Expr::Cast { expr: inner, .. }
         | Expr::TypeCheck { expr: inner, .. }
         | Expr::Not(inner)
         | Expr::CoroutineResume(inner)
@@ -732,13 +722,11 @@ fn expr_contains_next_call<'a>(
                     .find_map(|a| expr_contains_next_call(a, obj_name, idx_name, iterator_system))
             })
         }
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             expr_contains_next_call(lhs, obj_name, idx_name, iterator_system)
                 .or_else(|| expr_contains_next_call(rhs, obj_name, idx_name, iterator_system))
         }
-        Expr::Unary { expr, .. } | Expr::Not(expr) => {
-            expr_contains_next_call(expr, obj_name, idx_name, iterator_system)
-        }
+        Expr::Not(expr) => expr_contains_next_call(expr, obj_name, idx_name, iterator_system),
         Expr::Index { collection, index } => {
             expr_contains_next_call(collection, obj_name, idx_name, iterator_system)
                 .or_else(|| expr_contains_next_call(index, obj_name, idx_name, iterator_system))
@@ -847,9 +835,6 @@ fn replace_next_call_in_stmt(
             replace_next_call_in_expr(value, obj_name, idx_name, binding, iterator_system)
         }
         Stmt::Expr(e) => replace_next_call_in_expr(e, obj_name, idx_name, binding, iterator_system),
-        Stmt::CompoundAssign { value, .. } => {
-            replace_next_call_in_expr(value, obj_name, idx_name, binding, iterator_system)
-        }
         Stmt::If { cond, .. } => {
             replace_next_call_in_expr(cond, obj_name, idx_name, binding, iterator_system)
         }
@@ -888,11 +873,11 @@ fn replace_next_call_in_expr(
                     replace_next_call_in_expr(a, obj_name, idx_name, binding, iterator_system)
                 })
         }
-        Expr::Binary { lhs, rhs, .. } | Expr::Cmp { lhs, rhs, .. } => {
+        Expr::Cmp { lhs, rhs, .. } => {
             replace_next_call_in_expr(lhs, obj_name, idx_name, binding, iterator_system)
                 || replace_next_call_in_expr(rhs, obj_name, idx_name, binding, iterator_system)
         }
-        Expr::Unary { expr, .. } | Expr::Not(expr) => {
+        Expr::Not(expr) => {
             replace_next_call_in_expr(expr, obj_name, idx_name, binding, iterator_system)
         }
         Expr::Index { collection, index } => {
@@ -995,7 +980,7 @@ fn try_rewrite_loop_to_while(stmt: &Stmt) -> Option<Stmt> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::ast::{BinOp, Expr, Stmt};
+    use crate::ir::ast::{Expr, Stmt};
     use crate::ir::inst::CmpKind;
     use crate::ir::value::Constant;
 
@@ -1287,15 +1272,13 @@ mod tests {
 
     #[test]
     fn minmax_with_expressions() {
-        let a_plus_1 = Expr::Binary {
-            op: BinOp::Add,
-            lhs: Box::new(var("a")),
-            rhs: Box::new(int(1)),
+        let a_plus_1 = Expr::Call {
+            func: "builtin.add_i32".to_string(),
+            args: vec![var("a"), int(1)],
         };
-        let b_times_2 = Expr::Binary {
-            op: BinOp::Mul,
-            lhs: Box::new(var("b")),
-            rhs: Box::new(int(2)),
+        let b_times_2 = Expr::Call {
+            func: "builtin.mul_i32".to_string(),
+            args: vec![var("b"), int(2)],
         };
 
         let mut body = vec![assign(

@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use reincarnate_core::ir::ast::BinOp;
+use crate::js_ast::BinOp;
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{CastKind, Type};

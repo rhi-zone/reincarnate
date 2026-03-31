@@ -7,8 +7,29 @@
 //! `SystemCall` nodes into concrete JS constructs (`new`, `typeof`, `throw`,
 //! `super`, etc.). The printer handles the final tree with zero engine knowledge.
 
-use reincarnate_core::ir::ast::BinOp;
-use reincarnate_core::ir::{CastKind, CmpKind, Constant, MethodKind, Type, UnaryOp, Visibility};
+use reincarnate_core::ir::{CastKind, CmpKind, Constant, MethodKind, Type, Visibility};
+
+/// Binary arithmetic/bitwise operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+}
+
+/// Unary operators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg,
+    BitNot,
+}
 
 // ---------------------------------------------------------------------------
 // Expressions
