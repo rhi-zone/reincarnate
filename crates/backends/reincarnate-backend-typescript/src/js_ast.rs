@@ -15,7 +15,7 @@ use reincarnate_core::ir::{CastKind, CmpKind, Constant, MethodKind, Type, UnaryO
 // ---------------------------------------------------------------------------
 
 /// A JavaScript/TypeScript expression.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum JsExpr {
     /// Literal constant.
     Literal(Constant),
@@ -182,7 +182,7 @@ pub enum JsExpr {
 // ---------------------------------------------------------------------------
 
 /// A JavaScript/TypeScript statement.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum JsStmt {
     /// Variable declaration: `let/const name [: type] [= init];`.
     VarDecl {

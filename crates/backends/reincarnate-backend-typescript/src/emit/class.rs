@@ -235,6 +235,11 @@ pub(super) fn emit_function(
     // downstream type-processing (ts_type, rename_type_with_map, etc.)
     // only see the string-keyed Struct form.
     crate::types::resolve_js_function_types(&mut js_func, module_types);
+    // Structural passes that depend on Binary/Unary AST patterns.
+    // Run before engine-specific rewrites so patterns are still intact.
+    crate::ast_passes::rewrite_compound_assign(&mut js_func.body);
+    crate::ast_passes::rewrite_post_increment(&mut js_func.body);
+    crate::ast_passes::promote_while_to_for(&mut js_func.body);
     let mut js_func = match engine {
         EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(
             js_func,
@@ -1001,6 +1006,10 @@ fn emit_class_method(
     let mut js_func = crate::lower::lower_function(&ast, &ctx);
     // Resolve nested Type::Instance(TypeId) inside compound types before downstream processing.
     crate::types::resolve_js_function_types(&mut js_func, module_types);
+    // Structural passes that depend on Binary/Unary AST patterns.
+    crate::ast_passes::rewrite_compound_assign(&mut js_func.body);
+    crate::ast_passes::rewrite_post_increment(&mut js_func.body);
+    crate::ast_passes::promote_while_to_for(&mut js_func.body);
     let mut js_func = match engine {
         EngineKind::GameMaker => crate::rewrites::gamemaker::rewrite_gamemaker_function(
             js_func,

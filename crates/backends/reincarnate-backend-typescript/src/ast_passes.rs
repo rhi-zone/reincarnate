@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use reincarnate_core::ir::ast::BinOp;
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::value::Constant;
 use reincarnate_core::ir::{CastKind, Type};
@@ -1861,6 +1862,994 @@ fn extract_text_call(stmt: &JsStmt) -> Option<(String, String)> {
             }
         }
     }
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Compound assignment rewrite (JS AST)
+// ---------------------------------------------------------------------------
+
+/// Rewrite `target = target op value` to `target op= value` on JS AST.
+///
+/// Recurses into all nested statement bodies.
+pub fn rewrite_compound_assign(body: &mut [JsStmt]) {
+    for stmt in body.iter_mut() {
+        recurse_into_js_stmt(stmt, rewrite_compound_assign);
+
+        let replacement = match stmt {
+            JsStmt::Assign { target, value } => match_compound_assign(target, value),
+            _ => None,
+        };
+
+        if let Some(new_stmt) = replacement {
+            *stmt = new_stmt;
+        }
+    }
+}
+
+/// Recurse into nested bodies of a JS statement, applying a pass function.
+fn recurse_into_js_stmt(stmt: &mut JsStmt, pass: fn(&mut [JsStmt])) {
+    match stmt {
+        JsStmt::If {
+            then_body,
+            else_body,
+            ..
+        } => {
+            pass(then_body);
+            pass(else_body);
+        }
+        JsStmt::While { body, .. } => {
+            pass(body);
+        }
+        JsStmt::For {
+            init, update, body, ..
+        } => {
+            pass(init);
+            pass(update);
+            pass(body);
+        }
+        JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
+            pass(body);
+        }
+        JsStmt::Dispatch { blocks, .. } => {
+            for (_, block_body) in blocks {
+                pass(block_body);
+            }
+        }
+        JsStmt::Switch {
+            cases,
+            default_body,
+            ..
+        } => {
+            for (_, case_body) in cases {
+                pass(case_body);
+            }
+            pass(default_body);
+        }
+        _ => {}
+    }
+}
+
+fn match_compound_assign(target: &JsExpr, value: &JsExpr) -> Option<JsStmt> {
+    let (op, lhs, rhs) = match value {
+        JsExpr::Binary { op, lhs, rhs } => (*op, lhs.as_ref(), rhs.as_ref()),
+        _ => return None,
+    };
+
+    if strip_js_cast(lhs) != target {
+        return None;
+    }
+
+    Some(JsStmt::CompoundAssign {
+        target: target.clone(),
+        op,
+        value: rhs.clone(),
+    })
+}
+
+/// Strip `NullableCoerce` casts from a JS expression (for compound-assign matching).
+fn strip_js_cast(expr: &JsExpr) -> &JsExpr {
+    match expr {
+        JsExpr::Cast {
+            expr: inner,
+            kind: CastKind::NullableCoerce,
+            ..
+        } => strip_js_cast(inner),
+        _ => expr,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Post-increment rewrite (JS AST)
+// ---------------------------------------------------------------------------
+
+/// Rewrite read-modify-write patterns to post-increment on JS AST.
+///
+/// Recurses into all nested statement bodies.
+pub fn rewrite_post_increment(body: &mut Vec<JsStmt>) {
+    loop {
+        if !try_rewrite_one_post_increment(body) {
+            break;
+        }
+    }
+    for stmt in body.iter_mut() {
+        match stmt {
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                rewrite_post_increment(then_body);
+                rewrite_post_increment(else_body);
+            }
+            JsStmt::While { body, .. } | JsStmt::Loop { body } | JsStmt::ForOf { body, .. } => {
+                rewrite_post_increment(body);
+            }
+            JsStmt::For {
+                init, update, body, ..
+            } => {
+                rewrite_post_increment(init);
+                rewrite_post_increment(update);
+                rewrite_post_increment(body);
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    rewrite_post_increment(block_body);
+                }
+            }
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    rewrite_post_increment(case_body);
+                }
+                rewrite_post_increment(default_body);
+            }
+            _ => {}
+        }
+    }
+}
+
+fn try_rewrite_one_post_increment(body: &mut Vec<JsStmt>) -> bool {
+    for i in 0..body.len().saturating_sub(1) {
+        let (var_name, target) = match &body[i] {
+            JsStmt::VarDecl {
+                name,
+                init: Some(init),
+                mutable: false,
+                ..
+            } => (name.clone(), init.clone()),
+            _ => continue,
+        };
+
+        let is_increment = match &body[i + 1] {
+            JsStmt::Assign { target: tgt, value } => {
+                tgt == &target && is_var_plus_one(value, &var_name)
+            }
+            _ => false,
+        };
+        if !is_increment {
+            continue;
+        }
+
+        let remaining_refs: usize = body[i + 2..]
+            .iter()
+            .map(|s| count_js_var_reads_in_stmt(s, &var_name))
+            .sum();
+
+        if remaining_refs == 1 {
+            let inc_expr = JsExpr::PostIncrement(Box::new(target));
+            let mut replacement = Some(inc_expr);
+            for s in &mut body[i + 2..] {
+                if substitute_js_var_in_stmt(s, &var_name, &mut replacement) {
+                    break;
+                }
+            }
+            body.remove(i + 1);
+            body.remove(i);
+            return true;
+        } else if remaining_refs == 0 {
+            let inc_expr = JsExpr::PostIncrement(Box::new(target));
+            body.remove(i + 1);
+            body[i] = JsStmt::Expr(inc_expr);
+            return true;
+        }
+    }
+    false
+}
+
+fn is_var_plus_one(expr: &JsExpr, var_name: &str) -> bool {
+    if let JsExpr::Binary {
+        op: BinOp::Add,
+        lhs,
+        rhs,
+    } = expr
+    {
+        let is_one = match rhs.as_ref() {
+            JsExpr::Literal(Constant::Int(1)) => true,
+            JsExpr::Literal(Constant::Float(f)) => *f == 1.0,
+            _ => false,
+        };
+        if !is_one {
+            return false;
+        }
+        match lhs.as_ref() {
+            JsExpr::Var(n) => n == var_name,
+            JsExpr::Cast { expr: inner, .. } => {
+                matches!(inner.as_ref(), JsExpr::Var(n) if n == var_name)
+            }
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
+fn count_js_var_reads_in_expr(expr: &JsExpr, name: &str) -> usize {
+    match expr {
+        JsExpr::Var(n) => usize::from(n == name),
+        JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => 0,
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
+        }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        }
+        | JsExpr::NullCoalesceAssign {
+            target: lhs,
+            value: rhs,
+        } => count_js_var_reads_in_expr(lhs, name) + count_js_var_reads_in_expr(rhs, name),
+        JsExpr::Unary { expr: inner, .. }
+        | JsExpr::Cast { expr: inner, .. }
+        | JsExpr::TypeCheck { expr: inner, .. }
+        | JsExpr::Not(inner)
+        | JsExpr::GeneratorResume(inner)
+        | JsExpr::PostIncrement(inner)
+        | JsExpr::Spread(inner)
+        | JsExpr::TypeOf(inner)
+        | JsExpr::NonNull(inner) => count_js_var_reads_in_expr(inner, name),
+        JsExpr::Field { object, .. } => count_js_var_reads_in_expr(object, name),
+        JsExpr::Index { collection, index } => {
+            count_js_var_reads_in_expr(collection, name) + count_js_var_reads_in_expr(index, name)
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            count_js_var_reads_in_expr(callee, name)
+                + args
+                    .iter()
+                    .map(|a| count_js_var_reads_in_expr(a, name))
+                    .sum::<usize>()
+        }
+        JsExpr::SystemCall { args, .. }
+        | JsExpr::SuperCall(args)
+        | JsExpr::GeneratorCreate { args, .. } => args
+            .iter()
+            .map(|a| count_js_var_reads_in_expr(a, name))
+            .sum(),
+        JsExpr::SuperMethodCall { args, .. } => args
+            .iter()
+            .map(|a| count_js_var_reads_in_expr(a, name))
+            .sum(),
+        JsExpr::SuperSet { value, .. } => count_js_var_reads_in_expr(value, name),
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            count_js_var_reads_in_expr(cond, name)
+                + count_js_var_reads_in_expr(then_val, name)
+                + count_js_var_reads_in_expr(else_val, name)
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) => elems
+            .iter()
+            .map(|e| count_js_var_reads_in_expr(e, name))
+            .sum(),
+        JsExpr::ObjectInit(fields) => fields
+            .iter()
+            .map(|(_, v)| count_js_var_reads_in_expr(v, name))
+            .sum(),
+        JsExpr::Yield(v) => v
+            .as_ref()
+            .map_or(0, |e| count_js_var_reads_in_expr(e, name)),
+        JsExpr::ArrowFunction { body, .. } => body
+            .iter()
+            .map(|s| count_js_var_reads_in_stmt(s, name))
+            .sum(),
+    }
+}
+
+fn count_js_var_reads_in_stmt(stmt: &JsStmt, name: &str) -> usize {
+    match stmt {
+        JsStmt::VarDecl { name: n, init, .. } => {
+            usize::from(n == name)
+                + init
+                    .as_ref()
+                    .map_or(0, |e| count_js_var_reads_in_expr(e, name))
+        }
+        JsStmt::Assign { target, value } => {
+            // A bare Var target is a write, not a read -- don't count it.
+            let target_refs = if matches!(target, JsExpr::Var(v) if v == name) {
+                0
+            } else {
+                count_js_var_reads_in_expr(target, name)
+            };
+            target_refs + count_js_var_reads_in_expr(value, name)
+        }
+        JsStmt::CompoundAssign { target, value, .. } => {
+            // CompoundAssign reads AND writes the target, so always count it.
+            count_js_var_reads_in_expr(target, name) + count_js_var_reads_in_expr(value, name)
+        }
+        JsStmt::Expr(e) | JsStmt::Throw(e) => count_js_var_reads_in_expr(e, name),
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            count_js_var_reads_in_expr(cond, name)
+                + then_body
+                    .iter()
+                    .map(|s| count_js_var_reads_in_stmt(s, name))
+                    .sum::<usize>()
+                + else_body
+                    .iter()
+                    .map(|s| count_js_var_reads_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        JsStmt::While { cond, body } => {
+            count_js_var_reads_in_expr(cond, name)
+                + body
+                    .iter()
+                    .map(|s| count_js_var_reads_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            init.iter()
+                .map(|s| count_js_var_reads_in_stmt(s, name))
+                .sum::<usize>()
+                + count_js_var_reads_in_expr(cond, name)
+                + update
+                    .iter()
+                    .map(|s| count_js_var_reads_in_stmt(s, name))
+                    .sum::<usize>()
+                + body
+                    .iter()
+                    .map(|s| count_js_var_reads_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        JsStmt::Loop { body } => body
+            .iter()
+            .map(|s| count_js_var_reads_in_stmt(s, name))
+            .sum(),
+        JsStmt::ForOf {
+            binding,
+            iterable,
+            body,
+            ..
+        } => {
+            usize::from(binding == name)
+                + count_js_var_reads_in_expr(iterable, name)
+                + body
+                    .iter()
+                    .map(|s| count_js_var_reads_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        JsStmt::Return(e) => e
+            .as_ref()
+            .map_or(0, |e| count_js_var_reads_in_expr(e, name)),
+        JsStmt::Dispatch { blocks, .. } => blocks
+            .iter()
+            .flat_map(|(_, stmts)| stmts.iter())
+            .map(|s| count_js_var_reads_in_stmt(s, name))
+            .sum(),
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            count_js_var_reads_in_expr(value, name)
+                + cases
+                    .iter()
+                    .map(|(label, stmts)| {
+                        count_js_var_reads_in_expr(label, name)
+                            + stmts
+                                .iter()
+                                .map(|s| count_js_var_reads_in_stmt(s, name))
+                                .sum::<usize>()
+                    })
+                    .sum::<usize>()
+                + default_body
+                    .iter()
+                    .map(|s| count_js_var_reads_in_stmt(s, name))
+                    .sum::<usize>()
+        }
+        JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => 0,
+    }
+}
+
+fn substitute_js_var_in_expr(
+    expr: &mut JsExpr,
+    name: &str,
+    replacement: &mut Option<JsExpr>,
+) -> bool {
+    if replacement.is_none() {
+        return false;
+    }
+
+    if let JsExpr::Var(n) = expr {
+        if n.as_str() == name {
+            *expr = replacement.take().unwrap();
+            return true;
+        }
+        return false;
+    }
+
+    match expr {
+        JsExpr::Literal(_)
+        | JsExpr::Var(_)
+        | JsExpr::This
+        | JsExpr::Activation
+        | JsExpr::SuperGet(_) => false,
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
+        }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        }
+        | JsExpr::NullCoalesceAssign {
+            target: lhs,
+            value: rhs,
+        } => {
+            substitute_js_var_in_expr(lhs, name, replacement)
+                || substitute_js_var_in_expr(rhs, name, replacement)
+        }
+        JsExpr::Unary { expr: inner, .. }
+        | JsExpr::Cast { expr: inner, .. }
+        | JsExpr::TypeCheck { expr: inner, .. }
+        | JsExpr::Not(inner)
+        | JsExpr::GeneratorResume(inner)
+        | JsExpr::PostIncrement(inner)
+        | JsExpr::Spread(inner)
+        | JsExpr::TypeOf(inner)
+        | JsExpr::NonNull(inner) => substitute_js_var_in_expr(inner, name, replacement),
+        JsExpr::Field { object, .. } => substitute_js_var_in_expr(object, name, replacement),
+        JsExpr::Index { collection, index } => {
+            substitute_js_var_in_expr(collection, name, replacement)
+                || substitute_js_var_in_expr(index, name, replacement)
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            substitute_js_var_in_expr(callee, name, replacement)
+                || args
+                    .iter_mut()
+                    .any(|a| substitute_js_var_in_expr(a, name, replacement))
+        }
+        JsExpr::SystemCall { args, .. }
+        | JsExpr::SuperCall(args)
+        | JsExpr::GeneratorCreate { args, .. } => args
+            .iter_mut()
+            .any(|a| substitute_js_var_in_expr(a, name, replacement)),
+        JsExpr::SuperMethodCall { args, .. } => args
+            .iter_mut()
+            .any(|a| substitute_js_var_in_expr(a, name, replacement)),
+        JsExpr::SuperSet { value, .. } => substitute_js_var_in_expr(value, name, replacement),
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            substitute_js_var_in_expr(cond, name, replacement)
+                || substitute_js_var_in_expr(then_val, name, replacement)
+                || substitute_js_var_in_expr(else_val, name, replacement)
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) => elems
+            .iter_mut()
+            .any(|e| substitute_js_var_in_expr(e, name, replacement)),
+        JsExpr::ObjectInit(fields) => fields
+            .iter_mut()
+            .any(|(_, v)| substitute_js_var_in_expr(v, name, replacement)),
+        JsExpr::Yield(v) => v
+            .as_mut()
+            .is_some_and(|e| substitute_js_var_in_expr(e, name, replacement)),
+        JsExpr::ArrowFunction { body, .. } => body
+            .iter_mut()
+            .any(|s| substitute_js_var_in_stmt(s, name, replacement)),
+    }
+}
+
+fn substitute_js_var_in_stmt(
+    stmt: &mut JsStmt,
+    name: &str,
+    replacement: &mut Option<JsExpr>,
+) -> bool {
+    if replacement.is_none() {
+        return false;
+    }
+
+    match stmt {
+        JsStmt::VarDecl { init, .. } => init
+            .as_mut()
+            .is_some_and(|e| substitute_js_var_in_expr(e, name, replacement)),
+        JsStmt::Assign { target, value } => {
+            // A bare Var target is a write -- don't substitute into it.
+            let target_sub = if matches!(target, JsExpr::Var(v) if v == name) {
+                false
+            } else {
+                substitute_js_var_in_expr(target, name, replacement)
+            };
+            target_sub || substitute_js_var_in_expr(value, name, replacement)
+        }
+        JsStmt::CompoundAssign { target, value, .. } => {
+            substitute_js_var_in_expr(target, name, replacement)
+                || substitute_js_var_in_expr(value, name, replacement)
+        }
+        JsStmt::Expr(e) | JsStmt::Throw(e) => substitute_js_var_in_expr(e, name, replacement),
+        JsStmt::If {
+            cond,
+            then_body,
+            else_body,
+        } => {
+            substitute_js_var_in_expr(cond, name, replacement)
+                || then_body
+                    .iter_mut()
+                    .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+                || else_body
+                    .iter_mut()
+                    .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+        }
+        JsStmt::While { cond, body } => {
+            substitute_js_var_in_expr(cond, name, replacement)
+                || body
+                    .iter_mut()
+                    .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+        }
+        JsStmt::For {
+            init,
+            cond,
+            update,
+            body,
+        } => {
+            init.iter_mut()
+                .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+                || substitute_js_var_in_expr(cond, name, replacement)
+                || update
+                    .iter_mut()
+                    .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+                || body
+                    .iter_mut()
+                    .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+        }
+        JsStmt::Loop { body } => body
+            .iter_mut()
+            .any(|s| substitute_js_var_in_stmt(s, name, replacement)),
+        JsStmt::ForOf { iterable, body, .. } => {
+            substitute_js_var_in_expr(iterable, name, replacement)
+                || body
+                    .iter_mut()
+                    .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+        }
+        JsStmt::Return(e) => e
+            .as_mut()
+            .is_some_and(|e| substitute_js_var_in_expr(e, name, replacement)),
+        JsStmt::Dispatch { blocks, .. } => blocks.iter_mut().any(|(_, stmts)| {
+            stmts
+                .iter_mut()
+                .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+        }),
+        JsStmt::Switch {
+            value,
+            cases,
+            default_body,
+        } => {
+            substitute_js_var_in_expr(value, name, replacement)
+                || cases.iter_mut().any(|(label, stmts)| {
+                    substitute_js_var_in_expr(label, name, replacement)
+                        || stmts
+                            .iter_mut()
+                            .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+                })
+                || default_body
+                    .iter_mut()
+                    .any(|s| substitute_js_var_in_stmt(s, name, replacement))
+        }
+        JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => false,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// While -> For loop promotion (JS AST)
+// ---------------------------------------------------------------------------
+
+/// Promote `let i = init; while (cond) { body; i += step; }` to
+/// `for (let i = init; cond; i += step) { body }` on JS AST.
+pub fn promote_while_to_for(body: &mut Vec<JsStmt>) {
+    for stmt in body.iter_mut() {
+        match stmt {
+            JsStmt::If {
+                then_body,
+                else_body,
+                ..
+            } => {
+                promote_while_to_for(then_body);
+                promote_while_to_for(else_body);
+            }
+            JsStmt::While { body: wb, .. }
+            | JsStmt::Loop { body: wb }
+            | JsStmt::For { body: wb, .. }
+            | JsStmt::ForOf { body: wb, .. } => {
+                promote_while_to_for(wb);
+            }
+            JsStmt::Switch {
+                cases,
+                default_body,
+                ..
+            } => {
+                for (_, case_body) in cases {
+                    promote_while_to_for(case_body);
+                }
+                promote_while_to_for(default_body);
+            }
+            JsStmt::Dispatch { blocks, .. } => {
+                for (_, block_body) in blocks {
+                    promote_while_to_for(block_body);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut i = 0;
+    while i < body.len() {
+        if !matches!(&body[i], JsStmt::While { .. }) {
+            i += 1;
+            continue;
+        }
+
+        let while_cond_var = if let JsStmt::While { cond, .. } = &body[i] {
+            extract_cmp_var(cond)
+        } else {
+            None
+        };
+
+        let Some(var_name) = while_cond_var else {
+            i += 1;
+            continue;
+        };
+
+        let mut init_idx = None;
+        if i > 0 {
+            for j in (0..i).rev() {
+                let is_init = match &body[j] {
+                    JsStmt::VarDecl {
+                        name,
+                        init: Some(_),
+                        mutable: true,
+                        ..
+                    } => name == &var_name,
+                    JsStmt::Assign {
+                        target: JsExpr::Var(name),
+                        ..
+                    } => name == &var_name,
+                    _ => false,
+                };
+                if is_init {
+                    init_idx = Some(j);
+                    break;
+                }
+                if stmt_references_for_promote(&body[j], &var_name) {
+                    break;
+                }
+            }
+        }
+
+        let Some(init_j) = init_idx else {
+            i += 1;
+            continue;
+        };
+
+        let mut init_stmt = body.remove(init_j);
+        let while_idx = i - 1;
+
+        let has_post_loop_refs = matches!(
+            &init_stmt,
+            JsStmt::VarDecl {
+                mutable: true,
+                init: Some(_),
+                ..
+            }
+        ) && body[(while_idx + 1)..]
+            .iter()
+            .any(|s| stmt_references_for_promote(s, &var_name));
+
+        if has_post_loop_refs {
+            let JsStmt::VarDecl {
+                name,
+                ty,
+                init: Some(val),
+                ..
+            } = init_stmt
+            else {
+                unreachable!()
+            };
+            let scope_decl = JsStmt::VarDecl {
+                name: name.clone(),
+                ty: ty.clone(),
+                init: None,
+                mutable: true,
+            };
+            body.insert(init_j, scope_decl);
+            let adj_while_idx = while_idx + 1;
+            let mut assign_init = JsStmt::Assign {
+                target: JsExpr::Var(name),
+                value: val,
+            };
+            if let Some(promoted) =
+                try_promote_while(&var_name, &mut assign_init, &mut body[adj_while_idx])
+            {
+                body[adj_while_idx] = promoted;
+                i = adj_while_idx;
+                continue;
+            }
+            body.insert(adj_while_idx, assign_init);
+        } else if let Some(promoted) =
+            try_promote_while(&var_name, &mut init_stmt, &mut body[while_idx])
+        {
+            body[while_idx] = promoted;
+            i = while_idx;
+            continue;
+        } else {
+            body.insert(init_j, init_stmt);
+        }
+        i += 1;
+    }
+}
+
+fn extract_cmp_var(expr: &JsExpr) -> Option<String> {
+    if let JsExpr::Cmp { lhs, rhs, .. } = expr {
+        if let JsExpr::Var(name) = lhs.as_ref() {
+            return Some(name.clone());
+        }
+        if let JsExpr::Var(name) = rhs.as_ref() {
+            return Some(name.clone());
+        }
+    }
+    None
+}
+
+/// Check if a statement references the named variable (reads or writes).
+/// Used by promote_while_to_for.
+fn stmt_references_for_promote(stmt: &JsStmt, name: &str) -> bool {
+    match stmt {
+        JsStmt::VarDecl {
+            name: decl_name,
+            init,
+            ..
+        } => {
+            decl_name == name
+                || init
+                    .as_ref()
+                    .is_some_and(|e| expr_references_for_promote(e, name))
+        }
+        JsStmt::Assign { target, value } => {
+            expr_references_for_promote(target, name) || expr_references_for_promote(value, name)
+        }
+        JsStmt::CompoundAssign { target, value, .. } => {
+            expr_references_for_promote(target, name) || expr_references_for_promote(value, name)
+        }
+        JsStmt::Expr(e) | JsStmt::Throw(e) => expr_references_for_promote(e, name),
+        _ => true, // Conservatively assume anything else references the var.
+    }
+}
+
+fn expr_references_for_promote(expr: &JsExpr, name: &str) -> bool {
+    match expr {
+        JsExpr::Var(n) => n == name,
+        JsExpr::Literal(_) | JsExpr::This | JsExpr::Activation | JsExpr::SuperGet(_) => false,
+        JsExpr::Binary { lhs, rhs, .. }
+        | JsExpr::Cmp { lhs, rhs, .. }
+        | JsExpr::LogicalOr { lhs, rhs }
+        | JsExpr::LogicalAnd { lhs, rhs }
+        | JsExpr::LooseEq { lhs, rhs }
+        | JsExpr::LooseNe { lhs, rhs }
+        | JsExpr::In {
+            key: lhs,
+            object: rhs,
+        }
+        | JsExpr::Delete {
+            object: lhs,
+            key: rhs,
+        }
+        | JsExpr::NullCoalesceAssign {
+            target: lhs,
+            value: rhs,
+        } => expr_references_for_promote(lhs, name) || expr_references_for_promote(rhs, name),
+        JsExpr::Unary { expr: inner, .. }
+        | JsExpr::Cast { expr: inner, .. }
+        | JsExpr::TypeCheck { expr: inner, .. }
+        | JsExpr::Not(inner)
+        | JsExpr::GeneratorResume(inner)
+        | JsExpr::PostIncrement(inner)
+        | JsExpr::Spread(inner)
+        | JsExpr::TypeOf(inner)
+        | JsExpr::NonNull(inner) => expr_references_for_promote(inner, name),
+        JsExpr::Field { object, .. } => expr_references_for_promote(object, name),
+        JsExpr::Index { collection, index } => {
+            expr_references_for_promote(collection, name)
+                || expr_references_for_promote(index, name)
+        }
+        JsExpr::Call { callee, args } | JsExpr::New { callee, args } => {
+            expr_references_for_promote(callee, name)
+                || args.iter().any(|a| expr_references_for_promote(a, name))
+        }
+        JsExpr::SystemCall { args, .. }
+        | JsExpr::SuperCall(args)
+        | JsExpr::GeneratorCreate { args, .. } => {
+            args.iter().any(|a| expr_references_for_promote(a, name))
+        }
+        JsExpr::SuperMethodCall { args, .. } => {
+            args.iter().any(|a| expr_references_for_promote(a, name))
+        }
+        JsExpr::SuperSet { value, .. } => expr_references_for_promote(value, name),
+        JsExpr::Ternary {
+            cond,
+            then_val,
+            else_val,
+        } => {
+            expr_references_for_promote(cond, name)
+                || expr_references_for_promote(then_val, name)
+                || expr_references_for_promote(else_val, name)
+        }
+        JsExpr::ArrayInit(elems) | JsExpr::TupleInit(elems) => {
+            elems.iter().any(|e| expr_references_for_promote(e, name))
+        }
+        JsExpr::ObjectInit(fields) => fields
+            .iter()
+            .any(|(_, v)| expr_references_for_promote(v, name)),
+        JsExpr::Yield(v) => v
+            .as_ref()
+            .is_some_and(|e| expr_references_for_promote(e, name)),
+        JsExpr::ArrowFunction { body, .. } => {
+            body.iter().any(|s| stmt_references_for_promote(s, name))
+        }
+    }
+}
+
+/// Collect variable names declared at the top level of a statement list.
+fn collect_top_level_decls(stmts: &[JsStmt]) -> std::collections::HashSet<&str> {
+    stmts
+        .iter()
+        .filter_map(|s| {
+            if let JsStmt::VarDecl { name, .. } = s {
+                Some(name.as_str())
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Check if a statement references any variable in the given set.
+fn stmt_references_any(stmt: &JsStmt, names: &std::collections::HashSet<&str>) -> bool {
+    names.iter().any(|n| stmt_references_for_promote(stmt, n))
+}
+
+fn is_var_update(stmt: &JsStmt, name: &str) -> bool {
+    match stmt {
+        JsStmt::CompoundAssign { target, .. } => matches!(target, JsExpr::Var(n) if n == name),
+        JsStmt::Assign { target, value } => {
+            matches!(target, JsExpr::Var(n) if n == name)
+                && matches!(
+                    value,
+                    JsExpr::Binary { lhs, .. } if matches!(strip_js_cast(lhs.as_ref()), JsExpr::Var(n) if n == name)
+                )
+        }
+        _ => false,
+    }
+}
+
+fn try_promote_while(
+    var_name: &str,
+    init_stmt: &mut JsStmt,
+    while_stmt: &mut JsStmt,
+) -> Option<JsStmt> {
+    let JsStmt::While { cond, body } = while_stmt else {
+        return None;
+    };
+
+    if !expr_references_for_promote(cond, var_name) {
+        return None;
+    }
+
+    let extract_init = |init_stmt: &mut JsStmt| -> JsStmt {
+        std::mem::replace(init_stmt, JsStmt::Expr(JsExpr::Literal(Constant::Null)))
+    };
+
+    // Pattern 1: tail increment.
+    if body.len() >= 2 && is_var_update(body.last().unwrap(), var_name) {
+        // Guard: if the update references a variable declared in the body,
+        // extracting it into the for-header would reference it before declaration.
+        let body_decls = collect_top_level_decls(&body[..body.len() - 1]);
+        if !body_decls.is_empty() && stmt_references_any(body.last().unwrap(), &body_decls) {
+            return None;
+        }
+        let update_stmt = body.pop().unwrap();
+        let init = extract_init(init_stmt);
+        let cond = std::mem::replace(cond, JsExpr::Literal(Constant::Null));
+        let body = std::mem::take(body);
+        return Some(JsStmt::For {
+            init: vec![init],
+            cond,
+            update: vec![update_stmt],
+            body,
+        });
+    }
+
+    // Pattern 2: else-continue increment.
+    if body.len() == 1 {
+        if let JsStmt::If { else_body, .. } = &body[0] {
+            if else_body.len() >= 2
+                && matches!(else_body.last(), Some(JsStmt::Continue))
+                && is_var_update(&else_body[else_body.len() - 2], var_name)
+            {
+                let JsStmt::If {
+                    cond: if_cond,
+                    then_body: if_then,
+                    else_body: if_else,
+                } = std::mem::replace(&mut body[0], JsStmt::Expr(JsExpr::Literal(Constant::Null)))
+                else {
+                    unreachable!()
+                };
+
+                let mut if_else = if_else;
+                if_else.pop(); // Remove Continue.
+                let update_stmt = if_else.pop().unwrap(); // Remove increment.
+
+                let new_body = if if_else.is_empty() {
+                    vec![JsStmt::If {
+                        cond: if_cond,
+                        then_body: if_then,
+                        else_body: vec![],
+                    }]
+                } else {
+                    vec![JsStmt::If {
+                        cond: if_cond,
+                        then_body: if_then,
+                        else_body: if_else,
+                    }]
+                };
+
+                let init = extract_init(init_stmt);
+                let loop_cond = std::mem::replace(cond, JsExpr::Literal(Constant::Null));
+                return Some(JsStmt::For {
+                    init: vec![init],
+                    cond: loop_cond,
+                    update: vec![update_stmt],
+                    body: new_body,
+                });
+            }
+        }
+    }
+
     None
 }
 

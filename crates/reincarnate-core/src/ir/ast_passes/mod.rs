@@ -5,7 +5,7 @@
 //!
 //! Passes are grouped by theme:
 //! - `cleanup` -- dead code removal, self-assign elimination, stub removal
-//! - `control_flow` -- ternary, min/max, compound assign, for-each, for promotion
+//! - `control_flow` -- ternary, min/max, for-each, loop-to-while, logical simplification
 //! - `variables` -- scope narrowing, decl/init merging, const folding, substitution
 
 mod cleanup;
@@ -15,7 +15,6 @@ mod variables;
 use std::collections::{HashMap, HashSet};
 
 use super::ast::{Expr, Stmt};
-use super::inst::CastKind;
 
 // Re-export all public pass functions so existing call sites (`ast_passes::foo`)
 // continue to work unchanged.
@@ -25,9 +24,8 @@ pub use cleanup::{
     invert_empty_then,
 };
 pub use control_flow::{
-    lower_output_nodes, promote_while_to_for, rewrite_compound_assign, rewrite_foreach_loops,
-    rewrite_loop_to_while, rewrite_minmax, rewrite_post_increment, rewrite_ternary,
-    simplify_ternary_to_logical,
+    lower_output_nodes, rewrite_foreach_loops, rewrite_loop_to_while, rewrite_minmax,
+    rewrite_ternary, simplify_ternary_to_logical,
 };
 pub use variables::{
     fold_single_use_consts, forward_substitute, inline_ordered_single_use, merge_decl_init,
@@ -239,20 +237,6 @@ pub(crate) fn stmt_has_side_effects(stmt: &Stmt) -> bool {
         | Stmt::Switch { .. }
         | Stmt::Dispatch { .. } => true,
         Stmt::Break | Stmt::Continue | Stmt::LabeledBreak { .. } => false,
-    }
-}
-
-/// Strip `NullableCoerce` casts to get the underlying expression.
-/// `NullableCoerce` is a pure type assertion with no runtime effect, so it's safe
-/// to look through for structural comparison.
-pub(crate) fn strip_as_type(expr: &Expr) -> &Expr {
-    match expr {
-        Expr::Cast {
-            expr: inner,
-            kind: CastKind::NullableCoerce,
-            ..
-        } => strip_as_type(inner),
-        _ => expr,
     }
 }
 

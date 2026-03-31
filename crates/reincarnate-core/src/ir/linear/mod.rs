@@ -208,10 +208,7 @@ pub fn lower_function_linear(
         ast_passes::fold_single_use_consts(&mut full_body);
     }
 
-    ast_passes::rewrite_compound_assign(&mut full_body);
-    ast_passes::rewrite_post_increment(&mut full_body);
     ast_passes::rewrite_loop_to_while(&mut full_body);
-    ast_passes::promote_while_to_for(&mut full_body);
 
     // Build param defaults: thread from FunctionSig, then pad with None for capture params.
     let mut param_defaults = func.sig.defaults.clone();
