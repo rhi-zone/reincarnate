@@ -11,10 +11,10 @@ use super::{
     strip_trailing_continue, types_coalesce_compatible, LinearStmt,
 };
 use crate::entity::{EntityRef, PrimaryMap};
-use crate::ir::ast::{BinOp, Expr, Stmt};
+use crate::ir::ast::{Expr, Stmt};
 use crate::ir::block::BlockId;
 use crate::ir::func::{Function, MethodKind};
-use crate::ir::inst::{CastKind, CmpKind, InstId, Op, Terminator};
+use crate::ir::inst::{CastKind, InstId, Op, Terminator};
 use crate::ir::module::TypeDecl;
 use crate::ir::ty::{FunctionSig, Type, TypeId};
 use crate::ir::value::{Constant, ValueId};
@@ -835,216 +835,27 @@ impl<'a> EmitCtx<'a> {
     /// workaround (cast to Number) that the old Op::BitAnd/BitOr/BitXor arms
     /// applied before the IR variants were removed.
     fn build_builtin_expr(&mut self, op_name: &str, args: &[ValueId]) -> Expr {
-        // Table path: check backend-supplied operator tables first (keyed by full
-        // op name, e.g. "add_f64").  Names absent from both tables fall through to
-        // the special-case arms below.  `_any` variants are intentionally absent
-        // from the tables so they fall through to `Expr::Call`.
-        if let Some(&bin_op) = self.config.builtin_binary_ops.get(op_name) {
-            return Expr::Binary {
-                op: bin_op,
-                lhs: Box::new(self.build_val(args[0])),
-                rhs: Box::new(self.build_val(args[1])),
-            };
-        }
-        if let Some(&un_op) = self.config.builtin_unary_ops.get(op_name) {
-            return Expr::Unary {
-                op: un_op,
-                expr: Box::new(self.build_val(args[0])),
-            };
-        }
-
-        // Special cases that require type inspection or non-operator emit forms.
-        // Every arm matches on the full `op_name` (e.g. "bitand_i32", "sin_f64",
-        // "string_length_str").  No suffix stripping.
-        match op_name {
-            // Bitwise binary — apply TS2447 bool-operand workaround for & and |.
-            "bitand_i32" => {
+        // For bitwise ops, check if either operand is Bool and encode that
+        // in the op name so the backend can apply the TS2447 workaround
+        // without needing IR access.
+        let effective_name = match op_name {
+            "bitand_i32" | "bitor_i32" | "bitxor_i32"
                 if matches!(self.func.value_types[args[0]], Type::Bool)
-                    || matches!(self.func.value_types[args[1]], Type::Bool)
-                {
-                    Expr::Binary {
-                        op: BinOp::BitAnd,
-                        lhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(args[0])),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                        rhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(args[1])),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                    }
-                } else {
-                    Expr::Binary {
-                        op: BinOp::BitAnd,
-                        lhs: Box::new(self.build_val(args[0])),
-                        rhs: Box::new(self.build_val(args[1])),
-                    }
+                    || matches!(self.func.value_types[args[1]], Type::Bool) =>
+            {
+                match op_name {
+                    "bitand_i32" => "bitand_bool_i32",
+                    "bitor_i32" => "bitor_bool_i32",
+                    "bitxor_i32" => "bitxor_bool_i32",
+                    _ => unreachable!(),
                 }
             }
-            "bitor_i32" => {
-                if matches!(self.func.value_types[args[0]], Type::Bool)
-                    || matches!(self.func.value_types[args[1]], Type::Bool)
-                {
-                    Expr::Binary {
-                        op: BinOp::BitOr,
-                        lhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(args[0])),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                        rhs: Box::new(Expr::Cast {
-                            expr: Box::new(self.build_val(args[1])),
-                            ty: Type::Float(64),
-                            kind: CastKind::Coerce,
-                        }),
-                    }
-                } else {
-                    Expr::Binary {
-                        op: BinOp::BitOr,
-                        lhs: Box::new(self.build_val(args[0])),
-                        rhs: Box::new(self.build_val(args[1])),
-                    }
-                }
-            }
-            "bitxor_i32" => {
-                // Boolean XOR is `!==` (TS2447 on `^`).
-                if matches!(self.func.value_types[args[0]], Type::Bool)
-                    || matches!(self.func.value_types[args[1]], Type::Bool)
-                {
-                    Expr::Cmp {
-                        kind: CmpKind::Ne,
-                        lhs: Box::new(self.build_val(args[0])),
-                        rhs: Box::new(self.build_val(args[1])),
-                    }
-                } else {
-                    Expr::Binary {
-                        op: BinOp::BitXor,
-                        lhs: Box::new(self.build_val(args[0])),
-                        rhs: Box::new(self.build_val(args[1])),
-                    }
-                }
-            }
-            // Boolean NOT emits as Expr::Not (no UnaryOp::Not variant exists).
-            "not_bool" => Expr::Not(Box::new(self.build_val(args[0]))),
-            // Math single-argument f64 → f64: emit as Math.<method>(arg0).
-            "sin_f64" => self.math_call_1("sin", args),
-            "cos_f64" => self.math_call_1("cos", args),
-            "tan_f64" => self.math_call_1("tan", args),
-            "asin_f64" => self.math_call_1("asin", args),
-            "acos_f64" => self.math_call_1("acos", args),
-            "atan_f64" => self.math_call_1("atan", args),
-            "sqrt_f64" => self.math_call_1("sqrt", args),
-            "exp_f64" => self.math_call_1("exp", args),
-            "ln_f64" => self.math_call_1("log", args), // ln → Math.log
-            "log2_f64" => self.math_call_1("log2", args),
-            "log10_f64" => self.math_call_1("log10", args),
-            "abs_f64" => self.math_call_1("abs", args),
-            "floor_f64" => self.math_call_1("floor", args),
-            "ceil_f64" => self.math_call_1("ceil", args),
-            "round_f64" => self.math_call_1("round", args),
-            "trunc_f64" => self.math_call_1("trunc", args),
-            "sign_f64" => self.math_call_1("sign", args),
-            // Math two-argument (f64, f64) → f64: emit as Math.<method>(arg0, arg1).
-            "atan2_f64" => self.math_call_2("atan2", args),
-            "pow_f64" => self.math_call_2("pow", args),
-            "hypot_f64" => self.math_call_2("hypot", args),
-            "min_f64" => self.math_call_2("min", args),
-            "max_f64" => self.math_call_2("max", args),
-            // String operations
-            "string_length_str" => Expr::Field {
-                object: Box::new(self.build_val(args[0])),
-                field: "length".to_string(),
-            },
-            "string_upper_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "toUpperCase".to_string(),
-                args: vec![],
-            },
-            "string_lower_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "toLowerCase".to_string(),
-                args: vec![],
-            },
-            "string_char_at_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "charAt".to_string(),
-                args: vec![self.build_val(args[1])],
-            },
-            "string_index_of_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[1])), // haystack
-                method: "indexOf".to_string(),
-                args: vec![self.build_val(args[0])], // needle
-            },
-            "string_slice_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "slice".to_string(),
-                args: vec![self.build_val(args[1]), self.build_val(args[2])],
-            },
-            "string_split_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "split".to_string(),
-                args: vec![self.build_val(args[1])],
-            },
-            "string_char_code_at_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "charCodeAt".to_string(),
-                args: vec![self.build_val(args[1])],
-            },
-            "string_repeat_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "repeat".to_string(),
-                args: vec![self.build_val(args[1])],
-            },
-            "string_replace_first_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "replace".to_string(),
-                args: vec![self.build_val(args[1]), self.build_val(args[2])],
-            },
-            "string_trim_str" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "trim".to_string(),
-                args: vec![],
-            },
-            "array_length_arr" => Expr::Field {
-                object: Box::new(self.build_val(args[0])),
-                field: "length".to_string(),
-            },
-            "array_contains_arr" => Expr::MethodCall {
-                receiver: Box::new(self.build_val(args[0])),
-                method: "includes".to_string(),
-                args: vec![self.build_val(args[1])],
-            },
-            "chr_f64" => Expr::Call {
-                func: "String.fromCharCode".to_string(),
-                args: vec![self.build_val(args[0])],
-            },
-            // Unknown builtin — fall back to a function call so the output is
-            // at least syntactically valid (the name won't exist at runtime,
-            // but a compile error is better than a panic).
-            _ => Expr::Call {
-                func: format!("builtin.{op_name}"),
-                args: args.iter().map(|&a| self.build_val(a)).collect(),
-            },
-        }
-    }
+            _ => op_name,
+        };
 
-    /// Helper: emit `Math.<method>(arg0)`.
-    fn math_call_1(&mut self, method: &str, args: &[ValueId]) -> Expr {
-        Expr::SystemCall {
-            system: "Math".to_string(),
-            method: method.to_string(),
-            args: vec![self.build_val(args[0])],
-        }
-    }
-
-    /// Helper: emit `Math.<method>(arg0, arg1)`.
-    fn math_call_2(&mut self, method: &str, args: &[ValueId]) -> Expr {
-        Expr::SystemCall {
-            system: "Math".to_string(),
-            method: method.to_string(),
-            args: vec![self.build_val(args[0]), self.build_val(args[1])],
+        Expr::Call {
+            func: format!("builtin.{effective_name}"),
+            args: args.iter().map(|&a| self.build_val(a)).collect(),
         }
     }
 

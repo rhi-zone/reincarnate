@@ -282,21 +282,6 @@ pub struct LoweringConfig {
     /// module's `runtime_registry` + `Function::intrinsic` fields.
     /// Default: empty (no intrinsic calls).
     pub intrinsic_calls: std::collections::HashMap<String, (String, String)>,
-
-    /// Maps full builtin op names (e.g. `"add_f64"`) to their binary operator form.
-    ///
-    /// Names absent from this map are not emitted as `Expr::Binary` by the
-    /// generic table path — they either match a special-case arm or fall through
-    /// to `Expr::Call { func: "builtin.<name>" }`.
-    ///
-    /// Populated by the TS backend in `emit/mod.rs`.  Other backends leave this
-    /// empty and the default fall-through applies.
-    pub builtin_binary_ops: std::collections::HashMap<String, crate::ir::ast::BinOp>,
-
-    /// Maps full builtin op names (e.g. `"neg_f64"`) to their unary operator form.
-    ///
-    /// Follows the same lookup semantics as [`Self::builtin_binary_ops`].
-    pub builtin_unary_ops: std::collections::HashMap<String, crate::ir::ast::UnaryOp>,
 }
 
 impl Default for LoweringConfig {
@@ -307,68 +292,6 @@ impl Default for LoweringConfig {
 }
 
 impl LoweringConfig {
-    /// Standard TypeScript binary-operator table.
-    ///
-    /// Maps full builtin op names (e.g. `"add_f64"`) to their `BinOp`.
-    /// `_any` variants are intentionally absent so they fall through to
-    /// `Expr::Call` and surface as unresolved-function errors rather than
-    /// silently emitting a wrong operator.
-    ///
-    /// `bitand_i32`, `bitor_i32`, `bitxor_i32` are absent because they
-    /// require a bool-operand TS2447 workaround handled by special-case arms
-    /// in `build_builtin_expr`.
-    fn ts_binary_ops() -> std::collections::HashMap<String, crate::ir::ast::BinOp> {
-        use crate::ir::ast::BinOp;
-        [
-            ("add_f64", BinOp::Add),
-            ("add_f32", BinOp::Add),
-            ("add_i32", BinOp::Add),
-            ("add_i64", BinOp::Add),
-            ("sub_f64", BinOp::Sub),
-            ("sub_f32", BinOp::Sub),
-            ("sub_i32", BinOp::Sub),
-            ("sub_i64", BinOp::Sub),
-            ("mul_f64", BinOp::Mul),
-            ("mul_f32", BinOp::Mul),
-            ("mul_i32", BinOp::Mul),
-            ("mul_i64", BinOp::Mul),
-            ("div_f64", BinOp::Div),
-            ("div_f32", BinOp::Div),
-            ("div_i32", BinOp::Div),
-            ("div_i64", BinOp::Div),
-            ("rem_f64", BinOp::Rem),
-            ("rem_f32", BinOp::Rem),
-            ("rem_i32", BinOp::Rem),
-            ("rem_i64", BinOp::Rem),
-            ("concat_str", BinOp::Add),
-            ("and_bool", BinOp::BoolAnd),
-            ("or_bool", BinOp::BoolOr),
-            ("shl_i32", BinOp::Shl),
-            ("shr_i32", BinOp::Shr),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect()
-    }
-
-    /// Standard TypeScript unary-operator table.
-    ///
-    /// `not_bool` is absent — it emits as `Expr::Not` (no `UnaryOp::Not`
-    /// variant exists) and is handled by a special-case arm.
-    fn ts_unary_ops() -> std::collections::HashMap<String, crate::ir::ast::UnaryOp> {
-        use crate::ir::ast::UnaryOp;
-        [
-            ("neg_f64", UnaryOp::Neg),
-            ("neg_f32", UnaryOp::Neg),
-            ("neg_i32", UnaryOp::Neg),
-            ("neg_i64", UnaryOp::Neg),
-            ("bitnot_i32", UnaryOp::BitNot),
-        ]
-        .into_iter()
-        .map(|(k, v)| (k.to_string(), v))
-        .collect()
-    }
-
     fn literal() -> Self {
         Self {
             ternary: true,
@@ -385,8 +308,6 @@ impl LoweringConfig {
             cast_struct_syscall_results_for: vec![],
             cast_unknown_indirect_callee: false,
             intrinsic_calls: std::collections::HashMap::new(),
-            builtin_binary_ops: Self::ts_binary_ops(),
-            builtin_unary_ops: Self::ts_unary_ops(),
         }
     }
 
@@ -406,8 +327,6 @@ impl LoweringConfig {
             cast_struct_syscall_results_for: vec![],
             cast_unknown_indirect_callee: false,
             intrinsic_calls: std::collections::HashMap::new(),
-            builtin_binary_ops: Self::ts_binary_ops(),
-            builtin_unary_ops: Self::ts_unary_ops(),
         }
     }
 }

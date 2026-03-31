@@ -3,7 +3,7 @@ use super::linearize::linearize;
 use super::resolve::resolve;
 use super::*;
 use crate::entity::EntityRef;
-use crate::ir::ast::{BinOp, Expr, Stmt};
+use crate::ir::ast::{Expr, Stmt};
 use crate::ir::builder::FunctionBuilder;
 use crate::ir::func::{MethodKind, Visibility};
 use crate::ir::inst::CmpKind;
@@ -226,7 +226,7 @@ fn full_pipeline_simple_add() {
     assert_eq!(ast.body.len(), 1);
     assert!(matches!(
         &ast.body[0],
-        Stmt::Return(Some(Expr::Binary { op: BinOp::Add, .. }))
+        Stmt::Return(Some(Expr::Call { func, .. })) if func == "builtin.add_i64"
     ));
 }
 
@@ -257,10 +257,10 @@ fn full_pipeline_constant_inlining() {
     // Constant and sum both inlined into return.
     assert_eq!(ast.body.len(), 1);
     match &ast.body[0] {
-        Stmt::Return(Some(Expr::Binary { rhs, .. })) => {
-            assert!(matches!(rhs.as_ref(), Expr::Literal(Constant::Int(42))));
+        Stmt::Return(Some(Expr::Call { func, args })) if func == "builtin.add_i64" => {
+            assert!(matches!(&args[1], Expr::Literal(Constant::Int(42))));
         }
-        other => panic!("Expected return with binary, got: {other:?}"),
+        other => panic!("Expected return with builtin.add_i64 call, got: {other:?}"),
     }
 }
 
