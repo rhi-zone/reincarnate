@@ -232,10 +232,23 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    not correctness. BuiltinOverloadSelect stays in the pipeline as the devirtualization pass.
    Move it to the GML frontend's extra_passes (Law 2 — it is GML-specific).
 
-   **`build_builtin_expr` base-strip is wrong for `_any` variants.** `add_any` accidentally hits
-   the `"add"` arm (rsplit_once strips `"_any"` suffix → base `"add"`) and emits as `BinOp::Add`
-   instead of a function call. Fix: `_any` variants must be routed to function-call emit, not the
-   operator arm. Only concrete typed variants (`add_f64`, `add_f32`, etc.) should emit as operators.
+   **`build_builtin_expr` suffix-stripping is architecturally wrong.** `rsplit_once('_')` on
+   `"add_f64"` → base `"add"` re-derives information that was never correctly encoded in the first
+   place. String manipulation on names is not a dispatch mechanism. The correct fix: replace the
+   entire suffix-strip + match with a flat lookup table keyed on the full builtin name
+   (`"add_f64"` → `BinOp::Add`, `"concat_str"` → `BinOp::Add`, etc.). `_any` variants are simply
+   absent from the table and fall through to normal function-call emit. No parsing, no suffix
+   stripping, no accidental matches.
+
+   **Why not Op variants?** Adding `Op::IAdd32`, `Op::FAdd64`, etc. to the IR enum is expensive:
+   every pass, transform, and typechecker arm must handle each new variant. The `builtin.*`
+   named-function approach is correct — builtins are functions. The only problem is how the emit
+   layer dispatches them.
+
+   **Why not IR bodies for typed variants?** `add_i32`'s body in TS would be `(a + b) | 0`,
+   but the same body in Rust would be `a.wrapping_add(b)`. IR bodies encode source-language
+   semantics, not target-language syntax — a body can't be both. The flat lookup table in the
+   backend is the right place for target-language-specific emit forms.
 
    **Hard error for called stubs.** Any IR function that has an empty/stub body and is called must
    be a hard error at emit time. Currently stubs silently fall through to broken call syntax or
