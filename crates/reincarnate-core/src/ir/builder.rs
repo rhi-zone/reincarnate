@@ -358,8 +358,6 @@ impl FunctionBuilder {
             Type::Float(32) => "f32",
             Type::Int(32) => "i32",
             Type::Int(64) => "i64",
-            Type::String => "str",
-            Type::Bool => "bool",
             _ => "any",
         }
     }

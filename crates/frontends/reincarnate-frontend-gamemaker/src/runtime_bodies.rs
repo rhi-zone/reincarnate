@@ -2643,7 +2643,7 @@ fn attach_body_string_delete(module: &mut Module) {
         &[s, tail_start, len],
         Type::String,
     );
-    let result = b.add(head, tail);
+    let result = b.call("builtin.concat_str", &[head, tail], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2694,8 +2694,8 @@ fn attach_body_string_insert(module: &mut Module) {
         Type::String,
     );
     // head + substr + tail  (two string concatenations)
-    let head_sub = b.add(head, substr);
-    let result = b.add(head_sub, tail);
+    let head_sub = b.call("builtin.concat_str", &[head, substr], Type::String);
+    let result = b.call("builtin.concat_str", &[head_sub, tail], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
