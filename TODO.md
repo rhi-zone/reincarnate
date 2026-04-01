@@ -248,7 +248,12 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
      structurizer from branch patterns and emitted directly by `build_builtin_expr` for
      `and_bool`/`or_bool`.
    - `Expr::Cmp` — comparisons, produced from `Op::Cmp` (still a direct IR op, not a builtin).
-     Negation uses `Expr::Not(Cmp(...))`, not CmpKind-flipping.
+     Negation uses `Expr::Not(Cmp(...))`, not CmpKind-flipping — `!(a < b)` and `a >= b` are
+     only equivalent for types with total ordering. Whether a type has total ordering depends
+     on the source language (floats with NaN, string collation, object comparison semantics),
+     so flipping is engine-specific knowledge that doesn't belong in core. Core passes
+     (`rewrite_minmax`) also structurally inspect `CmpKind`, which is why `Cmp` can't become
+     an opaque builtin call.
 
    **Why not Op variants?** Adding `Op::IAdd32`, `Op::FAdd64`, etc. to the IR enum is expensive:
    every pass, transform, and typechecker arm must handle each new variant. The `builtin.*`
