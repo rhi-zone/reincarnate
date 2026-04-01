@@ -204,7 +204,7 @@ pub struct Function {
     /// one per argument) to the [`FuncId`] of the typed variant that should be
     /// called when those argument types are known at compile time.
     ///
-    /// Non-empty only on `builtin.xxx_any` stubs registered by
+    /// Non-empty only on `xxx_any` stubs registered by
     /// [`Module::register_arithmetic_any_builtins`].  All other functions leave this empty.
     ///
     /// The `BuiltinOverloadSelect` transform reads this table to replace

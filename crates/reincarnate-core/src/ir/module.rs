@@ -1016,7 +1016,7 @@ impl Module {
     ///
     /// These stubs are used by frontends (currently GML only) when an arithmetic
     /// operand type is not yet known at translation time.  `BuiltinOverloadSelect`
-    /// replaces each `builtin.xxx_any` call with the appropriately-typed variant
+    /// replaces each `xxx_any` call with the appropriately-typed variant
     /// (`_f64`, `_f32`, `_i32`, `_i64`) once HM inference has resolved the operand
     /// types.
     ///
@@ -1060,7 +1060,7 @@ impl Module {
                 let concat_id = self.runtime_registry["builtin.concat_str"];
                 specs.insert(vec![Type::String, Type::String], concat_id);
             }
-            let func_name = format!("builtin.{op}_any");
+            let func_name = format!("{op}_any");
             let any_id = self.register_runtime(&func_name, bin_any.clone());
 
             // Build dispatch chain for binary op: check each specialization type pair.
@@ -1087,7 +1087,7 @@ impl Module {
                     (vec![ty.clone()], fid)
                 })
                 .collect();
-            let func_name = "builtin.neg_any";
+            let func_name = "neg_any";
             let any_id = self.register_runtime(func_name, un_any.clone());
 
             // Build dispatch chain for unary neg: check each specialization type.

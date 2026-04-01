@@ -1,6 +1,6 @@
 //! `BuiltinOverloadSelect` transform pass.
 //!
-//! After `ConstraintSolveHM` resolves operand types, replaces `builtin.xxx_any`
+//! After `ConstraintSolveHM` resolves operand types, replaces `xxx_any`
 //! calls with the appropriately-typed variant (`builtin.xxx_f64`, `_f32`, `_i32`,
 //! `_i64`) and updates the result's `value_types` entry to the concrete return
 //! type.
@@ -8,7 +8,7 @@
 //! # Motivation
 //!
 //! GML bytecode uses `DataType::Variable` for most arithmetic, so the frontend
-//! emits `Op::Call { func: "builtin.add_any", … }`.  The `_any` variants
+//! emits `Op::Call { func: "add_any", … }`.  The `_any` variants
 //! declare no concrete return type (returns `Unknown`), so even
 //! `add_any(Float64, Float64)` produces `Unknown`.  This pass replaces those
 //! calls once operand types are known from HM inference.
@@ -31,7 +31,7 @@ use crate::ir::func::FuncId;
 use crate::ir::{Function, Module, Op, Type};
 use crate::pipeline::{Transform, TransformResult};
 
-/// `BuiltinOverloadSelect` — replaces `builtin.xxx_any` calls with typed variants.
+/// `BuiltinOverloadSelect` — replaces `xxx_any` calls with typed variants.
 pub struct BuiltinOverloadSelect;
 
 /// Try to select a typed overload for one instruction in `func`.
@@ -158,7 +158,7 @@ mod tests {
     use crate::ir::{Module, Type, Visibility};
     use crate::pipeline::Transform;
 
-    /// Build a module containing one function that calls `builtin.<op_name>_any`
+    /// Build a module containing one function that calls `<op_name>_any`
     /// with `arg_types.len()` parameters of the given types and the given initial
     /// result type.  Returns the module and the `FuncId` of the first user function.
     fn make_module_with_func(op_name: &str, arg_types: &[Type]) -> Module {
@@ -170,7 +170,7 @@ mod tests {
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Private);
 
         let args: Vec<_> = (0..arg_types.len()).map(|i| fb.param(i)).collect();
-        let func_name = format!("builtin.{}_any", op_name);
+        let func_name = format!("{}_any", op_name);
         let call_result = fb.call(func_name, &args, Type::Unknown);
         fb.ret(Some(call_result));
         let func = fb.build();
@@ -179,24 +179,19 @@ mod tests {
         mb.add_function(func);
         let mut module = mb.build();
         // Register the GML-specific _any stubs so BuiltinOverloadSelect can
-        // find and rewrite the `builtin.xxx_any` call emitted above.
+        // find and rewrite the call emitted above.
         module.register_arithmetic_any_builtins();
         module
     }
 
-    fn first_builtin_call_id(module: &Module) -> crate::ir::InstId {
+    fn first_call_id(module: &Module) -> crate::ir::InstId {
         let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
         let func = &module.functions[func_id];
-        let live: Vec<_> = func
-            .blocks
+        func.blocks
             .values()
             .flat_map(|b| b.insts.iter().copied())
-            .collect();
-        live.into_iter()
-            .find(|&id| {
-                matches!(&func.insts[id].op, Op::Call { func: f, .. } if f.starts_with("builtin."))
-            })
-            .expect("no builtin Call instruction found")
+            .find(|&id| matches!(&func.insts[id].op, Op::Call { .. }))
+            .expect("no Call instruction found")
     }
 
     #[test]
@@ -206,7 +201,7 @@ mod tests {
         assert!(result.changed);
 
         let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_builtin_call_id(&result.module);
+        let inst_id = first_call_id(&result.module);
         let func = &result.module.functions[func_id];
 
         let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
@@ -224,7 +219,7 @@ mod tests {
         assert!(result.changed);
 
         let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_builtin_call_id(&result.module);
+        let inst_id = first_call_id(&result.module);
         let func = &result.module.functions[func_id];
 
         let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
@@ -242,13 +237,13 @@ mod tests {
         assert!(!result.changed);
 
         let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_builtin_call_id(&result.module);
+        let inst_id = first_call_id(&result.module);
         let func = &result.module.functions[func_id];
 
         let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
             panic!()
         };
-        assert_eq!(fname, "builtin.add_any");
+        assert_eq!(fname, "add_any");
     }
 
     #[test]
@@ -258,13 +253,13 @@ mod tests {
         assert!(!result.changed);
 
         let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_builtin_call_id(&result.module);
+        let inst_id = first_call_id(&result.module);
         let func = &result.module.functions[func_id];
 
         let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
             panic!()
         };
-        assert_eq!(fname, "builtin.mul_any");
+        assert_eq!(fname, "mul_any");
     }
 
     #[test]
@@ -274,7 +269,7 @@ mod tests {
         assert!(result.changed);
 
         let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_builtin_call_id(&result.module);
+        let inst_id = first_call_id(&result.module);
         let func = &result.module.functions[func_id];
 
         let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {

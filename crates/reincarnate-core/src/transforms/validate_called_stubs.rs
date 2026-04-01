@@ -105,7 +105,7 @@ mod tests {
     use crate::pipeline::Transform;
     use crate::transforms::BuiltinOverloadSelect;
 
-    /// Build a module containing one function that calls `builtin.<op_name>_any`
+    /// Build a module containing one function that calls `<op_name>_any`
     /// with `arg_types.len()` parameters of the given types.
     fn make_module_with_func(op_name: &str, arg_types: &[Type]) -> Module {
         let sig = FunctionSig {
@@ -116,7 +116,7 @@ mod tests {
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Private);
 
         let args: Vec<_> = (0..arg_types.len()).map(|i| fb.param(i)).collect();
-        let func_name = format!("builtin.{}_any", op_name);
+        let func_name = format!("{}_any", op_name);
         let call_result = fb.call(func_name, &args, Type::Unknown);
         fb.ret(Some(call_result));
         let func = fb.build();
@@ -185,7 +185,7 @@ mod tests {
 
     #[test]
     fn test_any_builtins_with_real_bodies_no_diagnostic() {
-        // builtin.add_any now has a real dispatch body, so it should NOT be
+        // add_any now has a real dispatch body, so it should NOT be
         // detected as a stub even when called with Unknown args.
         let module = make_module_with_func("add", &[Type::Unknown, Type::Unknown]);
         let result = ValidateCalledStubs.apply(module, None).unwrap();
@@ -198,7 +198,7 @@ mod tests {
             .collect();
         assert!(
             called_stub_diags.is_empty(),
-            "builtin.add_any has a real body — should not produce CalledStub diagnostic"
+            "add_any has a real body — should not produce CalledStub diagnostic"
         );
     }
 

@@ -273,7 +273,7 @@ fn translate_arithmetic_op(
             let a = pop(stack, inst)?;
             // Use the explicit type suffix from the GML instruction type tag.
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(format!("builtin.add_{suffix}"), &[a, b], ret_ty);
+            let r = fb.call(arith_callee("add", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -281,7 +281,7 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(format!("builtin.sub_{suffix}"), &[a, b], ret_ty);
+            let r = fb.call(arith_callee("sub", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -289,7 +289,7 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(format!("builtin.mul_{suffix}"), &[a, b], ret_ty);
+            let r = fb.call(arith_callee("mul", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -297,7 +297,7 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(format!("builtin.div_{suffix}"), &[a, b], ret_ty);
+            let r = fb.call(arith_callee("div", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -305,14 +305,14 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(format!("builtin.rem_{suffix}"), &[a, b], ret_ty);
+            let r = fb.call(arith_callee("rem", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Neg => {
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(format!("builtin.neg_{suffix}"), &[a], ret_ty);
+            let r = fb.call(arith_callee("neg", suffix), &[a], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -343,6 +343,20 @@ fn type_suffix_for(dt: DataType) -> &'static str {
         DataType::String => "str",
         DataType::Variable => "f64",
         _ => "any",
+    }
+}
+
+/// Build the full callee name for an arithmetic op and data-type suffix.
+///
+/// Typed variants (`add_f64`, `neg_i32`, …) are builtins inlined to operators
+/// by the backend, so they get the `builtin.` prefix.  The `_any` variants are
+/// real IR functions with dispatch bodies — they must NOT have the prefix so
+/// `lower_call` emits them as normal function calls.
+fn arith_callee(op: &str, suffix: &str) -> String {
+    if suffix == "any" {
+        format!("{op}_{suffix}")
+    } else {
+        format!("builtin.{op}_{suffix}")
     }
 }
 

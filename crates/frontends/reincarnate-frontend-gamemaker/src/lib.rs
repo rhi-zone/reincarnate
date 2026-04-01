@@ -244,7 +244,7 @@ impl Frontend for GameMakerFrontend {
 
         // Register GML-specific polymorphic `_any` arithmetic stubs.
         // The GML VM uses `DataType::Variable` for most arithmetic, so the
-        // translator emits `builtin.add_any` etc. when operand types are not
+        // translator emits `add_any` etc. when operand types are not
         // yet known.  `BuiltinOverloadSelect` replaces these with typed variants
         // once HM inference resolves the operand types.  These stubs are not in
         // `register_core_builtins()` because no other frontend needs them.

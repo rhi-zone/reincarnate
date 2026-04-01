@@ -87,7 +87,7 @@ pub struct PassConfig {
     /// `CallSiteTypeFlow`, `CallSiteTypeWiden`, `ConstraintSolve`, and
     /// `ConstraintSolve2` passes.
     pub constraint_solve_hm: bool,
-    /// Replace `builtin.xxx_any` calls with typed variants (`_f64`, `_f32`,
+    /// Replace `xxx_any` calls with typed variants (`_f64`, `_f32`,
     /// `_i32`, `_i64`) once operand types are known from HM inference.
     /// Runs after `constraint-solve-hm`.
     pub builtin_overload_select: bool,
