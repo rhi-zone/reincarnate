@@ -217,11 +217,9 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    can be minted per-value. **Blocked on refactor: `datatype_to_ir_type` is a free fn without
    access to `FunctionBuilder`. Needs signature change or a separate helper.**
 
-2. **`_any` builtins need real IR bodies, not stubs. `Variable => "any"`.**
-   `add_any`/`sub_any`/etc. currently have empty function bodies. They must have IR implementations
-   (type-dispatch logic: if args are String, concat; else numeric op) so that calls which
-   BuiltinOverloadSelect cannot devirtualize fall through to correct runtime behaviour.
-   With real bodies, `type_suffix_for(DataType::Variable)` must return `"any"` — the current
+2. **~~`_any` builtins need real IR bodies, not stubs.~~** Done — `register_arithmetic_any_builtins()`
+   now builds TypeCheck+Coerce dispatch chains. `Variable => "any"` still needed:
+   `type_suffix_for(DataType::Variable)` must return `"any"` — the current
    `"f64"` is only load-bearing because there is no `add_any` body to call through to.
    `Variable => "f64"` was attempted as a long-term fix but is wrong: it hardcodes a GML
    assumption and poisons String-typed args to Unknown on conflict.
@@ -267,11 +265,9 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    **~~Hard error for called stubs.~~** Done — `validate-called-stubs` pass (RC0005, `Severity::Error`)
    runs after all transforms and flags any `Op::Call` to an unresolved `_any` stub.
 
-   **Specializations table → TS overload declarations.** The TS backend should emit TypeScript
-   overload signatures from the `Function::specializations` table automatically. For each entry
-   `[T, T] → typed_variant`, emit `(a: T, b: T): T` before the general implementation. This gives
-   the TS compiler the same devirtualization information as BuiltinOverloadSelect, recovering
-   correct result types even when BuiltinOverloadSelect fires on the IR side.
+   **~~Specializations table → TS overload declarations.~~** Done — `print_function()` emits
+   overload signatures from `JsFunction::overloads`, populated from the specializations table.
+   Runtime functions with real bodies are no longer filtered from emission.
 
 3. **Parametric FunctionSig `(T, T) → T` for `_any` builtins.**
    `add_any`'s FunctionSig should be `(Type::Template(0), Type::Template(0)) → Type::Template(0)`.
