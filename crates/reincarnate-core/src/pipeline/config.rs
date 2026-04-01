@@ -100,6 +100,9 @@ pub struct PassConfig {
     pub redundant_cast_elimination: bool,
     pub mem2reg: bool,
     pub dead_code_elimination: bool,
+    /// Emit diagnostics for calls to unresolved `_any` stubs that survived
+    /// all transforms (argument types could not be inferred).
+    pub validate_called_stubs: bool,
     /// When enabled, the pipeline repeats all passes until none report changes.
     pub fixpoint: bool,
 }
@@ -117,6 +120,7 @@ impl Default for PassConfig {
             redundant_cast_elimination: true,
             mem2reg: true,
             dead_code_elimination: true,
+            validate_called_stubs: true,
             fixpoint: false,
         }
     }
@@ -136,6 +140,7 @@ impl PassConfig {
     /// - `"redundant-cast-elimination"`
     /// - `"mem2reg"`
     /// - `"dead-code-elimination"`
+    /// - `"validate-called-stubs"`
     /// - `"fixpoint"` — toggles pipeline fixpoint iteration
     ///
     /// Note: `"int-to-bool-promotion"` is an engine-specific pass injected
@@ -163,6 +168,7 @@ impl PassConfig {
             "redundant-cast-elimination" => self.redundant_cast_elimination = false,
             "mem2reg" => self.mem2reg = false,
             "dead-code-elimination" => self.dead_code_elimination = false,
+            "validate-called-stubs" => self.validate_called_stubs = false,
             "fixpoint" => self.fixpoint = false,
             _ => return false,
         }
@@ -362,6 +368,7 @@ pub fn resolve_preset(name: &str, skip_passes: &[&str]) -> Option<(PassConfig, L
                 cfg_simplify: false,
                 redundant_cast_elimination: true,
                 dead_code_elimination: false,
+                validate_called_stubs: true,
                 fixpoint: false,
             },
             LoweringConfig::literal(),

@@ -60,6 +60,10 @@ pub enum RcDiagnostic {
     InferenceNoCallers,
     /// The value was constrained as Equal to another value that is itself Unknown.
     InferenceInheritedUnknown,
+
+    /// A call to a stub function survived all transforms — the stub's argument
+    /// types could not be inferred, so overload selection could not replace it.
+    CalledStub,
 }
 
 impl std::fmt::Display for RcDiagnostic {
@@ -74,6 +78,7 @@ impl std::fmt::Display for RcDiagnostic {
             RcDiagnostic::InferenceUnresolvedDeferred => "RC1003",
             RcDiagnostic::InferenceNoCallers => "RC1004",
             RcDiagnostic::InferenceInheritedUnknown => "RC1005",
+            RcDiagnostic::CalledStub => "RC0005",
         };
         write!(f, "{code}")
     }

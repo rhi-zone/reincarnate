@@ -11,6 +11,7 @@ pub mod int_to_bool;
 pub mod mem2reg;
 pub mod red_cast_elim;
 pub mod util;
+pub mod validate_called_stubs;
 
 pub use builtin_overload_select::BuiltinOverloadSelect;
 pub use cfg_simplify::CfgSimplify;
@@ -23,6 +24,7 @@ pub use inline::Inline;
 pub use int_to_bool::IntToBoolPromotion;
 pub use mem2reg::Mem2Reg;
 pub use red_cast_elim::RedundantCastElimination;
+pub use validate_called_stubs::ValidateCalledStubs;
 
 use crate::pipeline::{PassConfig, PassDescriptor, TransformPipeline};
 
@@ -86,6 +88,11 @@ pub fn all_passes() -> Vec<PassDescriptor> {
             name: "dead-code-elimination",
             factory: || Box::new(DeadCodeElimination),
             config_enabled: |c| c.dead_code_elimination,
+        },
+        PassDescriptor {
+            name: "validate-called-stubs",
+            factory: || Box::new(ValidateCalledStubs),
+            config_enabled: |c| c.validate_called_stubs,
         },
     ]
 }
@@ -199,15 +206,26 @@ mod pipeline_order_tests {
             "rce must be after last constant-folding"
         );
 
-        // DeadCodeElimination must be last.
+        // DeadCodeElimination must be second-to-last.
         let pos_dce = names
             .iter()
             .position(|&n| n == "dead-code-elimination")
             .expect("dead-code-elimination missing");
         assert_eq!(
             pos_dce,
+            names.len() - 2,
+            "dead-code-elimination must be second-to-last"
+        );
+
+        // ValidateCalledStubs must be last.
+        let pos_vcs = names
+            .iter()
+            .position(|&n| n == "validate-called-stubs")
+            .expect("validate-called-stubs missing");
+        assert_eq!(
+            pos_vcs,
             names.len() - 1,
-            "dead-code-elimination must be last"
+            "validate-called-stubs must be last"
         );
 
         // Inline must appear after builtin-overload-select and before dce (run_once).
