@@ -353,10 +353,13 @@ fn type_suffix_for(dt: DataType) -> &'static str {
 /// real IR functions with dispatch bodies — they must NOT have the prefix so
 /// `lower_call` emits them as normal function calls.
 fn arith_callee(op: &str, suffix: &str) -> String {
-    if suffix == "any" {
-        format!("{op}_{suffix}")
-    } else {
-        format!("builtin.{op}_{suffix}")
+    match (op, suffix) {
+        // String "add" is concatenation, not arithmetic.
+        ("add", "str") => "builtin.concat_str".to_string(),
+        // _any variants are real functions with dispatch bodies, not builtins.
+        (_, "any") => format!("{op}_{suffix}"),
+        // Typed variants are builtins inlined to operators.
+        _ => format!("builtin.{op}_{suffix}"),
     }
 }
 
