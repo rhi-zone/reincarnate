@@ -77,7 +77,7 @@ impl Transform for ValidateCalledStubs {
                             line: 0,
                             col: 0,
                             code: DiagnosticCode::Rc(RcDiagnostic::CalledStub),
-                            severity: Severity::Warning,
+                            severity: Severity::Error,
                             message: format!(
                                 "call to unresolved stub `{}` \u{2014} argument types could not be inferred",
                                 fname

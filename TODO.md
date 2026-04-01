@@ -264,9 +264,8 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    semantics, not target-language syntax — a body can't be both. The backend is the right place
    for target-language-specific emit forms.
 
-   **Hard error for called stubs.** Any IR function that has an empty/stub body and is called must
-   be a hard error at emit time. Currently stubs silently fall through to broken call syntax or
-   accidentally match an operator arm. This must be caught before it reaches the backend.
+   **~~Hard error for called stubs.~~** Done — `validate-called-stubs` pass (RC0005, `Severity::Error`)
+   runs after all transforms and flags any `Op::Call` to an unresolved `_any` stub.
 
    **Specializations table → TS overload declarations.** The TS backend should emit TypeScript
    overload signatures from the `Function::specializations` table automatically. For each entry
