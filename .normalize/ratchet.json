@@ -5,7 +5,7 @@
       "path": "crates/reincarnate-core/src/transforms/bool_literal_return.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 155.0
+      "value": 159.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/call_site_flow.rs",
@@ -23,19 +23,19 @@
       "path": "crates/reincarnate-core/src/transforms/cfg_simplify.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 381.0
+      "value": 387.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/const_fold.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 446.0
+      "value": 450.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/constraint_collect.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 350.0
+      "value": 356.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/constraint_solve2.rs",
@@ -53,19 +53,19 @@
       "path": "crates/reincarnate-core/src/transforms/constructor_struct_infer.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 96.0
+      "value": 91.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/coroutine_lower.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 215.0
+      "value": 217.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/dce.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 230.0
+      "value": 236.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/interaction_tests.rs",
@@ -77,25 +77,25 @@
       "path": "crates/reincarnate-core/src/transforms/int_to_bool.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 294.0
+      "value": 304.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/mem2reg.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 354.0
+      "value": 358.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/mod.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 11.0
+      "value": 14.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/red_cast_elim.rs",
       "metric": "complexity",
       "aggregate": "sum",
-      "value": 78.0
+      "value": 82.0
     },
     {
       "path": "crates/reincarnate-core/src/transforms/stress_tests.rs",
@@ -114,6 +114,12 @@
       "metric": "complexity",
       "aggregate": "sum",
       "value": 225.0
+    },
+    {
+      "path": "crates/reincarnate-core/src/transforms/validate_called_stubs.rs",
+      "metric": "complexity",
+      "aggregate": "mean",
+      "value": 3.7
     }
   ]
 }
