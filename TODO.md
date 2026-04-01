@@ -269,6 +269,20 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    overload signatures from `JsFunction::overloads`, populated from the specializations table.
    Runtime functions with real bodies are no longer filtered from emission.
 
+   **`Op::Call { func: FuncId }` — NEXT.** `Op::Call` currently carries a `String` function name.
+   Nothing validates that the name corresponds to a registered function. This caused
+   `builtin.add_str` (nonexistent) to flow through the entire pipeline undetected until TS
+   emitted broken code. `FunctionBuilder::builtin_type_suffix` composed invalid names from
+   type suffixes (`String → "str"` → `builtin.add_str`); the frontend's `arith_callee` had the
+   same bug. Both were patched (2026-04-01), but the root cause is string-based dispatch.
+   Fix: `Op::Call { func: FuncId, args }`. Construction requires a valid FuncId from the
+   module — nonexistent functions are impossible. This is the minimal slice of Phase 9 that
+   eliminates the entire class of "call to nonexistent function" bugs.
+   **Scope:** `Op::Call` definition in `inst.rs`, all `Op::Call` construction sites (frontends,
+   `FunctionBuilder`, `runtime_bodies.rs`, `register_arithmetic_any_builtins`), all `Op::Call`
+   consumers (transforms, constraint collector, TS backend lowering/emission). `FunctionBuilder`
+   needs a `&Module` or registry reference to look up FuncIds at construction time.
+
 3. **Parametric FunctionSig `(T, T) → T` for `_any` builtins.**
    `add_any`'s FunctionSig should be `(Type::Template(0), Type::Template(0)) → Type::Template(0)`.
    The constraint collector instantiates fresh TypeVarIds per call site for each template index,
