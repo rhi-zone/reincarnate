@@ -13,7 +13,7 @@ use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType};
 use datawin::DataWin;
 #[cfg(feature = "checker-typescript")]
 use reincarnate_checker_typescript::TsChecker;
-use reincarnate_core::ir::Module;
+use reincarnate_core::ir::{Module, Terminator};
 use reincarnate_core::pipeline::{
     link_modules, resolve_preset, Backend, BackendInput, CheckSummary, Checker, CheckerInput,
     CheckerOutput, DebugConfig, Diagnostic, DiagnosticCode, Frontend, FrontendInput, PassConfig,
@@ -257,6 +257,22 @@ enum Command {
         /// Validate the runtime config and report any errors.
         #[arg(long)]
         validate: bool,
+    },
+    /// List all stub functions (empty body) in a project's IR module.
+    ListStubs {
+        /// Registry name, path to manifest file, or directory containing reincarnate.json.
+        /// Defaults to searching ancestor directories from the current directory.
+        #[arg(conflicts_with = "manifest")]
+        target: Option<String>,
+        /// Path to the project manifest (legacy flag; prefer positional target).
+        #[arg(long, conflicts_with = "target")]
+        manifest: Option<PathBuf>,
+        /// Only show stubs whose name matches this filter (case-insensitive substring).
+        #[arg(long)]
+        filter: Option<String>,
+        /// Also show whether the stub has a non-empty specializations table.
+        #[arg(long)]
+        show_specializations: bool,
     },
 }
 
@@ -1996,6 +2012,80 @@ fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> 
 }
 
 // ---------------------------------------------------------------------------
+// List-stubs command
+// ---------------------------------------------------------------------------
+
+fn cmd_list_stubs(
+    manifest_path: &Path,
+    filter: Option<&str>,
+    show_specializations: bool,
+) -> Result<()> {
+    let manifest = load_manifest(manifest_path)?;
+    let Some(frontend) = find_frontend(&manifest.engine) else {
+        bail!("no frontend available for engine {:?}", manifest.engine);
+    };
+
+    let input = FrontendInput {
+        source: manifest.source.clone(),
+        engine: manifest.engine.clone(),
+        options: manifest.frontend_options.clone(),
+    };
+    let mut output = frontend.extract(input)?;
+
+    let filter_lower = filter.map(|s| s.to_lowercase());
+
+    let mut total = 0usize;
+    for module in &mut output.modules {
+        module.register_arithmetic_any_builtins();
+
+        for func in module.functions.values() {
+            // A stub: entry block has zero instructions and terminates with Return(None).
+            let entry = &func.blocks[func.entry];
+            let is_stub =
+                entry.insts.is_empty() && matches!(entry.terminator, Terminator::Return(None));
+            if !is_stub {
+                continue;
+            }
+
+            // Apply name filter (case-insensitive substring).
+            if let Some(ref pat) = filter_lower {
+                if !func.name.to_lowercase().contains(pat.as_str()) {
+                    continue;
+                }
+            }
+
+            // Format signature: (ParamType, ParamType) -> ReturnType
+            let params = func
+                .sig
+                .params
+                .iter()
+                .map(|t| format!("{t:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let ret = format!("{:?}", func.sig.return_ty);
+            let sig_str = format!("({params}) -> {ret}");
+
+            if show_specializations && !func.specializations.is_empty() {
+                println!(
+                    "{:<40} {:<40} [{} specializations]",
+                    func.name,
+                    sig_str,
+                    func.specializations.len()
+                );
+            } else {
+                println!("{:<40} {}", func.name, sig_str);
+            }
+
+            total += 1;
+        }
+    }
+
+    println!("---");
+    println!("Total: {total} stubs");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Stress command
 // ---------------------------------------------------------------------------
 
@@ -2926,5 +3016,14 @@ fn main() -> Result<()> {
             cmd_inspect_runtime(&path, sig.as_deref(), *list_sigs, *validate)
         }
         Command::GmlDocs { function } => cmd_gml_docs(function),
+        Command::ListStubs {
+            target,
+            manifest,
+            filter,
+            show_specializations,
+        } => {
+            let path = resolve_target(target.as_deref(), manifest.as_deref())?;
+            cmd_list_stubs(&path, filter.as_deref(), *show_specializations)
+        }
     }
 }

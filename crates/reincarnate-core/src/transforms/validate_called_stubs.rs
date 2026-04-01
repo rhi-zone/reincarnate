@@ -128,10 +128,45 @@ mod tests {
         module
     }
 
+    /// Build a module with a manually created empty stub that has specializations,
+    /// and a function that calls that stub.
+    fn make_module_with_manual_stub() -> Module {
+        let sig = FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        // Create a caller that invokes the stub.
+        let mut fb = FunctionBuilder::new("test_fn", sig.clone(), Visibility::Private);
+        let a = fb.param(0);
+        let v = fb.call("test.stub_func", &[a], Type::Unknown);
+        fb.ret(Some(v));
+        let func = fb.build();
+
+        let mut mb = ModuleBuilder::new("test");
+        mb.add_function(func);
+        let mut module = mb.build();
+
+        // Register a manual empty stub with specializations (simulating an
+        // unresolved _any-style function).
+        let stub_id = module.register_runtime(
+            "test.stub_func",
+            FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::Unknown,
+                ..Default::default()
+            },
+        );
+        // Add a fake specialization entry so the stub detection triggers.
+        module.functions[stub_id]
+            .specializations
+            .insert(vec![Type::Float(64)], stub_id);
+        module
+    }
+
     #[test]
     fn test_calls_to_stub_produce_diagnostic() {
-        // Call builtin.add_any with Unknown args — overload select won't resolve it.
-        let module = make_module_with_func("add", &[Type::Unknown, Type::Unknown]);
+        let module = make_module_with_manual_stub();
         let result = ValidateCalledStubs.apply(module, None).unwrap();
 
         let called_stub_diags: Vec<_> = result
@@ -142,10 +177,29 @@ mod tests {
             .collect();
         assert!(
             !called_stub_diags.is_empty(),
-            "expected CalledStub diagnostic for unresolved builtin.add_any"
+            "expected CalledStub diagnostic for unresolved stub"
         );
-        assert!(called_stub_diags[0].message.contains("builtin.add_any"));
+        assert!(called_stub_diags[0].message.contains("test.stub_func"));
         assert!(!result.changed);
+    }
+
+    #[test]
+    fn test_any_builtins_with_real_bodies_no_diagnostic() {
+        // builtin.add_any now has a real dispatch body, so it should NOT be
+        // detected as a stub even when called with Unknown args.
+        let module = make_module_with_func("add", &[Type::Unknown, Type::Unknown]);
+        let result = ValidateCalledStubs.apply(module, None).unwrap();
+
+        let called_stub_diags: Vec<_> = result
+            .module
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == DiagnosticCode::Rc(RcDiagnostic::CalledStub))
+            .collect();
+        assert!(
+            called_stub_diags.is_empty(),
+            "builtin.add_any has a real body — should not produce CalledStub diagnostic"
+        );
     }
 
     #[test]
