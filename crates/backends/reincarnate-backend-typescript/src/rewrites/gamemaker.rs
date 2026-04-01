@@ -2090,6 +2090,7 @@ mod tests {
             has_rest_param: false,
             num_capture_params: 0,
             capture_modes: vec![],
+            overloads: vec![],
         };
         coerce_bool_args(&mut func, &sigs);
         // The 2nd arg should now be Cast(Cmp, Float(64), Coerce)
@@ -2149,6 +2150,7 @@ mod tests {
             has_rest_param: false,
             num_capture_params: 0,
             capture_modes: vec![],
+            overloads: vec![],
         };
         coerce_bool_args(&mut func, &sigs);
         // The 2nd arg (ternary) should now be wrapped with Number()

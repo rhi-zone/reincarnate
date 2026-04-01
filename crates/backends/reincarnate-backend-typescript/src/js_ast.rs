@@ -302,4 +302,10 @@ pub struct JsFunction {
     /// `num_capture_params` entries in `params`).  Empty when there are
     /// no captures.
     pub capture_modes: Vec<reincarnate_core::ir::CaptureMode>,
+    /// TypeScript overload signatures for polymorphic `_any` builtins.
+    ///
+    /// Each entry is `(param_types, return_type)` for one typed specialization.
+    /// Param names come from the implementation's `params` list.
+    /// Populated from `Function::specializations` during emission.
+    pub overloads: Vec<(Vec<Type>, Type)>,
 }

@@ -9,7 +9,8 @@ use reincarnate_core::entity::PrimaryMap;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{
-    structurize, ClassDef, Constant, FuncId, Function, MethodKind, Module, StructDef, Type, TypeId,
+    structurize, ClassDef, Constant, FuncId, Function, MethodKind, Module, StructDef, Terminator,
+    Type, TypeId,
 };
 use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, RuntimeConfig};
@@ -103,15 +104,55 @@ pub(super) fn group_by_class(module: &Module) -> (Vec<ClassGroup>, Vec<FuncId>) 
 
     // Exclude runtime stubs registered via Module::register_runtime — they are
     // IR-only entries used by the constraint collector and must not be emitted
-    // as TypeScript function declarations.
+    // as TypeScript function declarations.  Runtime functions that have real
+    // bodies (non-stub) are allowed through so they can be emitted normally.
     let runtime_ids: HashSet<FuncId> = module.runtime_registry.values().copied().collect();
     let free: Vec<FuncId> = module
         .functions
         .keys()
-        .filter(|fid| !claimed.contains(fid) && !runtime_ids.contains(fid))
+        .filter(|fid| {
+            if claimed.contains(fid) {
+                return false;
+            }
+            if runtime_ids.contains(fid) {
+                // Only filter runtime functions that are stubs (empty body).
+                let func = &module.functions[*fid];
+                let is_stub = func.blocks.values().next().is_some_and(|entry| {
+                    entry.insts.is_empty() && matches!(entry.terminator, Terminator::Return(None))
+                });
+                return !is_stub;
+            }
+            true
+        })
         .collect();
 
     (groups, free)
+}
+
+/// Collect overload signatures from a function's `specializations` table.
+///
+/// Returns `(param_types, return_type)` pairs suitable for emitting TypeScript
+/// overload declarations.  Each entry's return type is taken from the
+/// specialized variant's IR signature.
+pub(super) fn collect_overloads(
+    functions: &reincarnate_core::entity::PrimaryMap<FuncId, Function>,
+    fid: FuncId,
+) -> Vec<(Vec<Type>, Type)> {
+    let func = &functions[fid];
+    if func.specializations.is_empty() {
+        return vec![];
+    }
+    let mut overloads: Vec<(Vec<Type>, Type)> = func
+        .specializations
+        .iter()
+        .map(|(arg_types, &target_fid)| {
+            let ret_ty = functions[target_fid].sig.return_ty.clone();
+            (arg_types.clone(), ret_ty)
+        })
+        .collect();
+    // Sort for deterministic output.
+    overloads.sort_by(|a, b| format!("{:?}", a.0).cmp(&format!("{:?}", b.0)));
+    overloads
 }
 
 // ---------------------------------------------------------------------------
@@ -159,6 +200,7 @@ pub(super) fn emit_functions(
         if module.functions[id].method_kind != MethodKind::Closure {
             let no_stateful = BTreeSet::new();
             let no_free_fns = HashSet::new();
+            let overloads = collect_overloads(&module.functions, id);
             emit_function(
                 &mut module.functions[id],
                 &module.types,
@@ -176,6 +218,7 @@ pub(super) fn emit_functions(
                 runtime_config,
                 unique_static_fields,
                 &name_map,
+                overloads,
                 debug,
                 out,
                 diagnostics,
@@ -206,6 +249,7 @@ pub(super) fn emit_function(
     runtime_config: Option<&RuntimeConfig>,
     unique_static_fields: &HashMap<String, String>,
     name_map: &HashMap<String, String>,
+    overloads: Vec<(Vec<Type>, Type)>,
     debug: &DebugConfig,
     out: &mut String,
     diagnostics: &mut Vec<Diagnostic>,
@@ -235,6 +279,7 @@ pub(super) fn emit_function(
     // downstream type-processing (ts_type, rename_type_with_map, etc.)
     // only see the string-keyed Struct form.
     crate::types::resolve_js_function_types(&mut js_func, module_types);
+    js_func.overloads = overloads;
     // Structural passes that depend on Binary/Unary AST patterns.
     // Run before engine-specific rewrites so patterns are still intact.
     crate::ast_passes::rewrite_compound_assign(&mut js_func.body);

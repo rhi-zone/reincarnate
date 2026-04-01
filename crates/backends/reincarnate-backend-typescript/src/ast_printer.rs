@@ -292,13 +292,30 @@ pub fn print_function(
     MODULE_TYPES.with(|cell| cell.set(module_types as *const _));
     let vis = visibility_prefix(js.visibility);
     let star = if js.is_generator { "*" } else { "" };
+    let sanitized_name = sanitize_ident(&js.name);
+
+    // Emit TypeScript overload signatures before the implementation.
+    for (param_types, ret_ty) in &js.overloads {
+        let overload_params: Vec<String> = js
+            .params
+            .iter()
+            .zip(param_types.iter())
+            .map(|((name, _), ty)| format!("{}: {}", sanitize_ident(name), print_type(ty)))
+            .collect();
+        let _ = writeln!(
+            out,
+            "{vis}function {sanitized_name}({}): {};",
+            overload_params.join(", "),
+            print_type(ret_ty),
+        );
+    }
+
     let params = print_params(&js.params, &js.param_defaults, js.has_rest_param, false);
     let (ret_ty, bare_undefined) = effective_return_type(js);
 
     let _ = writeln!(
         out,
-        "{vis}function{star} {}({params}): {ret_ty} {{",
-        sanitize_ident(&js.name),
+        "{vis}function{star} {sanitized_name}({params}): {ret_ty} {{",
     );
 
     if let Some(pre) = preamble {

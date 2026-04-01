@@ -343,6 +343,7 @@ pub fn emit_module_to_string(
             .collect();
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
+                let overloads = class::collect_overloads(&module.functions, fid);
                 emit_function(
                     &mut module.functions[fid],
                     &module.types,
@@ -360,6 +361,7 @@ pub fn emit_module_to_string(
                     runtime_config,
                     &class_meta.unique_static_field_map,
                     &name_map,
+                    overloads,
                     debug,
                     &mut out,
                     diagnostics,
@@ -1244,6 +1246,7 @@ fn emit_free_functions_file(
     let no_sys_aliases = BTreeMap::new();
     for &fid in free_funcs {
         if module.functions[fid].method_kind != MethodKind::Closure {
+            let overloads = class::collect_overloads(&module.functions, fid);
             emit_function(
                 &mut module.functions[fid],
                 &module.types,
@@ -1261,6 +1264,7 @@ fn emit_free_functions_file(
                 runtime_config,
                 &class_meta.unique_static_field_map,
                 &name_map,
+                overloads,
                 debug,
                 &mut out,
                 diagnostics,

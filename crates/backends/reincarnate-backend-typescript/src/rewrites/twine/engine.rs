@@ -294,6 +294,7 @@ mod tests {
             has_rest_param: false,
             num_capture_params: 0,
             capture_modes: vec![],
+            overloads: vec![],
         }
     }
 
@@ -661,6 +662,7 @@ mod tests {
             has_rest_param: false,
             num_capture_params: 0,
             capture_modes: vec![],
+            overloads: vec![],
         }
     }
 
