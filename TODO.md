@@ -3634,6 +3634,16 @@ From `bun scripts/gml-manual-sigs.ts --diff` vs GameMaker Manual.
 
 
 
+## Future Backends (POST-PHASE-9 BACKLOG)
+
+After all rewrite phases are complete and the IR is clean.
+
+- **`reincarnate-backend-love2d`** — Lua + Love2D target. Validates cross-language IR design (different calling conventions, no classes, `for` loops over iterables). Shared Lua AST crate (`reincarnate-ast-lua`) if other Lua targets follow (PICO-8, plain LuaJIT).
+- **`reincarnate-backend-bevy`** — Rust + Bevy target. Bevy's ECS architecture maps to GML's object/instance model. Strongest validation of "no TypeScript assumptions in IR" — Rust type system will reject any emit-form leakage immediately.
+- **`reincarnate-backend-godot`** — GDScript or C# target via Godot. Natural GML migration path given similar architecture (nodes/objects, signals, game loop).
+
+---
+
 ### Update CLAUDE.md — corrections as documentation lag (2026-03-29)
 
 Add to the corrections section:
