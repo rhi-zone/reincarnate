@@ -3641,6 +3641,7 @@ After all rewrite phases are complete and the IR is clean.
 - **`reincarnate-backend-love2d`** — Lua + Love2D target. Validates cross-language IR design (different calling conventions, no classes, `for` loops over iterables). Shared Lua AST crate (`reincarnate-ast-lua`) if other Lua targets follow (PICO-8, plain LuaJIT).
 - **`reincarnate-backend-bevy`** — Rust + Bevy target. Strongest validation of "no TypeScript assumptions in IR" — Rust's type system will reject any emit-form leakage immediately.
 - **`reincarnate-backend-godot`** — GDScript or C# target via Godot. Natural GML migration path given similar architecture (nodes/objects, signals, game loop).
+- **`reincarnate-backend-android`** — Kotlin/Java target for native Android. Eliminates WebView dependency for JoiPlay-class deployments; pairs naturally with Love2D (Android is a first-class Love2D target).
 
 ---
 
