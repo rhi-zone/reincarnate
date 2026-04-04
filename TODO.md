@@ -227,8 +227,10 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    **BuiltinOverloadSelect is devirtualization, not inference.** It replaces `add_any(a, b)` —
    a real runtime dispatch — with the inlined operator form (`a + b` via `add_f64`) when static
    types are known. The dedicated typed variants exist for performance (no runtime type check),
-   not correctness. BuiltinOverloadSelect stays in the pipeline as the devirtualization pass.
-   Move it to the GML frontend's extra_passes (Law 2 — it is GML-specific).
+   not correctness. BuiltinOverloadSelect stays in core — the pass logic (replace calls to
+   functions with a `specializations` table once arg types are concrete) is engine-agnostic.
+   The GML-specific part is the data: `register_arithmetic_any_builtins` populates
+   `Function::specializations` in the GML frontend. Pass in core, data in frontend — no Law 2 violation.
 
    **Core AST → backend AST migration: DONE.** (2026-04-01) Complete migration:
    1. Moved `rewrite_compound_assign`, `rewrite_post_increment`, `promote_while_to_for` to
