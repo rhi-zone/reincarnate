@@ -2,7 +2,7 @@
 
 ## Goal
 
-Reincarnate decompiles legacy game binaries into working, type-safe, high-quality code. The emitted code is the artifact — it must be indistinguishable from a skilled human port. The bar is not "compiles" or "runs."
+Reincarnate translates games from any source engine into working, type-safe, high-quality code on any target platform — for preservation, migration, and cross-platform deployment. The emitted code is the artifact — it must be indistinguishable from a skilled human port. The bar is not "compiles" or "runs."
 
 **Never suggest bundling an existing interpreter.** inkjs, Parchment, renpyweb, libqsp-WASM are "quick deploy" alternatives — not the goal.
 
