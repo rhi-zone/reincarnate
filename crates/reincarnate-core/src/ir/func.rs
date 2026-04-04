@@ -48,7 +48,6 @@ pub enum IntrinsicKind {
     GameMakerGlobalSet,
     GameMakerArgumentGet,
     GameMakerDebugBreak,
-    GameMakerArrayLocalSet,
 }
 
 impl IntrinsicKind {
@@ -72,7 +71,6 @@ impl IntrinsicKind {
             IntrinsicKind::GameMakerGlobalSet => ("GameMaker.Global", "set"),
             IntrinsicKind::GameMakerArgumentGet => ("GameMaker.Argument", "get"),
             IntrinsicKind::GameMakerDebugBreak => ("GameMaker.Debug", "break"),
-            IntrinsicKind::GameMakerArrayLocalSet => ("GameMaker.Instance", "arrayLocalSet"),
         }
     }
 

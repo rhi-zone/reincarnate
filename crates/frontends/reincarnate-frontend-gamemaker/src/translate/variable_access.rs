@@ -789,11 +789,8 @@ pub(super) fn translate_pop(
                             let ty = fb.fresh_var();
                             let arr = fb.load(slot, ty);
                             let call_ty = fb.fresh_var();
-                            let result = fb.call_named(
-                                "GameMaker.Instance.arrayLocalSet",
-                                &[arr, dim1, value],
-                                call_ty,
-                            );
+                            let result =
+                                fb.call_named("arrayLocalSet", &[arr, dim1, value], call_ty);
                             fb.store(slot, result);
                         }
                     } else if ctx.has_self {

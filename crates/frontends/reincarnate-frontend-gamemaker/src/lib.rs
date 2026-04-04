@@ -1485,15 +1485,4 @@ pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module) {
         IntrinsicKind::GameMakerDebugBreak,
         None,
     );
-    // GameMaker.Instance.arrayLocalSet.
-    module.register_runtime_intrinsic(
-        "GameMaker.Instance.arrayLocalSet",
-        FunctionSig {
-            params: vec![Type::Unknown, Type::Float(64), Type::Unknown],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        },
-        IntrinsicKind::GameMakerArrayLocalSet,
-        None,
-    );
 }
