@@ -136,7 +136,12 @@ pub fn lower_function_linear(
     static EMPTY: std::sync::OnceLock<PrimaryMap<TypeId, TypeDecl>> = std::sync::OnceLock::new();
     let module_types = module_types.unwrap_or_else(|| EMPTY.get_or_init(PrimaryMap::new));
     let linear = linearize(func, shape);
-    let rctx = resolve(func, &linear, &config.scope_lookup_systems);
+    let rctx = resolve(
+        func,
+        &linear,
+        &config.scope_lookup_systems,
+        &config.pure_fids,
+    );
     let mut ctx = EmitCtx::new(func, &rctx, config, module_types);
 
     let mut body = ctx.emit_stmts(&linear);
@@ -235,11 +240,12 @@ pub fn lower_function_linear(
 // -----------------------------------------------------------------------
 
 /// Whether an instruction is pure enough to defer for inlining.
-fn is_deferrable(op: &Op) -> bool {
-    // Builtin arithmetic/logic calls (prefixed "builtin.") are pure — they
-    // map to native operators in the backend and carry no side effects.
-    if let Op::Call { func, .. } = op {
-        if func.starts_with("builtin.") {
+fn is_deferrable(op: &Op, pure_fids: &std::collections::HashSet<crate::ir::func::FuncId>) -> bool {
+    // Builtin arithmetic/logic calls are pure — they map to native operators
+    // in the backend and carry no side effects.  The caller provides the set
+    // of pure FuncIds (registry entries whose names start with "builtin.").
+    if let Op::Call { func: fid, .. } = op {
+        if pure_fids.contains(fid) {
             return true;
         }
     }

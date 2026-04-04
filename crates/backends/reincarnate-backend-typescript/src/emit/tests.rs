@@ -32,6 +32,7 @@ fn simple_add_function() {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let a = fb.param(0);
         let b = fb.param(1);
         let sum = fb.add(a, b);
@@ -255,25 +256,34 @@ fn no_runtime_import_without_system_calls() {
 #[test]
 fn constants_all_types() {
     let out = build_and_emit(|mb| {
+        mb.register_runtime(
+            "use_val",
+            FunctionSig {
+                params: vec![reincarnate_core::ir::Type::Unknown],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let sig = FunctionSig {
             params: vec![],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("constants", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         // Each constant is passed to a call so it actually appears in output.
         let a = fb.const_null();
-        fb.call("use_val", &[a], Type::Void);
+        fb.call_named("use_val", &[a], Type::Void);
         let b = fb.const_bool(true);
-        fb.call("use_val", &[b], Type::Void);
+        fb.call_named("use_val", &[b], Type::Void);
         let c = fb.const_bool(false);
-        fb.call("use_val", &[c], Type::Void);
+        fb.call_named("use_val", &[c], Type::Void);
         let d = fb.const_int(42, 64);
-        fb.call("use_val", &[d], Type::Void);
+        fb.call_named("use_val", &[d], Type::Void);
         let e = fb.const_float(3.125);
-        fb.call("use_val", &[e], Type::Void);
+        fb.call_named("use_val", &[e], Type::Void);
         let f = fb.const_string("hello \"world\"\nnewline");
-        fb.call("use_val", &[f], Type::Void);
+        fb.call_named("use_val", &[f], Type::Void);
         fb.ret(None);
         mb.add_function(fb.build());
     });
@@ -293,22 +303,31 @@ fn constants_all_types() {
 #[test]
 fn array_and_struct_init() {
     let out = build_and_emit(|mb| {
+        mb.register_runtime(
+            "use_val",
+            FunctionSig {
+                params: vec![reincarnate_core::ir::Type::Unknown],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let sig = FunctionSig {
             params: vec![],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("init", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
 
         let a = fb.const_int(1, 64);
         let b = fb.const_int(2, 64);
         let arr = fb.array_init(&[a, b], Type::Int(64));
-        fb.call("use_val", &[arr], Type::Void);
+        fb.call_named("use_val", &[arr], Type::Void);
 
         let x = fb.const_float(10.0);
         let y = fb.const_float(20.0);
         let obj = fb.struct_init("Point", vec![("x".into(), x), ("y".into(), y)]);
-        fb.call("use_val", &[obj], Type::Void);
+        fb.call_named("use_val", &[obj], Type::Void);
 
         fb.ret(None);
         mb.add_function(fb.build());
@@ -507,6 +526,7 @@ fn emit_for_loop() {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("for_loop", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
 
         let (header, header_vals) = fb.create_block_with_params(&[Type::Int(64)]);
         let body = fb.create_block();
@@ -1785,6 +1805,7 @@ fn binop_add_strips_scope_operand() {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let x = fb.param(0);
         let name = fb.const_string("sin");
         // Scope lookup typed as Float(64) — simulates a resolved coercion result.
@@ -2153,6 +2174,7 @@ fn if_else_flip_unwraps_not_instead_of_double_negating() {
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let cond = fb.param(0);
         let not_cond = fb.not(cond);
 

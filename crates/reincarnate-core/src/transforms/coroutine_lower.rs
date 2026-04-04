@@ -870,9 +870,9 @@ fn rewrite_callers(
                                 .insert(pos, null_inst_id);
                         }
 
-                        // Replace CoroutineResume with Call.
+                        // Replace CoroutineResume with Call to the resume function.
                         module.functions[func_id].insts[inst_id].op = Op::Call {
-                            func: func_name.to_string(),
+                            func: coroutine_func_id,
                             args: vec![coroutine_val, null_val],
                         };
                     }
@@ -1270,11 +1270,18 @@ mod tests {
         let (module, _) = apply_lowering(module);
 
         // The caller should now have a Call instead of CoroutineResume.
+        // Find the FuncId for "gen" in the result module.
+        let gen_fid = module
+            .functions
+            .iter()
+            .find(|(_, f)| f.name == "gen")
+            .map(|(id, _)| id)
+            .expect("gen function must exist");
         let caller = &module.functions[caller_fid];
         let has_call = caller
             .insts
             .values()
-            .any(|inst| matches!(&inst.op, Op::Call { func, .. } if func == "gen"));
+            .any(|inst| matches!(&inst.op, Op::Call { func, .. } if *func == gen_fid));
         assert!(has_call, "caller should have Call to gen");
         let has_resume = caller
             .insts

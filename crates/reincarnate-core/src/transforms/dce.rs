@@ -119,10 +119,14 @@ fn find_reachable_blocks(func: &Function) -> HashSet<BlockId> {
 }
 
 /// Returns true if the instruction has side effects and must be kept.
-fn has_side_effects(op: &Op) -> bool {
+///
+/// `pure_fids` is the set of `FuncId`s for pure builtin functions (those whose
+/// names start with `"builtin."`). Such calls have no side effects and can be
+/// eliminated if their result is unused.
+fn has_side_effects(op: &Op, pure_fids: &HashSet<FuncId>) -> bool {
     match op {
-        // Builtin arithmetic/logic ops are pure — no side effects.
-        Op::Call { func, .. } if func.starts_with("builtin.") => false,
+        // Pure builtin arithmetic/logic ops — no side effects.
+        Op::Call { func: fid, .. } if pure_fids.contains(fid) => false,
         Op::Yield(_)
             // Mutation
             | Op::Store { .. }
@@ -142,7 +146,7 @@ fn has_side_effects(op: &Op) -> bool {
 
 /// Phase 3 & 4: Mark live instructions and rewrite the function.
 /// Returns true if any changes were made.
-fn eliminate_dead_code(func: &mut Function) -> bool {
+fn eliminate_dead_code(func: &mut Function, pure_fids: &HashSet<FuncId>) -> bool {
     // Phase 1: Simplify constant branches.
     simplify_constant_branches(func);
 
@@ -169,7 +173,7 @@ fn eliminate_dead_code(func: &mut Function) -> bool {
     // Seed with side-effectful instructions in reachable blocks.
     for &block_id in &reachable.iter().copied().collect::<Vec<_>>() {
         for &inst_id in &func.blocks[block_id].insts {
-            if has_side_effects(&func.insts[inst_id].op) && live.insert(inst_id) {
+            if has_side_effects(&func.insts[inst_id].op, pure_fids) && live.insert(inst_id) {
                 worklist.push_back(inst_id);
             }
         }
@@ -433,12 +437,21 @@ impl Transform for DeadCodeElimination {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        // Build set of pure builtin FuncIds — functions whose names start with "builtin.".
+        // These have no side effects and can be dead-code-eliminated when unused.
+        let pure_fids: HashSet<FuncId> = module
+            .runtime_registry
+            .iter()
+            .filter(|(name, _)| name.starts_with("builtin."))
+            .map(|(_, &fid)| fid)
+            .collect();
+
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
-            if eliminate_dead_code(&mut module.functions[func_id]) {
+            if eliminate_dead_code(&mut module.functions[func_id], &pure_fids) {
                 changed_funcs.insert(func_id);
             }
         }
@@ -454,18 +467,27 @@ impl Transform for DeadCodeElimination {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
     use crate::ir::inst::Terminator;
     use crate::ir::ty::FunctionSig;
-    use crate::ir::{FuncId, Type, Visibility};
+    use crate::ir::{Type, Visibility};
 
-    fn apply_dce(func: Function) -> Function {
+    fn apply_dce(func: Function) -> (Function, crate::ir::Module) {
         let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
+        let fid = mb.add_function(func);
         let module = mb.build();
         let result = DeadCodeElimination.apply(module, None).unwrap();
-        result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)].clone()
+        let func = result.module.functions[fid].clone();
+        (func, result.module)
+    }
+
+    /// Create a FunctionBuilder with the core registry pre-installed.
+    fn fb_with_registry(name: &str, sig: FunctionSig) -> FunctionBuilder {
+        let mb = ModuleBuilder::new("test");
+        let registry = mb.runtime_registry().clone();
+        let mut fb = FunctionBuilder::new(name, sig, Visibility::Private);
+        fb.set_registry(registry);
+        fb
     }
 
     /// Count non-empty instructions in a block.
@@ -481,13 +503,13 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(1, 64);
         let b = fb.const_int(2, 64);
         let _sum = fb.add(a, b); // unused
         fb.ret(None);
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         // Consts and add are dead; return is in terminator.
         let entry = func.entry;
         assert_eq!(block_inst_count(&func, entry), 0);
@@ -505,31 +527,46 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(1, 64);
         let b = fb.const_int(2, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         // const 1, const 2, add — all live. Return is in terminator.
         let entry = func.entry;
         assert_eq!(block_inst_count(&func, entry), 3);
     }
 
-    /// Side effects are kept: Call with unused result is preserved.
+    /// Side effects are kept: Call to a non-builtin function with unused result is preserved.
     #[test]
     fn side_effects_kept() {
+        // Pre-register a non-builtin function (no "builtin." prefix) so we have a FuncId.
+        let mut mb = ModuleBuilder::new("test");
+        let side_effect_fid = mb.register_runtime(
+            "side_effect",
+            FunctionSig {
+                params: vec![],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
+
         let sig = FunctionSig {
             params: vec![],
             return_ty: Type::Void,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
-        let _call_result = fb.call("side_effect", &[], Type::Void);
+        // Call a non-builtin — it has side effects and must be kept.
+        let _call_result = fb.call(side_effect_fid, &[], Type::Void);
         fb.ret(None);
 
-        let func = apply_dce(fb.build());
+        let fid = mb.add_function(fb.build());
+        let module = mb.build();
+        let result = DeadCodeElimination.apply(module, None).unwrap();
+        let func = result.module.functions[fid].clone();
         // Call kept. Return is in terminator.
         let entry = func.entry;
         assert_eq!(block_inst_count(&func, entry), 1);
@@ -543,12 +580,12 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(1, 64);
         let _b = fb.add(a, a); // unused chain
         fb.ret(None);
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         let entry = func.entry;
         assert_eq!(block_inst_count(&func, entry), 0);
     }
@@ -561,7 +598,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
 
         let then_block = fb.create_block();
         let else_block = fb.create_block();
@@ -579,7 +616,7 @@ mod tests {
         let two = fb.const_int(2, 64);
         fb.ret(Some(two));
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
 
         // Entry's terminator should be Br (simplified from BrIf).
         let entry = func.entry;
@@ -606,7 +643,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.param(0);
         let b = fb.param(1);
         let sum = fb.add(a, b);
@@ -628,7 +665,7 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let _a = fb.const_int(1, 64);
         let _b = fb.const_int(2, 64);
         fb.ret(None);
@@ -643,7 +680,7 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
 
         let dead_block = fb.create_block();
 
@@ -655,7 +692,7 @@ mod tests {
         let a = fb.const_int(42, 64);
         fb.ret(Some(a));
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         assert_eq!(block_inst_count(&func, dead_block), 0);
         assert!(func.blocks[dead_block].params.is_empty());
     }
@@ -670,11 +707,11 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let _dead = fb.const_int(99, 64); // unused
         fb.ret(None);
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         let entry = func.entry;
         assert_eq!(block_inst_count(&func, entry), 0);
         assert!(matches!(
@@ -691,13 +728,13 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let p = fb.param(0);
         let ptr = fb.alloc(Type::Int(64));
         fb.store(ptr, p);
         fb.ret(None);
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         let entry = func.entry;
         let has_store = func.blocks[entry]
             .insts
@@ -716,7 +753,7 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let mut v = fb.const_int(1, 64);
         for _ in 0..9 {
             let next = fb.add(v, v);
@@ -725,7 +762,7 @@ mod tests {
         // None of the chain feeds the return.
         fb.ret(None);
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         let entry = func.entry;
         assert_eq!(
             block_inst_count(&func, entry),
@@ -742,25 +779,25 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let p = fb.param(0);
         let c = fb.const_int(2, 64);
         let live_use = fb.add(p, c); // feeds return
         let _dead_use = fb.mul(p, c); // unused
         fb.ret(Some(live_use));
 
-        let func = apply_dce(fb.build());
+        let (func, module) = apply_dce(fb.build());
         let entry = func.entry;
         // const 2, add, return should survive. mul should be removed.
         let has_mul = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: f, .. } if f.starts_with("builtin.mul")));
+            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.mul")));
         assert!(!has_mul, "dead mul should be eliminated");
         let has_add = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: f, .. } if f.starts_with("builtin.add")));
+            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.add")));
         assert!(has_add, "live add should be preserved");
     }
 
@@ -774,7 +811,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let cond = fb.param(0);
         let val = fb.const_int(42, 64);
 
@@ -799,7 +836,7 @@ mod tests {
 
         fb.ret(Some(current_val));
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         // The final merge param should still exist and feed the Return.
         let has_return_val = func
             .blocks
@@ -827,11 +864,11 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let _result = fb.system_call("Engine", "init", &[], Type::Void);
         fb.ret(None);
 
-        let func = apply_dce(fb.build());
+        let (func, _module) = apply_dce(fb.build());
         let entry = func.entry;
         let has_syscall = func.blocks[entry]
             .insts

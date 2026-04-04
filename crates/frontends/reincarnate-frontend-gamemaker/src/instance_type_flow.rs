@@ -63,13 +63,21 @@ impl Transform for GmlInstanceTypeFlow {
             .iter()
             .map(|(name, &id)| (name.clone(), id))
             .collect();
+
+        // Collect FuncIds for instance-create functions and builtin.not_bool.
+        let instance_create_fids: HashSet<FuncId> = INSTANCE_CREATE_FUNCS
+            .iter()
+            .filter_map(|name| module.runtime_registry.get(*name).copied())
+            .collect();
+        let not_bool_fid: Option<FuncId> = module.runtime_registry.get("builtin.not_bool").copied();
+
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
             let func = &mut module.functions[func_id];
-            if self.process_function(func, &type_ids) {
+            if self.process_function(func, &type_ids, &instance_create_fids, not_bool_fid) {
                 changed_funcs.insert(func_id);
             }
         }
@@ -89,6 +97,8 @@ impl GmlInstanceTypeFlow {
         &self,
         func: &mut Function,
         type_ids: &std::collections::HashMap<String, reincarnate_core::ir::TypeId>,
+        instance_create_fids: &HashSet<FuncId>,
+        not_bool_fid: Option<FuncId>,
     ) -> bool {
         let mut changed = false;
 
@@ -121,11 +131,11 @@ impl GmlInstanceTypeFlow {
             .insts
             .iter()
             .filter_map(|(_, inst)| {
-                let (func_name, args) = match &inst.op {
-                    Op::Call { func, args } => (func.as_str(), args.as_slice()),
+                let (callee_fid, args) = match &inst.op {
+                    Op::Call { func, args } => (*func, args.as_slice()),
                     _ => return None,
                 };
-                if !INSTANCE_CREATE_FUNCS.contains(&func_name) {
+                if !instance_create_fids.contains(&callee_fid) {
                     return None;
                 }
                 let result_vid = inst.result?;
@@ -196,9 +206,10 @@ impl GmlInstanceTypeFlow {
                 func.insts[inst_id].op = type_check_op;
                 func.insts[inst_id].result = Some(typecheck_vid);
 
+                let not_bool = not_bool_fid.expect("builtin.not_bool must be registered");
                 let not_inst_id = func.insts.push(Inst {
                     op: Op::Call {
-                        func: "builtin.not_bool".into(),
+                        func: not_bool,
                         args: vec![typecheck_vid],
                     },
                     result: original_vid,

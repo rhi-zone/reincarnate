@@ -605,9 +605,8 @@ pub fn collect_function(
     };
 
     // -----------------------------------------------------------------------
-    // Build function name → FunctionSig map for Call/MethodCall constraints.
-    // Includes registered builtins (e.g. "builtin.add_f64") so that typed
-    // arithmetic calls receive proper constraints from their declared sigs.
+    // Build function name → FunctionSig map for MethodCall constraints.
+    // MethodCall uses a string method name so a name-keyed map is still needed.
     // -----------------------------------------------------------------------
     let func_sigs: HashMap<&str, &FunctionSig> = module
         .functions
@@ -615,17 +614,17 @@ pub fn collect_function(
         .map(|fid| (module.func_name(fid), &module.functions[fid].sig))
         .collect();
 
-    // Intrinsic Op::Call rule lookup: call name → type rule.
+    // Intrinsic Op::Call rule lookup: call FuncId → type rule.
     // Intrinsic functions registered via `register_runtime_intrinsic` carry a
     // `type_rule` on the Function rather than in system_call_type_rules.
-    let intrinsic_type_rules: HashMap<&str, &SystemCallTypeRule> = module
+    let intrinsic_type_rules: HashMap<FuncId, &SystemCallTypeRule> = module
         .runtime_registry
-        .iter()
-        .filter_map(|(name, &fid)| {
+        .values()
+        .filter_map(|&fid| {
             module.functions[fid]
                 .type_rule
                 .as_ref()
-                .map(|rule| (name.as_str(), rule))
+                .map(|rule| (fid, rule))
         })
         .collect();
 
@@ -790,10 +789,11 @@ pub fn collect_function(
                 // Also apply GlobalStore / ResolveGlobalType / ResolveInstanceField rules
                 // for registered intrinsic calls (Phase 3a: formerly Op::SystemCall).
                 Op::Call {
-                    func: callee_name,
+                    func: callee_fid,
                     args,
                 } => {
-                    if let Some(sig) = func_sigs.get(callee_name.as_str()) {
+                    if let Some(callee) = module.functions.get(*callee_fid) {
+                        let sig = &callee.sig;
                         // Result ← callee return type.
                         if let Some(rv) = result_var.as_ref() {
                             if is_concrete(&sig.return_ty) {
@@ -818,7 +818,7 @@ pub fn collect_function(
                         }
                     }
                     // Intrinsic type rules: same constraint logic as Op::SystemCall.
-                    if let Some(rule) = intrinsic_type_rules.get(callee_name.as_str()) {
+                    if let Some(rule) = intrinsic_type_rules.get(callee_fid) {
                         emit_type_rule_constraints(
                             rule,
                             args,

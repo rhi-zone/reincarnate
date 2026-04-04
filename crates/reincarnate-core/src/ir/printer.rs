@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::fmt;
 
 use crate::entity::EntityRef;
 
-use super::func::{Function, MethodKind, Visibility};
+use super::func::{FuncId, Function, MethodKind, Visibility};
 use super::inst::{CastKind, CmpKind, Op, Terminator};
 use super::module::Module;
 use super::ty::Type;
@@ -146,7 +147,11 @@ fn fmt_method_kind(kind: MethodKind, f: &mut fmt::Formatter<'_>) -> fmt::Result 
     }
 }
 
-fn fmt_op(op: &Op, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+fn fmt_op(
+    op: &Op,
+    f: &mut fmt::Formatter<'_>,
+    func_names: &HashMap<FuncId, String>,
+) -> fmt::Result {
     match op {
         Op::Const(c) => {
             write!(f, "const ")?;
@@ -207,15 +212,23 @@ fn fmt_op(op: &Op, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, ", ")?;
             fmt_value(*value, f)
         }
-        Op::Call { func, args } => {
+        Op::Call {
+            func: callee_fid,
+            args,
+        } => {
             // Pretty-print builtin arithmetic/logic ops with their mnemonic
             // (e.g. `builtin.add_i64` → `add`), stripping the type suffix.
-            if let Some(rest) = func.strip_prefix("builtin.") {
+            let fname = func_names.get(callee_fid).map(|s| s.as_str()).unwrap_or("");
+            if let Some(rest) = fname.strip_prefix("builtin.") {
                 let mnemonic = rest.rfind('_').map(|i| &rest[..i]).unwrap_or(rest);
                 write!(f, "{mnemonic} ")?;
                 fmt_value_list(args, f)
+            } else if fname.is_empty() {
+                write!(f, "call func{}(", callee_fid.index())?;
+                fmt_value_list(args, f)?;
+                write!(f, ")")
             } else {
-                write!(f, "call {func:?}(")?;
+                write!(f, "call {fname:?}(")?;
                 fmt_value_list(args, f)?;
                 write!(f, ")")
             }
@@ -382,10 +395,32 @@ fn fmt_terminator(term: &Terminator, f: &mut fmt::Formatter<'_>) -> fmt::Result 
 ///
 /// Used by `Module::Display` (which has access to the `NameTable`)
 /// and by `Function::Display` (which prints `<unnamed>`).
+///
+/// Resolves `FuncId` in `Op::Call` using the core builtin registry.
+/// For full name resolution (including user-defined functions), use
+/// [`write_function_with_name_and_map`] instead.
 pub fn write_function_with_name(
     f: &mut fmt::Formatter<'_>,
     func: &Function,
     name: &str,
+) -> fmt::Result {
+    use std::sync::OnceLock;
+    static CORE_NAMES: OnceLock<HashMap<FuncId, String>> = OnceLock::new();
+    let core_names = CORE_NAMES.get_or_init(|| {
+        let m = super::module::Module::new("__core__".to_string());
+        m.runtime_registry
+            .into_iter()
+            .map(|(name, fid)| (fid, name))
+            .collect()
+    });
+    write_function_with_name_and_map(f, func, name, core_names)
+}
+
+pub fn write_function_with_name_and_map(
+    f: &mut fmt::Formatter<'_>,
+    func: &Function,
+    name: &str,
+    func_names: &HashMap<FuncId, String>,
 ) -> fmt::Result {
     // Function header
     match func.visibility {
@@ -447,7 +482,7 @@ pub fn write_function_with_name(
             }
 
             // Operation
-            fmt_op(&inst.op, f)?;
+            fmt_op(&inst.op, f, func_names)?;
 
             writeln!(f)?;
         }
@@ -554,12 +589,17 @@ impl fmt::Display for Module {
 
         // Functions — skip runtime/builtin stubs (they are internal and never
         // user-visible; the Module printer shows only user-defined functions).
+        let func_names: HashMap<FuncId, String> = self
+            .runtime_registry
+            .iter()
+            .map(|(name, &fid)| (fid, name.clone()))
+            .collect();
         for (func_id, func) in self.functions.iter() {
             if self.runtime_registry.contains_key(self.func_name(func_id)) {
                 continue;
             }
             writeln!(f)?;
-            write_function_with_name(f, func, self.func_name(func_id))?;
+            write_function_with_name_and_map(f, func, self.func_name(func_id), &func_names)?;
             writeln!(f)?;
         }
 
@@ -573,6 +613,7 @@ mod tests {
     use super::super::func::Visibility;
     use super::super::module::{EnumDef, EnumVariant, FieldDef, Global, Import, StructDef};
     use super::super::ty::{FunctionSig, Type};
+    use std::collections::HashMap;
 
     #[test]
     fn print_simple_add() {
@@ -581,14 +622,38 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
+        let mb = ModuleBuilder::new("test");
+        let registry = mb.runtime_registry().clone();
+        let func_names: HashMap<super::FuncId, String> = registry
+            .iter()
+            .map(|(name, &fid)| (fid, name.clone()))
+            .collect();
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
+        fb.set_registry(registry);
         let a = fb.param(0);
         let b = fb.param(1);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
         let func = fb.build();
 
-        let output = format!("{func}");
+        struct FuncPrinter<'a> {
+            func: &'a super::super::func::Function,
+            name: &'a str,
+            func_names: &'a HashMap<super::FuncId, String>,
+        }
+        impl std::fmt::Display for FuncPrinter<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                super::write_function_with_name_and_map(f, self.func, self.name, self.func_names)
+            }
+        }
+        let output = format!(
+            "{}",
+            FuncPrinter {
+                func: &func,
+                name: "add",
+                func_names: &func_names
+            }
+        );
         assert_eq!(
             output,
             "\
@@ -710,13 +775,14 @@ fn choose(v0: bool, v1: i64, v2: i64) -> i64 {
             init: None,
         });
 
-        // Add a simple function
+        // Add a simple function — set registry so arithmetic helpers work.
         let sig = FunctionSig {
             params: vec![Type::Int(64), Type::Int(64)],
             return_ty: Type::Int(64),
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let a = fb.param(0);
         let b = fb.param(1);
         let sum = fb.add(a, b);

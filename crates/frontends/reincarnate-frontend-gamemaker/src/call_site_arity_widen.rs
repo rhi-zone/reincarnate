@@ -30,27 +30,29 @@ use reincarnate_core::pipeline::{PureIrPass, Transform, TransformResult};
 ///   is self).
 pub struct CallSiteArityWiden;
 
-/// Collect the maximum observed argument count per callee name.
+/// Collect the maximum observed argument count per callee.
 ///
-/// For `Op::Call`, the arg count is `args.len()`.
-/// For `Op::MethodCall`, the arg count is `args.len() + 1` (adding self at [0]).
-fn collect_max_arities(module: &Module) -> HashMap<String, usize> {
-    let mut max_arities: HashMap<String, usize> = HashMap::new();
+/// Returns two maps:
+/// - : for , keyed by FuncId, arg count =
+/// - : for , keyed by method name, arg count =
+fn collect_max_arities(module: &Module) -> (HashMap<FuncId, usize>, HashMap<String, usize>) {
+    let mut direct_arities: HashMap<FuncId, usize> = HashMap::new();
+    let mut method_arities: HashMap<String, usize> = HashMap::new();
 
-    for func in module.functions.values() {
+    for (caller_fid, func) in module.functions.iter() {
         for block in func.blocks.values() {
             for &inst_id in &block.insts {
                 let inst = &func.insts[inst_id];
                 match &inst.op {
                     Op::Call {
-                        func: callee_name,
+                        func: callee_fid,
                         args,
                     } => {
                         // Skip self-calls.
-                        if callee_name == &func.name {
+                        if *callee_fid == caller_fid {
                             continue;
                         }
-                        let entry = max_arities.entry(callee_name.clone()).or_insert(0);
+                        let entry = direct_arities.entry(*callee_fid).or_insert(0);
                         *entry = (*entry).max(args.len());
                     }
                     Op::MethodCall { method, args, .. } => {
@@ -61,7 +63,7 @@ fn collect_max_arities(module: &Module) -> HashMap<String, usize> {
                         // args exclude self (param[0]), so total param count needed
                         // is args.len() + 1.
                         let needed = args.len() + 1;
-                        let entry = max_arities.entry(method.clone()).or_insert(0);
+                        let entry = method_arities.entry(method.clone()).or_insert(0);
                         *entry = (*entry).max(needed);
                     }
                     _ => {}
@@ -70,7 +72,55 @@ fn collect_max_arities(module: &Module) -> HashMap<String, usize> {
         }
     }
 
-    max_arities
+    (direct_arities, method_arities)
+}
+
+/// Widen a single function's entry params and sig to accept `max_arity` args.
+/// Returns `true` if any change was made.
+fn widen_function(module: &mut Module, func_id: FuncId, max_arity: usize) -> bool {
+    let func = &module.functions[func_id];
+
+    // If the callee already accepts enough params, nothing to do.
+    let current_count = func.sig.params.len();
+    if max_arity <= current_count {
+        return false;
+    }
+
+    // Don't extend rest-param functions — they already accept any
+    // number of args.
+    if func.sig.has_rest_param {
+        return false;
+    }
+
+    let extra = max_arity - current_count;
+
+    // Extra params have no type information — the call sites provide
+    // untyped GML values and no constraint can be formed.  Unknown is
+    // correct here (genuine opacity, not an inference gap).
+    let fresh_types: Vec<Type> = vec![Type::Unknown; extra];
+
+    // Extend sig.params and sig.defaults.
+    let func = &mut module.functions[func_id];
+    for ty in &fresh_types {
+        func.sig.params.push(ty.clone());
+        // Ensure defaults vec is long enough, then set None for the
+        // new params (they use the Unknown/null GML default).
+        // Extend existing defaults to align with the new param count.
+        while func.sig.defaults.len() < func.sig.params.len() - 1 {
+            func.sig.defaults.push(None);
+        }
+        func.sig
+            .defaults
+            .push(Some(reincarnate_core::ir::value::Constant::Null));
+    }
+
+    // Extend entry block params with matching ValueIds.
+    let entry = func.entry;
+    for ty in fresh_types {
+        let value = func.value_types.push(ty.clone());
+        func.blocks[entry].params.push(BlockParam { value, ty });
+    }
+    true
 }
 
 impl Transform for CallSiteArityWiden {
@@ -87,66 +137,31 @@ impl Transform for CallSiteArityWiden {
         mut module: Module,
         _dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
-        let max_arities = collect_max_arities(&module);
+        let (direct_arities, method_arities) = collect_max_arities(&module);
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
 
-        // Build a name → func_id map for write-back.
+        // Process direct calls (Op::Call with FuncId).
+        for (func_id, max_arity) in &direct_arities {
+            if widen_function(&mut module, *func_id, *max_arity) {
+                changed_funcs.insert(*func_id);
+            }
+        }
+
+        // Build a name → func_id map for method call write-back.
         let name_to_id: HashMap<String, _> = module
             .functions
             .iter()
             .map(|(id, f)| (f.name.clone(), id))
             .collect();
 
-        for (callee_name, max_arity) in &max_arities {
+        for (callee_name, max_arity) in &method_arities {
             let func_id = match name_to_id.get(callee_name) {
                 Some(&id) => id,
                 None => continue, // External function — skip.
             };
-
-            let func = &module.functions[func_id];
-
-            // If the callee already accepts enough params, nothing to do.
-            let current_count = func.sig.params.len();
-            if *max_arity <= current_count {
-                continue;
+            if widen_function(&mut module, func_id, *max_arity) {
+                changed_funcs.insert(func_id);
             }
-
-            // Don't extend rest-param functions — they already accept any
-            // number of args.
-            if func.sig.has_rest_param {
-                continue;
-            }
-
-            let extra = max_arity - current_count;
-
-            // Extra params have no type information — the call sites provide
-            // untyped GML values and no constraint can be formed.  Unknown is
-            // correct here (genuine opacity, not an inference gap).
-            let fresh_types: Vec<Type> = vec![Type::Unknown; extra];
-
-            // Extend sig.params and sig.defaults.
-            let func = &mut module.functions[func_id];
-            for ty in &fresh_types {
-                func.sig.params.push(ty.clone());
-                // Ensure defaults vec is long enough, then set None for the
-                // new params (they use the Unknown/null GML default).
-                // Extend existing defaults to align with the new param count.
-                while func.sig.defaults.len() < func.sig.params.len() - 1 {
-                    func.sig.defaults.push(None);
-                }
-                func.sig
-                    .defaults
-                    .push(Some(reincarnate_core::ir::value::Constant::Null));
-            }
-
-            // Extend entry block params with matching ValueIds.
-            let entry = func.entry;
-            for ty in fresh_types {
-                let value = func.value_types.push(ty.clone());
-                func.blocks[entry].params.push(BlockParam { value, ty });
-            }
-
-            changed_funcs.insert(func_id);
         }
 
         let changed = !changed_funcs.is_empty();
@@ -166,6 +181,7 @@ mod tests {
     use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
     use reincarnate_core::ir::ty::FunctionSig;
     use reincarnate_core::ir::{Type, Visibility};
+    use std::collections::HashMap;
 
     fn run(mb: ModuleBuilder) -> TransformResult {
         CallSiteArityWiden.apply(mb.build(), None).unwrap()
@@ -191,9 +207,10 @@ mod tests {
             ..Default::default()
         };
         let mut caller = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
+        caller.set_registry(HashMap::from([("target".to_string(), target_fid)]));
         let a = caller.const_float(1.0);
         let b = caller.const_float(2.0);
-        caller.call("target", &[a, b], Type::Void);
+        caller.call_named("target", &[a, b], Type::Void);
         caller.ret(None);
         mb.add_function(caller.build());
 
@@ -234,9 +251,10 @@ mod tests {
             ..Default::default()
         };
         let mut caller = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
+        caller.set_registry(HashMap::from([("target".to_string(), target_fid)]));
         let a = caller.const_float(1.0);
         let b = caller.const_float(2.0);
-        caller.call("target", &[a, b], Type::Void);
+        caller.call_named("target", &[a, b], Type::Void);
         caller.ret(None);
         mb.add_function(caller.build());
 
@@ -267,10 +285,11 @@ mod tests {
             ..Default::default()
         };
         let mut caller = FunctionBuilder::new("caller", caller_sig, Visibility::Private);
+        caller.set_registry(HashMap::from([("target".to_string(), target_fid)]));
         let a = caller.const_float(1.0);
         let b = caller.const_float(2.0);
         let c = caller.const_float(3.0);
-        caller.call("target", &[a, b, c], Type::Void);
+        caller.call_named("target", &[a, b, c], Type::Void);
         caller.ret(None);
         mb.add_function(caller.build());
 
@@ -302,18 +321,20 @@ mod tests {
 
         // Caller A: 2 args
         let mut caller_a = FunctionBuilder::new("caller_a", sig.clone(), Visibility::Private);
+        caller_a.set_registry(HashMap::from([("target".to_string(), target_fid)]));
         let a = caller_a.const_float(1.0);
         let b = caller_a.const_float(2.0);
-        caller_a.call("target", &[a, b], Type::Void);
+        caller_a.call_named("target", &[a, b], Type::Void);
         caller_a.ret(None);
         mb.add_function(caller_a.build());
 
         // Caller B: 3 args
         let mut caller_b = FunctionBuilder::new("caller_b", sig, Visibility::Private);
+        caller_b.set_registry(HashMap::from([("target".to_string(), target_fid)]));
         let a = caller_b.const_float(1.0);
         let b = caller_b.const_float(2.0);
         let c = caller_b.const_float(3.0);
-        caller_b.call("target", &[a, b, c], Type::Void);
+        caller_b.call_named("target", &[a, b, c], Type::Void);
         caller_b.ret(None);
         mb.add_function(caller_b.build());
 

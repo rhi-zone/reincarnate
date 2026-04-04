@@ -644,7 +644,19 @@ impl<'a> EmitCtx<'a> {
                 }
             }
 
-            Op::Call { func: fname, args } => {
+            Op::Call {
+                func: callee_fid,
+                args,
+            } => {
+                // Resolve the FuncId to its canonical name via the config's func_names map.
+                // Falls back to a debug string if the name is not in the map (runtime-only
+                // function not registered in the module's runtime_registry).
+                let fname = self
+                    .config
+                    .func_names
+                    .get(callee_fid)
+                    .map(|s| s.as_str())
+                    .unwrap_or("<unknown>");
                 // Typed arithmetic / logic builtins are emitted as native
                 // target-language operators rather than function calls.
                 // Recognised by the "builtin." prefix; the suffix encodes the
@@ -661,7 +673,7 @@ impl<'a> EmitCtx<'a> {
                     }
                 } else {
                     Expr::Call {
-                        func: fname.clone(),
+                        func: fname.to_string(),
                         args: args.iter().map(|a| self.build_val(*a)).collect(),
                     }
                 }
@@ -905,6 +917,21 @@ impl<'a> EmitCtx<'a> {
                     lhs: Box::new(self.build_val(a)),
                     rhs: Box::new(self.build_val(b)),
                 };
+            }
+            // `builtin.not_bool(x)` is boolean NOT — unwrap the inner value
+            // instead of double-negating.
+            if let Op::Call { func: fid, args } = &self.func.insts[inst_id].op {
+                let fname = self
+                    .config
+                    .func_names
+                    .get(fid)
+                    .map(|s| s.as_str())
+                    .unwrap_or("");
+                if fname == "builtin.not_bool" && args.len() == 1 {
+                    let inner = args[0];
+                    self.pending_lazy.remove(&cond);
+                    return self.build_val(inner);
+                }
             }
         }
         Expr::Not(Box::new(self.build_val(cond)))
@@ -1352,7 +1379,7 @@ impl<'a> EmitCtx<'a> {
         let count = self.use_count(result);
 
         // Dead pure.
-        if count == 0 && is_deferrable(op) {
+        if count == 0 && is_deferrable(op, &self.config.pure_fids) {
             return;
         }
 

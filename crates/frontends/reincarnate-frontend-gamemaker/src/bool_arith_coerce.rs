@@ -53,12 +53,40 @@ impl Transform for GmlBoolArithCoerce {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
-        // Pre-collect callee names that return Bool (Fix A).
-        let bool_returning: HashSet<String> = module
+        // Build name lookup map from FuncId.
+        let func_names: HashMap<FuncId, String> = module
+            .runtime_registry
+            .iter()
+            .map(|(name, &fid)| (fid, name.clone()))
+            .chain(
+                module
+                    .functions
+                    .iter()
+                    .map(|(fid, f)| (fid, f.name.clone())),
+            )
+            .collect();
+
+        // Pre-collect callee FuncIds that return Bool (Fix A).
+        let bool_returning: HashSet<FuncId> = module
             .functions
-            .values()
-            .filter(|f| f.sig.return_ty == Type::Bool)
-            .map(|f| f.name.clone())
+            .iter()
+            .filter(|(_, f)| f.sig.return_ty == Type::Bool)
+            .map(|(fid, _)| fid)
+            .collect();
+
+        // Pre-collect arithmetic builtin FuncIds for coerce_bool_arithmetic.
+        let arith_prefixes = [
+            "builtin.add",
+            "builtin.sub",
+            "builtin.mul",
+            "builtin.div",
+            "builtin.rem",
+        ];
+        let arith_prefix_fids: HashSet<FuncId> = module
+            .runtime_registry
+            .iter()
+            .filter(|(name, _)| arith_prefixes.iter().any(|p| name.starts_with(p)))
+            .map(|(_, &fid)| fid)
             .collect();
 
         // Build field type lookup from struct definitions for SetField coercion.
@@ -72,19 +100,19 @@ impl Transform for GmlBoolArithCoerce {
         let dynamic_declared_fields = build_dynamic_declared_fields(&module);
 
         // Pre-collect entry block param types for call-arg coercion (Pass 4).
-        // Maps function name → vec of entry block param value_types (skipping
+        // Maps FuncId → vec of entry block param value_types (skipping
         // the first param which is `self` for instance methods).
-        let callee_param_types: HashMap<String, Vec<Type>> = module
+        let callee_param_types: HashMap<FuncId, Vec<Type>> = module
             .functions
-            .values()
-            .map(|f| {
+            .iter()
+            .map(|(fid, f)| {
                 let entry = &f.blocks[f.entry];
                 let tys: Vec<Type> = entry
                     .params
                     .iter()
                     .map(|p| f.value_types[p.value].clone())
                     .collect();
-                (f.name.clone(), tys)
+                (fid, tys)
             })
             .collect();
 
@@ -105,13 +133,22 @@ impl Transform for GmlBoolArithCoerce {
             }
             let func = &mut module.functions[func_id];
             let mut func_changed = false;
-            func_changed |= coerce_bool_arithmetic(func, &bool_returning, &dynamic_declared_fields);
+            func_changed |= coerce_bool_arithmetic(
+                func,
+                &arith_prefix_fids,
+                &bool_returning,
+                &dynamic_declared_fields,
+            );
             func_changed |= coerce_bool_br_args(func);
             func_changed |=
                 coerce_bool_set_field(func, &struct_field_types, &external_numeric_fields);
             func_changed |= coerce_bool_call_args(func, &callee_param_types);
-            func_changed |=
-                coerce_call_args_general(func, &callee_param_types, &external_param_types);
+            func_changed |= coerce_call_args_general(
+                func,
+                &callee_param_types,
+                &external_param_types,
+                &func_names,
+            );
             func_changed |=
                 coerce_bool_cmp_operands(func, &bool_returning, &dynamic_declared_fields);
             func_changed |= coerce_noone_sentinel(func);
@@ -239,7 +276,7 @@ fn needs_arith_coerce(
     func: &Function,
     v: ValueId,
     result_map: &HashMap<ValueId, InstId>,
-    bool_returning: &HashSet<String>,
+    bool_returning: &HashSet<FuncId>,
     dynamic_declared_fields: &HashSet<String>,
 ) -> bool {
     if is_bool(func, v) {
@@ -249,10 +286,10 @@ fn needs_arith_coerce(
         // Fix A: value_types[v] was widened by ConstraintSolve, but the callee
         // sig still says Bool — the emitter will emit a boolean-typed expression.
         if let Op::Call {
-            func: callee_name, ..
+            func: callee_fid, ..
         } = &func.insts[inst_id].op
         {
-            if bool_returning.contains(callee_name) {
+            if bool_returning.contains(callee_fid) {
                 return true;
             }
         }
@@ -269,27 +306,20 @@ fn needs_arith_coerce(
 
 fn coerce_bool_arithmetic(
     func: &mut Function,
-    bool_returning: &HashSet<String>,
+    arith_prefix_fids: &HashSet<FuncId>,
+    bool_returning: &HashSet<FuncId>,
     dynamic_declared_fields: &HashSet<String>,
 ) -> bool {
     let result_map = result_inst_map(func);
 
     // Collect all arithmetic builtin calls where at least one operand needs coercion.
-    // These are Op::Call { func: "builtin.add_*" / "builtin.sub_*" / ... } with 2 args.
-    let arith_prefixes = [
-        "builtin.add",
-        "builtin.sub",
-        "builtin.mul",
-        "builtin.div",
-        "builtin.rem",
-    ];
     let targets: Vec<(InstId, ValueId, ValueId, bool, bool)> = func
         .insts
         .iter()
         .filter_map(|(id, inst)| {
             let (a, b) = match &inst.op {
-                Op::Call { func: fname, args }
-                    if args.len() == 2 && arith_prefixes.iter().any(|p| fname.starts_with(p)) =>
+                Op::Call { func: fid, args }
+                    if args.len() == 2 && arith_prefix_fids.contains(fid) =>
                 {
                     (args[0], args[1])
                 }
@@ -564,18 +594,18 @@ fn coerce_bool_set_field(
 /// to find the underlying Bool and insert `Cast(Bool→Float(64), Coerce)`.
 fn coerce_bool_call_args(
     func: &mut Function,
-    callee_param_types: &HashMap<String, Vec<Type>>,
+    callee_param_types: &HashMap<FuncId, Vec<Type>>,
 ) -> bool {
     // Collect: (inst_id, arg_index, old_value)
     let mut casts: Vec<(InstId, usize, ValueId)> = Vec::new();
 
     for (inst_id, inst) in func.insts.iter() {
         if let Op::Call {
-            func: callee_name,
+            func: callee_fid,
             args,
         } = &inst.op
         {
-            if let Some(param_tys) = callee_param_types.get(callee_name) {
+            if let Some(param_tys) = callee_param_types.get(callee_fid) {
                 // Call args map directly to entry block params: args[i]
                 // corresponds to entry_params[i]. The emitter adds _rt as
                 // an extra first argument, but the IR doesn't have it.
@@ -618,22 +648,25 @@ fn coerce_bool_call_args(
 /// (instance ID problem — different root cause).
 fn coerce_call_args_general(
     func: &mut Function,
-    callee_param_types: &HashMap<String, Vec<Type>>,
+    callee_param_types: &HashMap<FuncId, Vec<Type>>,
     external_param_types: &HashMap<String, Vec<Type>>,
+    func_names: &HashMap<FuncId, String>,
 ) -> bool {
     let result_map = result_inst_map(func);
     let mut casts: Vec<(InstId, usize, ValueId, Type)> = Vec::new();
 
     for (inst_id, inst) in func.insts.iter() {
         if let Op::Call {
-            func: callee_name,
+            func: callee_fid,
             args,
         } = &inst.op
         {
             // Look up param types from internal functions first, then external.
-            let param_tys = callee_param_types
-                .get(callee_name)
-                .or_else(|| external_param_types.get(callee_name.as_str()));
+            let param_tys = callee_param_types.get(callee_fid).or_else(|| {
+                func_names
+                    .get(callee_fid)
+                    .and_then(|name| external_param_types.get(name.as_str()))
+            });
 
             if let Some(param_tys) = param_tys {
                 for (i, &arg_v) in args.iter().enumerate() {
@@ -756,7 +789,7 @@ fn insert_bool_const_before(func: &mut Function, val: bool, before_inst_id: Inst
 /// to `Cast(Bool→Float(64))` (emits `Number(expr)`).
 fn coerce_bool_cmp_operands(
     func: &mut Function,
-    bool_returning: &HashSet<String>,
+    bool_returning: &HashSet<FuncId>,
     _dynamic_declared_fields: &HashSet<String>,
 ) -> bool {
     let result_map = result_inst_map(func);

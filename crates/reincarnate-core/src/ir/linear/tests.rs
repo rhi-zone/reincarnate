@@ -4,12 +4,22 @@ use super::resolve::resolve;
 use super::*;
 use crate::entity::EntityRef;
 use crate::ir::ast::{Expr, Stmt};
-use crate::ir::builder::FunctionBuilder;
+use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
 use crate::ir::func::{MethodKind, Visibility};
 use crate::ir::inst::CmpKind;
 use crate::ir::structurize::structurize;
 use crate::ir::ty::{FunctionSig, Type};
 use crate::ir::value::Constant;
+
+/// Build a `pure_fids` set containing all `builtin.*` FuncIds from a core module.
+fn core_pure_fids() -> std::collections::HashSet<crate::ir::func::FuncId> {
+    let m = crate::ir::Module::new("__core__".to_string());
+    m.runtime_registry
+        .iter()
+        .filter(|(name, _)| name.starts_with("builtin."))
+        .map(|(_, &fid)| fid)
+        .collect()
+}
 
 #[test]
 fn linearize_simple_block() {
@@ -113,7 +123,7 @@ fn resolve_constant_classified() {
 
     let shape = Shape::Block(func.entry);
     let linear = linearize(&func, &shape);
-    let ctx = resolve(&func, &linear, &[]);
+    let ctx = resolve(&func, &linear, &[], &core_pure_fids());
 
     assert!(ctx.constant_inlines.contains_key(&c));
     assert!(ctx.lazy_inlines.contains(&sum));
@@ -136,7 +146,7 @@ fn resolve_dead_pure_eliminated() {
 
     let shape = Shape::Block(func.entry);
     let linear = linearize(&func, &shape);
-    let ctx = resolve(&func, &linear, &[]);
+    let ctx = resolve(&func, &linear, &[], &core_pure_fids());
 
     // Dead add: use_count == 0, not in any inline set.
     assert_eq!(ctx.use_counts.get(&_dead).copied().unwrap_or(0), 0);
@@ -161,7 +171,7 @@ fn resolve_cascading_dead_code() {
 
     let shape = Shape::Block(func.entry);
     let linear = linearize(&func, &shape);
-    let ctx = resolve(&func, &linear, &[]);
+    let ctx = resolve(&func, &linear, &[], &core_pure_fids());
 
     // Both neg and sum should be dead after fixpoint.
     assert_eq!(ctx.use_counts.get(&_neg).copied().unwrap_or(0), 0);
@@ -185,7 +195,7 @@ fn resolve_multi_use_not_lazy() {
 
     let shape = Shape::Block(func.entry);
     let linear = linearize(&func, &shape);
-    let ctx = resolve(&func, &linear, &[]);
+    let ctx = resolve(&func, &linear, &[], &core_pure_fids());
 
     // sum has 2 uses — should NOT be lazy-inlined.
     assert_eq!(ctx.use_counts.get(&sum).copied().unwrap_or(0), 2);
@@ -215,7 +225,7 @@ fn full_pipeline_simple_add() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -249,7 +259,7 @@ fn full_pipeline_constant_inlining() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -283,7 +293,7 @@ fn full_pipeline_dead_pure_eliminated() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -324,7 +334,7 @@ fn full_pipeline_if_else() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -481,7 +491,7 @@ fn loop_init_assigns_emitted() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -536,7 +546,7 @@ fn pipeline_deterministic() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -544,7 +554,7 @@ fn pipeline_deterministic() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -581,7 +591,7 @@ fn shared_name_gets_decl() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -615,7 +625,7 @@ fn duplicate_param_names_deduped() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -657,7 +667,7 @@ fn reassigned_self_param_renamed() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -699,7 +709,7 @@ fn store_target_uses_var_name() {
     let func = fb.build();
     let shape = Shape::Block(func.entry);
     let linear = linearize(&func, &shape);
-    let resolved = resolve(&func, &linear, &[]);
+    let resolved = resolve(&func, &linear, &[], &std::collections::HashSet::new());
     let config = LoweringConfig::default();
     let empty_types = crate::entity::PrimaryMap::new();
     let mut ctx = EmitCtx::new(&func, &resolved, &config, &empty_types);
@@ -749,7 +759,7 @@ fn debug_name_propagates_through_cast() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -840,7 +850,7 @@ fn flush_skips_consumed_values() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -888,7 +898,7 @@ fn flush_scoped_to_prevent_use_before_def() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -912,13 +922,23 @@ fn se_chain_through_cast() {
     // return v_cast
     //
     // v_call is side-effecting. v_cast wraps it. Should produce clean output.
+    let mut mb = ModuleBuilder::new("test");
+    mb.register_runtime(
+        "f",
+        FunctionSig {
+            params: vec![],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        },
+    );
     let sig = FunctionSig {
         params: vec![],
         return_ty: Type::Int(32),
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new("g", sig, Visibility::Public);
-    let v_call = fb.call("f", &[], Type::Unknown);
+    fb.set_registry(mb.runtime_registry().clone());
+    let v_call = fb.call_named("f", &[], Type::Unknown);
     fb.name_value(v_call, "result".to_string());
     let v_cast = fb.cast(v_call, Type::Int(32));
     fb.name_value(v_cast, "result".to_string());
@@ -930,7 +950,7 @@ fn se_chain_through_cast() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -991,7 +1011,7 @@ fn inverted_cmp_not_wrapped_in_not() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -1028,7 +1048,17 @@ fn logical_and_no_duplicate_decl() {
         return_ty: Type::Bool,
         ..Default::default()
     };
+    let mut mb = ModuleBuilder::new("test");
+    mb.register_runtime(
+        "check",
+        FunctionSig {
+            params: vec![],
+            return_ty: Type::Bool,
+            ..Default::default()
+        },
+    );
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
+    fb.set_registry(mb.runtime_registry().clone());
     let cond = fb.param(0);
 
     let then_mid = fb.create_block();
@@ -1037,7 +1067,7 @@ fn logical_and_no_duplicate_decl() {
     fb.br_if(cond, then_mid, &[], merge, &[cond]);
 
     fb.switch_to_block(then_mid);
-    let v_rhs = fb.call("check", &[], Type::Bool);
+    let v_rhs = fb.call_named("check", &[], Type::Bool);
     fb.br(merge, &[v_rhs]);
 
     fb.switch_to_block(merge);
@@ -1049,7 +1079,7 @@ fn logical_and_no_duplicate_decl() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -1086,9 +1116,18 @@ fn minmax_se_flush_correct() {
         return_ty: Type::Int(64),
         ..Default::default()
     };
+    let mut mb = ModuleBuilder::new("test");
+    let geta_sig = FunctionSig {
+        params: vec![],
+        return_ty: Type::Int(64),
+        ..Default::default()
+    };
+    mb.register_runtime("getA", geta_sig.clone());
+    mb.register_runtime("getB", geta_sig);
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
-    let v_a = fb.call("getA", &[], Type::Int(64));
-    let v_b = fb.call("getB", &[], Type::Int(64));
+    fb.set_registry(mb.runtime_registry().clone());
+    let v_a = fb.call_named("getA", &[], Type::Int(64));
+    let v_b = fb.call_named("getB", &[], Type::Int(64));
     let v_cmp = fb.cmp(CmpKind::Ge, v_a, v_b);
 
     let (then_block, then_vals) = fb.create_block_with_params(&[Type::Int(64)]);
@@ -1112,7 +1151,7 @@ fn minmax_se_flush_correct() {
         &func,
         &func.name,
         &shape,
-        &LoweringConfig::default(),
+        &LoweringConfig::with_core_module(),
         &DebugConfig::none(),
         None,
     );
@@ -1211,7 +1250,23 @@ fn switch_se_inline_flushed_to_outer_scope() {
         return_ty: Type::Unknown,
         ..Default::default()
     };
+    let mut mb = ModuleBuilder::new("test");
+    let unk_sig = FunctionSig {
+        params: vec![],
+        return_ty: Type::Unknown,
+        ..Default::default()
+    };
+    mb.register_runtime("foo", unk_sig.clone());
+    mb.register_runtime(
+        "bar",
+        FunctionSig {
+            params: vec![Type::Unknown],
+            return_ty: Type::Unknown,
+            ..Default::default()
+        },
+    );
     let mut fb = FunctionBuilder::new("f", sig, Visibility::Public);
+    fb.set_registry(mb.runtime_registry().clone());
     let v_key = fb.param(0);
     let v_cond = fb.param(1);
     let case0 = fb.create_block();
@@ -1220,7 +1275,7 @@ fn switch_se_inline_flushed_to_outer_scope() {
     let case1 = fb.create_block();
 
     // Entry: side-effecting call followed by switch.
-    let v_call = fb.call("foo", &[], Type::Unknown);
+    let v_call = fb.call_named("foo", &[], Type::Unknown);
     fb.name_value(v_call, "foo_call".to_string());
     fb.switch(
         v_key,
@@ -1243,7 +1298,7 @@ fn switch_se_inline_flushed_to_outer_scope() {
     // case1 (default): uses v_call.  Without the outer flush, "foo_call" is
     // undeclared here because it was materialised inside case0's scope.
     fb.switch_to_block(case1);
-    let v_result = fb.call("bar", &[v_call], Type::Unknown);
+    let v_result = fb.call_named("bar", &[v_call], Type::Unknown);
     fb.name_value(v_result, "bar_result".to_string());
     fb.ret(Some(v_result));
 

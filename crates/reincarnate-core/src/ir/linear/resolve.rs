@@ -49,6 +49,7 @@ pub(crate) fn resolve(
     func: &Function,
     stmts: &[LinearStmt],
     scope_lookup_systems: &[String],
+    pure_fids: &std::collections::HashSet<crate::ir::func::FuncId>,
 ) -> ResolveCtx {
     // Step 1: compute use counts from LinearStmt.
     let mut use_counts = HashMap::new();
@@ -58,7 +59,14 @@ pub(crate) fn resolve(
     let mut dead: HashSet<ValueId> = HashSet::new();
     loop {
         let mut changed = false;
-        collect_dead_uses(func, stmts, &mut use_counts, &mut dead, &mut changed);
+        collect_dead_uses(
+            func,
+            stmts,
+            &mut use_counts,
+            &mut dead,
+            &mut changed,
+            pure_fids,
+        );
         if !changed {
             break;
         }
@@ -76,6 +84,7 @@ pub(crate) fn resolve(
         &mut always_inlines,
         &mut lazy_inlines,
         scope_lookup_systems,
+        pure_fids,
     );
 
     // Step 4: detect adjacent Alloc+Store patterns for merged init.
@@ -662,6 +671,7 @@ fn collect_dead_uses(
     counts: &mut HashMap<ValueId, usize>,
     dead: &mut HashSet<ValueId>,
     changed: &mut bool,
+    pure_fids: &std::collections::HashSet<crate::ir::func::FuncId>,
 ) {
     for stmt in stmts {
         match stmt {
@@ -671,7 +681,7 @@ fn collect_dead_uses(
                 }
                 let count = counts.get(result).copied().unwrap_or(0);
                 let op = &func.insts[*inst_id].op;
-                if count == 0 && is_deferrable(op) {
+                if count == 0 && is_deferrable(op, pure_fids) {
                     dead.insert(*result);
                     for v in value_operands(op) {
                         if let Some(c) = counts.get_mut(&v) {
@@ -686,12 +696,12 @@ fn collect_dead_uses(
                 else_body,
                 ..
             } => {
-                collect_dead_uses(func, then_body, counts, dead, changed);
-                collect_dead_uses(func, else_body, counts, dead, changed);
+                collect_dead_uses(func, then_body, counts, dead, changed, pure_fids);
+                collect_dead_uses(func, else_body, counts, dead, changed, pure_fids);
             }
             LinearStmt::While { header, body, .. } => {
-                collect_dead_uses(func, header, counts, dead, changed);
-                collect_dead_uses(func, body, counts, dead, changed);
+                collect_dead_uses(func, header, counts, dead, changed, pure_fids);
+                collect_dead_uses(func, body, counts, dead, changed, pure_fids);
             }
             LinearStmt::For {
                 init,
@@ -700,20 +710,20 @@ fn collect_dead_uses(
                 body,
                 ..
             } => {
-                collect_dead_uses(func, init, counts, dead, changed);
-                collect_dead_uses(func, header, counts, dead, changed);
-                collect_dead_uses(func, update, counts, dead, changed);
-                collect_dead_uses(func, body, counts, dead, changed);
+                collect_dead_uses(func, init, counts, dead, changed, pure_fids);
+                collect_dead_uses(func, header, counts, dead, changed, pure_fids);
+                collect_dead_uses(func, update, counts, dead, changed, pure_fids);
+                collect_dead_uses(func, body, counts, dead, changed, pure_fids);
             }
             LinearStmt::Loop { body } => {
-                collect_dead_uses(func, body, counts, dead, changed);
+                collect_dead_uses(func, body, counts, dead, changed, pure_fids);
             }
             LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
-                collect_dead_uses(func, rhs_body, counts, dead, changed);
+                collect_dead_uses(func, rhs_body, counts, dead, changed, pure_fids);
             }
             LinearStmt::Dispatch { blocks, .. } => {
                 for (_, block_stmts) in blocks {
-                    collect_dead_uses(func, block_stmts, counts, dead, changed);
+                    collect_dead_uses(func, block_stmts, counts, dead, changed, pure_fids);
                 }
             }
             LinearStmt::Switch {
@@ -722,9 +732,9 @@ fn collect_dead_uses(
                 ..
             } => {
                 for (_, case_stmts) in cases {
-                    collect_dead_uses(func, case_stmts, counts, dead, changed);
+                    collect_dead_uses(func, case_stmts, counts, dead, changed, pure_fids);
                 }
-                collect_dead_uses(func, default_body, counts, dead, changed);
+                collect_dead_uses(func, default_body, counts, dead, changed, pure_fids);
             }
             _ => {}
         }
@@ -749,6 +759,7 @@ fn is_scope_lookup_op(op: &Op, scope_lookup_systems: &[String]) -> bool {
 }
 
 /// Classify non-dead Defs into constant, always-inline, or lazy-inline.
+#[allow(clippy::too_many_arguments)]
 fn classify_defs(
     func: &Function,
     stmts: &[LinearStmt],
@@ -757,6 +768,7 @@ fn classify_defs(
     always_inlines: &mut HashSet<ValueId>,
     lazy_inlines: &mut HashSet<ValueId>,
     scope_lookup_systems: &[String],
+    pure_fids: &std::collections::HashSet<crate::ir::func::FuncId>,
 ) {
     for stmt in stmts {
         match stmt {
@@ -764,7 +776,7 @@ fn classify_defs(
                 let count = counts.get(result).copied().unwrap_or(0);
                 let op = &func.insts[*inst_id].op;
 
-                if count == 0 && is_deferrable(op) {
+                if count == 0 && is_deferrable(op, pure_fids) {
                     continue;
                 }
 
@@ -795,7 +807,7 @@ fn classify_defs(
                     continue;
                 }
 
-                if count == 1 && is_deferrable(op) {
+                if count == 1 && is_deferrable(op, pure_fids) {
                     lazy_inlines.insert(*result);
                 }
             }
@@ -812,6 +824,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
                 classify_defs(
                     func,
@@ -821,6 +834,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
             }
             LinearStmt::While { header, body, .. } => {
@@ -832,6 +846,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
                 classify_defs(
                     func,
@@ -841,6 +856,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
             }
             LinearStmt::For {
@@ -858,6 +874,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
                 classify_defs(
                     func,
@@ -867,6 +884,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
                 classify_defs(
                     func,
@@ -876,6 +894,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
                 classify_defs(
                     func,
@@ -885,6 +904,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
             }
             LinearStmt::Loop { body } => {
@@ -896,6 +916,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
             }
             LinearStmt::LogicalOr { rhs_body, .. } | LinearStmt::LogicalAnd { rhs_body, .. } => {
@@ -907,6 +928,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
             }
             LinearStmt::Dispatch { blocks, .. } => {
@@ -919,6 +941,7 @@ fn classify_defs(
                         always_inlines,
                         lazy_inlines,
                         scope_lookup_systems,
+                        pure_fids,
                     );
                 }
             }
@@ -936,6 +959,7 @@ fn classify_defs(
                         always_inlines,
                         lazy_inlines,
                         scope_lookup_systems,
+                        pure_fids,
                     );
                 }
                 classify_defs(
@@ -946,6 +970,7 @@ fn classify_defs(
                     always_inlines,
                     lazy_inlines,
                     scope_lookup_systems,
+                    pure_fids,
                 );
             }
             _ => {}

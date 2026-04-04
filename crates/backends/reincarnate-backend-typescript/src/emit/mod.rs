@@ -84,6 +84,38 @@ pub(crate) fn lowering_config_for_engine<'a>(
     engine: EngineKind,
     module: Option<&Module>,
 ) -> std::borrow::Cow<'a, LoweringConfig> {
+    // Build func_names map from the module's name table so the linear emitter
+    // can resolve FuncId → function name for builtin prefix checks and
+    // intrinsic_calls lookups.  Only when we have the module AND the map
+    // isn't already populated.
+    let module_func_names: Option<std::collections::HashMap<FuncId, String>> =
+        if config.func_names.is_empty() {
+            module.map(|m| {
+                m.functions
+                    .iter()
+                    .map(|(fid, func)| (fid, func.name.clone()))
+                    .collect()
+            })
+        } else {
+            None
+        };
+
+    // Build pure_fids set from runtime_registry entries whose names start with
+    // "builtin." — these map to native operators and have no side effects.
+    // Only when we have the module AND the set isn't already populated.
+    let module_pure_fids: Option<std::collections::HashSet<FuncId>> = if config.pure_fids.is_empty()
+    {
+        module.map(|m| {
+            m.runtime_registry
+                .iter()
+                .filter(|(name, _)| name.starts_with("builtin."))
+                .map(|(_, &fid)| fid)
+                .collect()
+        })
+    } else {
+        None
+    };
+
     let needs_flash = engine == EngineKind::Flash
         && (config.scope_lookup_systems.is_empty()
             || config.foreach_iterator_system.is_none()
@@ -121,8 +153,15 @@ pub(crate) fn lowering_config_for_engine<'a>(
         && (config.output_node_system.is_none()
             || config.cast_narrowed_syscall_results_for.is_empty()
             || !config.cast_unknown_indirect_callee);
-    if needs_flash || needs_gml || needs_twine {
+    let needs_func_names = module_func_names.is_some() || module_pure_fids.is_some();
+    if needs_flash || needs_gml || needs_twine || needs_func_names {
         let mut c = config.clone();
+        if let Some(fnames) = module_func_names {
+            c.func_names = fnames;
+        }
+        if let Some(pfids) = module_pure_fids {
+            c.pure_fids = pfids;
+        }
         if needs_flash {
             c.scope_lookup_systems = vec!["Flash.Scope".to_string()];
             c.foreach_iterator_system = Some("Flash.Iterator".to_string());
@@ -847,7 +886,17 @@ fn emit_class_file(
         out.push('\n');
     }
     let intrinsic_calls_class = build_intrinsic_calls_map(module);
-    let calls = collect_call_names_from_funcs(class_funcs(), engine, Some(&intrinsic_calls_class));
+    let func_names_class: HashMap<FuncId, String> = module
+        .runtime_registry
+        .iter()
+        .map(|(name, &fid)| (fid, name.clone()))
+        .collect();
+    let calls = collect_call_names_from_funcs(
+        class_funcs(),
+        engine,
+        Some(&intrinsic_calls_class),
+        &func_names_class,
+    );
     let func_prefix = "../".repeat(depth + 1);
     let func_prefix = func_prefix.trim_end_matches('/');
     let mut stateful_names = BTreeSet::new();
@@ -1123,7 +1172,17 @@ fn emit_free_functions_file(
     let mut _free_sys_aliases = BTreeMap::new();
     emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
     let intrinsic_calls_free = build_intrinsic_calls_map(module);
-    let calls = collect_call_names_from_funcs(free_fn_iter(), engine, Some(&intrinsic_calls_free));
+    let func_names_free: HashMap<FuncId, String> = module
+        .runtime_registry
+        .iter()
+        .map(|(name, &fid)| (fid, name.clone()))
+        .collect();
+    let calls = collect_call_names_from_funcs(
+        free_fn_iter(),
+        engine,
+        Some(&intrinsic_calls_free),
+        &func_names_free,
+    );
     let mut free_stateful_names = BTreeSet::new();
     emit_function_imports_with_prefix(
         &calls,
@@ -1339,10 +1398,16 @@ pub fn emit_module_to_dir(
 
     // Rename local variables that shadow imported function names (e.g. `int`).
     let intrinsic_calls_global = build_intrinsic_calls_map(module);
+    let func_names_global: HashMap<FuncId, String> = module
+        .runtime_registry
+        .iter()
+        .map(|(name, &fid)| (fid, name.clone()))
+        .collect();
     let imported_names = collect_call_names_from_funcs(
         module.functions.values(),
         engine,
         Some(&intrinsic_calls_global),
+        &func_names_global,
     );
     rename_shadowing_locals(module, &imported_names);
 

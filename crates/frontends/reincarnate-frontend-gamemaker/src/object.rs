@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use datawin::chunks::objt::{event_type, ObjectEntry};
 use datawin::DataWin;
 use reincarnate_core::ir::builder::ModuleBuilder;
-use reincarnate_core::ir::func::{MethodKind, Visibility};
+use reincarnate_core::ir::func::{FuncId, MethodKind, Visibility};
 use reincarnate_core::ir::module::{ClassDef, FieldDef, StructDef};
 use reincarnate_core::ir::ty::TypeId;
 use reincarnate_core::ir::{Constant, Type};
@@ -26,6 +26,7 @@ pub fn translate_objects(
     obj_names: &[String],
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
+    registry: &HashMap<String, FuncId>,
 ) -> Result<(usize, usize), String> {
     let objt = dw.objt().map_err(|e| e.to_string())?;
     let mut translated = 0;
@@ -146,6 +147,7 @@ pub fn translate_objects(
                         bytecode_version: bc_version,
                         classref_types: &classref_types,
                         instance_types: &instance_types,
+                        registry,
                     };
 
                     match translate::translate_code_entry(bytecode, &func_name, &ctx) {

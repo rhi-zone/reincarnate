@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use reincarnate_core::ir::{Constant, FuncId, Module, NameInterner, Op};
+use reincarnate_core::ir::{Constant, FuncId, Module, NameInterner};
 
 /// JS/TS reserved words that cannot be used as identifiers.
 ///
@@ -147,17 +147,8 @@ pub(super) fn rename_colliding_free_funcs(
                 *module.name_table.func_name_mut(*fid) = new_name.clone();
             }
         }
-        // Update all Op::Call references throughout the module.
-        let all_fids: Vec<FuncId> = module.functions.keys().collect();
-        for fid in all_fids {
-            for inst in module.functions[fid].insts.values_mut() {
-                if let Op::Call { func, .. } = &mut inst.op {
-                    if let Some(new_name) = renames.get(func.as_str()) {
-                        func.clone_from(new_name);
-                    }
-                }
-            }
-        }
+        // Op::Call references don't need updating — they use FuncId, not name strings.
+        // The function name update above (Function::name and NameTable) is sufficient.
     }
 }
 

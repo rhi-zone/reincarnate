@@ -430,6 +430,9 @@ struct Structurizer<'a> {
     /// blowup when BrIf branches share downstream blocks and the BFS
     /// merge heuristic picks a non-optimal merge point.
     emitted: HashSet<BlockId>,
+    /// FuncIds of boolean-not builtins (used for BrIf condition simplification).
+    /// Empty when module context is not available (disables the optimization).
+    not_fids: std::collections::HashSet<crate::ir::func::FuncId>,
 }
 
 impl<'a> Structurizer<'a> {
@@ -448,6 +451,7 @@ impl<'a> Structurizer<'a> {
             loop_stack: Vec::new(),
             depth: 0,
             emitted: HashSet::new(),
+            not_fids: std::collections::HashSet::new(),
         }
     }
 
@@ -498,8 +502,12 @@ impl<'a> Structurizer<'a> {
         for &inst_id in &self.func.blocks[block].insts {
             let inst = &self.func.insts[inst_id];
             if inst.result == Some(cond) {
-                if let Op::Call { func, args } = &inst.op {
-                    if func.starts_with("builtin.not") && args.len() == 1 {
+                if let Op::Call {
+                    func: callee_fid,
+                    args,
+                } = &inst.op
+                {
+                    if self.not_fids.contains(callee_fid) && args.len() == 1 {
                         return Some(args[0]);
                     }
                 }
@@ -1571,7 +1579,7 @@ impl<'a> Structurizer<'a> {
         // comparison (e.g. CmpLt for BrIf + CmpGe for the short-circuit
         // value) instead of reusing the same value.
         if then_assigns.len() == 1
-            && is_boolean_inverse(self.func, then_assigns[0].src, cond)
+            && is_boolean_inverse(self.func, then_assigns[0].src, cond, &self.not_fids)
             && **then_body == Shape::Seq(vec![])
             && then_trailing_assigns.is_empty()
             && else_assigns.is_empty()
@@ -1593,7 +1601,7 @@ impl<'a> Structurizer<'a> {
         // Inverted OR: else assigns phi=!cond (always true when cond is
         // falsy), then computes rhs → phi = !cond || rhs
         if else_assigns.len() == 1
-            && is_boolean_inverse(self.func, else_assigns[0].src, cond)
+            && is_boolean_inverse(self.func, else_assigns[0].src, cond, &self.not_fids)
             && **else_body == Shape::Seq(vec![])
             && else_trailing_assigns.is_empty()
             && then_assigns.is_empty()
@@ -1729,7 +1737,12 @@ impl<'a> Structurizer<'a> {
 ///
 /// Comparison operands are considered equal if they share the same
 /// `ValueId` or are structurally identical constants.
-fn is_boolean_inverse(func: &Function, a: ValueId, b: ValueId) -> bool {
+fn is_boolean_inverse(
+    func: &Function,
+    a: ValueId,
+    b: ValueId,
+    not_fids: &std::collections::HashSet<crate::ir::func::FuncId>,
+) -> bool {
     let a_op = func
         .insts
         .iter()
@@ -1739,8 +1752,12 @@ fn is_boolean_inverse(func: &Function, a: ValueId, b: ValueId) -> bool {
         .iter()
         .find_map(|(_, inst)| (inst.result == Some(b)).then_some(&inst.op));
     let is_not_of = |op: &Op, val: ValueId| {
-        if let Op::Call { func, args } = op {
-            func.starts_with("builtin.not") && args.len() == 1 && args[0] == val
+        if let Op::Call {
+            func: callee_fid,
+            args,
+        } = op
+        {
+            not_fids.contains(callee_fid) && args.len() == 1 && args[0] == val
         } else {
             false
         }
@@ -1783,14 +1800,27 @@ fn values_equivalent(func: &Function, a: ValueId, b: ValueId) -> bool {
 /// Multi-block functions are analyzed for if/else, loops, etc.
 /// Recursion depth is bounded by `MAX_DEPTH`; the dominator and
 /// post-dominator computations are nearly linear (Lengauer-Tarjan).
-pub fn structurize(func: &mut Function) -> Shape {
+/// Structurize `func` into a `Shape`.
+///
+/// `not_fids`: FuncIds of boolean-not builtins.  When provided, BrIf condition
+/// simplification can detect `not(x)` patterns.  Pass an empty set (or use
+/// [`structurize`]) when module context is not available.
+pub fn structurize_with_not_fids(
+    func: &mut Function,
+    not_fids: std::collections::HashSet<crate::ir::func::FuncId>,
+) -> Shape {
     if func.blocks.len() == 1 {
         return Shape::Block(func.entry);
     }
 
     let entry = func.entry;
     let mut s = Structurizer::new(func);
+    s.not_fids = not_fids;
     s.structurize_region(entry, None, None)
+}
+
+pub fn structurize(func: &mut Function) -> Shape {
+    structurize_with_not_fids(func, std::collections::HashSet::new())
 }
 
 // -------------------------------------------------------------------------
@@ -2600,7 +2630,15 @@ mod tests {
         fb.ret(Some(v_phi));
 
         let mut func = fb.build();
-        let shape = structurize(&mut func);
+        // Provide not_fids so structurize can detect `not(v)` patterns in BrIf.
+        let core_mod = crate::ir::Module::new("__core__".to_string());
+        let not_fids: std::collections::HashSet<crate::ir::func::FuncId> = core_mod
+            .runtime_registry
+            .iter()
+            .filter(|(name, _)| name.starts_with("builtin.not"))
+            .map(|(_, &fid)| fid)
+            .collect();
+        let shape = structurize_with_not_fids(&mut func, not_fids);
 
         fn find_logical_and(shape: &Shape) -> Option<&Shape> {
             match shape {

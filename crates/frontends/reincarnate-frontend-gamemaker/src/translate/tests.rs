@@ -4,6 +4,7 @@ use datawin::bytecode::encode::encode;
 use datawin::bytecode::opcode::Opcode;
 use datawin::bytecode::types::{DataType, VariableRef};
 use reincarnate_core::ir::inst::{Op, Terminator};
+use reincarnate_core::ir::module::Module;
 
 static EMPTY_ASSET_REF_NAMES: std::sync::LazyLock<HashMap<u32, String>> =
     std::sync::LazyLock::new(HashMap::new);
@@ -13,6 +14,38 @@ static EMPTY_CLASSREF_TYPES: std::sync::LazyLock<HashMap<String, TypeId>> =
 
 static EMPTY_INSTANCE_TYPES: std::sync::LazyLock<HashMap<String, TypeId>> =
     std::sync::LazyLock::new(HashMap::new);
+
+static EMPTY_REGISTRY: std::sync::LazyLock<HashMap<String, FuncId>> =
+    std::sync::LazyLock::new(HashMap::new);
+
+/// A module with core builtins only (from `Module::new()`).
+///
+/// Provides the `runtime_registry` for tests that use arithmetic builtins
+/// but no GML syscall intrinsics.
+static CORE_MODULE: std::sync::LazyLock<Module> =
+    std::sync::LazyLock::new(|| Module::new("test_core".to_string()));
+
+/// A module with core builtins + GML syscall intrinsics.
+///
+/// Provides the `runtime_registry` for tests that invoke GML syscall paths
+/// (e.g. `getField`, `getOn`, `withInstances`).
+static GML_MODULE: std::sync::LazyLock<Module> = std::sync::LazyLock::new(|| {
+    let mut m = Module::new("test_gml".to_string());
+    crate::register_gml_syscall_intrinsics(&mut m);
+    m
+});
+
+/// Resolve a `FuncId` to its name using the GML test module.
+///
+/// Used in test assertions to compare `Op::Call { func: FuncId }` against
+/// expected function names without hard-coding index values.
+fn gml_func_name(fid: FuncId) -> &'static str {
+    GML_MODULE
+        .functions
+        .get(fid)
+        .map(|f| f.name.as_str())
+        .unwrap_or("<unknown>")
+}
 
 /// Build a minimal `TranslateCtx` for tests.
 ///
@@ -27,6 +60,7 @@ fn make_ctx<'a>(
     obj_names: &'a [String],
     function_names: &'a HashMap<u32, String>,
     script_names: &'a HashSet<String>,
+    registry: &'a HashMap<String, FuncId>,
 ) -> TranslateCtx<'a> {
     TranslateCtx {
         function_names,
@@ -52,6 +86,7 @@ fn make_ctx<'a>(
         bytecode_version: datawin::BytecodeVersion(17),
         classref_types: &EMPTY_CLASSREF_TYPES,
         instance_types: &EMPTY_INSTANCE_TYPES,
+        registry,
     }
 }
 
@@ -173,6 +208,7 @@ fn test_2d_array_write_nonscalar_emits_set_index() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
     // instance=3 in bytecode is the VARI owner (self) — set self_object_index so
     // is_own resolves correctly with the new instance-check logic.
@@ -228,6 +264,7 @@ fn test_2d_array_write_scalar_emits_set_field() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
     // instance=3 in bytecode is the VARI owner (self) — set self_object_index so
     // is_own resolves correctly with the new instance-check logic.
@@ -333,6 +370,7 @@ fn test_2d_array_compound_write_uses_correct_operands() {
         &obj_names,
         &fn_names,
         &script_names,
+        &CORE_MODULE.runtime_registry,
     );
 
     let (func, _) =
@@ -453,6 +491,7 @@ fn test_popenv_fall_through_reaches_post_with_code() {
         &obj_names,
         &fn_names,
         &script_names,
+        &GML_MODULE.runtime_registry,
     );
 
     let (func, extra_funcs) = translate_code_entry(&bytecode, "test_with_continuation", &ctx)
@@ -467,9 +506,10 @@ fn test_popenv_fall_through_reaches_post_with_code() {
     );
 
     // withInstances intrinsic call must appear.
-    let has_with_instances = ops.iter().any(
-        |op| matches!(op, Op::Call { func, .. } if func == "GameMaker.Instance.withInstances"),
-    );
+    let has_with_instances = ops.iter().any(|op| {
+        matches!(op, Op::Call { func, .. }
+            if gml_func_name(*func) == "GameMaker.Instance.withInstances")
+    });
     assert!(
         has_with_instances,
         "withInstances intrinsic call must appear; ops: {ops:?}"
@@ -540,6 +580,7 @@ fn test_argument_2d_array_push_maps_to_param() {
         &obj_names,
         &fn_names,
         &script_names,
+        &GML_MODULE.runtime_registry,
     );
 
     let (func, _) = translate_code_entry(&bytecode, "test_fn", &ctx).expect("translation failed");
@@ -548,7 +589,8 @@ fn test_argument_2d_array_push_maps_to_param() {
     // Must NOT fall back to an intrinsic call (getField / getOn).
     let has_syscall = ops.iter().any(|op| {
         matches!(op, Op::Call { func, .. }
-            if func == "GameMaker.Instance.getField" || func == "GameMaker.Instance.getOn")
+            if gml_func_name(*func) == "GameMaker.Instance.getField"
+                || gml_func_name(*func) == "GameMaker.Instance.getOn")
     });
     assert!(
         !has_syscall,
@@ -594,6 +636,7 @@ fn test_self_field_read_emits_get_field() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
 
     let (func, _) =
@@ -640,6 +683,7 @@ fn test_self_field_write_emits_set_field() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
 
     let (func, _) =
@@ -693,6 +737,15 @@ fn test_call_opcode_emits_ir_call() {
     let func_ref_map: HashMap<usize, usize> = [(4, 0)].into_iter().collect();
     let obj_names: Vec<String> = vec![];
     let script_names: HashSet<String> = HashSet::new();
+    // Build a per-test module that registers the user function stub so
+    // `call_named("show_debug_message", ...)` can resolve it to a FuncId.
+    let mut call_module = Module::new("test_call".to_string());
+    crate::register_gml_syscall_intrinsics(&mut call_module);
+    call_module.register_runtime(
+        "show_debug_message".to_string(),
+        reincarnate_core::ir::ty::FunctionSig::default(),
+    );
+    let call_registry = call_module.runtime_registry.clone();
     let ctx = make_ctx(
         false,
         0,
@@ -702,13 +755,16 @@ fn test_call_opcode_emits_ir_call() {
         &obj_names,
         &fn_names,
         &script_names,
+        &call_registry,
     );
 
     let (func, _) = translate_code_entry(&bytecode, "test_call", &ctx).expect("translation failed");
     let ops = collect_ops(&func);
 
     let has_call = ops.iter().any(|op| {
-        matches!(op, Op::Call { func, args } if func == "show_debug_message" && args.len() == 1)
+        matches!(op, Op::Call { func, args }
+            if call_module.functions.get(*func).map(|f| f.name.as_str()) == Some("show_debug_message")
+                && args.len() == 1)
     });
     assert!(
         has_call,
@@ -772,6 +828,7 @@ fn test_arithmetic_add_sub_mul() {
         &obj_names,
         &fn_names,
         &script_names,
+        &CORE_MODULE.runtime_registry,
     );
 
     let (func, _) =
@@ -780,15 +837,24 @@ fn test_arithmetic_add_sub_mul() {
 
     let add_count = ops
         .iter()
-        .filter(|op| matches!(op, Op::Call { func: f, .. } if f.starts_with("builtin.add")))
+        .filter(|op| {
+            matches!(op, Op::Call { func: f, .. }
+                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("builtin.add")))
+        })
         .count();
     let sub_count = ops
         .iter()
-        .filter(|op| matches!(op, Op::Call { func: f, .. } if f.starts_with("builtin.sub")))
+        .filter(|op| {
+            matches!(op, Op::Call { func: f, .. }
+                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("builtin.sub")))
+        })
         .count();
     let mul_count = ops
         .iter()
-        .filter(|op| matches!(op, Op::Call { func: f, .. } if f.starts_with("builtin.mul")))
+        .filter(|op| {
+            matches!(op, Op::Call { func: f, .. }
+                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("builtin.mul")))
+        })
         .count();
     assert_eq!(add_count, 3, "expected 3 add builtin calls; ops: {ops:?}");
     assert_eq!(sub_count, 1, "expected 1 sub builtin call; ops: {ops:?}");
@@ -833,6 +899,7 @@ fn test_cmp_equal_emits_cmp_eq() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
 
     let (func, _) = translate_code_entry(&bytecode, "test_cmp", &ctx).expect("translation failed");
@@ -889,6 +956,7 @@ fn test_bf_produces_br_if() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
 
     let (func, _) = translate_code_entry(&bytecode, "test_bf", &ctx).expect("translation failed");
@@ -947,6 +1015,7 @@ fn test_push_string_constant() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
     ctx.string_table = &string_table;
 
@@ -998,6 +1067,7 @@ fn test_push_double_constant() {
         &obj_names,
         &fn_names,
         &script_names,
+        &EMPTY_REGISTRY,
     );
 
     let (func, _) =

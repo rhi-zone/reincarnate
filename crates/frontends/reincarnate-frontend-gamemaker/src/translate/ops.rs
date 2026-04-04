@@ -273,7 +273,7 @@ fn translate_arithmetic_op(
             let a = pop(stack, inst)?;
             // Use the explicit type suffix from the GML instruction type tag.
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(arith_callee("add", suffix), &[a, b], ret_ty);
+            let r = fb.call_named(&arith_callee("add", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -281,7 +281,7 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(arith_callee("sub", suffix), &[a, b], ret_ty);
+            let r = fb.call_named(&arith_callee("sub", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -289,7 +289,7 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(arith_callee("mul", suffix), &[a, b], ret_ty);
+            let r = fb.call_named(&arith_callee("mul", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -297,7 +297,7 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(arith_callee("div", suffix), &[a, b], ret_ty);
+            let r = fb.call_named(&arith_callee("div", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -305,21 +305,21 @@ fn translate_arithmetic_op(
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(arith_callee("rem", suffix), &[a, b], ret_ty);
+            let r = fb.call_named(&arith_callee("rem", suffix), &[a, b], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Neg => {
             let a = pop(stack, inst)?;
             let suffix = type_suffix_for(inst.type1);
-            let r = fb.call(arith_callee("neg", suffix), &[a], ret_ty);
+            let r = fb.call_named(&arith_callee("neg", suffix), &[a], ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
         Opcode::Not => {
             let a = pop(stack, inst)?;
             // GML `!` always operates on Bool.
-            let r = fb.call("builtin.not_bool", &[a], Type::Bool);
+            let r = fb.call_named("builtin.not_bool", &[a], Type::Bool);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -348,17 +348,15 @@ fn type_suffix_for(dt: DataType) -> &'static str {
 
 /// Build the full callee name for an arithmetic op and data-type suffix.
 ///
-/// Typed variants (`add_f64`, `neg_i32`, …) are builtins inlined to operators
-/// by the backend, so they get the `builtin.` prefix.  The `_any` variants are
-/// real IR functions with dispatch bodies — they must NOT have the prefix so
-/// `lower_call` emits them as normal function calls.
+/// All variants (typed and `_any`) use the `builtin.` prefix.  The `_any` variants
+/// have dispatch bodies but are still registered in the builtin namespace so
+/// `FunctionBuilder::add()` (which generates `"builtin.add_any"`) resolves them
+/// from the core registry.
 fn arith_callee(op: &str, suffix: &str) -> String {
     match (op, suffix) {
         // String "add" is concatenation, not arithmetic.
         ("add", "str") => "builtin.concat_str".to_string(),
-        // _any variants are real functions with dispatch bodies, not builtins.
-        (_, "any") => format!("{op}_{suffix}"),
-        // Typed variants are builtins inlined to operators.
+        // All other variants (typed and _any) use the builtin prefix.
         _ => format!("builtin.{op}_{suffix}"),
     }
 }
@@ -384,7 +382,7 @@ fn emit_gml_bitwise_bin(
     } else {
         (a, b)
     };
-    let r_i = fb.call(format!("builtin.{op}_i32"), &[a_i, b_i], Type::Int(32));
+    let r_i = fb.call_named(&format!("builtin.{op}_i32"), &[a_i, b_i], Type::Int(32));
     if needs_coerce {
         fb.coerce(r_i, Type::Float(64))
     } else {
@@ -414,7 +412,7 @@ fn translate_bitwise_cmp_op(
             let a = pop(stack, inst)?;
             // GML uses one And opcode for both `&&` (Bool operands) and `&` (Int operands).
             let r = if inst.type1 == DataType::Bool {
-                fb.call("builtin.and_bool", &[a, b], Type::Bool)
+                fb.call_named("builtin.and_bool", &[a, b], Type::Bool)
             } else {
                 let ret_ty = if inst.type1 == DataType::Variable {
                     fb.fresh_var()
@@ -431,7 +429,7 @@ fn translate_bitwise_cmp_op(
             let a = pop(stack, inst)?;
             // GML uses one Or opcode for both `||` (Bool operands) and `|` (Int operands).
             let r = if inst.type1 == DataType::Bool {
-                fb.call("builtin.or_bool", &[a, b], Type::Bool)
+                fb.call_named("builtin.or_bool", &[a, b], Type::Bool)
             } else {
                 let ret_ty = if inst.type1 == DataType::Variable {
                     fb.fresh_var()
@@ -779,7 +777,7 @@ fn translate_call_op(
                 // so the PushI -9 skip fires for InstanceType::Stacktop too.
                 if func_name == "@@Global@@" && argc == 0 {
                     let ty = fb.fresh_var();
-                    let result = fb.call("@@Global@@", &[], ty);
+                    let result = fb.call_named("@@Global@@", &[], ty);
                     gml_sizes.insert(result, 4);
                     stack.push(result);
                     *global_scope_on_stack = true;
@@ -817,7 +815,7 @@ fn translate_call_op(
                 } else {
                     fb.fresh_var()
                 };
-                let result = fb.call(&func_name, &args, ret_ty);
+                let result = fb.call_named(&func_name, &args, ret_ty);
                 gml_sizes.insert(result, 4); // Call returns Variable (16 bytes)
                 stack.push(result);
             }
@@ -1122,7 +1120,7 @@ fn translate_break_op(
             _ => {
                 // Unknown break signal, emit as system call.
                 let sig_val = fb.const_int(signal as i64, 64);
-                fb.call("GameMaker.Debug.break", &[sig_val], Type::Void);
+                fb.gml_syscall("GameMaker.Debug", "break", &[sig_val], Type::Void);
             }
         }
     }

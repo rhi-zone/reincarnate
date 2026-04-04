@@ -286,7 +286,11 @@ fn fold_cast(c: &Constant, ty: &Type) -> Option<Constant> {
 
 /// Try to fold a single instruction given the current constant map.
 /// Returns the folded constant if successful.
-fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
+fn try_fold(
+    op: &Op,
+    consts: &HashMap<ValueId, Constant>,
+    func_names: &HashMap<super::super::ir::func::FuncId, String>,
+) -> Option<Constant> {
     match op {
         // Comparison
         Op::Cmp(kind, a, b) => fold_cmp(*kind, consts.get(a)?, consts.get(b)?),
@@ -295,13 +299,14 @@ fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
         Op::Cast(a, ty, _) => fold_cast(consts.get(a)?, ty),
 
         // Builtin arithmetic/logic calls and type-conversion function calls.
-        Op::Call { func, args } => {
+        Op::Call { func: fid, args } => {
+            let fname = func_names.get(fid).map(|s| s.as_str()).unwrap_or("");
             // Derive the base operation name (strip "builtin." prefix and type suffix).
-            let base = if let Some(rest) = func.strip_prefix("builtin.") {
+            let base = if let Some(rest) = fname.strip_prefix("builtin.") {
                 // Strip the last "_TYPE" suffix (e.g. "add_f64" → "add").
                 rest.rsplit_once('_').map(|(b, _)| b).unwrap_or(rest)
             } else {
-                func.as_str()
+                fname
             };
 
             match (base, args.as_slice()) {
@@ -450,7 +455,10 @@ fn try_fold(op: &Op, consts: &HashMap<ValueId, Constant>) -> Option<Constant> {
 ///
 /// This turns `!(x >= 1)` into `x < 1` at the IR level, so the emitter
 /// doesn't need to handle comparison flipping as a syntax transformation.
-fn fold_not_cmp(func: &mut Function) -> bool {
+fn fold_not_cmp(
+    func: &mut Function,
+    func_names: &HashMap<super::super::ir::func::FuncId, String>,
+) -> bool {
     // Map from ValueId → (CmpKind, lhs, rhs) for all Cmp instructions.
     let mut cmp_defs: HashMap<ValueId, (CmpKind, ValueId, ValueId)> = HashMap::new();
     for (_, inst) in func.insts.iter() {
@@ -465,7 +473,8 @@ fn fold_not_cmp(func: &mut Function) -> bool {
         .filter_map(|inst_id| {
             let inst = &func.insts[inst_id];
             // Match builtin.not_bool(inner) — the canonical not-of-cmp pattern.
-            if let Op::Call { func: fname, args } = &inst.op {
+            if let Op::Call { func: fid, args } = &inst.op {
+                let fname = func_names.get(fid).map(|s| s.as_str()).unwrap_or("");
                 if fname.starts_with("builtin.not") && args.len() == 1 {
                     let inner = args[0];
                     let &(kind, a, b) = cmp_defs.get(&inner)?;
@@ -484,7 +493,10 @@ fn fold_not_cmp(func: &mut Function) -> bool {
 }
 
 /// Run constant folding on a single function. Returns true if any changes were made.
-fn fold_function(func: &mut Function) -> bool {
+fn fold_function(
+    func: &mut Function,
+    func_names: &HashMap<super::super::ir::func::FuncId, String>,
+) -> bool {
     let mut any_changed = false;
 
     loop {
@@ -502,7 +514,7 @@ fn fold_function(func: &mut Function) -> bool {
                 if matches!(&inst.op, Op::Const(_)) {
                     return None;
                 }
-                let folded = try_fold(&inst.op, &consts)?;
+                let folded = try_fold(&inst.op, &consts, func_names)?;
                 Some((inst_id, result, folded))
             })
             .collect();
@@ -522,7 +534,7 @@ fn fold_function(func: &mut Function) -> bool {
 
     // Peephole: Not(Cmp) → Cmp(inverse). Runs after constant folding
     // since it doesn't create new folding opportunities.
-    any_changed |= fold_not_cmp(func);
+    any_changed |= fold_not_cmp(func, func_names);
 
     // Fold BrIf with a constant condition → unconditional Br.
     any_changed |= fold_brif_constants(func);
@@ -613,12 +625,19 @@ impl Transform for ConstantFolding {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        // Build FuncId → name map for const_fold's name-based dispatch.
+        let func_names: HashMap<FuncId, String> = module
+            .functions
+            .keys()
+            .map(|fid| (fid, module.func_name(fid).to_string()))
+            .collect();
+
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
                 continue;
             }
-            if fold_function(&mut module.functions[func_id]) {
+            if fold_function(&mut module.functions[func_id], &func_names) {
                 changed_funcs.insert(func_id);
             }
         }
@@ -638,12 +657,23 @@ mod tests {
     use crate::ir::ty::FunctionSig;
     use crate::ir::Visibility;
 
-    fn apply_fold(func: crate::ir::Function) -> crate::ir::Function {
+    fn apply_fold(func: crate::ir::Function) -> (crate::ir::Function, crate::ir::Module) {
         let mut mb = ModuleBuilder::new("test");
         let fid = mb.add_function(func);
         let module = mb.build();
         let result = ConstantFolding.apply(module, None).unwrap();
-        result.module.functions[fid].clone()
+        let func = result.module.functions[fid].clone();
+        (func, result.module)
+    }
+
+    /// Create a `FunctionBuilder` with the core builtin registry pre-installed,
+    /// so arithmetic helpers (`add`, `sub`, `not`, etc.) can resolve their callees.
+    fn fb_with_registry(name: &str, sig: FunctionSig) -> FunctionBuilder {
+        let mb = ModuleBuilder::new("test");
+        let registry = mb.runtime_registry().clone();
+        let mut fb = FunctionBuilder::new(name, sig, Visibility::Private);
+        fb.set_registry(registry);
+        fb
     }
 
     /// Find the instruction that produces a given value.
@@ -663,13 +693,13 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(2, 64);
         let b = fb.const_int(3, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, sum).op,
             Op::Const(Constant::Int(5))
@@ -685,13 +715,13 @@ mod tests {
             return_ty: Type::Float(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_float(1.5);
         let b = fb.const_float(2.0);
         let product = fb.mul(a, b);
         fb.ret(Some(product));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(
             matches!(&find_inst_for(&func, product).op, Op::Const(Constant::Float(f)) if *f == 3.0)
         );
@@ -705,13 +735,13 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(5, 64);
         let b = fb.const_int(10, 64);
         let cmp = fb.cmp(CmpKind::Lt, a, b);
         fb.ret(Some(cmp));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, cmp).op,
             Op::Const(Constant::Bool(true))
@@ -726,12 +756,12 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_bool(true);
         let result = fb.not(a);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, result).op,
             Op::Const(Constant::Bool(false))
@@ -746,17 +776,18 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(5, 64);
         let b = fb.const_int(0, 64);
         let div = fb.div(a, b);
         fb.ret(Some(div));
 
-        let func = apply_fold(fb.build());
+        let (func, module) = apply_fold(fb.build());
+        let inst = find_inst_for(&func, div);
         assert!(
-            matches!(&find_inst_for(&func, div).op, Op::Call { func: f, .. } if f.starts_with("builtin.div")),
+            matches!(&inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.div")),
             "expected div builtin call, got {:?}",
-            &find_inst_for(&func, div).op
+            &inst.op
         );
     }
 
@@ -768,17 +799,18 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let param = fb.param(0);
         let b = fb.const_int(3, 64);
         let sum = fb.add(param, b);
         fb.ret(Some(sum));
 
-        let func = apply_fold(fb.build());
+        let (func, module) = apply_fold(fb.build());
+        let inst = find_inst_for(&func, sum);
         assert!(
-            matches!(&find_inst_for(&func, sum).op, Op::Call { func: f, .. } if f.starts_with("builtin.add")),
+            matches!(&inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.add")),
             "expected add builtin call, got {:?}",
-            &find_inst_for(&func, sum).op
+            &inst.op
         );
     }
 
@@ -790,12 +822,12 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(42, 64);
         let result = fb.neg(a);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, result).op,
             Op::Const(Constant::Int(-42))
@@ -810,14 +842,14 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let param = fb.param(0);
         let one = fb.const_int(1, 64);
         let cmp = fb.cmp(CmpKind::Ge, param, one);
         let result = fb.not(cmp);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         let inst = find_inst_for(&func, result);
         assert!(
             matches!(&inst.op, Op::Cmp(CmpKind::Lt, a, b) if *a == param && *b == one),
@@ -836,7 +868,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.param(0);
         let b = fb.param(1);
         let sum = fb.add(a, b);
@@ -858,7 +890,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(2, 64);
         let b = fb.const_int(3, 64);
         let sum = fb.add(a, b);
@@ -874,13 +906,13 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(0xFF, 64);
         let b = fb.const_int(0x0F, 64);
         let result = fb.bit_and(a, b);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, result).op,
             Op::Const(Constant::Int(15))
@@ -897,13 +929,13 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let param = fb.param(0);
         let b = fb.const_bool(false);
         let result = fb.bool_and(param, b);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(
             matches!(
                 &find_inst_for(&func, result).op,
@@ -921,13 +953,13 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let param = fb.param(0);
         let a = fb.const_bool(false);
         let result = fb.bool_and(a, param);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(
             matches!(
                 &find_inst_for(&func, result).op,
@@ -945,13 +977,13 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let param = fb.param(0);
         let b = fb.const_bool(true);
         let result = fb.bool_or(param, b);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(
             matches!(
                 &find_inst_for(&func, result).op,
@@ -971,7 +1003,7 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         fb.ret(None);
 
         let mut mb = ModuleBuilder::new("test");
@@ -989,7 +1021,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let cond = fb.param(0);
         let then_block = fb.create_block();
         let else_block = fb.create_block();
@@ -1007,7 +1039,7 @@ mod tests {
         let product = fb.mul(c, d);
         fb.ret(Some(product));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, sum).op,
             Op::Const(Constant::Int(5))
@@ -1026,7 +1058,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(1, 64);
         let b = fb.const_int(2, 64);
         let sum = fb.add(a, b);
@@ -1034,7 +1066,7 @@ mod tests {
         let product = fb.mul(sum, c);
         fb.ret(Some(product));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, product).op,
             Op::Const(Constant::Int(9))
@@ -1051,7 +1083,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let param = fb.param(0);
         let c = fb.const_int(5, 64);
         let fold_me = fb.add(c, c); // foldable: 5+5=10
@@ -1059,15 +1091,16 @@ mod tests {
         let result = fb.add(fold_me, keep_me);
         fb.ret(Some(result));
 
-        let func = apply_fold(fb.build());
+        let (func, module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, fold_me).op,
             Op::Const(Constant::Int(10))
         ));
+        let keep_inst = find_inst_for(&func, keep_me);
         assert!(
-            matches!(&find_inst_for(&func, keep_me).op, Op::Call { func: f, .. } if f.starts_with("builtin.add")),
+            matches!(&keep_inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.add")),
             "expected add builtin call, got {:?}",
-            &find_inst_for(&func, keep_me).op
+            &keep_inst.op
         );
     }
 
@@ -1079,13 +1112,13 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let a = fb.const_int(i64::MAX, 64);
         let b = fb.const_int(1, 64);
         let sum = fb.add(a, b);
         fb.ret(Some(sum));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         // i64::MAX + 1 wraps to i64::MIN.
         assert!(matches!(
             &find_inst_for(&func, sum).op,
@@ -1101,13 +1134,13 @@ mod tests {
             return_ty: Type::Float(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let nan = fb.const_float(f64::NAN);
         let one = fb.const_float(1.0);
         let sum = fb.add(nan, one);
         fb.ret(Some(sum));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         if let Op::Const(Constant::Float(v)) = &find_inst_for(&func, sum).op {
             assert!(v.is_nan(), "NaN + 1.0 should be NaN");
         } else {
@@ -1123,7 +1156,7 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let mut acc = fb.const_int(0, 64);
         for i in 1..=10 {
             let c = fb.const_int(i, 64);
@@ -1131,7 +1164,7 @@ mod tests {
         }
         fb.ret(Some(acc));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         // 0+1+2+...+10 = 55
         assert!(matches!(
             &find_inst_for(&func, acc).op,
@@ -1147,12 +1180,12 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let c = fb.const_int(16777215, 64);
         let n = fb.not(c);
         fb.ret(Some(n));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, n).op,
             Op::Const(Constant::Bool(false))
@@ -1167,12 +1200,12 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let c = fb.const_int(0, 64);
         let n = fb.not(c);
         fb.ret(Some(n));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, n).op,
             Op::Const(Constant::Bool(true))
@@ -1187,13 +1220,13 @@ mod tests {
             return_ty: Type::Bool,
             ..Default::default()
         };
-        let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        let mut fb = fb_with_registry("test", sig);
         let c = fb.const_int(42, 64);
         let n1 = fb.not(c);
         let n2 = fb.not(n1);
         fb.ret(Some(n2));
 
-        let func = apply_fold(fb.build());
+        let (func, _module) = apply_fold(fb.build());
         assert!(matches!(
             &find_inst_for(&func, n2).op,
             Op::Const(Constant::Bool(true))

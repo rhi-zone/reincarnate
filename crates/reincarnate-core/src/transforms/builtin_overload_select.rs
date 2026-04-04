@@ -44,16 +44,15 @@ fn try_select(func: &mut Function, inst_id: crate::ir::InstId, module: &Module) 
     // Clone the op to avoid borrowing issues while we mutate value_types.
     let op = func.insts[inst_id].op.clone();
 
-    let Op::Call { func: fname, args } = &op else {
+    let Op::Call {
+        func: callee_fid,
+        args,
+    } = &op
+    else {
         return false;
     };
 
-    // Look up the callee FuncId from the runtime registry.
-    let Some(&callee_fid) = module.runtime_registry.get(fname.as_str()) else {
-        return false;
-    };
-
-    let callee = &module.functions[callee_fid];
+    let callee = &module.functions[*callee_fid];
 
     // Only _any stubs have a non-empty specializations table.
     if callee.specializations.is_empty() {
@@ -68,13 +67,11 @@ fn try_select(func: &mut Function, inst_id: crate::ir::InstId, module: &Module) 
         return false;
     };
 
-    let target = &module.functions[target_fid];
-    let target_name = target.name.clone();
-    let return_ty = target.sig.return_ty.clone();
+    let return_ty = module.functions[target_fid].sig.return_ty.clone();
 
     // Rewrite the call to the typed variant.
-    if let Op::Call { func: fn_name, .. } = &mut func.insts[inst_id].op {
-        *fn_name = target_name;
+    if let Op::Call { func: fn_id, .. } = &mut func.insts[inst_id].op {
+        *fn_id = target_fid;
     }
 
     // Update the result's value type.
@@ -151,7 +148,6 @@ impl Transform for BuiltinOverloadSelect {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::entity::EntityRef;
     use crate::ir::builder::{FunctionBuilder, ModuleBuilder};
     use crate::ir::inst::Op;
     use crate::ir::ty::FunctionSig;
@@ -160,91 +156,31 @@ mod tests {
 
     /// Build a module containing one function that calls `<op_name>_any`
     /// with `arg_types.len()` parameters of the given types and the given initial
-    /// result type.  Returns the module and the `FuncId` of the first user function.
-    fn make_module_with_func(op_name: &str, arg_types: &[Type]) -> Module {
+    /// result type.  Returns the module and the `FuncId` of the test function.
+    fn make_module_with_func(op_name: &str, arg_types: &[Type]) -> (Module, FuncId) {
+        // Register _any builtins first so the FuncId exists before translation.
+        let mut mb = ModuleBuilder::new("test");
+        mb.module_mut().register_arithmetic_any_builtins();
+
+        let func_name = format!("builtin.{}_any", op_name);
+        let any_fid = mb.runtime_registry()[&func_name];
+
         let sig = FunctionSig {
             params: arg_types.to_vec(),
             return_ty: Type::Unknown,
             ..Default::default()
         };
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Private);
-
         let args: Vec<_> = (0..arg_types.len()).map(|i| fb.param(i)).collect();
-        let func_name = format!("{}_any", op_name);
-        let call_result = fb.call(func_name, &args, Type::Unknown);
+        let call_result = fb.call(any_fid, &args, Type::Unknown);
         fb.ret(Some(call_result));
         let func = fb.build();
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(func);
-        let mut module = mb.build();
-        // Register minimal _any stubs with specializations for BuiltinOverloadSelect.
-        for op in &["add", "sub", "mul", "div", "rem"] {
-            let spec_entries: Vec<(Vec<Type>, String)> = {
-                let mut v = vec![
-                    (
-                        vec![Type::Float(64), Type::Float(64)],
-                        format!("builtin.{op}_f64"),
-                    ),
-                    (
-                        vec![Type::Float(32), Type::Float(32)],
-                        format!("builtin.{op}_f32"),
-                    ),
-                    (
-                        vec![Type::Int(32), Type::Int(32)],
-                        format!("builtin.{op}_i32"),
-                    ),
-                    (
-                        vec![Type::Int(64), Type::Int(64)],
-                        format!("builtin.{op}_i64"),
-                    ),
-                ];
-                if *op == "add" {
-                    v.push((
-                        vec![Type::String, Type::String],
-                        "builtin.concat_str".to_string(),
-                    ));
-                }
-                v
-            };
-            let bin_sig = FunctionSig {
-                params: vec![Type::Unknown, Type::Unknown],
-                return_ty: Type::Unknown,
-                ..Default::default()
-            };
-            let any_id = module.register_runtime(format!("{op}_any"), bin_sig);
-            for (arg_types, target_name) in spec_entries {
-                let target_fid = module.runtime_registry[&target_name];
-                module.functions[any_id]
-                    .specializations
-                    .insert(arg_types, target_fid);
-            }
-        }
-        {
-            let spec_entries: Vec<(Vec<Type>, String)> = vec![
-                (vec![Type::Float(64)], "builtin.neg_f64".to_string()),
-                (vec![Type::Float(32)], "builtin.neg_f32".to_string()),
-                (vec![Type::Int(32)], "builtin.neg_i32".to_string()),
-                (vec![Type::Int(64)], "builtin.neg_i64".to_string()),
-            ];
-            let un_sig = FunctionSig {
-                params: vec![Type::Unknown],
-                return_ty: Type::Unknown,
-                ..Default::default()
-            };
-            let any_id = module.register_runtime("neg_any", un_sig);
-            for (arg_types, target_name) in spec_entries {
-                let target_fid = module.runtime_registry[&target_name];
-                module.functions[any_id]
-                    .specializations
-                    .insert(arg_types, target_fid);
-            }
-        }
-        module
+        let test_fid = mb.add_function(func);
+        (mb.build(), test_fid)
     }
 
-    fn first_call_id(module: &Module) -> crate::ir::InstId {
-        let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
+    fn first_call_id(module: &Module, func_id: FuncId) -> crate::ir::InstId {
         let func = &module.functions[func_id];
         func.blocks
             .values()
@@ -253,95 +189,103 @@ mod tests {
             .expect("no Call instruction found")
     }
 
+    fn call_name(module: &Module, func_id: FuncId, inst_id: crate::ir::InstId) -> &str {
+        let func = &module.functions[func_id];
+        match &func.insts[inst_id].op {
+            Op::Call { func: fid, .. } => module.func_name(*fid),
+            _ => panic!("expected Call"),
+        }
+    }
+
     #[test]
     fn add_f64_both_operands_f64() {
-        let module = make_module_with_func("add", &[Type::Float(64), Type::Float(64)]);
+        let (module, test_fid) = make_module_with_func("add", &[Type::Float(64), Type::Float(64)]);
         let result = BuiltinOverloadSelect.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_call_id(&result.module);
-        let func = &result.module.functions[func_id];
-
-        let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
-            panic!("expected Call");
-        };
-        assert_eq!(fname, "builtin.add_f64");
+        let inst_id = first_call_id(&result.module, test_fid);
+        assert_eq!(
+            call_name(&result.module, test_fid, inst_id),
+            "builtin.add_f64"
+        );
+        let func = &result.module.functions[test_fid];
         let result_vid = func.insts[inst_id].result.unwrap();
         assert_eq!(func.value_types[result_vid], Type::Float(64));
     }
 
     #[test]
     fn neg_i32() {
-        let module = make_module_with_func("neg", &[Type::Int(32)]);
+        let (module, test_fid) = make_module_with_func("neg", &[Type::Int(32)]);
         let result = BuiltinOverloadSelect.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_call_id(&result.module);
-        let func = &result.module.functions[func_id];
-
-        let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
-            panic!()
-        };
-        assert_eq!(fname, "builtin.neg_i32");
+        let inst_id = first_call_id(&result.module, test_fid);
+        assert_eq!(
+            call_name(&result.module, test_fid, inst_id),
+            "builtin.neg_i32"
+        );
+        let func = &result.module.functions[test_fid];
         let result_vid = func.insts[inst_id].result.unwrap();
         assert_eq!(func.value_types[result_vid], Type::Int(32));
     }
 
     #[test]
     fn mismatched_types_left_unchanged() {
-        let module = make_module_with_func("add", &[Type::Float(64), Type::Int(32)]);
+        let (module, test_fid) = make_module_with_func("add", &[Type::Float(64), Type::Int(32)]);
         let result = BuiltinOverloadSelect.apply(module, None).unwrap();
         assert!(!result.changed);
 
-        let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_call_id(&result.module);
-        let func = &result.module.functions[func_id];
-
-        let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
-            panic!()
-        };
-        assert_eq!(fname, "add_any");
+        let inst_id = first_call_id(&result.module, test_fid);
+        assert_eq!(
+            call_name(&result.module, test_fid, inst_id),
+            "builtin.add_any"
+        );
     }
 
     #[test]
     fn unknown_operand_left_unchanged() {
-        let module = make_module_with_func("mul", &[Type::Unknown, Type::Unknown]);
+        let (module, test_fid) = make_module_with_func("mul", &[Type::Unknown, Type::Unknown]);
         let result = BuiltinOverloadSelect.apply(module, None).unwrap();
         assert!(!result.changed);
 
-        let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_call_id(&result.module);
-        let func = &result.module.functions[func_id];
-
-        let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
-            panic!()
-        };
-        assert_eq!(fname, "mul_any");
+        let inst_id = first_call_id(&result.module, test_fid);
+        assert_eq!(
+            call_name(&result.module, test_fid, inst_id),
+            "builtin.mul_any"
+        );
     }
 
     #[test]
     fn sub_i64_both_i64() {
-        let module = make_module_with_func("sub", &[Type::Int(64), Type::Int(64)]);
+        let (module, test_fid) = make_module_with_func("sub", &[Type::Int(64), Type::Int(64)]);
         let result = BuiltinOverloadSelect.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func_id = FuncId::new(Module::NUM_CORE_BUILTINS);
-        let inst_id = first_call_id(&result.module);
-        let func = &result.module.functions[func_id];
-
-        let Op::Call { func: fname, .. } = &func.insts[inst_id].op else {
-            panic!()
-        };
-        assert_eq!(fname, "builtin.sub_i64");
+        let inst_id = first_call_id(&result.module, test_fid);
+        assert_eq!(
+            call_name(&result.module, test_fid, inst_id),
+            "builtin.sub_i64"
+        );
+        let func = &result.module.functions[test_fid];
         let result_vid = func.insts[inst_id].result.unwrap();
         assert_eq!(func.value_types[result_vid], Type::Int(64));
     }
 
     #[test]
     fn non_builtin_call_ignored() {
-        // A call that doesn't start with "builtin." should not be touched.
+        // A call to a function not in the module's specializations should not be touched.
+        // Use a stub registered in the runtime registry with no specializations.
+        let mut mb = ModuleBuilder::new("test");
+        // Register a dummy function in the registry.
+        let dummy_fid = mb.register_runtime(
+            "user.add_any",
+            FunctionSig {
+                params: vec![Type::Float(64), Type::Float(64)],
+                return_ty: Type::Unknown,
+                ..Default::default()
+            },
+        );
+
         let sig = FunctionSig {
             params: vec![Type::Float(64), Type::Float(64)],
             return_ty: Type::Float(64),
@@ -350,10 +294,9 @@ mod tests {
         let mut fb = FunctionBuilder::new("test_fn", sig, Visibility::Private);
         let a = fb.param(0);
         let b = fb.param(1);
-        let v = fb.call("user.add_any", &[a, b], Type::Unknown);
+        let v = fb.call(dummy_fid, &[a, b], Type::Unknown);
         fb.ret(Some(v));
         let func = fb.build();
-        let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
         let module = mb.build();
 

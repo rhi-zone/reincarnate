@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::define_entity;
 
 use super::block::BlockId;
+use super::func::FuncId;
 use super::ty::Type;
 use super::value::{Constant, ValueId};
 
@@ -113,7 +114,7 @@ pub enum Op {
     // -- Calls --
     /// Direct function call.
     Call {
-        func: String,
+        func: FuncId,
         args: Vec<ValueId>,
     },
     /// Create a closure: packages a function with captured outer-scope values.

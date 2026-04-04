@@ -942,14 +942,24 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
+        let mut mb_setup = ModuleBuilder::new("test");
+        mb_setup.register_runtime(
+            "consume",
+            FunctionSig {
+                params: vec![Type::Int(64)],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let mut fb = FunctionBuilder::new("escaped", sig, Visibility::Private);
+        fb.set_registry(mb_setup.runtime_registry().clone());
         let ptr = fb.alloc(Type::Int(64));
         let one = fb.const_int(1, 64);
         fb.store(ptr, one);
         let two = fb.const_int(2, 64);
         fb.store(ptr, two);
         // Pass the alloc ptr to a call — this escapes it.
-        let _call_result = fb.call("consume", &[ptr], Type::Void);
+        let _call_result = fb.call_named("consume", &[ptr], Type::Void);
         let loaded = fb.load(ptr, Type::Int(64));
         fb.ret(Some(loaded));
 
@@ -1098,11 +1108,21 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
+        let mut mb_setup = ModuleBuilder::new("test");
+        mb_setup.register_runtime(
+            "escape",
+            FunctionSig {
+                params: vec![Type::Int(64)],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let mut fb = FunctionBuilder::new("test", sig, Visibility::Private);
+        fb.set_registry(mb_setup.runtime_registry().clone());
         let ptr = fb.alloc(Type::Int(64));
         let one = fb.const_int(1, 64);
         fb.store(ptr, one);
-        let _call = fb.call("escape", &[ptr], Type::Void);
+        let _call = fb.call_named("escape", &[ptr], Type::Void);
         let loaded = fb.load(ptr, Type::Int(64));
         fb.ret(Some(loaded));
 

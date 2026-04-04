@@ -1,4 +1,21 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
+
+/// Core arithmetic/logic builtin registry, lazily initialized from a throwaway
+/// `Module::new("__core__")`.  Used as the default registry for `FunctionBuilder`
+/// so that tests that build functions without a full module still work.
+///
+/// All modules created via `Module::new` call `register_core_builtins()` first,
+/// so the core builtins always receive the same FuncIds (0 … N-1) in every
+/// module — making this static registry safe to use across all builders.
+static CORE_REGISTRY: OnceLock<HashMap<String, FuncId>> = OnceLock::new();
+
+fn core_registry() -> &'static HashMap<String, FuncId> {
+    CORE_REGISTRY.get_or_init(|| {
+        let m = Module::new("__core__".to_string());
+        m.runtime_registry
+    })
+}
 
 use crate::entity::PrimaryMap;
 
@@ -28,6 +45,12 @@ pub struct FunctionBuilder {
     /// A per-builder counter therefore produces unique markers within one
     /// `FunctionBuilder` session without requiring a module-level allocation.
     next_type_var: u32,
+    /// Name-to-FuncId registry for string-based call resolution.
+    ///
+    /// Populated via [`set_registry`] by callers that need to emit named calls.
+    /// Empty by default — test code that builds functions without a module
+    /// registry must use [`call`] with a `FuncId` directly.
+    registry: HashMap<String, super::func::FuncId>,
 }
 
 impl FunctionBuilder {
@@ -80,7 +103,43 @@ impl FunctionBuilder {
             func,
             current_block: entry,
             next_type_var: 0,
+            registry: HashMap::new(),
         }
+    }
+
+    /// Install a name-to-FuncId registry so this builder can resolve named calls.
+    ///
+    /// Must be called before any `call_named` or arithmetic helper that uses
+    /// named builtins.  Any code that creates a `FunctionBuilder` without a
+    /// module context (e.g. tests) may omit this call and use [`call`] directly.
+    pub fn set_registry(&mut self, r: HashMap<String, super::func::FuncId>) {
+        self.registry = r;
+    }
+
+    /// Emit a direct call by function name, resolving via the installed registry.
+    ///
+    /// Resolution order:
+    /// 1. Instance registry installed via [`set_registry`] (user functions + engine builtins).
+    /// 2. Static core registry (arithmetic/logic builtins from [`Module::register_core_builtins`]).
+    ///
+    /// # Panics
+    /// Panics if `name` is not present in either registry.  This indicates a
+    /// builder construction error — the registry must be installed before
+    /// calling user-defined or engine-specific functions.
+    pub fn call_named(&mut self, name: &str, args: &[ValueId], ret_ty: Type) -> ValueId {
+        let func = self
+            .registry
+            .get(name)
+            .or_else(|| core_registry().get(name))
+            .copied()
+            .unwrap_or_else(|| panic!("call_named: '{name}' not in registry"));
+        self.emit(
+            Op::Call {
+                func,
+                args: args.to_vec(),
+            },
+            ret_ty,
+        )
     }
 
     /// Create a new block with no parameters. Returns its `BlockId`.
@@ -367,73 +426,37 @@ impl FunctionBuilder {
     pub fn add(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
         let name = format!("builtin.add_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.call_named(&name, &[a, b], ty)
     }
 
     pub fn sub(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
         let name = format!("builtin.sub_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.call_named(&name, &[a, b], ty)
     }
 
     pub fn mul(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
         let name = format!("builtin.mul_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.call_named(&name, &[a, b], ty)
     }
 
     pub fn div(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
         let name = format!("builtin.div_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.call_named(&name, &[a, b], ty)
     }
 
     pub fn rem(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
         let name = format!("builtin.rem_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a, b],
-            },
-            ty,
-        )
+        self.call_named(&name, &[a, b], ty)
     }
 
     pub fn neg(&mut self, a: ValueId) -> ValueId {
         let ty = self.value_type(a);
         let name = format!("builtin.neg_{}", Self::builtin_type_suffix(&ty));
-        self.emit(
-            Op::Call {
-                func: name,
-                args: vec![a],
-            },
-            ty,
-        )
+        self.call_named(&name, &[a], ty)
     }
 
     // ========================================================================
@@ -455,13 +478,8 @@ impl FunctionBuilder {
         } else {
             (a, b)
         };
-        let r = self.emit(
-            Op::Call {
-                func: format!("builtin.{op}_i32"),
-                args: vec![ai, bi],
-            },
-            Type::Int(32),
-        );
+        let name = format!("builtin.{op}_i32");
+        let r = self.call_named(&name, &[ai, bi], Type::Int(32));
         if needs_coerce {
             self.coerce(r, ty)
         } else {
@@ -480,13 +498,8 @@ impl FunctionBuilder {
         } else {
             a
         };
-        let r = self.emit(
-            Op::Call {
-                func: format!("builtin.{op}_i32"),
-                args: vec![ai],
-            },
-            Type::Int(32),
-        );
+        let name = format!("builtin.{op}_i32");
+        let r = self.call_named(&name, &[ai], Type::Int(32));
         if needs_coerce {
             self.coerce(r, ty)
         } else {
@@ -527,33 +540,15 @@ impl FunctionBuilder {
     }
 
     pub fn not(&mut self, a: ValueId) -> ValueId {
-        self.emit(
-            Op::Call {
-                func: "builtin.not_bool".into(),
-                args: vec![a],
-            },
-            Type::Bool,
-        )
+        self.call_named("builtin.not_bool", &[a], Type::Bool)
     }
 
     pub fn bool_and(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.emit(
-            Op::Call {
-                func: "builtin.and_bool".into(),
-                args: vec![a, b],
-            },
-            Type::Bool,
-        )
+        self.call_named("builtin.and_bool", &[a, b], Type::Bool)
     }
 
     pub fn bool_or(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.emit(
-            Op::Call {
-                func: "builtin.or_bool".into(),
-                args: vec![a, b],
-            },
-            Type::Bool,
-        )
+        self.call_named("builtin.or_bool", &[a, b], Type::Bool)
     }
 
     // ========================================================================
@@ -706,10 +701,10 @@ impl FunctionBuilder {
     // Calls
     // ========================================================================
 
-    pub fn call(&mut self, func: impl Into<String>, args: &[ValueId], ret_ty: Type) -> ValueId {
+    pub fn call(&mut self, func: super::func::FuncId, args: &[ValueId], ret_ty: Type) -> ValueId {
         self.emit(
             Op::Call {
-                func: func.into(),
+                func,
                 args: args.to_vec(),
             },
             ret_ty,
@@ -773,6 +768,26 @@ impl FunctionBuilder {
             },
             ret_ty,
         )
+    }
+
+    /// Emit an intrinsic call for a GML engine syscall.
+    ///
+    /// Maps `(system, method)` to the canonical call name `"system.method"` and
+    /// emits `Op::Call`, which the linear lowering pass converts back to
+    /// `Expr::SystemCall` via the intrinsic call map.  Use this instead of
+    /// [`system_call`] in GML-frontend translation so that the IR carries typed
+    /// `Op::Call` ops rather than opaque `Op::SystemCall` strings.
+    ///
+    /// [`system_call`]: FunctionBuilder::system_call
+    pub fn gml_syscall(
+        &mut self,
+        system: impl AsRef<str>,
+        method: impl AsRef<str>,
+        args: &[ValueId],
+        ret_ty: Type,
+    ) -> ValueId {
+        let name = format!("{}.{}", system.as_ref(), method.as_ref());
+        self.call_named(&name, args, ret_ty)
     }
 
     // ========================================================================
@@ -900,6 +915,79 @@ impl ModuleBuilder {
         let id = self.module.functions.push(func);
         debug_assert_eq!(id, name_id);
         id
+    }
+
+    /// Delegate to [`Module::register_runtime`] for pre-translation builtin registration.
+    pub fn register_runtime(&mut self, name: impl Into<String>, sig: FunctionSig) -> FuncId {
+        self.module.register_runtime(name, sig)
+    }
+
+    /// Expose the runtime registry so callers can build `FunctionBuilder` registries.
+    pub fn runtime_registry(&self) -> &HashMap<String, FuncId> {
+        &self.module.runtime_registry
+    }
+
+    /// Expose a mutable reference to the inner [`Module`].
+    ///
+    /// Used by frontends that need to call `Module`-level methods (e.g.
+    /// `register_gml_syscall_intrinsics`, `freshen_unknown_types_in_sig`)
+    /// before translation begins.
+    pub fn module_mut(&mut self) -> &mut Module {
+        &mut self.module
+    }
+
+    /// Pre-register a user function stub so its `FuncId` exists before translation.
+    ///
+    /// Creates a minimal stub (empty entry block, no params, `Void` return, Public)
+    /// and pushes it into the module.  The stub body is replaced by
+    /// [`replace_function`] after translation.
+    pub fn register_function_stub(&mut self, name: impl Into<String>) -> FuncId {
+        use super::block::Block;
+        use super::func::{InlineHint, MethodKind, Visibility};
+        use super::inst::Terminator;
+        use super::ty::FunctionSig;
+        use crate::entity::PrimaryMap;
+
+        let name = name.into();
+        let mut blocks: PrimaryMap<super::block::BlockId, Block> = PrimaryMap::new();
+        let entry = blocks.push(Block {
+            params: Vec::new(),
+            insts: Vec::new(),
+            terminator: Terminator::Return(None),
+        });
+        let stub = Function {
+            name: name.clone(),
+            sig: FunctionSig::default(),
+            visibility: Visibility::Public,
+            namespace: Vec::new(),
+            class: None,
+            method_kind: MethodKind::Free,
+            specializations: HashMap::new(),
+            blocks,
+            insts: PrimaryMap::new(),
+            value_types: PrimaryMap::new(),
+            entry,
+            coroutine: None,
+            value_names: HashMap::new(),
+            capture_params: Vec::new(),
+            null_sentinel_values: std::collections::HashSet::new(),
+            type_rule: None,
+            intrinsic: None,
+            inline_hint: InlineHint::Default,
+        };
+        let name_id = self.module.name_table.func_names.push(name);
+        let id = self.module.functions.push(stub);
+        debug_assert_eq!(id, name_id);
+        id
+    }
+
+    /// Replace a pre-registered stub with the real translated function.
+    ///
+    /// # Panics
+    /// Panics (debug only) if the function name at `id` does not match `func.name`.
+    pub fn replace_function(&mut self, id: FuncId, func: Function) {
+        debug_assert_eq!(self.module.name_table.func_names[id], func.name);
+        self.module.functions[id] = func;
     }
 
     /// Return the set of all function names currently in the module.
@@ -1058,7 +1146,12 @@ mod tests {
             return_ty: Type::Int(64),
             ..Default::default()
         };
+        // Need a ModuleBuilder for the registry so arithmetic helpers work.
+        let mb = ModuleBuilder::new("test");
+        let registry = mb.runtime_registry().clone();
+
         let mut fb = FunctionBuilder::new("add", sig, Visibility::Public);
+        fb.set_registry(registry);
 
         let a = fb.param(0);
         let b = fb.param(1);
@@ -1080,7 +1173,7 @@ mod tests {
         // The add instruction should have a result.
         let add_inst = &func.insts[entry.insts[0]];
         assert!(add_inst.result.is_some());
-        assert!(matches!(&add_inst.op, Op::Call { func: f, .. } if f.starts_with("builtin.add")));
+        assert!(matches!(&add_inst.op, Op::Call { .. }));
 
         // The terminator should be Return.
         assert!(matches!(entry.terminator, Terminator::Return(Some(_))));

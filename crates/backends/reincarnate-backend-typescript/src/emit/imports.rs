@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 
 use reincarnate_core::entity::PrimaryMap;
+use reincarnate_core::ir::func::FuncId;
 use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{CastKind, ExternalImport, Function, Module, Op, Type, TypeId};
 use reincarnate_core::project::RuntimeConfig;
@@ -51,10 +52,10 @@ pub(super) fn relative_import_path(from: &[String], to: &[String]) -> String {
 
 pub(super) fn collect_system_names_from_funcs<'a>(
     funcs: impl Iterator<Item = &'a Function>,
-    // Optional map from intrinsic `Op::Call` function names to their system name.
+    // Optional map from intrinsic `Op::Call` FuncIds to their system name.
     // Used to find system modules for GML intrinsic calls (which are `Op::Call`
     // rather than `Op::SystemCall` after Phase 3a migration).
-    intrinsic_to_system: Option<&std::collections::HashMap<String, String>>,
+    intrinsic_to_system: Option<&HashMap<FuncId, String>>,
 ) -> BTreeSet<String> {
     let mut used = BTreeSet::new();
     for func in funcs {
@@ -63,9 +64,11 @@ pub(super) fn collect_system_names_from_funcs<'a>(
                 Op::SystemCall { system, .. } => {
                     used.insert(system.clone());
                 }
-                Op::Call { func: name, .. } => {
+                Op::Call {
+                    func: callee_fid, ..
+                } => {
                     if let Some(map) = intrinsic_to_system {
-                        if let Some(system) = map.get(name.as_str()) {
+                        if let Some(system) = map.get(callee_fid) {
                             used.insert(system.clone());
                         }
                     }
@@ -81,15 +84,15 @@ pub(super) fn collect_system_names_from_funcs<'a>(
 ///
 /// Used by `collect_type_refs_from_function` to handle `Op::Call` with
 /// intrinsic names the same way as the equivalent `Op::SystemCall`.
-pub(super) fn build_intrinsic_calls_map(module: &Module) -> HashMap<String, (String, String)> {
+pub(super) fn build_intrinsic_calls_map(module: &Module) -> HashMap<FuncId, (String, String)> {
     module
         .runtime_registry
         .iter()
-        .filter_map(|(name, &fid)| {
+        .filter_map(|(_, &fid)| {
             let func = &module.functions[fid];
             func.intrinsic.as_ref().map(|kind| {
                 let (system, method) = kind.system_method();
-                (name.clone(), (system.to_string(), method.to_string()))
+                (fid, (system.to_string(), method.to_string()))
             })
         })
         .collect()
@@ -100,15 +103,15 @@ pub(super) fn build_intrinsic_calls_map(module: &Module) -> HashMap<String, (Str
 /// Maps each registered intrinsic call name (e.g. `"GameMaker.Instance.getField"`)
 /// to its system name (e.g. `"GameMaker.Instance"`).  Only functions with an
 /// `IntrinsicKind` are included.
-pub(super) fn build_intrinsic_to_system(module: &Module) -> HashMap<String, String> {
+pub(super) fn build_intrinsic_to_system(module: &Module) -> HashMap<FuncId, String> {
     module
         .runtime_registry
         .iter()
-        .filter_map(|(name, &fid)| {
+        .filter_map(|(_, &fid)| {
             let func = &module.functions[fid];
             func.intrinsic.as_ref().map(|kind| {
                 let (system, _method) = kind.system_method();
-                (name.clone(), system.to_string())
+                (fid, system.to_string())
             })
         })
         .collect()
@@ -123,11 +126,17 @@ pub(super) fn emit_runtime_imports(
     stateful_system_aliases: &mut BTreeMap<String, String>,
 ) {
     let all_funcs = || module.functions.iter().map(|(_id, f)| f);
+    let func_names: HashMap<FuncId, String> = module
+        .runtime_registry
+        .iter()
+        .map(|(name, &fid)| (fid, name.clone()))
+        .collect();
     let intrinsic_to_system = build_intrinsic_to_system(module);
     let systems = collect_system_names_from_funcs(all_funcs(), Some(&intrinsic_to_system));
     emit_runtime_imports_with_prefix(systems, out, ".", runtime_config, stateful_system_aliases);
     let intrinsic_calls = build_intrinsic_calls_map(module);
-    let calls = collect_call_names_from_funcs(all_funcs(), engine, Some(&intrinsic_calls));
+    let calls =
+        collect_call_names_from_funcs(all_funcs(), engine, Some(&intrinsic_calls), &func_names);
     let mut _flat_stateful = BTreeSet::new();
     emit_function_imports_with_prefix(&calls, out, ".", runtime_config, &mut _flat_stateful);
 }
@@ -282,18 +291,20 @@ pub(super) fn strip_unused_namespace_imports(out: &mut String) {
 pub(super) fn collect_call_names_from_funcs<'a>(
     funcs: impl Iterator<Item = &'a Function>,
     engine: EngineKind,
-    intrinsic_calls: Option<&HashMap<String, (String, String)>>,
+    intrinsic_calls: Option<&HashMap<FuncId, (String, String)>>,
+    func_names: &HashMap<FuncId, String>,
 ) -> BTreeSet<String> {
     let mut used = BTreeSet::new();
     for func in funcs {
         for (_inst_id, inst) in func.insts.iter() {
             match &inst.op {
-                Op::Call { func: name, .. } => {
+                Op::Call {
+                    func: callee_fid, ..
+                } => {
                     // If this is a registered intrinsic, emit the names that the
                     // rewrite pass will introduce (same as Op::SystemCall did) rather
                     // than the intrinsic name itself (which lowers to Expr::SystemCall).
-                    if let Some((system, method)) =
-                        intrinsic_calls.and_then(|m| m.get(name.as_str()))
+                    if let Some((system, method)) = intrinsic_calls.and_then(|m| m.get(callee_fid))
                     {
                         if engine == EngineKind::GameMaker {
                             for introduced in
@@ -306,12 +317,15 @@ pub(super) fn collect_call_names_from_funcs<'a>(
                     }
                     // Sanitize the raw IR name (e.g. `@@SetStatic@@` → `__SetStatic__`)
                     // so it matches the sanitized names stored in runtime.json.
-                    used.insert(sanitize_ident(name));
-                    if engine == EngineKind::GameMaker {
-                        for introduced in
-                            crate::rewrites::gamemaker::rewrite_introduced_direct_calls(name)
-                        {
-                            used.insert((*introduced).to_string());
+                    let fname = func_names.get(callee_fid).map(|s| s.as_str()).unwrap_or("");
+                    if !fname.is_empty() {
+                        used.insert(sanitize_ident(fname));
+                        if engine == EngineKind::GameMaker {
+                            for introduced in
+                                crate::rewrites::gamemaker::rewrite_introduced_direct_calls(fname)
+                            {
+                                used.insert((*introduced).to_string());
+                            }
                         }
                     }
                 }
@@ -647,7 +661,7 @@ pub(super) fn collect_type_refs_from_function(
     unique_static_field_map: &HashMap<String, String>,
     object_names: &[String],
     engine: EngineKind,
-    intrinsic_calls: Option<&HashMap<String, (String, String)>>,
+    intrinsic_calls: Option<&HashMap<FuncId, (String, String)>>,
     refs: &mut RefSets,
 ) {
     use reincarnate_core::ir::Constant;
@@ -923,13 +937,8 @@ pub(super) fn collect_type_refs_from_function(
             Op::Call {
                 func: call_name,
                 args,
-            } if intrinsic_calls
-                .and_then(|m| m.get(call_name.as_str()))
-                .is_some() =>
-            {
-                let (system, method) = intrinsic_calls
-                    .and_then(|m| m.get(call_name.as_str()))
-                    .unwrap();
+            } if intrinsic_calls.and_then(|m| m.get(call_name)).is_some() => {
+                let (system, method) = intrinsic_calls.and_then(|m| m.get(call_name)).unwrap();
                 match engine {
                     EngineKind::GameMaker
                         if system == "GameMaker.Instance"

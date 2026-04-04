@@ -1,4 +1,3 @@
-mod arith_any;
 mod assets;
 mod bool_arith_coerce;
 mod builtins_generated;
@@ -19,7 +18,7 @@ use std::fs;
 use datawin::DataWin;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
-use reincarnate_core::ir::func::{IntrinsicKind, MethodKind, Visibility};
+use reincarnate_core::ir::func::{FuncId, IntrinsicKind, MethodKind, Visibility};
 use reincarnate_core::ir::module::{FieldDef, Global, Module, StructDef, SystemCallTypeRule};
 use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
@@ -109,6 +108,59 @@ impl Frontend for GameMakerFrontend {
         // Build GMS2.3+ pushref asset name map: (type_tag << 24) | idx → raw GML name.
         let asset_ref_names = build_asset_ref_names(&dw, scpt);
 
+        // === Register all builtins BEFORE translation so FuncIds exist for Op::Call ===
+
+        // Populate extern sigs from the GML builtin signature table.
+        // `Type::Unknown` in the generated table means the generator didn't
+        // have enough information to determine the type — these are inference
+        // gaps, not genuine source-language opacity.  Replace them with fresh
+        // type variables so the solver can attempt to infer them from call
+        // sites.  Genuinely opaque types (e.g. explicitly typed enum returns)
+        // are represented with concrete types in the generated file and are
+        // not affected.
+        for (name, mut sig) in builtins_generated::gml_builtins() {
+            freshen_unknown_types_in_sig(&mut sig, mb.module_mut());
+            mb.register_runtime(name.to_string(), sig);
+        }
+
+        // Register GML-specific polymorphic `_any` arithmetic stubs.
+        // The GML VM uses `DataType::Variable` for most arithmetic, so the
+        // translator emits `add_any` etc. when operand types are not
+        // yet known.  `BuiltinOverloadSelect` replaces these with typed variants
+        // once HM inference resolves the operand types.  These stubs are not in
+        // `register_core_builtins()` because no other frontend needs them.
+        mb.module_mut().register_arithmetic_any_builtins();
+
+        // Register GML syscall intrinsics.  Each intrinsic is a typed Op::Call
+        // whose IntrinsicKind encodes the (system, method) pair.  The linear
+        // lowering pass maps them back to Expr::SystemCall so all downstream
+        // rewrite passes see the same patterns as before.
+        register_gml_syscall_intrinsics(mb.module_mut());
+
+        // Generate throw-stubs for extension functions (EXTN chunk).
+        // These resolve TS2304 "Cannot find name 'FS_*'" errors.
+        // Must run after builtins are registered so the stub bodies can call
+        // `extension_stubfunc_real` / `extension_stubfunc_string` by name.
+        if let Ok(Some(extn)) = dw.extn() {
+            add_extension_stubs(&dw, extn, &mb.existing_function_names(), &mut mb);
+        }
+
+        // Pre-register user function stubs so their FuncIds exist before translation.
+        // Translators resolve Call opcodes to named functions — all reachable function
+        // names must be in the registry before the first Call opcode is translated.
+        let user_func_registry: HashMap<String, FuncId> = function_names
+            .values()
+            .map(|name| (name.clone(), mb.register_function_stub(name)))
+            .collect();
+
+        // Build combined registry: runtime builtins + user function stubs.
+        let combined_registry: HashMap<String, FuncId> = mb
+            .runtime_registry()
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .chain(user_func_registry.iter().map(|(k, v)| (k.clone(), *v)))
+            .collect();
+
         // Translate scripts.
         let (script_ok, script_err) = translate_scripts(
             &dw,
@@ -127,6 +179,8 @@ impl Frontend for GameMakerFrontend {
             &obj_names,
             &script_names,
             bc_version,
+            &combined_registry,
+            &user_func_registry,
         )?;
         eprintln!("[gamemaker] translated {script_ok} scripts ({script_err} errors)");
 
@@ -145,6 +199,7 @@ impl Frontend for GameMakerFrontend {
             &obj_names,
             &script_names,
             bc_version,
+            &combined_registry,
         )
         .map_err(|e| CoreError::Translate {
             file: input.source.clone(),
@@ -170,6 +225,7 @@ impl Frontend for GameMakerFrontend {
             &obj_names,
             &script_names,
             bc_version,
+            &combined_registry,
         );
         if glob_count > 0 {
             eprintln!("[gamemaker] translated {glob_count} global init scripts");
@@ -190,6 +246,7 @@ impl Frontend for GameMakerFrontend {
             &obj_names,
             &script_names,
             bc_version,
+            &combined_registry,
         );
         if room_count > 0 {
             eprintln!("[gamemaker] translated {room_count} room creation scripts");
@@ -216,46 +273,13 @@ impl Frontend for GameMakerFrontend {
             mb.set_initial_room_name(name);
         }
 
-        // Generate throw-stubs for extension functions (EXTN chunk).
-        // These resolve TS2304 "Cannot find name 'FS_*'" errors.
-        if let Ok(Some(extn)) = dw.extn() {
-            add_extension_stubs(&dw, extn, &mb.existing_function_names(), &mut mb);
-        }
-
         let mut module = mb.build();
-
-        // Populate extern sigs from the GML builtin signature table.
-        // `Type::Unknown` in the generated table means the generator didn't
-        // have enough information to determine the type — these are inference
-        // gaps, not genuine source-language opacity.  Replace them with fresh
-        // type variables so the solver can attempt to infer them from call
-        // sites.  Genuinely opaque types (e.g. explicitly typed enum returns)
-        // are represented with concrete types in the generated file and are
-        // not affected.
-        for (name, mut sig) in builtins_generated::gml_builtins() {
-            freshen_unknown_types_in_sig(&mut sig, &mut module);
-            module.register_runtime(name.to_string(), sig);
-        }
 
         // GML implicitly returns 0.0 from every function even without an
         // explicit `return` statement.  Type inference must not narrow
         // functions with no value-bearing returns to Void, because callers
         // may still use the result.
         module.implicit_return_value = true;
-
-        // Register GML-specific polymorphic `_any` arithmetic stubs.
-        // The GML VM uses `DataType::Variable` for most arithmetic, so the
-        // translator emits `add_any` etc. when operand types are not
-        // yet known.  `BuiltinOverloadSelect` replaces these with typed variants
-        // once HM inference resolves the operand types.  These stubs are not in
-        // `register_core_builtins()` because no other frontend needs them.
-        arith_any::register_arithmetic_any_builtins(&mut module);
-
-        // Register GML syscall intrinsics.  Each intrinsic is a typed Op::Call
-        // whose IntrinsicKind encodes the (system, method) pair.  The linear
-        // lowering pass maps them back to Expr::SystemCall so all downstream
-        // rewrite passes see the same patterns as before.
-        register_gml_syscall_intrinsics(&mut module);
 
         // Attach IR bodies to closed-form math runtime stubs.  The stubs were
         // registered above by the builtins_generated loop; these bodies replace
@@ -560,6 +584,8 @@ fn translate_scripts(
     obj_names: &[String],
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
+    registry: &HashMap<String, FuncId>,
+    user_func_registry: &HashMap<String, FuncId>,
 ) -> Result<(usize, usize), CoreError> {
     let mut translated = 0;
     let mut errors = 0;
@@ -684,6 +710,7 @@ fn translate_scripts(
             bytecode_version: bc_version,
             classref_types: &classref_types,
             instance_types: &instance_types,
+            registry,
         };
 
         match translate::translate_code_entry(bytecode, &func_name, &ctx) {
@@ -694,9 +721,18 @@ fn translate_scripts(
                 if is_constructor && !func_name.starts_with("___struct___") {
                     func.method_kind = MethodKind::Constructor;
                 }
-                mb.add_function(func);
+                // Use replace_function for pre-registered stubs, add_function for new ones.
+                if let Some(&fid) = user_func_registry.get(&func.name) {
+                    mb.replace_function(fid, func);
+                } else {
+                    mb.add_function(func);
+                }
                 for extra in extra_funcs {
-                    mb.add_function(extra);
+                    if let Some(&fid) = user_func_registry.get(&extra.name) {
+                        mb.replace_function(fid, extra);
+                    } else {
+                        mb.add_function(extra);
+                    }
                 }
                 translated += 1;
             }
@@ -726,6 +762,7 @@ fn translate_global_inits(
     obj_names: &[String],
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
+    registry: &HashMap<String, FuncId>,
 ) -> usize {
     let glob = match dw.glob() {
         Ok(Some(g)) => g,
@@ -793,6 +830,7 @@ fn translate_global_inits(
             bytecode_version: bc_version,
             classref_types: &classref_types,
             instance_types: &instance_types,
+            registry,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
@@ -826,6 +864,7 @@ fn translate_room_creation(
     obj_names: &[String],
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
+    registry: &HashMap<String, FuncId>,
 ) -> (usize, BTreeMap<usize, String>) {
     let room = match dw.room() {
         Ok(r) => r,
@@ -899,6 +938,7 @@ fn translate_room_creation(
             bytecode_version: bc_version,
             classref_types: &classref_types,
             instance_types: &instance_types,
+            registry,
         };
 
         if let Ok((func, extra_funcs)) = translate::translate_code_entry(bytecode, &func_name, &ctx)
@@ -1329,8 +1369,9 @@ fn add_extension_stubs(
         };
 
         let mut fb = FunctionBuilder::new(&name, sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         // Call the runtime throw-stub — causes `_rt` to be injected as first param at emit.
-        let result = fb.call(stub_call, &[], ret_ty);
+        let result = fb.call_named(stub_call, &[], ret_ty);
         fb.ret(Some(result));
 
         mb.add_function(fb.build());
@@ -1347,7 +1388,7 @@ fn add_extension_stubs(
 ///
 /// Signatures use empty param lists to avoid adding new sig-based constraints
 /// (the type rules handle all necessary inference).
-fn register_gml_syscall_intrinsics(module: &mut Module) {
+pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module) {
     // Getter sig: unknown return type, no params (type rules handle inference).
     let getter = FunctionSig {
         return_ty: Type::Unknown,

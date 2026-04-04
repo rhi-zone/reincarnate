@@ -230,6 +230,7 @@ fn collect_bool_demands(
     internal_sigs: &HashMap<String, Vec<Type>>,
     struct_fields: &HashMap<String, HashMap<String, Type>>,
     type_id_to_name: &HashMap<TypeId, String>,
+    func_names: &HashMap<FuncId, String>,
 ) -> Vec<ValueId> {
     let mut demands = Vec::new();
 
@@ -237,12 +238,16 @@ fn collect_bool_demands(
         let inst = &func.insts[inst_id];
         match &inst.op {
             // External function call: check param types from runtime sigs
-            Op::Call { func: name, args } => {
+            Op::Call {
+                func: callee_fid,
+                args,
+            } => {
+                let callee_name = func_names.get(callee_fid).map(|s| s.as_str()).unwrap_or("");
                 // builtin.not_bool operand is boolean
-                if name.starts_with("builtin.not") && args.len() == 1 {
+                if callee_name.starts_with("builtin.not") && args.len() == 1 {
                     demands.push(args[0]);
                 }
-                if let Some(param_types) = external_param_types.get(name.as_str()) {
+                if let Some(param_types) = external_param_types.get(callee_name) {
                     for (i, arg) in args.iter().enumerate() {
                         if param_types.get(i) == Some(&Type::Bool) {
                             demands.push(*arg);
@@ -250,7 +255,7 @@ fn collect_bool_demands(
                     }
                 }
                 // Internal function call: check sig param types
-                if let Some(param_types) = internal_sigs.get(name.as_str()) {
+                if let Some(param_types) = internal_sigs.get(callee_name) {
                     for (i, arg) in args.iter().enumerate() {
                         if param_types.get(i) == Some(&Type::Bool) {
                             demands.push(*arg);
@@ -298,6 +303,7 @@ fn promote_demands(
     internal_sigs: &HashMap<String, Vec<Type>>,
     struct_fields: &HashMap<String, HashMap<String, Type>>,
     type_id_to_name: &HashMap<TypeId, String>,
+    func_names: &HashMap<FuncId, String>,
 ) -> bool {
     let demands = collect_bool_demands(
         func,
@@ -305,6 +311,7 @@ fn promote_demands(
         internal_sigs,
         struct_fields,
         type_id_to_name,
+        func_names,
     );
     let mut changed = false;
 
@@ -342,9 +349,9 @@ fn promote_demands(
 fn function_has_callback_return_call(
     func: &Function,
     callback_return_calls: &BTreeMap<(String, String), ()>,
-    callback_return_intrinsics: &std::collections::BTreeSet<String>,
+    callback_return_intrinsic_fids: &HashSet<FuncId>,
 ) -> bool {
-    if callback_return_calls.is_empty() && callback_return_intrinsics.is_empty() {
+    if callback_return_calls.is_empty() && callback_return_intrinsic_fids.is_empty() {
         return false;
     }
     for inst_id in func.insts.keys() {
@@ -354,8 +361,10 @@ fn function_has_callback_return_call(
                     return true;
                 }
             }
-            Op::Call { func: name, .. } => {
-                if callback_return_intrinsics.contains(name.as_str()) {
+            Op::Call {
+                func: callee_fid, ..
+            } => {
+                if callback_return_intrinsic_fids.contains(callee_fid) {
                     return true;
                 }
             }
@@ -370,7 +379,7 @@ fn function_has_callback_return_call(
 fn infer_bool_return(
     func: &mut Function,
     callback_return_calls: &BTreeMap<(String, String), ()>,
-    callback_return_intrinsics: &std::collections::BTreeSet<String>,
+    callback_return_intrinsics: &HashSet<FuncId>,
 ) -> bool {
     if func.sig.return_ty != Type::Unknown {
         return false;
@@ -418,17 +427,17 @@ fn infer_bool_return(
 }
 
 /// Phase 5: Propagate return type changes to call sites.
-fn propagate_call_types(func: &mut Function, changed_funcs: &HashSet<String>) -> bool {
+fn propagate_call_types(func: &mut Function, bool_return_fids: &HashSet<FuncId>) -> bool {
     let mut changed = false;
 
     for inst_id in func.insts.keys().collect::<Vec<_>>() {
-        let target_name = match &func.insts[inst_id].op {
-            Op::Call { func: name, .. } => Some(name.clone()),
+        let callee_fid = match &func.insts[inst_id].op {
+            Op::Call { func: fid, .. } => Some(*fid),
             _ => None,
         };
 
-        if let Some(name) = target_name {
-            if changed_funcs.contains(&name) {
+        if let Some(fid) = callee_fid {
+            if bool_return_fids.contains(&fid) {
                 if let Some(result_val) = func.insts[inst_id].result {
                     if func.value_types[result_val] != Type::Bool {
                         func.value_types[result_val] = Type::Bool;
@@ -506,6 +515,13 @@ impl Transform for IntToBoolPromotion {
             .filter_map(|(id, td)| td.name().map(|n| (id, n.to_string())))
             .collect();
 
+        // Build FuncId → name map for all functions (needed to resolve call names).
+        let func_names: HashMap<FuncId, String> = module
+            .functions
+            .iter()
+            .map(|(fid, func)| (fid, func.name.clone()))
+            .collect();
+
         // Phase 1-3: Promote demanded values in each function
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
@@ -517,6 +533,7 @@ impl Transform for IntToBoolPromotion {
                 &internal_sigs,
                 &struct_fields,
                 &type_id_to_name,
+                &func_names,
             ) {
                 changed_funcs.insert(func_id);
             }
@@ -524,23 +541,22 @@ impl Transform for IntToBoolPromotion {
 
         // Phase 4: Infer Bool return types
         let callback_return_calls = &module.callback_return_calls;
-        // Derive canonical intrinsic call names that are callback-return calls.
-        // After Phase 3a, GML syscalls appear as Op::Call with canonical names
-        // (e.g. "GameMaker.Instance.withInstances") rather than Op::SystemCall.
-        let callback_return_intrinsics: std::collections::BTreeSet<String> = module
+        // Derive canonical intrinsic call FuncIds that are callback-return calls.
+        // After Phase 3a, GML syscalls appear as Op::Call rather than Op::SystemCall.
+        let callback_return_intrinsic_fids: HashSet<FuncId> = module
             .runtime_registry
-            .iter()
-            .filter_map(|(name, &fid)| {
-                module.functions[fid].intrinsic.as_ref().and_then(|kind| {
-                    let (sys, meth) = kind.system_method();
-                    let key = (sys.to_string(), meth.to_string());
-                    if callback_return_calls.contains_key(&key) {
-                        Some(name.clone())
-                    } else {
-                        None
-                    }
-                })
+            .values()
+            .filter(|&&fid| {
+                module.functions[fid]
+                    .intrinsic
+                    .as_ref()
+                    .is_some_and(|kind| {
+                        let (sys, meth) = kind.system_method();
+                        let key = (sys.to_string(), meth.to_string());
+                        callback_return_calls.contains_key(&key)
+                    })
             })
+            .copied()
             .collect();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
             if dirty.is_some_and(|d| !d.contains(&func_id)) {
@@ -549,7 +565,7 @@ impl Transform for IntToBoolPromotion {
             if infer_bool_return(
                 &mut module.functions[func_id],
                 callback_return_calls,
-                &callback_return_intrinsics,
+                &callback_return_intrinsic_fids,
             ) {
                 changed_funcs.insert(func_id);
             }
@@ -560,16 +576,15 @@ impl Transform for IntToBoolPromotion {
         // call-site result value is also typed Bool. This fixes TS2322 errors of the form
         // `let xx: number = bool_returning_func(...)`.
         // Propagation must run over ALL functions (callers may be outside the dirty set).
-        let all_bool_return_funcs: HashSet<String> = module
+        let all_bool_return_fids: HashSet<FuncId> = module
             .functions
             .keys()
             .filter(|&fid| module.functions[fid].sig.return_ty == Type::Bool)
-            .map(|fid| module.func_name(fid).to_string())
             .collect();
 
-        if !all_bool_return_funcs.is_empty() {
+        if !all_bool_return_fids.is_empty() {
             for func_id in module.functions.keys().collect::<Vec<_>>() {
-                if propagate_call_types(&mut module.functions[func_id], &all_bool_return_funcs) {
+                if propagate_call_types(&mut module.functions[func_id], &all_bool_return_fids) {
                     changed_funcs.insert(func_id);
                 }
             }
@@ -597,6 +612,7 @@ impl Transform for IntToBoolPromotion {
                     &updated_internal_sigs,
                     &struct_fields,
                     &type_id_to_name,
+                    &func_names,
                 ) {
                     changed_funcs.insert(func_id);
                 }
@@ -651,13 +667,22 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
+        let mut mb = ModuleBuilder::new("test");
+        mb.register_runtime(
+            "set_visible",
+            FunctionSig {
+                params: vec![Type::Bool],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let mut fb = FunctionBuilder::new("caller", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let zero = fb.const_int(0, 64);
-        fb.call("set_visible", &[zero], Type::Void);
+        fb.call_named("set_visible", &[zero], Type::Void);
         fb.ret(None);
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(fb.build());
+        let caller_fid = mb.add_function(fb.build());
         let mut module = mb.build();
 
         // Add external sig: set_visible(boolean) → void
@@ -672,7 +697,7 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
+        let func = &result.module.functions[caller_fid];
         // The const should now be Bool(false)
         for inst_id in func.insts.keys() {
             if let Op::Const(Constant::Bool(false)) = &func.insts[inst_id].op {
@@ -691,13 +716,22 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
+        let mut mb = ModuleBuilder::new("test");
+        mb.register_runtime(
+            "set_visible",
+            FunctionSig {
+                params: vec![Type::Bool],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let mut fb = FunctionBuilder::new("caller", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let one = fb.const_int(1, 64);
-        fb.call("set_visible", &[one], Type::Void);
+        fb.call_named("set_visible", &[one], Type::Void);
         fb.ret(None);
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(fb.build());
+        let caller_fid = mb.add_function(fb.build());
         let mut module = mb.build();
 
         module.external_function_sigs.insert(
@@ -711,7 +745,7 @@ mod tests {
         let result = IntToBoolPromotion.apply(module, None).unwrap();
         assert!(result.changed);
 
-        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
+        let func = &result.module.functions[caller_fid];
         for inst_id in func.insts.keys() {
             if let Op::Const(Constant::Bool(true)) = &func.insts[inst_id].op {
                 return; // Found it
@@ -727,12 +761,21 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
+        let mut mb = ModuleBuilder::new("test");
+        mb.register_runtime(
+            "set_visible",
+            FunctionSig {
+                params: vec![Type::Bool],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let mut fb = FunctionBuilder::new("caller", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let two = fb.const_int(2, 64);
-        fb.call("set_visible", &[two], Type::Void);
+        fb.call_named("set_visible", &[two], Type::Void);
         fb.ret(None);
 
-        let mut mb = ModuleBuilder::new("test");
         mb.add_function(fb.build());
         let mut module = mb.build();
 
@@ -755,7 +798,17 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
+        let mut mb = ModuleBuilder::new("test");
+        mb.register_runtime(
+            "set_visible",
+            FunctionSig {
+                params: vec![Type::Bool],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let mut fb = FunctionBuilder::new("caller", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let cond = fb.param(0);
 
         let then_block = fb.create_block();
@@ -772,11 +825,10 @@ mod tests {
         fb.br(merge, &[zero]);
 
         fb.switch_to_block(merge);
-        fb.call("set_visible", &[merge_vals[0]], Type::Void);
+        fb.call_named("set_visible", &[merge_vals[0]], Type::Void);
         fb.ret(None);
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(fb.build());
+        let caller_fid = mb.add_function(fb.build());
         let mut module = mb.build();
 
         module.external_function_sigs.insert(
@@ -791,7 +843,7 @@ mod tests {
         assert!(result.changed);
 
         // The merge value should be typed Bool
-        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
+        let func = &result.module.functions[caller_fid];
         assert_eq!(func.value_types[merge_vals[0]], Type::Bool);
     }
 
@@ -849,14 +901,19 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
+        let mut mb = ModuleBuilder::new("test");
+        let is_ready_fid = mb.add_function(bool_func);
         let mut fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
-        let result = fb.call("is_ready", &[], Type::Unknown);
+        // Build a local registry with just is_ready for call_named.
+        fb.set_registry(std::collections::HashMap::from([(
+            "is_ready".to_string(),
+            is_ready_fid,
+        )]));
+        let result = fb.call_named("is_ready", &[], Type::Unknown);
         let _cast = fb.coerce(result, Type::Bool);
         fb.ret(None);
         let caller_func = fb.build();
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(bool_func);
         let caller_fid = mb.add_function(caller_func);
         let module = mb.build();
 
@@ -865,8 +922,11 @@ mod tests {
 
         let caller = &result.module.functions[caller_fid];
         for inst_id in caller.insts.keys() {
-            if let Op::Call { func: name, .. } = &caller.insts[inst_id].op {
-                if name == "is_ready" {
+            if let Op::Call {
+                func: callee_fid, ..
+            } = &caller.insts[inst_id].op
+            {
+                if *callee_fid == is_ready_fid {
                     let result_val = caller.insts[inst_id].result.unwrap();
                     assert_eq!(caller.value_types[result_val], Type::Bool);
                 }
@@ -947,14 +1007,18 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
+        let mut mb = ModuleBuilder::new("test");
+        let set_flag_fid = mb.add_function(callee);
         let mut fb = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
+        fb.set_registry(std::collections::HashMap::from([(
+            "set_flag".to_string(),
+            set_flag_fid,
+        )]));
         let one = fb.const_int(1, 64);
-        fb.call("set_flag", &[one], Type::Void);
+        fb.call_named("set_flag", &[one], Type::Void);
         fb.ret(None);
         let caller = fb.build();
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(callee);
         mb.add_function(caller);
         let module = mb.build();
 
@@ -1130,14 +1194,23 @@ mod tests {
             return_ty: Type::Void,
             ..Default::default()
         };
+        let mut mb = ModuleBuilder::new("test");
+        mb.register_runtime(
+            "set_thing",
+            FunctionSig {
+                params: vec![Type::Float(64), Type::Bool],
+                return_ty: Type::Void,
+                ..Default::default()
+            },
+        );
         let mut fb = FunctionBuilder::new("caller", sig, Visibility::Public);
+        fb.set_registry(mb.runtime_registry().clone());
         let forty_two = fb.const_int(42, 64);
         let one = fb.const_int(1, 64);
-        fb.call("set_thing", &[forty_two, one], Type::Void);
+        fb.call_named("set_thing", &[forty_two, one], Type::Void);
         fb.ret(None);
 
-        let mut mb = ModuleBuilder::new("test");
-        mb.add_function(fb.build());
+        let caller_fid = mb.add_function(fb.build());
         let mut module = mb.build();
 
         module.external_function_sigs.insert(
@@ -1152,7 +1225,7 @@ mod tests {
         assert!(result.changed);
 
         // 42 should still be Int, 1 should be Bool
-        let func = &result.module.functions[FuncId::new(Module::NUM_CORE_BUILTINS)];
+        let func = &result.module.functions[caller_fid];
         let mut found_int42 = false;
         let mut found_bool_true = false;
         for inst_id in func.insts.keys() {

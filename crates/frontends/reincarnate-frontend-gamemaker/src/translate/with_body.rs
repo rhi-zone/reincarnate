@@ -279,6 +279,7 @@ pub(super) fn translate_with_body(
         ..Default::default()
     };
     let mut fb = FunctionBuilder::new(wctx.inner_name, sig, Visibility::Public);
+    fb.set_registry(wctx.ctx.registry.clone());
     fb.name_value(fb.param(0), "_self".to_string());
 
     // Declare capture parameters (ByValue snapshots of outer locals).
@@ -400,6 +401,7 @@ pub(super) fn translate_with_body(
         bytecode_version: ctx.bytecode_version,
         classref_types: ctx.classref_types,
         instance_types: ctx.instance_types,
+        registry: ctx.registry,
     };
 
     fb.switch_to_block(fb.entry_block());

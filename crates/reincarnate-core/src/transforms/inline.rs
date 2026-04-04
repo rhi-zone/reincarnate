@@ -55,8 +55,8 @@ struct InlineSite {
     block_idx: usize,
     /// Position of the call instruction within the block's `insts` vec.
     inst_pos: usize,
-    /// The function name being called.
-    fname: String,
+    /// The FuncId of the function being called.
+    callee_fid: FuncId,
     /// Argument values passed to the call.
     args: Vec<ValueId>,
     /// The `ValueId` produced by the call instruction, if any.
@@ -74,11 +74,8 @@ fn inline_function(caller: &mut Function, module: &Module) -> bool {
     for (block_idx, block) in caller.blocks.values().enumerate() {
         for (inst_pos, &inst_id) in block.insts.iter().enumerate() {
             let inst = &caller.insts[inst_id];
-            if let Op::Call { func: fname, args } = &inst.op {
-                let Some(&callee_fid) = module.runtime_registry.get(fname.as_str()) else {
-                    continue;
-                };
-                let callee = &module.functions[callee_fid];
+            if let Op::Call { func: fid, args } = &inst.op {
+                let callee = &module.functions[*fid];
                 if callee.inline_hint != InlineHint::Always {
                     continue;
                 }
@@ -105,7 +102,7 @@ fn inline_function(caller: &mut Function, module: &Module) -> bool {
                 sites.push(InlineSite {
                     block_idx,
                     inst_pos,
-                    fname: fname.clone(),
+                    callee_fid: *fid,
                     args: args.clone(),
                     result_vid: inst.result,
                 });
@@ -131,9 +128,7 @@ fn inline_function(caller: &mut Function, module: &Module) -> bool {
     for site in sites {
         let block_id = block_ids[site.block_idx];
 
-        let Some(&callee_fid) = module.runtime_registry.get(site.fname.as_str()) else {
-            continue;
-        };
+        let callee_fid = site.callee_fid;
         let callee = &module.functions[callee_fid];
 
         // Re-check eligibility (another iteration may have changed things).
@@ -330,6 +325,8 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         // Module::new (called by ModuleBuilder::new) already invokes
         // register_core_builtins — no extra call needed.
+        let registry = mb.runtime_registry().clone();
+        let abs_fid = registry["builtin.abs_f64"];
 
         // Build callee: fn my_abs(x: f64) -> f64 { return builtin.abs_f64(x) }
         let callee_sig = FunctionSig {
@@ -339,9 +336,12 @@ mod tests {
         };
         let mut fb = FunctionBuilder::new("my_abs", callee_sig, Visibility::Public);
         let x = fb.param(0);
-        let abs_result = fb.call("builtin.abs_f64", &[x], Type::Float(64));
+        let abs_result = fb.call(abs_fid, &[x], Type::Float(64));
         fb.ret(Some(abs_result));
         let callee_func = fb.build();
+
+        // Pre-register my_abs stub so we have its FuncId before building the caller.
+        let callee_id = mb.register_function_stub("my_abs");
 
         // Build caller: fn caller(v: f64) -> f64 { return my_abs(v) }
         let caller_sig = FunctionSig {
@@ -351,11 +351,12 @@ mod tests {
         };
         let mut fb2 = FunctionBuilder::new("caller", caller_sig, Visibility::Public);
         let v = fb2.param(0);
-        let call_result = fb2.call("my_abs", &[v], Type::Float(64));
+        let call_result = fb2.call(callee_id, &[v], Type::Float(64));
         fb2.ret(Some(call_result));
         let caller_func = fb2.build();
 
-        let callee_id = mb.add_function(callee_func);
+        // Replace stub with real callee body.
+        mb.replace_function(callee_id, callee_func);
         let caller_id = mb.add_function(caller_func);
 
         let mut module = mb.build();
@@ -371,19 +372,18 @@ mod tests {
         (module, callee_id, caller_id)
     }
 
-    /// After inlining, the caller should no longer contain an `Op::Call { func: "my_abs", .. }`.
+    /// After inlining, the caller should no longer contain an `Op::Call` to my_abs.
     #[test]
     fn call_is_inlined() {
-        let (module, _callee_id, caller_id) = build_test_module();
+        let (module, callee_id, caller_id) = build_test_module();
 
         let result = Inline.apply(module, None).unwrap();
         assert!(result.changed, "inliner should have reported a change");
 
         let caller = &result.module.functions[caller_id];
-        let has_my_abs_call =
-            caller.blocks.values().flat_map(|b| b.insts.iter()).any(
-                |&iid| matches!(&caller.insts[iid].op, Op::Call { func, .. } if func == "my_abs"),
-            );
+        let has_my_abs_call = caller.blocks.values().flat_map(|b| b.insts.iter()).any(
+            |&iid| matches!(&caller.insts[iid].op, Op::Call { func: fid, .. } if *fid == callee_id),
+        );
 
         assert!(
             !has_my_abs_call,
@@ -395,6 +395,7 @@ mod tests {
     #[test]
     fn inlined_result_feeds_return() {
         let (module, _callee_id, caller_id) = build_test_module();
+        let abs_fid = module.runtime_registry["builtin.abs_f64"];
 
         let result = Inline.apply(module, None).unwrap();
         let caller = &result.module.functions[caller_id];
@@ -418,7 +419,7 @@ mod tests {
         assert!(
             matches!(
                 &caller.insts[*producing_inst].op,
-                Op::Call { func, .. } if func == "builtin.abs_f64"
+                Op::Call { func: fid, .. } if *fid == abs_fid
             ),
             "return value should be produced by builtin.abs_f64"
         );

@@ -389,8 +389,7 @@ fn stress_red_cast_elim_cast_chains() {
 fn stress_int_to_bool_promotion() {
     let pass = IntToBoolPromotion;
     stress_pass(&pass, build_bool_return());
-    // Non-bool functions should be untouched (use only arithmetic types since
-    // build_linear_chain uses fb.add which requires numeric types).
+    // Non-bool functions should be untouched.
     for ty in ARITH_TYPES {
         stress_pass(&pass, build_linear_chain(3, ty.clone()));
     }
@@ -406,11 +405,11 @@ fn stress_full_pipeline_varied_shapes() {
     let config = PassConfig::default();
     let shapes: Vec<crate::ir::Function> = vec![
         build_linear_chain(1, Type::Int(64)),
-        build_linear_chain(10, Type::Int(64)),
+        build_linear_chain(10, Type::Int(32)),
         build_diamond(Type::Int(64)),
         build_diamond(Type::Float(64)),
         build_loop(Type::Int(64)),
-        build_loop(Type::Int(64)),
+        build_loop(Type::Float(64)),
         build_alloc_pattern(Type::Int(64)),
         build_cast_chain(Type::Bool),
         build_bool_return(),

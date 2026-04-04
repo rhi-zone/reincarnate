@@ -153,6 +153,10 @@ pub(crate) fn negate_expr(expr: Expr) -> Expr {
             lhs,
             rhs,
         },
+        // `builtin.not_bool(x)` is boolean NOT — unwrap instead of double-negating.
+        Expr::Call { func, mut args } if func == "builtin.not_bool" && args.len() == 1 => {
+            args.remove(0)
+        }
         other => Expr::Not(Box::new(other)),
     }
 }

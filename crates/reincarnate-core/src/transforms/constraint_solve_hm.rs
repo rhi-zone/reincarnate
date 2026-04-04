@@ -224,6 +224,7 @@ fn param_used_as_collection(
     func: &crate::ir::Function,
     param_val: ValueId,
     array_like_fns: &std::collections::HashSet<String>,
+    func_names: &HashMap<FuncId, String>,
 ) -> bool {
     for block in func.blocks.values() {
         for &inst_id in &block.insts {
@@ -238,8 +239,12 @@ fn param_used_as_collection(
                 Op::GetField { object, field } if *object == param_val && field == "length" => {
                     return true;
                 }
-                Op::Call { func: callee, args } if args.contains(&param_val) => {
-                    if array_like_fns.contains(callee.as_str()) {
+                Op::Call {
+                    func: callee_fid,
+                    args,
+                } if args.contains(&param_val) => {
+                    let callee_name = func_names.get(callee_fid).map(|s| s.as_str()).unwrap_or("");
+                    if array_like_fns.contains(callee_name) {
                         return true;
                     }
                 }
@@ -264,6 +269,7 @@ fn param_used_with_field_access(
     func: &crate::ir::Function,
     param_val: ValueId,
     array_like_fns: &std::collections::HashSet<String>,
+    func_names: &HashMap<FuncId, String>,
 ) -> bool {
     for block in func.blocks.values() {
         for &inst_id in &block.insts {
@@ -286,7 +292,7 @@ fn param_used_with_field_access(
         }
     }
     // Also check collection usage (field access implies collection usage is fine to suppress).
-    param_used_as_collection(func, param_val, array_like_fns)
+    param_used_as_collection(func, param_val, array_like_fns, func_names)
 }
 
 impl Transform for ConstraintSolveHM {
@@ -401,11 +407,11 @@ impl Transform for ConstraintSolveHM {
             )
         });
         if intrinsic_has_globals {
-            // Build name → name_arg index map for intrinsics with global rules.
-            let intrinsic_global_rules: HashMap<&str, usize> = module
+            // Build FuncId → name_arg index map for intrinsics with global rules.
+            let intrinsic_global_rules: HashMap<FuncId, usize> = module
                 .runtime_registry
-                .iter()
-                .filter_map(|(name, &fid)| {
+                .values()
+                .filter_map(|&fid| {
                     let name_arg = match module.functions[fid].type_rule {
                         Some(SystemCallTypeRule::GlobalStore { name_arg, .. }) => name_arg,
                         Some(
@@ -414,7 +420,7 @@ impl Transform for ConstraintSolveHM {
                         ) => 0,
                         _ => return None,
                     };
-                    Some((name.as_str(), name_arg))
+                    Some((fid, name_arg))
                 })
                 .collect();
 
@@ -433,11 +439,11 @@ impl Transform for ConstraintSolveHM {
 
                 for inst in func.insts.values() {
                     if let Op::Call {
-                        func: call_name,
+                        func: callee_fid,
                         args,
                     } = &inst.op
                     {
-                        let Some(&name_arg) = intrinsic_global_rules.get(call_name.as_str()) else {
+                        let Some(&name_arg) = intrinsic_global_rules.get(callee_fid) else {
                             continue;
                         };
                         if name_arg < args.len() {
@@ -485,15 +491,27 @@ impl Transform for ConstraintSolveHM {
         // over-narrowing arrays/maps to numeric types.
         // -----------------------------------------------------------------------
         {
+            let fid_to_idx: HashMap<FuncId, usize> = module
+                .functions
+                .keys()
+                .enumerate()
+                .map(|(idx, fid)| (fid, idx))
+                .collect();
             let name_to_idx: HashMap<&str, (usize, FuncId)> = module
                 .functions
                 .keys()
                 .enumerate()
                 .map(|(idx, fid)| (module.func_name(fid), (idx, fid)))
                 .collect();
+            // func_names: FuncId → name, for collection-check helpers.
+            let func_names: HashMap<FuncId, String> = module
+                .runtime_registry
+                .iter()
+                .map(|(name, &fid)| (fid, name.clone()))
+                .collect();
 
-            for (caller_idx, (fid, func)) in module.functions.iter().enumerate() {
-                let caller_name = module.func_name(fid);
+            for (caller_idx, (caller_fid, func)) in module.functions.iter().enumerate() {
+                let caller_name = module.func_name(caller_fid);
                 let caller_data = &func_data[caller_idx];
 
                 for block in func.blocks.values() {
@@ -502,15 +520,14 @@ impl Transform for ConstraintSolveHM {
 
                         match &inst.op {
                             Op::Call {
-                                func: callee_name,
+                                func: callee_fid,
                                 args,
                             } => {
-                                if callee_name == caller_name {
+                                if *callee_fid == caller_fid {
                                     continue;
                                 }
-                                if let Some(&(callee_idx, callee_fid)) =
-                                    name_to_idx.get(callee_name.as_str())
-                                {
+                                if let Some(&callee_idx) = fid_to_idx.get(callee_fid) {
+                                    let callee_fid = *callee_fid;
                                     let callee_func = &module.functions[callee_fid];
                                     let callee_data = &func_data[callee_idx];
                                     let entry = callee_func.entry;
@@ -541,6 +558,7 @@ impl Transform for ConstraintSolveHM {
                                                     callee_func,
                                                     param_val,
                                                     &module.array_like_fns,
+                                                    &func_names,
                                                 )
                                             {
                                                 continue;
@@ -550,6 +568,7 @@ impl Transform for ConstraintSolveHM {
                                                 callee_func,
                                                 param_val,
                                                 &module.array_like_fns,
+                                                &func_names,
                                             )
                                         {
                                             continue;
@@ -609,6 +628,7 @@ impl Transform for ConstraintSolveHM {
                                                 callee_func,
                                                 param_val,
                                                 &module.array_like_fns,
+                                                &func_names,
                                             )
                                         {
                                             if let (Some(&recv_var), Some(&param_var)) = (
@@ -645,6 +665,7 @@ impl Transform for ConstraintSolveHM {
                                                 callee_func,
                                                 param_val,
                                                 &module.array_like_fns,
+                                                &func_names,
                                             )
                                         {
                                             continue;

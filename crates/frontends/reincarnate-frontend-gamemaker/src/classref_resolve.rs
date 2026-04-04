@@ -49,8 +49,8 @@ impl Transform for GmlClassRefResolve {
             });
         }
 
-        // Build a map: function name → list of param indices with "classref" type.
-        let classref_params: HashMap<String, Vec<usize>> = module
+        // Build a map: FuncId → list of param indices with "classref" type.
+        let classref_params: HashMap<FuncId, Vec<usize>> = module
             .external_function_sigs
             .iter()
             .filter_map(|(name, sig)| {
@@ -62,10 +62,10 @@ impl Transform for GmlClassRefResolve {
                     .map(|(i, _)| i)
                     .collect();
                 if indices.is_empty() {
-                    None
-                } else {
-                    Some((name.clone(), indices))
+                    return None;
                 }
+                let fid = *module.runtime_registry.get(name)?;
+                Some((fid, indices))
             })
             .collect();
 
@@ -120,7 +120,7 @@ impl PureIrPass for GmlClassRefResolve {}
 /// replace each such argument with a new `Op::GlobalRef` value.
 fn resolve_function(
     func: &mut Function,
-    classref_params: &HashMap<String, Vec<usize>>,
+    classref_params: &HashMap<FuncId, Vec<usize>>,
     object_names: &[String],
     classref_type_ids: &[Option<TypeId>],
 ) -> bool {
@@ -157,10 +157,14 @@ fn resolve_function(
     let mut rewrites: Vec<(InstId, usize, usize)> = Vec::new();
 
     for (inst_id, inst) in func.insts.iter() {
-        let Op::Call { func: callee, args } = &inst.op else {
+        let Op::Call {
+            func: callee_fid,
+            args,
+        } = &inst.op
+        else {
             continue;
         };
-        let Some(indices) = classref_params.get(callee.as_str()) else {
+        let Some(indices) = classref_params.get(callee_fid) else {
             continue;
         };
         for &param_idx in indices {

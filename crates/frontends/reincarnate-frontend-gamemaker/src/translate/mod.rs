@@ -6,7 +6,7 @@ use datawin::bytecode::types::{ComparisonKind, DataType, InstanceType, VariableR
 use reincarnate_core::entity::EntityRef as _;
 use reincarnate_core::ir::block::BlockId;
 use reincarnate_core::ir::builder::FunctionBuilder;
-use reincarnate_core::ir::func::{Function, Visibility};
+use reincarnate_core::ir::func::{FuncId, Function, Visibility};
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId, TypeVarId};
 use reincarnate_core::ir::value::ValueId;
@@ -103,6 +103,13 @@ pub struct TranslateCtx<'a> {
     /// Callers pre-populate this by calling `mb.intern_type(name)` for each
     /// object name before translation begins.
     pub instance_types: &'a HashMap<String, TypeId>,
+    /// Name-to-FuncId registry for resolving named calls during translation.
+    ///
+    /// Installed on each `FunctionBuilder` before translation so that
+    /// `call_named` and arithmetic helpers can resolve builtin names to `FuncId`s.
+    /// Callers build this from `mb.runtime_registry()` plus any pre-registered
+    /// user function stubs.  Tests may pass an empty map if no named calls appear.
+    pub registry: &'a HashMap<String, FuncId>,
 }
 
 /// Translate a single code entry's bytecode into an IR Function.
@@ -150,6 +157,7 @@ pub fn translate_code_entry(
         sig.has_rest_param = true;
     }
     let mut fb = FunctionBuilder::new(func_name, sig, Visibility::Public);
+    fb.set_registry(ctx.registry.clone());
 
     // Name parameters.
     let mut param_idx = 0;
@@ -431,6 +439,7 @@ fn allocate_locals(fb: &mut FunctionBuilder, ctx: &TranslateCtx) -> HashMap<Stri
 fn build_empty_function(name: &str, ctx: &TranslateCtx) -> Result<Function, String> {
     let sig = build_signature(ctx);
     let mut fb = FunctionBuilder::new(name, sig, Visibility::Public);
+    fb.set_registry(ctx.registry.clone());
     fb.ret(None);
     Ok(fb.build())
 }
@@ -807,8 +816,9 @@ fn run_translation_loop(
                 } else {
                     Type::Void
                 };
-                let with_result = fb.call(
-                    "GameMaker.Instance.withInstances",
+                let with_result = fb.gml_syscall(
+                    "GameMaker.Instance",
+                    "withInstances",
                     &[target_obj, closure_val],
                     with_return_ty,
                 );
