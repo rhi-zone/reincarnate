@@ -48,9 +48,9 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 
 **5. Instantiability.** All mutable runtime state lives on root runtime instances. No module-level mutable variables. Multiple game instances must coexist on one page.
 
-**6. IR Functions Have Bodies.** Every function in the IR has a body expressed using other IR operations — except leaf primitives, which are the IR's own atomic operations (e.g. `add_f64`, `cos_f64`). A leaf primitive has no lower-level IR expression; its implementation is provided by each backend natively. Everything else — including all runtime/engine API functions — has an IR body. "No body yet" is a temporary stub state, not a valid final state.
+**6. Semantic IR.** The IR encodes what code means, not how to emit it. Emit strategy is target-language knowledge and belongs in backends, not in the IR or on `Function` structs.
 
-**7. No Syntax in the IR.** The IR carries semantic structure only — what operations mean, not how to emit them. No target-language operator syntax, calling conventions, or native function names belong in the IR or on `Function` structs. Backends maintain their own FuncId-keyed dispatch tables mapping well-known FuncIds to target-language emit forms. Corollary: no dot-namespaced function names as a string convention (`builtin.add_f64`, `GameMaker.Instance.getField`) — function names are just names; structured identity comes from FuncId. Corollary: `Op::MethodCall` is only valid for genuine runtime polymorphism (virtual dispatch). For GML, which has no virtual dispatch, `Op::MethodCall` must never appear — use `Op::Call { func: FuncId, args: [receiver, ...] }` instead.
+**7. Functions Have Bodies.** Every IR function has a body — except atomic leaf primitives that have no lower-level IR expression (e.g. `add_f64`, `cos_f64`). A missing body is a temporary stub, not a valid final state.
 
 ## Workflow
 
