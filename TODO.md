@@ -278,10 +278,31 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
    Fix: `Op::Call { func: FuncId, args }`. Construction requires a valid FuncId from the
    module — nonexistent functions are impossible. This is the minimal slice of Phase 9 that
    eliminates the entire class of "call to nonexistent function" bugs.
-   **Scope:** `Op::Call` definition in `inst.rs`, all `Op::Call` construction sites (frontends,
-   `FunctionBuilder`, `runtime_bodies.rs`, `register_arithmetic_any_builtins`), all `Op::Call`
-   consumers (transforms, constraint collector, TS backend lowering/emission). `FunctionBuilder`
-   needs a `&Module` or registry reference to look up FuncIds at construction time.
+
+   **Design (2026-04-04, from failed attempt):** Store registry in `FunctionBuilder` at
+   construction time — `registry: HashMap<String, FuncId>` field, set once in `new()`.
+   Arithmetic helpers (`add`, `sub`, etc.) use `self.registry` internally; signatures unchanged.
+   Add `call_named(&str)` convenience that resolves via `self.registry`. Do NOT pass registry
+   as a parameter to every method — that was attempted and cascaded into 45 files of wrong
+   plumbing.
+
+   **Prerequisites found during failed attempt:**
+   - **Remove `gml_syscall` from core `FunctionBuilder`** — Law 2 violation added in commit
+     4f0b416 (Phase 3a). GML frontend should call `fb.call_named("system.method")` or
+     `fb.call(func_id)` directly.
+   - **Move `register_arithmetic_any_builtins` out of core** — `_any` overloading is
+     GML-specific (the comment says so), but the function and its dispatch body builders
+     (`build_binary_any_dispatch`, `build_unary_any_dispatch`) live in `module.rs`.
+   - **Fix `builtin_type_suffix` catch-all** — returns `"any"` for all non-scalar types
+     (Bool, String, Unknown, Var, structs), composing names like `"builtin.add_any"` that
+     don't exist in core. The `_ => "any"` arm assumes GML's `_any` builtins exist.
+   - **Registration ordering** — GML builtins, intrinsics, and `_any` stubs must be
+     registered BEFORE translation, not after `ModuleBuilder::build()`. Currently registered
+     on `Module` at lines 234-262 of `lib.rs`, after `mb.build()`. User function names also
+     need pre-registration as stubs so FuncIds exist during translation.
+   - **`_any` naming convention** — `_any` variants registered as `"add_any"` (no `builtin.`
+     prefix), but `builtin_type_suffix` would compose `"builtin.add_any"`. The GML frontend's
+     `arith_callee` handles this correctly; core's builder doesn't.
 
 3. **Parametric FunctionSig `(T, T) → T` for `_any` builtins.**
    `add_any`'s FunctionSig should be `(Type::Template(0), Type::Template(0)) → Type::Template(0)`.
