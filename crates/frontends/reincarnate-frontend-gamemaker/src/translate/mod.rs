@@ -468,13 +468,14 @@ fn resolve_variable_name(inst: &Instruction, ctx: &TranslateCtx) -> String {
 /// `Int32` maps to `Float(64)` because GML's single numeric type is Real
 /// (Float64) at source level. The VM uses Int32 opcodes internally, but at
 /// source semantics those values are all Reals.
-fn datatype_to_ir_type(dt: DataType) -> Type {
+fn datatype_to_ir_type(dt: DataType, fb: &mut FunctionBuilder) -> Type {
     match dt {
         DataType::Double | DataType::Int32 | DataType::Int16 => Type::Float(64),
         DataType::Float => Type::Float(32),
         DataType::Int64 => Type::Int(64),
         DataType::Bool => Type::Bool,
         DataType::String => Type::String,
+        DataType::Variable => fb.fresh_var(),
         _ => Type::Unknown,
     }
 }

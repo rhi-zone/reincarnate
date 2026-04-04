@@ -259,13 +259,7 @@ fn translate_arithmetic_op(
 ) -> Result<(), String> {
     let result_units = gml_slot_units(inst.type1).max(gml_slot_units(inst.type2));
     // Derive the return type from type1 (primary type tag on the instruction).
-    // Variable-typed arithmetic has an unknown concrete type at this point; use a
-    // fresh type variable so inference can resolve it rather than emitting Unknown.
-    let ret_ty = if inst.type1 == DataType::Variable {
-        fb.fresh_var()
-    } else {
-        datatype_to_ir_type(inst.type1)
-    };
+    let ret_ty = datatype_to_ir_type(inst.type1, fb);
 
     match inst.opcode {
         Opcode::Add => {
@@ -414,11 +408,7 @@ fn translate_bitwise_cmp_op(
             let r = if inst.type1 == DataType::Bool {
                 fb.call_named("builtin.and_bool", &[a, b], Type::Bool)
             } else {
-                let ret_ty = if inst.type1 == DataType::Variable {
-                    fb.fresh_var()
-                } else {
-                    datatype_to_ir_type(inst.type1)
-                };
+                let ret_ty = datatype_to_ir_type(inst.type1, fb);
                 emit_gml_bitwise_bin(fb, "bitand", a, b, ret_ty)
             };
             gml_sizes.insert(r, result_units);
@@ -431,11 +421,7 @@ fn translate_bitwise_cmp_op(
             let r = if inst.type1 == DataType::Bool {
                 fb.call_named("builtin.or_bool", &[a, b], Type::Bool)
             } else {
-                let ret_ty = if inst.type1 == DataType::Variable {
-                    fb.fresh_var()
-                } else {
-                    datatype_to_ir_type(inst.type1)
-                };
+                let ret_ty = datatype_to_ir_type(inst.type1, fb);
                 emit_gml_bitwise_bin(fb, "bitor", a, b, ret_ty)
             };
             gml_sizes.insert(r, result_units);
@@ -444,11 +430,7 @@ fn translate_bitwise_cmp_op(
         Opcode::Xor => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let ret_ty = if inst.type1 == DataType::Variable {
-                fb.fresh_var()
-            } else {
-                datatype_to_ir_type(inst.type1)
-            };
+            let ret_ty = datatype_to_ir_type(inst.type1, fb);
             let r = emit_gml_bitwise_bin(fb, "bitxor", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -456,11 +438,7 @@ fn translate_bitwise_cmp_op(
         Opcode::Shl => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let ret_ty = if inst.type1 == DataType::Variable {
-                fb.fresh_var()
-            } else {
-                datatype_to_ir_type(inst.type1)
-            };
+            let ret_ty = datatype_to_ir_type(inst.type1, fb);
             let r = emit_gml_bitwise_bin(fb, "shl", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -468,11 +446,7 @@ fn translate_bitwise_cmp_op(
         Opcode::Shr => {
             let b = pop(stack, inst)?;
             let a = pop(stack, inst)?;
-            let ret_ty = if inst.type1 == DataType::Variable {
-                fb.fresh_var()
-            } else {
-                datatype_to_ir_type(inst.type1)
-            };
+            let ret_ty = datatype_to_ir_type(inst.type1, fb);
             let r = emit_gml_bitwise_bin(fb, "shr", a, b, ret_ty);
             gml_sizes.insert(r, result_units);
             stack.push(r);
@@ -852,7 +826,7 @@ fn translate_conv_op(
     gml_sizes: &mut HashMap<ValueId, u8>,
 ) -> Result<(), String> {
     let val = pop(stack, inst)?;
-    let target_ty = datatype_to_ir_type(inst.type2);
+    let target_ty = datatype_to_ir_type(inst.type2, fb);
     let coerced = fb.coerce(val, target_ty);
     gml_sizes.insert(coerced, gml_slot_units(inst.type2));
     stack.push(coerced);
