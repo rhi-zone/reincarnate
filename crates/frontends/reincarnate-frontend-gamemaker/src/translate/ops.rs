@@ -1122,7 +1122,7 @@ fn translate_break_op(
             _ => {
                 // Unknown break signal, emit as system call.
                 let sig_val = fb.const_int(signal as i64, 64);
-                fb.gml_syscall("GameMaker.Debug", "break", &[sig_val], Type::Void);
+                fb.call("GameMaker.Debug.break", &[sig_val], Type::Void);
             }
         }
     }

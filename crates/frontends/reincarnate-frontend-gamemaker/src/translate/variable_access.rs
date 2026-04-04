@@ -140,18 +140,18 @@ pub(super) fn translate_push_variable(
                 };
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Instance", "getOn", &[obj_id, name_val], ty);
+                let val = fb.call("GameMaker.Instance.getOn", &[obj_id, name_val], ty);
                 stack.push(val);
             } else {
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Instance", "getField", &[target, name_val], ty);
+                let val = fb.call("GameMaker.Instance.getField", &[target, name_val], ty);
                 stack.push(val);
             }
         } else {
             let name_val = fb.const_string(&var_name);
             let ty = fb.fresh_var();
-            let val = fb.gml_syscall("GameMaker.Instance", "getField", &[target, name_val], ty);
+            let val = fb.call("GameMaker.Instance.getField", &[target, name_val], ty);
             stack.push(val);
         }
         return Ok(());
@@ -183,7 +183,7 @@ pub(super) fn translate_push_variable(
             vec![obj_id, name_val, dim1]
         };
         let ty = fb.fresh_var();
-        let val = fb.gml_syscall("GameMaker.Instance", "getOn", &args, ty);
+        let val = fb.call("GameMaker.Instance.getOn", &args, ty);
         stack.push(val);
         return Ok(());
     }
@@ -240,8 +240,7 @@ pub(super) fn translate_push_variable(
                 } else {
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val =
-                        fb.gml_syscall("GameMaker.Instance", "getField", &[dim1, name_val], ty);
+                    let val = fb.call("GameMaker.Instance.getField", &[dim1, name_val], ty);
                     stack.push(val);
                 }
             }
@@ -314,7 +313,7 @@ pub(super) fn translate_push_variable(
                     vec![obj_id, name_val, dim1]
                 };
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Instance", "getOn", &args, ty);
+                let val = fb.call("GameMaker.Instance.getOn", &args, ty);
                 stack.push(val);
             } else {
                 // Unknown dim2: emit a runtime getOn with the dim2 value as the object.
@@ -325,7 +324,7 @@ pub(super) fn translate_push_variable(
                     vec![dim2, name_val, dim1]
                 };
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Instance", "getOn", &args, ty);
+                let val = fb.call("GameMaker.Instance.getOn", &args, ty);
                 stack.push(val);
             }
         } else {
@@ -346,7 +345,7 @@ pub(super) fn translate_push_variable(
                 vec![obj_id, name_val, dim1]
             };
             let ty = fb.fresh_var();
-            let val = fb.gml_syscall("GameMaker.Instance", "getOn", &args, ty);
+            let val = fb.call("GameMaker.Instance.getOn", &args, ty);
             stack.push(val);
         }
         return Ok(());
@@ -419,7 +418,7 @@ pub(super) fn translate_push_variable(
                 } else {
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val = fb.gml_syscall("GameMaker.Global", "get", &[name_val], ty);
+                    let val = fb.call("GameMaker.Global.get", &[name_val], ty);
                     stack.push(val);
                 }
             } else if ctx.has_self {
@@ -431,7 +430,7 @@ pub(super) fn translate_push_variable(
                 // Script context without self: variable is a global.
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Global", "get", &[name_val], ty);
+                let val = fb.call("GameMaker.Global.get", &[name_val], ty);
                 stack.push(val);
             }
         }
@@ -466,7 +465,7 @@ pub(super) fn translate_push_variable(
             }
             let name_val = fb.const_string(&var_name);
             let ty = fb.fresh_var();
-            let val = fb.gml_syscall("GameMaker.Global", "get", &[name_val], ty);
+            let val = fb.call("GameMaker.Global.get", &[name_val], ty);
             stack.push(val);
         }
         Some(InstanceType::Other) => {
@@ -479,14 +478,14 @@ pub(super) fn translate_push_variable(
             } else {
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Instance", "getOther", &[name_val], ty);
+                let val = fb.call("GameMaker.Instance.getOther", &[name_val], ty);
                 stack.push(val);
             }
         }
         Some(InstanceType::All) => {
             let name_val = fb.const_string(&var_name);
             let ty = fb.fresh_var();
-            let val = fb.gml_syscall("GameMaker.Instance", "getAll", &[name_val], ty);
+            let val = fb.call("GameMaker.Instance.getAll", &[name_val], ty);
             stack.push(val);
         }
         Some(InstanceType::Stacktop) => {
@@ -523,8 +522,7 @@ pub(super) fn translate_push_variable(
                     // Unknown index — fall back to getField
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val =
-                        fb.gml_syscall("GameMaker.Instance", "getField", &[target, name_val], ty);
+                    let val = fb.call("GameMaker.Instance.getField", &[target, name_val], ty);
                     stack.push(val);
                 }
             } else if ctx.has_self && target == fb.param(0) {
@@ -543,20 +541,18 @@ pub(super) fn translate_push_variable(
                     };
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val =
-                        fb.gml_syscall("GameMaker.Instance", "getOn", &[obj_id, name_val], ty);
+                    let val = fb.call("GameMaker.Instance.getOn", &[obj_id, name_val], ty);
                     stack.push(val);
                 } else {
                     let name_val = fb.const_string(&var_name);
                     let ty = fb.fresh_var();
-                    let val =
-                        fb.gml_syscall("GameMaker.Instance", "getField", &[target, name_val], ty);
+                    let val = fb.call("GameMaker.Instance.getField", &[target, name_val], ty);
                     stack.push(val);
                 }
             } else {
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Instance", "getField", &[target, name_val], ty);
+                let val = fb.call("GameMaker.Instance.getField", &[target, name_val], ty);
                 stack.push(val);
             }
         }
@@ -579,7 +575,7 @@ pub(super) fn translate_push_variable(
                     // Out-of-range argument access — emit as dynamic lookup.
                     let name_val = fb.const_string(format!("argument{arg_idx}"));
                     let ty = fb.fresh_var();
-                    let val = fb.gml_syscall("GameMaker.Argument", "get", &[name_val], ty);
+                    let val = fb.call("GameMaker.Argument.get", &[name_val], ty);
                     stack.push(val);
                 }
             }
@@ -594,7 +590,7 @@ pub(super) fn translate_push_variable(
                 };
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Instance", "getOn", &[obj_id, name_val], ty);
+                let val = fb.call("GameMaker.Instance.getOn", &[obj_id, name_val], ty);
                 stack.push(val);
             } else {
                 // GMS2.3+ Static (-15) or other unknown negative instance type.
@@ -625,7 +621,7 @@ pub(super) fn translate_push_variable(
                 // Treat as global.
                 let name_val = fb.const_string(&var_name);
                 let ty = fb.fresh_var();
-                let val = fb.gml_syscall("GameMaker.Global", "get", &[name_val], ty);
+                let val = fb.call("GameMaker.Global.get", &[name_val], ty);
                 stack.push(val);
             }
         }
@@ -681,26 +677,23 @@ pub(super) fn translate_pop(
                         fb.const_int(obj_idx, 64)
                     };
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall(
-                        "GameMaker.Instance",
-                        "setOn",
+                    fb.call(
+                        "GameMaker.Instance.setOn",
                         &[obj_id, name_val, value],
                         Type::Void,
                     );
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall(
-                        "GameMaker.Instance",
-                        "setField",
+                    fb.call(
+                        "GameMaker.Instance.setField",
                         &[target, name_val, value],
                         Type::Void,
                     );
                 }
             } else {
                 let name_val = fb.const_string(&var_name);
-                fb.gml_syscall(
-                    "GameMaker.Instance",
-                    "setField",
+                fb.call(
+                    "GameMaker.Instance.setField",
                     &[target, name_val, value],
                     Type::Void,
                 );
@@ -759,9 +752,8 @@ pub(super) fn translate_pop(
                 } else {
                     // Unknown index — fall back to setField
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall(
-                        "GameMaker.Instance",
-                        "setField",
+                    fb.call(
+                        "GameMaker.Instance.setField",
                         &[dim1, name_val, value],
                         Type::Void,
                     );
@@ -810,7 +802,7 @@ pub(super) fn translate_pop(
                         } else {
                             vec![self_id, name_val, dim1, value]
                         };
-                        fb.gml_syscall("GameMaker.Instance", "setOn", &args, Type::Void);
+                        fb.call("GameMaker.Instance.setOn", &args, Type::Void);
                     }
                 } else if let Some(obj_idx) = dim2_scope.as_ref().and_then(const_as_i64) {
                     // Cross-object: dim2 is the OBJT index of the target object.
@@ -825,7 +817,7 @@ pub(super) fn translate_pop(
                     } else {
                         vec![obj_id, name_val, dim1, value]
                     };
-                    fb.gml_syscall("GameMaker.Instance", "setOn", &args, Type::Void);
+                    fb.call("GameMaker.Instance.setOn", &args, Type::Void);
                 } else {
                     // Unknown dim2: emit a runtime setOn with the dim2 value as the object.
                     let name_val = fb.const_string(&var_name);
@@ -834,7 +826,7 @@ pub(super) fn translate_pop(
                     } else {
                         vec![dim2, name_val, dim1, value]
                     };
-                    fb.gml_syscall("GameMaker.Instance", "setOn", &args, Type::Void);
+                    fb.call("GameMaker.Instance.setOn", &args, Type::Void);
                 }
             } else {
                 // Cross-object indexed write (ref_type != 0, or script context):
@@ -851,7 +843,7 @@ pub(super) fn translate_pop(
                 } else {
                     vec![obj_id, name_val, dim1, value]
                 };
-                fb.gml_syscall("GameMaker.Instance", "setOn", &args, Type::Void);
+                fb.call("GameMaker.Instance.setOn", &args, Type::Void);
             }
             return Ok(());
         }
@@ -913,7 +905,7 @@ pub(super) fn translate_pop(
                     fb.set_field(self_param, &var_name, value);
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall("GameMaker.Global", "set", &[name_val, value], Type::Void);
+                    fb.call("GameMaker.Global.set", &[name_val, value], Type::Void);
                 }
             }
             Some(InstanceType::Global) => {
@@ -939,7 +931,7 @@ pub(super) fn translate_pop(
                     }
                 }
                 let name_val = fb.const_string(&var_name);
-                fb.gml_syscall("GameMaker.Global", "set", &[name_val, value], Type::Void);
+                fb.call("GameMaker.Global.set", &[name_val, value], Type::Void);
             }
             Some(InstanceType::Other) => {
                 if ctx.has_other {
@@ -948,9 +940,8 @@ pub(super) fn translate_pop(
                     fb.set_field(other_param, &var_name, value);
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall(
-                        "GameMaker.Instance",
-                        "setOther",
+                    fb.call(
+                        "GameMaker.Instance.setOther",
                         &[name_val, value],
                         Type::Void,
                     );
@@ -958,12 +949,7 @@ pub(super) fn translate_pop(
             }
             Some(InstanceType::All) => {
                 let name_val = fb.const_string(&var_name);
-                fb.gml_syscall(
-                    "GameMaker.Instance",
-                    "setAll",
-                    &[name_val, value],
-                    Type::Void,
-                );
+                fb.call("GameMaker.Instance.setAll", &[name_val, value], Type::Void);
             }
             Some(InstanceType::Stacktop) => {
                 let raw_target = pop(stack, inst)?;
@@ -1007,9 +993,8 @@ pub(super) fn translate_pop(
                     } else {
                         // Unknown index — fall back to setField
                         let name_val = fb.const_string(&var_name);
-                        fb.gml_syscall(
-                            "GameMaker.Instance",
-                            "setField",
+                        fb.call(
+                            "GameMaker.Instance.setField",
                             &[target, name_val, value],
                             Type::Void,
                         );
@@ -1027,26 +1012,23 @@ pub(super) fn translate_pop(
                             fb.const_int(obj_idx, 64)
                         };
                         let name_val = fb.const_string(&var_name);
-                        fb.gml_syscall(
-                            "GameMaker.Instance",
-                            "setOn",
+                        fb.call(
+                            "GameMaker.Instance.setOn",
                             &[obj_id, name_val, value],
                             Type::Void,
                         );
                     } else {
                         let name_val = fb.const_string(&var_name);
-                        fb.gml_syscall(
-                            "GameMaker.Instance",
-                            "setField",
+                        fb.call(
+                            "GameMaker.Instance.setField",
                             &[target, name_val, value],
                             Type::Void,
                         );
                     }
                 } else {
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall(
-                        "GameMaker.Instance",
-                        "setField",
+                    fb.call(
+                        "GameMaker.Instance.setField",
                         &[target, name_val, value],
                         Type::Void,
                     );
@@ -1060,9 +1042,8 @@ pub(super) fn translate_pop(
                         fb.const_int(instance as i64, 64)
                     };
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall(
-                        "GameMaker.Instance",
-                        "setOn",
+                    fb.call(
+                        "GameMaker.Instance.setOn",
                         &[obj_id, name_val, value],
                         Type::Void,
                     );
@@ -1095,7 +1076,7 @@ pub(super) fn translate_pop(
                         }
                     }
                     let name_val = fb.const_string(&var_name);
-                    fb.gml_syscall("GameMaker.Global", "set", &[name_val, value], Type::Void);
+                    fb.call("GameMaker.Global.set", &[name_val, value], Type::Void);
                 }
             }
         }

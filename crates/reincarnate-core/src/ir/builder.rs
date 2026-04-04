@@ -358,7 +358,7 @@ impl FunctionBuilder {
             Type::Float(32) => "f32",
             Type::Int(32) => "i32",
             Type::Int(64) => "i64",
-            _ => "any",
+            other => panic!("builtin_type_suffix: unsupported type {other:?}"),
         }
     }
 
@@ -773,26 +773,6 @@ impl FunctionBuilder {
             },
             ret_ty,
         )
-    }
-
-    /// Emit an intrinsic call for a GML engine syscall.
-    ///
-    /// Maps `(system, method)` to the canonical call name `"system.method"` and
-    /// emits `Op::Call`, which the linear lowering pass converts back to
-    /// `Expr::SystemCall` via the intrinsic call map.  Use this instead of
-    /// [`system_call`] in GML-frontend translation so that the IR carries typed
-    /// `Op::Call` ops rather than opaque `Op::SystemCall` strings.
-    ///
-    /// [`system_call`]: FunctionBuilder::system_call
-    pub fn gml_syscall(
-        &mut self,
-        system: impl AsRef<str>,
-        method: impl AsRef<str>,
-        args: &[ValueId],
-        ret_ty: Type,
-    ) -> ValueId {
-        let name = format!("{}.{}", system.as_ref(), method.as_ref());
-        self.call(name, args, ret_ty)
     }
 
     // ========================================================================

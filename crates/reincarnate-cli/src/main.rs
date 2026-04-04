@@ -2030,14 +2030,12 @@ fn cmd_list_stubs(
         engine: manifest.engine.clone(),
         options: manifest.frontend_options.clone(),
     };
-    let mut output = frontend.extract(input)?;
+    let output = frontend.extract(input)?;
 
     let filter_lower = filter.map(|s| s.to_lowercase());
 
     let mut total = 0usize;
-    for module in &mut output.modules {
-        module.register_arithmetic_any_builtins();
-
+    for module in &output.modules {
         for func in module.functions.values() {
             // A stub: entry block has zero instructions and terminates with Return(None).
             let entry = &func.blocks[func.entry];

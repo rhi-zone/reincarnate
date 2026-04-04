@@ -178,9 +178,68 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
         let mut module = mb.build();
-        // Register the GML-specific _any stubs so BuiltinOverloadSelect can
-        // find and rewrite the call emitted above.
-        module.register_arithmetic_any_builtins();
+        // Register minimal _any stubs with specializations for BuiltinOverloadSelect.
+        for op in &["add", "sub", "mul", "div", "rem"] {
+            let spec_entries: Vec<(Vec<Type>, String)> = {
+                let mut v = vec![
+                    (
+                        vec![Type::Float(64), Type::Float(64)],
+                        format!("builtin.{op}_f64"),
+                    ),
+                    (
+                        vec![Type::Float(32), Type::Float(32)],
+                        format!("builtin.{op}_f32"),
+                    ),
+                    (
+                        vec![Type::Int(32), Type::Int(32)],
+                        format!("builtin.{op}_i32"),
+                    ),
+                    (
+                        vec![Type::Int(64), Type::Int(64)],
+                        format!("builtin.{op}_i64"),
+                    ),
+                ];
+                if *op == "add" {
+                    v.push((
+                        vec![Type::String, Type::String],
+                        "builtin.concat_str".to_string(),
+                    ));
+                }
+                v
+            };
+            let bin_sig = FunctionSig {
+                params: vec![Type::Unknown, Type::Unknown],
+                return_ty: Type::Unknown,
+                ..Default::default()
+            };
+            let any_id = module.register_runtime(format!("{op}_any"), bin_sig);
+            for (arg_types, target_name) in spec_entries {
+                let target_fid = module.runtime_registry[&target_name];
+                module.functions[any_id]
+                    .specializations
+                    .insert(arg_types, target_fid);
+            }
+        }
+        {
+            let spec_entries: Vec<(Vec<Type>, String)> = vec![
+                (vec![Type::Float(64)], "builtin.neg_f64".to_string()),
+                (vec![Type::Float(32)], "builtin.neg_f32".to_string()),
+                (vec![Type::Int(32)], "builtin.neg_i32".to_string()),
+                (vec![Type::Int(64)], "builtin.neg_i64".to_string()),
+            ];
+            let un_sig = FunctionSig {
+                params: vec![Type::Unknown],
+                return_ty: Type::Unknown,
+                ..Default::default()
+            };
+            let any_id = module.register_runtime("neg_any", un_sig);
+            for (arg_types, target_name) in spec_entries {
+                let target_fid = module.runtime_registry[&target_name];
+                module.functions[any_id]
+                    .specializations
+                    .insert(arg_types, target_fid);
+            }
+        }
         module
     }
 

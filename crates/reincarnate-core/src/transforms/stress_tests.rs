@@ -17,9 +17,19 @@ use crate::transforms::{
     Mem2Reg, RedundantCastElimination,
 };
 
-/// All types we test with.
+/// Arithmetic-compatible types for functions that use `fb.add` / `fb.sub` etc.
+///
+/// Only includes types handled by `builtin_type_suffix` — Float and Int variants.
+/// `Bool`, `String`, and `Unknown` are not valid arithmetic operand types.
+const ARITH_TYPES: &[Type] = &[
+    Type::Int(64),
+    Type::Int(32),
+    Type::Float(64),
+    Type::Float(32),
+];
+
+/// All concrete types for non-arithmetic tests (cast chains, alloc patterns, etc.).
 const TYPES: &[Type] = &[
-    Type::Unknown,
     Type::Int(64),
     Type::Int(32),
     Type::Float(64),
@@ -264,7 +274,7 @@ fn stress_pass_module<T: Transform>(
 fn stress_const_fold_linear_chains() {
     let pass = ConstantFolding;
     for n in [1, 5, 10, 20] {
-        for ty in TYPES {
+        for ty in ARITH_TYPES {
             stress_pass(&pass, build_linear_chain(n, ty.clone()));
         }
     }
@@ -273,7 +283,7 @@ fn stress_const_fold_linear_chains() {
 #[test]
 fn stress_const_fold_diamonds() {
     let pass = ConstantFolding;
-    for ty in TYPES {
+    for ty in ARITH_TYPES {
         stress_pass(&pass, build_diamond(ty.clone()));
     }
 }
@@ -292,7 +302,7 @@ fn stress_const_fold_nested() {
 fn stress_cfg_simplify_linear_chains() {
     let pass = CfgSimplify;
     for n in [1, 5, 10, 20] {
-        for ty in TYPES {
+        for ty in ARITH_TYPES {
             stress_pass(&pass, build_linear_chain(n, ty.clone()));
         }
     }
@@ -312,7 +322,7 @@ fn stress_cfg_simplify_nested() {
 fn stress_dce_linear_chains() {
     let pass = DeadCodeElimination;
     for n in [1, 5, 10, 20] {
-        for ty in TYPES {
+        for ty in ARITH_TYPES {
             stress_pass(&pass, build_linear_chain(n, ty.clone()));
         }
     }
@@ -321,7 +331,7 @@ fn stress_dce_linear_chains() {
 #[test]
 fn stress_dce_loops() {
     let pass = DeadCodeElimination;
-    for ty in TYPES {
+    for ty in ARITH_TYPES {
         stress_pass(&pass, build_loop(ty.clone()));
     }
 }
@@ -341,10 +351,12 @@ fn stress_mem2reg_alloc_patterns() {
 #[test]
 fn stress_constraint_solve_hm_varied_shapes() {
     let pass = ConstraintSolveHM;
-    for ty in TYPES {
+    for ty in ARITH_TYPES {
         stress_pass(&pass, build_linear_chain(3, ty.clone()));
         stress_pass(&pass, build_diamond(ty.clone()));
         stress_pass(&pass, build_loop(ty.clone()));
+    }
+    for ty in TYPES {
         stress_pass(&pass, build_cast_chain(ty.clone()));
     }
 }
@@ -352,7 +364,7 @@ fn stress_constraint_solve_hm_varied_shapes() {
 #[test]
 fn stress_constraint_solve_hm_multi_function() {
     let pass = ConstraintSolveHM;
-    for ty in TYPES {
+    for ty in ARITH_TYPES {
         stress_pass_module(
             &pass,
             build_linear_chain(3, ty.clone()),
@@ -377,8 +389,9 @@ fn stress_red_cast_elim_cast_chains() {
 fn stress_int_to_bool_promotion() {
     let pass = IntToBoolPromotion;
     stress_pass(&pass, build_bool_return());
-    // Non-bool functions should be untouched.
-    for ty in TYPES {
+    // Non-bool functions should be untouched (use only arithmetic types since
+    // build_linear_chain uses fb.add which requires numeric types).
+    for ty in ARITH_TYPES {
         stress_pass(&pass, build_linear_chain(3, ty.clone()));
     }
 }
@@ -393,11 +406,11 @@ fn stress_full_pipeline_varied_shapes() {
     let config = PassConfig::default();
     let shapes: Vec<crate::ir::Function> = vec![
         build_linear_chain(1, Type::Int(64)),
-        build_linear_chain(10, Type::Unknown),
+        build_linear_chain(10, Type::Int(64)),
         build_diamond(Type::Int(64)),
         build_diamond(Type::Float(64)),
         build_loop(Type::Int(64)),
-        build_loop(Type::Unknown),
+        build_loop(Type::Int(64)),
         build_alloc_pattern(Type::Int(64)),
         build_cast_chain(Type::Bool),
         build_bool_return(),

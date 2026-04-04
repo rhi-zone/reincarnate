@@ -1,3 +1,4 @@
+mod arith_any;
 mod assets;
 mod bool_arith_coerce;
 mod builtins_generated;
@@ -248,7 +249,7 @@ impl Frontend for GameMakerFrontend {
         // yet known.  `BuiltinOverloadSelect` replaces these with typed variants
         // once HM inference resolves the operand types.  These stubs are not in
         // `register_core_builtins()` because no other frontend needs them.
-        module.register_arithmetic_any_builtins();
+        arith_any::register_arithmetic_any_builtins(&mut module);
 
         // Register GML syscall intrinsics.  Each intrinsic is a typed Op::Call
         // whose IntrinsicKind encodes the (system, method) pair.  The linear

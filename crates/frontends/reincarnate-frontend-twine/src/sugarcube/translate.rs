@@ -558,7 +558,9 @@ impl TranslateCtx {
         let val = self.lower_oxc_expr(&unary.argument, pp);
         let ty = self.fb.fresh_var();
         match unary.operator {
-            js::UnaryOperator::UnaryNegation => self.fb.neg(val),
+            js::UnaryOperator::UnaryNegation => {
+                self.fb.system_call("SugarCube.Engine", "neg", &[val], ty)
+            }
             js::UnaryOperator::UnaryPlus => self.fb.coerce(val, Type::Float(64)),
             js::UnaryOperator::LogicalNot => self.fb.not(val),
             js::UnaryOperator::BitwiseNot => self.fb.bit_not(val),
@@ -639,9 +641,16 @@ impl TranslateCtx {
     ) -> ValueId {
         let val = self.lower_simple_assignment_target_read(&update.argument, pp);
         let one = self.fb.const_float(1.0);
+        let ty = self.fb.fresh_var();
         let new_val = match update.operator {
-            js::UpdateOperator::Increment => self.fb.add(val, one),
-            js::UpdateOperator::Decrement => self.fb.sub(val, one),
+            js::UpdateOperator::Increment => {
+                self.fb
+                    .system_call("SugarCube.Engine", "add", &[val, one], ty)
+            }
+            js::UpdateOperator::Decrement => {
+                self.fb
+                    .system_call("SugarCube.Engine", "sub", &[val, one], ty)
+            }
         };
         self.store_to_oxc_target(&update.argument, new_val, pp);
         if update.prefix {
@@ -657,11 +666,28 @@ impl TranslateCtx {
         let ty = self.fb.fresh_var();
 
         match bin.operator {
-            js::BinaryOperator::Addition => self.fb.add(lhs, rhs),
-            js::BinaryOperator::Subtraction => self.fb.sub(lhs, rhs),
-            js::BinaryOperator::Multiplication => self.fb.mul(lhs, rhs),
-            js::BinaryOperator::Division => self.fb.div(lhs, rhs),
-            js::BinaryOperator::Remainder => self.fb.rem(lhs, rhs),
+            // JavaScript arithmetic is dynamically typed — use engine system calls
+            // so the IR doesn't assume concrete operand types before inference.
+            js::BinaryOperator::Addition => {
+                self.fb
+                    .system_call("SugarCube.Engine", "add", &[lhs, rhs], ty)
+            }
+            js::BinaryOperator::Subtraction => {
+                self.fb
+                    .system_call("SugarCube.Engine", "sub", &[lhs, rhs], ty)
+            }
+            js::BinaryOperator::Multiplication => {
+                self.fb
+                    .system_call("SugarCube.Engine", "mul", &[lhs, rhs], ty)
+            }
+            js::BinaryOperator::Division => {
+                self.fb
+                    .system_call("SugarCube.Engine", "div", &[lhs, rhs], ty)
+            }
+            js::BinaryOperator::Remainder => {
+                self.fb
+                    .system_call("SugarCube.Engine", "rem", &[lhs, rhs], ty)
+            }
             js::BinaryOperator::Exponential => {
                 self.fb
                     .system_call("SugarCube.Engine", "pow", &[lhs, rhs], ty)
@@ -800,11 +826,27 @@ impl TranslateCtx {
     ) -> ValueId {
         let ty = self.fb.fresh_var();
         match op {
-            js::AssignmentOperator::Addition => self.fb.add(lhs, rhs),
-            js::AssignmentOperator::Subtraction => self.fb.sub(lhs, rhs),
-            js::AssignmentOperator::Multiplication => self.fb.mul(lhs, rhs),
-            js::AssignmentOperator::Division => self.fb.div(lhs, rhs),
-            js::AssignmentOperator::Remainder => self.fb.rem(lhs, rhs),
+            // JavaScript compound assignment is dynamically typed — use engine system calls.
+            js::AssignmentOperator::Addition => {
+                self.fb
+                    .system_call("SugarCube.Engine", "add", &[lhs, rhs], ty)
+            }
+            js::AssignmentOperator::Subtraction => {
+                self.fb
+                    .system_call("SugarCube.Engine", "sub", &[lhs, rhs], ty)
+            }
+            js::AssignmentOperator::Multiplication => {
+                self.fb
+                    .system_call("SugarCube.Engine", "mul", &[lhs, rhs], ty)
+            }
+            js::AssignmentOperator::Division => {
+                self.fb
+                    .system_call("SugarCube.Engine", "div", &[lhs, rhs], ty)
+            }
+            js::AssignmentOperator::Remainder => {
+                self.fb
+                    .system_call("SugarCube.Engine", "rem", &[lhs, rhs], ty)
+            }
             js::AssignmentOperator::Exponential => {
                 self.fb
                     .system_call("SugarCube.Engine", "pow", &[lhs, rhs], ty)
@@ -966,7 +1008,7 @@ impl TranslateCtx {
             if !text.is_empty() {
                 let s = self.fb.const_string(text);
                 result = Some(match result {
-                    Some(acc) => self.fb.add(acc, s),
+                    Some(acc) => self.fb.call("builtin.concat_str", &[acc, s], Type::String),
                     None => s,
                 });
             }
@@ -977,7 +1019,9 @@ impl TranslateCtx {
                     self.fb
                         .system_call("SugarCube.Engine", "to_string", &[val], Type::String);
                 result = Some(match result {
-                    Some(acc) => self.fb.add(acc, str_val),
+                    Some(acc) => self
+                        .fb
+                        .call("builtin.concat_str", &[acc, str_val], Type::String),
                     None => str_val,
                 });
             }
@@ -1853,8 +1897,9 @@ impl TranslateCtx {
         self.fb.br(latch_block, &[]);
 
         self.fb.switch_to_block(latch_block);
-        let ty = self.fb.fresh_var();
-        let cur = self.fb.load(alloc, ty);
+        // SugarCube numeric for-loops use Float(64) counters — the `to` keyword
+        // increments a numeric value.
+        let cur = self.fb.load(alloc, Type::Float(64));
         let one = self.fb.const_float(1.0);
         let next = self.fb.add(cur, one);
         self.fb.store(alloc, next);

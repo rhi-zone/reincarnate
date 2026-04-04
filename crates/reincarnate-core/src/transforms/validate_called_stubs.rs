@@ -105,6 +105,55 @@ mod tests {
     use crate::pipeline::Transform;
     use crate::transforms::BuiltinOverloadSelect;
 
+    /// Register a minimal `_any` overload stub for testing, with a real dispatch
+    /// body so that `ValidateCalledStubs` does not flag it as an empty stub.
+    ///
+    /// The stub has a non-empty entry block (contains a `coerce` + `call` instruction),
+    /// so it passes the "entry block non-empty" check in `ValidateCalledStubs`.
+    fn register_test_any_stub_with_body(
+        module: &mut Module,
+        op_name: &str,
+        builtin_name: &str,
+        param_count: usize,
+    ) {
+        use crate::ir::func::Visibility;
+
+        let params = vec![Type::Unknown; param_count];
+        let sig = FunctionSig {
+            params: params.clone(),
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        // Build a minimal non-empty body: coerce first arg and call the typed variant.
+        let mut fb =
+            FunctionBuilder::new(format!("{op_name}_any"), sig.clone(), Visibility::Public);
+        let a = fb.param(0);
+        let a_coerced = fb.coerce(a, Type::Float(64));
+        let args_coerced: Vec<_> = if param_count == 2 {
+            let b = fb.param(1);
+            let b_coerced = fb.coerce(b, Type::Float(64));
+            vec![a_coerced, b_coerced]
+        } else {
+            vec![a_coerced]
+        };
+        let result = fb.call(builtin_name, &args_coerced, Type::Float(64));
+        fb.ret(Some(result));
+        let built = fb.build();
+
+        let any_id = module.register_runtime(format!("{op_name}_any"), sig);
+        module.functions[any_id].blocks = built.blocks;
+        module.functions[any_id].insts = built.insts;
+        module.functions[any_id].value_types = built.value_types;
+        module.functions[any_id].entry = built.entry;
+
+        // Add specializations so BuiltinOverloadSelect can resolve typed calls.
+        let typed_fid = module.runtime_registry[builtin_name];
+        let typed_args = vec![Type::Float(64); param_count];
+        module.functions[any_id]
+            .specializations
+            .insert(typed_args, typed_fid);
+    }
+
     /// Build a module containing one function that calls `<op_name>_any`
     /// with `arg_types.len()` parameters of the given types.
     fn make_module_with_func(op_name: &str, arg_types: &[Type]) -> Module {
@@ -124,7 +173,8 @@ mod tests {
         let mut mb = ModuleBuilder::new("test");
         mb.add_function(func);
         let mut module = mb.build();
-        module.register_arithmetic_any_builtins();
+        // Register an _any stub with a real dispatch body for testing.
+        register_test_any_stub_with_body(&mut module, op_name, "builtin.add_f64", 2);
         module
     }
 

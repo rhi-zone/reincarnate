@@ -2520,31 +2520,57 @@ mod tests {
 
     #[test]
     fn translate_coerce_convert_opcodes() {
-        let code = vec![
+        // Test that convert_b and coerce_i opcodes are translated to coerce operations.
+        // Two separate functions: one returning the bool result, one returning the i32 result.
+        // (Previously this test added them together, but Bool is not a valid arithmetic type.)
+        let code_bool = vec![
             0x24, 1,    // pushbyte 1
             0x76, // convert_b (ConvertB → coerce to Bool)
-            0x24, 2,    // pushbyte 2
-            0x83, // coerce_i (CoerceI → coerce to Int(32))
-            0xA0, // add
             0x48, // returnvalue
         ];
-        let (abc, body) = build_abc(empty_pool(), code, 1, 2);
+        let code_i32 = vec![
+            0x24, 2,    // pushbyte 2
+            0x83, // coerce_i (CoerceI → coerce to Int(32))
+            0x48, // returnvalue
+        ];
         let sig = FunctionSig {
             params: vec![],
             return_ty: Type::Unknown,
             ..Default::default()
         };
 
-        let func = translate_method_body(&abc, &body, "coerce_test", sig, &[], false, &mut vec![])
-            .unwrap();
-        let output = format!("{func}");
+        let (abc_bool, body_bool) = build_abc(empty_pool(), code_bool, 1, 1);
+        let func_bool = translate_method_body(
+            &abc_bool,
+            &body_bool,
+            "coerce_bool_test",
+            sig.clone(),
+            &[],
+            false,
+            &mut vec![],
+        )
+        .unwrap();
+        let output_bool = format!("{func_bool}");
         assert!(
-            output.contains("coerce") && output.contains("bool"),
-            "expected coerce to bool in:\n{output}"
+            output_bool.contains("coerce") && output_bool.contains("bool"),
+            "expected coerce to bool in:\n{output_bool}"
         );
+
+        let (abc_i32, body_i32) = build_abc(empty_pool(), code_i32, 1, 1);
+        let func_i32 = translate_method_body(
+            &abc_i32,
+            &body_i32,
+            "coerce_i32_test",
+            sig,
+            &[],
+            false,
+            &mut vec![],
+        )
+        .unwrap();
+        let output_i32 = format!("{func_i32}");
         assert!(
-            output.contains("i32"),
-            "expected coerce to i32 in:\n{output}"
+            output_i32.contains("i32"),
+            "expected coerce to i32 in:\n{output_i32}"
         );
     }
 
