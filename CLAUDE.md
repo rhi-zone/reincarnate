@@ -20,7 +20,7 @@ Reincarnate decompiles legacy game binaries into working, type-safe, high-qualit
 
 **Known gaps live in TODO.md.** Every gap, unverified assumption, and unimplemented behavior must be tracked there. Not adding a TODO entry is an implicit claim of correctness.
 
-**Read before modifying.** Confidence is not a feeling — it is a result of having verified. When a request is ambiguous, state your interpretation and wait for confirmation.
+**Read before modifying or proposing.** Confidence is not a feeling — it is a result of having verified. When a request is ambiguous, state your interpretation and wait for confirmation. Design proposals require the same standard: read the relevant code before making claims about how things work. Reasoning from first principles when the implementation is readable is not a substitute for reading it.
 
 **Wrong code causes cascading damage.** Wasted time, risky reverts, corrupted `git blame`, misdirected future work.
 
