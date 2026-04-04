@@ -36,7 +36,7 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 
 **1. Pipeline Stage Isolation.** The IR is the only channel between pipeline stages. Everything a backend needs must be in the IR — extend it rather than route around it.
 
-**2. Engine Specificity at Boundaries.** Frontends know the source engine. Backends know the target language. Core knows neither — not GML, not TypeScript. Engine-specific logic in core is in the wrong place. This includes named engine functions hardcoded in transforms, backward inference that compensates for engine-specific gaps, any logic whose behavior changes based on which engine produced the IR, and any logic that encodes target-language assumptions (e.g. "Int and Float are both `number`").
+**2. Engine Specificity at Boundaries.** Frontends know the source engine. Backends know the target language. Core knows neither — not GML, not TypeScript. Engine-specific logic in core is in the wrong place. This includes named engine functions hardcoded in transforms, backward inference that compensates for engine-specific gaps, any logic whose behavior changes based on which engine produced the IR, and any logic that encodes target-language assumptions (e.g. "Int and Float are both `number`"). The IR itself is subject to the same rule: IR structs and op variants must not carry source-engine or target-language knowledge — no emit hints, no operator syntax, no calling conventions, no native function names.
 
 **3. Behavioral Equivalence.** Emitted code produces identical observable output for any input. Preserve source-language bugs.
 
@@ -48,9 +48,6 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 
 **5. Instantiability.** All mutable runtime state lives on root runtime instances. No module-level mutable variables. Multiple game instances must coexist on one page.
 
-**6. Semantic IR.** The IR encodes what code means, not how to emit it. Emit strategy is target-language knowledge and belongs in backends, not in the IR or on `Function` structs.
-
-**7. Functions Have Bodies.** Every IR function has a body — except atomic leaf primitives that have no lower-level IR expression (e.g. `add_f64`, `cos_f64`). A missing body is a temporary stub, not a valid final state.
 
 ## Workflow
 
