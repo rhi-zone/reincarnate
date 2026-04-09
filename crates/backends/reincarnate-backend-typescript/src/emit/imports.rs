@@ -127,9 +127,9 @@ pub(super) fn emit_runtime_imports(
 ) {
     let all_funcs = || module.functions.iter().map(|(_id, f)| f);
     let func_names: HashMap<FuncId, String> = module
-        .runtime_registry
-        .iter()
-        .map(|(name, &fid)| (fid, name.clone()))
+        .functions
+        .keys()
+        .map(|fid| (fid, module.func_name(fid).to_string()))
         .collect();
     let intrinsic_to_system = build_intrinsic_to_system(module);
     let systems = collect_system_names_from_funcs(all_funcs(), Some(&intrinsic_to_system));
