@@ -1082,6 +1082,15 @@ impl Module {
         fid
     }
 
+    /// Register an alias name for an already-registered runtime function.
+    ///
+    /// Inserts `alias → fid` into the runtime registry without creating a new
+    /// `Function` entry.  Use this for alternate spellings of the same function
+    /// (e.g. `color_get_red` → same `FuncId` as `colour_get_red`).
+    pub fn register_alias(&mut self, alias: impl Into<String>, fid: FuncId) {
+        self.runtime_registry.insert(alias.into(), fid);
+    }
+
     /// Look up the `FuncId` of a previously registered runtime function.
     ///
     /// Returns `None` if no runtime function with this name has been registered.

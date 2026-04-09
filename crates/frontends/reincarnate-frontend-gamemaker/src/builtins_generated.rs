@@ -27,10 +27,10 @@ use reincarnate_core::ir::ty::{FunctionSig, Type};
 use reincarnate_core::ir::value::Constant;
 
 /// Returns the full table of GML builtin function signatures parsed from the
-/// GameMaker manual HTML. Each entry is `(name, sig)`.
+/// GameMaker manual HTML. Each entry is `(name, sig, aliases)`.
 ///
 /// This is a function (not a static) because `FunctionSig` contains `Vec` fields.
-pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
+pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str])> {
     vec![
         (
             "GM_build_date",
@@ -40,6 +40,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "GM_build_type",
@@ -49,6 +50,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "GM_is_sandboxed",
@@ -58,6 +60,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "GM_project_filename",
@@ -67,6 +70,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "GM_runtime_type",
@@ -76,6 +80,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "GM_runtime_version",
@@ -85,6 +90,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "GM_version",
@@ -94,6 +100,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "abs",
@@ -105,6 +112,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "alarm",
@@ -114,6 +122,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "alarm_get",
@@ -125,6 +134,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "alarm_set",
@@ -137,6 +147,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "analytics_event",
@@ -148,6 +159,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "analytics_event_ext",
@@ -161,6 +173,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "angle_difference",
@@ -173,6 +186,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_channel_evaluate",
@@ -185,6 +199,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_channel_new",
@@ -194,6 +209,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["animcurvetype_linear", "animcurvetype_catmullrom"],
         ),
         (
             "animcurve_create",
@@ -203,6 +219,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_destroy",
@@ -214,6 +231,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_exists",
@@ -225,6 +243,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_get",
@@ -236,6 +255,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_get_channel",
@@ -248,6 +268,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_get_channel_index",
@@ -260,6 +281,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "animcurve_point_new",
@@ -269,6 +291,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ansi_char",
@@ -280,6 +303,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "application_get_position",
@@ -289,6 +313,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "application_surface",
@@ -298,6 +323,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "application_surface_draw_enable",
@@ -309,6 +335,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "application_surface_enable",
@@ -320,6 +347,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "application_surface_is_draw_enabled",
@@ -329,6 +357,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "application_surface_is_enabled",
@@ -338,6 +367,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "arccos",
@@ -349,6 +379,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "arcsin",
@@ -360,6 +391,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "arctan",
@@ -371,6 +403,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "arctan2",
@@ -383,6 +416,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_concat",
@@ -400,6 +434,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "array_contains",
@@ -419,6 +454,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_contains_ext",
@@ -440,6 +476,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_copy",
@@ -455,6 +492,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_create",
@@ -470,6 +508,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_create_ext",
@@ -481,6 +520,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_delete",
@@ -494,6 +534,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_equals",
@@ -506,6 +547,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_first",
@@ -517,6 +559,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_foreach",
@@ -529,6 +572,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_get",
@@ -541,6 +585,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_get_index",
@@ -560,6 +605,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_height_2d",
@@ -571,6 +617,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["array_height_2d (Deprecated)"],
         ),
         (
             "array_insert",
@@ -590,6 +637,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "array_intersection",
@@ -605,6 +653,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "array_last",
@@ -616,6 +665,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_length",
@@ -627,6 +677,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_length_1d",
@@ -638,6 +689,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["array_length_1d (Deprecated)"],
         ),
         (
             "array_length_2d",
@@ -650,6 +702,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["array_length_2d (Deprecated)"],
         ),
         (
             "array_map",
@@ -662,6 +715,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_map_ext",
@@ -674,6 +728,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_pop",
@@ -685,6 +740,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_push",
@@ -698,6 +754,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None, None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "array_reduce",
@@ -711,6 +768,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_resize",
@@ -723,6 +781,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_reverse",
@@ -740,6 +799,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_reverse_ext",
@@ -757,6 +817,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_set",
@@ -770,6 +831,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_shift",
@@ -781,6 +843,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_shuffle",
@@ -798,6 +861,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_shuffle_ext",
@@ -815,6 +879,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_sort",
@@ -827,6 +892,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_union",
@@ -842,6 +908,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "array_unique",
@@ -859,6 +926,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "array_unique_ext",
@@ -876,6 +944,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "asset_add_tags",
@@ -893,6 +962,22 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "asset_object",
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+                "asset_particlesystem",
+                "asset_unknown",
+            ],
         ),
         (
             "asset_clear_tags",
@@ -908,6 +993,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "asset_object",
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+            ],
         ),
         (
             "asset_get_ids",
@@ -919,6 +1018,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "asset_get_index",
@@ -930,6 +1030,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "asset_get_tags",
@@ -945,6 +1046,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "asset_object",
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+            ],
         ),
         (
             "asset_get_type",
@@ -956,6 +1071,21 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "asset_object",
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+                "asset_unknown",
+            ],
         ),
         (
             "asset_has_any_tag",
@@ -973,6 +1103,19 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+            ],
         ),
         (
             "asset_has_tags",
@@ -990,6 +1133,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "asset_object",
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+            ],
         ),
         (
             "asset_remove_tags",
@@ -1007,6 +1164,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "asset_object",
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+            ],
         ),
         (
             "audio_bus_clear_emitters",
@@ -1018,6 +1189,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_bus_create",
@@ -1027,6 +1199,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_bus_get_emitters",
@@ -1038,6 +1211,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_bus_main",
@@ -1047,6 +1221,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_channel_num",
@@ -1058,6 +1233,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_create_buffer_sound",
@@ -1074,6 +1250,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_create_play_queue",
@@ -1087,6 +1264,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["audio_mono", "audio_stereo", "audio_3d"],
         ),
         (
             "audio_create_stream",
@@ -1098,6 +1276,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_create_sync_group",
@@ -1109,6 +1288,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_debug",
@@ -1120,6 +1300,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_destroy_stream",
@@ -1131,6 +1312,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_destroy_sync_group",
@@ -1142,6 +1324,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_effect_create",
@@ -1157,6 +1340,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_bus",
@@ -1169,6 +1353,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_create",
@@ -1178,6 +1363,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_exists",
@@ -1189,6 +1375,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_falloff",
@@ -1203,6 +1390,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_free",
@@ -1214,6 +1402,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_gain",
@@ -1231,6 +1420,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_bus",
@@ -1242,6 +1432,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_gain",
@@ -1253,6 +1444,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_listener_mask",
@@ -1264,6 +1456,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_pitch",
@@ -1275,6 +1468,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_vx",
@@ -1286,6 +1480,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_vy",
@@ -1297,6 +1492,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_vz",
@@ -1308,6 +1504,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_x",
@@ -1319,6 +1516,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_y",
@@ -1330,6 +1528,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_get_z",
@@ -1341,6 +1540,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["audio_emitter_get_y"],
         ),
         (
             "audio_emitter_pitch",
@@ -1353,6 +1553,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_position",
@@ -1367,6 +1568,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_set_listener_mask",
@@ -1379,6 +1581,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_emitter_velocity",
@@ -1393,6 +1596,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_exists",
@@ -1404,6 +1608,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_falloff_set_model",
@@ -1415,6 +1620,17 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "audio_falloff_exponent_distance",
+                "audio_falloff_exponent_distance_clamped",
+                "audio_falloff_inverse_distance",
+                "audio_falloff_inverse_distance_clamped",
+                "audio_falloff_linear_distance",
+                "audio_falloff_linear_distance_clamped",
+                "audio_falloff_none",
+                "audio_falloff_exponent_distance_scaled",
+                "audio_falloff_inverse_distance_scaled",
+            ],
         ),
         (
             "audio_free_buffer_sound",
@@ -1426,6 +1642,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_free_play_queue",
@@ -1437,6 +1654,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_listener_count",
@@ -1446,6 +1664,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_listener_info",
@@ -1457,6 +1676,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_listener_mask",
@@ -1466,6 +1686,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_master_gain",
@@ -1477,6 +1698,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_name",
@@ -1488,6 +1710,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_recorder_count",
@@ -1497,6 +1720,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_recorder_info",
@@ -1508,6 +1732,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_get_type",
@@ -1519,6 +1744,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_get_assets",
@@ -1530,6 +1756,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_get_gain",
@@ -1541,6 +1768,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_is_loaded",
@@ -1552,6 +1780,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_load",
@@ -1563,6 +1792,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_load_progress",
@@ -1574,6 +1804,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_name",
@@ -1585,6 +1816,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_set_gain",
@@ -1602,6 +1834,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_stop_all",
@@ -1613,6 +1846,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_group_unload",
@@ -1624,6 +1858,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_is_paused",
@@ -1635,6 +1870,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_is_playing",
@@ -1646,6 +1882,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_listener_get_data",
@@ -1657,6 +1894,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_listener_orientation",
@@ -1673,6 +1911,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_listener_position",
@@ -1686,6 +1925,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_listener_set_orientation",
@@ -1703,6 +1943,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_listener_set_position",
@@ -1717,6 +1958,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_listener_set_velocity",
@@ -1731,6 +1973,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_listener_velocity",
@@ -1744,6 +1987,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_master_gain",
@@ -1755,6 +1999,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_pause_all",
@@ -1764,6 +2009,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_pause_sound",
@@ -1775,6 +2021,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_pause_sync_group",
@@ -1786,6 +2033,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_play_in_sync_group",
@@ -1798,6 +2046,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_play_sound",
@@ -1823,6 +2072,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_play_sound_at",
@@ -1860,6 +2110,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_play_sound_ext",
@@ -1871,6 +2122,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_play_sound_on",
@@ -1898,6 +2150,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_queue_sound",
@@ -1912,6 +2165,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_resume_all",
@@ -1921,6 +2175,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_resume_sound",
@@ -1932,6 +2187,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_resume_sync_group",
@@ -1943,6 +2199,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_set_listener_mask",
@@ -1954,6 +2211,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_set_master_gain",
@@ -1966,6 +2224,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_gain",
@@ -1983,6 +2242,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_asset",
@@ -1994,6 +2254,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_audio_group",
@@ -2005,6 +2266,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_gain",
@@ -2016,6 +2278,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_listener_mask",
@@ -2027,6 +2290,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_loop",
@@ -2038,6 +2302,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_loop_end",
@@ -2049,6 +2314,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_loop_start",
@@ -2060,6 +2326,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_pitch",
@@ -2071,6 +2338,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_get_track_position",
@@ -2082,6 +2350,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_is_playable",
@@ -2093,6 +2362,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_length",
@@ -2104,6 +2374,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_loop",
@@ -2116,6 +2387,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_loop_end",
@@ -2128,6 +2400,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_loop_start",
@@ -2140,6 +2413,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_pitch",
@@ -2152,6 +2426,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_set_listener_mask",
@@ -2164,6 +2439,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sound_set_track_position",
@@ -2176,6 +2452,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_start_recording",
@@ -2187,6 +2464,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_start_sync_group",
@@ -2198,6 +2476,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_stop_all",
@@ -2207,6 +2486,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_stop_recording",
@@ -2218,6 +2498,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_stop_sound",
@@ -2229,6 +2510,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_stop_sync_group",
@@ -2240,6 +2522,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sync_group_debug",
@@ -2251,6 +2534,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sync_group_get_track_pos",
@@ -2262,6 +2546,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sync_group_is_paused",
@@ -2273,6 +2558,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_sync_group_is_playing",
@@ -2284,6 +2570,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_system_is_available",
@@ -2293,6 +2580,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_system_is_initialised",
@@ -2302,6 +2590,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audio_throw_on_error",
@@ -2313,6 +2602,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "audiogroup_default",
@@ -2322,6 +2612,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "base64_decode",
@@ -2333,6 +2624,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "base64_encode",
@@ -2344,6 +2636,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "bbox_bottom",
@@ -2353,6 +2646,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "bbox_left",
@@ -2362,6 +2656,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "bbox_right",
@@ -2371,6 +2666,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "bbox_top",
@@ -2380,6 +2676,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "bool",
@@ -2391,6 +2688,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "browser_height",
@@ -2400,6 +2698,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "browser_input_capture",
@@ -2411,6 +2710,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "browser_width",
@@ -2420,6 +2720,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_async_group_begin",
@@ -2431,6 +2732,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_async_group_end",
@@ -2440,6 +2742,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_async_group_option",
@@ -2452,6 +2755,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_base64_decode",
@@ -2463,6 +2767,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_base64_decode_ext",
@@ -2476,6 +2781,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_base64_encode",
@@ -2489,6 +2795,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_compress",
@@ -2502,6 +2809,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_copy",
@@ -2517,6 +2825,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_copy_from_vertex_buffer",
@@ -2532,6 +2841,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_copy_stride",
@@ -2550,6 +2860,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_crc32",
@@ -2563,6 +2874,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_create",
@@ -2576,6 +2888,13 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "buffer_fixed",
+                "buffer_grow",
+                "buffer_wrap",
+                "buffer_fast",
+                "buffer_vbuffer",
+            ],
         ),
         (
             "buffer_create_from_vertex_buffer",
@@ -2589,6 +2908,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_create_from_vertex_buffer_ext",
@@ -2604,6 +2924,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_decompress",
@@ -2615,6 +2936,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_delete",
@@ -2626,6 +2948,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_exists",
@@ -2637,6 +2960,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_fill",
@@ -2652,6 +2976,21 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "buffer_u8",
+                "buffer_s8",
+                "buffer_u16",
+                "buffer_s16",
+                "buffer_u32",
+                "buffer_s32",
+                "buffer_u64",
+                "buffer_f16",
+                "buffer_f32",
+                "buffer_f64",
+                "buffer_bool",
+                "buffer_string",
+                "buffer_text",
+            ],
         ),
         (
             "buffer_get_address",
@@ -2663,6 +3002,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_get_alignment",
@@ -2674,6 +3014,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_get_size",
@@ -2685,6 +3026,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_get_surface",
@@ -2698,6 +3040,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["buffer_surface_copy (Deprecated)"],
         ),
         (
             "buffer_get_surface_depth",
@@ -2711,6 +3054,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_get_type",
@@ -2722,6 +3066,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_get_used_size",
@@ -2733,6 +3078,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_load",
@@ -2744,6 +3090,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_load_async",
@@ -2758,6 +3105,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_load_ext",
@@ -2771,6 +3119,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_load_partial",
@@ -2786,6 +3135,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_md5",
@@ -2799,6 +3149,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_peek",
@@ -2812,6 +3163,21 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "buffer_u8",
+                "buffer_s8",
+                "buffer_u16",
+                "buffer_s16",
+                "buffer_u32",
+                "buffer_s32",
+                "buffer_u64",
+                "buffer_f16",
+                "buffer_f32",
+                "buffer_f64",
+                "buffer_bool",
+                "buffer_string",
+                "buffer_text",
+            ],
         ),
         (
             "buffer_poke",
@@ -2826,6 +3192,21 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "buffer_u8",
+                "buffer_s8",
+                "buffer_u16",
+                "buffer_s16",
+                "buffer_u32",
+                "buffer_s32",
+                "buffer_u64",
+                "buffer_f16",
+                "buffer_f32",
+                "buffer_f64",
+                "buffer_bool",
+                "buffer_string",
+                "buffer_text",
+            ],
         ),
         (
             "buffer_read",
@@ -2838,6 +3219,21 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "buffer_u8",
+                "buffer_s8",
+                "buffer_u16",
+                "buffer_s16",
+                "buffer_u32",
+                "buffer_s32",
+                "buffer_u64",
+                "buffer_f16",
+                "buffer_f32",
+                "buffer_f64",
+                "buffer_bool",
+                "buffer_string",
+                "buffer_text",
+            ],
         ),
         (
             "buffer_resize",
@@ -2850,6 +3246,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_save",
@@ -2862,6 +3259,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_save_async",
@@ -2876,6 +3274,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_save_ext",
@@ -2890,6 +3289,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_seek",
@@ -2903,6 +3303,11 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "buffer_seek_start",
+                "buffer_seek_relative",
+                "buffer_seek_end",
+            ],
         ),
         (
             "buffer_set_surface",
@@ -2916,6 +3321,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["buffer_surface_copy (Deprecated)"],
         ),
         (
             "buffer_set_surface_depth",
@@ -2929,6 +3335,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_set_used_size",
@@ -2941,6 +3348,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_sha1",
@@ -2954,6 +3362,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_sizeof",
@@ -2965,6 +3374,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_tell",
@@ -2976,6 +3386,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "buffer_write",
@@ -2989,6 +3400,21 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "buffer_u8",
+                "buffer_s8",
+                "buffer_u16",
+                "buffer_s16",
+                "buffer_u32",
+                "buffer_s32",
+                "buffer_u64",
+                "buffer_f16",
+                "buffer_f32",
+                "buffer_f64",
+                "buffer_bool",
+                "buffer_string",
+                "buffer_text",
+            ],
         ),
         (
             "cache_directory",
@@ -2998,6 +3424,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "call_cancel",
@@ -3009,6 +3436,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "call_later",
@@ -3023,6 +3451,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_apply",
@@ -3034,6 +3463,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_copy_transforms",
@@ -3046,6 +3476,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_create",
@@ -3055,6 +3486,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_create_view",
@@ -3086,6 +3518,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_destroy",
@@ -3097,6 +3530,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_active",
@@ -3106,6 +3540,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_begin_script",
@@ -3117,6 +3552,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_default",
@@ -3126,6 +3562,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_end_script",
@@ -3137,6 +3574,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_proj_mat",
@@ -3148,6 +3586,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_update_script",
@@ -3159,6 +3598,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_angle",
@@ -3170,6 +3610,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_border_x",
@@ -3181,6 +3622,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_border_y",
@@ -3192,6 +3634,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_height",
@@ -3203,6 +3646,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_mat",
@@ -3214,6 +3658,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_speed_x",
@@ -3225,6 +3670,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_speed_y",
@@ -3236,6 +3682,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_target",
@@ -3247,6 +3694,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_width",
@@ -3258,6 +3706,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_x",
@@ -3269,6 +3718,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_get_view_y",
@@ -3280,6 +3730,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_begin_script",
@@ -3292,6 +3743,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_default",
@@ -3303,6 +3755,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_end_script",
@@ -3315,6 +3768,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_proj_mat",
@@ -3327,6 +3781,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_update_script",
@@ -3339,6 +3794,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_view_angle",
@@ -3351,6 +3807,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_view_border",
@@ -3364,6 +3821,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_view_mat",
@@ -3376,6 +3834,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_view_pos",
@@ -3389,6 +3848,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_view_size",
@@ -3402,6 +3862,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_view_speed",
@@ -3415,6 +3876,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "camera_set_view_target",
@@ -3427,6 +3889,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ceil",
@@ -3438,6 +3901,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "choose",
@@ -3449,6 +3913,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "chr",
@@ -3460,6 +3925,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clamp",
@@ -3473,6 +3939,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clickable_add",
@@ -3489,6 +3956,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clickable_add_ext",
@@ -3507,6 +3975,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clickable_change",
@@ -3521,6 +3990,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clickable_change_ext",
@@ -3537,6 +4007,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clickable_delete",
@@ -3548,6 +4019,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clickable_exists",
@@ -3559,6 +4031,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clickable_set_style",
@@ -3571,6 +4044,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clipboard_get_text",
@@ -3580,6 +4054,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clipboard_has_text",
@@ -3589,6 +4064,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "clipboard_set_text",
@@ -3600,6 +4076,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "cloud_file_save",
@@ -3612,6 +4089,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "cloud_string_save",
@@ -3624,6 +4102,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "cloud_synchronise",
@@ -3633,6 +4112,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "code_is_compiled",
@@ -3642,6 +4122,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_circle",
@@ -3658,6 +4139,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_circle_list",
@@ -3676,6 +4158,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_ellipse",
@@ -3693,6 +4176,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_ellipse_list",
@@ -3712,6 +4196,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_line",
@@ -3729,6 +4214,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_line_list",
@@ -3748,6 +4234,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_point",
@@ -3763,6 +4250,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_point_list",
@@ -3780,6 +4268,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_rectangle",
@@ -3797,6 +4286,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_rectangle_list",
@@ -3816,6 +4306,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "collision_space",
@@ -3825,6 +4316,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "colour_get_blue",
@@ -3836,6 +4328,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["color_get_blue"],
         ),
         (
             "colour_get_green",
@@ -3847,6 +4340,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["color_get_green"],
         ),
         (
             "colour_get_hue",
@@ -3858,6 +4352,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["color_get_hue"],
         ),
         (
             "colour_get_red",
@@ -3869,6 +4364,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["color_get_red"],
         ),
         (
             "colour_get_saturation",
@@ -3880,6 +4376,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["color_get_saturation"],
         ),
         (
             "colour_get_value",
@@ -3891,6 +4388,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["color_get_value"],
         ),
         (
             "cos",
@@ -3902,6 +4400,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_day",
@@ -3911,6 +4410,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_hour",
@@ -3920,6 +4420,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_minute",
@@ -3929,6 +4430,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_month",
@@ -3938,6 +4440,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_second",
@@ -3947,6 +4450,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_time",
@@ -3956,6 +4460,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_weekday",
@@ -3965,6 +4470,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "current_year",
@@ -3974,6 +4480,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "cursor_sprite",
@@ -3983,6 +4490,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "darccos",
@@ -3994,6 +4502,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "darcsin",
@@ -4005,6 +4514,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "darctan",
@@ -4016,6 +4526,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "darctan2",
@@ -4028,6 +4539,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_compare_date",
@@ -4040,6 +4552,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_compare_datetime",
@@ -4052,6 +4565,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_compare_time",
@@ -4064,6 +4578,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_create_datetime",
@@ -4080,6 +4595,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_current_datetime",
@@ -4089,6 +4605,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_date_of",
@@ -4100,6 +4617,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_date_string",
@@ -4111,6 +4629,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_datetime_string",
@@ -4122,6 +4641,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_day_span",
@@ -4134,6 +4654,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_days_in_month",
@@ -4145,6 +4666,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_days_in_year",
@@ -4156,6 +4678,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_day",
@@ -4167,6 +4690,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_day_of_year",
@@ -4178,6 +4702,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_hour",
@@ -4189,6 +4714,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_hour_of_year",
@@ -4200,6 +4726,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_minute",
@@ -4211,6 +4738,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_minute_of_year",
@@ -4222,6 +4750,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_month",
@@ -4233,6 +4762,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_second",
@@ -4244,6 +4774,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_second_of_year",
@@ -4255,6 +4786,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_timezone",
@@ -4264,6 +4796,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["timezone_local", "timezone_utc"],
         ),
         (
             "date_get_week",
@@ -4275,6 +4808,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_weekday",
@@ -4286,6 +4820,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_get_year",
@@ -4297,6 +4832,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_hour_span",
@@ -4309,6 +4845,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_inc_day",
@@ -4321,6 +4858,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_inc_hour",
@@ -4333,6 +4871,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_inc_minute",
@@ -4345,6 +4884,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_inc_month",
@@ -4357,6 +4897,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_inc_second",
@@ -4369,6 +4910,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_inc_week",
@@ -4381,6 +4923,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_inc_year",
@@ -4393,6 +4936,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_is_today",
@@ -4404,6 +4948,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_leap_year",
@@ -4415,6 +4960,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_minute_span",
@@ -4427,6 +4973,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_month_span",
@@ -4439,6 +4986,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_second_span",
@@ -4451,6 +4999,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_set_timezone",
@@ -4462,6 +5011,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["timezone_local", "timezone_utc"],
         ),
         (
             "date_time_of",
@@ -4473,6 +5023,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_time_string",
@@ -4484,6 +5035,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_valid_datetime",
@@ -4500,6 +5052,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_week_span",
@@ -4512,6 +5065,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "date_year_span",
@@ -4524,6 +5078,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "db_to_lin",
@@ -4535,6 +5090,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_add_font_glyphs",
@@ -4552,6 +5108,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_button",
@@ -4571,6 +5128,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_checkbox",
@@ -4586,6 +5144,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_control_delete",
@@ -4597,6 +5156,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_control_exists",
@@ -4608,6 +5168,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_drop_down",
@@ -4625,6 +5186,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_get_gamepad_input",
@@ -4634,6 +5196,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_same_line",
@@ -4643,6 +5206,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_section",
@@ -4658,6 +5222,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_section_delete",
@@ -4669,6 +5234,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_section_exists",
@@ -4680,6 +5246,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_set_section",
@@ -4691,6 +5258,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_set_view",
@@ -4702,6 +5270,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_slider",
@@ -4723,6 +5292,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_slider_int",
@@ -4744,6 +5314,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_sprite",
@@ -4765,6 +5336,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_sprite_button",
@@ -4794,6 +5366,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_text",
@@ -4805,6 +5378,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_text_input",
@@ -4822,6 +5396,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_text_separator",
@@ -4837,6 +5412,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_view",
@@ -4860,6 +5436,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_view_delete",
@@ -4871,6 +5448,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_view_exists",
@@ -4882,6 +5460,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dbg_watch",
@@ -4897,6 +5476,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dcos",
@@ -4908,6 +5488,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "debug_event",
@@ -4923,6 +5504,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "debug_get_callstack",
@@ -4936,6 +5518,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "debug_input_playback",
@@ -4947,6 +5530,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "debug_input_record",
@@ -4958,6 +5542,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "debug_input_save",
@@ -4969,6 +5554,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "debug_mode",
@@ -4978,6 +5564,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "degtorad",
@@ -4989,6 +5576,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "delta_time",
@@ -4998,6 +5586,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "depth",
@@ -5007,6 +5596,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_get_tilt_x",
@@ -5016,6 +5606,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_get_tilt_y",
@@ -5025,6 +5616,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_get_tilt_z",
@@ -5034,6 +5626,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_is_keypad_open",
@@ -5043,6 +5636,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_check_button",
@@ -5055,6 +5649,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_check_button_pressed",
@@ -5067,6 +5662,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_check_button_released",
@@ -5079,6 +5675,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_dbclick_enable",
@@ -5090,6 +5687,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_raw_x",
@@ -5101,6 +5699,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_raw_y",
@@ -5112,6 +5711,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_x",
@@ -5123,6 +5723,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_x_to_gui",
@@ -5134,6 +5735,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_y",
@@ -5145,6 +5747,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "device_mouse_y_to_gui",
@@ -5156,6 +5759,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "direction",
@@ -5165,6 +5769,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "directory_create",
@@ -5176,6 +5781,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "directory_destroy",
@@ -5187,6 +5793,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "directory_exists",
@@ -5198,6 +5805,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_dpi_x",
@@ -5207,6 +5815,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_dpi_y",
@@ -5216,6 +5825,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_frequency",
@@ -5225,6 +5835,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_gui_height",
@@ -5234,6 +5845,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_gui_width",
@@ -5243,6 +5855,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_height",
@@ -5252,6 +5865,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_orientation",
@@ -5261,6 +5875,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "display_landscape",
+                "display_landscape_flipped",
+                "display_portrait",
+                "display_portrait_flipped",
+            ],
         ),
         (
             "display_get_sleep_margin",
@@ -5270,6 +5890,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_timing_method",
@@ -5279,6 +5900,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_get_width",
@@ -5288,6 +5910,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_mouse_get_x",
@@ -5297,6 +5920,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_mouse_get_y",
@@ -5306,6 +5930,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_mouse_set",
@@ -5318,6 +5943,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_reset",
@@ -5330,6 +5956,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["display_aa"],
         ),
         (
             "display_set_gui_maximise",
@@ -5344,6 +5971,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["display_set_gui_maximize"],
         ),
         (
             "display_set_gui_size",
@@ -5356,6 +5984,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_set_sleep_margin",
@@ -5367,6 +5996,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "display_set_timing_method",
@@ -5378,6 +6008,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "tm_sleep",
+                "tm_countvsyncs",
+                "tm_systemtiming",
+                "tm_countvsyncs_winalt",
+            ],
         ),
         (
             "display_set_ui_visibility",
@@ -5389,6 +6025,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "distance_to_object",
@@ -5400,6 +6037,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "distance_to_point",
@@ -5412,6 +6050,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dot_product",
@@ -5426,6 +6065,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dot_product_3d",
@@ -5442,6 +6082,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dot_product_3d_normalised",
@@ -5458,6 +6099,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["dot_product_3d_normalized"],
         ),
         (
             "dot_product_normalised",
@@ -5472,6 +6114,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["dot_product_normalized"],
         ),
         (
             "draw_arrow",
@@ -5487,6 +6130,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_button",
@@ -5502,6 +6146,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_circle",
@@ -5516,6 +6161,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_circle_colour",
@@ -5532,6 +6178,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_circle_color"],
         ),
         (
             "draw_clear",
@@ -5543,6 +6190,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_clear_alpha",
@@ -5555,6 +6203,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_clear_depth",
@@ -5566,6 +6215,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_clear_ext",
@@ -5585,6 +6235,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_clear_stencil",
@@ -5596,6 +6247,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_ellipse",
@@ -5611,6 +6263,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_ellipse_colour",
@@ -5628,6 +6281,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_ellipse_color"],
         ),
         (
             "draw_enable_drawevent",
@@ -5639,6 +6293,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_enable_skeleton_blend_override",
@@ -5650,6 +6305,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_enable_skeleton_blendmodes",
@@ -5661,6 +6317,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_enable_svg_aa",
@@ -5672,6 +6329,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_enable_swf_aa",
@@ -5683,6 +6341,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_flush",
@@ -5692,6 +6351,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_alpha",
@@ -5701,6 +6361,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_colour",
@@ -5710,6 +6371,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_get_color"],
         ),
         (
             "draw_get_enable_skeleton_blend_override",
@@ -5719,6 +6381,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_enable_skeleton_blendmodes",
@@ -5728,6 +6391,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_font",
@@ -5737,6 +6401,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_halign",
@@ -5746,6 +6411,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["fa_left", "fa_center", "fa_right"],
         ),
         (
             "draw_get_lighting",
@@ -5755,6 +6421,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_svg_aa_level",
@@ -5764,6 +6431,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_swf_aa_level",
@@ -5773,6 +6441,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_get_valign",
@@ -5782,6 +6451,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["fa_top", "fa_middle", "fa_bottom"],
         ),
         (
             "draw_getpixel",
@@ -5794,6 +6464,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_getpixel_ext",
@@ -5806,6 +6477,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_healthbar",
@@ -5827,6 +6499,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_highscore",
@@ -5841,6 +6514,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_light_define_ambient",
@@ -5852,6 +6526,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_light_define_direction",
@@ -5867,6 +6542,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_light_define_point",
@@ -5883,6 +6559,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_light_enable",
@@ -5895,6 +6572,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_light_get",
@@ -5906,6 +6584,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["lighttype_dir", "lighttype_point"],
         ),
         (
             "draw_light_get_ambient",
@@ -5915,6 +6594,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_line",
@@ -5929,6 +6609,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_line_colour",
@@ -5945,6 +6626,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_line_color"],
         ),
         (
             "draw_line_width",
@@ -5960,6 +6642,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_line_width_colour",
@@ -5977,6 +6660,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_line_width_color"],
         ),
         (
             "draw_path",
@@ -5991,6 +6675,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_point",
@@ -6003,6 +6688,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_point_colour",
@@ -6016,6 +6702,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_point_color"],
         ),
         (
             "draw_primitive_begin",
@@ -6027,6 +6714,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "pr_pointlist",
+                "pr_linelist",
+                "pr_linestrip",
+                "pr_trianglelist",
+                "pr_trianglefan",
+                "pr_trianglestrip",
+            ],
         ),
         (
             "draw_primitive_begin_texture",
@@ -6039,6 +6734,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_primitive_end",
@@ -6048,6 +6744,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_rectangle",
@@ -6063,6 +6760,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_rectangle_colour",
@@ -6082,6 +6780,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_rectangle_color"],
         ),
         (
             "draw_roundrect",
@@ -6097,6 +6796,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_roundrect_colour",
@@ -6114,6 +6814,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_roundrect_color"],
         ),
         (
             "draw_roundrect_colour_ext",
@@ -6133,6 +6834,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_roundrect_ext",
@@ -6150,6 +6852,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_self",
@@ -6159,6 +6862,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_set_alpha",
@@ -6170,6 +6874,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_set_circle_precision",
@@ -6181,6 +6886,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_set_colour",
@@ -6192,6 +6898,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_set_color"],
         ),
         (
             "draw_set_font",
@@ -6203,6 +6910,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_set_halign",
@@ -6214,6 +6922,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["fa_left", "fa_center", "fa_right"],
         ),
         (
             "draw_set_lighting",
@@ -6225,6 +6934,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_set_svg_aa_level",
@@ -6236,6 +6946,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_set_swf_aa_level",
@@ -6247,6 +6958,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_set_valign",
@@ -6258,6 +6970,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["fa_top", "fa_middle", "fa_bottom"],
         ),
         (
             "draw_skeleton",
@@ -6279,6 +6992,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_skeleton_collision",
@@ -6298,6 +7012,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_skeleton_instance",
@@ -6319,6 +7034,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_skeleton_time",
@@ -6339,6 +7055,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite",
@@ -6353,6 +7070,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_ext",
@@ -6372,6 +7090,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_general",
@@ -6398,6 +7117,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_part",
@@ -6416,6 +7136,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_part_ext",
@@ -6438,6 +7159,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_pos",
@@ -6459,6 +7181,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_stretched",
@@ -6475,6 +7198,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_stretched_ext",
@@ -6493,6 +7217,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_tiled",
@@ -6507,6 +7232,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_sprite_tiled_ext",
@@ -6525,6 +7251,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface",
@@ -6538,6 +7265,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_ext",
@@ -6556,6 +7284,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_general",
@@ -6581,6 +7310,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_part",
@@ -6598,6 +7328,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_part_ext",
@@ -6619,6 +7350,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_stretched",
@@ -6634,6 +7366,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_stretched_ext",
@@ -6651,6 +7384,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_tiled",
@@ -6664,6 +7398,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_surface_tiled_ext",
@@ -6681,6 +7416,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_text",
@@ -6694,6 +7430,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_text_colour",
@@ -6712,6 +7449,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_text_color"],
         ),
         (
             "draw_text_ext",
@@ -6727,6 +7465,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_text_ext_colour",
@@ -6747,6 +7486,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_text_ext_color"],
         ),
         (
             "draw_text_ext_transformed",
@@ -6765,6 +7505,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_text_ext_transformed_colour",
@@ -6788,6 +7529,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_text_ext_transformed_color"],
         ),
         (
             "draw_text_transformed",
@@ -6804,6 +7546,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_text_transformed_colour",
@@ -6825,6 +7568,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_text_transformed_color"],
         ),
         (
             "draw_texture_flush",
@@ -6834,6 +7578,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_tile",
@@ -6849,6 +7594,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["tile_rotate", "tile_mirror", "tile_flip", "tile_index_mask"],
         ),
         (
             "draw_tilemap",
@@ -6862,6 +7608,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_triangle",
@@ -6879,6 +7626,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_triangle_colour",
@@ -6899,6 +7647,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_triangle_color"],
         ),
         (
             "draw_vertex",
@@ -6911,6 +7660,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "draw_vertex_colour",
@@ -6925,6 +7675,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_vertex_color"],
         ),
         (
             "draw_vertex_texture_colour",
@@ -6941,6 +7692,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["draw_vertex_texture_color"],
         ),
         (
             "drawn_by_sequence",
@@ -6950,6 +7702,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_exists",
@@ -6962,6 +7715,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "ds_type_priority",
+                "ds_type_queue",
+                "ds_type_grid",
+                "ds_type_stack",
+                "ds_type_list",
+                "ds_type_map",
+            ],
         ),
         (
             "ds_grid_add",
@@ -6976,6 +7737,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_add_disk",
@@ -6991,6 +7753,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_add_grid_region",
@@ -7009,6 +7772,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_add_region",
@@ -7025,6 +7789,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_clear",
@@ -7037,6 +7802,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_copy",
@@ -7049,6 +7815,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_create",
@@ -7061,6 +7828,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_destroy",
@@ -7072,6 +7840,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get",
@@ -7085,6 +7854,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_disk_max",
@@ -7099,6 +7869,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_disk_mean",
@@ -7113,6 +7884,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_disk_min",
@@ -7127,6 +7899,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_disk_sum",
@@ -7141,6 +7914,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_max",
@@ -7156,6 +7930,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_mean",
@@ -7171,6 +7946,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_min",
@@ -7186,6 +7962,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_get_sum",
@@ -7201,6 +7978,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_height",
@@ -7212,6 +7990,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_multiply",
@@ -7226,6 +8005,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_multiply_disk",
@@ -7241,6 +8021,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_multiply_grid_region",
@@ -7259,6 +8040,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_multiply_region",
@@ -7275,6 +8057,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_read",
@@ -7292,6 +8075,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_resize",
@@ -7305,6 +8089,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_set",
@@ -7319,6 +8104,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_set_disk",
@@ -7334,6 +8120,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_set_grid_region",
@@ -7352,6 +8139,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_set_region",
@@ -7368,6 +8156,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_shuffle",
@@ -7379,6 +8168,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_sort",
@@ -7392,6 +8182,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_to_mp_grid",
@@ -7405,6 +8196,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_value_disk_exists",
@@ -7420,6 +8212,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_value_disk_x",
@@ -7435,6 +8228,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_value_disk_y",
@@ -7450,6 +8244,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_value_exists",
@@ -7466,6 +8261,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_value_x",
@@ -7482,6 +8278,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_value_y",
@@ -7498,6 +8295,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_width",
@@ -7509,6 +8307,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_grid_write",
@@ -7520,6 +8319,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_add",
@@ -7533,6 +8333,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None, None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "ds_list_clear",
@@ -7544,6 +8345,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_copy",
@@ -7556,6 +8358,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_create",
@@ -7565,6 +8368,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_delete",
@@ -7577,6 +8381,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_destroy",
@@ -7588,6 +8393,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_empty",
@@ -7599,6 +8405,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_find_index",
@@ -7611,6 +8418,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_find_value",
@@ -7623,6 +8431,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_insert",
@@ -7636,6 +8445,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_is_list",
@@ -7648,6 +8458,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_is_map",
@@ -7660,6 +8471,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_mark_as_list",
@@ -7672,6 +8484,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_mark_as_map",
@@ -7684,6 +8497,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_read",
@@ -7701,6 +8515,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_replace",
@@ -7714,6 +8529,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_set",
@@ -7727,6 +8543,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_shuffle",
@@ -7738,6 +8555,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_size",
@@ -7749,6 +8567,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_sort",
@@ -7761,6 +8580,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_list_write",
@@ -7772,6 +8592,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_add",
@@ -7785,6 +8606,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_add_list",
@@ -7798,6 +8620,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_add_map",
@@ -7811,6 +8634,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_clear",
@@ -7822,6 +8646,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_copy",
@@ -7834,6 +8659,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_create",
@@ -7843,6 +8669,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_delete",
@@ -7855,6 +8682,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_destroy",
@@ -7866,6 +8694,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_empty",
@@ -7877,6 +8706,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_exists",
@@ -7889,6 +8719,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_find_first",
@@ -7900,6 +8731,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_find_last",
@@ -7911,6 +8743,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_find_next",
@@ -7923,6 +8756,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_find_previous",
@@ -7935,6 +8769,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_find_value",
@@ -7947,6 +8782,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_is_list",
@@ -7959,6 +8795,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_is_map",
@@ -7971,6 +8808,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_keys_to_array",
@@ -7986,6 +8824,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_read",
@@ -8003,6 +8842,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_replace",
@@ -8016,6 +8856,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_replace_list",
@@ -8029,6 +8870,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_replace_map",
@@ -8042,6 +8884,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_secure_load",
@@ -8053,6 +8896,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_secure_load_buffer",
@@ -8064,6 +8908,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_secure_save",
@@ -8076,6 +8921,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_secure_save_buffer",
@@ -8088,6 +8934,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_set",
@@ -8101,6 +8948,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_size",
@@ -8112,6 +8960,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_values_to_array",
@@ -8124,6 +8973,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_map_write",
@@ -8135,6 +8985,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_add",
@@ -8148,6 +8999,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_change_priority",
@@ -8161,6 +9013,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_clear",
@@ -8172,6 +9025,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_copy",
@@ -8184,6 +9038,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_create",
@@ -8193,6 +9048,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_delete_max",
@@ -8204,6 +9060,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_delete_min",
@@ -8215,6 +9072,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_delete_value",
@@ -8227,6 +9085,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_destroy",
@@ -8238,6 +9097,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_empty",
@@ -8249,6 +9109,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_find_max",
@@ -8260,6 +9121,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_find_min",
@@ -8271,6 +9133,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_find_priority",
@@ -8283,6 +9146,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_read",
@@ -8300,6 +9164,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_size",
@@ -8311,6 +9176,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_priority_write",
@@ -8322,6 +9188,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_clear",
@@ -8333,6 +9200,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_copy",
@@ -8345,6 +9213,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_create",
@@ -8354,6 +9223,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_dequeue",
@@ -8365,6 +9235,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_destroy",
@@ -8376,6 +9247,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_empty",
@@ -8387,6 +9259,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_enqueue",
@@ -8400,6 +9273,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None, None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "ds_queue_head",
@@ -8411,6 +9285,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_read",
@@ -8428,6 +9303,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_size",
@@ -8439,6 +9315,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_tail",
@@ -8450,6 +9327,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_queue_write",
@@ -8461,6 +9339,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_set_precision",
@@ -8472,6 +9351,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_clear",
@@ -8483,6 +9363,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_copy",
@@ -8495,6 +9376,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_create",
@@ -8504,6 +9386,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_destroy",
@@ -8515,6 +9398,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_empty",
@@ -8526,6 +9410,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_pop",
@@ -8537,6 +9422,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_push",
@@ -8550,6 +9436,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None, None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "ds_stack_read",
@@ -8567,6 +9454,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_size",
@@ -8578,6 +9466,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_top",
@@ -8589,6 +9478,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ds_stack_write",
@@ -8600,6 +9490,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dsin",
@@ -8611,6 +9502,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "dtan",
@@ -8622,6 +9514,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "effect_clear",
@@ -8631,6 +9524,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "effect_create_above",
@@ -8646,6 +9540,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "ef_cloud",
+                "ef_ellipse",
+                "ef_explosion",
+                "ef_firework",
+                "ef_flare",
+                "ef_rain",
+                "ef_ring",
+                "ef_smoke",
+                "ef_smokeup",
+                "ef_snow",
+                "ef_spark",
+                "ef_star",
+            ],
         ),
         (
             "effect_create_below",
@@ -8661,6 +9569,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "ef_cloud",
+                "ef_ellipse",
+                "ef_explosion",
+                "ef_firework",
+                "ef_flare",
+                "ef_rain",
+                "ef_ring",
+                "ef_smoke",
+                "ef_smokeup",
+                "ef_snow",
+                "ef_spark",
+                "ef_star",
+            ],
         ),
         (
             "effect_create_depth",
@@ -8677,6 +9599,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "effect_create_layer",
@@ -8693,6 +9616,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "environment_get_variable",
@@ -8704,6 +9628,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "event_action",
@@ -8713,6 +9638,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "event_data",
@@ -8722,6 +9648,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "event_inherited",
@@ -8731,6 +9658,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "event_number",
@@ -8740,6 +9668,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "event_object",
@@ -8749,6 +9678,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "event_perform",
@@ -8761,6 +9691,128 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "ev_create",
+                "ev_destroy",
+                "ev_cleanup",
+                "ev_step",
+                "ev_step_normal",
+                "ev_step_begin",
+                "ev_step_end",
+                "ev_alarm",
+                "ev_keyboard",
+                "ev_keypress",
+                "ev_keyrelease",
+                "ev_mouse",
+                "ev_left_button",
+                "ev_right_button",
+                "ev_middle_button",
+                "ev_no_button",
+                "ev_left_press",
+                "ev_right_press",
+                "ev_middle_press",
+                "ev_left_release",
+                "ev_right_release",
+                "ev_middle_release",
+                "ev_mouse_enter",
+                "ev_mouse_leave",
+                "ev_mouse_wheel_up",
+                "ev_mouse_wheel_down",
+                "ev_global_left_button",
+                "ev_global_right_button",
+                "ev_global_middle_button",
+                "ev_global_left_press",
+                "ev_global_right_press",
+                "ev_global_middle_press",
+                "ev_global_left_release",
+                "ev_global_right_release",
+                "ev_global_middle_release",
+                "ev_gesture",
+                "ev_gesture_tap",
+                "ev_gesture_double_tap",
+                "ev_gesture_drag_start",
+                "ev_gesture_dragging",
+                "ev_gesture_drag_end",
+                "ev_gesture_flick",
+                "ev_gesture_pinch_start",
+                "ev_gesture_pinch_in",
+                "ev_gesture_pinch_out",
+                "ev_gesture_pinch_end",
+                "ev_gesture_rotate_start",
+                "ev_gesture_rotating",
+                "ev_gesture_rotate_end",
+                "ev_global_gesture_tap",
+                "ev_global_gesture_double_tap",
+                "ev_global_gesture_drag_start",
+                "ev_global_gesture_dragging",
+                "ev_global_gesture_drag_end",
+                "ev_global_gesture_flick",
+                "ev_global_gesture_pinch_start",
+                "ev_global_gesture_pinch_in",
+                "ev_global_gesture_pinch_out",
+                "ev_global_gesture_pinch_end",
+                "ev_global_gesture_rotate_start",
+                "ev_global_gesture_rotating",
+                "ev_global_gesture_rotate_end",
+                "ev_collision",
+                "ev_other",
+                "ev_outside",
+                "ev_boundary",
+                "ev_game_start",
+                "ev_game_end",
+                "ev_room_start",
+                "ev_room_end",
+                "ev_no_more_lives",
+                "ev_no_more_health",
+                "ev_animation_end",
+                "ev_end_of_path",
+                "ev_close_button",
+                "ev_user",
+                "ev_draw",
+                "ev_draw_begin",
+                "ev_draw_end",
+                "ev_draw_pre",
+                "ev_draw_post",
+                "ev_gui",
+                "ev_gui_begin",
+                "ev_gui_end",
+                "ev_outside_view0",
+                "ev_outside_view1",
+                "ev_outside_view2",
+                "ev_outside_view3",
+                "ev_outside_view4",
+                "ev_outside_view5",
+                "ev_outside_view6",
+                "ev_outside_view7",
+                "ev_boundary_view0",
+                "ev_boundary_view1",
+                "ev_boundary_view2",
+                "ev_boundary_view3",
+                "ev_boundary_view4",
+                "ev_boundary_view5",
+                "ev_boundary_view6",
+                "ev_boundary_view7",
+                "ev_animation_update",
+                "ev_animation_event",
+                "ev_user0",
+                "ev_user1",
+                "ev_user2",
+                "ev_user3",
+                "ev_user4",
+                "ev_user5",
+                "ev_user6",
+                "ev_user7",
+                "ev_user8",
+                "ev_user9",
+                "ev_user10",
+                "ev_user11",
+                "ev_user12",
+                "ev_user13",
+                "ev_user14",
+                "ev_user15",
+                "ev_broadcast_message",
+                "ev_draw_normal",
+            ],
         ),
         (
             "event_perform_async",
@@ -8773,6 +9825,27 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "ev_async_web_image_loaded",
+                "ev_async_web_image_load",
+                "ev_async_web_sound_load",
+                "ev_async_web_async",
+                "ev_async_dialog_async",
+                "ev_async_web_iap",
+                "ev_async_web_cloud",
+                "ev_async_web_networking",
+                "ev_async_web_steam",
+                "ev_async_social",
+                "ev_async_push_notification",
+                "ev_async_audio_recording",
+                "ev_async_audio_playback",
+                "ev_async_system_event",
+                "ev_async_message_event",
+                "ev_async_audio_playback_ended",
+                "ev_async_dialog",
+                "ev_async_web",
+                "ev_async_save_load",
+            ],
         ),
         (
             "event_perform_object",
@@ -8786,6 +9859,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "event_type",
@@ -8795,6 +9869,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "ev_create",
+                "ev_destroy",
+                "ev_step",
+                "ev_alarm",
+                "ev_keyboard",
+                "ev_keypress",
+                "ev_keyrelease",
+                "ev_mouse",
+                "ev_collision",
+                "ev_other",
+                "ev_draw",
+                "ev_gesture",
+            ],
         ),
         (
             "event_user",
@@ -8806,6 +9894,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "exception_unhandled_handler",
@@ -8817,6 +9906,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "exp",
@@ -8828,6 +9918,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "extension_exists",
@@ -8839,6 +9930,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "extension_get_option_count",
@@ -8850,6 +9942,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "extension_get_option_names",
@@ -8861,6 +9954,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "extension_get_option_value",
@@ -8873,6 +9967,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "extension_get_options",
@@ -8884,6 +9979,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "extension_get_version",
@@ -8895,6 +9991,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "external_call",
@@ -8907,6 +10004,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "external_define",
@@ -8923,6 +10021,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None, None, None, None, None],
                 has_rest_param: true,
             },
+            &["dll_cdecl", "dll_stdcall", "ty_real", "ty_string"],
         ),
         (
             "external_free",
@@ -8934,6 +10033,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_attributes",
@@ -8946,6 +10046,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "fa_readonly",
+                "fa_hidden",
+                "fa_sysfile",
+                "fa_volumeid",
+                "fa_directory",
+                "fa_archive",
+            ],
         ),
         (
             "file_bin_close",
@@ -8957,6 +10065,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_bin_open",
@@ -8969,6 +10078,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_bin_position",
@@ -8980,6 +10090,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_bin_read_byte",
@@ -8991,6 +10102,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_bin_rewrite",
@@ -9002,6 +10114,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_bin_seek",
@@ -9014,6 +10127,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_bin_size",
@@ -9025,6 +10139,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_bin_write_byte",
@@ -9037,6 +10152,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_copy",
@@ -9049,6 +10165,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_delete",
@@ -9060,6 +10177,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_exists",
@@ -9071,6 +10189,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_find_close",
@@ -9080,6 +10199,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_find_first",
@@ -9092,6 +10212,15 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "fa_readonly",
+                "fa_hidden",
+                "fa_sysfile",
+                "fa_volumeid",
+                "fa_directory",
+                "fa_archive",
+                "fa_none",
+            ],
         ),
         (
             "file_find_next",
@@ -9101,6 +10230,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_rename",
@@ -9113,6 +10243,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_close",
@@ -9124,6 +10255,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_eof",
@@ -9135,6 +10267,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_eoln",
@@ -9146,6 +10279,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_open_append",
@@ -9157,6 +10291,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_open_from_string",
@@ -9168,6 +10303,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_open_read",
@@ -9179,6 +10315,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_open_write",
@@ -9190,6 +10327,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_read_real",
@@ -9201,6 +10339,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_read_string",
@@ -9212,6 +10351,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_readln",
@@ -9223,6 +10363,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_write_real",
@@ -9235,6 +10376,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_write_string",
@@ -9247,6 +10389,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "file_text_writeln",
@@ -9258,6 +10401,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "filename_change_ext",
@@ -9270,6 +10414,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "filename_dir",
@@ -9281,6 +10426,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "filename_drive",
@@ -9292,6 +10438,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "filename_ext",
@@ -9303,6 +10450,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "filename_name",
@@ -9314,6 +10462,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "filename_path",
@@ -9325,6 +10474,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_calculate_layout",
@@ -9339,6 +10489,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_create_node",
@@ -9352,6 +10503,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_delete_node",
@@ -9367,6 +10519,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_child",
@@ -9379,6 +10532,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_child_hash",
@@ -9391,6 +10545,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_data",
@@ -9402,6 +10557,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_measure_function",
@@ -9413,6 +10569,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_name",
@@ -9424,6 +10581,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_num_children",
@@ -9435,6 +10593,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_parent",
@@ -9446,6 +10605,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_get_struct",
@@ -9457,6 +10617,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_insert_child",
@@ -9470,6 +10631,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_layout_get_position",
@@ -9485,6 +10647,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_remove_all_children",
@@ -9496,6 +10659,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_remove_child",
@@ -9508,6 +10672,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_set_measure_function",
@@ -9520,6 +10685,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_set_name",
@@ -9532,6 +10698,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_align_content",
@@ -9543,6 +10710,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_align_items",
@@ -9554,6 +10722,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_align_self",
@@ -9565,6 +10734,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_aspect_ratio",
@@ -9576,6 +10746,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_border",
@@ -9588,6 +10759,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_direction",
@@ -9599,6 +10771,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_display",
@@ -9610,6 +10783,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_flex",
@@ -9621,6 +10795,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_flex_basis",
@@ -9632,6 +10807,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_flex_direction",
@@ -9643,6 +10819,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_flex_grow",
@@ -9654,6 +10831,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_flex_shrink",
@@ -9665,6 +10843,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_flex_wrap",
@@ -9676,6 +10855,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_gap",
@@ -9688,6 +10868,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_height",
@@ -9699,6 +10880,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_justify_content",
@@ -9710,6 +10892,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_margin",
@@ -9722,6 +10905,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_max_height",
@@ -9733,6 +10917,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_max_width",
@@ -9744,6 +10929,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_min_height",
@@ -9755,6 +10941,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_min_width",
@@ -9766,6 +10953,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_padding",
@@ -9778,6 +10966,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_position",
@@ -9790,6 +10979,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_position_type",
@@ -9801,6 +10991,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_get_width",
@@ -9812,6 +11003,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_align_content",
@@ -9824,6 +11016,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_align_items",
@@ -9836,6 +11029,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_align_self",
@@ -9848,6 +11042,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_aspect_ratio",
@@ -9860,6 +11055,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_border",
@@ -9873,6 +11069,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_direction",
@@ -9885,6 +11082,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_display",
@@ -9897,6 +11095,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_flex",
@@ -9909,6 +11108,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_flex_basis",
@@ -9922,6 +11122,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_flex_direction",
@@ -9934,6 +11135,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_flex_grow",
@@ -9946,6 +11148,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_flex_shrink",
@@ -9958,6 +11161,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_flex_wrap",
@@ -9970,6 +11174,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_gap",
@@ -9983,6 +11188,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_height",
@@ -9996,6 +11202,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_justify_content",
@@ -10008,6 +11215,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_margin",
@@ -10027,6 +11235,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_max_height",
@@ -10040,6 +11249,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_max_width",
@@ -10053,6 +11263,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_min_height",
@@ -10066,6 +11277,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_min_width",
@@ -10079,6 +11291,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_padding",
@@ -10098,6 +11311,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_position",
@@ -10112,6 +11326,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_position_type",
@@ -10124,6 +11339,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "flexpanel_node_style_set_width",
@@ -10137,6 +11353,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "floor",
@@ -10148,6 +11365,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_add",
@@ -10164,6 +11382,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_add_enable_aa",
@@ -10175,6 +11394,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_add_get_enable_aa",
@@ -10184,6 +11404,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_add_sprite",
@@ -10198,6 +11419,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_add_sprite_ext",
@@ -10212,6 +11434,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_cache_glyph",
@@ -10224,6 +11447,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_delete",
@@ -10235,6 +11459,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_enable_effects",
@@ -10252,6 +11477,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_enable_sdf",
@@ -10264,6 +11490,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_exists",
@@ -10275,6 +11502,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_bold",
@@ -10286,6 +11514,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_first",
@@ -10297,6 +11526,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_fontname",
@@ -10308,6 +11538,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_info",
@@ -10319,6 +11550,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_italic",
@@ -10330,6 +11562,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_last",
@@ -10341,6 +11574,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_name",
@@ -10352,6 +11586,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_sdf_enabled",
@@ -10363,6 +11598,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_sdf_spread",
@@ -10374,6 +11610,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_size",
@@ -10385,6 +11622,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_texture",
@@ -10396,6 +11634,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_get_uvs",
@@ -10407,6 +11646,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_replace_sprite",
@@ -10422,6 +11662,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_replace_sprite_ext",
@@ -10437,6 +11678,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_sdf_spread",
@@ -10449,6 +11691,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_set_cache_size",
@@ -10461,6 +11704,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "font_texture_page_size",
@@ -10470,6 +11714,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fps",
@@ -10479,6 +11724,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fps_real",
@@ -10488,6 +11734,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "frac",
@@ -10499,6 +11746,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "friction",
@@ -10508,6 +11756,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_create",
@@ -10519,6 +11768,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_get_name",
@@ -10530,6 +11780,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_get_parameter",
@@ -10542,6 +11793,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_get_parameter_names",
@@ -10553,6 +11805,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_get_parameters",
@@ -10564,6 +11817,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_get_single_layer",
@@ -10575,6 +11829,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_set_parameter",
@@ -10588,6 +11843,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None, None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "fx_set_parameters",
@@ -10600,6 +11856,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "fx_set_single_layer",
@@ -10612,6 +11869,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_change",
@@ -10624,6 +11882,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_display_name",
@@ -10633,6 +11892,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_end",
@@ -10646,6 +11906,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_get_speed",
@@ -10657,6 +11918,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["gamespeed_fps", "gamespeed_microseconds"],
         ),
         (
             "game_id",
@@ -10666,6 +11928,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_load",
@@ -10677,6 +11940,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_load_buffer",
@@ -10688,6 +11952,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_project_name",
@@ -10697,6 +11962,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_restart",
@@ -10706,6 +11972,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_save",
@@ -10717,6 +11984,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_save_buffer",
@@ -10728,6 +11996,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_save_id",
@@ -10737,6 +12006,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "game_set_speed",
@@ -10749,6 +12019,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["gamespeed_fps", "gamespeed_microseconds"],
         ),
         (
             "gamepad_axis_count",
@@ -10760,6 +12031,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_axis_value",
@@ -10772,6 +12044,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_button_check",
@@ -10784,6 +12057,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_button_check_pressed",
@@ -10796,6 +12070,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_button_check_released",
@@ -10808,6 +12083,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_button_count",
@@ -10819,6 +12095,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_button_value",
@@ -10831,6 +12108,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_enumerate",
@@ -10840,6 +12118,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_get_axis_deadzone",
@@ -10851,6 +12130,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_get_button_threshold",
@@ -10862,6 +12142,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_get_description",
@@ -10873,6 +12154,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_get_device_count",
@@ -10882,6 +12164,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_get_guid",
@@ -10893,6 +12176,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_get_mapping",
@@ -10904,6 +12188,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_get_option",
@@ -10916,6 +12201,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_hat_count",
@@ -10927,6 +12213,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_hat_value",
@@ -10939,6 +12226,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_is_connected",
@@ -10950,6 +12238,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_is_supported",
@@ -10959,6 +12248,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_remove_mapping",
@@ -10970,6 +12260,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_set_axis_deadzone",
@@ -10982,6 +12273,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_set_button_threshold",
@@ -10994,6 +12286,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_set_colour",
@@ -11006,6 +12299,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_set_option",
@@ -11019,6 +12313,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_set_vibration",
@@ -11032,6 +12327,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gamepad_test_mapping",
@@ -11044,6 +12340,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gc_collect",
@@ -11053,6 +12350,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gc_enable",
@@ -11064,6 +12362,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gc_get_stats",
@@ -11073,6 +12372,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gc_get_target_frame_time",
@@ -11082,6 +12382,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gc_is_enabled",
@@ -11091,6 +12392,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gc_target_frame_time",
@@ -11102,6 +12404,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_double_tap_distance",
@@ -11113,6 +12416,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_double_tap_time",
@@ -11124,6 +12428,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_drag_distance",
@@ -11135,6 +12440,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_drag_time",
@@ -11146,6 +12452,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_flick_speed",
@@ -11157,6 +12464,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_double_tap_distance",
@@ -11166,6 +12474,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_double_tap_time",
@@ -11175,6 +12484,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_drag_distance",
@@ -11184,6 +12494,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_drag_time",
@@ -11193,6 +12504,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_flick_speed",
@@ -11202,6 +12514,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_pinch_angle_away",
@@ -11211,6 +12524,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_pinch_angle_towards",
@@ -11220,6 +12534,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_pinch_distance",
@@ -11229,6 +12544,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_rotate_angle",
@@ -11238,6 +12554,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_rotate_time",
@@ -11247,6 +12564,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_get_tap_count",
@@ -11256,6 +12574,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_pinch_angle_away",
@@ -11265,6 +12584,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_pinch_angle_towards",
@@ -11274,6 +12594,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_pinch_distance",
@@ -11283,6 +12604,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_rotate_angle",
@@ -11292,6 +12614,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_rotate_time",
@@ -11301,6 +12624,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gesture_tap_count",
@@ -11312,6 +12636,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_integer",
@@ -11324,6 +12649,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_integer_async",
@@ -11336,6 +12662,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_login_async",
@@ -11348,6 +12675,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_open_filename",
@@ -11360,6 +12688,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_open_filename_ext",
@@ -11374,6 +12703,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_save_filename",
@@ -11386,6 +12716,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_save_filename_ext",
@@ -11400,6 +12731,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_string",
@@ -11412,6 +12744,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_string_async",
@@ -11424,6 +12757,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "get_timer",
@@ -11433,6 +12767,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gif_add_surface",
@@ -11449,6 +12784,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gif_open",
@@ -11466,6 +12802,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gif_save",
@@ -11478,6 +12815,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gif_save_buffer",
@@ -11489,6 +12827,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gml_pragma",
@@ -11501,6 +12840,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None, None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "gml_release_mode",
@@ -11512,6 +12852,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_alphatestenable",
@@ -11521,6 +12862,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_alphatestref",
@@ -11530,6 +12872,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_blendenable",
@@ -11539,6 +12882,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_blendequation",
@@ -11548,6 +12892,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_blendmode",
@@ -11557,6 +12902,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["bm_normal", "bm_add", "bm_subtract", "bm_max"],
         ),
         (
             "gpu_get_blendmode_dest",
@@ -11566,6 +12912,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_get_blendmode_destalpha",
@@ -11575,6 +12938,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_get_blendmode_ext",
@@ -11584,6 +12964,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_get_blendmode_ext_sepalpha",
@@ -11593,6 +12990,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_get_blendmode_src",
@@ -11602,6 +13016,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_get_blendmode_srcalpha",
@@ -11611,6 +13042,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_get_colourwriteenable",
@@ -11620,6 +13068,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["gpu_get_colorwriteenable"],
         ),
         (
             "gpu_get_cullmode",
@@ -11629,6 +13078,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["cull_noculling", "cull_clockwise", "cull_counterclockwise"],
         ),
         (
             "gpu_get_depth",
@@ -11638,6 +13088,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_fog",
@@ -11647,6 +13098,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_scissor",
@@ -11656,6 +13108,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_sprite_cull",
@@ -11665,6 +13118,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_state",
@@ -11674,6 +13128,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_depth_fail",
@@ -11683,6 +13138,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_enable",
@@ -11692,6 +13148,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_fail",
@@ -11701,6 +13158,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_func",
@@ -11710,6 +13168,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_pass",
@@ -11719,6 +13178,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_read_mask",
@@ -11728,6 +13188,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_ref",
@@ -11737,6 +13198,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_stencil_write_mask",
@@ -11746,6 +13208,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_max_aniso",
@@ -11755,6 +13218,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_max_aniso_ext",
@@ -11766,6 +13230,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_max_mip",
@@ -11775,6 +13240,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_max_mip_ext",
@@ -11786,6 +13252,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_min_mip",
@@ -11795,6 +13262,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_min_mip_ext",
@@ -11806,6 +13274,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_mip_bias",
@@ -11815,6 +13284,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_mip_bias_ext",
@@ -11826,6 +13296,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_tex_mip_enable",
@@ -11835,6 +13306,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["mip_off", "mip_on", "mip_markedonly"],
         ),
         (
             "gpu_get_tex_mip_enable_ext",
@@ -11846,6 +13318,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["mip_off", "mip_on", "mip_markedonly"],
         ),
         (
             "gpu_get_tex_mip_filter",
@@ -11855,6 +13328,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["tf_point", "tf_linear", "tf_anisotropic"],
         ),
         (
             "gpu_get_tex_mip_filter_ext",
@@ -11866,6 +13340,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["tf_point", "tf_linear", "tf_anisotropic"],
         ),
         (
             "gpu_get_texfilter",
@@ -11875,6 +13350,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_texfilter_ext",
@@ -11886,6 +13362,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_texrepeat",
@@ -11895,6 +13372,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_texrepeat_ext",
@@ -11906,6 +13384,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_zfunc",
@@ -11915,6 +13394,16 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "cmpfunc_never",
+                "cmpfunc_less",
+                "cmpfunc_equal",
+                "cmpfunc_lessequal",
+                "cmpfunc_greater",
+                "cmpfunc_notequal",
+                "cmpfunc_greaterequal",
+                "cmpfunc_always",
+            ],
         ),
         (
             "gpu_get_ztestenable",
@@ -11924,6 +13413,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_get_zwriteenable",
@@ -11933,6 +13423,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_pop_state",
@@ -11942,6 +13433,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_push_state",
@@ -11951,6 +13443,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_alphatestenable",
@@ -11962,6 +13455,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_alphatestref",
@@ -11973,6 +13467,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_blendenable",
@@ -11984,6 +13479,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_blendequation",
@@ -11995,6 +13491,13 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_eq_add",
+                "bm_eq_subtract",
+                "bm_eq_reverse_subtract",
+                "bm_eq_min",
+                "bm_eq_max",
+            ],
         ),
         (
             "gpu_set_blendequation_sepalpha",
@@ -12007,6 +13510,13 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_eq_add",
+                "bm_eq_subtract",
+                "bm_eq_reverse_subtract",
+                "bm_eq_min",
+                "bm_eq_max",
+            ],
         ),
         (
             "gpu_set_blendmode",
@@ -12018,6 +13528,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_normal",
+                "bm_add",
+                "bm_subtract",
+                "bm_reverse_subtract",
+                "bm_min",
+                "bm_max",
+            ],
         ),
         (
             "gpu_set_blendmode_ext",
@@ -12030,6 +13548,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_set_blendmode_ext_sepalpha",
@@ -12044,6 +13579,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bm_zero",
+                "bm_one",
+                "bm_src_colour",
+                "bm_inv_src_colour",
+                "bm_src_alpha",
+                "bm_inv_src_alpha",
+                "bm_dest_alpha",
+                "bm_inv_dest_alpha",
+                "bm_dest_colour",
+                "bm_inv_dest_colour",
+                "bm_src_alpha_sat",
+                "bm_src_color",
+                "bm_inv_src_color",
+                "bm_dest_color",
+                "bm_inv_dest_colour",
+            ],
         ),
         (
             "gpu_set_colourwriteenable",
@@ -12063,6 +13615,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &["gpu_set_colorwriteenable"],
         ),
         (
             "gpu_set_cullmode",
@@ -12074,6 +13627,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["cull_noculling", "cull_clockwise", "cull_counterclockwise"],
         ),
         (
             "gpu_set_depth",
@@ -12085,6 +13639,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_fog",
@@ -12099,6 +13654,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_scissor",
@@ -12118,6 +13674,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_sprite_cull",
@@ -12129,6 +13686,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_state",
@@ -12140,6 +13698,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_depth_fail",
@@ -12151,6 +13710,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_enable",
@@ -12162,6 +13722,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_fail",
@@ -12173,6 +13734,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_func",
@@ -12184,6 +13746,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_pass",
@@ -12195,6 +13758,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_read_mask",
@@ -12206,6 +13770,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_ref",
@@ -12217,6 +13782,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_stencil_write_mask",
@@ -12228,6 +13794,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_max_aniso",
@@ -12239,6 +13806,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_max_aniso_ext",
@@ -12251,6 +13819,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_max_mip",
@@ -12262,6 +13831,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_max_mip_ext",
@@ -12274,6 +13844,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_min_mip",
@@ -12285,6 +13856,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_min_mip_ext",
@@ -12297,6 +13869,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_mip_bias",
@@ -12308,6 +13881,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_mip_bias_ext",
@@ -12320,6 +13894,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_tex_mip_enable",
@@ -12331,6 +13906,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["mip_off", "mip_on", "mip_markedonly"],
         ),
         (
             "gpu_set_tex_mip_enable_ext",
@@ -12343,6 +13919,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["mip_off", "mip_on", "mip_markedonly"],
         ),
         (
             "gpu_set_tex_mip_filter",
@@ -12354,6 +13931,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["tf_point", "tf_linear", "tf_anisotropic"],
         ),
         (
             "gpu_set_tex_mip_filter_ext",
@@ -12366,6 +13944,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["tf_point", "tf_linear", "tf_anisotropic"],
         ),
         (
             "gpu_set_texfilter",
@@ -12377,6 +13956,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["gpu_set_tex_filter"],
         ),
         (
             "gpu_set_texfilter_ext",
@@ -12389,6 +13969,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["gpu_set_tex_filter_ext"],
         ),
         (
             "gpu_set_texrepeat",
@@ -12400,6 +13981,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["gpu_set_tex_repeat"],
         ),
         (
             "gpu_set_texrepeat_ext",
@@ -12412,6 +13994,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["gpu_set_tex_repeat_ext"],
         ),
         (
             "gpu_set_zfunc",
@@ -12423,6 +14006,16 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "cmpfunc_never",
+                "cmpfunc_less",
+                "cmpfunc_equal",
+                "cmpfunc_lessequal",
+                "cmpfunc_greater",
+                "cmpfunc_notequal",
+                "cmpfunc_greaterequal",
+                "cmpfunc_always",
+            ],
         ),
         (
             "gpu_set_ztestenable",
@@ -12434,6 +14027,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gpu_set_zwriteenable",
@@ -12445,6 +14039,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gravity",
@@ -12454,6 +14049,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gravity_direction",
@@ -12463,6 +14059,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gx_share",
@@ -12482,6 +14079,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "gxc_file_sync",
@@ -12495,6 +14093,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "handle_parse",
@@ -12506,6 +14105,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "highscore_add",
@@ -12518,6 +14118,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "highscore_clear",
@@ -12527,6 +14128,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "highscore_name",
@@ -12538,6 +14140,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "highscore_value",
@@ -12549,6 +14152,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "hspeed",
@@ -12558,6 +14162,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_get",
@@ -12569,6 +14174,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_get_connect_timeout",
@@ -12578,6 +14184,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_get_file",
@@ -12590,6 +14197,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_get_request_crossorigin",
@@ -12599,6 +14207,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_post_string",
@@ -12611,6 +14220,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_request",
@@ -12625,6 +14235,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_set_connect_timeout",
@@ -12636,6 +14247,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "http_set_request_crossorigin",
@@ -12647,6 +14259,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "id",
@@ -12656,6 +14269,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_alpha",
@@ -12665,6 +14279,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_angle",
@@ -12674,6 +14289,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_blend",
@@ -12683,6 +14299,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_index",
@@ -12692,6 +14309,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_number",
@@ -12701,6 +14319,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_speed",
@@ -12710,6 +14329,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_xscale",
@@ -12719,6 +14339,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "image_yscale",
@@ -12728,6 +14349,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "in_sequence",
@@ -12737,6 +14359,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_close",
@@ -12746,6 +14369,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_key_delete",
@@ -12758,6 +14382,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_key_exists",
@@ -12770,6 +14395,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_open",
@@ -12781,6 +14407,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_open_from_string",
@@ -12792,6 +14419,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_read_real",
@@ -12805,6 +14433,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_read_string",
@@ -12818,6 +14447,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_section_delete",
@@ -12829,6 +14459,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_section_exists",
@@ -12840,6 +14471,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_write_real",
@@ -12853,6 +14485,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ini_write_string",
@@ -12866,6 +14499,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_activate_all",
@@ -12879,6 +14513,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_activate_layer",
@@ -12890,6 +14525,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_activate_object",
@@ -12905,6 +14541,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_activate_region",
@@ -12928,6 +14565,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_change",
@@ -12940,6 +14578,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_copy",
@@ -12951,6 +14590,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_count",
@@ -12960,6 +14600,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_create_depth",
@@ -12981,6 +14622,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_create_layer",
@@ -13002,6 +14644,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_deactivate_all",
@@ -13017,6 +14660,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_deactivate_layer",
@@ -13028,6 +14672,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_deactivate_object",
@@ -13043,6 +14688,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_deactivate_region",
@@ -13068,6 +14714,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_destroy",
@@ -13083,6 +14730,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_exists",
@@ -13094,6 +14742,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_find",
@@ -13106,6 +14755,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_furthest",
@@ -13119,6 +14769,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_id",
@@ -13128,6 +14779,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_id_get",
@@ -13139,6 +14791,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_nearest",
@@ -13152,6 +14805,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_number",
@@ -13163,6 +14817,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_place",
@@ -13176,6 +14831,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_place_list",
@@ -13191,6 +14847,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_position",
@@ -13204,6 +14861,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instance_position_list",
@@ -13219,6 +14877,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "instanceof",
@@ -13230,6 +14889,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "int64",
@@ -13241,6 +14901,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "io_clear",
@@ -13250,6 +14911,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "irandom",
@@ -13261,6 +14923,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "irandom_range",
@@ -13273,6 +14936,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_array",
@@ -13284,6 +14948,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_bool",
@@ -13295,6 +14960,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_callable",
@@ -13306,6 +14972,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_debug_overlay_open",
@@ -13315,6 +14982,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_handle",
@@ -13326,6 +14994,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_infinity",
@@ -13337,6 +15006,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_instanceof",
@@ -13349,6 +15019,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_int32",
@@ -13360,6 +15031,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_int64",
@@ -13371,6 +15043,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_keyboard_used_debug_overlay",
@@ -13380,6 +15053,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_method",
@@ -13391,6 +15065,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_mouse_over_debug_overlay",
@@ -13400,6 +15075,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_nan",
@@ -13411,6 +15087,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_numeric",
@@ -13422,6 +15099,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_ptr",
@@ -13433,6 +15111,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_real",
@@ -13444,6 +15123,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_string",
@@ -13455,6 +15135,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_struct",
@@ -13466,6 +15147,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "is_undefined",
@@ -13477,6 +15159,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "json_decode",
@@ -13488,6 +15171,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "json_encode",
@@ -13503,6 +15187,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "json_parse",
@@ -13520,6 +15205,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "json_stringify",
@@ -13537,6 +15223,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_check",
@@ -13548,6 +15235,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_check_direct",
@@ -13559,6 +15247,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_check_pressed",
@@ -13570,6 +15259,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_check_released",
@@ -13581,6 +15271,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_clear",
@@ -13592,6 +15283,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_get_map",
@@ -13603,6 +15295,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_get_numlock",
@@ -13612,6 +15305,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_key_press",
@@ -13623,6 +15317,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_key_release",
@@ -13634,6 +15329,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_lastchar",
@@ -13643,6 +15339,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_lastkey",
@@ -13652,6 +15349,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_set_map",
@@ -13664,6 +15362,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_set_numlock",
@@ -13675,6 +15374,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_string",
@@ -13684,6 +15384,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "keyboard_unset_map",
@@ -13693,6 +15394,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer",
@@ -13702,6 +15404,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_add_instance",
@@ -13714,6 +15417,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_alpha",
@@ -13726,6 +15430,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_blend",
@@ -13738,6 +15443,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_create",
@@ -13750,6 +15456,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_destroy",
@@ -13761,6 +15468,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_exists",
@@ -13773,6 +15481,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_alpha",
@@ -13784,6 +15493,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_blend",
@@ -13795,6 +15505,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_htiled",
@@ -13806,6 +15517,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_id",
@@ -13817,6 +15529,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_index",
@@ -13828,6 +15541,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_speed",
@@ -13839,6 +15553,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_sprite",
@@ -13850,6 +15565,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_stretch",
@@ -13861,6 +15577,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_visible",
@@ -13872,6 +15589,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_vtiled",
@@ -13883,6 +15601,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_xscale",
@@ -13894,6 +15613,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_get_yscale",
@@ -13905,6 +15625,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_htiled",
@@ -13917,6 +15638,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_index",
@@ -13929,6 +15651,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_speed",
@@ -13941,6 +15664,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_sprite",
@@ -13953,6 +15677,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["layer_background_change"],
         ),
         (
             "layer_background_stretch",
@@ -13965,6 +15690,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_visible",
@@ -13977,6 +15703,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_vtiled",
@@ -13989,6 +15716,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_xscale",
@@ -14001,6 +15729,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_background_yscale",
@@ -14013,6 +15742,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_clear_fx",
@@ -14024,6 +15754,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_create",
@@ -14036,6 +15767,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_depth",
@@ -14048,6 +15780,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_destroy",
@@ -14059,6 +15792,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_destroy_instances",
@@ -14070,6 +15804,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_element_move",
@@ -14082,6 +15817,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_enable_fx",
@@ -14094,6 +15830,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_exists",
@@ -14105,6 +15842,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_force_draw_depth",
@@ -14117,6 +15855,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_fx_is_enabled",
@@ -14128,6 +15867,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_all",
@@ -14137,6 +15877,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_all_elements",
@@ -14148,6 +15889,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_depth",
@@ -14159,6 +15901,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_element_layer",
@@ -14170,6 +15913,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_element_type",
@@ -14181,6 +15925,17 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "layerelementtype_background",
+                "layerelementtype_instance",
+                "layerelementtype_tilemap",
+                "layerelementtype_sprite",
+                "layerelementtype_particlesystem",
+                "layerelementtype_tile",
+                "layerelementtype_sequence",
+                "layerelementtype_undefined",
+                "layerelementtype_oldtilemap",
+            ],
         ),
         (
             "layer_get_flexpanel_node",
@@ -14192,6 +15947,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_forced_depth",
@@ -14201,6 +15957,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_fx",
@@ -14212,6 +15969,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_hspeed",
@@ -14223,6 +15981,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_id",
@@ -14234,6 +15993,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_id_at_depth",
@@ -14245,6 +16005,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_name",
@@ -14256,6 +16017,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_script_begin",
@@ -14267,6 +16029,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_script_end",
@@ -14278,6 +16041,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_shader",
@@ -14289,6 +16053,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_target_room",
@@ -14298,6 +16063,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_type",
@@ -14309,6 +16075,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_visible",
@@ -14320,6 +16087,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_vspeed",
@@ -14331,6 +16099,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_x",
@@ -14342,6 +16111,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_get_y",
@@ -14353,6 +16123,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_has_instance",
@@ -14365,6 +16136,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_hspeed",
@@ -14377,6 +16149,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_instance_get_instance",
@@ -14388,6 +16161,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_is_draw_depth_forced",
@@ -14397,6 +16171,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_alpha",
@@ -14409,6 +16184,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_angle",
@@ -14421,6 +16197,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_blend",
@@ -14433,6 +16210,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_alpha",
@@ -14444,6 +16222,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_angle",
@@ -14455,6 +16234,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_blend",
@@ -14466,6 +16246,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_id",
@@ -14478,6 +16259,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_instance",
@@ -14489,6 +16271,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_system",
@@ -14500,6 +16283,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_x",
@@ -14511,6 +16295,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_xscale",
@@ -14522,6 +16307,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_y",
@@ -14533,6 +16319,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_get_yscale",
@@ -14544,6 +16331,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_x",
@@ -14556,6 +16344,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_xscale",
@@ -14568,6 +16357,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_y",
@@ -14580,6 +16370,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_particle_yscale",
@@ -14592,6 +16383,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_reset_target_room",
@@ -14601,6 +16393,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_script_begin",
@@ -14613,6 +16406,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_script_end",
@@ -14625,6 +16419,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_angle",
@@ -14637,6 +16432,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["layer_sequence_y"],
         ),
         (
             "layer_sequence_create",
@@ -14651,6 +16447,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_destroy",
@@ -14662,6 +16459,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_exists",
@@ -14674,6 +16472,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_angle",
@@ -14685,6 +16484,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_headdir",
@@ -14696,6 +16496,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_headpos",
@@ -14707,6 +16508,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_instance",
@@ -14718,6 +16520,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_length",
@@ -14729,6 +16532,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_sequence",
@@ -14740,6 +16544,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_speedscale",
@@ -14751,6 +16556,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_x",
@@ -14762,6 +16568,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_xscale",
@@ -14773,6 +16580,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_y",
@@ -14784,6 +16592,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_get_yscale",
@@ -14795,6 +16604,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_headdir",
@@ -14807,6 +16617,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["seq_dir_right", "seq_dir_left"],
         ),
         (
             "layer_sequence_headpos",
@@ -14819,6 +16630,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_is_finished",
@@ -14830,6 +16642,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_is_paused",
@@ -14841,6 +16654,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_pause",
@@ -14852,6 +16666,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_play",
@@ -14863,6 +16678,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_speedscale",
@@ -14875,6 +16691,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_x",
@@ -14887,6 +16704,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_xscale",
@@ -14899,6 +16717,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_y",
@@ -14911,6 +16730,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sequence_yscale",
@@ -14923,6 +16743,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_set_fx",
@@ -14935,6 +16756,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_set_target_room",
@@ -14946,6 +16768,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_set_visible",
@@ -14958,6 +16781,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_shader",
@@ -14970,6 +16794,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_alpha",
@@ -14982,6 +16807,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_angle",
@@ -14994,6 +16820,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_blend",
@@ -15006,6 +16833,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_change",
@@ -15018,6 +16846,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_create",
@@ -15032,6 +16861,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_destroy",
@@ -15043,6 +16873,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_exists",
@@ -15055,6 +16886,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_alpha",
@@ -15066,6 +16898,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_angle",
@@ -15077,6 +16910,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_blend",
@@ -15088,6 +16922,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_id",
@@ -15100,6 +16935,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_index",
@@ -15111,6 +16947,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_speed",
@@ -15122,6 +16959,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_sprite",
@@ -15133,6 +16971,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_x",
@@ -15144,6 +16983,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_xscale",
@@ -15155,6 +16995,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_y",
@@ -15166,6 +17007,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_get_yscale",
@@ -15177,6 +17019,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_index",
@@ -15189,6 +17032,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_speed",
@@ -15201,6 +17045,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_x",
@@ -15213,6 +17058,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_xscale",
@@ -15225,6 +17071,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_y",
@@ -15237,6 +17084,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_sprite_yscale",
@@ -15249,6 +17097,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_alpha",
@@ -15261,6 +17110,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_angle",
@@ -15273,6 +17123,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_blend",
@@ -15285,6 +17136,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_charspacing",
@@ -15297,6 +17149,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_create",
@@ -15312,6 +17165,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_destroy",
@@ -15323,6 +17177,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_exists",
@@ -15335,6 +17190,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_font",
@@ -15347,6 +17203,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_frameh",
@@ -15359,6 +17216,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_framew",
@@ -15371,6 +17229,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_alpha",
@@ -15382,6 +17241,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_angle",
@@ -15393,6 +17253,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_blend",
@@ -15404,6 +17265,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_charspacing",
@@ -15415,6 +17277,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_font",
@@ -15426,6 +17289,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_frameh",
@@ -15437,6 +17301,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_framew",
@@ -15448,6 +17313,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_halign",
@@ -15459,6 +17325,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_id",
@@ -15471,6 +17338,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_linespacing",
@@ -15482,6 +17350,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_origin",
@@ -15493,6 +17362,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_paragraphspacing",
@@ -15504,6 +17374,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_text",
@@ -15515,6 +17386,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_valign",
@@ -15526,6 +17398,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_wrap",
@@ -15537,6 +17410,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_wrapmode",
@@ -15548,6 +17422,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_x",
@@ -15559,6 +17434,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_xorigin",
@@ -15570,6 +17446,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_xscale",
@@ -15581,6 +17458,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_y",
@@ -15592,6 +17470,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_yorigin",
@@ -15603,6 +17482,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_get_yscale",
@@ -15614,6 +17494,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_halign",
@@ -15626,6 +17507,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_linespacing",
@@ -15638,6 +17520,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_origin",
@@ -15650,6 +17533,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_paragraphspacing",
@@ -15662,6 +17546,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_text",
@@ -15674,6 +17559,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_valign",
@@ -15686,6 +17572,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_wrap",
@@ -15698,6 +17585,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_wrapmode",
@@ -15710,6 +17598,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_x",
@@ -15722,6 +17611,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_xorigin",
@@ -15734,6 +17624,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_xscale",
@@ -15746,6 +17637,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_y",
@@ -15758,6 +17650,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_yorigin",
@@ -15770,6 +17663,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_text_yscale",
@@ -15782,6 +17676,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_tilemap_create",
@@ -15798,6 +17693,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_tilemap_destroy",
@@ -15809,6 +17705,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_tilemap_exists",
@@ -15821,6 +17718,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_tilemap_get_colmask",
@@ -15832,6 +17730,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_tilemap_get_id",
@@ -15843,6 +17742,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_tilemap_set_colmask",
@@ -15855,6 +17755,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_vspeed",
@@ -15867,6 +17768,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_x",
@@ -15879,6 +17781,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "layer_y",
@@ -15891,6 +17794,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "lengthdir_x",
@@ -15903,6 +17807,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "lengthdir_y",
@@ -15915,6 +17820,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "lerp",
@@ -15928,6 +17834,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "lin_to_db",
@@ -15939,6 +17846,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ln",
@@ -15950,6 +17858,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "load_csv",
@@ -15961,6 +17870,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "log10",
@@ -15972,6 +17882,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "log2",
@@ -15983,6 +17894,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "logn",
@@ -15995,6 +17907,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mac_refresh_receipt_validation",
@@ -16004,6 +17917,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "make_colour_hsv",
@@ -16017,6 +17931,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["make_color_hsv"],
         ),
         (
             "make_colour_rgb",
@@ -16030,6 +17945,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["make_color_rgb"],
         ),
         (
             "managed",
@@ -16039,6 +17955,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mask_index",
@@ -16048,6 +17965,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "math_get_epsilon",
@@ -16057,6 +17975,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "math_set_epsilon",
@@ -16068,6 +17987,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_build",
@@ -16099,6 +18019,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_build_identity",
@@ -16108,6 +18029,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_build_lookat",
@@ -16139,6 +18061,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_build_projection_ortho",
@@ -16160,6 +18083,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_build_projection_perspective",
@@ -16181,6 +18105,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_build_projection_perspective_fov",
@@ -16202,6 +18127,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_get",
@@ -16217,6 +18143,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &["matrix_view", "matrix_projection", "matrix_world"],
         ),
         (
             "matrix_inverse",
@@ -16232,6 +18159,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_multiply",
@@ -16249,6 +18177,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_set",
@@ -16261,6 +18190,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["matrix_view", "matrix_projection", "matrix_world"],
         ),
         (
             "matrix_stack_clear",
@@ -16270,6 +18200,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_stack_is_empty",
@@ -16279,6 +18210,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_stack_pop",
@@ -16288,6 +18220,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_stack_push",
@@ -16299,6 +18232,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_stack_set",
@@ -16310,6 +18244,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_stack_top",
@@ -16319,6 +18254,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "matrix_transform_vertex",
@@ -16342,6 +18278,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "max",
@@ -16353,6 +18290,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "md5_file",
@@ -16364,6 +18302,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "md5_string_unicode",
@@ -16375,6 +18314,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "md5_string_utf8",
@@ -16386,6 +18326,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mean",
@@ -16397,6 +18338,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "median",
@@ -16408,6 +18350,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "merge_colour",
@@ -16421,6 +18364,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["merge_color"],
         ),
         (
             "method",
@@ -16433,6 +18377,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "method_call",
@@ -16452,6 +18397,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "method_get_index",
@@ -16463,6 +18409,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "method_get_self",
@@ -16474,6 +18421,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "min",
@@ -16485,6 +18433,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "motion_add",
@@ -16497,6 +18446,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "motion_set",
@@ -16509,6 +18459,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_button",
@@ -16518,6 +18469,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_check_button",
@@ -16529,6 +18481,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_check_button_pressed",
@@ -16540,6 +18493,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_check_button_released",
@@ -16551,6 +18505,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_clear",
@@ -16562,6 +18517,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_lastbutton",
@@ -16571,6 +18527,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_wheel_down",
@@ -16580,6 +18537,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_wheel_up",
@@ -16589,6 +18547,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_x",
@@ -16598,6 +18557,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mouse_y",
@@ -16607,6 +18567,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_and_collide",
@@ -16634,6 +18595,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_bounce_all",
@@ -16645,6 +18607,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_bounce_solid",
@@ -16656,6 +18619,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_contact_all",
@@ -16668,6 +18632,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_contact_solid",
@@ -16680,6 +18645,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_outside_all",
@@ -16692,6 +18658,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_outside_solid",
@@ -16704,6 +18671,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_random",
@@ -16716,6 +18684,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_snap",
@@ -16728,6 +18697,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_towards_point",
@@ -16741,6 +18711,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "move_wrap",
@@ -16754,6 +18725,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_add_cell",
@@ -16767,6 +18739,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_add_instances",
@@ -16780,6 +18753,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_add_rectangle",
@@ -16795,6 +18769,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_clear_all",
@@ -16806,6 +18781,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_clear_cell",
@@ -16819,6 +18795,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_clear_rectangle",
@@ -16834,6 +18811,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_create",
@@ -16850,6 +18828,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_destroy",
@@ -16861,6 +18840,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_draw",
@@ -16872,6 +18852,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_get_cell",
@@ -16885,6 +18866,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_path",
@@ -16902,6 +18884,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_grid_to_ds_grid",
@@ -16914,6 +18897,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_linear_path",
@@ -16929,6 +18913,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_linear_path_object",
@@ -16944,6 +18929,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_linear_step",
@@ -16958,6 +18944,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_linear_step_object",
@@ -16972,6 +18959,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_potential_path",
@@ -16988,6 +18976,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_potential_path_object",
@@ -17004,6 +18993,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_potential_settings",
@@ -17018,6 +19008,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_potential_step",
@@ -17032,6 +19023,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "mp_potential_step_object",
@@ -17046,6 +19038,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "nameof",
@@ -17057,6 +19050,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_connect",
@@ -17070,6 +19064,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_connect_async",
@@ -17083,6 +19078,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_connect_raw",
@@ -17096,6 +19092,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_connect_raw_async",
@@ -17109,6 +19106,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_create_server",
@@ -17122,6 +19120,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "network_socket_tcp",
+                "network_socket_udp",
+                "network_socket_ws",
+                "network_socket_bluetooth",
+            ],
         ),
         (
             "network_create_server_raw",
@@ -17135,6 +19139,11 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "network_socket_tcp",
+                "network_socket_udp",
+                "network_socket_ws",
+            ],
         ),
         (
             "network_create_socket",
@@ -17146,6 +19155,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "network_socket_tcp",
+                "network_socket_udp",
+                "network_socket_ws",
+                "network_socket_wss",
+            ],
         ),
         (
             "network_create_socket_ext",
@@ -17158,6 +19173,11 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "network_socket_tcp",
+                "network_socket_udp",
+                "network_socket_ws",
+            ],
         ),
         (
             "network_destroy",
@@ -17169,6 +19189,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_resolve",
@@ -17180,6 +19201,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_send_broadcast",
@@ -17194,6 +19216,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_send_packet",
@@ -17207,6 +19230,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_send_raw",
@@ -17226,6 +19250,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &["network_send_binary", "network_send_text"],
         ),
         (
             "network_send_udp",
@@ -17241,6 +19266,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_send_udp_raw",
@@ -17256,6 +19282,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "network_set_config",
@@ -17273,6 +19300,15 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "network_config_connect_timeout",
+                "network_config_use_non_blocking_socket",
+                "network_config_enable_reliable_udp",
+                "network_config_disable_reliable_udp",
+                "network_config_avoid_time_wait",
+                "network_config_enable_multicast",
+                "network_config_disable_multicast",
+            ],
         ),
         (
             "network_set_timeout",
@@ -17286,6 +19322,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_exists",
@@ -17297,6 +19334,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_mask",
@@ -17308,6 +19346,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_name",
@@ -17319,6 +19358,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_parent",
@@ -17330,6 +19370,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_persistent",
@@ -17341,6 +19382,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_physics",
@@ -17352,6 +19394,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_solid",
@@ -17363,6 +19406,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_sprite",
@@ -17374,6 +19418,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_get_visible",
@@ -17385,6 +19430,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_index",
@@ -17394,6 +19440,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_is_ancestor",
@@ -17406,6 +19453,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_set_mask",
@@ -17418,6 +19466,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_set_persistent",
@@ -17430,6 +19479,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_set_solid",
@@ -17442,6 +19492,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_set_sprite",
@@ -17454,6 +19505,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "object_set_visible",
@@ -17466,6 +19518,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "on_ui_layer",
@@ -17475,6 +19528,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ord",
@@ -17486,6 +19540,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_browser",
@@ -17495,6 +19550,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "browser_not_a_browser",
+                "browser_unknown",
+                "browser_ie",
+                "browser_ie_mobile",
+                "browser_firefox",
+                "browser_chrome",
+                "browser_safari",
+                "browser_safari_mobile",
+                "browser_opera",
+                "browser_tizen",
+                "browser_windows_store",
+                "browser_edge",
+            ],
         ),
         (
             "os_check_permission",
@@ -17506,6 +19575,11 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "os_permission_granted",
+                "os_permission_denied",
+                "os_permission_denied_dont_request",
+            ],
         ),
         (
             "os_device",
@@ -17515,6 +19589,18 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "device_ios_ipad",
+                "device_ios_ipad_retina",
+                "device_ios_iphone6",
+                "device_ios_iphone6plus",
+                "device_ios_iphone5",
+                "device_ios_iphone",
+                "device_ios_iphone_retina",
+                "device_emulator",
+                "device_tablet",
+                "device_ios_unknown",
+            ],
         ),
         (
             "os_get_config",
@@ -17524,6 +19610,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_get_info",
@@ -17533,6 +19620,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_get_language",
@@ -17542,6 +19630,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_get_region",
@@ -17551,6 +19640,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_is_network_connected",
@@ -17564,6 +19654,13 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "network_connect_none",
+                "network_connect_blocking",
+                "network_connect_nonblocking",
+                "network_connect_active",
+                "network_connect_passive",
+            ],
         ),
         (
             "os_is_paused",
@@ -17573,6 +19670,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_lock_orientation",
@@ -17584,6 +19682,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_powersave_enable",
@@ -17595,6 +19694,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_request_permission",
@@ -17606,6 +19706,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![None],
                 has_rest_param: true,
             },
+            &["os_permission_granted", "os_permission_denied"],
         ),
         (
             "os_set_orientation_lock",
@@ -17618,6 +19719,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "os_type",
@@ -17627,6 +19729,24 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "os_windows",
+                "os_uwp",
+                "os_linux",
+                "os_macosx",
+                "os_ios",
+                "os_tvos",
+                "os_android",
+                "os_ps4",
+                "os_xboxone",
+                "os_switch",
+                "os_unknown",
+                "os_ps5",
+                "os_xboxseriesxs",
+                "os_gdk",
+                "os_gxgames",
+                "os_operagx",
+            ],
         ),
         (
             "os_version",
@@ -17636,6 +19756,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "parameter_count",
@@ -17645,6 +19766,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "parameter_string",
@@ -17654,6 +19776,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_burst",
@@ -17668,6 +19791,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_clear",
@@ -17680,6 +19804,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_create",
@@ -17691,6 +19816,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_delay",
@@ -17706,6 +19832,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_destroy",
@@ -17718,6 +19845,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_destroy_all",
@@ -17729,6 +19857,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_enable",
@@ -17742,6 +19871,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_exists",
@@ -17754,6 +19884,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_interval",
@@ -17769,6 +19900,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_region",
@@ -17787,6 +19919,15 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "ps_shape_rectangle",
+                "ps_shape_ellipse",
+                "ps_shape_diamond",
+                "ps_shape_line",
+                "ps_distr_linear",
+                "ps_distr_gaussian",
+                "ps_distr_invgaussian",
+            ],
         ),
         (
             "part_emitter_relative",
@@ -17800,6 +19941,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_emitter_stream",
@@ -17814,6 +19956,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_particles_burst",
@@ -17828,6 +19971,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_particles_clear",
@@ -17839,6 +19983,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_particles_count",
@@ -17850,6 +19995,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_particles_create",
@@ -17865,6 +20011,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_particles_create_colour",
@@ -17881,6 +20028,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_particles_create_color"],
         ),
         (
             "part_system_angle",
@@ -17893,6 +20041,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_automatic_draw",
@@ -17905,6 +20054,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_automatic_update",
@@ -17917,6 +20067,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_clear",
@@ -17928,6 +20079,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_colour",
@@ -17941,6 +20093,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_system_color"],
         ),
         (
             "part_system_create",
@@ -17954,6 +20107,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_create_layer",
@@ -17971,6 +20125,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_depth",
@@ -17983,6 +20138,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_destroy",
@@ -17994,6 +20150,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_draw_order",
@@ -18006,6 +20163,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_drawit",
@@ -18017,6 +20175,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_exists",
@@ -18028,6 +20187,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_get_info",
@@ -18039,6 +20199,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_get_layer",
@@ -18050,6 +20211,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_global_space",
@@ -18062,6 +20224,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_layer",
@@ -18074,6 +20237,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_position",
@@ -18087,6 +20251,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_system_update",
@@ -18098,6 +20263,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_alpha1",
@@ -18110,6 +20276,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_alpha2",
@@ -18123,6 +20290,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_alpha3",
@@ -18137,6 +20305,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_blend",
@@ -18149,6 +20318,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_clear",
@@ -18160,6 +20330,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_colour1",
@@ -18172,6 +20343,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_type_color1"],
         ),
         (
             "part_type_colour2",
@@ -18185,6 +20357,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_type_color2"],
         ),
         (
             "part_type_colour3",
@@ -18199,6 +20372,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_type_color3"],
         ),
         (
             "part_type_colour_hsv",
@@ -18216,6 +20390,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_type_color_hsv"],
         ),
         (
             "part_type_colour_mix",
@@ -18229,6 +20404,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_type_color_mix"],
         ),
         (
             "part_type_colour_rgb",
@@ -18246,6 +20422,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["part_type_color_rgb"],
         ),
         (
             "part_type_create",
@@ -18255,6 +20432,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_death",
@@ -18268,6 +20446,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_destroy",
@@ -18279,6 +20458,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_direction",
@@ -18294,6 +20474,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_exists",
@@ -18305,6 +20486,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_gravity",
@@ -18318,6 +20500,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_life",
@@ -18331,6 +20514,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_orientation",
@@ -18347,6 +20531,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_scale",
@@ -18360,6 +20545,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_shape",
@@ -18372,6 +20558,22 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "pt_shape_pixel",
+                "pt_shape_disk",
+                "pt_shape_square",
+                "pt_shape_line",
+                "pt_shape_star",
+                "pt_shape_circle",
+                "pt_shape_ring",
+                "pt_shape_sphere",
+                "pt_shape_flare",
+                "pt_shape_spark",
+                "pt_shape_explosion",
+                "pt_shape_cloud",
+                "pt_shape_smoke",
+                "pt_shape_snow",
+            ],
         ),
         (
             "part_type_size",
@@ -18387,6 +20589,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_size_x",
@@ -18402,6 +20605,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_size_y",
@@ -18417,6 +20621,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_speed",
@@ -18432,6 +20637,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_sprite",
@@ -18447,6 +20653,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_step",
@@ -18460,6 +20667,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "part_type_subimage",
@@ -18472,6 +20680,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "particle_add",
@@ -18483,6 +20692,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "particle_delete",
@@ -18494,6 +20704,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "particle_exists",
@@ -18505,6 +20716,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "particle_get_info",
@@ -18516,6 +20728,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["ps_mode_stream", "ps_mode_burst"],
         ),
         (
             "path_add",
@@ -18525,6 +20738,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_add_point",
@@ -18539,6 +20753,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_append",
@@ -18551,6 +20766,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_assign",
@@ -18563,6 +20779,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_change_point",
@@ -18578,6 +20795,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_clear_points",
@@ -18589,6 +20807,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_delete",
@@ -18600,6 +20819,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_delete_point",
@@ -18612,6 +20832,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_duplicate",
@@ -18623,6 +20844,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_end",
@@ -18632,6 +20854,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_endaction",
@@ -18641,6 +20864,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_exists",
@@ -18652,6 +20876,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_flip",
@@ -18663,6 +20888,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_closed",
@@ -18674,6 +20900,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_kind",
@@ -18685,6 +20912,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_length",
@@ -18696,6 +20924,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_name",
@@ -18707,6 +20936,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_number",
@@ -18718,6 +20948,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_point_speed",
@@ -18730,6 +20961,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_point_x",
@@ -18742,6 +20974,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_point_y",
@@ -18754,6 +20987,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_precision",
@@ -18765,6 +20999,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_speed",
@@ -18777,6 +21012,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_x",
@@ -18789,6 +21025,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_get_y",
@@ -18801,6 +21038,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_index",
@@ -18810,6 +21048,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_insert_point",
@@ -18825,6 +21064,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_mirror",
@@ -18836,6 +21076,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_orientation",
@@ -18845,6 +21086,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_position",
@@ -18854,6 +21096,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_positionprevious",
@@ -18863,6 +21106,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_rescale",
@@ -18876,6 +21120,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_reverse",
@@ -18887,6 +21132,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_rotate",
@@ -18899,6 +21145,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_scale",
@@ -18908,6 +21155,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_set_closed",
@@ -18920,6 +21168,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_set_kind",
@@ -18932,6 +21181,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_set_precision",
@@ -18944,6 +21194,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_shift",
@@ -18957,6 +21208,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_speed",
@@ -18966,6 +21218,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "path_start",
@@ -18980,6 +21233,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "path_action_stop",
+                "path_action_restart",
+                "path_action_continue",
+                "path_action_reverse",
+            ],
         ),
         (
             "persistent",
@@ -18989,6 +21248,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_active",
@@ -18998,6 +21258,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_angular_damping",
@@ -19007,6 +21268,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_angular_velocity",
@@ -19016,6 +21278,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_bullet",
@@ -19025,6 +21288,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_col_normal_x",
@@ -19034,6 +21298,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_col_normal_y",
@@ -19043,6 +21308,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_collision_points",
@@ -19052,6 +21318,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_collision_x",
@@ -19061,6 +21328,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_collision_y",
@@ -19070,6 +21338,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_com_x",
@@ -19079,6 +21348,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_com_y",
@@ -19088,6 +21358,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_dynamic",
@@ -19097,6 +21368,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_fixed_rotation",
@@ -19106,6 +21378,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_inertia",
@@ -19115,6 +21388,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_kinematic",
@@ -19124,6 +21398,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_linear_damping",
@@ -19133,6 +21408,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_linear_velocity_x",
@@ -19142,6 +21418,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_linear_velocity_y",
@@ -19151,6 +21428,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_mass",
@@ -19160,6 +21438,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_position_x",
@@ -19169,6 +21448,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_position_xprevious",
@@ -19178,6 +21458,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_position_y",
@@ -19187,6 +21468,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_position_yprevious",
@@ -19196,6 +21478,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_rotation",
@@ -19205,6 +21488,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_sleeping",
@@ -19214,6 +21498,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_speed",
@@ -19223,6 +21508,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_speed_x",
@@ -19232,6 +21518,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "phy_speed_y",
@@ -19241,6 +21528,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_apply_angular_impulse",
@@ -19252,6 +21540,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_apply_force",
@@ -19266,6 +21555,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_apply_impulse",
@@ -19280,6 +21570,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_apply_local_force",
@@ -19294,6 +21585,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_apply_local_impulse",
@@ -19308,6 +21600,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_apply_torque",
@@ -19319,6 +21612,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_debug",
@@ -19330,6 +21624,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_draw_debug",
@@ -19339,6 +21634,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_add_point",
@@ -19352,6 +21648,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_bind",
@@ -19364,6 +21661,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_bind_ext",
@@ -19378,6 +21676,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_create",
@@ -19387,6 +21686,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_delete",
@@ -19398,6 +21698,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_angular_damping",
@@ -19410,6 +21711,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_awake",
@@ -19422,6 +21724,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_box_shape",
@@ -19435,6 +21738,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_chain_shape",
@@ -19447,6 +21751,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_circle_shape",
@@ -19459,6 +21764,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_collision_group",
@@ -19471,6 +21777,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_density",
@@ -19483,6 +21790,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_edge_shape",
@@ -19498,6 +21806,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_friction",
@@ -19510,6 +21819,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_kinematic",
@@ -19521,6 +21831,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_linear_damping",
@@ -19533,6 +21844,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_polygon_shape",
@@ -19544,6 +21856,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_restitution",
@@ -19556,6 +21869,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_fixture_set_sensor",
@@ -19568,6 +21882,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_get_density",
@@ -19579,6 +21894,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_get_friction",
@@ -19590,6 +21906,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_get_restitution",
@@ -19601,6 +21918,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_delete",
@@ -19612,6 +21930,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_distance_create",
@@ -19629,6 +21948,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_enable_motor",
@@ -19641,6 +21961,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_friction_create",
@@ -19658,6 +21979,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_gear_create",
@@ -19673,6 +21995,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_get_value",
@@ -19685,6 +22008,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_prismatic_create",
@@ -19708,6 +22032,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_pulley_create",
@@ -19730,6 +22055,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_revolute_create",
@@ -19751,6 +22077,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_rope_create",
@@ -19769,6 +22096,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_set_value",
@@ -19782,6 +22110,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_weld_create",
@@ -19800,6 +22129,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_joint_wheel_create",
@@ -19822,6 +22152,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_mass_properties",
@@ -19836,6 +22167,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_count",
@@ -19845,6 +22177,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_create",
@@ -19863,6 +22196,18 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_flag_water",
+                "phy_particle_flag_zombie",
+                "phy_particle_flag_wall",
+                "phy_particle_flag_spring",
+                "phy_particle_flag_elastic",
+                "phy_particle_flag_viscous",
+                "phy_particle_flag_powder",
+                "phy_particle_flag_tensile",
+                "phy_particle_flag_colourmixing",
+                "phy_particle_flag_colormixing",
+            ],
         ),
         (
             "physics_particle_delete",
@@ -19874,6 +22219,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_delete_region_box",
@@ -19888,6 +22234,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_delete_region_circle",
@@ -19901,6 +22248,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_delete_region_poly",
@@ -19912,6 +22260,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_draw",
@@ -19926,6 +22275,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_draw_ext",
@@ -19945,6 +22295,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_get_damping",
@@ -19954,6 +22305,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_get_data",
@@ -19966,6 +22318,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_data_flag_typeflags",
+                "phy_particle_data_flag_position",
+                "phy_particle_data_flag_velocity",
+                "phy_particle_data_flag_colour",
+                "phy_particle_data_flag_category",
+                "phy_particle_data_flag_color",
+            ],
         ),
         (
             "physics_particle_get_data_particle",
@@ -19979,6 +22339,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_data_flag_typeflags",
+                "phy_particle_data_flag_position",
+                "phy_particle_data_flag_velocity",
+                "phy_particle_data_flag_colour",
+                "phy_particle_data_flag_category",
+                "phy_particle_data_flag_color",
+            ],
         ),
         (
             "physics_particle_get_density",
@@ -19988,6 +22356,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_get_gravity_scale",
@@ -19997,6 +22366,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_get_group_flags",
@@ -20008,6 +22378,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_get_max_count",
@@ -20017,6 +22388,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_get_radius",
@@ -20026,6 +22398,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_add_point",
@@ -20038,6 +22411,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_begin",
@@ -20060,6 +22434,10 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_group_flag_solid",
+                "phy_particle_group_flag_rigid",
+            ],
         ),
         (
             "physics_particle_group_box",
@@ -20072,6 +22450,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_circle",
@@ -20083,6 +22462,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_count",
@@ -20094,6 +22474,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_delete",
@@ -20105,6 +22486,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_end",
@@ -20114,6 +22496,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_ang_vel",
@@ -20125,6 +22508,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_angle",
@@ -20136,6 +22520,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_centre_x",
@@ -20147,6 +22532,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_centre_y",
@@ -20158,6 +22544,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_data",
@@ -20171,6 +22558,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_data_flag_typeflags",
+                "phy_particle_data_flag_position",
+                "phy_particle_data_flag_velocity",
+                "phy_particle_data_flag_colour",
+                "phy_particle_data_flag_category",
+                "phy_particle_data_flag_color",
+            ],
         ),
         (
             "physics_particle_group_get_inertia",
@@ -20182,6 +22577,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_mass",
@@ -20193,6 +22589,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_vel_x",
@@ -20204,6 +22601,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_vel_y",
@@ -20215,6 +22613,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_x",
@@ -20226,6 +22625,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_get_y",
@@ -20237,6 +22637,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_join",
@@ -20249,6 +22650,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_group_polygon",
@@ -20258,6 +22660,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_set_category_flags",
@@ -20270,6 +22673,18 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_flag_water",
+                "phy_particle_flag_zombie",
+                "phy_particle_flag_wall",
+                "phy_particle_flag_spring",
+                "phy_particle_flag_elastic",
+                "phy_particle_flag_viscous",
+                "phy_particle_flag_powder",
+                "phy_particle_flag_tensile",
+                "phy_particle_flag_colourmixing",
+                "phy_particle_flag_colormixing",
+            ],
         ),
         (
             "physics_particle_set_damping",
@@ -20281,6 +22696,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_set_density",
@@ -20292,6 +22708,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_set_flags",
@@ -20304,6 +22721,18 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_flag_water",
+                "phy_particle_flag_zombie",
+                "phy_particle_flag_wall",
+                "phy_particle_flag_spring",
+                "phy_particle_flag_elastic",
+                "phy_particle_flag_viscous",
+                "phy_particle_flag_powder",
+                "phy_particle_flag_tensile",
+                "phy_particle_flag_colourmixing",
+                "phy_particle_flag_colormixing",
+            ],
         ),
         (
             "physics_particle_set_gravity_scale",
@@ -20315,6 +22744,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_set_group_flags",
@@ -20327,6 +22757,10 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_particle_group_flag_solid",
+                "phy_particle_group_flag_rigid",
+            ],
         ),
         (
             "physics_particle_set_max_count",
@@ -20338,6 +22772,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_particle_set_radius",
@@ -20349,6 +22784,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_pause_enable",
@@ -20360,6 +22796,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_raycast",
@@ -20385,6 +22822,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_remove_fixture",
@@ -20397,6 +22835,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_set_density",
@@ -20409,6 +22848,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_set_friction",
@@ -20421,6 +22861,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_set_restitution",
@@ -20433,6 +22874,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_test_overlap",
@@ -20447,6 +22889,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_world_create",
@@ -20458,6 +22901,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_world_draw_debug",
@@ -20469,6 +22913,15 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "phy_debug_render_aabb",
+                "phy_debug_render_collision_pairs",
+                "phy_debug_render_coms",
+                "phy_debug_render_core_shapes",
+                "phy_debug_render_joints",
+                "phy_debug_render_obb",
+                "phy_debug_render_shapes",
+            ],
         ),
         (
             "physics_world_gravity",
@@ -20481,6 +22934,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_world_update_iterations",
@@ -20492,6 +22946,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "physics_world_update_speed",
@@ -20503,6 +22958,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "place_empty",
@@ -20516,6 +22972,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "place_free",
@@ -20528,6 +22985,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "place_meeting",
@@ -20541,6 +22999,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "place_snapped",
@@ -20553,6 +23012,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "player_avatar_url",
@@ -20562,6 +23022,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "player_id",
@@ -20571,6 +23032,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "player_local",
@@ -20580,6 +23042,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "player_type",
@@ -20589,6 +23052,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "player_user_id",
@@ -20598,6 +23062,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "point_direction",
@@ -20612,6 +23077,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "point_distance",
@@ -20626,6 +23092,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "point_distance_3d",
@@ -20642,6 +23109,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "point_in_circle",
@@ -20657,6 +23125,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "point_in_rectangle",
@@ -20673,6 +23142,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "point_in_triangle",
@@ -20691,6 +23161,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "position_change",
@@ -20705,6 +23176,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "position_destroy",
@@ -20717,6 +23189,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "position_empty",
@@ -20729,6 +23202,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "position_meeting",
@@ -20742,6 +23216,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "power",
@@ -20754,6 +23229,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "program_directory",
@@ -20763,6 +23239,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ptr",
@@ -20774,6 +23251,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "radtodeg",
@@ -20785,6 +23263,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "random",
@@ -20796,6 +23275,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "random_get_seed",
@@ -20805,6 +23285,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "random_range",
@@ -20817,6 +23298,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "random_set_seed",
@@ -20832,6 +23314,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "randomise",
@@ -20841,6 +23324,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "real",
@@ -20852,6 +23336,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rectangle_in_circle",
@@ -20869,6 +23354,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rectangle_in_rectangle",
@@ -20887,6 +23373,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rectangle_in_triangle",
@@ -20907,6 +23394,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ref_create",
@@ -20924,6 +23412,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_chat",
@@ -20936,6 +23425,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_confirmed_frame",
@@ -20945,6 +23435,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_create_game",
@@ -20958,6 +23449,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_current_frame",
@@ -20967,6 +23459,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_define_input",
@@ -20978,6 +23471,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_define_input_frame_delay",
@@ -20989,6 +23483,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_define_mock_input",
@@ -21001,6 +23496,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_define_player",
@@ -21013,6 +23509,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_display_events",
@@ -21024,6 +23521,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_game_running",
@@ -21033,6 +23531,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_get_info",
@@ -21044,6 +23543,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_get_input",
@@ -21055,6 +23555,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_get_player_prefs",
@@ -21066,6 +23567,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_join_game",
@@ -21077,6 +23579,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_leave_game",
@@ -21086,6 +23589,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_set_player_prefs",
@@ -21097,6 +23601,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_start_game",
@@ -21106,6 +23611,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_sync_on_frame",
@@ -21115,6 +23621,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_use_manual_start",
@@ -21124,6 +23631,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_use_player_prefs",
@@ -21135,6 +23643,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "rollback_use_random_input",
@@ -21146,6 +23655,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room",
@@ -21155,6 +23665,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_add",
@@ -21164,6 +23675,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_assign",
@@ -21176,6 +23688,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_duplicate",
@@ -21187,6 +23700,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_exists",
@@ -21198,6 +23712,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_first",
@@ -21207,6 +23722,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_get_camera",
@@ -21219,6 +23735,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_get_info",
@@ -21244,6 +23761,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_get_name",
@@ -21255,6 +23773,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_get_viewport",
@@ -21267,6 +23786,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_goto",
@@ -21278,6 +23798,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_goto_next",
@@ -21287,6 +23808,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_goto_previous",
@@ -21296,6 +23818,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_height",
@@ -21305,6 +23828,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_instance_add",
@@ -21319,6 +23843,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_instance_clear",
@@ -21330,6 +23855,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_last",
@@ -21339,6 +23865,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_next",
@@ -21350,6 +23877,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_persistent",
@@ -21359,6 +23887,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_previous",
@@ -21370,6 +23899,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_restart",
@@ -21379,6 +23909,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_set_camera",
@@ -21392,6 +23923,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_set_height",
@@ -21404,6 +23936,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_set_persistent",
@@ -21416,6 +23949,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_set_view_enabled",
@@ -21428,6 +23962,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_set_viewport",
@@ -21445,6 +23980,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_set_width",
@@ -21457,6 +23993,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_speed",
@@ -21466,6 +24003,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "room_width",
@@ -21475,6 +24013,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "round",
@@ -21486,6 +24025,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "scheduler_resolution_get",
@@ -21495,6 +24035,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "scheduler_resolution_set",
@@ -21506,6 +24047,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "screen_save",
@@ -21517,6 +24059,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "screen_save_part",
@@ -21532,6 +24075,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "script_execute",
@@ -21547,6 +24091,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "script_execute_ext",
@@ -21566,6 +24111,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "script_exists",
@@ -21577,6 +24123,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "script_get_name",
@@ -21588,6 +24135,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_create",
@@ -21597,6 +24145,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_destroy",
@@ -21608,6 +24157,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_exists",
@@ -21619,6 +24169,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_get",
@@ -21630,6 +24181,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_get_objects",
@@ -21641,6 +24193,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_instance",
@@ -21650,6 +24203,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_instance_override_object",
@@ -21663,6 +24217,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_keyframe_new",
@@ -21674,6 +24229,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_keyframedata_new",
@@ -21685,6 +24241,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sequence_track_new",
@@ -21696,6 +24253,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sha1_file",
@@ -21707,6 +24265,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sha1_string_unicode",
@@ -21718,6 +24277,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sha1_string_utf8",
@@ -21729,6 +24289,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_current",
@@ -21738,6 +24299,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_enable_corner_id",
@@ -21749,6 +24311,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_get_name",
@@ -21760,6 +24323,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_get_sampler_index",
@@ -21772,6 +24336,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_get_uniform",
@@ -21784,6 +24349,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_is_compiled",
@@ -21795,6 +24361,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_reset",
@@ -21804,6 +24371,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set",
@@ -21815,6 +24383,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set_uniform_f",
@@ -21827,6 +24396,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set_uniform_f_array",
@@ -21839,6 +24409,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set_uniform_f_buffer",
@@ -21853,6 +24424,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set_uniform_i",
@@ -21865,6 +24437,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set_uniform_i_array",
@@ -21877,6 +24450,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set_uniform_matrix",
@@ -21888,6 +24462,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shader_set_uniform_matrix_array",
@@ -21900,6 +24475,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shaders_are_supported",
@@ -21909,6 +24485,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "shop_leave_rating",
@@ -21923,6 +24500,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_debug_log",
@@ -21934,6 +24512,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_debug_message",
@@ -21949,6 +24528,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "show_debug_message_ext",
@@ -21961,6 +24541,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_debug_overlay",
@@ -21984,6 +24565,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_error",
@@ -21996,6 +24578,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_message",
@@ -22007,6 +24590,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_message_async",
@@ -22018,6 +24602,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_question",
@@ -22029,6 +24614,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "show_question_async",
@@ -22040,6 +24626,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sign",
@@ -22051,6 +24638,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sin",
@@ -22062,6 +24650,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_clear",
@@ -22079,6 +24668,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_get",
@@ -22088,6 +24678,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_get_duration",
@@ -22099,6 +24690,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_get_event_frames",
@@ -22111,6 +24703,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_get_ext",
@@ -22122,6 +24715,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_get_frame",
@@ -22133,6 +24727,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_get_frames",
@@ -22144,6 +24739,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_get_position",
@@ -22155,6 +24751,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_is_finished",
@@ -22164,6 +24761,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_is_looping",
@@ -22175,6 +24773,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_list",
@@ -22187,6 +24786,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_mix",
@@ -22200,6 +24800,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_set",
@@ -22215,6 +24816,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_set_ext",
@@ -22232,6 +24834,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_set_frame",
@@ -22244,6 +24847,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_animation_set_position",
@@ -22256,6 +24860,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_attachment_create",
@@ -22274,6 +24879,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_attachment_create_colour",
@@ -22294,6 +24900,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["skeleton_attachment_create_color"],
         ),
         (
             "skeleton_attachment_destroy",
@@ -22305,6 +24912,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_attachment_exists",
@@ -22316,6 +24924,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_attachment_get",
@@ -22327,6 +24936,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_attachment_replace",
@@ -22345,6 +24955,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_attachment_replace_colour",
@@ -22365,6 +24976,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["skeleton_attachment_replace_color"],
         ),
         (
             "skeleton_attachment_set",
@@ -22377,6 +24989,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_bone_data_get",
@@ -22389,6 +25002,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_bone_data_set",
@@ -22401,6 +25015,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_bone_list",
@@ -22413,6 +25028,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_bone_state_get",
@@ -22425,6 +25041,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_bone_state_set",
@@ -22437,6 +25054,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_collision_draw_set",
@@ -22448,6 +25066,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_find_slot",
@@ -22461,6 +25080,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_get_bounds",
@@ -22472,6 +25092,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_get_minmax",
@@ -22481,6 +25102,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_get_num_bounds",
@@ -22490,6 +25112,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_skin_create",
@@ -22502,6 +25125,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_skin_get",
@@ -22511,6 +25135,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_skin_list",
@@ -22523,6 +25148,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_skin_set",
@@ -22534,6 +25160,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_slot_alpha_get",
@@ -22545,6 +25172,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_slot_colour_get",
@@ -22556,6 +25184,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_slot_colour_set",
@@ -22569,6 +25198,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_slot_data",
@@ -22581,6 +25211,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_slot_data_instance",
@@ -22592,6 +25223,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "skeleton_slot_list",
@@ -22604,6 +25236,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "solid",
@@ -22613,6 +25246,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "speed",
@@ -22622,6 +25256,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sphere_is_visible",
@@ -22636,6 +25271,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_add",
@@ -22652,6 +25288,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_add_ext",
@@ -22667,6 +25304,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "sprite_add_ext_error_unknown",
+                "sprite_add_ext_error_cancelled",
+                "sprite_add_ext_error_spritenotfound",
+                "sprite_add_ext_error_loadfailed",
+                "sprite_add_ext_error_decompressfailed",
+                "sprite_add_ext_error_setupfailed",
+            ],
         ),
         (
             "sprite_add_from_surface",
@@ -22685,6 +25330,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_assign",
@@ -22697,6 +25343,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_collision_mask",
@@ -22716,6 +25363,13 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bboxkind_precise",
+                "bboxkind_diamond",
+                "bboxkind_ellipse",
+                "bboxkind_rectangular",
+                "bboxkind_spine",
+            ],
         ),
         (
             "sprite_create_from_surface",
@@ -22735,6 +25389,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_delete",
@@ -22746,6 +25401,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_duplicate",
@@ -22757,6 +25413,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_exists",
@@ -22768,6 +25425,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_flush",
@@ -22779,6 +25437,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_flush_multi",
@@ -22790,6 +25449,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_bbox_bottom",
@@ -22801,6 +25461,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_bbox_left",
@@ -22812,6 +25473,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_bbox_mode",
@@ -22823,6 +25485,11 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "bboxmode_automatic",
+                "bboxmode_fullimage",
+                "bboxmode_manual",
+            ],
         ),
         (
             "sprite_get_bbox_right",
@@ -22834,6 +25501,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_bbox_top",
@@ -22845,6 +25513,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_convex_hull",
@@ -22862,6 +25531,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_height",
@@ -22873,6 +25543,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_info",
@@ -22884,6 +25555,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_name",
@@ -22895,6 +25567,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_nineslice",
@@ -22906,6 +25579,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_number",
@@ -22917,6 +25591,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_speed",
@@ -22928,6 +25603,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_speed_type",
@@ -22939,6 +25615,10 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "spritespeed_framespersecond",
+                "spritespeed_framespergameframe",
+            ],
         ),
         (
             "sprite_get_texture",
@@ -22951,6 +25631,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_tpe",
@@ -22963,6 +25644,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_uvs",
@@ -22975,6 +25657,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_width",
@@ -22986,6 +25669,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_xoffset",
@@ -22997,6 +25681,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_get_yoffset",
@@ -23008,6 +25693,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_height",
@@ -23017,6 +25703,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_index",
@@ -23026,6 +25713,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_merge",
@@ -23038,6 +25726,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_nineslice_create",
@@ -23047,6 +25736,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_prefetch",
@@ -23058,6 +25748,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_prefetch_multi",
@@ -23069,6 +25760,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_replace",
@@ -23086,6 +25778,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_save",
@@ -23099,6 +25792,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_save_strip",
@@ -23111,6 +25805,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_alpha_from_sprite",
@@ -23123,6 +25818,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_bbox",
@@ -23138,6 +25834,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_bbox_mode",
@@ -23150,6 +25847,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_cache_size",
@@ -23162,6 +25860,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_cache_size_ext",
@@ -23175,6 +25874,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_nineslice",
@@ -23187,6 +25887,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_offset",
@@ -23200,6 +25901,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_set_speed",
@@ -23213,6 +25915,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_width",
@@ -23222,6 +25925,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_xoffset",
@@ -23231,6 +25935,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sprite_yoffset",
@@ -23240,6 +25945,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sqr",
@@ -23251,6 +25957,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "sqrt",
@@ -23262,6 +25969,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "static_get",
@@ -23273,6 +25981,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "static_set",
@@ -23285,6 +25994,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string",
@@ -23300,6 +26010,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "string_byte_at",
@@ -23312,6 +26023,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_byte_length",
@@ -23323,6 +26035,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_char_at",
@@ -23335,6 +26048,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_concat",
@@ -23350,6 +26064,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "string_concat_ext",
@@ -23367,6 +26082,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_copy",
@@ -23380,6 +26096,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_count",
@@ -23392,6 +26109,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_delete",
@@ -23405,6 +26123,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_digits",
@@ -23416,6 +26135,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_ends_with",
@@ -23428,6 +26148,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_ext",
@@ -23440,6 +26161,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_foreach",
@@ -23459,6 +26181,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_format",
@@ -23472,6 +26195,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_hash_to_newline",
@@ -23483,6 +26207,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_height",
@@ -23494,6 +26219,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_height_ext",
@@ -23507,6 +26233,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_insert",
@@ -23520,6 +26247,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_join",
@@ -23537,6 +26265,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "string_join_ext",
@@ -23556,6 +26285,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_last_pos",
@@ -23568,6 +26298,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_last_pos_ext",
@@ -23581,6 +26312,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_length",
@@ -23592,6 +26324,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_letters",
@@ -23603,6 +26336,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_lettersdigits",
@@ -23614,6 +26348,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_lower",
@@ -23625,6 +26360,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_ord_at",
@@ -23637,6 +26373,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_pos",
@@ -23649,6 +26386,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_pos_ext",
@@ -23662,6 +26400,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_repeat",
@@ -23674,6 +26413,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_replace",
@@ -23687,6 +26427,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_replace_all",
@@ -23700,6 +26441,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_set_byte_at",
@@ -23713,6 +26455,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_split",
@@ -23732,6 +26475,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_split_ext",
@@ -23751,6 +26495,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_starts_with",
@@ -23763,6 +26508,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_trim",
@@ -23778,6 +26524,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_trim_end",
@@ -23793,6 +26540,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_trim_start",
@@ -23808,6 +26556,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_upper",
@@ -23819,6 +26568,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_width",
@@ -23830,6 +26580,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "string_width_ext",
@@ -23843,6 +26594,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "struct_exists",
@@ -23855,6 +26607,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["variable_struct_exists"],
         ),
         (
             "struct_exists_from_hash",
@@ -23867,6 +26620,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "struct_foreach",
@@ -23879,6 +26633,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "struct_get",
@@ -23891,6 +26646,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["variable_struct_get"],
         ),
         (
             "struct_get_from_hash",
@@ -23903,6 +26659,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "struct_get_names",
@@ -23914,6 +26671,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["variable_struct_get_names"],
         ),
         (
             "struct_names_count",
@@ -23925,6 +26683,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["variable_struct_names_count"],
         ),
         (
             "struct_remove",
@@ -23937,6 +26696,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["variable_struct_remove"],
         ),
         (
             "struct_remove_from_hash",
@@ -23949,6 +26709,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "struct_set",
@@ -23962,6 +26723,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["variable_struct_set"],
         ),
         (
             "struct_set_from_hash",
@@ -23975,6 +26737,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_copy",
@@ -23989,6 +26752,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_copy_part",
@@ -24007,6 +26771,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_create",
@@ -24024,6 +26789,16 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[
+                "surface_rgba8unorm",
+                "surface_r16float",
+                "surface_r32float",
+                "surface_rgba4unorm",
+                "surface_r8unorm",
+                "surface_rg8unorm",
+                "surface_rgba16float",
+                "surface_rgba32float",
+            ],
         ),
         (
             "surface_create_ext",
@@ -24037,6 +26812,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_depth_disable",
@@ -24048,6 +26824,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_exists",
@@ -24059,6 +26836,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_format_is_supported",
@@ -24070,6 +26848,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_free",
@@ -24081,6 +26860,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_depth_disable",
@@ -24090,6 +26870,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_format",
@@ -24101,6 +26882,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_height",
@@ -24112,6 +26894,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_target",
@@ -24121,6 +26904,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_target_depth",
@@ -24130,6 +26914,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_target_ext",
@@ -24141,6 +26926,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_texture",
@@ -24152,6 +26938,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_texture_depth",
@@ -24163,6 +26950,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_get_width",
@@ -24174,6 +26962,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_getpixel",
@@ -24187,6 +26976,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_getpixel_ext",
@@ -24200,6 +26990,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_has_depth",
@@ -24211,6 +27002,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_reset_target",
@@ -24220,6 +27012,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_resize",
@@ -24233,6 +27026,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_save",
@@ -24245,6 +27039,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_save_part",
@@ -24261,6 +27056,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_set_target",
@@ -24276,6 +27072,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "surface_set_target_ext",
@@ -24288,6 +27085,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tag_get_asset_ids",
@@ -24300,6 +27098,20 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "asset_object",
+                "asset_sprite",
+                "asset_sound",
+                "asset_room",
+                "asset_tiles",
+                "asset_path",
+                "asset_script",
+                "asset_font",
+                "asset_timeline",
+                "asset_shader",
+                "asset_animationcurve",
+                "asset_sequence",
+            ],
         ),
         (
             "tag_get_assets",
@@ -24311,6 +27123,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tan",
@@ -24322,6 +27135,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "temp_directory",
@@ -24331,6 +27145,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_debug_messages",
@@ -24342,6 +27157,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_flush",
@@ -24353,6 +27169,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_get_height",
@@ -24364,6 +27181,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_get_texel_height",
@@ -24375,6 +27193,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_get_texel_width",
@@ -24386,6 +27205,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_get_uvs",
@@ -24397,6 +27217,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_get_width",
@@ -24408,6 +27229,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_global_scale",
@@ -24419,6 +27241,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_is_ready",
@@ -24430,6 +27253,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_prefetch",
@@ -24441,6 +27265,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texture_set_stage",
@@ -24453,6 +27278,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_add",
@@ -24466,6 +27292,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_delete",
@@ -24477,6 +27304,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_exists",
@@ -24488,6 +27316,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_get_fonts",
@@ -24499,6 +27328,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_get_names",
@@ -24508,6 +27338,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_get_sprites",
@@ -24519,6 +27350,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_get_status",
@@ -24530,6 +27362,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "texturegroup_status_unloaded",
+                "texturegroup_status_loading",
+                "texturegroup_status_loaded",
+                "texturegroup_status_fetched",
+            ],
         ),
         (
             "texturegroup_get_textures",
@@ -24541,6 +27379,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_get_tilesets",
@@ -24552,6 +27391,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_load",
@@ -24567,6 +27407,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_set_mode",
@@ -24584,6 +27425,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "texturegroup_unload",
@@ -24595,6 +27437,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_get_empty",
@@ -24606,6 +27449,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_get_flip",
@@ -24617,6 +27461,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_get_index",
@@ -24628,6 +27473,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_get_mirror",
@@ -24639,6 +27485,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_get_rotate",
@@ -24650,6 +27497,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_set_empty",
@@ -24661,6 +27509,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_set_flip",
@@ -24673,6 +27522,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_set_index",
@@ -24685,6 +27535,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_set_mirror",
@@ -24697,6 +27548,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tile_set_rotate",
@@ -24709,6 +27561,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_clear",
@@ -24721,6 +27574,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get",
@@ -24734,6 +27588,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_at_pixel",
@@ -24747,6 +27602,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_cell_x_at_pixel",
@@ -24760,6 +27616,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_cell_y_at_pixel",
@@ -24773,6 +27630,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_frame",
@@ -24784,6 +27642,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_global_mask",
@@ -24793,6 +27652,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_height",
@@ -24804,6 +27664,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_mask",
@@ -24815,6 +27676,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_tile_height",
@@ -24826,6 +27688,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_tile_width",
@@ -24837,6 +27700,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_tileset",
@@ -24848,6 +27712,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_width",
@@ -24859,6 +27724,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_x",
@@ -24870,6 +27736,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_get_y",
@@ -24881,6 +27748,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_set",
@@ -24895,6 +27763,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_set_at_pixel",
@@ -24909,6 +27778,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_set_global_mask",
@@ -24920,6 +27790,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["tile_rotate", "tile_mirror", "tile_flip", "tile_index_mask"],
         ),
         (
             "tilemap_set_height",
@@ -24932,6 +27803,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_set_mask",
@@ -24944,6 +27816,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["tile_rotate", "tile_mirror", "tile_flip", "tile_index_mask"],
         ),
         (
             "tilemap_set_width",
@@ -24956,6 +27829,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_tileset",
@@ -24968,6 +27842,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_x",
@@ -24980,6 +27855,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tilemap_y",
@@ -24992,6 +27868,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tileset_get_info",
@@ -25003,6 +27880,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tileset_get_name",
@@ -25014,6 +27892,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tileset_get_texture",
@@ -25025,6 +27904,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "tileset_get_uvs",
@@ -25036,6 +27916,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_bpm_to_seconds",
@@ -25047,6 +27928,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_seconds_to_bpm",
@@ -25058,6 +27940,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_create",
@@ -25075,6 +27958,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_destroy",
@@ -25087,6 +27971,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_exists",
@@ -25098,6 +27983,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_children",
@@ -25109,6 +27995,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_parent",
@@ -25120,6 +28007,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_period",
@@ -25131,6 +28019,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_reps_completed",
@@ -25142,6 +28031,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_reps_remaining",
@@ -25153,6 +28043,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_state",
@@ -25164,6 +28055,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_time_remaining",
@@ -25175,6 +28067,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_get_units",
@@ -25186,6 +28079,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_pause",
@@ -25197,6 +28091,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_reconfigure",
@@ -25222,6 +28117,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_reset",
@@ -25233,6 +28129,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_resume",
@@ -25244,6 +28141,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_start",
@@ -25255,6 +28153,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "time_source_stop",
@@ -25266,6 +28165,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_add",
@@ -25275,6 +28175,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_clear",
@@ -25286,6 +28187,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_delete",
@@ -25297,6 +28199,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_exists",
@@ -25308,6 +28211,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_get_name",
@@ -25319,6 +28223,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_index",
@@ -25328,6 +28233,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_loop",
@@ -25337,6 +28243,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_max_moment",
@@ -25348,6 +28255,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_moment_add_script",
@@ -25361,6 +28269,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_moment_clear",
@@ -25373,6 +28282,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_position",
@@ -25382,6 +28292,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_running",
@@ -25391,6 +28302,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_size",
@@ -25402,6 +28314,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "timeline_speed",
@@ -25411,6 +28324,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "typeof",
@@ -25422,6 +28336,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "url_get_domain",
@@ -25431,6 +28346,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "url_open",
@@ -25442,6 +28358,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "url_open_ext",
@@ -25454,6 +28371,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "url_open_full",
@@ -25467,6 +28385,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_clone",
@@ -25482,6 +28401,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_get_hash",
@@ -25493,6 +28413,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_global_exists",
@@ -25504,6 +28425,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_global_get",
@@ -25515,6 +28437,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_global_set",
@@ -25527,6 +28450,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_instance_exists",
@@ -25539,6 +28463,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_instance_get",
@@ -25551,6 +28476,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_instance_get_names",
@@ -25562,6 +28488,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_instance_names_count",
@@ -25573,6 +28500,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "variable_instance_set",
@@ -25586,6 +28514,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_get_limit",
@@ -25595,6 +28524,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_get_max_used",
@@ -25604,6 +28534,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_get_oldest_entry_age",
@@ -25613,6 +28544,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_get_prune_age",
@@ -25622,6 +28554,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_get_prune_fraction",
@@ -25631,6 +28564,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_get_used",
@@ -25640,6 +28574,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_limit",
@@ -25651,6 +28586,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_prune_age",
@@ -25662,6 +28598,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vector_sprite_cache_prune_fraction",
@@ -25673,6 +28610,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_argb",
@@ -25685,6 +28623,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_begin",
@@ -25697,6 +28636,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_buffer_exists",
@@ -25708,6 +28648,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_colour",
@@ -25721,6 +28662,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["vertex_color"],
         ),
         (
             "vertex_create_buffer",
@@ -25730,6 +28672,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_create_buffer_ext",
@@ -25741,6 +28684,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_create_buffer_from_buffer",
@@ -25753,6 +28697,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_create_buffer_from_buffer_ext",
@@ -25767,6 +28712,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_delete_buffer",
@@ -25778,6 +28724,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_end",
@@ -25789,6 +28736,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_float1",
@@ -25801,6 +28749,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_float2",
@@ -25814,6 +28763,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_float3",
@@ -25828,6 +28778,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_float4",
@@ -25843,6 +28794,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_add_colour",
@@ -25852,6 +28804,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["vertex_format_add_color"],
         ),
         (
             "vertex_format_add_custom",
@@ -25864,6 +28817,25 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "vertex_type_float1",
+                "vertex_type_float2",
+                "vertex_type_float3",
+                "vertex_type_float4",
+                "vertex_type_colour",
+                "vertex_type_ubyte4",
+                "vertex_usage_position",
+                "vertex_usage_colour",
+                "vertex_usage_normal",
+                "vertex_usage_textcoord",
+                "vertex_usage_blendweight",
+                "vertex_usage_blendindices",
+                "vertex_usage_depth",
+                "vertex_usage_tangent",
+                "vertex_usage_binormal",
+                "vertex_usage_fog",
+                "vertex_usage_sample",
+            ],
         ),
         (
             "vertex_format_add_normal",
@@ -25873,6 +28845,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_add_position",
@@ -25882,6 +28855,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_add_position_3d",
@@ -25891,6 +28865,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_add_texcoord",
@@ -25900,6 +28875,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_begin",
@@ -25909,6 +28885,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_delete",
@@ -25920,6 +28897,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_end",
@@ -25929,6 +28907,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_exists",
@@ -25940,6 +28919,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_format_get_info",
@@ -25951,6 +28931,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_freeze",
@@ -25962,6 +28943,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_get_buffer_size",
@@ -25973,6 +28955,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_get_number",
@@ -25984,6 +28967,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_normal",
@@ -25998,6 +28982,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_position",
@@ -26011,6 +28996,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_position_3d",
@@ -26025,6 +29011,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_submit",
@@ -26038,6 +29025,13 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "pr_pointlist",
+                "pr_linelist",
+                "pr_linestrip",
+                "pr_trianglelist",
+                "pr_trianglestrip",
+            ],
         ),
         (
             "vertex_submit_ext",
@@ -26053,6 +29047,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_texcoord",
@@ -26066,6 +29061,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_ubyte4",
@@ -26081,6 +29077,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_update_buffer_from_buffer",
@@ -26102,6 +29099,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vertex_update_buffer_from_vertex",
@@ -26123,6 +29121,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_close",
@@ -26132,6 +29131,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_draw",
@@ -26141,6 +29141,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_enable_loop",
@@ -26152,6 +29153,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_get_duration",
@@ -26161,6 +29163,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_get_format",
@@ -26170,6 +29173,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["video_format_rgba", "video_format_yuv"],
         ),
         (
             "video_get_position",
@@ -26179,6 +29183,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_get_status",
@@ -26188,6 +29193,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "video_status_closed",
+                "video_status_preparing",
+                "video_status_playing",
+                "video_status_paused",
+            ],
         ),
         (
             "video_get_volume",
@@ -26197,6 +29208,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_is_looping",
@@ -26206,6 +29218,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_open",
@@ -26217,6 +29230,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_pause",
@@ -26226,6 +29240,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_resume",
@@ -26235,6 +29250,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_seek_to",
@@ -26246,6 +29262,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "video_set_volume",
@@ -26257,6 +29274,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_camera",
@@ -26266,6 +29284,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "view_current",
@@ -26275,6 +29294,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_enabled",
@@ -26284,6 +29304,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_get_camera",
@@ -26295,6 +29316,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_get_hport",
@@ -26306,6 +29328,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_get_surface_id",
@@ -26317,6 +29340,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_get_visible",
@@ -26328,6 +29352,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_get_wport",
@@ -26339,6 +29364,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_get_xport",
@@ -26350,6 +29376,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_get_yport",
@@ -26361,6 +29388,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_hport",
@@ -26370,6 +29398,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "view_set_camera",
@@ -26382,6 +29411,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_set_hport",
@@ -26394,6 +29424,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_set_surface_id",
@@ -26406,6 +29437,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_set_visible",
@@ -26418,6 +29450,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_set_wport",
@@ -26430,6 +29463,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_set_xport",
@@ -26442,6 +29476,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_set_yport",
@@ -26454,6 +29489,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_surface_id",
@@ -26463,6 +29499,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "view_visible",
@@ -26472,6 +29509,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "view_wport",
@@ -26481,6 +29519,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: true,
             },
+            &[],
         ),
         (
             "view_xport",
@@ -26490,6 +29529,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "view_yport",
@@ -26499,6 +29539,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "visible",
@@ -26508,6 +29549,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "vspeed",
@@ -26517,6 +29559,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "wallpaper_set_config",
@@ -26528,6 +29571,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "wallpaper_set_subscriptions",
@@ -26539,6 +29583,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "weak_ref_alive",
@@ -26550,6 +29595,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "weak_ref_any_alive",
@@ -26567,6 +29613,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 ],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "weak_ref_create",
@@ -26578,6 +29625,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "webgl_enabled",
@@ -26587,6 +29635,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_center",
@@ -26596,6 +29645,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_device",
@@ -26605,6 +29655,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_enable_borderless_fullscreen",
@@ -26616,6 +29667,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_borderless_fullscreen",
@@ -26625,6 +29677,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_caption",
@@ -26634,6 +29687,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_colour",
@@ -26643,6 +29697,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["window_get_color"],
         ),
         (
             "window_get_cursor",
@@ -26652,6 +29707,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "cr_none",
+                "cr_default",
+                "cr_arrow",
+                "cr_cross",
+                "cr_beam",
+                "cr_size_nesw",
+                "cr_size_ns",
+                "cr_size_nwse",
+                "cr_size_we",
+                "cr_uparrow",
+                "cr_hourglass",
+                "cr_drag",
+                "cr_appstart",
+                "cr_handpoint",
+                "cr_size_all",
+            ],
         ),
         (
             "window_get_fullscreen",
@@ -26661,6 +29733,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_height",
@@ -26670,6 +29743,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_showborder",
@@ -26679,6 +29753,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_visible_rects",
@@ -26693,6 +29768,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_width",
@@ -26702,6 +29778,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_x",
@@ -26711,6 +29788,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_get_y",
@@ -26720,6 +29798,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_handle",
@@ -26729,6 +29808,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_has_focus",
@@ -26738,6 +29818,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_minimise",
@@ -26747,6 +29828,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_mouse_get_delta_x",
@@ -26756,6 +29838,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_mouse_get_delta_y",
@@ -26765,6 +29848,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_mouse_get_locked",
@@ -26774,6 +29858,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_mouse_get_x",
@@ -26783,6 +29868,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_mouse_get_y",
@@ -26792,6 +29878,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_mouse_set",
@@ -26804,6 +29891,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_mouse_set_locked",
@@ -26815,6 +29903,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_post_message",
@@ -26826,6 +29915,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_restore",
@@ -26835,6 +29925,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_caption",
@@ -26846,6 +29937,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_colour",
@@ -26857,6 +29949,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["window_set_color"],
         ),
         (
             "window_set_cursor",
@@ -26868,6 +29961,23 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "cr_none",
+                "cr_default",
+                "cr_arrow",
+                "cr_cross",
+                "cr_beam",
+                "cr_size_nesw",
+                "cr_size_ns",
+                "cr_size_nwse",
+                "cr_size_we",
+                "cr_uparrow",
+                "cr_hourglass",
+                "cr_drag",
+                "cr_appstart",
+                "cr_handpoint",
+                "cr_size_all",
+            ],
         ),
         (
             "window_set_fullscreen",
@@ -26879,6 +29989,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_max_width",
@@ -26890,6 +30001,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_min_height",
@@ -26901,6 +30013,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_min_width",
@@ -26912,6 +30025,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_position",
@@ -26924,6 +30038,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_rectangle",
@@ -26938,6 +30053,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_showborder",
@@ -26949,6 +30065,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_set_size",
@@ -26961,6 +30078,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_view_mouse_get_x",
@@ -26972,6 +30090,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_view_mouse_get_y",
@@ -26983,6 +30102,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_views_mouse_get_x",
@@ -26992,6 +30112,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "window_views_mouse_get_y",
@@ -27001,6 +30122,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "working_directory",
@@ -27010,6 +30132,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "x",
@@ -27019,6 +30142,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "xboxlive_achievement_load_friends",
@@ -27028,6 +30152,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["achievement_load_friends"],
         ),
         (
             "xboxlive_achievement_load_leaderboard",
@@ -27042,6 +30167,12 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "achievement_load_leaderboard",
+                "achievement_leaderboard_info",
+                "achievement_filter_friends_only",
+                "achievement_filter_all_players",
+            ],
         ),
         (
             "xboxlive_achievement_show_achievements",
@@ -27051,6 +30182,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["achievement_show_achievements"],
         ),
         (
             "xboxlive_read_player_leaderboard",
@@ -27065,6 +30197,14 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[
+                "achievement_filter_all_players",
+                "achievement_filter_friends_only",
+                "achievement_filter_favorites_only",
+                "achievement_filter_friends_alt",
+                "achievement_filter_favorites_alt",
+                "achievement_leaderboard_info",
+            ],
         ),
         (
             "xboxlive_stats_add_user",
@@ -27076,6 +30216,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["achievement_stat_event"],
         ),
         (
             "xboxlive_stats_flush_user",
@@ -27088,6 +30229,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["achievement_stat_event"],
         ),
         (
             "xboxlive_stats_get_leaderboard",
@@ -27104,6 +30246,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["achievement_stat_event"],
         ),
         (
             "xboxlive_stats_get_social_leaderboard",
@@ -27120,6 +30263,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["achievement_stat_event"],
         ),
         (
             "xboxlive_stats_remove_user",
@@ -27131,6 +30275,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &["achievement_stat_event"],
         ),
         (
             "xprevious",
@@ -27140,6 +30285,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "xstart",
@@ -27149,6 +30295,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "y",
@@ -27158,6 +30305,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "yprevious",
@@ -27167,6 +30315,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "ystart",
@@ -27176,6 +30325,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "zip_add_file",
@@ -27189,6 +30339,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "zip_create",
@@ -27198,6 +30349,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "zip_save",
@@ -27210,6 +30362,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "zip_unzip",
@@ -27222,6 +30375,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
         (
             "zip_unzip_async",
@@ -27234,6 +30388,7 @@ pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {
                 defaults: vec![],
                 has_rest_param: false,
             },
+            &[],
         ),
     ]
 }

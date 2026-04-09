@@ -52,6 +52,10 @@ struct GmlFunction {
     /// Normalized return type string.
     return_type: String,
     variadic: bool,
+    /// Alternate spellings listed in the `rh-index-keywords` meta tag (e.g.
+    /// `color_get_red` alongside the canonical `colour_get_red`).
+    #[serde(default)]
+    aliases: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -121,6 +125,39 @@ fn rust_type(type_key: &str) -> &'static str {
 
 // ── HTML parsing ─────────────────────────────────────────────────────────────
 
+/// Extract alternate names from `<meta name="rh-index-keywords" content="..." />`.
+///
+/// Returns names listed in the comma-separated `content` attribute that differ
+/// from `canonical` (after trimming).  Returns an empty vec if the tag is absent
+/// or contains no additional names.
+fn extract_aliases(content: &str, canonical: &str) -> Vec<String> {
+    // Find the rh-index-keywords meta tag via a simple string search — faster
+    // than a full CSS selector and sufficient given the known format.
+    let marker = "name=\"rh-index-keywords\"";
+    let pos = match content.find(marker) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    let rest = &content[pos + marker.len()..];
+    // Find content="..."
+    let content_attr = "content=\"";
+    let c_pos = match rest.find(content_attr) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    let after = &rest[c_pos + content_attr.len()..];
+    let end = match after.find('"') {
+        Some(e) => e,
+        None => return Vec::new(),
+    };
+    let keywords = &after[..end];
+    keywords
+        .split(',')
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty() && s != canonical)
+        .collect()
+}
+
 /// Parse one `.htm` file. Returns `None` if it is not a function page.
 fn parse_page(path: &Path) -> Result<Option<GmlFunction>> {
     let content =
@@ -185,11 +222,15 @@ fn parse_page(path: &Path) -> Result<Option<GmlFunction>> {
     // ── Return type ──────────────────────────────────────────────────────────
     let return_type = parse_return_type(&content);
 
+    // ── Aliases from rh-index-keywords meta tag ──────────────────────────────
+    let aliases = extract_aliases(&content, &name);
+
     Ok(Some(GmlFunction {
         name,
         params,
         return_type,
         variadic,
+        aliases,
     }))
 }
 
@@ -422,7 +463,7 @@ fn generate_rust(functions: &[GmlFunction]) -> String {
     .unwrap();
     writeln!(
         out,
-        "/// GameMaker manual HTML. Each entry is `(name, sig)`."
+        "/// GameMaker manual HTML. Each entry is `(name, sig, aliases)`."
     )
     .unwrap();
     writeln!(out, "///").unwrap();
@@ -433,7 +474,7 @@ fn generate_rust(functions: &[GmlFunction]) -> String {
     .unwrap();
     writeln!(
         out,
-        "pub fn gml_builtins() -> Vec<(&'static str, FunctionSig)> {{"
+        "pub fn gml_builtins() -> Vec<(&'static str, FunctionSig, &'static [&'static str])> {{"
     )
     .unwrap();
     writeln!(out, "    vec![").unwrap();
@@ -488,7 +529,13 @@ fn generate_rust(functions: &[GmlFunction]) -> String {
         // has_rest_param
         writeln!(out, "            has_rest_param: {},", func.variadic).unwrap();
 
-        writeln!(out, "        }}),").unwrap();
+        // aliases slice
+        if func.aliases.is_empty() {
+            writeln!(out, "        }}, &[]),").unwrap();
+        } else {
+            let alias_list: Vec<String> = func.aliases.iter().map(|a| format!("{:?}", a)).collect();
+            writeln!(out, "        }}, &[{}]),", alias_list.join(", ")).unwrap();
+        }
     }
 
     writeln!(out, "    ]").unwrap();

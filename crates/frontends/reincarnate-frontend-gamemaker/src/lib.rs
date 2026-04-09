@@ -118,9 +118,12 @@ impl Frontend for GameMakerFrontend {
         // sites.  Genuinely opaque types (e.g. explicitly typed enum returns)
         // are represented with concrete types in the generated file and are
         // not affected.
-        for (name, mut sig) in builtins_generated::gml_builtins() {
+        for (name, mut sig, aliases) in builtins_generated::gml_builtins() {
             freshen_unknown_types_in_sig(&mut sig, mb.module_mut());
-            mb.register_runtime(name.to_string(), sig);
+            let fid = mb.register_runtime(name.to_string(), sig);
+            for alias in aliases {
+                mb.module_mut().register_alias(*alias, fid);
+            }
         }
 
         // Register GML-specific polymorphic `_any` arithmetic stubs.
