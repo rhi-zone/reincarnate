@@ -355,21 +355,6 @@ fn arith_callee(op: &str, suffix: &str) -> String {
     }
 }
 
-/// Normalize GML function names that have American/British spelling aliases.
-///
-/// GML provides both `color_*`/`make_color_*` and `colour_*`/`make_colour_*` spellings
-/// for all color functions. The manual (and registry) uses the British spelling; bytecode
-/// may contain either. Normalize American to British here so registry lookup succeeds.
-fn normalize_gml_function_name(name: String) -> String {
-    if let Some(rest) = name.strip_prefix("color_") {
-        return format!("colour_{rest}");
-    }
-    if let Some(rest) = name.strip_prefix("make_color_") {
-        return format!("make_colour_{rest}");
-    }
-    name
-}
-
 /// Emit a binary bitwise builtin (`bitand`, `bitor`, `bitxor`, `shl`, `shr`)
 /// using the `_i32` core variant, inserting Float(64) ↔ Int(32) coercions when
 /// the GML source type is Real (Float64).
@@ -739,13 +724,12 @@ fn translate_call_op(
             if let Operand::Call { function_id, argc } = inst.operand {
                 // first_address points to the Call instruction word.
                 let abs_addr = ctx.bytecode_offset + inst.offset;
-                let func_name = normalize_gml_function_name(
-                    ctx.func_ref_map
-                        .get(&abs_addr)
-                        .and_then(|&idx| ctx.function_names.get(&(idx as u32)))
-                        .cloned()
-                        .unwrap_or_else(|| format!("func_unknown_{function_id}")),
-                );
+                let func_name = ctx
+                    .func_ref_map
+                    .get(&abs_addr)
+                    .and_then(|&idx| ctx.function_names.get(&(idx as u32)))
+                    .cloned()
+                    .unwrap_or_else(|| format!("func_unknown_{function_id}"));
 
                 // GMS2.3+ internal built-in functions — resolve to IR values directly.
                 // @@This@@ returns the calling instance (self). Replacing it with the
