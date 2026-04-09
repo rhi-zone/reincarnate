@@ -158,12 +158,52 @@ mod tests {
     /// with `arg_types.len()` parameters of the given types and the given initial
     /// result type.  Returns the module and the `FuncId` of the test function.
     fn make_module_with_func(op_name: &str, arg_types: &[Type]) -> (Module, FuncId) {
-        // Register _any builtins first so the FuncId exists before translation.
-        let mut mb = ModuleBuilder::new("test");
-        mb.module_mut().register_arithmetic_any_builtins();
+        use std::collections::HashMap;
 
-        let func_name = format!("builtin.{}_any", op_name);
-        let any_fid = mb.runtime_registry()[&func_name];
+        let mut mb = ModuleBuilder::new("test");
+
+        // Register typed scalar variants for the op being tested.
+        let scalar_types = [
+            Type::Float(64),
+            Type::Float(32),
+            Type::Int(32),
+            Type::Int(64),
+        ];
+        let suffixes = ["f64", "f32", "i32", "i64"];
+        let is_binary = arg_types.len() != 1;
+
+        let mut specializations: HashMap<Vec<Type>, FuncId> = HashMap::new();
+        for (ty, suffix) in scalar_types.iter().zip(suffixes.iter()) {
+            let (params, key) = if is_binary {
+                (vec![ty.clone(), ty.clone()], vec![ty.clone(), ty.clone()])
+            } else {
+                (vec![ty.clone()], vec![ty.clone()])
+            };
+            let typed_sig = FunctionSig {
+                params,
+                return_ty: ty.clone(),
+                ..Default::default()
+            };
+            let typed_name = format!("builtin.{op_name}_{suffix}");
+            let typed_fid = mb.module_mut().register_runtime(typed_name, typed_sig);
+            specializations.insert(key, typed_fid);
+        }
+
+        // Register the `_any` stub with Unknown sig.
+        let func_name = format!("builtin.{op_name}_any");
+        let any_sig = FunctionSig {
+            params: if is_binary {
+                vec![Type::Unknown, Type::Unknown]
+            } else {
+                vec![Type::Unknown]
+            },
+            return_ty: Type::Unknown,
+            ..Default::default()
+        };
+        let any_fid = mb.module_mut().register_runtime(&func_name, any_sig);
+
+        // Populate specializations on the stub (no dispatch body needed for tests).
+        mb.module_mut().functions[any_fid].specializations = specializations;
 
         let sig = FunctionSig {
             params: arg_types.to_vec(),

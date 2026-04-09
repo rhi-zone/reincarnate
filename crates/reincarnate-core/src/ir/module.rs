@@ -7,7 +7,6 @@ use crate::pipeline::Diagnostic;
 use crate::project::{ExternalMethodSig, ExternalTypeDef};
 
 use super::block::{Block, BlockId};
-use super::builder::FunctionBuilder;
 use super::func::{FuncId, Function, InlineHint, IntrinsicKind, MethodKind, Visibility};
 use super::inst::Terminator;
 use super::name_table::NameTable;
@@ -776,8 +775,9 @@ impl Module {
     /// Breakdown: 5 arith ops × 4 types = 20, concat_str = 1, neg × 4 = 4,
     /// not/and/or bool = 3, 5 bitwise ops × 1 type (i32) = 5, bitnot × 1 = 1 → 34.
     /// Math single-arg f64 = 17, math binary f64 = 5, string ops = 12, array ops = 2 → 70.
-    /// Polymorphic `_any` stubs: 5 binary + 1 neg = 6 → 76.
-    pub const NUM_CORE_BUILTINS: u32 = 76;
+    /// Polymorphic `_any` stubs are GML-specific and registered by the GML frontend,
+    /// not by `register_core_builtins`, so they are not counted here.
+    pub const NUM_CORE_BUILTINS: u32 = 70;
 
     pub fn new(name: String) -> Self {
         let mut module = Self {
@@ -1009,128 +1009,6 @@ impl Module {
                 ..Default::default()
             },
         );
-
-        // Polymorphic `_any` stubs — used when the operand type is not yet known
-        // at translation time (GML `DataType::Variable`, Flash mixed-type `add`).
-        // Only the name-to-FuncId registration is done here; the dispatch body
-        // and specialization tables are populated by
-        // `register_arithmetic_any_builtins` which frontends call explicitly.
-        let bin_any = FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-        let un_any = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-        for op in &["add", "sub", "mul", "div", "rem"] {
-            self.register_runtime(format!("builtin.{op}_any"), bin_any.clone());
-        }
-        self.register_runtime("builtin.neg_any", un_any);
-    }
-
-    /// Register polymorphic `_any` arithmetic builtins and their specialization tables.
-    ///
-    /// These stubs are used by frontends (currently GML only) when an arithmetic
-    /// operand type is not yet known at translation time.  `BuiltinOverloadSelect`
-    /// replaces each `xxx_any` call with the appropriately-typed variant
-    /// (`_f64`, `_f32`, `_i32`, `_i64`) once HM inference has resolved the operand
-    /// types.
-    ///
-    /// The typed variants (`builtin.add_f64`, etc.) must already be present in
-    /// `module.runtime_registry` — i.e., this must be called after
-    /// `Module::new()` (which calls `register_core_builtins()`).
-    ///
-    /// Not called from `register_core_builtins()` because `_any` overloading is a
-    /// GML-specific concern: the GML VM uses `DataType::Variable` for arithmetic
-    /// whose operand types are not statically tagged.  Non-GML frontends have no
-    /// need for these stubs.
-    pub fn register_arithmetic_any_builtins(&mut self) {
-        let scalar_types = [
-            Type::Float(64),
-            Type::Float(32),
-            Type::Int(32),
-            Type::Int(64),
-        ];
-
-        let bin_any = FunctionSig {
-            params: vec![Type::Unknown, Type::Unknown],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-        let un_any = FunctionSig {
-            params: vec![Type::Unknown],
-            return_ty: Type::Unknown,
-            ..Default::default()
-        };
-
-        for op in &["add", "sub", "mul", "div", "rem"] {
-            let mut specs: HashMap<Vec<Type>, FuncId> = scalar_types
-                .iter()
-                .map(|ty| {
-                    let suffix = type_suffix(ty);
-                    let fid = self.runtime_registry[&format!("builtin.{op}_{suffix}")];
-                    (vec![ty.clone(), ty.clone()], fid)
-                })
-                .collect();
-            if *op == "add" {
-                let concat_id = self.runtime_registry["builtin.concat_str"];
-                specs.insert(vec![Type::String, Type::String], concat_id);
-            }
-            let func_name = format!("builtin.{op}_any");
-            // The stub is already registered by register_core_builtins; look it up.
-            let any_id = self.runtime_registry[&func_name];
-
-            // Build dispatch chain for binary op: check each specialization type pair.
-            // Priority: Float(64) > Float(32) > Int(32) > Int(64), then String for add.
-            let mut dispatch_types: Vec<Type> = scalar_types.to_vec();
-            if *op == "add" {
-                // Insert String after Float(64) — numeric addition is more common.
-                dispatch_types.insert(1, Type::String);
-            }
-            let built = build_binary_any_dispatch(
-                &func_name,
-                &bin_any,
-                &dispatch_types,
-                op,
-                &self.runtime_registry,
-            );
-            self.functions[any_id].blocks = built.blocks;
-            self.functions[any_id].insts = built.insts;
-            self.functions[any_id].value_types = built.value_types;
-            self.functions[any_id].entry = built.entry;
-            self.functions[any_id].specializations = specs;
-        }
-
-        {
-            let specs: HashMap<Vec<Type>, FuncId> = scalar_types
-                .iter()
-                .map(|ty| {
-                    let suffix = type_suffix(ty);
-                    let fid = self.runtime_registry[&format!("builtin.neg_{suffix}")];
-                    (vec![ty.clone()], fid)
-                })
-                .collect();
-            let func_name = "builtin.neg_any";
-            // The stub is already registered by register_core_builtins; look it up.
-            let any_id = self.runtime_registry[func_name];
-
-            // Build dispatch chain for unary neg: check each specialization type.
-            let dispatch_types: Vec<Type> = scalar_types.to_vec();
-            let built = build_unary_any_dispatch(
-                func_name,
-                &un_any,
-                &dispatch_types,
-                &self.runtime_registry,
-            );
-            self.functions[any_id].blocks = built.blocks;
-            self.functions[any_id].insts = built.insts;
-            self.functions[any_id].value_types = built.value_types;
-            self.functions[any_id].entry = built.entry;
-            self.functions[any_id].specializations = specs;
-        }
     }
 
     /// Register a runtime/builtin function (e.g. `"builtin.add_f64"`).
@@ -1243,130 +1121,6 @@ fn type_suffix(ty: &Type) -> &'static str {
         Type::String => "str",
         other => panic!("type_suffix: unsupported type {other:?}"),
     }
-}
-
-/// Build an IR dispatch body for a binary `_any` builtin (e.g. `add_any(a, b)`).
-///
-/// Produces a chain of nested `br_if` blocks that check `TypeCheck(a, ty)`,
-/// then `TypeCheck(b, ty)`, coerces both arguments, calls the typed variant,
-/// and returns the result.  Falls through to the next type on mismatch.
-/// The final fallback returns `Return(None)`.
-fn build_binary_any_dispatch(
-    func_name: &str,
-    sig: &FunctionSig,
-    dispatch_types: &[Type],
-    op: &str,
-    registry: &HashMap<String, FuncId>,
-) -> Function {
-    use super::func::Visibility;
-
-    let mut fb = FunctionBuilder::new(func_name, sig.clone(), Visibility::Public);
-    fb.set_registry(registry.clone());
-    let a = fb.param(0);
-    let b = fb.param(1);
-
-    // For each dispatch type, build: check_a -> check_b -> call -> return
-    // On failure, fall through to the next type's check_a block.
-    let fallback_block = fb.create_block();
-
-    let mut next_else_block = fallback_block;
-
-    // Build in reverse so we can set `next_else_block` correctly.
-    for ty in dispatch_types.iter().rev() {
-        let suffix = type_suffix(ty);
-        let variant_name = if *ty == Type::String {
-            "builtin.concat_str".to_string()
-        } else {
-            format!("builtin.{op}_{suffix}")
-        };
-
-        // Create blocks for this type's dispatch.
-        let check_b_block = fb.create_block();
-        let call_block = fb.create_block();
-        let check_a_block = fb.create_block();
-
-        // check_a_block: TypeCheck(a, ty) -> br_if to check_b or next
-        fb.switch_to_block(check_a_block);
-        let check_a = fb.type_check(a, ty.clone());
-        fb.br_if(check_a, check_b_block, &[], next_else_block, &[]);
-
-        // check_b_block: TypeCheck(b, ty) -> br_if to call or next
-        fb.switch_to_block(check_b_block);
-        let check_b = fb.type_check(b, ty.clone());
-        fb.br_if(check_b, call_block, &[], next_else_block, &[]);
-
-        // call_block: coerce, call, return
-        fb.switch_to_block(call_block);
-        let a_coerced = fb.coerce(a, ty.clone());
-        let b_coerced = fb.coerce(b, ty.clone());
-        let result = fb.call_named(&variant_name, &[a_coerced, b_coerced], ty.clone());
-        fb.ret(Some(result));
-
-        next_else_block = check_a_block;
-    }
-
-    // Entry block: branch to the first type check.
-    let entry = fb.entry_block();
-    fb.switch_to_block(entry);
-    fb.br(next_else_block, &[]);
-
-    // Fallback block: return None (unreachable in practice).
-    fb.switch_to_block(fallback_block);
-    fb.ret(None);
-
-    fb.build()
-}
-
-/// Build an IR dispatch body for a unary `_any` builtin (e.g. `neg_any(a)`).
-///
-/// Same structure as [`build_binary_any_dispatch`] but only checks one argument.
-fn build_unary_any_dispatch(
-    func_name: &str,
-    sig: &FunctionSig,
-    dispatch_types: &[Type],
-    registry: &HashMap<String, FuncId>,
-) -> Function {
-    use super::func::Visibility;
-
-    let mut fb = FunctionBuilder::new(func_name, sig.clone(), Visibility::Public);
-    fb.set_registry(registry.clone());
-    let a = fb.param(0);
-
-    let fallback_block = fb.create_block();
-    let mut next_else_block = fallback_block;
-
-    // Build in reverse.
-    for ty in dispatch_types.iter().rev() {
-        let suffix = type_suffix(ty);
-        let variant_name = format!("builtin.neg_{suffix}");
-
-        let call_block = fb.create_block();
-        let check_block = fb.create_block();
-
-        // check_block: TypeCheck(a, ty) -> br_if to call or next
-        fb.switch_to_block(check_block);
-        let check = fb.type_check(a, ty.clone());
-        fb.br_if(check, call_block, &[], next_else_block, &[]);
-
-        // call_block: coerce, call, return
-        fb.switch_to_block(call_block);
-        let a_coerced = fb.coerce(a, ty.clone());
-        let result = fb.call_named(&variant_name, &[a_coerced], ty.clone());
-        fb.ret(Some(result));
-
-        next_else_block = check_block;
-    }
-
-    // Entry block: branch to first type check.
-    let entry = fb.entry_block();
-    fb.switch_to_block(entry);
-    fb.br(next_else_block, &[]);
-
-    // Fallback block: return None.
-    fb.switch_to_block(fallback_block);
-    fb.ret(None);
-
-    fb.build()
 }
 
 /// Recursively normalize compound types (Array, Map, Option, etc.) so that
