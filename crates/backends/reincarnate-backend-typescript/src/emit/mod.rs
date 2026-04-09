@@ -901,15 +901,21 @@ fn emit_class_file(
     );
     let func_prefix = "../".repeat(depth + 1);
     let func_prefix = func_prefix.trim_end_matches('/');
+    // Game-defined scripts shadow runtime functions with the same name.
+    // Only pass runtime calls (names not defined in _init.ts) to the prefix emitter.
+    let runtime_calls: BTreeSet<String> = calls
+        .iter()
+        .filter(|n| !free_func_names.contains(n.as_str()))
+        .cloned()
+        .collect();
     let mut stateful_names = BTreeSet::new();
     emit_function_imports_with_prefix(
-        &calls,
+        &runtime_calls,
         &mut out,
         func_prefix,
         runtime_config,
         &mut stateful_names,
     );
-    // Game-defined scripts shadow runtime functions with the same name.
     stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
     emit_free_function_imports(&calls, free_func_names, depth, &mut out);
     if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
@@ -1185,15 +1191,21 @@ fn emit_free_functions_file(
         Some(&intrinsic_calls_free),
         &func_names_free,
     );
+    // Game-defined free functions shadow runtime functions with the same name.
+    // Only pass runtime calls (names not defined in this file) to the prefix emitter.
+    let free_runtime_calls: BTreeSet<String> = calls
+        .iter()
+        .filter(|n| !free_func_names.contains(n.as_str()))
+        .cloned()
+        .collect();
     let mut free_stateful_names = BTreeSet::new();
     emit_function_imports_with_prefix(
-        &calls,
+        &free_runtime_calls,
         &mut out,
         "..",
         runtime_config,
         &mut free_stateful_names,
     );
-    // Game-defined free functions shadow runtime functions with the same name.
     // Remove any runtime stateful entry that the game overrides — inside each
     // function body the `const { name } = _rt` destructuring would shadow the
     // game's version and break call sites that pass `(_rt, self, ...)`.
