@@ -408,7 +408,7 @@ impl FunctionBuilder {
     // Arithmetic (emit typed builtin calls)
     // ========================================================================
 
-    /// Select the `builtin.*` suffix for a given type.
+    /// Select the type suffix for a given type.
     /// Unknown/variable types use the "any" suffix, which maps to an untyped
     /// operator in the backend (no signature constraints are emitted).
     fn builtin_type_suffix(ty: &Type) -> &'static str {
@@ -422,40 +422,40 @@ impl FunctionBuilder {
     }
 
     /// Emit a binary arithmetic builtin call, deriving the builtin name from
-    /// the type of the first operand (e.g. `Float(64)` → `"builtin.add_f64"`).
+    /// the type of the first operand (e.g. `Float(64)` → `"add_f64"`).
     pub fn add(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        let name = format!("builtin.add_{}", Self::builtin_type_suffix(&ty));
+        let name = format!("add_{}", Self::builtin_type_suffix(&ty));
         self.call_named(&name, &[a, b], ty)
     }
 
     pub fn sub(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        let name = format!("builtin.sub_{}", Self::builtin_type_suffix(&ty));
+        let name = format!("sub_{}", Self::builtin_type_suffix(&ty));
         self.call_named(&name, &[a, b], ty)
     }
 
     pub fn mul(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        let name = format!("builtin.mul_{}", Self::builtin_type_suffix(&ty));
+        let name = format!("mul_{}", Self::builtin_type_suffix(&ty));
         self.call_named(&name, &[a, b], ty)
     }
 
     pub fn div(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        let name = format!("builtin.div_{}", Self::builtin_type_suffix(&ty));
+        let name = format!("div_{}", Self::builtin_type_suffix(&ty));
         self.call_named(&name, &[a, b], ty)
     }
 
     pub fn rem(&mut self, a: ValueId, b: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        let name = format!("builtin.rem_{}", Self::builtin_type_suffix(&ty));
+        let name = format!("rem_{}", Self::builtin_type_suffix(&ty));
         self.call_named(&name, &[a, b], ty)
     }
 
     pub fn neg(&mut self, a: ValueId) -> ValueId {
         let ty = self.value_type(a);
-        let name = format!("builtin.neg_{}", Self::builtin_type_suffix(&ty));
+        let name = format!("neg_{}", Self::builtin_type_suffix(&ty));
         self.call_named(&name, &[a], ty)
     }
 
@@ -478,7 +478,7 @@ impl FunctionBuilder {
         } else {
             (a, b)
         };
-        let name = format!("builtin.{op}_i32");
+        let name = format!("{op}_i32");
         let r = self.call_named(&name, &[ai, bi], Type::Int(32));
         if needs_coerce {
             self.coerce(r, ty)
@@ -498,7 +498,7 @@ impl FunctionBuilder {
         } else {
             a
         };
-        let name = format!("builtin.{op}_i32");
+        let name = format!("{op}_i32");
         let r = self.call_named(&name, &[ai], Type::Int(32));
         if needs_coerce {
             self.coerce(r, ty)
@@ -540,15 +540,15 @@ impl FunctionBuilder {
     }
 
     pub fn not(&mut self, a: ValueId) -> ValueId {
-        self.call_named("builtin.not_bool", &[a], Type::Bool)
+        self.call_named("not_bool", &[a], Type::Bool)
     }
 
     pub fn bool_and(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.call_named("builtin.and_bool", &[a, b], Type::Bool)
+        self.call_named("and_bool", &[a, b], Type::Bool)
     }
 
     pub fn bool_or(&mut self, a: ValueId, b: ValueId) -> ValueId {
-        self.call_named("builtin.or_bool", &[a, b], Type::Bool)
+        self.call_named("or_bool", &[a, b], Type::Bool)
     }
 
     // ========================================================================

@@ -319,9 +319,9 @@ fn lower_field(object: &Expr, field: &str, ctx: &LowerCtx) -> JsExpr {
 
 /// Lower a Call expression, handling dotted paths and free function calls.
 fn lower_call(fname: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
-    // Builtin operator expansion — intercept before dotted-path handling.
-    if let Some(op_name) = fname.strip_prefix("builtin.") {
-        return lower_builtin(op_name, args, ctx);
+    // Core builtin operator expansion — try direct name dispatch first.
+    if let Some(expr) = lower_builtin_opt(fname, args, ctx) {
+        return expr;
     }
 
     // Dotted name (e.g. Math.max) → global function call.
@@ -413,34 +413,35 @@ fn method_call(
     }
 }
 
-/// Expand a `builtin.{op_name}` call into the appropriate `JsExpr`.
-fn lower_builtin(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
+/// Try to expand a core builtin name into the appropriate `JsExpr`.
+/// Returns `None` if the name is not a known core builtin.
+fn lower_builtin_opt(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> Option<JsExpr> {
     match op_name {
         // --- Arithmetic binary ---
         "add_f64" | "add_f32" | "add_i32" | "add_i64" | "concat_str" => {
-            bin_op(BinOp::Add, args, ctx)
+            Some(bin_op(BinOp::Add, args, ctx))
         }
-        "sub_f64" | "sub_f32" | "sub_i32" | "sub_i64" => bin_op(BinOp::Sub, args, ctx),
-        "mul_f64" | "mul_f32" | "mul_i32" | "mul_i64" => bin_op(BinOp::Mul, args, ctx),
-        "div_f64" | "div_f32" | "div_i32" | "div_i64" => bin_op(BinOp::Div, args, ctx),
-        "rem_f64" | "rem_f32" | "rem_i32" | "rem_i64" => bin_op(BinOp::Rem, args, ctx),
+        "sub_f64" | "sub_f32" | "sub_i32" | "sub_i64" => Some(bin_op(BinOp::Sub, args, ctx)),
+        "mul_f64" | "mul_f32" | "mul_i32" | "mul_i64" => Some(bin_op(BinOp::Mul, args, ctx)),
+        "div_f64" | "div_f32" | "div_i32" | "div_i64" => Some(bin_op(BinOp::Div, args, ctx)),
+        "rem_f64" | "rem_f32" | "rem_i32" | "rem_i64" => Some(bin_op(BinOp::Rem, args, ctx)),
 
         // --- Bitwise binary ---
-        "shl_i32" => bin_op(BinOp::Shl, args, ctx),
-        "shr_i32" => bin_op(BinOp::Shr, args, ctx),
-        "bitand_i32" => bin_op(BinOp::BitAnd, args, ctx),
-        "bitor_i32" => bin_op(BinOp::BitOr, args, ctx),
-        "bitxor_i32" => bin_op(BinOp::BitXor, args, ctx),
+        "shl_i32" => Some(bin_op(BinOp::Shl, args, ctx)),
+        "shr_i32" => Some(bin_op(BinOp::Shr, args, ctx)),
+        "bitand_i32" => Some(bin_op(BinOp::BitAnd, args, ctx)),
+        "bitor_i32" => Some(bin_op(BinOp::BitOr, args, ctx)),
+        "bitxor_i32" => Some(bin_op(BinOp::BitXor, args, ctx)),
 
         // --- Unary ops ---
-        "neg_f64" | "neg_f32" | "neg_i32" | "neg_i64" => unary_op(UnaryOp::Neg, args, ctx),
-        "bitnot_i32" => unary_op(UnaryOp::BitNot, args, ctx),
+        "neg_f64" | "neg_f32" | "neg_i32" | "neg_i64" => Some(unary_op(UnaryOp::Neg, args, ctx)),
+        "bitnot_i32" => Some(unary_op(UnaryOp::BitNot, args, ctx)),
 
         // --- Boolean NOT ---
-        "not_bool" => JsExpr::Not(Box::new(lower_expr(&args[0], ctx))),
+        "not_bool" => Some(JsExpr::Not(Box::new(lower_expr(&args[0], ctx)))),
 
         // --- Bitwise bool workarounds (TS2447) ---
-        "bitand_bool_i32" => JsExpr::Binary {
+        "bitand_bool_i32" => Some(JsExpr::Binary {
             op: BinOp::BitAnd,
             lhs: Box::new(JsExpr::Cast {
                 expr: Box::new(lower_expr(&args[0], ctx)),
@@ -452,8 +453,8 @@ fn lower_builtin(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
                 ty: Type::Float(64),
                 kind: CastKind::Coerce,
             }),
-        },
-        "bitor_bool_i32" => JsExpr::Binary {
+        }),
+        "bitor_bool_i32" => Some(JsExpr::Binary {
             op: BinOp::BitOr,
             lhs: Box::new(JsExpr::Cast {
                 expr: Box::new(lower_expr(&args[0], ctx)),
@@ -465,72 +466,69 @@ fn lower_builtin(op_name: &str, args: &[Expr], ctx: &LowerCtx) -> JsExpr {
                 ty: Type::Float(64),
                 kind: CastKind::Coerce,
             }),
-        },
-        "bitxor_bool_i32" => JsExpr::Cmp {
+        }),
+        "bitxor_bool_i32" => Some(JsExpr::Cmp {
             kind: CmpKind::Ne,
             lhs: Box::new(lower_expr(&args[0], ctx)),
             rhs: Box::new(lower_expr(&args[1], ctx)),
-        },
+        }),
 
         // --- Math 1-arg ---
-        "sin_f64" => math_call_1("sin", args, ctx),
-        "cos_f64" => math_call_1("cos", args, ctx),
-        "tan_f64" => math_call_1("tan", args, ctx),
-        "asin_f64" => math_call_1("asin", args, ctx),
-        "acos_f64" => math_call_1("acos", args, ctx),
-        "atan_f64" => math_call_1("atan", args, ctx),
-        "sqrt_f64" => math_call_1("sqrt", args, ctx),
-        "exp_f64" => math_call_1("exp", args, ctx),
-        "ln_f64" => math_call_1("log", args, ctx),
-        "log2_f64" => math_call_1("log2", args, ctx),
-        "log10_f64" => math_call_1("log10", args, ctx),
-        "abs_f64" => math_call_1("abs", args, ctx),
-        "floor_f64" => math_call_1("floor", args, ctx),
-        "ceil_f64" => math_call_1("ceil", args, ctx),
-        "round_f64" => math_call_1("round", args, ctx),
-        "trunc_f64" => math_call_1("trunc", args, ctx),
-        "sign_f64" => math_call_1("sign", args, ctx),
+        "sin_f64" => Some(math_call_1("sin", args, ctx)),
+        "cos_f64" => Some(math_call_1("cos", args, ctx)),
+        "tan_f64" => Some(math_call_1("tan", args, ctx)),
+        "asin_f64" => Some(math_call_1("asin", args, ctx)),
+        "acos_f64" => Some(math_call_1("acos", args, ctx)),
+        "atan_f64" => Some(math_call_1("atan", args, ctx)),
+        "sqrt_f64" => Some(math_call_1("sqrt", args, ctx)),
+        "exp_f64" => Some(math_call_1("exp", args, ctx)),
+        "ln_f64" => Some(math_call_1("log", args, ctx)),
+        "log2_f64" => Some(math_call_1("log2", args, ctx)),
+        "log10_f64" => Some(math_call_1("log10", args, ctx)),
+        "abs_f64" => Some(math_call_1("abs", args, ctx)),
+        "floor_f64" => Some(math_call_1("floor", args, ctx)),
+        "ceil_f64" => Some(math_call_1("ceil", args, ctx)),
+        "round_f64" => Some(math_call_1("round", args, ctx)),
+        "trunc_f64" => Some(math_call_1("trunc", args, ctx)),
+        "sign_f64" => Some(math_call_1("sign", args, ctx)),
 
         // --- Math 2-arg ---
-        "atan2_f64" => math_call_2("atan2", args, ctx),
-        "pow_f64" => math_call_2("pow", args, ctx),
-        "hypot_f64" => math_call_2("hypot", args, ctx),
-        "min_f64" => math_call_2("min", args, ctx),
-        "max_f64" => math_call_2("max", args, ctx),
+        "atan2_f64" => Some(math_call_2("atan2", args, ctx)),
+        "pow_f64" => Some(math_call_2("pow", args, ctx)),
+        "hypot_f64" => Some(math_call_2("hypot", args, ctx)),
+        "min_f64" => Some(math_call_2("min", args, ctx)),
+        "max_f64" => Some(math_call_2("max", args, ctx)),
 
         // --- String operations ---
-        "string_length_str" => JsExpr::Field {
+        "string_length_str" => Some(JsExpr::Field {
             object: Box::new(lower_expr(&args[0], ctx)),
             field: "length".to_string(),
-        },
-        "string_upper_str" => method_call(0, "toUpperCase", &[], args, ctx),
-        "string_lower_str" => method_call(0, "toLowerCase", &[], args, ctx),
-        "string_char_at_str" => method_call(0, "charAt", &[1], args, ctx),
-        "string_index_of_str" => method_call(1, "indexOf", &[0], args, ctx),
-        "string_slice_str" => method_call(0, "slice", &[1, 2], args, ctx),
-        "string_split_str" => method_call(0, "split", &[1], args, ctx),
-        "string_char_code_at_str" => method_call(0, "charCodeAt", &[1], args, ctx),
-        "string_repeat_str" => method_call(0, "repeat", &[1], args, ctx),
-        "string_replace_first_str" => method_call(0, "replace", &[1, 2], args, ctx),
-        "string_trim_str" => method_call(0, "trim", &[], args, ctx),
+        }),
+        "string_upper_str" => Some(method_call(0, "toUpperCase", &[], args, ctx)),
+        "string_lower_str" => Some(method_call(0, "toLowerCase", &[], args, ctx)),
+        "string_char_at_str" => Some(method_call(0, "charAt", &[1], args, ctx)),
+        "string_index_of_str" => Some(method_call(1, "indexOf", &[0], args, ctx)),
+        "string_slice_str" => Some(method_call(0, "slice", &[1, 2], args, ctx)),
+        "string_split_str" => Some(method_call(0, "split", &[1], args, ctx)),
+        "string_char_code_at_str" => Some(method_call(0, "charCodeAt", &[1], args, ctx)),
+        "string_repeat_str" => Some(method_call(0, "repeat", &[1], args, ctx)),
+        "string_replace_first_str" => Some(method_call(0, "replace", &[1, 2], args, ctx)),
+        "string_trim_str" => Some(method_call(0, "trim", &[], args, ctx)),
 
         // --- Array operations ---
-        "array_length_arr" => JsExpr::Field {
+        "array_length_arr" => Some(JsExpr::Field {
             object: Box::new(lower_expr(&args[0], ctx)),
             field: "length".to_string(),
-        },
-        "array_contains_arr" => method_call(0, "includes", &[1], args, ctx),
+        }),
+        "array_contains_arr" => Some(method_call(0, "includes", &[1], args, ctx)),
 
         // --- Other ---
-        "chr_f64" => JsExpr::Call {
+        "chr_f64" => Some(JsExpr::Call {
             callee: Box::new(build_dotted_path("String.fromCharCode")),
             args: vec![lower_expr(&args[0], ctx)],
-        },
+        }),
 
-        // --- Fallback: unknown builtin ---
-        _ => JsExpr::Call {
-            callee: Box::new(build_dotted_path(&format!("builtin.{op_name}"))),
-            args: lower_exprs(args, ctx),
-        },
+        // --- Not a core builtin ---
+        _ => None,
     }
 }

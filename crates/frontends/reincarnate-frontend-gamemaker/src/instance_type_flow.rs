@@ -64,12 +64,12 @@ impl Transform for GmlInstanceTypeFlow {
             .map(|(name, &id)| (name.clone(), id))
             .collect();
 
-        // Collect FuncIds for instance-create functions and builtin.not_bool.
+        // Collect FuncIds for instance-create functions and not_bool.
         let instance_create_fids: HashSet<FuncId> = INSTANCE_CREATE_FUNCS
             .iter()
             .filter_map(|name| module.runtime_registry.get(*name).copied())
             .collect();
-        let not_bool_fid: Option<FuncId> = module.runtime_registry.get("builtin.not_bool").copied();
+        let not_bool_fid: Option<FuncId> = module.runtime_registry.get("not_bool").copied();
 
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
@@ -206,7 +206,7 @@ impl GmlInstanceTypeFlow {
                 func.insts[inst_id].op = type_check_op;
                 func.insts[inst_id].result = Some(typecheck_vid);
 
-                let not_bool = not_bool_fid.expect("builtin.not_bool must be registered");
+                let not_bool = not_bool_fid.expect("not_bool must be registered");
                 let not_inst_id = func.insts.push(Inst {
                     op: Op::Call {
                         func: not_bool,

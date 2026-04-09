@@ -241,9 +241,9 @@ pub fn lower_function_linear(
 
 /// Whether an instruction is pure enough to defer for inlining.
 fn is_deferrable(op: &Op, pure_fids: &std::collections::HashSet<crate::ir::func::FuncId>) -> bool {
-    // Builtin arithmetic/logic calls are pure — they map to native operators
+    // Core builtin arithmetic/logic calls are pure — they map to native operators
     // in the backend and carry no side effects.  The caller provides the set
-    // of pure FuncIds (registry entries whose names start with "builtin.").
+    // of pure FuncIds (from `Module::core_builtin_fids`).
     if let Op::Call { func: fid, .. } = op {
         if pure_fids.contains(fid) {
             return true;

@@ -659,10 +659,10 @@ impl<'a> EmitCtx<'a> {
                     .unwrap_or("<unknown>");
                 // Typed arithmetic / logic builtins are emitted as native
                 // target-language operators rather than function calls.
-                // Recognised by the "builtin." prefix; the suffix encodes the
-                // operation name (e.g. "builtin.add_f64", "builtin.not_bool").
-                if let Some(builtin_op) = fname.strip_prefix("builtin.") {
-                    self.build_builtin_expr(builtin_op, args)
+                // Recognised by membership in `pure_fids` (the set of core
+                // builtin FuncIds registered by `register_core_builtins`).
+                if self.config.pure_fids.contains(callee_fid) {
+                    self.build_builtin_expr(fname, args)
                 } else if let Some((system, method)) = self.config.intrinsic_calls.get(fname) {
                     // Intrinsic call: lower to Expr::SystemCall so that all
                     // existing engine-specific backend rewrite passes work unchanged.
@@ -836,9 +836,9 @@ impl<'a> EmitCtx<'a> {
         })
     }
 
-    /// Map a `builtin.*` name to a target-language expression.
+    /// Map a core builtin name to a target-language expression.
     ///
-    /// The `op_name` argument is the part after `"builtin."` (e.g. `"add_f64"`
+    /// The `op_name` argument is the full builtin name (e.g. `"add_f64"`
     /// or `"not_bool"`).  Every match arm uses the full op name including the
     /// type suffix — no suffix stripping.  Binary ops take exactly 2 args;
     /// unary ops take 1.
@@ -868,6 +868,7 @@ impl<'a> EmitCtx<'a> {
         // For bitwise ops, check if either operand is Bool and encode that
         // in the op name so the backend can apply the TS2447 workaround
         // without needing IR access.
+        // TODO(Law 2): bitand_bool_i32 re-encoding is TS2447-specific — move to TS backend.
         let effective_name = match op_name {
             "bitand_i32" | "bitor_i32" | "bitxor_i32"
                 if matches!(self.func.value_types[args[0]], Type::Bool)
@@ -884,7 +885,7 @@ impl<'a> EmitCtx<'a> {
         };
 
         Expr::Call {
-            func: format!("builtin.{effective_name}"),
+            func: effective_name.to_string(),
             args: args.iter().map(|&a| self.build_val(a)).collect(),
         }
     }
@@ -918,7 +919,7 @@ impl<'a> EmitCtx<'a> {
                     rhs: Box::new(self.build_val(b)),
                 };
             }
-            // `builtin.not_bool(x)` is boolean NOT — unwrap the inner value
+            // `not_bool(x)` is boolean NOT — unwrap the inner value
             // instead of double-negating.
             if let Op::Call { func: fid, args } = &self.func.insts[inst_id].op {
                 let fname = self
@@ -927,7 +928,7 @@ impl<'a> EmitCtx<'a> {
                     .get(fid)
                     .map(|s| s.as_str())
                     .unwrap_or("");
-                if fname == "builtin.not_bool" && args.len() == 1 {
+                if fname == "not_bool" && args.len() == 1 {
                     let inner = args[0];
                     self.pending_lazy.remove(&cond);
                     return self.build_val(inner);

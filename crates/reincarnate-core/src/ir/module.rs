@@ -431,12 +431,20 @@ pub struct Module {
     /// empty stub body) so the constraint collector sees them automatically
     /// when it iterates `module.functions`.
     ///
-    /// The linear emitter recognises the `"builtin."` prefix and maps each
-    /// name to its target-language operator instead of emitting a function call.
+    /// The linear emitter dispatches on exact name membership to map each
+    /// core builtin to its target-language operator instead of emitting a
+    /// function call.
     ///
     /// Not serialised — rebuilt by the frontend on every run.
     #[serde(skip)]
     pub runtime_registry: HashMap<String, FuncId>,
+    /// Set of `FuncId`s for core builtins registered by [`Module::register_core_builtins`].
+    ///
+    /// Used by transforms and backends to identify pure, side-effect-free
+    /// arithmetic/logic/math functions without relying on a name prefix.
+    /// Not serialised — rebuilt by `register_core_builtins` on every run.
+    #[serde(skip)]
+    pub core_builtin_fids: HashSet<FuncId>,
     /// Room creation code: maps room index → function name.
     /// Populated by frontends so the scaffold can wire up per-room init functions.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -796,6 +804,7 @@ impl Module {
             external_type_defs: BTreeMap::new(),
             external_function_sigs: BTreeMap::new(),
             runtime_registry: HashMap::new(),
+            core_builtin_fids: HashSet::new(),
             room_creation_code: BTreeMap::new(),
             initial_room_name: None,
             sprite_names: Vec::new(),
@@ -818,8 +827,8 @@ impl Module {
 
     /// Register core arithmetic, bitwise, boolean, and string builtins that
     /// all frontends share.  These stubs give the constraint collector proper
-    /// typed signatures; the linear emitter lowers `"builtin."` calls to native
-    /// target-language operators rather than emitting actual function calls.
+    /// typed signatures; the linear emitter dispatches on exact name membership
+    /// to lower each call to a native target-language operator.
     fn register_core_builtins(&mut self) {
         // Helper: binary sig (ty, ty) -> ty.
         let bin = |ty: Type| FunctionSig {
@@ -844,174 +853,198 @@ impl Module {
         for op in &["add", "sub", "mul", "div", "rem"] {
             for ty in &scalar_types {
                 let suffix = type_suffix(ty);
-                self.register_runtime(format!("builtin.{op}_{suffix}"), bin(ty.clone()));
+                let fid = self.register_runtime(format!("{op}_{suffix}"), bin(ty.clone()));
+                self.core_builtin_fids.insert(fid);
             }
         }
         // String concatenation
-        self.register_runtime("builtin.concat_str", bin(Type::String));
+        let fid = self.register_runtime("concat_str", bin(Type::String));
+        self.core_builtin_fids.insert(fid);
 
         // Negation: neg — f64, f32, i32, i64
         for ty in &scalar_types {
             let suffix = type_suffix(ty);
-            self.register_runtime(format!("builtin.neg_{suffix}"), un(ty.clone()));
+            let fid = self.register_runtime(format!("neg_{suffix}"), un(ty.clone()));
+            self.core_builtin_fids.insert(fid);
         }
 
         // Boolean
-        self.register_runtime("builtin.not_bool", un(Type::Bool));
-        self.register_runtime("builtin.and_bool", bin(Type::Bool));
-        self.register_runtime("builtin.or_bool", bin(Type::Bool));
+        let fid = self.register_runtime("not_bool", un(Type::Bool));
+        self.core_builtin_fids.insert(fid);
+        let fid = self.register_runtime("and_bool", bin(Type::Bool));
+        self.core_builtin_fids.insert(fid);
+        let fid = self.register_runtime("or_bool", bin(Type::Bool));
+        self.core_builtin_fids.insert(fid);
 
         // Bitwise: bitand, bitor, bitxor, shl, shr — i32 only.
         // Float(64) operands are a GML-specific behaviour (bitwise on Reals via
         // implicit ToInt32 coercion).  The GML frontend coerces Float(64) → Int(32)
         // before emitting these ops and coerces the Int(32) result back to Float(64).
         for op in &["bitand", "bitor", "bitxor", "shl", "shr"] {
-            self.register_runtime(format!("builtin.{op}_i32"), bin(Type::Int(32)));
+            let fid = self.register_runtime(format!("{op}_i32"), bin(Type::Int(32)));
+            self.core_builtin_fids.insert(fid);
         }
 
         // Bitwise NOT — i32 only (same rationale as above).
-        self.register_runtime("builtin.bitnot_i32", un(Type::Int(32)));
+        let fid = self.register_runtime("bitnot_i32", un(Type::Int(32)));
+        self.core_builtin_fids.insert(fid);
 
         // Math: single-argument f64 → f64.
         for op in &[
             "sin", "cos", "tan", "asin", "acos", "atan", "sqrt", "exp", "ln", "log2", "log10",
             "abs", "floor", "ceil", "round", "trunc", "sign",
         ] {
-            self.register_runtime(format!("builtin.{op}_f64"), un(Type::Float(64)));
+            let fid = self.register_runtime(format!("{op}_f64"), un(Type::Float(64)));
+            self.core_builtin_fids.insert(fid);
         }
 
         // Math: two-argument (f64, f64) → f64.
         for op in &["atan2", "pow", "hypot", "min", "max"] {
-            self.register_runtime(format!("builtin.{op}_f64"), bin(Type::Float(64)));
+            let fid = self.register_runtime(format!("{op}_f64"), bin(Type::Float(64)));
+            self.core_builtin_fids.insert(fid);
         }
 
         // String operations.
-        self.register_runtime(
-            "builtin.string_length_str",
+        let fid = self.register_runtime(
+            "string_length_str",
             FunctionSig {
                 params: vec![Type::String],
                 return_ty: Type::Float(64),
                 ..Default::default()
             },
         );
-        self.register_runtime(
-            "builtin.string_upper_str",
+        self.core_builtin_fids.insert(fid);
+        let fid = self.register_runtime(
+            "string_upper_str",
             FunctionSig {
                 params: vec![Type::String],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
-        self.register_runtime(
-            "builtin.string_lower_str",
+        self.core_builtin_fids.insert(fid);
+        let fid = self.register_runtime(
+            "string_lower_str",
             FunctionSig {
                 params: vec![Type::String],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_char_at: (String, Float(64)) -> String  [s, 1-based-index]
-        self.register_runtime(
-            "builtin.string_char_at_str",
+        let fid = self.register_runtime(
+            "string_char_at_str",
             FunctionSig {
                 params: vec![Type::String, Type::Float(64)],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_index_of: (String, String) -> Float(64)  [needle, haystack]
-        self.register_runtime(
-            "builtin.string_index_of_str",
+        let fid = self.register_runtime(
+            "string_index_of_str",
             FunctionSig {
                 params: vec![Type::String, Type::String],
                 return_ty: Type::Float(64),
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_slice: (String, Float(64), Float(64)) -> String  [s, start, end] 0-based JS slice
-        self.register_runtime(
-            "builtin.string_slice_str",
+        let fid = self.register_runtime(
+            "string_slice_str",
             FunctionSig {
                 params: vec![Type::String, Type::Float(64), Type::Float(64)],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_split: (String, String) -> Array(String)  [s, sep]
-        self.register_runtime(
-            "builtin.string_split_str",
+        let fid = self.register_runtime(
+            "string_split_str",
             FunctionSig {
                 params: vec![Type::String, Type::String],
                 return_ty: Type::Array(Box::new(Type::String)),
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_char_code_at: (String, Float(64)) -> Float(64)  [s, 0-based-index]
-        self.register_runtime(
-            "builtin.string_char_code_at_str",
+        let fid = self.register_runtime(
+            "string_char_code_at_str",
             FunctionSig {
                 params: vec![Type::String, Type::Float(64)],
                 return_ty: Type::Float(64),
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // chr: (Float(64)) -> String  — emit as String.fromCharCode(n)
-        self.register_runtime(
-            "builtin.chr_f64",
+        let fid = self.register_runtime(
+            "chr_f64",
             FunctionSig {
                 params: vec![Type::Float(64)],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_repeat: (String, Float(64)) -> String
-        self.register_runtime(
-            "builtin.string_repeat_str",
+        let fid = self.register_runtime(
+            "string_repeat_str",
             FunctionSig {
                 params: vec![Type::String, Type::Float(64)],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_replace_first: (String, String, String) -> String  [s, find, replace]
-        self.register_runtime(
-            "builtin.string_replace_first_str",
+        let fid = self.register_runtime(
+            "string_replace_first_str",
             FunctionSig {
                 params: vec![Type::String, Type::String, Type::String],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // string_trim: (String) -> String
-        self.register_runtime(
-            "builtin.string_trim_str",
+        let fid = self.register_runtime(
+            "string_trim_str",
             FunctionSig {
                 params: vec![Type::String],
                 return_ty: Type::String,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // array_length: (Array(Unknown)) -> Float(64)
-        self.register_runtime(
-            "builtin.array_length_arr",
+        let fid = self.register_runtime(
+            "array_length_arr",
             FunctionSig {
                 params: vec![Type::Array(Box::new(Type::Unknown))],
                 return_ty: Type::Float(64),
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
         // array_contains: (Array(Unknown), Unknown) -> Bool
-        self.register_runtime(
-            "builtin.array_contains_arr",
+        let fid = self.register_runtime(
+            "array_contains_arr",
             FunctionSig {
                 params: vec![Type::Array(Box::new(Type::Unknown)), Type::Unknown],
                 return_ty: Type::Bool,
                 ..Default::default()
             },
         );
+        self.core_builtin_fids.insert(fid);
     }
 
-    /// Register a runtime/builtin function (e.g. `"builtin.add_f64"`).
+    /// Register a runtime/builtin function (e.g. `"add_f64"`).
     ///
     /// Creates a stub `Function` with the given name and signature and an
     /// empty entry block (`Terminator::Return(None)`), pushes it into
@@ -1024,8 +1057,9 @@ impl Module {
     /// automatically when it iterates `module.functions` — no separate chain
     /// is needed.
     ///
-    /// The linear emitter recognises the `"builtin."` prefix and emits the
-    /// corresponding target-language operator rather than a function call.
+    /// The linear emitter dispatches on exact name membership (via
+    /// `core_builtin_fids`) to emit the corresponding target-language operator
+    /// rather than a function call.
     pub fn register_runtime(&mut self, name: impl Into<String>, sig: FunctionSig) -> FuncId {
         let name = name.into();
         let entry_block = Block {
@@ -1116,7 +1150,7 @@ impl Module {
 /// Return the short suffix string used in builtin names for a given type.
 ///
 /// Used by [`Module::register_core_builtins`] to build names like
-/// `"builtin.add_f64"` or `"builtin.bitand_i32"`.
+/// `"add_f64"` or `"bitand_i32"`.
 ///
 /// # Panics
 /// Panics if `ty` is not one of the scalar types used by core builtins.

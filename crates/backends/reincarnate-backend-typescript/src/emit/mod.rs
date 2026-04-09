@@ -100,18 +100,12 @@ pub(crate) fn lowering_config_for_engine<'a>(
             None
         };
 
-    // Build pure_fids set from runtime_registry entries whose names start with
-    // "builtin." — these map to native operators and have no side effects.
+    // Build pure_fids set from core_builtin_fids — these map to native operators
+    // and have no side effects.
     // Only when we have the module AND the set isn't already populated.
     let module_pure_fids: Option<std::collections::HashSet<FuncId>> = if config.pure_fids.is_empty()
     {
-        module.map(|m| {
-            m.runtime_registry
-                .iter()
-                .filter(|(name, _)| name.starts_with("builtin."))
-                .map(|(_, &fid)| fid)
-                .collect()
-        })
+        module.map(|m| m.core_builtin_fids.clone())
     } else {
         None
     };

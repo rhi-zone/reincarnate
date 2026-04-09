@@ -2635,7 +2635,7 @@ mod tests {
         let not_fids: std::collections::HashSet<crate::ir::func::FuncId> = core_mod
             .runtime_registry
             .iter()
-            .filter(|(name, _)| name.starts_with("builtin.not"))
+            .filter(|(name, _)| name.starts_with("not_"))
             .map(|(_, &fid)| fid)
             .collect();
         let shape = structurize_with_not_fids(&mut func, not_fids);

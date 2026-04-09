@@ -839,21 +839,21 @@ fn test_arithmetic_add_sub_mul() {
         .iter()
         .filter(|op| {
             matches!(op, Op::Call { func: f, .. }
-                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("builtin.add")))
+                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("add_")))
         })
         .count();
     let sub_count = ops
         .iter()
         .filter(|op| {
             matches!(op, Op::Call { func: f, .. }
-                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("builtin.sub")))
+                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("sub_")))
         })
         .count();
     let mul_count = ops
         .iter()
         .filter(|op| {
             matches!(op, Op::Call { func: f, .. }
-                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("builtin.mul")))
+                if CORE_MODULE.functions.get(*f).is_some_and(|fn_| fn_.name.starts_with("mul_")))
         })
         .count();
     assert_eq!(add_count, 3, "expected 3 add builtin calls; ops: {ops:?}");

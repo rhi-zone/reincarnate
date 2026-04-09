@@ -567,7 +567,7 @@ fn ensure_gml_object_struct(mb: &mut ModuleBuilder) {
 
 /// Register typed arithmetic and logic builtins on the module.
 ///
-/// The GML frontend emits `Op::Call { func: "builtin.add_f64", ... }` etc.
+/// The GML frontend emits `Op::Call { func: "add_f64", ... }` etc.
 /// Translate scripts from SCPT chunk.
 #[allow(clippy::too_many_arguments)]
 fn translate_scripts(
@@ -1492,7 +1492,7 @@ pub(crate) fn register_gml_syscall_intrinsics(module: &mut Module) {
 
 /// Return the short suffix string used in builtin names for a given type.
 ///
-/// Used to build names like `"builtin.add_f64"` or `"builtin.neg_i32"`.
+/// Used to build names like `"add_f64"` or `"neg_i32"`.
 ///
 /// # Panics
 /// Panics if `ty` is not one of the scalar types used by arithmetic builtins.
@@ -1516,7 +1516,7 @@ fn type_suffix(ty: &Type) -> &'static str {
 /// appropriately-typed variant (`_f64`, `_f32`, `_i32`, `_i64`) once HM
 /// inference has resolved the operand types.
 ///
-/// The typed variants (`builtin.add_f64`, etc.) must already be present in
+/// The typed variants (`add_f64`, etc.) must already be present in
 /// `module.runtime_registry` — i.e., this must be called after `Module::new()`
 /// (which calls `register_core_builtins()`).
 fn register_arithmetic_any_builtins(module: &mut Module) {
@@ -1543,15 +1543,15 @@ fn register_arithmetic_any_builtins(module: &mut Module) {
             .iter()
             .map(|ty| {
                 let suffix = type_suffix(ty);
-                let fid = module.runtime_registry[&format!("builtin.{op}_{suffix}")];
+                let fid = module.runtime_registry[&format!("{op}_{suffix}")];
                 (vec![ty.clone(), ty.clone()], fid)
             })
             .collect();
         if *op == "add" {
-            let concat_id = module.runtime_registry["builtin.concat_str"];
+            let concat_id = module.runtime_registry["concat_str"];
             specs.insert(vec![Type::String, Type::String], concat_id);
         }
-        let func_name = format!("builtin.{op}_any");
+        let func_name = format!("{op}_any");
 
         // Register the stub with Unknown sig.
         let any_id = module.register_runtime(&func_name, bin_any.clone());
@@ -1582,11 +1582,11 @@ fn register_arithmetic_any_builtins(module: &mut Module) {
             .iter()
             .map(|ty| {
                 let suffix = type_suffix(ty);
-                let fid = module.runtime_registry[&format!("builtin.neg_{suffix}")];
+                let fid = module.runtime_registry[&format!("neg_{suffix}")];
                 (vec![ty.clone()], fid)
             })
             .collect();
-        let func_name = "builtin.neg_any";
+        let func_name = "neg_any";
 
         // Register the stub with Unknown sig.
         let any_id = module.register_runtime(func_name, un_any.clone());
@@ -1635,9 +1635,9 @@ fn build_binary_any_dispatch(
     for ty in dispatch_types.iter().rev() {
         let suffix = type_suffix(ty);
         let variant_name = if *ty == Type::String {
-            "builtin.concat_str".to_string()
+            "concat_str".to_string()
         } else {
-            format!("builtin.{op}_{suffix}")
+            format!("{op}_{suffix}")
         };
 
         // Create blocks for this type's dispatch.
@@ -1696,7 +1696,7 @@ fn build_unary_any_dispatch(
     // Build in reverse.
     for ty in dispatch_types.iter().rev() {
         let suffix = type_suffix(ty);
-        let variant_name = format!("builtin.neg_{suffix}");
+        let variant_name = format!("neg_{suffix}");
 
         let call_block = fb.create_block();
         let check_block = fb.create_block();

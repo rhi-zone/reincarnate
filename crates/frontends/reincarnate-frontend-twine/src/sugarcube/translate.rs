@@ -1008,9 +1008,7 @@ impl TranslateCtx {
             if !text.is_empty() {
                 let s = self.fb.const_string(text);
                 result = Some(match result {
-                    Some(acc) => self
-                        .fb
-                        .call_named("builtin.concat_str", &[acc, s], Type::String),
+                    Some(acc) => self.fb.call_named("concat_str", &[acc, s], Type::String),
                     None => s,
                 });
             }
@@ -1021,10 +1019,9 @@ impl TranslateCtx {
                     self.fb
                         .system_call("SugarCube.Engine", "to_string", &[val], Type::String);
                 result = Some(match result {
-                    Some(acc) => {
-                        self.fb
-                            .call_named("builtin.concat_str", &[acc, str_val], Type::String)
-                    }
+                    Some(acc) => self
+                        .fb
+                        .call_named("concat_str", &[acc, str_val], Type::String),
                     None => str_val,
                 });
             }

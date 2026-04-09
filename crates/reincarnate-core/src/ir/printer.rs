@@ -216,14 +216,28 @@ fn fmt_op(
             func: callee_fid,
             args,
         } => {
-            // Pretty-print builtin arithmetic/logic ops with their mnemonic
-            // (e.g. `builtin.add_i64` → `add`), stripping the type suffix.
+            // Pretty-print core builtin arithmetic/logic ops with their mnemonic
+            // (e.g. `add_i64` → `add`), stripping the type suffix.
+            // Core builtins are identified via the pure_fids set; fall back to
+            // the full name for non-builtins.
             let fname = func_names.get(callee_fid).map(|s| s.as_str()).unwrap_or("");
-            if let Some(rest) = fname.strip_prefix("builtin.") {
-                let mnemonic = rest.rfind('_').map(|i| &rest[..i]).unwrap_or(rest);
-                write!(f, "{mnemonic} ")?;
-                fmt_value_list(args, f)
-            } else if fname.is_empty() {
+            let mnemonic = fname.rfind('_').map(|i| &fname[..i]);
+            // Heuristic: a name like "add_f64" has a known type suffix — use the
+            // base as the mnemonic.  Any name without an underscore is printed as-is.
+            if let Some(base) = mnemonic {
+                // Only strip suffix for names that look like core builtins
+                // (contain exactly one underscore-delimited type suffix at the end).
+                let suffix = &fname[base.len() + 1..];
+                let is_builtin_suffix = matches!(
+                    suffix,
+                    "f64" | "f32" | "i32" | "i64" | "bool" | "str" | "arr" | "any"
+                );
+                if is_builtin_suffix {
+                    write!(f, "{base} ")?;
+                    return fmt_value_list(args, f);
+                }
+            }
+            if fname.is_empty() {
                 write!(f, "call func{}(", callee_fid.index())?;
                 fmt_value_list(args, f)?;
                 write!(f, ")")

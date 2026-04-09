@@ -1,7 +1,7 @@
 //! `BuiltinOverloadSelect` transform pass.
 //!
 //! After `ConstraintSolveHM` resolves operand types, replaces `xxx_any`
-//! calls with the appropriately-typed variant (`builtin.xxx_f64`, `_f32`, `_i32`,
+//! calls with the appropriately-typed variant (`xxx_f64`, `_f32`, `_i32`,
 //! `_i64`) and updates the result's `value_types` entry to the concrete return
 //! type.
 //!
@@ -184,13 +184,13 @@ mod tests {
                 return_ty: ty.clone(),
                 ..Default::default()
             };
-            let typed_name = format!("builtin.{op_name}_{suffix}");
+            let typed_name = format!("{op_name}_{suffix}");
             let typed_fid = mb.module_mut().register_runtime(typed_name, typed_sig);
             specializations.insert(key, typed_fid);
         }
 
         // Register the `_any` stub with Unknown sig.
-        let func_name = format!("builtin.{op_name}_any");
+        let func_name = format!("{op_name}_any");
         let any_sig = FunctionSig {
             params: if is_binary {
                 vec![Type::Unknown, Type::Unknown]
@@ -244,10 +244,7 @@ mod tests {
         assert!(result.changed);
 
         let inst_id = first_call_id(&result.module, test_fid);
-        assert_eq!(
-            call_name(&result.module, test_fid, inst_id),
-            "builtin.add_f64"
-        );
+        assert_eq!(call_name(&result.module, test_fid, inst_id), "add_f64");
         let func = &result.module.functions[test_fid];
         let result_vid = func.insts[inst_id].result.unwrap();
         assert_eq!(func.value_types[result_vid], Type::Float(64));
@@ -260,10 +257,7 @@ mod tests {
         assert!(result.changed);
 
         let inst_id = first_call_id(&result.module, test_fid);
-        assert_eq!(
-            call_name(&result.module, test_fid, inst_id),
-            "builtin.neg_i32"
-        );
+        assert_eq!(call_name(&result.module, test_fid, inst_id), "neg_i32");
         let func = &result.module.functions[test_fid];
         let result_vid = func.insts[inst_id].result.unwrap();
         assert_eq!(func.value_types[result_vid], Type::Int(32));
@@ -276,10 +270,7 @@ mod tests {
         assert!(!result.changed);
 
         let inst_id = first_call_id(&result.module, test_fid);
-        assert_eq!(
-            call_name(&result.module, test_fid, inst_id),
-            "builtin.add_any"
-        );
+        assert_eq!(call_name(&result.module, test_fid, inst_id), "add_any");
     }
 
     #[test]
@@ -289,10 +280,7 @@ mod tests {
         assert!(!result.changed);
 
         let inst_id = first_call_id(&result.module, test_fid);
-        assert_eq!(
-            call_name(&result.module, test_fid, inst_id),
-            "builtin.mul_any"
-        );
+        assert_eq!(call_name(&result.module, test_fid, inst_id), "mul_any");
     }
 
     #[test]
@@ -302,10 +290,7 @@ mod tests {
         assert!(result.changed);
 
         let inst_id = first_call_id(&result.module, test_fid);
-        assert_eq!(
-            call_name(&result.module, test_fid, inst_id),
-            "builtin.sub_i64"
-        );
+        assert_eq!(call_name(&result.module, test_fid, inst_id), "sub_i64");
         let func = &result.module.functions[test_fid];
         let result_vid = func.insts[inst_id].result.unwrap();
         assert_eq!(func.value_types[result_vid], Type::Int(64));

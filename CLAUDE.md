@@ -89,6 +89,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 - No interactive git commands (`git rebase -i`, `git add -i`, `git add -p`) — stage by name
 - No DOM data attributes as state-passing mechanism
 - No `function_modules` entry without a corresponding `function_signatures` entry
+- No special-casing for builtin functions — builtins are functions with FuncIds like any other function. No `BuiltinOp` enum, no prefix-based dispatch (`starts_with("builtin.")`), no separate pipeline paths for builtins vs. game-defined functions. A builtin call emits as a function call; the runtime defines the body. Name collisions are resolved at registration time (rename the game function), not by reserving a namespace prefix.
 
 ## Crate Structure
 

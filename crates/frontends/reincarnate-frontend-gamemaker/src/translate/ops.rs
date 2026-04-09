@@ -313,7 +313,7 @@ fn translate_arithmetic_op(
         Opcode::Not => {
             let a = pop(stack, inst)?;
             // GML `!` always operates on Bool.
-            let r = fb.call_named("builtin.not_bool", &[a], Type::Bool);
+            let r = fb.call_named("not_bool", &[a], Type::Bool);
             gml_sizes.insert(r, result_units);
             stack.push(r);
         }
@@ -342,16 +342,16 @@ fn type_suffix_for(dt: DataType) -> &'static str {
 
 /// Build the full callee name for an arithmetic op and data-type suffix.
 ///
-/// All variants (typed and `_any`) use the `builtin.` prefix.  The `_any` variants
-/// have dispatch bodies but are still registered in the builtin namespace so
-/// `FunctionBuilder::add()` (which generates `"builtin.add_any"`) resolves them
-/// from the core registry.
+/// All variants (typed and `_any`) follow the `{op}_{suffix}` naming pattern.
+/// The `_any` variants have dispatch bodies and are registered in the runtime
+/// registry so `FunctionBuilder::add()` (which generates `"add_any"`) resolves
+/// them from the core registry.
 fn arith_callee(op: &str, suffix: &str) -> String {
     match (op, suffix) {
         // String "add" is concatenation, not arithmetic.
-        ("add", "str") => "builtin.concat_str".to_string(),
-        // All other variants (typed and _any) use the builtin prefix.
-        _ => format!("builtin.{op}_{suffix}"),
+        ("add", "str") => "concat_str".to_string(),
+        // All other variants (typed and _any) use op_suffix naming.
+        _ => format!("{op}_{suffix}"),
     }
 }
 
@@ -361,7 +361,7 @@ fn arith_callee(op: &str, suffix: &str) -> String {
 ///
 /// GML performs bitwise operations on Reals via implicit ToInt32 coercion:
 /// `a & b` is semantically `float((int(a)) & (int(b)))`.  The core IR only
-/// provides `builtin.<op>_i32` (integer semantics); the coercions are
+/// provides `{op}_i32` (integer semantics); the coercions are
 /// GML-specific and belong here in the frontend.
 fn emit_gml_bitwise_bin(
     fb: &mut FunctionBuilder,
@@ -376,7 +376,7 @@ fn emit_gml_bitwise_bin(
     } else {
         (a, b)
     };
-    let r_i = fb.call_named(&format!("builtin.{op}_i32"), &[a_i, b_i], Type::Int(32));
+    let r_i = fb.call_named(&format!("{op}_i32"), &[a_i, b_i], Type::Int(32));
     if needs_coerce {
         fb.coerce(r_i, Type::Float(64))
     } else {
@@ -406,7 +406,7 @@ fn translate_bitwise_cmp_op(
             let a = pop(stack, inst)?;
             // GML uses one And opcode for both `&&` (Bool operands) and `&` (Int operands).
             let r = if inst.type1 == DataType::Bool {
-                fb.call_named("builtin.and_bool", &[a, b], Type::Bool)
+                fb.call_named("and_bool", &[a, b], Type::Bool)
             } else {
                 let ret_ty = datatype_to_ir_type(inst.type1, fb);
                 emit_gml_bitwise_bin(fb, "bitand", a, b, ret_ty)
@@ -419,7 +419,7 @@ fn translate_bitwise_cmp_op(
             let a = pop(stack, inst)?;
             // GML uses one Or opcode for both `||` (Bool operands) and `|` (Int operands).
             let r = if inst.type1 == DataType::Bool {
-                fb.call_named("builtin.or_bool", &[a, b], Type::Bool)
+                fb.call_named("or_bool", &[a, b], Type::Bool)
             } else {
                 let ret_ty = datatype_to_ir_type(inst.type1, fb);
                 emit_gml_bitwise_bin(fb, "bitor", a, b, ret_ty)

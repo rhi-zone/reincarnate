@@ -291,12 +291,12 @@ pub struct LoweringConfig {
 
     /// Set of FuncIds that are pure (no side effects) — used by the linear
     /// resolver to mark pure calls as deferrable.  Populated by the backend
-    /// from `runtime_registry` entries whose names start with `"builtin."`.
+    /// from `Module::core_builtin_fids`.
     /// Default: empty (no calls deferred).
     pub pure_fids: std::collections::HashSet<crate::ir::func::FuncId>,
 
     /// Map from FuncId to its canonical registry name — used by the linear
-    /// emitter to look up call target names for builtin prefix checks and
+    /// emitter to look up call target names for builtin dispatch and
     /// intrinsic_calls lookups.  Populated by the backend from
     /// `runtime_registry`.  Default: empty.
     pub func_names: std::collections::HashMap<crate::ir::func::FuncId, String>,
@@ -353,9 +353,9 @@ impl LoweringConfig {
     }
 
     /// Populate `func_names` and `pure_fids` from a module's function table
-    /// and runtime registry.  Call this before passing the config to
+    /// and core builtin set.  Call this before passing the config to
     /// [`crate::ir::linear::lower_function_linear`] so the linear emitter can
-    /// resolve `FuncId → name` for builtin prefix checks and mark builtin
+    /// resolve `FuncId → name` for builtin dispatch and mark builtin
     /// arithmetic calls as pure (deferrable).
     pub fn with_module(mut self, module: &crate::ir::Module) -> Self {
         self.func_names = module
@@ -363,12 +363,7 @@ impl LoweringConfig {
             .iter()
             .map(|(fid, func)| (fid, func.name.clone()))
             .collect();
-        self.pure_fids = module
-            .runtime_registry
-            .iter()
-            .filter(|(name, _)| name.starts_with("builtin."))
-            .map(|(_, &fid)| fid)
-            .collect();
+        self.pure_fids = module.core_builtin_fids.clone();
         self
     }
 
@@ -376,7 +371,7 @@ impl LoweringConfig {
     /// (one that only has [`crate::ir::Module::register_core_builtins`] applied).
     ///
     /// Useful in tests that build standalone `Function` objects without a full
-    /// module context but still need builtin names to resolve for the linear
+    /// module context but still need builtin dispatch to resolve for the linear
     /// emitter.
     pub fn with_core_module() -> Self {
         let m = crate::ir::Module::new("__core__".to_string());

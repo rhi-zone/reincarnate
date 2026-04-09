@@ -11,14 +11,10 @@ use crate::ir::structurize::structurize;
 use crate::ir::ty::{FunctionSig, Type};
 use crate::ir::value::Constant;
 
-/// Build a `pure_fids` set containing all `builtin.*` FuncIds from a core module.
+/// Build a `pure_fids` set containing all core builtin FuncIds from a core module.
 fn core_pure_fids() -> std::collections::HashSet<crate::ir::func::FuncId> {
     let m = crate::ir::Module::new("__core__".to_string());
-    m.runtime_registry
-        .iter()
-        .filter(|(name, _)| name.starts_with("builtin."))
-        .map(|(_, &fid)| fid)
-        .collect()
+    m.core_builtin_fids.clone()
 }
 
 #[test]
@@ -236,7 +232,7 @@ fn full_pipeline_simple_add() {
     assert_eq!(ast.body.len(), 1);
     assert!(matches!(
         &ast.body[0],
-        Stmt::Return(Some(Expr::Call { func, .. })) if func == "builtin.add_i64"
+        Stmt::Return(Some(Expr::Call { func, .. })) if func == "add_i64"
     ));
 }
 
@@ -267,10 +263,10 @@ fn full_pipeline_constant_inlining() {
     // Constant and sum both inlined into return.
     assert_eq!(ast.body.len(), 1);
     match &ast.body[0] {
-        Stmt::Return(Some(Expr::Call { func, args })) if func == "builtin.add_i64" => {
+        Stmt::Return(Some(Expr::Call { func, args })) if func == "add_i64" => {
             assert!(matches!(&args[1], Expr::Literal(Constant::Int(42))));
         }
-        other => panic!("Expected return with builtin.add_i64 call, got: {other:?}"),
+        other => panic!("Expected return with add_i64 call, got: {other:?}"),
     }
 }
 

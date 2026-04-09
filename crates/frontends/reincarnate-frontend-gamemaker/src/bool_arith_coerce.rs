@@ -75,13 +75,7 @@ impl Transform for GmlBoolArithCoerce {
             .collect();
 
         // Pre-collect arithmetic builtin FuncIds for coerce_bool_arithmetic.
-        let arith_prefixes = [
-            "builtin.add",
-            "builtin.sub",
-            "builtin.mul",
-            "builtin.div",
-            "builtin.rem",
-        ];
+        let arith_prefixes = ["add_", "sub_", "mul_", "div_", "rem_"];
         let arith_prefix_fids: HashSet<FuncId> = module
             .runtime_registry
             .iter()

@@ -120,8 +120,8 @@ fn find_reachable_blocks(func: &Function) -> HashSet<BlockId> {
 
 /// Returns true if the instruction has side effects and must be kept.
 ///
-/// `pure_fids` is the set of `FuncId`s for pure builtin functions (those whose
-/// names start with `"builtin."`). Such calls have no side effects and can be
+/// `pure_fids` is the set of `FuncId`s for core builtin functions (from
+/// `Module::core_builtin_fids`). Such calls have no side effects and can be
 /// eliminated if their result is unused.
 fn has_side_effects(op: &Op, pure_fids: &HashSet<FuncId>) -> bool {
     match op {
@@ -437,14 +437,9 @@ impl Transform for DeadCodeElimination {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
-        // Build set of pure builtin FuncIds — functions whose names start with "builtin.".
+        // Build set of pure builtin FuncIds from core_builtin_fids.
         // These have no side effects and can be dead-code-eliminated when unused.
-        let pure_fids: HashSet<FuncId> = module
-            .runtime_registry
-            .iter()
-            .filter(|(name, _)| name.starts_with("builtin."))
-            .map(|(_, &fid)| fid)
-            .collect();
+        let pure_fids: HashSet<FuncId> = module.core_builtin_fids.clone();
 
         let mut changed_funcs: HashSet<FuncId> = HashSet::new();
         for func_id in module.functions.keys().collect::<Vec<_>>() {
@@ -542,7 +537,7 @@ mod tests {
     /// Side effects are kept: Call to a non-builtin function with unused result is preserved.
     #[test]
     fn side_effects_kept() {
-        // Pre-register a non-builtin function (no "builtin." prefix) so we have a FuncId.
+        // Pre-register a non-builtin function (not a core builtin) so we have a FuncId.
         let mut mb = ModuleBuilder::new("test");
         let side_effect_fid = mb.register_runtime(
             "side_effect",
@@ -792,12 +787,12 @@ mod tests {
         let has_mul = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.mul")));
+            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("mul_")));
         assert!(!has_mul, "dead mul should be eliminated");
         let has_add = func.blocks[entry]
             .insts
             .iter()
-            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.add")));
+            .any(|&id| matches!(&func.insts[id].op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("add_")));
         assert!(has_add, "live add should be preserved");
     }
 

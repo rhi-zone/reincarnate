@@ -801,7 +801,7 @@ mod tests {
             assign(
                 var("y"),
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("x"), int(1)],
                 },
             ),
@@ -819,7 +819,7 @@ mod tests {
             assign(
                 var("x"),
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("x"), int(1)],
                 },
             ),
@@ -877,7 +877,7 @@ mod tests {
             assign(
                 var("x"),
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("y"), int(1)],
                 },
             ),
@@ -964,7 +964,7 @@ mod tests {
             const_decl(
                 "v",
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("a"), var("b")],
                 },
             ),
@@ -983,7 +983,7 @@ mod tests {
             const_decl(
                 "b",
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("a"), int(2)],
                 },
             ),
@@ -1006,21 +1006,21 @@ mod tests {
             const_decl(
                 "a",
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("x"), int(1)],
                 },
             ),
             const_decl(
                 "b",
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("y"), int(2)],
                 },
             ),
             assign(
                 var("z"),
                 Expr::Call {
-                    func: "builtin.add_i32".to_string(),
+                    func: "add_i32".to_string(),
                     args: vec![var("a"), var("b")],
                 },
             ),
@@ -1052,7 +1052,7 @@ mod tests {
             assign(
                 var("HP"),
                 Expr::Call {
-                    func: "builtin.sub_i32".to_string(),
+                    func: "sub_i32".to_string(),
                     args: vec![var("v35"), var("v11")],
                 },
             ),
@@ -1064,7 +1064,7 @@ mod tests {
                 assert_eq!(*target, var("HP"));
                 match value {
                     Expr::Call { func, args } => {
-                        assert_eq!(func, "builtin.sub_i32");
+                        assert_eq!(func, "sub_i32");
                         assert_eq!(args[0], var("HP"));
                         assert_eq!(args[1], var("v11"));
                     }
@@ -1178,7 +1178,7 @@ mod tests {
                     assign(
                         var("count"),
                         Expr::Call {
-                            func: "builtin.sub_i32".to_string(),
+                            func: "sub_i32".to_string(),
                             args: vec![var("count"), int(1)],
                         },
                     ),

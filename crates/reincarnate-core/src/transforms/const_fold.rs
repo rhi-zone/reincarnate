@@ -184,7 +184,7 @@ fn fold_binary_bitwise(op_name: &str, a: &Constant, b: &Constant) -> Option<Cons
 /// - `x & 0`     / `0 & x`     → `0`      (zero is absorbing for integer AND)
 /// - `x | -1`    / `-1 | x`    → `-1`     (-1 / all-ones is absorbing for integer OR)
 ///
-/// Note: Bool AND/OR absorbing cases are handled by `builtin.and_bool`/`builtin.or_bool` builtins in `try_fold`.
+/// Note: Bool AND/OR absorbing cases are handled by `and_bool`/`or_bool` builtins in `try_fold`.
 fn fold_bitwise_absorbing(op_name: &str, known: &Constant) -> Option<Constant> {
     match (op_name, known) {
         ("and", Constant::Int(0)) => Some(Constant::Int(0)),
@@ -301,13 +301,8 @@ fn try_fold(
         // Builtin arithmetic/logic calls and type-conversion function calls.
         Op::Call { func: fid, args } => {
             let fname = func_names.get(fid).map(|s| s.as_str()).unwrap_or("");
-            // Derive the base operation name (strip "builtin." prefix and type suffix).
-            let base = if let Some(rest) = fname.strip_prefix("builtin.") {
-                // Strip the last "_TYPE" suffix (e.g. "add_f64" → "add").
-                rest.rsplit_once('_').map(|(b, _)| b).unwrap_or(rest)
-            } else {
-                fname
-            };
+            // Derive the base operation name (strip type suffix, e.g. "add_f64" → "add").
+            let base = fname.rsplit_once('_').map(|(b, _)| b).unwrap_or(fname);
 
             match (base, args.as_slice()) {
                 // Binary arithmetic builtins
@@ -472,10 +467,10 @@ fn fold_not_cmp(
         .keys()
         .filter_map(|inst_id| {
             let inst = &func.insts[inst_id];
-            // Match builtin.not_bool(inner) — the canonical not-of-cmp pattern.
+            // Match not_bool(inner) — the canonical not-of-cmp pattern.
             if let Op::Call { func: fid, args } = &inst.op {
                 let fname = func_names.get(fid).map(|s| s.as_str()).unwrap_or("");
-                if fname.starts_with("builtin.not") && args.len() == 1 {
+                if fname == "not_bool" && args.len() == 1 {
                     let inner = args[0];
                     let &(kind, a, b) = cmp_defs.get(&inner)?;
                     return Some((inst_id, kind.inverse(), a, b));
@@ -785,7 +780,7 @@ mod tests {
         let (func, module) = apply_fold(fb.build());
         let inst = find_inst_for(&func, div);
         assert!(
-            matches!(&inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.div")),
+            matches!(&inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("div_")),
             "expected div builtin call, got {:?}",
             &inst.op
         );
@@ -808,7 +803,7 @@ mod tests {
         let (func, module) = apply_fold(fb.build());
         let inst = find_inst_for(&func, sum);
         assert!(
-            matches!(&inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.add")),
+            matches!(&inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("add_")),
             "expected add builtin call, got {:?}",
             &inst.op
         );
@@ -1098,7 +1093,7 @@ mod tests {
         ));
         let keep_inst = find_inst_for(&func, keep_me);
         assert!(
-            matches!(&keep_inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("builtin.add")),
+            matches!(&keep_inst.op, Op::Call { func: fid, .. } if module.func_name(*fid).starts_with("add_")),
             "expected add builtin call, got {:?}",
             &keep_inst.op
         );

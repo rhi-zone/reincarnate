@@ -318,7 +318,7 @@ mod tests {
     use crate::ir::{Module, Type, Visibility};
 
     /// Build a test module with:
-    ///   - A 1-param callee that calls `builtin.abs_f64` on its param and returns
+    ///   - A 1-param callee that calls `abs_f64` on its param and returns
     ///   - A caller that calls the callee
     ///   - The callee marked `InlineHint::Always`
     fn build_test_module() -> (Module, FuncId, FuncId) {
@@ -326,9 +326,9 @@ mod tests {
         // Module::new (called by ModuleBuilder::new) already invokes
         // register_core_builtins — no extra call needed.
         let registry = mb.runtime_registry().clone();
-        let abs_fid = registry["builtin.abs_f64"];
+        let abs_fid = registry["abs_f64"];
 
-        // Build callee: fn my_abs(x: f64) -> f64 { return builtin.abs_f64(x) }
+        // Build callee: fn my_abs(x: f64) -> f64 { return abs_f64(x) }
         let callee_sig = FunctionSig {
             params: vec![Type::Float(64)],
             return_ty: Type::Float(64),
@@ -395,13 +395,13 @@ mod tests {
     #[test]
     fn inlined_result_feeds_return() {
         let (module, _callee_id, caller_id) = build_test_module();
-        let abs_fid = module.runtime_registry["builtin.abs_f64"];
+        let abs_fid = module.runtime_registry["abs_f64"];
 
         let result = Inline.apply(module, None).unwrap();
         let caller = &result.module.functions[caller_id];
 
         // The entry block's terminator should be Return(Some(v)) where v is produced
-        // by a builtin.abs_f64 call (the inlined body).
+        // by an abs_f64 call (the inlined body).
         let entry = caller.entry;
         let Terminator::Return(Some(ret_val)) = caller.blocks[entry].terminator else {
             panic!("expected Return(Some(..)) terminator");
@@ -421,7 +421,7 @@ mod tests {
                 &caller.insts[*producing_inst].op,
                 Op::Call { func: fid, .. } if *fid == abs_fid
             ),
-            "return value should be produced by builtin.abs_f64"
+            "return value should be produced by abs_f64"
         );
     }
 }

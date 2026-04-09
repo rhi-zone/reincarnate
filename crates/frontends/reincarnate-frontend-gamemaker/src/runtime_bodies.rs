@@ -14,7 +14,7 @@ use reincarnate_core::ir::ty::{FunctionSig, Type};
 /// function — the stub's `name`, `sig`, `visibility`, and registry entry are
 /// left untouched.
 ///
-/// The bodies use only `builtin.*_f64` calls and `Const(Float)` values, so they
+/// The bodies use only `*_f64` builtin calls and `Const(Float)` values, so they
 /// are legal IR for any pipeline stage that runs after registration.
 pub fn register_runtime_bodies(module: &mut Module) {
     attach_body_lengthdir_x(module);
@@ -130,7 +130,7 @@ fn attach_body_lengthdir_x(module: &mut Module) {
 
     let pi_over_180 = b.const_float(PI / 180.0);
     let dir_rad = b.mul(dir, pi_over_180);
-    let cos_val = b.call_named("builtin.cos_f64", &[dir_rad], Type::Float(64));
+    let cos_val = b.call_named("cos_f64", &[dir_rad], Type::Float(64));
     let result = b.mul(len, cos_val);
     b.ret(Some(result));
 
@@ -170,7 +170,7 @@ fn attach_body_lengthdir_y(module: &mut Module) {
 
     let pi_over_180 = b.const_float(PI / 180.0);
     let dir_rad = b.mul(dir, pi_over_180);
-    let sin_val = b.call_named("builtin.sin_f64", &[dir_rad], Type::Float(64));
+    let sin_val = b.call_named("sin_f64", &[dir_rad], Type::Float(64));
     let neg_sin = b.neg(sin_val);
     let result = b.mul(len, neg_sin);
     b.ret(Some(result));
@@ -214,7 +214,7 @@ fn attach_body_point_distance(module: &mut Module) {
 
     let dx = b.sub(x2, x1);
     let dy = b.sub(y2, y1);
-    let result = b.call_named("builtin.hypot_f64", &[dx, dy], Type::Float(64));
+    let result = b.call_named("hypot_f64", &[dx, dy], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -314,7 +314,7 @@ fn attach_body_dsin(module: &mut Module) {
 
     let factor = b.const_float(PI / 180.0);
     let rad = b.mul(x, factor);
-    let result = b.call_named("builtin.sin_f64", &[rad], Type::Float(64));
+    let result = b.call_named("sin_f64", &[rad], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -348,7 +348,7 @@ fn attach_body_dcos(module: &mut Module) {
 
     let factor = b.const_float(PI / 180.0);
     let rad = b.mul(x, factor);
-    let result = b.call_named("builtin.cos_f64", &[rad], Type::Float(64));
+    let result = b.call_named("cos_f64", &[rad], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -382,7 +382,7 @@ fn attach_body_dtan(module: &mut Module) {
 
     let factor = b.const_float(PI / 180.0);
     let rad = b.mul(x, factor);
-    let result = b.call_named("builtin.tan_f64", &[rad], Type::Float(64));
+    let result = b.call_named("tan_f64", &[rad], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -414,7 +414,7 @@ fn attach_body_darcsin(module: &mut Module) {
     let mut b = make_builder(module, "darcsin", sig);
     let x = b.param(0);
 
-    let asin_val = b.call_named("builtin.asin_f64", &[x], Type::Float(64));
+    let asin_val = b.call_named("asin_f64", &[x], Type::Float(64));
     let factor = b.const_float(180.0 / PI);
     let result = b.mul(asin_val, factor);
     b.ret(Some(result));
@@ -448,7 +448,7 @@ fn attach_body_darccos(module: &mut Module) {
     let mut b = make_builder(module, "darccos", sig);
     let x = b.param(0);
 
-    let acos_val = b.call_named("builtin.acos_f64", &[x], Type::Float(64));
+    let acos_val = b.call_named("acos_f64", &[x], Type::Float(64));
     let factor = b.const_float(180.0 / PI);
     let result = b.mul(acos_val, factor);
     b.ret(Some(result));
@@ -482,7 +482,7 @@ fn attach_body_darctan(module: &mut Module) {
     let mut b = make_builder(module, "darctan", sig);
     let x = b.param(0);
 
-    let atan_val = b.call_named("builtin.atan_f64", &[x], Type::Float(64));
+    let atan_val = b.call_named("atan_f64", &[x], Type::Float(64));
     let factor = b.const_float(180.0 / PI);
     let result = b.mul(atan_val, factor);
     b.ret(Some(result));
@@ -517,7 +517,7 @@ fn attach_body_darctan2(module: &mut Module) {
     let y = b.param(0);
     let x = b.param(1);
 
-    let atan2_val = b.call_named("builtin.atan2_f64", &[y, x], Type::Float(64));
+    let atan2_val = b.call_named("atan2_f64", &[y, x], Type::Float(64));
     let factor = b.const_float(180.0 / PI);
     let result = b.mul(atan2_val, factor);
     b.ret(Some(result));
@@ -552,7 +552,7 @@ fn attach_body_arctan2(module: &mut Module) {
     let y = b.param(0);
     let x = b.param(1);
 
-    let result = b.call_named("builtin.atan2_f64", &[y, x], Type::Float(64));
+    let result = b.call_named("atan2_f64", &[y, x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -599,7 +599,7 @@ fn attach_body_point_direction(module: &mut Module) {
 
     let dy = b.sub(y1, y2);
     let dx = b.sub(x2, x1);
-    let atan2_val = b.call_named("builtin.atan2_f64", &[dy, dx], Type::Float(64));
+    let atan2_val = b.call_named("atan2_f64", &[dy, dx], Type::Float(64));
     let factor = b.const_float(180.0 / PI);
     let result = b.mul(atan2_val, factor);
     b.ret(Some(result));
@@ -666,7 +666,7 @@ fn attach_body_power(module: &mut Module) {
     let base = b.param(0);
     let exp = b.param(1);
 
-    let result = b.call_named("builtin.pow_f64", &[base, exp], Type::Float(64));
+    let result = b.call_named("pow_f64", &[base, exp], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -699,8 +699,8 @@ fn attach_body_logn(module: &mut Module) {
     let n = b.param(0);
     let val = b.param(1);
 
-    let ln_val = b.call_named("builtin.ln_f64", &[val], Type::Float(64));
-    let ln_n = b.call_named("builtin.ln_f64", &[n], Type::Float(64));
+    let ln_val = b.call_named("ln_f64", &[val], Type::Float(64));
+    let ln_n = b.call_named("ln_f64", &[n], Type::Float(64));
     let result = b.div(ln_val, ln_n);
     b.ret(Some(result));
 
@@ -733,7 +733,7 @@ fn attach_body_log2(module: &mut Module) {
     let mut b = make_builder(module, "log2", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.log2_f64", &[x], Type::Float(64));
+    let result = b.call_named("log2_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -765,7 +765,7 @@ fn attach_body_log10(module: &mut Module) {
     let mut b = make_builder(module, "log10", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.log10_f64", &[x], Type::Float(64));
+    let result = b.call_named("log10_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -797,7 +797,7 @@ fn attach_body_exp(module: &mut Module) {
     let mut b = make_builder(module, "exp", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.exp_f64", &[x], Type::Float(64));
+    let result = b.call_named("exp_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -831,8 +831,8 @@ fn attach_body_clamp(module: &mut Module) {
     let lo = b.param(1);
     let hi = b.param(2);
 
-    let clamped_lo = b.call_named("builtin.max_f64", &[val, lo], Type::Float(64));
-    let result = b.call_named("builtin.min_f64", &[clamped_lo, hi], Type::Float(64));
+    let clamped_lo = b.call_named("max_f64", &[val, lo], Type::Float(64));
+    let result = b.call_named("min_f64", &[clamped_lo, hi], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -903,7 +903,7 @@ fn attach_body_abs(module: &mut Module) {
     let mut b = make_builder(module, "abs", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.abs_f64", &[x], Type::Float(64));
+    let result = b.call_named("abs_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -935,7 +935,7 @@ fn attach_body_floor(module: &mut Module) {
     let mut b = make_builder(module, "floor", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.floor_f64", &[x], Type::Float(64));
+    let result = b.call_named("floor_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -967,7 +967,7 @@ fn attach_body_ceil(module: &mut Module) {
     let mut b = make_builder(module, "ceil", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.ceil_f64", &[x], Type::Float(64));
+    let result = b.call_named("ceil_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -983,7 +983,7 @@ fn attach_body_ceil(module: &mut Module) {
 // round(x: f64) -> f64  =  round(x)
 //
 // GML round uses round-half-away-from-zero, same as Math.round for positive
-// values and mirrored for negative.  builtin.round_f64 maps to Math.round.
+// values and mirrored for negative.  round_f64 maps to Math.round.
 // ---------------------------------------------------------------------------
 
 fn attach_body_round(module: &mut Module) {
@@ -1002,7 +1002,7 @@ fn attach_body_round(module: &mut Module) {
     let mut b = make_builder(module, "round", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.round_f64", &[x], Type::Float(64));
+    let result = b.call_named("round_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1034,7 +1034,7 @@ fn attach_body_sign(module: &mut Module) {
     let mut b = make_builder(module, "sign", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.sign_f64", &[x], Type::Float(64));
+    let result = b.call_named("sign_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1066,7 +1066,7 @@ fn attach_body_sqrt(module: &mut Module) {
     let mut b = make_builder(module, "sqrt", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.sqrt_f64", &[x], Type::Float(64));
+    let result = b.call_named("sqrt_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1098,7 +1098,7 @@ fn attach_body_arctan(module: &mut Module) {
     let mut b = make_builder(module, "arctan", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.atan_f64", &[x], Type::Float(64));
+    let result = b.call_named("atan_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1133,7 +1133,7 @@ fn attach_body_frac(module: &mut Module) {
     let mut b = make_builder(module, "frac", sig);
     let x = b.param(0);
 
-    let trunc_val = b.call_named("builtin.trunc_f64", &[x], Type::Float(64));
+    let trunc_val = b.call_named("trunc_f64", &[x], Type::Float(64));
     let result = b.sub(x, trunc_val);
     b.ret(Some(result));
 
@@ -1562,7 +1562,7 @@ fn attach_body_merge_color(module: &mut Module) {
     let r1_part = b.mul(r1, one_minus_amt);
     let r2_part = b.mul(r2, amt);
     let r_blend = b.add(r1_part, r2_part);
-    let r_out = b.call_named("builtin.round_f64", &[r_blend], Type::Float(64));
+    let r_out = b.call_named("round_f64", &[r_blend], Type::Float(64));
 
     // Green channel
     let g1 = b.call_named("color_get_green", &[col1], Type::Float(64));
@@ -1570,7 +1570,7 @@ fn attach_body_merge_color(module: &mut Module) {
     let g1_part = b.mul(g1, one_minus_amt);
     let g2_part = b.mul(g2, amt);
     let g_blend = b.add(g1_part, g2_part);
-    let g_out = b.call_named("builtin.round_f64", &[g_blend], Type::Float(64));
+    let g_out = b.call_named("round_f64", &[g_blend], Type::Float(64));
 
     // Blue channel
     let b1 = b.call_named("color_get_blue", &[col1], Type::Float(64));
@@ -1578,7 +1578,7 @@ fn attach_body_merge_color(module: &mut Module) {
     let b1_part = b.mul(b1, one_minus_amt);
     let b2_part = b.mul(b2, amt);
     let b_blend = b.add(b1_part, b2_part);
-    let bv_out = b.call_named("builtin.round_f64", &[b_blend], Type::Float(64));
+    let bv_out = b.call_named("round_f64", &[b_blend], Type::Float(64));
 
     let result = b.call_named("make_color_rgb", &[r_out, g_out, bv_out], Type::Float(64));
     b.ret(Some(result));
@@ -1622,21 +1622,21 @@ fn attach_body_merge_colour(module: &mut Module) {
     let r1_part = b.mul(r1, one_minus_amt);
     let r2_part = b.mul(r2, amt);
     let r_blend = b.add(r1_part, r2_part);
-    let r_out = b.call_named("builtin.round_f64", &[r_blend], Type::Float(64));
+    let r_out = b.call_named("round_f64", &[r_blend], Type::Float(64));
 
     let g1 = b.call_named("color_get_green", &[col1], Type::Float(64));
     let g2 = b.call_named("color_get_green", &[col2], Type::Float(64));
     let g1_part = b.mul(g1, one_minus_amt);
     let g2_part = b.mul(g2, amt);
     let g_blend = b.add(g1_part, g2_part);
-    let g_out = b.call_named("builtin.round_f64", &[g_blend], Type::Float(64));
+    let g_out = b.call_named("round_f64", &[g_blend], Type::Float(64));
 
     let b1 = b.call_named("color_get_blue", &[col1], Type::Float(64));
     let b2 = b.call_named("color_get_blue", &[col2], Type::Float(64));
     let b1_part = b.mul(b1, one_minus_amt);
     let b2_part = b.mul(b2, amt);
     let b_blend = b.add(b1_part, b2_part);
-    let bv_out = b.call_named("builtin.round_f64", &[b_blend], Type::Float(64));
+    let bv_out = b.call_named("round_f64", &[b_blend], Type::Float(64));
 
     let result = b.call_named("make_color_rgb", &[r_out, g_out, bv_out], Type::Float(64));
     b.ret(Some(result));
@@ -1685,11 +1685,11 @@ fn attach_body_color_get_value(module: &mut Module) {
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
 
-    let max_rg = b.call_named("builtin.max_f64", &[r, g], Type::Float(64));
-    let max_rgb = b.call_named("builtin.max_f64", &[max_rg, bv], Type::Float(64));
+    let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
+    let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
 
     let scaled = b.mul(max_rgb, c255);
-    let result = b.call_named("builtin.round_f64", &[scaled], Type::Float(64));
+    let result = b.call_named("round_f64", &[scaled], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1730,11 +1730,11 @@ fn attach_body_colour_get_value(module: &mut Module) {
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
 
-    let max_rg = b.call_named("builtin.max_f64", &[r, g], Type::Float(64));
-    let max_rgb = b.call_named("builtin.max_f64", &[max_rg, bv], Type::Float(64));
+    let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
+    let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
 
     let scaled = b.mul(max_rgb, c255);
-    let result = b.call_named("builtin.round_f64", &[scaled], Type::Float(64));
+    let result = b.call_named("round_f64", &[scaled], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1784,10 +1784,10 @@ fn attach_body_color_get_saturation(module: &mut Module) {
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
 
-    let max_rg = b.call_named("builtin.max_f64", &[r, g], Type::Float(64));
-    let max_rgb = b.call_named("builtin.max_f64", &[max_rg, bv], Type::Float(64));
-    let min_rg = b.call_named("builtin.min_f64", &[r, g], Type::Float(64));
-    let min_rgb = b.call_named("builtin.min_f64", &[min_rg, bv], Type::Float(64));
+    let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
+    let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
+    let min_rg = b.call_named("min_f64", &[r, g], Type::Float(64));
+    let min_rgb = b.call_named("min_f64", &[min_rg, bv], Type::Float(64));
 
     // if max <= 0 { return 0 }  (max >= 0 always, so this equals max === 0)
     let max_le_zero = b.cmp(CmpKind::Le, max_rgb, zero);
@@ -1802,7 +1802,7 @@ fn attach_body_color_get_saturation(module: &mut Module) {
     let d = b.sub(max_rgb, min_rgb);
     let sat = b.div(d, max_rgb);
     let scaled = b.mul(sat, c255);
-    let result = b.call_named("builtin.round_f64", &[scaled], Type::Float(64));
+    let result = b.call_named("round_f64", &[scaled], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1844,10 +1844,10 @@ fn attach_body_colour_get_saturation(module: &mut Module) {
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
 
-    let max_rg = b.call_named("builtin.max_f64", &[r, g], Type::Float(64));
-    let max_rgb = b.call_named("builtin.max_f64", &[max_rg, bv], Type::Float(64));
-    let min_rg = b.call_named("builtin.min_f64", &[r, g], Type::Float(64));
-    let min_rgb = b.call_named("builtin.min_f64", &[min_rg, bv], Type::Float(64));
+    let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
+    let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
+    let min_rg = b.call_named("min_f64", &[r, g], Type::Float(64));
+    let min_rgb = b.call_named("min_f64", &[min_rg, bv], Type::Float(64));
 
     let max_le_zero = b.cmp(CmpKind::Le, max_rgb, zero);
     let ret_zero_block = b.create_block();
@@ -1861,7 +1861,7 @@ fn attach_body_colour_get_saturation(module: &mut Module) {
     let d = b.sub(max_rgb, min_rgb);
     let sat = b.div(d, max_rgb);
     let scaled = b.mul(sat, c255);
-    let result = b.call_named("builtin.round_f64", &[scaled], Type::Float(64));
+    let result = b.call_named("round_f64", &[scaled], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1919,10 +1919,10 @@ fn attach_body_color_get_hue(module: &mut Module) {
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
 
-    let max_rg = b.call_named("builtin.max_f64", &[r, g], Type::Float(64));
-    let max_rgb = b.call_named("builtin.max_f64", &[max_rg, bv], Type::Float(64));
-    let min_rg = b.call_named("builtin.min_f64", &[r, g], Type::Float(64));
-    let min_rgb = b.call_named("builtin.min_f64", &[min_rg, bv], Type::Float(64));
+    let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
+    let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
+    let min_rg = b.call_named("min_f64", &[r, g], Type::Float(64));
+    let min_rgb = b.call_named("min_f64", &[min_rg, bv], Type::Float(64));
     let d = b.sub(max_rgb, min_rgb);
 
     // if d <= 0 { return 0 }  (d >= 0 always, so this equals d === 0)
@@ -1938,7 +1938,7 @@ fn attach_body_color_get_hue(module: &mut Module) {
     b.switch_to_block(branch_r_check);
     let r_ge_g = b.cmp(CmpKind::Ge, r, g);
     let r_ge_b = b.cmp(CmpKind::Ge, r, bv);
-    let r_is_max = b.call_named("builtin.and_bool", &[r_ge_g, r_ge_b], Type::Bool);
+    let r_is_max = b.call_named("and_bool", &[r_ge_g, r_ge_b], Type::Bool);
 
     let (merge_block, h_params) = b.create_block_with_params(&[Type::Float(64)]);
     let block_r = b.create_block();
@@ -1983,7 +1983,7 @@ fn attach_body_color_get_hue(module: &mut Module) {
     // h = round(h_raw * 255 / 6)
     let c255_over_6 = b.const_float(255.0 / 6.0);
     let h_scaled = b.mul(h_raw, c255_over_6);
-    let h_rounded = b.call_named("builtin.round_f64", &[h_scaled], Type::Float(64));
+    let h_rounded = b.call_named("round_f64", &[h_scaled], Type::Float(64));
 
     // if h < 0 { h += 255 }
     let h_lt_zero = b.cmp(CmpKind::Lt, h_rounded, zero);
@@ -2038,10 +2038,10 @@ fn attach_body_colour_get_hue(module: &mut Module) {
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
 
-    let max_rg = b.call_named("builtin.max_f64", &[r, g], Type::Float(64));
-    let max_rgb = b.call_named("builtin.max_f64", &[max_rg, bv], Type::Float(64));
-    let min_rg = b.call_named("builtin.min_f64", &[r, g], Type::Float(64));
-    let min_rgb = b.call_named("builtin.min_f64", &[min_rg, bv], Type::Float(64));
+    let max_rg = b.call_named("max_f64", &[r, g], Type::Float(64));
+    let max_rgb = b.call_named("max_f64", &[max_rg, bv], Type::Float(64));
+    let min_rg = b.call_named("min_f64", &[r, g], Type::Float(64));
+    let min_rgb = b.call_named("min_f64", &[min_rg, bv], Type::Float(64));
     let d = b.sub(max_rgb, min_rgb);
 
     let d_le_zero = b.cmp(CmpKind::Le, d, zero);
@@ -2055,7 +2055,7 @@ fn attach_body_colour_get_hue(module: &mut Module) {
     b.switch_to_block(branch_r_check);
     let r_ge_g = b.cmp(CmpKind::Ge, r, g);
     let r_ge_b = b.cmp(CmpKind::Ge, r, bv);
-    let r_is_max = b.call_named("builtin.and_bool", &[r_ge_g, r_ge_b], Type::Bool);
+    let r_is_max = b.call_named("and_bool", &[r_ge_g, r_ge_b], Type::Bool);
 
     let (merge_block, h_params) = b.create_block_with_params(&[Type::Float(64)]);
     let block_r = b.create_block();
@@ -2094,7 +2094,7 @@ fn attach_body_colour_get_hue(module: &mut Module) {
 
     let c255_over_6 = b.const_float(255.0 / 6.0);
     let h_scaled = b.mul(h_raw, c255_over_6);
-    let h_rounded = b.call_named("builtin.round_f64", &[h_scaled], Type::Float(64));
+    let h_rounded = b.call_named("round_f64", &[h_scaled], Type::Float(64));
 
     let h_lt_zero = b.cmp(CmpKind::Lt, h_rounded, zero);
     let (final_block, final_params) = b.create_block_with_params(&[Type::Float(64)]);
@@ -2171,7 +2171,7 @@ fn attach_body_make_color_hsv(module: &mut Module) {
     let hf_mod2 = b.rem(hf, c2_hsv);
     let c1_hsv = b.const_float(1.0);
     let hf_mod2_m1 = b.sub(hf_mod2, c1_hsv);
-    let abs_val = b.call_named("builtin.abs_f64", &[hf_mod2_m1], Type::Float(64));
+    let abs_val = b.call_named("abs_f64", &[hf_mod2_m1], Type::Float(64));
     let c1_hsv2 = b.const_float(1.0);
     let one_minus_abs = b.sub(c1_hsv2, abs_val);
     let x = b.mul(cv, one_minus_abs);
@@ -2254,13 +2254,13 @@ fn attach_body_make_color_hsv(module: &mut Module) {
 
     let r_plus_m = b.add(r_out, m);
     let r_scaled = b.mul(r_plus_m, c255);
-    let r_final = b.call_named("builtin.round_f64", &[r_scaled], Type::Float(64));
+    let r_final = b.call_named("round_f64", &[r_scaled], Type::Float(64));
     let g_plus_m = b.add(g_out, m);
     let g_scaled = b.mul(g_plus_m, c255);
-    let g_final = b.call_named("builtin.round_f64", &[g_scaled], Type::Float(64));
+    let g_final = b.call_named("round_f64", &[g_scaled], Type::Float(64));
     let bv_plus_m = b.add(bv_out, m);
     let bv_scaled = b.mul(bv_plus_m, c255);
-    let b_final = b.call_named("builtin.round_f64", &[bv_scaled], Type::Float(64));
+    let b_final = b.call_named("round_f64", &[bv_scaled], Type::Float(64));
 
     let result = b.call_named(
         "make_color_rgb",
@@ -2313,7 +2313,7 @@ fn attach_body_make_colour_hsv(module: &mut Module) {
     let hf_mod2 = b.rem(hf, c2_hsv);
     let c1_hsv = b.const_float(1.0);
     let hf_mod2_m1 = b.sub(hf_mod2, c1_hsv);
-    let abs_val = b.call_named("builtin.abs_f64", &[hf_mod2_m1], Type::Float(64));
+    let abs_val = b.call_named("abs_f64", &[hf_mod2_m1], Type::Float(64));
     let c1_hsv2 = b.const_float(1.0);
     let one_minus_abs = b.sub(c1_hsv2, abs_val);
     let x = b.mul(cv, one_minus_abs);
@@ -2383,13 +2383,13 @@ fn attach_body_make_colour_hsv(module: &mut Module) {
 
     let r_plus_m = b.add(r_out, m);
     let r_scaled = b.mul(r_plus_m, c255);
-    let r_final = b.call_named("builtin.round_f64", &[r_scaled], Type::Float(64));
+    let r_final = b.call_named("round_f64", &[r_scaled], Type::Float(64));
     let g_plus_m = b.add(g_out, m);
     let g_scaled = b.mul(g_plus_m, c255);
-    let g_final = b.call_named("builtin.round_f64", &[g_scaled], Type::Float(64));
+    let g_final = b.call_named("round_f64", &[g_scaled], Type::Float(64));
     let bv_plus_m = b.add(bv_out, m);
     let bv_scaled = b.mul(bv_plus_m, c255);
-    let b_final = b.call_named("builtin.round_f64", &[bv_scaled], Type::Float(64));
+    let b_final = b.call_named("round_f64", &[bv_scaled], Type::Float(64));
 
     let result = b.call_named(
         "make_color_rgb",
@@ -2427,7 +2427,7 @@ fn attach_body_string_length(module: &mut Module) {
     let mut b = make_builder(module, "string_length", sig);
     let s = b.param(0);
 
-    let result = b.call_named("builtin.string_length_str", &[s], Type::Float(64));
+    let result = b.call_named("string_length_str", &[s], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -2459,7 +2459,7 @@ fn attach_body_string_upper(module: &mut Module) {
     let mut b = make_builder(module, "string_upper", sig);
     let s = b.param(0);
 
-    let result = b.call_named("builtin.string_upper_str", &[s], Type::String);
+    let result = b.call_named("string_upper_str", &[s], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2491,7 +2491,7 @@ fn attach_body_string_lower(module: &mut Module) {
     let mut b = make_builder(module, "string_lower", sig);
     let s = b.param(0);
 
-    let result = b.call_named("builtin.string_lower_str", &[s], Type::String);
+    let result = b.call_named("string_lower_str", &[s], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2527,7 +2527,7 @@ fn attach_body_string_char_at(module: &mut Module) {
 
     let one = b.const_float(1.0);
     let idx_zero = b.sub(index, one);
-    let result = b.call_named("builtin.string_char_at_str", &[s, idx_zero], Type::String);
+    let result = b.call_named("string_char_at_str", &[s, idx_zero], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2565,7 +2565,7 @@ fn attach_body_string_copy(module: &mut Module) {
     let one = b.const_float(1.0);
     let start = b.sub(index, one); // index - 1  (0-based start)
     let end = b.add(start, count); // start + count  (0-based exclusive end)
-    let result = b.call_named("builtin.string_slice_str", &[s, start, end], Type::String);
+    let result = b.call_named("string_slice_str", &[s, start, end], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2601,8 +2601,8 @@ fn attach_body_string_pos(module: &mut Module) {
     let substr = b.param(0);
     let s = b.param(1);
 
-    // builtin.string_index_of_str(needle, haystack) -> 0-based index or -1
-    let idx = b.call_named("builtin.string_index_of_str", &[substr, s], Type::Float(64));
+    // string_index_of_str(needle, haystack) -> 0-based index or -1
+    let idx = b.call_named("string_index_of_str", &[substr, s], Type::Float(64));
     let one = b.const_float(1.0);
     let result = b.add(idx, one);
     b.ret(Some(result));
@@ -2643,19 +2643,11 @@ fn attach_body_string_delete(module: &mut Module) {
     let one = b.const_float(1.0);
     let idx_minus1 = b.sub(index, one); // index - 1  (0-based)
     let tail_start = b.add(idx_minus1, count); // index - 1 + count
-    let len = b.call_named("builtin.string_length_str", &[s], Type::Float(64));
+    let len = b.call_named("string_length_str", &[s], Type::Float(64));
 
-    let head = b.call_named(
-        "builtin.string_slice_str",
-        &[s, zero, idx_minus1],
-        Type::String,
-    );
-    let tail = b.call_named(
-        "builtin.string_slice_str",
-        &[s, tail_start, len],
-        Type::String,
-    );
-    let result = b.call_named("builtin.concat_str", &[head, tail], Type::String);
+    let head = b.call_named("string_slice_str", &[s, zero, idx_minus1], Type::String);
+    let tail = b.call_named("string_slice_str", &[s, tail_start, len], Type::String);
+    let result = b.call_named("concat_str", &[head, tail], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2693,21 +2685,13 @@ fn attach_body_string_insert(module: &mut Module) {
     let zero = b.const_float(0.0);
     let one = b.const_float(1.0);
     let idx_minus1 = b.sub(index, one); // index - 1  (0-based)
-    let len = b.call_named("builtin.string_length_str", &[s], Type::Float(64));
+    let len = b.call_named("string_length_str", &[s], Type::Float(64));
 
-    let head = b.call_named(
-        "builtin.string_slice_str",
-        &[s, zero, idx_minus1],
-        Type::String,
-    );
-    let tail = b.call_named(
-        "builtin.string_slice_str",
-        &[s, idx_minus1, len],
-        Type::String,
-    );
+    let head = b.call_named("string_slice_str", &[s, zero, idx_minus1], Type::String);
+    let tail = b.call_named("string_slice_str", &[s, idx_minus1, len], Type::String);
     // head + substr + tail  (two string concatenations)
-    let head_sub = b.call_named("builtin.concat_str", &[head, substr], Type::String);
-    let result = b.call_named("builtin.concat_str", &[head_sub, tail], Type::String);
+    let head_sub = b.call_named("concat_str", &[head, substr], Type::String);
+    let result = b.call_named("concat_str", &[head_sub, tail], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2743,7 +2727,7 @@ fn attach_body_string_replace_all(module: &mut Module) {
     let replace = b.param(2);
 
     let arr_ty = Type::Array(Box::new(Type::String));
-    let parts = b.call_named("builtin.string_split_str", &[content, find], arr_ty);
+    let parts = b.call_named("string_split_str", &[content, find], arr_ty);
     let result = b.call_method(parts, "join", &[replace], Type::String);
     b.ret(Some(result));
 
@@ -2779,7 +2763,7 @@ fn attach_body_string_count(module: &mut Module) {
     let s = b.param(1);
 
     let arr_ty = Type::Array(Box::new(Type::String));
-    let parts = b.call_named("builtin.string_split_str", &[s, substr], arr_ty);
+    let parts = b.call_named("string_split_str", &[s, substr], arr_ty);
     let len = b.get_field(parts, "length", Type::Float(64));
     let one = b.const_float(1.0);
     let result = b.sub(len, one);
@@ -2819,11 +2803,7 @@ fn attach_body_string_ord_at(module: &mut Module) {
 
     let one = b.const_float(1.0);
     let idx0 = b.sub(idx, one); // convert 1-based GML index to 0-based JS
-    let result = b.call_named(
-        "builtin.string_char_code_at_str",
-        &[s, idx0],
-        Type::Float(64),
-    );
+    let result = b.call_named("string_char_code_at_str", &[s, idx0], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -2857,7 +2837,7 @@ fn attach_body_string_repeat(module: &mut Module) {
     let s = b.param(0);
     let n = b.param(1);
 
-    let result = b.call_named("builtin.string_repeat_str", &[s, n], Type::String);
+    let result = b.call_named("string_repeat_str", &[s, n], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2893,11 +2873,7 @@ fn attach_body_string_replace(module: &mut Module) {
     let sub = b.param(1);
     let new = b.param(2);
 
-    let result = b.call_named(
-        "builtin.string_replace_first_str",
-        &[s, sub, new],
-        Type::String,
-    );
+    let result = b.call_named("string_replace_first_str", &[s, sub, new], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -2934,7 +2910,7 @@ fn attach_body_string_hash_to_newline(module: &mut Module) {
     let hash = b.const_string("#");
     let newline = b.const_string("\n");
     let arr_ty = Type::Array(Box::new(Type::String));
-    let parts = b.call_named("builtin.string_split_str", &[s, hash], arr_ty);
+    let parts = b.call_named("string_split_str", &[s, hash], arr_ty);
     let result = b.call_method(parts, "join", &[newline], Type::String);
     b.ret(Some(result));
 
@@ -2970,7 +2946,7 @@ fn attach_body_string_trim(module: &mut Module) {
     let s = b.param(0);
     b.param(1); // substr — unused in whitespace-trim form
 
-    let result = b.call_named("builtin.string_trim_str", &[s], Type::String);
+    let result = b.call_named("string_trim_str", &[s], Type::String);
     b.ret(Some(result));
 
     let built = b.build();
@@ -3004,7 +2980,7 @@ fn attach_body_array_length(module: &mut Module) {
     let mut b = make_builder(module, "array_length", sig);
     let arr = b.param(0);
 
-    let result = b.call_named("builtin.array_length_arr", &[arr], Type::Float(64));
+    let result = b.call_named("array_length_arr", &[arr], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3039,7 +3015,7 @@ fn attach_body_array_length_1d(module: &mut Module) {
     let mut b = make_builder(module, "array_length_1d", sig);
     let arr = b.param(0);
 
-    let result = b.call_named("builtin.array_length_arr", &[arr], Type::Float(64));
+    let result = b.call_named("array_length_arr", &[arr], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3075,7 +3051,7 @@ fn attach_body_array_contains(module: &mut Module) {
     let arr = b.param(0);
     let val = b.param(1);
 
-    let result = b.call_named("builtin.array_contains_arr", &[arr, val], Type::Bool);
+    let result = b.call_named("array_contains_arr", &[arr, val], Type::Bool);
     b.ret(Some(result));
 
     let built = b.build();
@@ -3108,7 +3084,7 @@ fn attach_body_sin(module: &mut Module) {
     let mut b = make_builder(module, "sin", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.sin_f64", &[x], Type::Float(64));
+    let result = b.call_named("sin_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3141,7 +3117,7 @@ fn attach_body_cos(module: &mut Module) {
     let mut b = make_builder(module, "cos", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.cos_f64", &[x], Type::Float(64));
+    let result = b.call_named("cos_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3174,7 +3150,7 @@ fn attach_body_tan(module: &mut Module) {
     let mut b = make_builder(module, "tan", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.tan_f64", &[x], Type::Float(64));
+    let result = b.call_named("tan_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3207,7 +3183,7 @@ fn attach_body_arcsin(module: &mut Module) {
     let mut b = make_builder(module, "arcsin", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.asin_f64", &[x], Type::Float(64));
+    let result = b.call_named("asin_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3240,7 +3216,7 @@ fn attach_body_arccos(module: &mut Module) {
     let mut b = make_builder(module, "arccos", sig);
     let x = b.param(0);
 
-    let result = b.call_named("builtin.acos_f64", &[x], Type::Float(64));
+    let result = b.call_named("acos_f64", &[x], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3275,11 +3251,7 @@ fn attach_body_ord(module: &mut Module) {
     let s = b.param(0);
 
     let zero = b.const_float(0.0);
-    let result = b.call_named(
-        "builtin.string_char_code_at_str",
-        &[s, zero],
-        Type::Float(64),
-    );
+    let result = b.call_named("string_char_code_at_str", &[s, zero], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -3317,7 +3289,7 @@ fn attach_body_string_byte_at(module: &mut Module) {
     let one = b.const_float(1.0);
     let pos_minus_1 = b.sub(pos, one); // convert 1-based GML index to 0-based JS
     let result = b.call_named(
-        "builtin.string_char_code_at_str",
+        "string_char_code_at_str",
         &[s, pos_minus_1],
         Type::Float(64),
     );
@@ -3354,7 +3326,7 @@ fn attach_body_chr(module: &mut Module) {
     let mut b = make_builder(module, "chr", sig);
     let n = b.param(0);
 
-    let result = b.call_named("builtin.chr_f64", &[n], Type::String);
+    let result = b.call_named("chr_f64", &[n], Type::String);
     b.ret(Some(result));
 
     let built = b.build();

@@ -1273,11 +1273,11 @@ mod tests {
     #[test]
     fn minmax_with_expressions() {
         let a_plus_1 = Expr::Call {
-            func: "builtin.add_i32".to_string(),
+            func: "add_i32".to_string(),
             args: vec![var("a"), int(1)],
         };
         let b_times_2 = Expr::Call {
-            func: "builtin.mul_i32".to_string(),
+            func: "mul_i32".to_string(),
             args: vec![var("b"), int(2)],
         };
 

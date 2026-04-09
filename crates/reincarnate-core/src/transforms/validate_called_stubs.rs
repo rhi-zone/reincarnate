@@ -139,14 +139,14 @@ mod tests {
                 return_ty: ty.clone(),
                 ..Default::default()
             };
-            let typed_name = format!("builtin.{op_name}_{suffix}");
+            let typed_name = format!("{op_name}_{suffix}");
             let typed_fid = mb.module_mut().register_runtime(typed_name, typed_sig);
             specializations.insert(key, typed_fid);
         }
 
         // Build a minimal non-empty body for the `_any` stub so that
         // `ValidateCalledStubs` does not treat it as an unresolved stub.
-        let func_name = format!("builtin.{op_name}_any");
+        let func_name = format!("{op_name}_any");
         let any_sig = FunctionSig {
             params: if is_binary {
                 vec![Type::Unknown, Type::Unknown]
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn test_calls_to_resolved_overload_no_diagnostic() {
-        // Float(64) args — overload select will resolve to builtin.add_f64.
+        // Float(64) args — overload select will resolve to add_f64.
         let module = make_module_with_func("add", &[Type::Float(64), Type::Float(64)]);
         let result = BuiltinOverloadSelect.apply(module, None).unwrap();
         assert!(result.changed);

@@ -243,8 +243,8 @@ fn collect_bool_demands(
                 args,
             } => {
                 let callee_name = func_names.get(callee_fid).map(|s| s.as_str()).unwrap_or("");
-                // builtin.not_bool operand is boolean
-                if callee_name.starts_with("builtin.not") && args.len() == 1 {
+                // not_bool operand is boolean
+                if callee_name == "not_bool" && args.len() == 1 {
                     demands.push(args[0]);
                 }
                 if let Some(param_types) = external_param_types.get(callee_name) {
