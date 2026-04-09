@@ -889,9 +889,9 @@ fn emit_class_file(
     }
     let intrinsic_calls_class = build_intrinsic_calls_map(module);
     let func_names_class: HashMap<FuncId, String> = module
-        .runtime_registry
-        .iter()
-        .map(|(name, &fid)| (fid, name.clone()))
+        .functions
+        .keys()
+        .map(|fid| (fid, module.func_name(fid).to_string()))
         .collect();
     let calls = collect_call_names_from_funcs(
         class_funcs(),
@@ -1175,9 +1175,9 @@ fn emit_free_functions_file(
     emit_runtime_imports_for(systems, &mut out, 0, runtime_config, &mut _free_sys_aliases);
     let intrinsic_calls_free = build_intrinsic_calls_map(module);
     let func_names_free: HashMap<FuncId, String> = module
-        .runtime_registry
-        .iter()
-        .map(|(name, &fid)| (fid, name.clone()))
+        .functions
+        .keys()
+        .map(|fid| (fid, module.func_name(fid).to_string()))
         .collect();
     let calls = collect_call_names_from_funcs(
         free_fn_iter(),
@@ -1418,7 +1418,7 @@ pub fn emit_module_to_dir(
     // Rebuild free_func_names after potential renames.
     let free_func_names: HashSet<String> = free_funcs
         .iter()
-        .map(|&fid| sanitize_ident(&module.functions[fid].name))
+        .map(|&fid| sanitize_ident(module.func_name(fid)))
         .collect();
     let mut barrel_exports: Vec<String> = Vec::new();
 
