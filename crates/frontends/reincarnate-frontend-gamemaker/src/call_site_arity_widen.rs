@@ -57,7 +57,7 @@ fn collect_max_arities(module: &Module) -> (HashMap<FuncId, usize>, HashMap<Stri
                     }
                     Op::MethodCall { method, args, .. } => {
                         // Skip self-calls.
-                        if method == &func.name {
+                        if method == module.name_table.func_name(caller_fid) {
                             continue;
                         }
                         // args exclude self (param[0]), so total param count needed

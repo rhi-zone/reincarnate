@@ -4,9 +4,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use reincarnate_core::entity::PrimaryMap;
-use reincarnate_core::ir::module::TypeDecl;
-use reincarnate_core::ir::{ClassDef, Function, MethodKind, Module, Op, Type, TypeId};
+use reincarnate_core::ir::{ClassDef, FuncId, MethodKind, Module, Op, Type};
 use reincarnate_core::project::ExternalTypeDef;
 
 use super::{qualified_class_name, ClassRegistry};
@@ -99,14 +97,16 @@ pub(super) fn is_open_type(start: &str, type_defs: &BTreeMap<String, ExternalTyp
 /// `Instance` or `Struct` type, verifies that the field exists in the class
 /// hierarchy's instance fields, method names (getters/setters), or static fields.
 pub(super) fn validate_member_accesses(
-    func: &Function,
+    fid: FuncId,
+    module: &Module,
     function_class: Option<&str>,
     class_meta: &ClassMeta,
     registry: &ClassRegistry,
     short_to_qualified: &HashMap<String, String>,
     type_defs: &BTreeMap<String, ExternalTypeDef>,
-    module_types: &PrimaryMap<TypeId, TypeDecl>,
 ) {
+    let func = &module.functions[fid];
+    let func_name = module.name_table.func_name(fid);
     for (_iid, inst) in func.insts.iter() {
         let (object, field) = match &inst.op {
             Op::GetField { object, field } => (*object, field.as_str()),
@@ -123,7 +123,7 @@ pub(super) fn validate_member_accesses(
         let type_name_storage: String;
         let type_name = match ty {
             Type::Instance(id) => {
-                if let Some(named) = module_types.get(*id) {
+                if let Some(named) = module.types.get(*id) {
                     if let Some(name) = named.name() {
                         type_name_storage = name.to_string();
                         type_name_storage.as_str()
@@ -157,7 +157,7 @@ pub(super) fn validate_member_accesses(
                             if !ext_members.contains(bare) {
                                 eprintln!(
                                     "warning: {short} has no member '{bare}' (in {})",
-                                    func.name
+                                    func_name
                                 );
                             }
                         }
@@ -173,7 +173,7 @@ pub(super) fn validate_member_accesses(
                     if type_defs.contains_key(short) && !is_open_type(short, type_defs) {
                         let ext_members = collect_external_members(short, type_defs);
                         if !ext_members.contains(bare) {
-                            eprintln!("warning: {short} has no member '{bare}' (in {})", func.name);
+                            eprintln!("warning: {short} has no member '{bare}' (in {})", func_name);
                         }
                     }
                     continue;
@@ -216,7 +216,7 @@ pub(super) fn validate_member_accesses(
                     continue;
                 }
             }
-            eprintln!("warning: {short} has no member '{bare}' (in {})", func.name);
+            eprintln!("warning: {short} has no member '{bare}' (in {})", func_name);
         }
     }
 }

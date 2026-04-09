@@ -455,6 +455,7 @@ Full design: `docs/rewrite.md` (on `rewrite-v1` branch). Executed incrementally 
   > - **Color/draw math** (pure math only, not draw calls): `make_color_rgb`, `make_color_hsv`, `color_get_red`, etc.
   > Skip anything that requires `SystemCall` (draw, file I/O, network) — those stay as stubs until Phase 3.
   > **Blocked on**: `RuntimeRegistry` (FuncId-keyed stdlib map), then Phase 3 (`SystemCall` ban).
+  > **`_rt` migration design (2026-04-05):** The current backend-injected `_rt: GameRuntime` is a hack — the backend reactively detects stateful calls and splices `_rt` as param 0 and arg 0. The correct design: the GML frontend defines a `GameRuntime` struct type and passes `rt: GameRuntime` as explicit param 0 of every translated function. Call sites pass it explicitly. A dead parameter elimination pass removes `rt` from functions that never use it (pure math, etc.). The runtime object is not special in the IR — it is just a typed value. This eliminates `Op::SystemCall`, `IntrinsicKind`, backend `_rt` injection (`rewrites::prepend_rt_arg_to_free_calls`), and the `instance._rt = this` backreference. Blocked on Phase 9 (RuntimeRegistry + stdlib as IR functions), because random/state-dependent stdlib functions need IR bodies that reference `rt` before the frontend can pass it correctly.
 
 ### Out of scope until designed
 

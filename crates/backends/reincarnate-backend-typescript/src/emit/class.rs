@@ -201,8 +201,10 @@ pub(super) fn emit_functions(
             let no_stateful = BTreeSet::new();
             let no_free_fns = HashSet::new();
             let overloads = collect_overloads(&module.functions, id);
+            let func_name = module.name_table.func_name(id).to_string();
             emit_function(
                 &mut module.functions[id],
+                &func_name,
                 &module.types,
                 class_names,
                 known_classes,
@@ -231,6 +233,7 @@ pub(super) fn emit_functions(
 #[allow(clippy::too_many_arguments)]
 pub(super) fn emit_function(
     func: &mut Function,
+    func_name: &str,
     module_types: &reincarnate_core::entity::PrimaryMap<
         reincarnate_core::ir::TypeId,
         reincarnate_core::ir::module::TypeDecl,
@@ -256,8 +259,8 @@ pub(super) fn emit_function(
 ) -> Result<(), CoreError> {
     use reincarnate_core::ir::linear;
 
-    if debug.dump_ir && debug.should_dump(&func.name) {
-        eprintln!("=== IR: {} ===\n{}\n=== end IR ===\n", func.name, func);
+    if debug.dump_ir && debug.should_dump(func_name) {
+        eprintln!("=== IR: {} ===\n{}\n=== end IR ===\n", func_name, func);
     }
 
     func.hoist_allocs();
@@ -265,7 +268,7 @@ pub(super) fn emit_function(
     let effective_config = lowering_config_for_engine(lowering_config, engine, None);
     let ast = linear::lower_function_linear(
         func,
-        &func.name,
+        func_name,
         &shape,
         &effective_config,
         debug,
@@ -335,8 +338,8 @@ pub(super) fn emit_function(
         crate::rewrites::gamemaker::coerce_bool_args(&mut js_func, func_sigs);
     }
     rewrites::rewrite_global_assignments(&mut js_func.body, mutable_global_names);
-    crate::ast_passes::dedup_object_keys(&mut js_func, &func.name, diagnostics);
-    crate::ast_passes::recover_switch_statements(&mut js_func.body, &func.name, diagnostics);
+    crate::ast_passes::dedup_object_keys(&mut js_func, func_name, diagnostics);
+    crate::ast_passes::recover_switch_statements(&mut js_func.body, func_name, diagnostics);
     crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);
@@ -744,8 +747,10 @@ pub(super) fn emit_class(
         if i > 0 {
             out.push('\n');
         }
+        let func_name = module.name_table.func_name(fid).to_string();
         emit_class_method(
             &mut module.functions[fid],
+            &func_name,
             &module.types,
             class_names,
             ancestors,
@@ -930,19 +935,14 @@ pub(super) fn compile_closures(
     let effective_config = lowering_config_for_engine(lowering_config, engine, Some(module));
     let mut result = HashMap::new();
     for &fid in closure_fids {
+        let name = module.name_table.func_name(fid).to_string();
+        let short = name.rsplit("::").next().unwrap_or(&name).to_string();
         let func = &mut module.functions[fid];
-        let short = func
-            .name
-            .rsplit("::")
-            .next()
-            .unwrap_or(&func.name)
-            .to_string();
-
         func.hoist_allocs();
         let shape = structurize::structurize(func);
         let ast = linear::lower_function_linear(
             func,
-            &func.name,
+            &name,
             &shape,
             &effective_config,
             debug,
@@ -965,6 +965,7 @@ pub(super) fn compile_closures(
 /// Emit a single method inside a class body.
 fn emit_class_method(
     func: &mut Function,
+    func_name: &str,
     module_types: &reincarnate_core::entity::PrimaryMap<
         reincarnate_core::ir::TypeId,
         reincarnate_core::ir::module::TypeDecl,
@@ -1003,11 +1004,10 @@ fn emit_class_method(
     #![allow(clippy::too_many_arguments)]
     use reincarnate_core::ir::linear;
 
-    let raw_name = func
-        .name
+    let raw_name = func_name
         .rsplit("::")
         .next()
-        .unwrap_or(&func.name)
+        .unwrap_or(func_name)
         .to_string();
 
     let skip_self = matches!(
@@ -1021,8 +1021,8 @@ fn emit_class_method(
             | MethodKind::Closure
     );
 
-    if debug.dump_ir && debug.should_dump(&func.name) {
-        eprintln!("=== IR: {} ===\n{}\n=== end IR ===\n", func.name, func);
+    if debug.dump_ir && debug.should_dump(func_name) {
+        eprintln!("=== IR: {} ===\n{}\n=== end IR ===\n", func_name, func);
     }
 
     func.hoist_allocs();
@@ -1030,7 +1030,7 @@ fn emit_class_method(
     let effective_config = lowering_config_for_engine(lowering_config, engine, None);
     let ast = linear::lower_function_linear(
         func,
-        &func.name,
+        func_name,
         &shape,
         &effective_config,
         debug,
@@ -1126,8 +1126,8 @@ fn emit_class_method(
             return Ok(());
         }
     }
-    crate::ast_passes::dedup_object_keys(&mut js_func, &func.name, diagnostics);
-    crate::ast_passes::recover_switch_statements(&mut js_func.body, &func.name, diagnostics);
+    crate::ast_passes::dedup_object_keys(&mut js_func, func_name, diagnostics);
+    crate::ast_passes::recover_switch_statements(&mut js_func.body, func_name, diagnostics);
     crate::ast_passes::strip_redundant_casts(&mut js_func);
     crate::ast_passes::coalesce_text_calls(&mut js_func.body);
     crate::ast_passes::coalesce_array_strings(&mut js_func.body);

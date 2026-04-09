@@ -2001,9 +2001,10 @@ fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> 
     };
 
     for module in &output.modules {
-        for (_, func) in module.functions.iter() {
-            if debug_config.should_dump(&func.name) {
-                println!("{}", func.name);
+        for (fid, _func) in module.functions.iter() {
+            let func_name = module.func_name(fid);
+            if debug_config.should_dump(func_name) {
+                println!("{}", func_name);
             }
         }
     }
@@ -2036,7 +2037,7 @@ fn cmd_list_stubs(
 
     let mut total = 0usize;
     for module in &output.modules {
-        for func in module.functions.values() {
+        for (fid, func) in module.functions.iter() {
             // A stub: entry block has zero instructions and terminates with Return(None).
             let entry = &func.blocks[func.entry];
             let is_stub =
@@ -2045,9 +2046,11 @@ fn cmd_list_stubs(
                 continue;
             }
 
+            let func_name = module.func_name(fid);
+
             // Apply name filter (case-insensitive substring).
             if let Some(ref pat) = filter_lower {
-                if !func.name.to_lowercase().contains(pat.as_str()) {
+                if !func_name.to_lowercase().contains(pat.as_str()) {
                     continue;
                 }
             }
@@ -2066,12 +2069,12 @@ fn cmd_list_stubs(
             if show_specializations && !func.specializations.is_empty() {
                 println!(
                     "{:<40} {:<40} [{} specializations]",
-                    func.name,
+                    func_name,
                     sig_str,
                     func.specializations.len()
                 );
             } else {
-                println!("{:<40} {}", func.name, sig_str);
+                println!("{:<40} {}", func_name, sig_str);
             }
 
             total += 1;
@@ -2123,9 +2126,9 @@ fn count_differing_functions(
 /// map from function name to JSON.
 fn serialize_functions(module: &Module) -> Result<HashMap<String, String>> {
     let mut map = HashMap::new();
-    for func in module.functions.values() {
+    for (fid, func) in module.functions.iter() {
         let json = serde_json::to_string(func)?;
-        map.insert(func.name.clone(), json);
+        map.insert(module.func_name(fid).to_string(), json);
     }
     Ok(map)
 }

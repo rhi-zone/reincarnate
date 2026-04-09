@@ -93,7 +93,7 @@ pub(crate) fn lowering_config_for_engine<'a>(
             module.map(|m| {
                 m.functions
                     .iter()
-                    .map(|(fid, func)| (fid, func.name.clone()))
+                    .map(|(fid, _func)| (fid, m.name_table.func_name(fid).to_string()))
                     .collect()
             })
         } else {
@@ -383,8 +383,10 @@ pub fn emit_module_to_string(
         for &fid in &free_funcs {
             if module.functions[fid].method_kind != MethodKind::Closure {
                 let overloads = class::collect_overloads(&module.functions, fid);
+                let func_name = module.name_table.func_name(fid).to_string();
                 emit_function(
                     &mut module.functions[fid],
+                    &func_name,
                     &module.types,
                     &class_names,
                     &known_classes,
@@ -974,13 +976,13 @@ fn emit_class_file(
     // Validate member accesses before emitting (warnings only).
     for &fid in &group.methods {
         validate_member_accesses(
-            &module.functions[fid],
+            fid,
+            module,
             Some(&qualified),
             class_meta,
             registry,
             short_to_qualified,
             type_defs,
-            &module.types,
         );
     }
 
@@ -1306,8 +1308,10 @@ fn emit_free_functions_file(
     for &fid in free_funcs {
         if module.functions[fid].method_kind != MethodKind::Closure {
             let overloads = class::collect_overloads(&module.functions, fid);
+            let func_name = module.name_table.func_name(fid).to_string();
             emit_function(
                 &mut module.functions[fid],
+                &func_name,
                 &module.types,
                 class_names,
                 known_classes,

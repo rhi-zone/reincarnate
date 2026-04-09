@@ -46,7 +46,7 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 - Backward type propagation (inferring a value's type from how it is used downstream)
 - Any of the above added to reduce TS error counts
 
-**5. Instantiability.** All mutable runtime state lives on root runtime instances. No module-level mutable variables. Multiple game instances must coexist on one page.
+**5. Instantiability.** All mutable runtime state lives on root runtime instances. No module-level mutable variables. Multiple game instances must coexist on one page. The correct mechanism for instanced runtimes is to pass the runtime object as an explicit first parameter (`rt`) to all translated functions. An optional dead parameter elimination pass removes `rt` from functions that never use it. No special-casing in the IR — the runtime is just a typed value like any other.
 
 
 ## Workflow
