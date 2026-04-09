@@ -776,14 +776,11 @@ pub(super) fn translate_pop(
                         if is_scalar {
                             fb.store(slot, value);
                         } else {
-                            // Local array write: GML auto-creates an array
-                            // when writing to a non-array local via index.
+                            // Local array write: load the array from the local slot and
+                            // write through it. JS arrays are reference-typed so no store-back needed.
                             let ty = fb.fresh_var();
                             let arr = fb.load(slot, ty);
-                            let call_ty = fb.fresh_var();
-                            let result =
-                                fb.call_named("arrayLocalSet", &[arr, dim1, value], call_ty);
-                            fb.store(slot, result);
+                            fb.set_index(arr, dim1, value);
                         }
                     } else if ctx.has_self {
                         let self_param = fb.param(0);
