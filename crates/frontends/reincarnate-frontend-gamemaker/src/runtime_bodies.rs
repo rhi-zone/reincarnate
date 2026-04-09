@@ -1557,30 +1557,30 @@ fn attach_body_merge_color(module: &mut Module) {
     let one_minus_amt = b.sub(one, amt);
 
     // Red channel
-    let r1 = b.call_named("color_get_red", &[col1], Type::Float(64));
-    let r2 = b.call_named("color_get_red", &[col2], Type::Float(64));
+    let r1 = b.call_named("colour_get_red", &[col1], Type::Float(64));
+    let r2 = b.call_named("colour_get_red", &[col2], Type::Float(64));
     let r1_part = b.mul(r1, one_minus_amt);
     let r2_part = b.mul(r2, amt);
     let r_blend = b.add(r1_part, r2_part);
     let r_out = b.call_named("builtin.round_f64", &[r_blend], Type::Float(64));
 
     // Green channel
-    let g1 = b.call_named("color_get_green", &[col1], Type::Float(64));
-    let g2 = b.call_named("color_get_green", &[col2], Type::Float(64));
+    let g1 = b.call_named("colour_get_green", &[col1], Type::Float(64));
+    let g2 = b.call_named("colour_get_green", &[col2], Type::Float(64));
     let g1_part = b.mul(g1, one_minus_amt);
     let g2_part = b.mul(g2, amt);
     let g_blend = b.add(g1_part, g2_part);
     let g_out = b.call_named("builtin.round_f64", &[g_blend], Type::Float(64));
 
     // Blue channel
-    let b1 = b.call_named("color_get_blue", &[col1], Type::Float(64));
-    let b2 = b.call_named("color_get_blue", &[col2], Type::Float(64));
+    let b1 = b.call_named("colour_get_blue", &[col1], Type::Float(64));
+    let b2 = b.call_named("colour_get_blue", &[col2], Type::Float(64));
     let b1_part = b.mul(b1, one_minus_amt);
     let b2_part = b.mul(b2, amt);
     let b_blend = b.add(b1_part, b2_part);
     let bv_out = b.call_named("builtin.round_f64", &[b_blend], Type::Float(64));
 
-    let result = b.call_named("make_color_rgb", &[r_out, g_out, bv_out], Type::Float(64));
+    let result = b.call_named("make_colour_rgb", &[r_out, g_out, bv_out], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1617,28 +1617,28 @@ fn attach_body_merge_colour(module: &mut Module) {
     let one = b.const_float(1.0);
     let one_minus_amt = b.sub(one, amt);
 
-    let r1 = b.call_named("color_get_red", &[col1], Type::Float(64));
-    let r2 = b.call_named("color_get_red", &[col2], Type::Float(64));
+    let r1 = b.call_named("colour_get_red", &[col1], Type::Float(64));
+    let r2 = b.call_named("colour_get_red", &[col2], Type::Float(64));
     let r1_part = b.mul(r1, one_minus_amt);
     let r2_part = b.mul(r2, amt);
     let r_blend = b.add(r1_part, r2_part);
     let r_out = b.call_named("builtin.round_f64", &[r_blend], Type::Float(64));
 
-    let g1 = b.call_named("color_get_green", &[col1], Type::Float(64));
-    let g2 = b.call_named("color_get_green", &[col2], Type::Float(64));
+    let g1 = b.call_named("colour_get_green", &[col1], Type::Float(64));
+    let g2 = b.call_named("colour_get_green", &[col2], Type::Float(64));
     let g1_part = b.mul(g1, one_minus_amt);
     let g2_part = b.mul(g2, amt);
     let g_blend = b.add(g1_part, g2_part);
     let g_out = b.call_named("builtin.round_f64", &[g_blend], Type::Float(64));
 
-    let b1 = b.call_named("color_get_blue", &[col1], Type::Float(64));
-    let b2 = b.call_named("color_get_blue", &[col2], Type::Float(64));
+    let b1 = b.call_named("colour_get_blue", &[col1], Type::Float(64));
+    let b2 = b.call_named("colour_get_blue", &[col2], Type::Float(64));
     let b1_part = b.mul(b1, one_minus_amt);
     let b2_part = b.mul(b2, amt);
     let b_blend = b.add(b1_part, b2_part);
     let bv_out = b.call_named("builtin.round_f64", &[b_blend], Type::Float(64));
 
-    let result = b.call_named("make_color_rgb", &[r_out, g_out, bv_out], Type::Float(64));
+    let result = b.call_named("make_colour_rgb", &[r_out, g_out, bv_out], Type::Float(64));
     b.ret(Some(result));
 
     let built = b.build();
@@ -1678,9 +1678,9 @@ fn attach_body_color_get_value(module: &mut Module) {
 
     let c255 = b.const_float(255.0);
 
-    let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-    let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-    let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
+    let r_raw = b.call_named("colour_get_red", &[color], Type::Float(64));
+    let g_raw = b.call_named("colour_get_green", &[color], Type::Float(64));
+    let bv_raw = b.call_named("colour_get_blue", &[color], Type::Float(64));
     let r = b.div(r_raw, c255);
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
@@ -1723,9 +1723,9 @@ fn attach_body_colour_get_value(module: &mut Module) {
 
     let c255 = b.const_float(255.0);
 
-    let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-    let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-    let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
+    let r_raw = b.call_named("colour_get_red", &[color], Type::Float(64));
+    let g_raw = b.call_named("colour_get_green", &[color], Type::Float(64));
+    let bv_raw = b.call_named("colour_get_blue", &[color], Type::Float(64));
     let r = b.div(r_raw, c255);
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
@@ -1777,9 +1777,9 @@ fn attach_body_color_get_saturation(module: &mut Module) {
     let c255 = b.const_float(255.0);
     let zero = b.const_float(0.0);
 
-    let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-    let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-    let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
+    let r_raw = b.call_named("colour_get_red", &[color], Type::Float(64));
+    let g_raw = b.call_named("colour_get_green", &[color], Type::Float(64));
+    let bv_raw = b.call_named("colour_get_blue", &[color], Type::Float(64));
     let r = b.div(r_raw, c255);
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
@@ -1837,9 +1837,9 @@ fn attach_body_colour_get_saturation(module: &mut Module) {
     let c255 = b.const_float(255.0);
     let zero = b.const_float(0.0);
 
-    let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-    let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-    let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
+    let r_raw = b.call_named("colour_get_red", &[color], Type::Float(64));
+    let g_raw = b.call_named("colour_get_green", &[color], Type::Float(64));
+    let bv_raw = b.call_named("colour_get_blue", &[color], Type::Float(64));
     let r = b.div(r_raw, c255);
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
@@ -1912,9 +1912,9 @@ fn attach_body_color_get_hue(module: &mut Module) {
     let zero = b.const_float(0.0);
 
     // Extract r, g, b as fractions in [0, 1].
-    let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-    let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-    let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
+    let r_raw = b.call_named("colour_get_red", &[color], Type::Float(64));
+    let g_raw = b.call_named("colour_get_green", &[color], Type::Float(64));
+    let bv_raw = b.call_named("colour_get_blue", &[color], Type::Float(64));
     let r = b.div(r_raw, c255);
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
@@ -2031,9 +2031,9 @@ fn attach_body_colour_get_hue(module: &mut Module) {
     let c255 = b.const_float(255.0);
     let zero = b.const_float(0.0);
 
-    let r_raw = b.call_named("color_get_red", &[color], Type::Float(64));
-    let g_raw = b.call_named("color_get_green", &[color], Type::Float(64));
-    let bv_raw = b.call_named("color_get_blue", &[color], Type::Float(64));
+    let r_raw = b.call_named("colour_get_red", &[color], Type::Float(64));
+    let g_raw = b.call_named("colour_get_green", &[color], Type::Float(64));
+    let bv_raw = b.call_named("colour_get_blue", &[color], Type::Float(64));
     let r = b.div(r_raw, c255);
     let g = b.div(g_raw, c255);
     let bv = b.div(bv_raw, c255);
@@ -2263,7 +2263,7 @@ fn attach_body_make_color_hsv(module: &mut Module) {
     let b_final = b.call_named("builtin.round_f64", &[bv_scaled], Type::Float(64));
 
     let result = b.call_named(
-        "make_color_rgb",
+        "make_colour_rgb",
         &[r_final, g_final, b_final],
         Type::Float(64),
     );
@@ -2392,7 +2392,7 @@ fn attach_body_make_colour_hsv(module: &mut Module) {
     let b_final = b.call_named("builtin.round_f64", &[bv_scaled], Type::Float(64));
 
     let result = b.call_named(
-        "make_color_rgb",
+        "make_colour_rgb",
         &[r_final, g_final, b_final],
         Type::Float(64),
     );
