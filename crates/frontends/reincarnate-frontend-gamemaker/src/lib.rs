@@ -151,8 +151,13 @@ impl Frontend for GameMakerFrontend {
         // Pre-register user function stubs so their FuncIds exist before translation.
         // Translators resolve Call opcodes to named functions — all reachable function
         // names must be in the registry before the first Call opcode is translated.
+        // Skip names already in the runtime registry — FUNC chunk entries for runtime
+        // builtins are call references, not user definitions.  Registering stubs for
+        // them would shadow the runtime's typed signatures with void/empty stubs.
+        let runtime_reg = mb.runtime_registry().clone();
         let user_func_registry: HashMap<String, FuncId> = function_names
             .values()
+            .filter(|name| !runtime_reg.contains_key(name.as_str()))
             .map(|name| (name.clone(), mb.register_function_stub(name)))
             .collect();
 
@@ -229,6 +234,7 @@ impl Frontend for GameMakerFrontend {
             &script_names,
             bc_version,
             &combined_registry,
+            &user_func_registry,
         );
         if glob_count > 0 {
             eprintln!("[gamemaker] translated {glob_count} global init scripts");
@@ -250,11 +256,111 @@ impl Frontend for GameMakerFrontend {
             &script_names,
             bc_version,
             &combined_registry,
+            &user_func_registry,
         );
         if room_count > 0 {
             eprintln!("[gamemaker] translated {room_count} room creation scripts");
         }
         mb.set_room_creation_code(room_creation_code);
+
+        // Translate unreplaced function stubs.
+        //
+        // Some functions in the FUNC chunk have no corresponding SCPT entry
+        // (e.g. `string`, `max`, `min` in Dead Estate).  Their pre-registered
+        // stubs were never replaced by `translate_scripts`.  Look for CODE
+        // entries named `gml_Script_<name>` and translate those.
+        {
+            // Pre-intern ClassRef TypeIds for all object names.
+            let classref_types: HashMap<String, TypeId> = obj_names
+                .iter()
+                .filter_map(|name| {
+                    if let Type::ClassRef(id) = mb.intern_type_classref(name) {
+                        Some((name.clone(), id))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let mut instance_types: HashMap<String, TypeId> = obj_names
+                .iter()
+                .map(|name| (name.clone(), mb.intern_type(name)))
+                .collect();
+            let gml_object_id = mb.intern_type("GMLObject");
+            ensure_gml_object_struct(&mut mb);
+            instance_types.insert("GMLObject".to_string(), gml_object_id);
+
+            // Collect stub FuncIds: stubs have an empty params list (no self param).
+            let stub_funcs: Vec<(String, FuncId)> = user_func_registry
+                .iter()
+                .filter(|(_, &fid)| mb.module_mut().functions[fid].sig.params.is_empty())
+                .map(|(name, &fid)| (name.clone(), fid))
+                .collect();
+
+            let mut stub_count = 0usize;
+            for (func_name, fid) in &stub_funcs {
+                let code_entry_name = format!("gml_Script_{func_name}");
+                let code_idx = match code_name_map
+                    .get(&code_entry_name)
+                    .or_else(|| code_name_map.get(func_name.as_str()))
+                {
+                    Some(&idx) => idx,
+                    None => continue,
+                };
+                let bytecode = match code.entry_bytecode(code_idx, dw.data()) {
+                    Some(bc) => bc,
+                    None => continue,
+                };
+                let code_entry = &code.entries[code_idx];
+                let code_name = dw.resolve_string(code_entry.name).unwrap_or_default();
+                let locals = code_locals_map.get(&code_name).copied();
+
+                let ctx = TranslateCtx {
+                    function_names: &function_names,
+                    asset_ref_names: &asset_ref_names,
+                    variables: &variables,
+                    func_ref_map: &func_ref_map,
+                    vari_ref_map: &vari_ref_map,
+                    bytecode_offset: code_entry.bytecode_offset,
+                    local_names: &resolve_local_names(locals, dw.data()),
+                    string_table: &string_table,
+                    has_self: true,
+                    has_other: false,
+                    arg_count: code_entry.args_count & 0x7FFF,
+                    obj_names: &obj_names,
+                    class_name: None,
+                    self_object_index: None,
+                    ancestor_indices: HashSet::new(),
+                    script_names: &script_names,
+                    is_event_handler: false,
+                    is_with_body: false,
+                    with_body_has_return: false,
+                    bytecode_version: bc_version,
+                    classref_types: &classref_types,
+                    instance_types: &instance_types,
+                    registry: &combined_registry,
+                };
+
+                match translate::translate_code_entry(bytecode, func_name, &ctx) {
+                    Ok((func, extra_funcs)) => {
+                        mb.replace_function(*fid, func);
+                        for extra in extra_funcs {
+                            if let Some(&efid) = user_func_registry.get(&extra.name) {
+                                mb.replace_function(efid, extra);
+                            } else {
+                                mb.add_function(extra);
+                            }
+                        }
+                        stub_count += 1;
+                    }
+                    Err(e) => {
+                        eprintln!("[gamemaker] error translating stub {func_name}: {e}");
+                    }
+                }
+            }
+            if stub_count > 0 {
+                eprintln!("[gamemaker] translated {stub_count} unreplaced stubs");
+            }
+        }
 
         // Extract assets (textures, audio, icon from sibling .exe if present).
         let source_dir = input.source.parent().unwrap_or(std::path::Path::new("."));
@@ -766,6 +872,7 @@ fn translate_global_inits(
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
+    user_func_registry: &HashMap<String, FuncId>,
 ) -> usize {
     let glob = match dw.glob() {
         Ok(Some(g)) => g,
@@ -840,7 +947,11 @@ fn translate_global_inits(
         {
             mb.add_function(func);
             for extra in extra_funcs {
-                mb.add_function(extra);
+                if let Some(&fid) = user_func_registry.get(&extra.name) {
+                    mb.replace_function(fid, extra);
+                } else {
+                    mb.add_function(extra);
+                }
             }
             count += 1;
         }
@@ -868,6 +979,7 @@ fn translate_room_creation(
     script_names: &HashSet<String>,
     bc_version: datawin::BytecodeVersion,
     registry: &HashMap<String, FuncId>,
+    user_func_registry: &HashMap<String, FuncId>,
 ) -> (usize, BTreeMap<usize, String>) {
     let room = match dw.room() {
         Ok(r) => r,
@@ -948,7 +1060,11 @@ fn translate_room_creation(
         {
             mb.add_function(func);
             for extra in extra_funcs {
-                mb.add_function(extra);
+                if let Some(&fid) = user_func_registry.get(&extra.name) {
+                    mb.replace_function(fid, extra);
+                } else {
+                    mb.add_function(extra);
+                }
             }
             creation_code_map.insert(room_idx, func_name);
             count += 1;

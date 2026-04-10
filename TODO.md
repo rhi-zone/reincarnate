@@ -176,30 +176,32 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   multi-store allocas with Var-typed cells that emitted as `unknown` even when all stored
   values were Float(64)
 
-**Current breakdown (6,548 errors, 2026-04-10):**
-- TS2365 (1907): void in arithmetic — game-defined empty stubs (max, min, string) shadow runtime
-  functions, return void, and are used in arithmetic. Correct per Law 3 (GML bug preserved).
-- TS2345 (833): unknown arg to typed param — function parameters typed unknown + local var cascade
-- TS2571 (616): property access on unknown — GetField/HasField inference gap
-- TS2362 (622): arithmetic LHS void — same root cause as TS2365 (game stubs)
-- TS18046 (588): variable of unknown type — unresolved local vars and argument params
-- TS2322 (482): type mismatches — unknowns + real errors
-- TS2363 (410): arithmetic RHS void — same root cause as TS2365 (game stubs)
-- TS2554 (372): wrong argument count — arity inference gaps
-- TS2678 (145): comparison involves void — game stubs
-- TS2367 (141): comparison with void overlap — game stubs
-- TS2538 (71): unknown as index — loop counters with unresolved types
-- TS2749 (9): value used as type — GML constructor function structs (Button, Menu, Section,
-  TextPiece, Challenge) emitted as functions, not classes, but used in type annotation positions
-- TS2304 (3): cannot find name — Tunneler (type annotation), anon_381 (anon fn ref, 2 files)
-- TS2339 (22): property doesn't exist
+**Current breakdown (2,170 errors, 2026-04-10):**
+- TS18046 (1066): variable of unknown type — unresolved local vars, argument params, instance fields
+- TS2345 (477): unknown arg to typed param — function parameters typed unknown + local var cascade
+- TS2571 (187): property access on unknown — GetField/HasField inference gap
+- TS2304 (128): cannot find name — missing runtime sigs (gpu_set_colourwriteenable etc.)
+- TS2322 (122): type mismatches — unknowns assigned to typed positions
+- TS2307 (58): cannot find module — `../../_runtime` import path (58 files)
+- TS2339 (36): property doesn't exist — field access on void/number typed values
+- TS7053 (32): can't index type — float-typed results used as object index
+- TS2362 (19): arithmetic LHS not numeric — remaining void/unknown in arithmetic
+- TS2365 (14): arithmetic comparisons with void — residual game stubs
+- TS2749 (10): value used as type — GML constructor function structs emitted as functions
+- TS2538 (9): unknown as index — loop counters with unresolved types
+- TS2363 (5): arithmetic RHS not numeric
+- TS2678 (4): comparison involves void
+- TS2355 (2): function must return a value
+- TS2740 (1): type missing properties
 
-**Baseline (1,482 errors, 2026-03-30):** Pre-FuncId-migration baseline; current 6,548 reflects:
-- ~2939 void arithmetic errors from game's empty max/min/string stubs (correct, GML bugs)
-- ~700 regression from DataType::Variable → Var(fresh) exposing more constraint failures
-- ~1000 pre-existing inference gaps (unknown cascade) now surfacing differently
+**Baseline (1,482 errors, 2026-03-30):** Pre-FuncId-migration baseline; current 2,170 reflects:
+- Remaining ~1,250 unknown-typed variable errors (TS18046) from unresolved inference
+- ~500 unknown-arg errors (TS2345) cascading from unknown locals/params
+- ~130 missing runtime signatures (TS2304) for GML functions not yet in runtime.json
 
 **Recent wins (2026-04-10):**
+- user_func_registry filter: FUNC chunk entries for runtime builtins (string, max, min, etc.)
+  no longer create void stubs that shadow runtime signatures; 5,875 → 2,170 (−3,705)
 - DataType::Variable → Type::Var(fresh) (3bfddab): untyped GML vars now constrainable by solver
 - Op::Call { func: FuncId } migration (330bed7): string-based dispatch eliminated
 - gml_syscall removed from core (fd100d5): Law 2 fix

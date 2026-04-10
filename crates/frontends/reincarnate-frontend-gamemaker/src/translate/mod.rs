@@ -227,7 +227,6 @@ pub fn translate_code_entry(
         global_arg_count,
     )?;
 
-    // If the last block wasn't terminated, add a void return.
     if !terminated {
         fb.ret(None);
     }
