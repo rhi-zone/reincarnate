@@ -794,6 +794,7 @@ fn emit_class_file(
     transitive_value_imports: &HashMap<String, HashSet<String>>,
     type_defs: &BTreeMap<String, ExternalTypeDef>,
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
+    generated_runtime_names: &BTreeSet<String>,
     lowering_config: &LoweringConfig,
     runtime_config: Option<&RuntimeConfig>,
     engine: EngineKind,
@@ -902,9 +903,38 @@ fn emit_class_file(
         .filter(|n| !free_func_names.contains(n.as_str()))
         .cloned()
         .collect();
+
+    // Calls to IR-bodied runtime functions import from `_runtime`.
+    let generated_calls: BTreeSet<String> = runtime_calls
+        .iter()
+        .filter(|n| generated_runtime_names.contains(n.as_str()))
+        .cloned()
+        .collect();
+    if !generated_calls.is_empty() {
+        let runtime_prefix = "../".repeat(depth + 1);
+        let runtime_prefix = runtime_prefix.trim_end_matches('/');
+        let names: Vec<&str> = {
+            let mut v: Vec<&str> = generated_calls.iter().map(|s| s.as_str()).collect();
+            v.sort();
+            v
+        };
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"{runtime_prefix}/_runtime\";",
+            names.join(", ")
+        );
+        out.push('\n');
+    }
+
+    // Calls to handwritten runtime functions still use function_modules routing.
+    let handwritten_calls: BTreeSet<String> = runtime_calls
+        .iter()
+        .filter(|n| !generated_runtime_names.contains(n.as_str()))
+        .cloned()
+        .collect();
     let mut stateful_names = BTreeSet::new();
     emit_function_imports_with_prefix(
-        &runtime_calls,
+        &handwritten_calls,
         &mut out,
         func_prefix,
         runtime_config,
@@ -1125,6 +1155,142 @@ fn write_traits_file(
     Ok(())
 }
 
+/// Collect the FuncIds of runtime functions that have non-stub IR bodies.
+///
+/// A stub is registered with a single entry block containing no instructions
+/// and a `Return(None)` terminator. After `register_runtime_bodies` runs,
+/// functions like `floor`, `dsin`, `point_distance`, etc. have `InlineHint::Always`
+/// set and non-empty instruction maps. We use `InlineHint::Always` as the
+/// canonical indicator that a body was attached.
+fn collect_runtime_body_fids(module: &Module) -> Vec<FuncId> {
+    use reincarnate_core::ir::func::InlineHint;
+    // Deduplicate: aliased functions share a FuncId, so values() may yield
+    // the same FuncId more than once.
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for &fid in module.runtime_registry.values() {
+        if module.functions[fid].inline_hint == InlineHint::Always && seen.insert(fid) {
+            out.push(fid);
+        }
+    }
+    // Sort by name for stable output.
+    out.sort_by_key(|&fid| module.func_name(fid));
+    out
+}
+
+/// Emit `_runtime.ts` — IR-bodied runtime function definitions generated from IR.
+///
+/// These are pure math/string/color functions that have IR bodies attached by
+/// `register_runtime_bodies`. They do NOT take `_rt` as a parameter.
+/// Returns `true` if the file was written (so the caller can add a barrel export).
+#[allow(clippy::too_many_arguments)]
+fn emit_runtime_functions_file(
+    module: &mut Module,
+    module_dir: &Path,
+    runtime_fids: &[FuncId],
+    generated_runtime_names: &BTreeSet<String>,
+    class_names: &HashMap<String, String>,
+    _class_meta: &ClassMeta,
+    lowering_config: &LoweringConfig,
+    runtime_config: Option<&RuntimeConfig>,
+    engine: EngineKind,
+    debug: &DebugConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Result<bool, CoreError> {
+    if runtime_fids.is_empty() {
+        return Ok(false);
+    }
+    let mut out = String::new();
+
+    // Collect all function names called by the runtime body functions.
+    let func_names_rt: HashMap<FuncId, String> = module
+        .functions
+        .keys()
+        .map(|fid| (fid, module.func_name(fid).to_string()))
+        .collect();
+    let intrinsic_calls_rt = build_intrinsic_calls_map(module);
+    let rt_fn_iter = || runtime_fids.iter().map(|&fid| &module.functions[fid]);
+    let calls = collect_call_names_from_funcs(
+        rt_fn_iter(),
+        engine,
+        Some(&intrinsic_calls_rt),
+        &func_names_rt,
+    );
+
+    // Functions in `_runtime.ts` that call other functions also in `_runtime.ts`
+    // don't need imports — they're in the same file. Only functions calling
+    // handwritten runtime modules need imports.
+    let external_calls: BTreeSet<String> = calls
+        .iter()
+        .filter(|n| !generated_runtime_names.contains(n.as_str()))
+        .cloned()
+        .collect();
+
+    // Import any handwritten runtime functions called from within this file.
+    let mut _rt_stateful_names = BTreeSet::new();
+    emit_function_imports_with_prefix(
+        &external_calls,
+        &mut out,
+        "..",
+        runtime_config,
+        &mut _rt_stateful_names,
+    );
+
+    let object_ts_names = class::resolve_object_ts_names(&module.object_names, class_names);
+    let name_map: HashMap<String, String> = module
+        .object_names
+        .iter()
+        .zip(object_ts_names.iter())
+        .filter(|(raw, ts)| raw != ts)
+        .map(|(raw, ts)| (raw.clone(), ts.clone()))
+        .collect();
+
+    let effective_lowering = lowering_config_for_engine(lowering_config, engine, Some(module));
+    let effective_lowering_ref: &LoweringConfig = &effective_lowering;
+
+    // No closures in runtime body functions.
+    let closure_bodies: HashMap<String, crate::js_ast::JsFunction> = HashMap::new();
+    // Runtime body functions are pure — no stateful names, no game free funcs.
+    let no_stateful = BTreeSet::new();
+    let no_free_fns = HashSet::new();
+    let no_sys_aliases = BTreeMap::new();
+    let no_unique_static = HashMap::new();
+    let known_classes: HashSet<String> = class_names.values().cloned().collect();
+
+    for &fid in runtime_fids {
+        let func_name = module.name_table.func_name(fid).to_string();
+        let overloads = class::collect_overloads(&module.functions, fid);
+        emit_function(
+            &mut module.functions[fid],
+            &func_name,
+            &module.types,
+            class_names,
+            &known_classes,
+            &HashSet::new(),
+            effective_lowering_ref,
+            engine,
+            &module.sprite_names,
+            &object_ts_names,
+            &closure_bodies,
+            &no_stateful,
+            &no_free_fns,
+            &no_sys_aliases,
+            runtime_config,
+            &no_unique_static,
+            &name_map,
+            overloads,
+            debug,
+            &mut out,
+            diagnostics,
+        )?;
+    }
+
+    strip_unused_namespace_imports(&mut out);
+    let path = module_dir.join("_runtime.ts");
+    fs::write(&path, &out).map_err(CoreError::Io)?;
+    Ok(true)
+}
+
 /// Emit `_init.ts` — free (non-class) function definitions.
 /// Returns `true` if the file was written (so the caller can add a barrel export).
 #[allow(clippy::too_many_arguments)]
@@ -1140,6 +1306,7 @@ fn emit_free_functions_file(
     mutable_global_names: &HashSet<String>,
     known_classes: &HashSet<String>,
     module_exports: &BTreeMap<String, Vec<String>>,
+    generated_runtime_names: &BTreeSet<String>,
     lowering_config: &LoweringConfig,
     runtime_config: Option<&RuntimeConfig>,
     engine: EngineKind,
@@ -1192,9 +1359,36 @@ fn emit_free_functions_file(
         .filter(|n| !free_func_names.contains(n.as_str()))
         .cloned()
         .collect();
+
+    // Calls to IR-bodied runtime functions import from `_runtime`.
+    let generated_calls: BTreeSet<String> = free_runtime_calls
+        .iter()
+        .filter(|n| generated_runtime_names.contains(n.as_str()))
+        .cloned()
+        .collect();
+    if !generated_calls.is_empty() {
+        let names: Vec<&str> = {
+            let mut v: Vec<&str> = generated_calls.iter().map(|s| s.as_str()).collect();
+            v.sort();
+            v
+        };
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"./_runtime\";",
+            names.join(", ")
+        );
+        out.push('\n');
+    }
+
+    // Calls to handwritten runtime functions still use function_modules routing.
+    let handwritten_calls: BTreeSet<String> = free_runtime_calls
+        .iter()
+        .filter(|n| !generated_runtime_names.contains(n.as_str()))
+        .cloned()
+        .collect();
     let mut free_stateful_names = BTreeSet::new();
     emit_function_imports_with_prefix(
-        &free_runtime_calls,
+        &handwritten_calls,
         &mut out,
         "..",
         runtime_config,
@@ -1426,6 +1620,22 @@ pub fn emit_module_to_dir(
         .iter()
         .map(|&fid| sanitize_ident(module.func_name(fid)))
         .collect();
+
+    // Collect generated runtime function names before emitting anything so that
+    // all emit steps can route imports to `_runtime` vs. handwritten modules.
+    let runtime_fids = collect_runtime_body_fids(module);
+    // Include ALL registry keys (canonical names + aliases) that resolve to an
+    // IR-body FuncId, so the routing covers every name a call site might emit.
+    let generated_runtime_names: BTreeSet<String> = {
+        use reincarnate_core::ir::func::InlineHint;
+        module
+            .runtime_registry
+            .iter()
+            .filter(|(_name, &fid)| module.functions[fid].inline_hint == InlineHint::Always)
+            .map(|(name, _fid)| sanitize_ident(name))
+            .collect()
+    };
+
     let mut barrel_exports: Vec<String> = Vec::new();
 
     // Globals → _globals.ts
@@ -1463,6 +1673,7 @@ pub fn emit_module_to_dir(
             &transitive_value_imports,
             type_defs,
             func_sigs,
+            &generated_runtime_names,
             lowering_config,
             runtime_config,
             engine,
@@ -1486,6 +1697,7 @@ pub fn emit_module_to_dir(
         &mutable_global_names,
         &known_classes,
         module_exports,
+        &generated_runtime_names,
         lowering_config,
         runtime_config,
         engine,
@@ -1494,6 +1706,24 @@ pub fn emit_module_to_dir(
     )? {
         barrel_exports.push("_init".to_string());
     }
+
+    // Generated runtime functions → _runtime.ts
+    // _runtime.ts is internal: not added to the barrel because its exports are
+    // lower-level runtime helpers, not game API. Each file that needs them
+    // imports directly from "./_runtime".
+    emit_runtime_functions_file(
+        module,
+        &module_dir,
+        &runtime_fids,
+        &generated_runtime_names,
+        &class_names,
+        &class_meta,
+        lowering_config,
+        runtime_config,
+        engine,
+        debug,
+        diagnostics,
+    )?;
 
     // Barrel file: index.ts
     write_barrel_file(&module_dir, &barrel_exports)?;

@@ -100,39 +100,16 @@ export function createMathAPI(rt: GameRuntime) {
 
 // ---- Standard math (pure — no runtime needed) ----
 
-export const { floor, ceil, round, abs, sin, cos, tan, sqrt, exp, log: ln, log2, log10, pow: power, max, min, sign } = Math;
+// ln, max, min have no IR bodies — they remain handwritten.
+export const { log: ln, max, min } = Math;
 
-export function frac(n: number): number { return n % 1; }
-export function sqr(val: number): number { return val * val; }
-export function clamp(val: number, lo: number, hi: number): number { return val < lo ? lo : val > hi ? hi : val; }
-export function lerp(a: number, b: number, amt: number): number { return a * (1 - amt) + b * amt; }
 export function mean(...nums: number[]): number { return nums.reduce((p, c) => p + c, 0) / nums.length; }
-export function point_distance(x1: number, y1: number, x2: number, y2: number): number {
-  const dx = x2 - x1, dy = y2 - y1;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-export function point_direction(x1: number, y1: number, x2: number, y2: number): number {
-  return Math.atan2(y1 - y2, x2 - x1) * RAD_TO_DEG;
+export function median(...nums: number[]): number {
+  const sorted = nums.slice().sort((a, b) => a - b);
+  const mid = sorted.length >> 1;
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
-// ---- Degree-based trig ----
-
-const DEG_TO_RAD = Math.PI / 180;
-const RAD_TO_DEG = 180 / Math.PI;
-
-export function dsin(val: number): number { return Math.sin(val * DEG_TO_RAD); }
-export function dcos(val: number): number { return Math.cos(val * DEG_TO_RAD); }
-export function dtan(val: number): number { return Math.tan(val * DEG_TO_RAD); }
-export function darcsin(val: number): number { return Math.asin(val) * RAD_TO_DEG; }
-export function darccos(val: number): number { return Math.acos(val) * RAD_TO_DEG; }
-export function darctan(val: number): number { return Math.atan(val) * RAD_TO_DEG; }
-export function darctan2(y: number, x: number): number { return Math.atan2(y, x) * RAD_TO_DEG; }
-export function degtorad(deg: number): number { return deg * DEG_TO_RAD; }
-export function radtodeg(rad: number): number { return rad * RAD_TO_DEG; }
-export function lengthdir_x(len: number, dir: number): number { return len * dcos(dir); }
-export function lengthdir_y(len: number, dir: number): number { return -len * dsin(dir); }
-
-export function logn(n: number, val: number): number { return Math.log(val) / Math.log(n); }
 export function int64(n: number): number { return n | 0; }
 
 // ---- Type conversion ----
@@ -145,24 +122,5 @@ export function uint(n: unknown): number { return Number(n) >>> 0; }
 export function real(n: unknown): number { return Number(n); }
 /** Convert to string (GML string). Optional second arg is decimal places; extra args ignored. */
 export function string(n: unknown, ..._rest: unknown[]): string { return String(n); }
-export function median(...nums: number[]): number {
-  const sorted = nums.slice().sort((a, b) => a - b);
-  const mid = sorted.length >> 1;
-  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
-}
-export function arctan(x: number): number { return Math.atan(x) * RAD_TO_DEG; }
-export function arctan2(y: number, x: number): number { return Math.atan2(y, x); }
-
-export function dot_product(x1: number, y1: number, x2: number, y2: number): number { return x1 * x2 + y1 * y2; }
-// TODO: re-verify against spcs
-export function arcsin(x: number): number { return Math.asin(x); }
-
-// TODO: re-verify against spcs
-export function arccos(x: number): number { return Math.acos(x); }
-
-// TODO: re-verify against spcs
-export function dot_product_3d(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number): number {
-  return x1 * x2 + y1 * y2 + z1 * z2;
-}
 export function math_get_epsilon(): number { return 0.00001; }
 export function is_bool(val: unknown): val is boolean { return typeof val === "boolean"; }

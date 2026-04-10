@@ -7885,53 +7885,16 @@
   "function_modules": [
     {
       "names": [
-        "floor",
-        "ceil",
-        "round",
-        "abs",
-        "sign",
-        "min",
-        "max",
-        "clamp",
-        "sqrt",
-        "power",
-        "sin",
-        "cos",
-        "tan",
-        "arctan",
-        "arctan2",
         "ln",
-        "log2",
-        "log10",
-        "exp",
-        "sqr",
-        "frac",
+        "max",
+        "min",
         "mean",
         "median",
-        "lerp",
-        "point_distance",
-        "point_direction",
-        "degtorad",
-        "radtodeg",
-        "lengthdir_x",
-        "lengthdir_y",
-        "dsin",
-        "dcos",
-        "dtan",
-        "darcsin",
-        "darccos",
-        "darctan",
-        "darctan2",
-        "logn",
         "int64",
         "int",
         "uint",
         "real",
         "string",
-        "dot_product",
-        "arcsin",
-        "arccos",
-        "dot_product_3d",
         "math_get_epsilon",
         "is_bool"
       ],
@@ -7949,37 +7912,6 @@
       ],
       "path": "gamemaker/math",
       "stateful": true
-    },
-    {
-      "names": [
-        "string_length",
-        "string_copy",
-        "string_insert",
-        "string_replace_all",
-        "string_lower",
-        "string_upper",
-        "string_char_at",
-        "string_pos",
-        "string_delete",
-        "string_count",
-        "string_hash_to_newline",
-        "string_trim",
-        "string_ord_at",
-        "string_repeat",
-        "string_replace",
-        "string_byte_at",
-        "ord",
-        "chr"
-      ],
-      "path": "gamemaker/string"
-    },
-    {
-      "names": [
-        "array_length",
-        "array_length_1d",
-        "array_contains"
-      ],
-      "path": "gamemaker/array"
     },
     {
       "names": [
@@ -8012,28 +7944,6 @@
       ],
       "path": "gamemaker/draw",
       "stateful": true
-    },
-    {
-      "names": [
-        "color_get_red",
-        "color_get_green",
-        "color_get_blue",
-        "colour_get_red",
-        "colour_get_green",
-        "colour_get_blue",
-        "color_get_value",
-        "colour_get_value",
-        "make_color_rgb",
-        "make_colour_rgb",
-        "merge_colour",
-        "merge_color",
-        "color_get_hue",
-        "color_get_saturation",
-        "colour_get_hue",
-        "colour_get_saturation",
-        "make_colour_hsv"
-      ],
-      "path": "gamemaker/color"
     },
     {
       "names": [
