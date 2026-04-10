@@ -176,30 +176,41 @@ not via arena constraints). Real gaps: Call, GetField, GlobalRef, CallIndirect.
   multi-store allocas with Var-typed cells that emitted as `unknown` even when all stored
   values were Float(64)
 
-**Current breakdown (6,548 errors, 2026-04-10):**
-- TS2365 (1907): void in arithmetic — game-defined empty stubs (max, min, string) shadow runtime
-  functions, return void, and are used in arithmetic. Correct per Law 3 (GML bug preserved).
-- TS2345 (833): unknown arg to typed param — function parameters typed unknown + local var cascade
-- TS2571 (616): property access on unknown — GetField/HasField inference gap
-- TS2362 (622): arithmetic LHS void — same root cause as TS2365 (game stubs)
-- TS18046 (588): variable of unknown type — unresolved local vars and argument params
-- TS2322 (482): type mismatches — unknowns + real errors
-- TS2363 (410): arithmetic RHS void — same root cause as TS2365 (game stubs)
-- TS2554 (372): wrong argument count — arity inference gaps
+**Current breakdown (5,891 errors, 2026-04-10):**
+- TS2365 (1699): void in arithmetic — game-defined stubs (max, min, string, etc.) shadow runtime
+  functions; those scripts now emit `return 0.0` on fall-through (correct GML semantics) but some
+  stubs have empty bodies with no Opcode::Ret, so the empty-body scripts return Float(64) on
+  fall-through while void-stub callers still see void. Remaining void errors are from the stubs'
+  explicit-void return paths, not the fall-through paths.
+- TS2345 (748): unknown arg to typed param — function parameters typed unknown + local var cascade
+- TS18046 (629): variable of unknown type — unresolved local vars and argument params
+- TS2571 (614): property access on unknown — GetField/HasField inference gap
+- TS2322 (607): type mismatches — unknowns, Float(64)-vs-GMLObject conflicts from mixed-return
+  functions (some paths return object, fall-through now returns 0.0 → union types not modeled)
+- TS2362 (581): arithmetic LHS void — same root cause as TS2365 (game stubs)
+- TS2363 (439): arithmetic RHS void — same root cause as TS2365 (game stubs)
+- TS2367 (173): comparison with void overlap — game stubs
 - TS2678 (145): comparison involves void — game stubs
-- TS2367 (141): comparison with void overlap — game stubs
-- TS2538 (71): unknown as index — loop counters with unresolved types
+- TS7053 (89): can't index type 'void'/'number' — float-typed results used as object index
+- TS2339 (75): property doesn't exist on type 'void'/'number' — float-typed results used as object
+- TS2538 (70): unknown as index — loop counters with unresolved types
 - TS2749 (9): value used as type — GML constructor function structs (Button, Menu, Section,
   TextPiece, Challenge) emitted as functions, not classes, but used in type annotation positions
 - TS2304 (3): cannot find name — Tunneler (type annotation), anon_381 (anon fn ref, 2 files)
-- TS2339 (22): property doesn't exist
+- TS2409 (1): constructor return type mismatch — one constructor script falls through, gets 0.0
+- TS1345 (4): void expression tested for truthiness — game stubs
+- TS2349 (4): expression not callable — float result called as function
 
 **Baseline (1,482 errors, 2026-03-30):** Pre-FuncId-migration baseline; current 6,548 reflects:
-- ~2939 void arithmetic errors from game's empty max/min/string stubs (correct, GML bugs)
+- ~2939 void arithmetic errors from game's empty max/min/string stubs (inference failures — GML
+  scripts return 0 by default; trailing-return-0 fix partially addresses structural case)
 - ~700 regression from DataType::Variable → Var(fresh) exposing more constraint failures
 - ~1000 pre-existing inference gaps (unknown cascade) now surfacing differently
 
 **Recent wins (2026-04-10):**
+- GML fall-through return 0 (is_event_handler guard): non-event-handler GML scripts now emit
+  `return 0.0` on fall-through (correct GML semantics); TS2365 -208, TS2345 -85, TS2362 -41;
+  net -16 overall (some void→float type conflicts surfaced for object-returning mixed-path fns)
 - DataType::Variable → Type::Var(fresh) (3bfddab): untyped GML vars now constrainable by solver
 - Op::Call { func: FuncId } migration (330bed7): string-based dispatch eliminated
 - gml_syscall removed from core (fd100d5): Law 2 fix
