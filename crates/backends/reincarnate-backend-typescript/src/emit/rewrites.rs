@@ -845,7 +845,8 @@ fn prepend_rt_arg_expr(expr: &mut JsExpr, free_func_names: &HashSet<String>, fro
         JsExpr::Call { callee, args } => {
             // Check if this is a call to a free function.
             if let JsExpr::Var(name) = callee.as_ref() {
-                if free_func_names.contains(name) {
+                let sanitized = sanitize_ident(name);
+                if free_func_names.contains(&sanitized) {
                     let rt_arg = if from_class {
                         JsExpr::Field {
                             object: Box::new(JsExpr::This),
