@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * Web Audio API — platform audio implementation.
  *
@@ -17,13 +22,18 @@
 
 // ---- Handle type aliases ----
 
+// HANDWRITTEN
 export type BufferHandle = number;
+// HANDWRITTEN
 export type NodeHandle = number;
+// HANDWRITTEN
 export type VoiceHandle = number;
+// HANDWRITTEN
 export type GroupHandle = number;
 
 // ---- Public types ----
 
+// HANDWRITTEN
 export type NodeKind =
   | "gain" | "pan"
   | "low_pass" | "high_pass" | "band_pass" | "notch"
@@ -32,6 +42,7 @@ export type NodeKind =
   | "mixer";
 
 /** Named parameter for a DSP node. All param values are floats. */
+// HANDWRITTEN
 export type ParamKind =
   | "gain"       // linear amplitude (0..∞)
   | "pan"        // stereo position (-1=L, 0=C, 1=R)
@@ -81,6 +92,7 @@ interface PlayingVoice {
 
 // ---- AudioState ----
 
+// HANDWRITTEN
 export class AudioState {
   ctx: AudioContext | null = null;
   /** Decoded buffers. BufferHandle = index. */
@@ -102,6 +114,7 @@ export class AudioState {
  * Load a single sound. Initializes the AudioContext on the first call.
  * Returns the BufferHandle (index into state.buffers) for the loaded sound.
  */
+// HANDWRITTEN
 export async function loadAudio(
   state: AudioState,
   _name: string,
@@ -144,6 +157,7 @@ export async function loadAudio(
 }
 
 /** Returns true if the AudioContext exists and is in the running state. */
+// HANDWRITTEN
 export function audioReady(state: AudioState): boolean {
   return state.ctx !== null && state.ctx.state === "running";
 }
@@ -151,6 +165,7 @@ export function audioReady(state: AudioState): boolean {
 // ---- Setup tier: node graph construction ----
 
 /** Create a DSP node. Returns its NodeHandle, or -1 if the audio system is not initialized. */
+// HANDWRITTEN
 export function createNode(state: AudioState, kind: NodeKind): NodeHandle {
   if (!state.ctx) return -1;
   const ctx = state.ctx;
@@ -207,6 +222,7 @@ export function createNode(state: AudioState, kind: NodeKind): NodeHandle {
 }
 
 /** Add a directed edge: from.output → to.input. */
+// HANDWRITTEN
 export function connect(state: AudioState, from: NodeHandle, to: NodeHandle): void {
   const fromNode = state.nodes.get(from);
   const toNode = state.nodes.get(to);
@@ -215,6 +231,7 @@ export function connect(state: AudioState, from: NodeHandle, to: NodeHandle): vo
 }
 
 /** Remove a directed edge. Safe to call if not connected. */
+// HANDWRITTEN
 export function disconnect(state: AudioState, from: NodeHandle, to: NodeHandle): void {
   const fromNode = state.nodes.get(from);
   const toNode = state.nodes.get(to);
@@ -225,6 +242,7 @@ export function disconnect(state: AudioState, from: NodeHandle, to: NodeHandle):
 /**
  * Set or animate a node's parameter. Throws if kind is not valid for this node's kind.
  */
+// HANDWRITTEN
 export function setNodeParam(state: AudioState, nodeId: NodeHandle, kind: ParamKind, value: number, fadeMs = 0): void {
   const node = state.nodes.get(nodeId);
   if (!state.ctx || !node) return;
@@ -240,11 +258,13 @@ export function setNodeParam(state: AudioState, nodeId: NodeHandle, kind: ParamK
 }
 
 /** Get the current value of a node parameter. Returns 0 if node or param not found. */
+// HANDWRITTEN
 export function getNodeParam(state: AudioState, nodeId: NodeHandle, kind: ParamKind): number {
   return state.nodes.get(nodeId)?.audioParams.get(kind)?.value ?? 0;
 }
 
 /** Disconnect and remove a node from the graph. */
+// HANDWRITTEN
 export function destroyNode(state: AudioState, nodeId: NodeHandle): void {
   const node = state.nodes.get(nodeId);
   if (!node) return;
@@ -286,6 +306,7 @@ function _makeSource(
  * Returns a VoiceHandle, or -1 on failure.
  * All arguments are primitives — no object allocation at the call site.
  */
+// HANDWRITTEN
 export function play(
   state: AudioState,
   bufferId: BufferHandle,
@@ -321,6 +342,7 @@ export function play(
   return voiceId;
 }
 
+// HANDWRITTEN
 export function stop(state: AudioState, voiceId: VoiceHandle): void {
   const v = state.voices.get(voiceId);
   if (!v) return;
@@ -329,10 +351,12 @@ export function stop(state: AudioState, voiceId: VoiceHandle): void {
   state.voices.delete(voiceId);
 }
 
+// HANDWRITTEN
 export function stopAll(state: AudioState): void {
   for (const id of [...state.voices.keys()]) stop(state, id);
 }
 
+// HANDWRITTEN
 export function pause(state: AudioState, voiceId: VoiceHandle): void {
   const v = state.voices.get(voiceId);
   if (!v || !state.ctx || v.paused) return;
@@ -342,6 +366,7 @@ export function pause(state: AudioState, voiceId: VoiceHandle): void {
   try { v.source.stop(); } catch { /* already ended */ }
 }
 
+// HANDWRITTEN
 export function resume(state: AudioState, voiceId: VoiceHandle): void {
   const v = state.voices.get(voiceId);
   if (!v || !state.ctx || !v.paused) return;
@@ -353,24 +378,29 @@ export function resume(state: AudioState, voiceId: VoiceHandle): void {
   v.paused = false;
 }
 
+// HANDWRITTEN
 export function pauseAll(state: AudioState): void {
   for (const id of state.voices.keys()) pause(state, id);
 }
 
+// HANDWRITTEN
 export function resumeAll(state: AudioState): void {
   for (const id of state.voices.keys()) resume(state, id);
 }
 
+// HANDWRITTEN
 export function isPlaying(state: AudioState, voiceId: VoiceHandle): boolean {
   const v = state.voices.get(voiceId);
   return v !== undefined && !v.paused;
 }
 
+// HANDWRITTEN
 export function isPaused(state: AudioState, voiceId: VoiceHandle): boolean {
   return state.voices.get(voiceId)?.paused ?? false;
 }
 
 /** Register a callback for natural completion of a voice (not triggered by stop/pause/stopAll/stopGroup/stopNode). */
+// HANDWRITTEN
 export function onVoiceEnd(state: AudioState, voiceId: VoiceHandle, cb: () => void): void {
   const v = state.voices.get(voiceId);
   if (v) v.onEnd = cb;
@@ -378,6 +408,7 @@ export function onVoiceEnd(state: AudioState, voiceId: VoiceHandle, cb: () => vo
 
 // ---- Hot tier: per-voice parameter control ----
 
+// HANDWRITTEN
 export function setVoiceGain(state: AudioState, voiceId: VoiceHandle, gain: number, fadeMs = 0): void {
   const v = state.voices.get(voiceId);
   if (!v || !state.ctx) return;
@@ -388,10 +419,12 @@ export function setVoiceGain(state: AudioState, voiceId: VoiceHandle, gain: numb
   }
 }
 
+// HANDWRITTEN
 export function getVoiceGain(state: AudioState, voiceId: VoiceHandle): number {
   return state.voices.get(voiceId)?.gainNode.gain.value ?? 0;
 }
 
+// HANDWRITTEN
 export function setVoicePitch(state: AudioState, voiceId: VoiceHandle, pitch: number, fadeMs = 0): void {
   const v = state.voices.get(voiceId);
   if (!v || !state.ctx) return;
@@ -403,10 +436,12 @@ export function setVoicePitch(state: AudioState, voiceId: VoiceHandle, pitch: nu
   v.pitch = pitch;
 }
 
+// HANDWRITTEN
 export function getVoicePitch(state: AudioState, voiceId: VoiceHandle): number {
   return state.voices.get(voiceId)?.pitch ?? 1;
 }
 
+// HANDWRITTEN
 export function setVoicePan(state: AudioState, voiceId: VoiceHandle, pan: number): void {
   const v = state.voices.get(voiceId);
   if (!v) return;
@@ -414,21 +449,25 @@ export function setVoicePan(state: AudioState, voiceId: VoiceHandle, pan: number
   v.pan = pan;
 }
 
+// HANDWRITTEN
 export function getVoicePan(state: AudioState, voiceId: VoiceHandle): number {
   return state.voices.get(voiceId)?.pan ?? 0;
 }
 
 /** Convenience: set master gain (equivalent to setNodeParam(state, 0, "gain", gain)). */
+// HANDWRITTEN
 export function setMasterGain(state: AudioState, gain: number): void {
   setNodeParam(state, 0, "gain", gain);
 }
 
+// HANDWRITTEN
 export function getPosition(state: AudioState, voiceId: VoiceHandle): number {
   const v = state.voices.get(voiceId);
   if (!v || !state.ctx) return 0;
   return v.paused ? v.pauseOffset : state.ctx.currentTime - v.startTime;
 }
 
+// HANDWRITTEN
 export function setPosition(state: AudioState, voiceId: VoiceHandle, pos: number): void {
   const v = state.voices.get(voiceId);
   if (!v || !state.ctx) return;
@@ -450,11 +489,13 @@ export function setPosition(state: AudioState, voiceId: VoiceHandle, pos: number
 }
 
 /** Returns the duration in seconds of the decoded buffer, or 0 if not found. */
+// HANDWRITTEN
 export function bufferDuration(state: AudioState, bufferId: BufferHandle): number {
   return state.buffers[bufferId]?.duration ?? 0;
 }
 
 /** Free a decoded buffer. Does not affect voices already playing from it. */
+// HANDWRITTEN
 export function destroyBuffer(state: AudioState, bufferId: BufferHandle): void {
   state.buffers[bufferId] = null;
 }
@@ -462,6 +503,7 @@ export function destroyBuffer(state: AudioState, bufferId: BufferHandle): void {
 // ---- Node-level bulk operations ----
 
 /** Stop all voices currently routed to nodeId. */
+// HANDWRITTEN
 export function stopNode(state: AudioState, nodeId: NodeHandle): void {
   for (const [id, v] of [...state.voices.entries()]) {
     if (v.sinkId === nodeId) stop(state, id);
@@ -469,6 +511,7 @@ export function stopNode(state: AudioState, nodeId: NodeHandle): void {
 }
 
 /** Pause all non-paused voices currently routed to nodeId. */
+// HANDWRITTEN
 export function pauseNode(state: AudioState, nodeId: NodeHandle): void {
   for (const [id, v] of state.voices.entries()) {
     if (v.sinkId === nodeId && !v.paused) pause(state, id);
@@ -476,6 +519,7 @@ export function pauseNode(state: AudioState, nodeId: NodeHandle): void {
 }
 
 /** Resume all paused voices currently routed to nodeId. */
+// HANDWRITTEN
 export function resumeNode(state: AudioState, nodeId: NodeHandle): void {
   for (const [id, v] of state.voices.entries()) {
     if (v.sinkId === nodeId && v.paused) resume(state, id);
@@ -485,6 +529,7 @@ export function resumeNode(state: AudioState, nodeId: NodeHandle): void {
 // ---- Voice groups ----
 
 /** Create a new voice group. Returns its GroupHandle. */
+// HANDWRITTEN
 export function createVoiceGroup(state: AudioState): GroupHandle {
   const id = state.nextGroup++;
   state.groups.set(id, new Set());
@@ -492,16 +537,19 @@ export function createVoiceGroup(state: AudioState): GroupHandle {
 }
 
 /** Add a voice to a group. */
+// HANDWRITTEN
 export function addToGroup(state: AudioState, group: GroupHandle, voice: VoiceHandle): void {
   state.groups.get(group)?.add(voice);
 }
 
 /** Remove a voice from a group. */
+// HANDWRITTEN
 export function removeFromGroup(state: AudioState, group: GroupHandle, voice: VoiceHandle): void {
   state.groups.get(group)?.delete(voice);
 }
 
 /** Stop all voices in a group. */
+// HANDWRITTEN
 export function stopGroup(state: AudioState, group: GroupHandle): void {
   const voices = state.groups.get(group);
   if (!voices) return;
@@ -509,6 +557,7 @@ export function stopGroup(state: AudioState, group: GroupHandle): void {
 }
 
 /** Pause all non-paused voices in a group. */
+// HANDWRITTEN
 export function pauseGroup(state: AudioState, group: GroupHandle): void {
   const voices = state.groups.get(group);
   if (!voices) return;
@@ -516,6 +565,7 @@ export function pauseGroup(state: AudioState, group: GroupHandle): void {
 }
 
 /** Resume all paused voices in a group. */
+// HANDWRITTEN
 export function resumeGroup(state: AudioState, group: GroupHandle): void {
   const voices = state.groups.get(group);
   if (!voices) return;
@@ -523,6 +573,7 @@ export function resumeGroup(state: AudioState, group: GroupHandle): void {
 }
 
 /** Set gain for all voices in a group, with optional fade. */
+// HANDWRITTEN
 export function setGroupGain(state: AudioState, group: GroupHandle, gain: number, fadeMs = 0): void {
   const voices = state.groups.get(group);
   if (!voices) return;
@@ -530,6 +581,7 @@ export function setGroupGain(state: AudioState, group: GroupHandle, gain: number
 }
 
 /** Destroy a group (does not stop its voices). */
+// HANDWRITTEN
 export function destroyGroup(state: AudioState, groupId: GroupHandle): void {
   state.groups.delete(groupId);
 }

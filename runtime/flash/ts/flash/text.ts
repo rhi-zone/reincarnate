@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.text package — TextField, TextFormat, TextFieldType,
  * TextFieldAutoSize, Font.
@@ -37,6 +42,7 @@ function _fontString(fmt: TextFormat, defaultFmt: TextFormat): string {
 // AntiAliasType
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class AntiAliasType {
   static readonly ADVANCED = "advanced";
   static readonly NORMAL = "normal";
@@ -46,6 +52,7 @@ export class AntiAliasType {
 // TextFieldType
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TextFieldType {
   static readonly DYNAMIC = "dynamic";
   static readonly INPUT = "input";
@@ -55,6 +62,7 @@ export class TextFieldType {
 // TextFieldAutoSize
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TextFieldAutoSize {
   static readonly CENTER = "center";
   static readonly LEFT = "left";
@@ -66,6 +74,7 @@ export class TextFieldAutoSize {
 // TextFormatAlign
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TextFormatAlign {
   static readonly CENTER = "center";
   static readonly JUSTIFY = "justify";
@@ -77,6 +86,7 @@ export class TextFormatAlign {
 // TextLineMetrics
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TextLineMetrics {
   x: number;
   width: number;
@@ -99,6 +109,7 @@ export class TextLineMetrics {
 // StyleSheet
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class StyleSheet extends EventDispatcher {
   private _styles: Record<string, Record<string, string>> = {};
 
@@ -146,6 +157,7 @@ export class StyleSheet extends EventDispatcher {
 // TextFormat
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TextFormat {
   align: string | null;
   blockIndent: number | null;
@@ -208,6 +220,7 @@ export class TextFormat {
 // TextField
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TextField extends InteractiveObject {
   _alwaysShowSelection = false;
   _antiAliasType = "normal";
@@ -518,6 +531,7 @@ export class TextField extends InteractiveObject {
 // Font
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Font {
   _fontName = "";
   _fontStyle = "regular";

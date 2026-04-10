@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.display package — display hierarchy, Graphics, Loader, LoaderInfo,
  * Stage.
@@ -18,18 +23,23 @@ import type { URLRequest } from "./net";
 // ---------------------------------------------------------------------------
 
 /** AS3 `flash.display.IBitmapDrawable` — can be drawn to a BitmapData. */
+// HANDWRITTEN
 export abstract class IBitmapDrawable {}
 
 /** AS3 `flash.display.IGraphicsData` — parameter for Graphics.drawGraphicsData(). */
+// HANDWRITTEN
 export abstract class IGraphicsData {}
 
 /** AS3 `flash.display.IGraphicsFill` — fill specification for Graphics methods. */
+// HANDWRITTEN
 export abstract class IGraphicsFill {}
 
 /** AS3 `flash.display.IGraphicsPath` — path specification for Graphics methods. */
+// HANDWRITTEN
 export abstract class IGraphicsPath {}
 
 /** AS3 `flash.display.IGraphicsStroke` — stroke specification for Graphics methods. */
+// HANDWRITTEN
 export abstract class IGraphicsStroke {}
 
 // ---------------------------------------------------------------------------
@@ -44,6 +54,7 @@ interface DrawCommand {
   args: any[];
 }
 
+// HANDWRITTEN
 export class Graphics {
   /** @internal */
   _commands: DrawCommand[] = [];
@@ -177,6 +188,7 @@ export class Graphics {
 // DisplayObject
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class DisplayObject extends EventDispatcher {
   // All DisplayObject properties are native in AVM2 (getter/setter provided
   // by the VM).  We use backing-field + getter/setter so that field
@@ -393,6 +405,7 @@ export class DisplayObject extends EventDispatcher {
 // InteractiveObject
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class InteractiveObject extends DisplayObject {
   _contextMenu: ContextMenu | null = null;
   _doubleClickEnabled = false;
@@ -419,6 +432,7 @@ export class InteractiveObject extends DisplayObject {
 // SimpleButton
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class SimpleButton extends InteractiveObject {
   _downState: DisplayObject | null = null;
   _enabled = true;
@@ -464,6 +478,7 @@ export class SimpleButton extends InteractiveObject {
 // DisplayObjectContainer
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class DisplayObjectContainer extends InteractiveObject {
   _mouseChildren = true;
   _tabChildren = true;
@@ -575,6 +590,7 @@ export class DisplayObjectContainer extends InteractiveObject {
 // Shape
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Shape extends DisplayObject {
   _graphics: Graphics = new Graphics();
 
@@ -586,6 +602,7 @@ export class Shape extends DisplayObject {
 // BitmapData
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class BitmapData {
   private _width: number;
   private _height: number;
@@ -692,6 +709,7 @@ export class BitmapData {
 // Bitmap
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Bitmap extends DisplayObject {
   _bitmapData: BitmapData | null = null;
   _pixelSnapping = "auto";
@@ -717,6 +735,7 @@ export class Bitmap extends DisplayObject {
 // ---------------------------------------------------------------------------
 
 /** @internal */
+// HANDWRITTEN
 export interface DragState {
   target: Sprite;
   bounds: Rectangle | null;
@@ -730,12 +749,14 @@ export interface DragState {
  * WeakMap naturally provides isolation between concurrent game instances.
  * @internal
  */
+// HANDWRITTEN
 export const _dragStateByStage = new WeakMap<Stage, DragState | null>();
 
 // ---------------------------------------------------------------------------
 // Sprite
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Sprite extends DisplayObjectContainer {
   // AS3 Sprite is a dynamic class — allows arbitrary property access.
   [key: string]: any;
@@ -780,6 +801,7 @@ export class Sprite extends DisplayObjectContainer {
 // FrameLabel + Scene
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class FrameLabel {
   name: string;
   frame: number;
@@ -790,6 +812,7 @@ export class FrameLabel {
   }
 }
 
+// HANDWRITTEN
 export class Scene {
   name: string;
   labels: FrameLabel[];
@@ -806,6 +829,7 @@ export class Scene {
 // MovieClip
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class MovieClip extends Sprite {
   // AS3 MovieClip is a dynamic class — allows arbitrary property access.
   [key: string]: any;
@@ -978,6 +1002,7 @@ export class MovieClip extends Sprite {
 const _timelineFactories = new Map<string, () => DisplayObject>(); // TODO(multi-instance): move to FlashRuntime — module-level state prevents multiple game instances
 
 /** Register a factory for a display type name (used by text.ts for TextField). */
+// HANDWRITTEN
 export function registerTimelineFactory(typeName: string, factory: () => DisplayObject): void {
   _timelineFactories.set(typeName, factory);
 }
@@ -1049,6 +1074,7 @@ _timelineFactories.set("Bitmap", () => new Bitmap());
 // LoaderInfo
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class LoaderInfo extends EventDispatcher {
   // AS3 LoaderInfo supports dynamic property access (childSandboxBridge, parentSandboxBridge, etc.)
   [key: string]: any;
@@ -1113,6 +1139,7 @@ export class LoaderInfo extends EventDispatcher {
 // Loader
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Loader extends DisplayObjectContainer {
   // Dynamic property access for proprietary/AIR APIs (loadFilePromise, etc.)
   [key: string]: any;
@@ -1231,6 +1258,7 @@ class DisplayModuleState {
 const _displayState = new DisplayModuleState();
 
 /** @internal Set by runtime before constructing the document class root. */
+// HANDWRITTEN
 export function _setConstructingRoot(s: Stage | null): void {
   _displayState.constructingRootStage = s;
 }
@@ -1265,6 +1293,7 @@ function clearStageRecursive(node: DisplayObject): void {
 // Stage
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Stage extends DisplayObjectContainer {
   _stageWidth = 550;
   _stageHeight = 400;

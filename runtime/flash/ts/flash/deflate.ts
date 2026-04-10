@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * RFC 1951 DEFLATE inflate/deflate + zlib wrappers for ByteArray.compress/uncompress.
  *
@@ -158,6 +163,7 @@ const CL_ORDER = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 
 // Inflate (raw DEFLATE, no zlib/gzip header)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function inflateRaw(input: Uint8Array): Uint8Array {
   const br = new BitReader(input);
   const output: number[] = [];
@@ -248,6 +254,7 @@ export function inflateRaw(input: Uint8Array): Uint8Array {
 // Deflate (raw DEFLATE, stored blocks only — valid but uncompressed)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function deflateRaw(input: Uint8Array): Uint8Array {
   const MAX_BLOCK = 65535;
   const blockCount = Math.ceil(input.length / MAX_BLOCK) || 1;
@@ -294,6 +301,7 @@ function adler32(data: Uint8Array): number {
 // Zlib wrappers (header + raw DEFLATE + Adler-32)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function zlibCompress(input: Uint8Array): Uint8Array {
   const raw = deflateRaw(input);
   const checksum = adler32(input);
@@ -309,6 +317,7 @@ export function zlibCompress(input: Uint8Array): Uint8Array {
   return out;
 }
 
+// HANDWRITTEN
 export function zlibDecompress(input: Uint8Array): Uint8Array {
   // Skip 2-byte zlib header.
   if (input.length < 6) throw new Error("Invalid zlib data: too short");

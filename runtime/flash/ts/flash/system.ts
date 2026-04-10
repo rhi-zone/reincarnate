@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.system package — ApplicationDomain, LoaderContext, Security,
  * Capabilities, System, IME, IMEConversionMode.
@@ -10,6 +15,7 @@ import { EventDispatcher } from "./events";
 // ApplicationDomain
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ApplicationDomain {
   parentDomain: ApplicationDomain | null;
 
@@ -44,6 +50,7 @@ export class ApplicationDomain {
 // LoaderContext
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class LoaderContext {
   checkPolicyFile: boolean;
   applicationDomain: ApplicationDomain | null;
@@ -62,6 +69,7 @@ export class LoaderContext {
 // Capabilities
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Capabilities {
   static readonly avHardwareDisable = true;
   static readonly hasAccessibility = false;
@@ -89,6 +97,7 @@ export class Capabilities {
 // Security
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Security {
   static readonly LOCAL_TRUSTED = "localTrusted";
   static readonly LOCAL_WITH_FILE = "localWithFile";
@@ -109,6 +118,7 @@ export class Security {
 // IMEConversionMode
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class IMEConversionMode {
   static readonly ALPHANUMERIC_FULL = "ALPHANUMERIC_FULL";
   static readonly ALPHANUMERIC_HALF = "ALPHANUMERIC_HALF";
@@ -124,6 +134,7 @@ export class IMEConversionMode {
 // IME
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class IME extends EventDispatcher {
   private static _enabled = false;
   private static _conversionMode = IMEConversionMode.UNKNOWN;
@@ -156,6 +167,7 @@ export class IME extends EventDispatcher {
 // System
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class System {
   static ime: IME | null = null;
   static totalMemory = 0;

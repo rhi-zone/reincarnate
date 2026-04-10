@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube 2 runtime Wikifier.
  *
  * A pluggable regex-handler registry that parses SugarCube markup into DOM.
@@ -23,6 +28,7 @@ import type { PassageFn } from "./navigation";
 // ---------------------------------------------------------------------------
 
 /** Convert a source offset to line:col (1-based). */
+// HANDWRITTEN
 export function offsetToLineCol(source: string, offset: number): { line: number; col: number } {
   let line = 1;
   let col = 1;
@@ -41,6 +47,7 @@ export function offsetToLineCol(source: string, offset: number): { line: number;
 // Parser definition
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export interface ParserDef {
   name: string;
   match: string;
@@ -52,6 +59,7 @@ export interface ParserDef {
 // Wikifier options
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export interface WikifierOptions {
   /** Parser profile: 'all' uses every parser, 'core' skips block-level parsers. */
   profile?: string;
@@ -69,6 +77,7 @@ const DEFAULT_OPTIONS: WikifierOptions = { profile: "all" };
 // Parser registry
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ParserRegistry {
   private parsers: ParserDef[] = [];
   private profileCache: Map<string, { re: RegExp; parsers: ParserDef[] }> = new Map();
@@ -157,6 +166,7 @@ interface CacheEntry {
 // Wikifier class
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Wikifier {
   // --- Static API ---
 
@@ -632,6 +642,7 @@ function isVoidElement(tagName: string): boolean {
  * Register all built-in SugarCube parsers into the given registry.
  * Called once per SugarCubeRuntime by Wikifier.setRuntime().
  */
+// HANDWRITTEN
 export function registerBuiltinParsers(registry: ParserRegistry): void {
 
 /** Block comment: /% ... %/ (SugarCube-style) and /* ... *​/ (CSS-style). */

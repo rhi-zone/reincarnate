@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Harlowe navigation — passage registry, goto, display (include). */
 
 import { HarloweContext, cancelTimers, departOldPassage } from "./context";
@@ -6,8 +11,10 @@ import type { DocumentFactory } from "../shared/render-root";
 import { commitSave } from "../platform";
 
 /** Passage function type — receives runtime and h context, returns void. */
+// HANDWRITTEN
 export type PassageFn = (rt: HarloweRuntime, h: HarloweContext) => void;
 
+// HANDWRITTEN
 export class HarloweNavigation {
   passages: Map<string, PassageFn> = new Map();
   passageTags: Map<string, string[]> = new Map();

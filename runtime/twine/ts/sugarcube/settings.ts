@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube Settings API.
  *
  * Manages user-configurable settings registered by story authors.
@@ -40,6 +45,7 @@ interface RangeDef {
 
 type SettingDef = ToggleDef | ListDef | RangeDef;
 
+// HANDWRITTEN
 export class SCSettings {
   private definitions: Map<string, SettingDef> = new Map();
   private values: Record<string, boolean | number | string> = {};

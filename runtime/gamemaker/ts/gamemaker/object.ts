@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * GMLObject — base class for all GML game objects.
  *
@@ -9,6 +14,7 @@ import { ACTIVE, noop } from "./constants";
 
 const __baseproto = Object.getPrototypeOf(class {});
 
+// HANDWRITTEN
 export class GMLObject {
   static instances: GMLObject[];
   // GML objects are open — instance variables are set dynamically in event handlers.
@@ -122,4 +128,5 @@ for (const ev of [
 }
 
 /** Sentinel prototype for detecting the root of the GMLObject hierarchy. */
+// HANDWRITTEN
 export { __baseproto };

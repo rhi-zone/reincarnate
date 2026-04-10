@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * GML Runtime — GameRuntime class and game configuration.
  *
@@ -54,12 +59,16 @@ import {
 } from "./particles";
 
 // Re-exports for class_preamble
+// HANDWRITTEN
 export { GMLObject } from "./object";
+// HANDWRITTEN
 export { Colors, HAligns, VAligns };
+// HANDWRITTEN
 export { ACTIVE } from "./constants";
 
 // ---- GameRuntime ----
 
+// HANDWRITTEN
 export class GameRuntime {
   // Sub-state containers
   _draw = new DrawState();
@@ -5009,6 +5018,7 @@ export class GameRuntime {
 
 // ---- Game config ----
 
+// HANDWRITTEN
 export interface GameConfig {
   rooms: Room[];
   sprites: Sprite[];
@@ -5024,6 +5034,7 @@ export interface GameConfig {
 
 // ---- Factory function ----
 
+// HANDWRITTEN
 export function createGameRuntime(opts?: { root?: RenderRoot }): GameRuntime {
   const rt = new GameRuntime();
   if (opts?.root) rt._root = opts.root;

@@ -1,8 +1,14 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** GML instance helpers — field access on specific object types. */
 
 import type { GameRuntime } from "./runtime";
 import { GMLObject } from "./object";
 
+// HANDWRITTEN
 export function createInstanceAPI(rt: GameRuntime) {
   /** Get a field value from the first instance of a given object type. */
   function getInstanceField(cls: typeof GMLObject | number, field: string): unknown {

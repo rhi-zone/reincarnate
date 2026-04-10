@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Platform save service — shared persistence logic for all engines.
  *
  * Engines provide a SaveableState implementation that serializes/deserializes
@@ -8,6 +13,7 @@
 import { type SaveSlotInfo } from "./save-ui";
 
 /** Deployer-configurable persistence options (from reincarnate.json). */
+// HANDWRITTEN
 export interface PersistenceOpts {
   autosave?: boolean;
   resume?: "auto" | "prompt" | "ignore";
@@ -19,6 +25,7 @@ export interface PersistenceOpts {
 // --- Backend abstraction ---
 
 /** Storage backend — deployers swap this to change where saves go. */
+// HANDWRITTEN
 export interface SaveBackend {
   load(key: string): string | null;
   save(key: string, value: string): void;
@@ -26,6 +33,7 @@ export interface SaveBackend {
 }
 
 /** What the engine provides to the persistence layer. */
+// HANDWRITTEN
 export interface SaveableState {
   /** Serialize current state for saving. */
   serialize(): string;
@@ -35,6 +43,7 @@ export interface SaveableState {
 
 // --- Save service ---
 
+// HANDWRITTEN
 export class SaveManager {
   private state: SaveableState;
   private backend: SaveBackend;
@@ -168,6 +177,7 @@ export class SaveManager {
 // --- Composable backend wrappers (pure, no state) ---
 
 /** Fan-out writes to multiple backends. Reads from the first. */
+// HANDWRITTEN
 export function tee(...backends: SaveBackend[]): SaveBackend {
   return {
     load(key: string) { return backends[0]?.load(key) ?? null; },
@@ -177,6 +187,7 @@ export function tee(...backends: SaveBackend[]): SaveBackend {
 }
 
 /** Debounce writes by key. Reads always go through immediately. */
+// HANDWRITTEN
 export function debounced(inner: SaveBackend, ms: number): SaveBackend {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   return {
@@ -198,6 +209,7 @@ export function debounced(inner: SaveBackend, ms: number): SaveBackend {
 }
 
 /** Keep only the last N saves per key prefix, auto-pruning older ones. */
+// HANDWRITTEN
 export function rolling(inner: SaveBackend, n: number, prefix: string): SaveBackend {
   const indexKey = prefix + "__rolling_index";
   function getIndex(): string[] {

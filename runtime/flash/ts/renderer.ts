@@ -1,5 +1,11 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Flash renderer shim — Canvas2D drawing primitives. */
 
+// HANDWRITTEN
 export class RendererShim {
   private _canvas: HTMLCanvasElement;
   private _ctx: CanvasRenderingContext2D;

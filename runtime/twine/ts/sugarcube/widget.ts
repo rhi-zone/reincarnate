@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube widget invocation.
  *
  * Widget functions are emitted as `widget_<name>` and registered in the
@@ -8,6 +13,7 @@
 
 import type { SugarCubeRuntime } from "./runtime";
 
+// HANDWRITTEN
 export class SCWidget {
   private rt: SugarCubeRuntime;
 

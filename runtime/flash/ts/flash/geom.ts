@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.geom package — Point, Rectangle, Matrix.
  */
@@ -8,6 +13,7 @@ import type { DisplayObject } from "./display";
 // Point
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Point {
   x: number;
   y: number;
@@ -84,6 +90,7 @@ export class Point {
 // Rectangle
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Rectangle {
   x: number;
   y: number;
@@ -265,6 +272,7 @@ export class Rectangle {
 // Matrix
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Matrix {
   a: number;
   b: number;
@@ -428,6 +436,7 @@ export class Matrix {
 // ColorTransform
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ColorTransform {
   redMultiplier: number;
   greenMultiplier: number;
@@ -500,6 +509,7 @@ export class ColorTransform {
 // Transform
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Transform {
   _matrix: Matrix = new Matrix();
   _colorTransform: ColorTransform = new ColorTransform();
@@ -565,6 +575,7 @@ export class Transform {
  * Compute the concatenated (world) matrix for a display object by walking
  * the parent chain from root to leaf, composing local matrices.
  */
+// HANDWRITTEN
 export function _getConcatenatedMatrix(obj: DisplayObject): Matrix {
   const chain: DisplayObject[] = [];
   let node: DisplayObject | null = obj;

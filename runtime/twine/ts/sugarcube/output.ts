@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube output rendering.
  *
  * Passage code calls these methods to produce visible output. Content
@@ -34,6 +39,7 @@ interface TypeContext {
   speed: number;
 }
 
+// HANDWRITTEN
 export class SCOutput {
   nobrActive = false;
   bufferStack: DocumentFragment[] = [];

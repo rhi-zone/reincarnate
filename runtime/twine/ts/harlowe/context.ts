@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** HarloweContext — hyperscript-style content emission for Harlowe passages.
  *
  * Passage functions receive an `h: HarloweContext` parameter and produce
@@ -18,6 +23,7 @@ import { scheduleInterval, cancelInterval } from "../platform";
 import type { DocumentFactory } from "../shared/render-root";
 
 // Re-export Changer type so engine.ts and other modules can import from here.
+// HANDWRITTEN
 export interface Changer {
   name: string;
   args: unknown[];
@@ -262,6 +268,7 @@ function applyChangers(el: HTMLElement, changers: Changer | Changer[], populate?
 // --- Timer management ---
 
 /** Cancel all active (live:) timers in the given timer list. */
+// HANDWRITTEN
 export function cancelTimers(timers: number[]): void {
   for (const id of timers) {
     cancelInterval(id);
@@ -270,6 +277,7 @@ export function cancelTimers(timers: number[]): void {
 }
 
 /** Animate out old passages with the given depart transition, or remove immediately. */
+// HANDWRITTEN
 export function departOldPassage(story: Element, depart?: { name: string; duration?: string }, doc: DocumentFactory = document): void {
   if (!depart) {
     while (story.firstChild) story.removeChild(story.firstChild);
@@ -288,6 +296,7 @@ export function departOldPassage(story: Element, depart?: { name: string; durati
 }
 
 /** Clear the tw-story container and cancel active timers. */
+// HANDWRITTEN
 export function clear(container?: Element | ShadowRoot | null, timers?: number[]): void {
   const target = container ?? document.querySelector("tw-story");
   if (target) {
@@ -300,6 +309,7 @@ export function clear(container?: Element | ShadowRoot | null, timers?: number[]
 
 // --- HarloweContext ---
 
+// HANDWRITTEN
 export class HarloweContext {
   private containerStack: (Element | DocumentFragment)[];
   private prevBr = false;

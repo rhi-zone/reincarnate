@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube engine operations.
  *
  * Contains runtime helpers for JS constructs that can't be expressed as
@@ -18,6 +23,7 @@ import { installSugarCubeExtensions } from "./extensions";
 import { Wikifier } from "./wikifier";
 import type { SugarCubeRuntime } from "./runtime";
 
+// HANDWRITTEN
 export class SCEngine {
   private globalsInitialized = false;
   private doneQueue: (() => void)[] = [];
@@ -640,6 +646,7 @@ const BREAK_SENTINEL = Symbol("break");
 const CONTINUE_SENTINEL = Symbol("continue");
 
 /** Deep clone a value (SugarCube's clone() function). */
+// HANDWRITTEN
 export function clone<T>(value: T): T {
   if (value === null || value === undefined) return value;
   if (typeof value !== "object") return value;
@@ -677,6 +684,7 @@ export function clone<T>(value: T): T {
 }
 
 /** Create an iterator over a collection (for <<for _v range collection>>). */
+// HANDWRITTEN
 export function iterate(collection: unknown): { entries: [unknown, unknown][]; index: number } {
   const entries: [unknown, unknown][] = [];
   if (Array.isArray(collection)) {
@@ -692,11 +700,13 @@ export function iterate(collection: unknown): { entries: [unknown, unknown][]; i
 }
 
 /** Check if an iterator has more elements. */
+// HANDWRITTEN
 export function iterator_has_next(iter: { entries: [unknown, unknown][]; index: number }): boolean {
   return iter.index < iter.entries.length;
 }
 
 /** Get the next value from an iterator. */
+// HANDWRITTEN
 export function iterator_next_value(iter: { entries: [unknown, unknown][]; index: number }): unknown {
   const entry = iter.entries[iter.index];
   iter.index++;
@@ -704,18 +714,22 @@ export function iterator_next_value(iter: { entries: [unknown, unknown][]; index
 }
 
 /** Get the next key from an iterator. */
+// HANDWRITTEN
 export function iterator_next_key(iter: { entries: [unknown, unknown][]; index: number }): unknown {
   const entry = iter.entries[iter.index - 1];
   return entry ? entry[0] : undefined;
 }
 
 /** Unsigned right shift (>>>). */
+// HANDWRITTEN
 export function ushr(a: unknown, b: unknown): number {
   return (a as number) >>> (b as number);
 }
 
 /** instanceof check. */
+// HANDWRITTEN
 export function instanceof_(value: unknown, type_: unknown): boolean {
   return value instanceof (type_ as new (...args: unknown[]) => unknown);
 }
+// HANDWRITTEN
 export { instanceof_ as instanceof };

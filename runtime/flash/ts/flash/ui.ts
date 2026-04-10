@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.ui package — ContextMenu, ContextMenuItem, Keyboard, Mouse.
  */
@@ -8,6 +13,7 @@ import { EventDispatcher } from "./events";
 // ContextMenuItem
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ContextMenuItem extends EventDispatcher {
   caption: string;
   enabled: boolean;
@@ -31,6 +37,7 @@ export class ContextMenuItem extends EventDispatcher {
 // ContextMenu (AS3 NativeMenu on AIR, ContextMenu on web)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ContextMenu extends EventDispatcher {
   customItems: ContextMenuItem[] = [];
 
@@ -46,12 +53,14 @@ export class ContextMenu extends EventDispatcher {
 }
 
 // Alias — AIR uses NativeMenu, web uses ContextMenu. Same shape.
+// HANDWRITTEN
 export { ContextMenu as NativeMenu };
 
 // ---------------------------------------------------------------------------
 // Keyboard
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Keyboard {
   // AS3 allows bracket access on class constructors (e.g. Keyboard["ENTER"]).
   static readonly [key: string]: number;
@@ -157,6 +166,7 @@ export class Keyboard {
 // Mouse
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Mouse {
   static cursor = "auto";
   static supportsCursor = true;

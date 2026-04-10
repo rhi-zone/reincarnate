@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Harlowe Audio (HAL) runtime module.
  *
  * Implements `Harlowe.Audio.*` system calls for the HAL (Harlowe Audio
@@ -10,11 +15,13 @@
  * fall through to `unknown_macro()` instead.
  */
 
+// HANDWRITTEN
 export interface HarloweAudioOpts {
   /** Disable all audio (no-op all methods). Defaults to true (enabled). */
   enabled?: boolean;
 }
 
+// HANDWRITTEN
 export class HarloweAudio {
   private enabled: boolean;
   private tracks = new Map<string, HTMLAudioElement>();

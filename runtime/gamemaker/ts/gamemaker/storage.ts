@@ -1,14 +1,21 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** GML ini file functions — backed by platform persistence. */
 
 import type { GameRuntime } from "./runtime";
 import { storePersistence, fetchPersistence } from "../shared/platform/persistence";
 
+// HANDWRITTEN
 export class StorageState {
   iniPath = "";
   iniContents: Record<string, Record<string, string>> = {};
   gameName = "";
 }
 
+// HANDWRITTEN
 export function createStorageAPI(rt: GameRuntime) {
   const storage = rt._storage;
 

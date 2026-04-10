@@ -1,8 +1,14 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Flash.Memory — Alchemy / domain memory operations (typed array access). */
 
 const HEAP_SIZE = 1024 * 1024; // 1MB default
 
 /** Per-instance AVM2 domain memory (Alchemy heap). */
+// HANDWRITTEN
 export class FlashMemory {
   private readonly _heap: ArrayBuffer;
   private readonly _dv: DataView;
@@ -54,16 +60,19 @@ export class FlashMemory {
 }
 
 /** Sign-extend 1-bit value to i32. */
+// HANDWRITTEN
 export function sxi1(val: number): number {
   return (val & 1) ? -1 : 0;
 }
 
 /** Sign-extend 8-bit value to i32. */
+// HANDWRITTEN
 export function sxi8(val: number): number {
   return (val << 24) >> 24;
 }
 
 /** Sign-extend 16-bit value to i32. */
+// HANDWRITTEN
 export function sxi16(val: number): number {
   return (val << 16) >> 16;
 }

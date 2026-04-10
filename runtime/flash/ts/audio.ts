@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * Flash audio shim — implements the load_sound/play/stop API used by emitted
  * Flash code, backed by the shared platform audio (node graph, Web Audio API).
@@ -18,6 +23,7 @@ import {
   getPosition, bufferDuration,
 } from "./shared/platform/audio";
 
+// HANDWRITTEN
 export class AudioShim {
   private _state = new AudioState();
 

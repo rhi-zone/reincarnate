@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Harlowe runtime — owns all mutable sub-objects.
  *
  * Multiple independent game instances can coexist on the same page,
@@ -13,11 +18,13 @@ import { HarloweAudio, type HarloweAudioOpts } from "./audio";
 import * as Platform from "../platform";
 import type { PersistenceOpts } from "../platform";
 
+// HANDWRITTEN
 export interface HarloweRuntimeOpts {
   /** Audio subsystem options. Set `enabled: false` to disable HAL audio. */
   audio?: HarloweAudioOpts;
 }
 
+// HANDWRITTEN
 export class HarloweRuntime {
   readonly State: HarloweState;
   readonly Navigation: HarloweNavigation;
@@ -104,6 +111,7 @@ export class HarloweRuntime {
   }
 }
 
+// HANDWRITTEN
 export function createHarloweRuntime(): HarloweRuntime {
   return new HarloweRuntime();
 }

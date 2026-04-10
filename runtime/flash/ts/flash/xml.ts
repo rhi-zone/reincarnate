@@ -1,5 +1,11 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Flash.XML — E4X / XML operations. */
 
+// HANDWRITTEN
 export function escapeAttribute(value: unknown): string {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -9,6 +15,7 @@ export function escapeAttribute(value: unknown): string {
     .replace(/'/g, "&apos;");
 }
 
+// HANDWRITTEN
 export function escapeElement(value: unknown): string {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -16,6 +23,7 @@ export function escapeElement(value: unknown): string {
     .replace(/>/g, "&gt;");
 }
 
+// HANDWRITTEN
 export function checkFilter(value: unknown): unknown {
   // E4X filtering predicate check. If the value is XML, return it;
   // otherwise throw a TypeError like AVM2 does.
@@ -32,6 +40,7 @@ export function checkFilter(value: unknown): unknown {
 const XML_LIST_TAG = Symbol("xmlList");
 
 /** Create a Proxy-backed array that behaves like an AS3 XMLList. */
+// HANDWRITTEN
 export function xmlList(items: unknown[]): unknown {
   const arr = [...items];
   (arr as unknown as Record<symbol, unknown>)[XML_LIST_TAG] = true;
@@ -98,6 +107,7 @@ const xmlListHandler: ProxyHandler<any[]> = {
 // Descendant access
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function getDescendants(obj: unknown, name: string): unknown {
   if (obj === null || obj === undefined) return xmlList([]);
   // Strip namespace prefix: "ns::localname" → "localname"
@@ -110,6 +120,7 @@ export function getDescendants(obj: unknown, name: string): unknown {
   return xmlList([]);
 }
 
+// HANDWRITTEN
 export function setDefaultNamespace(ns: unknown): void {
   // In AVM2 this sets the default XML namespace for the current scope.
   // No-op in lifted code — E4X is rarely used in practice.
@@ -120,6 +131,7 @@ export function setDefaultNamespace(ns: unknown): void {
 // ---------------------------------------------------------------------------
 
 /** AS3 XML — E4X XML node. Wraps a parsed DOM or string value. */
+// HANDWRITTEN
 export class XML {
   private _source: string;
 
@@ -140,6 +152,7 @@ export class XML {
 }
 
 /** AS3 XMLList — ordered collection of XML nodes (E4X). */
+// HANDWRITTEN
 export class XMLList extends Array<XML> {
   constructor(...items: XML[]) {
     super(...items);

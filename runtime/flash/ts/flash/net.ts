@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.net package — URLRequest, URLLoader, URLLoaderDataFormat,
  * FileReference, SharedObject.
@@ -18,11 +23,13 @@ import {
 // ---------------------------------------------------------------------------
 
 /** AS3 `flash.net.IDynamicPropertyOutput` — receives dynamic property key/value pairs during serialization. */
+// HANDWRITTEN
 export abstract class IDynamicPropertyOutput {
   abstract writeDynamicProperty(name: string, value: unknown): void;
 }
 
 /** AS3 `flash.net.IDynamicPropertyWriter` — controls serialization of dynamic properties. */
+// HANDWRITTEN
 export abstract class IDynamicPropertyWriter {
   abstract writeDynamicProperties(obj: unknown, output: IDynamicPropertyOutput): void;
 }
@@ -31,6 +38,7 @@ export abstract class IDynamicPropertyWriter {
 // URLRequestHeader
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class URLRequestHeader {
   name: string;
   value: string;
@@ -45,6 +53,7 @@ export class URLRequestHeader {
 // FileFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class FileFilter {
   description: string;
   extension: string;
@@ -61,6 +70,7 @@ export class FileFilter {
 // URLRequest
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class URLRequest {
   _url: string;
   _method = "GET";
@@ -91,6 +101,7 @@ export class URLRequest {
 // URLLoaderDataFormat
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class URLLoaderDataFormat {
   static readonly BINARY = "binary";
   static readonly TEXT = "text";
@@ -101,6 +112,7 @@ export class URLLoaderDataFormat {
 // URLLoader
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class URLLoader extends EventDispatcher {
   _bytesLoaded = 0;
   _bytesTotal = 0;
@@ -157,6 +169,7 @@ export class URLLoader extends EventDispatcher {
 // FileReference
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class FileReference extends EventDispatcher {
   _creationDate: Date | null = null;
   _creator: string | null = null;
@@ -218,6 +231,7 @@ export class FileReference extends EventDispatcher {
 
 const SHARED_OBJECT_PREFIX = "flash_so_";
 
+// HANDWRITTEN
 export class SharedObject {
   private _name = "";
   private _data: Record<string, unknown> = {};

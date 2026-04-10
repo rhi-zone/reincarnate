@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * GMLRoom — room simulation and game loop frame orchestration.
  *
@@ -9,6 +14,7 @@ import type { GameRuntime } from "./runtime";
 import type { GMLObject } from "./object";
 import { noop } from "./constants";
 
+// HANDWRITTEN
 export class GMLRoom {
   constructor(private rt: GameRuntime) {}
 

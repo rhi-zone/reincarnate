@@ -1,6 +1,12 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** History strategies — pluggable undo/back implementations. */
 
 /** Strategy for tracking passage history and variable snapshots. */
+// HANDWRITTEN
 export interface HistoryStrategy {
   /** Record a new moment. */
   push(title: string, vars: Record<string, any>): void;
@@ -29,6 +35,7 @@ interface Moment {
 }
 
 /** Full clone per moment — simple, works for small state. */
+// HANDWRITTEN
 export function snapshotHistory(): HistoryStrategy {
   const history: Moment[] = [];
   const visited = new Set<string>();
@@ -104,6 +111,7 @@ interface Diff {
 
 /** Diff-based — stores only changed keys per transition.
  *  More memory-efficient for large state with small per-passage changes. */
+// HANDWRITTEN
 export function diffHistory(): HistoryStrategy {
   // The first moment is a full snapshot; subsequent moments store diffs.
   const history: Array<{ title: string; snapshot?: Record<string, any>; diff?: Diff }> = [];

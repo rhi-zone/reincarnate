@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.utils package — ByteArray, Timer, Proxy, getQualifiedClassName.
  */
@@ -17,6 +22,7 @@ const _bindCache = new WeakMap<Function, WeakMap<object, Function>>();
 /** Cache-backed method bind — identity-stable so removeEventListener works.
  *  `(...args: any[]) => ReturnType<T>` return type is intentional: AS3 silently ignores
  *  surplus arguments; using `Parameters<T>` instead causes one TS2322 in Flash CC. */
+// HANDWRITTEN
 export function cachedBind<T extends (...args: any[]) => any>(
   thisArg: unknown,
   fn: T,
@@ -40,7 +46,9 @@ export function cachedBind<T extends (...args: any[]) => any>(
 // ---------------------------------------------------------------------------
 
 /** AS3 `int()` — truncate to signed 32-bit integer. */
+// HANDWRITTEN
 export function int(x: unknown): number { return (x as number) | 0; }
+// HANDWRITTEN
 export namespace int {
   export const MAX_VALUE = 2147483647;
   export const MIN_VALUE = -2147483648;
@@ -51,7 +59,9 @@ Object.defineProperty(int, Symbol.hasInstance, {
 });
 
 /** AS3 `uint()` — truncate to unsigned 32-bit integer. */
+// HANDWRITTEN
 export function uint(x: number): number { return x >>> 0; }
+// HANDWRITTEN
 export namespace uint {
   export const MAX_VALUE = 4294967295;
   export const MIN_VALUE = 0;
@@ -68,6 +78,7 @@ Object.defineProperty(uint, Symbol.hasInstance, {
 const _interfaceRegistry = new Map<Function, Set<Function>>();
 
 /** Register that `ctor` implements the given interface constructors. */
+// HANDWRITTEN
 export function registerInterface(ctor: Function, ...ifaces: Function[]): void {
   let set = _interfaceRegistry.get(ctor);
   if (!set) {
@@ -86,12 +97,14 @@ export function registerInterface(ctor: Function, ...ifaces: Function[]): void {
 // AS3 `Class(x)` is a cast — returns its argument as a class reference.
 // Called with no args it's not a meaningful construct; return undefined rather
 // than throwing so Class-as-type-assert call sites don't crash at runtime.
+// HANDWRITTEN
 export function Class(v?: unknown): unknown { return v; }
 Object.defineProperty(Class, Symbol.hasInstance, {
   value: (instance: unknown) => typeof instance === "function" && QN_KEY in (instance as object),
 });
 
 /** AS3 `is` operator — works for both classes and interfaces. */
+// HANDWRITTEN
 export function isType(value: unknown, type: Function): boolean {
   if (value == null) return false;
   if (value instanceof type) return true;
@@ -109,6 +122,7 @@ export function isType(value: unknown, type: Function): boolean {
 }
 
 /** AS3 `as` operator — returns value cast to T if it matches, null otherwise. */
+// HANDWRITTEN
 export function asType<T>(value: unknown, type: { prototype: T }): T | null {
   return (isType(value, type as unknown as Function) ? value : null) as T | null;
 }
@@ -117,22 +131,26 @@ export function asType<T>(value: unknown, type: { prototype: T }): T | null {
 // Qualified-name symbol + utility functions
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export const QN_KEY = Symbol("as3:qualifiedName");
 
 const _classRegistry = new Map<string, Function>();
 
 /** AS3 registerClassAlias — registers a string alias for AMF serialization. */
+// HANDWRITTEN
 export function registerClassAlias(alias: string, ctor: Function): void {
   type WithQN = { [QN_KEY]?: string; name?: string };
   const name = (ctor as unknown as WithQN)[QN_KEY] ?? (ctor as unknown as WithQN).name;
   if (typeof name === "string") _classRegistry.set(alias, ctor);
 }
 
+// HANDWRITTEN
 export function registerClass(ctor: Function): void {
   const name = (ctor as unknown as { [QN_KEY]?: string })[QN_KEY];
   if (typeof name === "string") _classRegistry.set(name, ctor);
 }
 
+// HANDWRITTEN
 export function getQualifiedClassName(value: unknown): string {
   if (value == null) return "null";
   type Reflectable = { constructor?: Reflectable; [QN_KEY]?: string; name?: string };
@@ -142,6 +160,7 @@ export function getQualifiedClassName(value: unknown): string {
   return ctor?.[QN_KEY] ?? ctor?.name ?? typeof value;
 }
 
+// HANDWRITTEN
 export function getQualifiedSuperclassName(value: unknown): string | null {
   if (value == null) return null;
   type Reflectable = { constructor?: Reflectable; [QN_KEY]?: string; name?: string; prototype?: Reflectable };
@@ -154,6 +173,7 @@ export function getQualifiedSuperclassName(value: unknown): string | null {
   return parent[QN_KEY] ?? parent.name ?? null;
 }
 
+// HANDWRITTEN
 export function getDefinitionByName(name: string): unknown {
   const cls = _classRegistry.get(name);
   if (cls) return cls;
@@ -170,6 +190,7 @@ export function getDefinitionByName(name: string): unknown {
 // Trait registry — populated by registerClassTraits() calls from emitted code
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export interface TraitInfo {
   name: string;
   kind: "constant" | "variable" | "method" | "accessor";
@@ -186,11 +207,13 @@ interface ClassTraits {
 
 const _traitRegistry = new Map<Function, ClassTraits>();
 
+// HANDWRITTEN
 export function registerClassTraits(ctor: Function, instance: TraitInfo[], staticT: TraitInfo[]): void {
   _traitRegistry.set(ctor, { instanceTraits: instance, staticTraits: staticT });
 }
 
 /** Return instance traits for a class constructor, or null if none registered. */
+// HANDWRITTEN
 export function getInstanceTraits(ctor: Function): TraitInfo[] | null {
   const entry = _traitRegistry.get(ctor);
   return entry ? entry.instanceTraits : null;
@@ -212,6 +235,7 @@ function traitNode(name: string, type?: string, meta?: unknown): Record<string, 
   return node;
 }
 
+// HANDWRITTEN
 export function describeType(value: unknown): unknown {
   if (value == null) return { constant: xmlList([]) };
 
@@ -306,6 +330,7 @@ export function describeType(value: unknown): unknown {
 // ---------------------------------------------------------------------------
 
 /** AS3 `flash.utils.IDataInput` — readable binary stream interface. */
+// HANDWRITTEN
 export abstract class IDataInput {
   abstract readBoolean(): boolean;
   abstract readByte(): number;
@@ -326,6 +351,7 @@ export abstract class IDataInput {
 }
 
 /** AS3 `flash.utils.IDataOutput` — writable binary stream interface. */
+// HANDWRITTEN
 export abstract class IDataOutput {
   abstract writeBoolean(value: boolean): void;
   abstract writeByte(value: number): void;
@@ -344,6 +370,7 @@ export abstract class IDataOutput {
 }
 
 /** AS3 `flash.utils.IExternalizable` — custom AMF serialization interface. */
+// HANDWRITTEN
 export abstract class IExternalizable {
   abstract readExternal(input: IDataInput): void;
   abstract writeExternal(output: IDataOutput): void;
@@ -356,6 +383,7 @@ export abstract class IExternalizable {
 const BIG_ENDIAN = "bigEndian";
 const LITTLE_ENDIAN = "littleEndian";
 
+// HANDWRITTEN
 export class ByteArray {
   /** AS3 ByteArray supports numeric byte indexing: `ba[i]` returns the byte at position i. */
   [index: number]: number;
@@ -668,6 +696,7 @@ export class ByteArray {
 // Timer
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Timer extends EventDispatcher {
   private _delay: number;
   private _repeatCount: number;
@@ -760,6 +789,7 @@ export class Timer extends EventDispatcher {
  * `delete dict[key]`.  The emitter prefers Map methods when the type is known
  * to be Dictionary; the Proxy covers dynamic/untyped fallback cases.
  */
+// HANDWRITTEN
 export class Dictionary extends Map<unknown, any> {
   /** Bracket-notation access for string keys (`dict[key]`) via the Proxy wrapper. */
   [key: string]: any;
@@ -816,6 +846,7 @@ export class Dictionary extends Map<unknown, any> {
 // Proxy
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Proxy {
   callProperty(_name: string, ..._rest: unknown[]): unknown {
     return undefined;

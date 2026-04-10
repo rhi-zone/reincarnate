@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** GML drawing functions — sprites, text, primitives. */
 
 import type { GameRuntime } from "./runtime";
@@ -17,6 +22,7 @@ interface TextureInfo {
   dest: { w: number; h: number };
 }
 
+// HANDWRITTEN
 export class DrawState {
   alpha = 1;
   config: { color: number; font: number; valign: number; halign: number; ext: { sep: number; w: number }; transform: { xscale: number; yscale: number; angle: number } } = {
@@ -34,6 +40,7 @@ export class DrawState {
   _vbufAlpha = 1;
 }
 
+// HANDWRITTEN
 export function createDrawAPI(rt: GameRuntime) {
   const draw = rt._draw;
 

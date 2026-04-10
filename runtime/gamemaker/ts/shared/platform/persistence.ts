@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * Persistence platform — OPFS-backed with localStorage fallback.
  *
@@ -18,6 +23,7 @@
  * localStorage is string-based; bytes are stored as base64.
  */
 
+// HANDWRITTEN
 export class PersistenceState {
   cache = new Map<string, Uint8Array>();
   opfsDir: FileSystemDirectoryHandle | null = null;
@@ -48,6 +54,7 @@ function base64ToBytes(b64: string): Uint8Array {
  * Loads all OPFS files into the in-memory cache for subsequent sync reads.
  * Falls back to preloading from localStorage when OPFS is unavailable.
  */
+// HANDWRITTEN
 export async function initPersistence(state: PersistenceState): Promise<void> {
   if (typeof navigator === "undefined" || !("storage" in navigator)) return;
   try {
@@ -84,6 +91,7 @@ export async function initPersistence(state: PersistenceState): Promise<void> {
  * Throws if localStorage write fails (quota exceeded, permission denied, etc.).
  * OPFS write uses write-to-temp-then-rename for atomicity.
  */
+// HANDWRITTEN
 export function storePersistence(state: PersistenceState, key: string, data: Uint8Array): void {
   state.cache.set(key, data);
   // localStorage is string-based; encode as base64.
@@ -116,6 +124,7 @@ export function storePersistence(state: PersistenceState, key: string, data: Uin
  * Read bytes by key. Returns null if not found.
  * All reads are sync after init() has resolved.
  */
+// HANDWRITTEN
 export function fetchPersistence(state: PersistenceState, key: string): Uint8Array | null {
   const cached = state.cache.get(key);
   if (cached !== undefined) return cached;
@@ -139,6 +148,7 @@ export function fetchPersistence(state: PersistenceState, key: string): Uint8Arr
  * Remove a key from all storage layers.
  * Throws if localStorage removal fails (permission denied, etc.).
  */
+// HANDWRITTEN
 export function removePersistence(state: PersistenceState, key: string): void {
   state.cache.delete(key);
   localStorage.removeItem(key);
@@ -151,6 +161,7 @@ export function removePersistence(state: PersistenceState, key: string): void {
  * List all cached keys that start with the given prefix.
  * Only reflects what is in the in-memory cache; call initPersistence() first for complete results.
  */
+// HANDWRITTEN
 export function listPersistenceKeys(state: PersistenceState, prefix: string): string[] {
   const result: string[] = [];
   for (const key of state.cache.keys()) {

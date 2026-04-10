@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube story variable state management.
  *
  * Two stores: storyVars ($-prefixed) persist across passages,
@@ -7,6 +12,7 @@
 
 import { type SaveableState, type HistoryStrategy, snapshotHistory } from "../platform";
 
+// HANDWRITTEN
 export class SCState implements SaveableState {
   /** Story ($) variables — exposed for `State.variables` global alias. */
   readonly storyVars: Record<string, unknown> = {};

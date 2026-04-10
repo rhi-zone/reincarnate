@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube-specific jQuery prototype extensions.
  *
  * Patches $.fn with methods that SugarCube adds to jQuery:
@@ -10,6 +15,7 @@
 
 import { Wikifier, type WikifierOptions } from "./wikifier";
 
+// HANDWRITTEN
 export function installExtensions(): void {
   const $ = (globalThis as any).jQuery;
   if (!$ || !$.fn) return;

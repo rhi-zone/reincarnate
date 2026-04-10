@@ -1,6 +1,12 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** GML color constants and utilities. */
 
 // GML uses BGR byte order (R in low bits).
+// HANDWRITTEN
 export const Colors: Record<string, number> = {
   c_white: 0xffffff,
   c_silver: 0xc0c0c0,
@@ -23,12 +29,14 @@ export const Colors: Record<string, number> = {
   c_orange: 0x40a0ff,
 };
 
+// HANDWRITTEN
 export const HAligns: Record<string, number> = {
   fa_left: 0,
   fa_center: 1,
   fa_right: 2,
 };
 
+// HANDWRITTEN
 export const VAligns: Record<string, number> = {
   fa_top: 0,
   fa_middle: 1,
@@ -36,6 +44,7 @@ export const VAligns: Record<string, number> = {
 };
 
 /** Convert a GML BGR color to a CSS hex string. */
+// HANDWRITTEN
 export function gmlColorToCss(color: number): string {
   const r = color & 0xff;
   const g = (color >> 8) & 0xff;

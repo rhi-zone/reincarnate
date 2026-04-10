@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * AMF3 (Action Message Format 3) serialization for ByteArray.readObject/writeObject.
  *
@@ -326,11 +331,13 @@ class WriteContext {
 // Public API
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function readAMF3(ba: ByteArray): unknown {
   const ctx = new ReadContext();
   return ctx.readValue(ba);
 }
 
+// HANDWRITTEN
 export function writeAMF3(ba: ByteArray, value: unknown): void {
   const ctx = new WriteContext();
   ctx.writeValue(ba, value);

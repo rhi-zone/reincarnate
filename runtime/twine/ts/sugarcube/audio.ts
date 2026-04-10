@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube audio playback.
  *
  * All audio operations go through the platform layer so deployers
@@ -18,12 +23,14 @@ import {
   type AudioHandle,
 } from "../platform";
 
+// HANDWRITTEN
 export interface Playlist {
   tracks: string[];
   currentIndex: number;
   loop: boolean;
 }
 
+// HANDWRITTEN
 export class SCAudio {
   readonly audioCache: Map<string, AudioHandle> = new Map();
   readonly playlists: Map<string, Playlist> = new Map();

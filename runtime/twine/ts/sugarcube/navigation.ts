@@ -1,10 +1,17 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube navigation — passage registry, goto/back/return/include. */
 
 import type { SugarCubeRuntime } from "./runtime";
 
 /** Passage function signature: receives the runtime instance. */
+// HANDWRITTEN
 export type PassageFn = (rt: SugarCubeRuntime) => void;
 
+// HANDWRITTEN
 export class SCNavigation {
   passages: Map<string, PassageFn> = new Map();
   passageTags: Map<string, string[]> = new Map();

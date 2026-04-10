@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.events package — EventDispatcher, Event, and all standard event
  * subclasses.
@@ -11,6 +16,7 @@ import type { URLRequestHeader } from "./net";
 // ---------------------------------------------------------------------------
 
 /** AS3 `flash.events.IEventDispatcher` — event-dispatching capability. */
+// HANDWRITTEN
 export abstract class IEventDispatcher {
   // AS3 event handlers are covariant on the event parameter (e.g. MouseEvent, FocusEvent).
   // TypeScript's strict function-type checking requires contravariance for function types, so
@@ -34,6 +40,7 @@ interface ListenerEntry {
   priority: number;
 }
 
+// HANDWRITTEN
 export class EventDispatcher {
   private _listeners: Map<string, ListenerEntry[]> = new Map();
 
@@ -112,6 +119,7 @@ export class EventDispatcher {
 // Event
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Event {
   // Core constants
   static readonly ACTIVATE = "activate";
@@ -227,6 +235,7 @@ export class Event {
 // TextEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TextEvent extends Event {
   static readonly LINK = "link";
   static readonly TEXT_INPUT = "textInput";
@@ -254,6 +263,7 @@ export class TextEvent extends Event {
 // ErrorEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ErrorEvent extends TextEvent {
   static readonly ERROR = "error";
 
@@ -286,6 +296,7 @@ export class ErrorEvent extends TextEvent {
 // MouseEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class MouseEvent extends Event {
   static readonly CLICK = "click";
   static readonly CONTEXT_MENU = "contextMenu";
@@ -409,6 +420,7 @@ export class MouseEvent extends Event {
 // KeyboardEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class KeyboardEvent extends Event {
   static readonly KEY_DOWN = "keyDown";
   static readonly KEY_UP = "keyUp";
@@ -486,6 +498,7 @@ export class KeyboardEvent extends Event {
 // FocusEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class FocusEvent extends Event {
   static readonly FOCUS_IN = "focusIn";
   static readonly FOCUS_OUT = "focusOut";
@@ -557,6 +570,7 @@ export class FocusEvent extends Event {
 // ProgressEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ProgressEvent extends Event {
   static readonly PROGRESS = "progress";
   static readonly SOCKET_DATA = "socketData";
@@ -607,6 +621,7 @@ export class ProgressEvent extends Event {
 // IOErrorEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class IOErrorEvent extends ErrorEvent {
   static readonly IO_ERROR = "ioError";
 
@@ -633,6 +648,7 @@ export class IOErrorEvent extends ErrorEvent {
 // SecurityErrorEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class SecurityErrorEvent extends ErrorEvent {
   static readonly SECURITY_ERROR = "securityError";
 
@@ -665,6 +681,7 @@ export class SecurityErrorEvent extends ErrorEvent {
 // HTTPStatusEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class HTTPStatusEvent extends Event {
   static readonly HTTP_STATUS = "httpStatus";
   static readonly HTTP_RESPONSE_STATUS = "httpResponseStatus";
@@ -701,6 +718,7 @@ export class HTTPStatusEvent extends Event {
 // AsyncErrorEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class AsyncErrorEvent extends ErrorEvent {
   static readonly ASYNC_ERROR = "asyncError";
 
@@ -739,6 +757,7 @@ export class AsyncErrorEvent extends ErrorEvent {
 // TimerEvent
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class TimerEvent extends Event {
   static readonly TIMER = "timer";
   static readonly TIMER_COMPLETE = "timerComplete";

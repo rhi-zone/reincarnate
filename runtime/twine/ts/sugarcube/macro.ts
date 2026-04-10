@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube Macro system shim.
  *
  * Supports Macro.add(), Macro.has(), Macro.get(), Macro.delete() and provides
@@ -10,6 +15,7 @@
 
 import type { SugarCubeRuntime } from "./runtime";
 
+// HANDWRITTEN
 export interface MacroDef {
   tags?: string[] | null;
   skipArgs?: boolean;
@@ -17,6 +23,7 @@ export interface MacroDef {
   [key: string]: any;
 }
 
+// HANDWRITTEN
 export class SCMacro {
   private macros: Map<string, MacroDef> = new Map();
   private rt: SugarCubeRuntime;

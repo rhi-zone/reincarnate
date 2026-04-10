@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.filters package — BitmapFilter and concrete filter subclasses.
  */
@@ -6,6 +11,7 @@
 // BitmapFilter (abstract base)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class BitmapFilter {
   clone(): BitmapFilter {
     return new BitmapFilter();
@@ -16,6 +22,7 @@ export class BitmapFilter {
 // BlurFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class BlurFilter extends BitmapFilter {
   blurX: number;
   blurY: number;
@@ -37,6 +44,7 @@ export class BlurFilter extends BitmapFilter {
 // DropShadowFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class DropShadowFilter extends BitmapFilter {
   distance: number;
   angle: number;
@@ -90,6 +98,7 @@ export class DropShadowFilter extends BitmapFilter {
 // GlowFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class GlowFilter extends BitmapFilter {
   color: number;
   alpha: number;
@@ -133,6 +142,7 @@ export class GlowFilter extends BitmapFilter {
 // ColorMatrixFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ColorMatrixFilter extends BitmapFilter {
   matrix: number[];
 
@@ -155,6 +165,7 @@ export class ColorMatrixFilter extends BitmapFilter {
 // BevelFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class BevelFilter extends BitmapFilter {
   distance: number;
   angle: number;
@@ -211,6 +222,7 @@ export class BevelFilter extends BitmapFilter {
 // GradientGlowFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class GradientGlowFilter extends BitmapFilter {
   distance: number;
   angle: number;
@@ -264,6 +276,7 @@ export class GradientGlowFilter extends BitmapFilter {
 // ConvolutionFilter
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ConvolutionFilter extends BitmapFilter {
   matrixX: number;
   matrixY: number;

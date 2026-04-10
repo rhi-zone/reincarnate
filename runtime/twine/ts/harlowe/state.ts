@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Harlowe story variable state management.
  *
  * Two stores: storyVars ($-prefixed) persist across passages,
@@ -7,6 +12,7 @@
 
 import { type SaveableState, type HistoryStrategy, snapshotHistory, saveSlot, loadSlot, hasSlot } from "../platform";
 
+// HANDWRITTEN
 export class HarloweState implements SaveableState {
   storyVars: Record<string, unknown> = {};
   tempVars: Record<string, unknown> = {};

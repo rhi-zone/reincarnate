@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Shared modal overlay for dialog, save UI, and settings UI.
  *
  * This is a browser implementation detail — not part of the platform contract.
@@ -5,6 +10,7 @@
  * files and can ignore or replace this helper.
  */
 
+// HANDWRITTEN
 export class OverlayManager {
   private dialogOverlay: HTMLDivElement | null = null;
 

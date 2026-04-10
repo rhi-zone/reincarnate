@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** RenderRoot — composable mount + isolation for engine runtimes.
  *
  * A RenderRoot provides a container element and a document-like factory
@@ -13,6 +18,7 @@
  */
 
 /** Document-like factory for creating DOM nodes. */
+// HANDWRITTEN
 export interface DocumentFactory {
   createElement(tag: string): HTMLElement;
   createTextNode(data: string): Text;
@@ -20,6 +26,7 @@ export interface DocumentFactory {
 }
 
 /** Where to render content + how to create DOM nodes. */
+// HANDWRITTEN
 export interface RenderRoot {
   /** Where to append content (canvas, passages, tw-story children). */
   container: Element | ShadowRoot;
@@ -28,6 +35,7 @@ export interface RenderRoot {
 }
 
 /** A wrapper that transforms a RenderRoot into another. */
+// HANDWRITTEN
 export type RenderRootWrapper = (root: RenderRoot) => RenderRoot;
 
 /**
@@ -35,6 +43,7 @@ export type RenderRootWrapper = (root: RenderRoot) => RenderRoot;
  *
  * Resolves the container and uses its ownerDocument as the factory.
  */
+// HANDWRITTEN
 export function mount(selectorOrElement: string | Element): RenderRoot {
   const el =
     typeof selectorOrElement === "string"
@@ -53,6 +62,7 @@ export function mount(selectorOrElement: string | Element): RenderRoot {
  * Content is rendered inside the shadow root. The factory uses the
  * shadow root's ownerDocument (same document, just scoped rendering).
  */
+// HANDWRITTEN
 export function shadowDOM(mode: ShadowRootMode = "open"): RenderRootWrapper {
   return (root: RenderRoot) => {
     const host =
@@ -71,6 +81,7 @@ export function shadowDOM(mode: ShadowRootMode = "open"): RenderRootWrapper {
  * to the iframe's contentDocument so all created elements belong to the
  * iframe's document context.
  */
+// HANDWRITTEN
 export function iframe(opts?: { sandbox?: string }): RenderRootWrapper {
   return (root: RenderRoot) => {
     const frame = root.doc.createElement("iframe") as HTMLIFrameElement;
@@ -93,6 +104,7 @@ export function iframe(opts?: { sandbox?: string }): RenderRootWrapper {
  *
  *   scopedCSS()(shadowDOM()(mount("#game")))
  */
+// HANDWRITTEN
 export function scopedCSS(): RenderRootWrapper {
   return (root: RenderRoot) => root;
 }

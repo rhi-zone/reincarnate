@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Harlowe engine — changers, data operations, runtime helpers.
  *
  * Implements all Harlowe.Engine system call methods dispatched from
@@ -9,12 +14,14 @@ import type { HarloweRuntime } from "./runtime";
 import type { DocumentFactory } from "../shared/render-root";
 
 /** Passage info object returned by `(open-storylets:)`. */
+// HANDWRITTEN
 export interface PassageInfo {
   name: string;
   source: string;
   tags: string[];
 }
 
+// HANDWRITTEN
 export class HarloweEngine {
   private rt: HarloweRuntime;
   /** Map from passage name to its storylet condition function. */
@@ -1244,6 +1251,7 @@ function permutations<T>(...items: T[]): T[][] {
   return result;
 }
 
+// HANDWRITTEN
 export const Collections = {
   sorted, reversed, rotated, rotatedTo, shuffled, count, range,
   find, joined, subarray, substring, lowercase, uppercase,
@@ -1260,6 +1268,7 @@ function rgba(r: number, g: number, b: number, a: number): string { return `rgba
 function hsl(h: number, s: number, l: number): string { return `hsl(${h}, ${s}%, ${l}%)`; }
 function hsla(h: number, s: number, l: number, a: number): string { return `hsla(${h}, ${s}%, ${l}%, ${a})`; }
 
+// HANDWRITTEN
 export const Colors = { rgb, rgba, hsl, hsla } as const;
 
 // --- String operations (pure) ---
@@ -1350,6 +1359,7 @@ function plural(n: unknown, singular: unknown, pluralForm?: unknown): string {
     : pluralForm !== undefined ? String(pluralForm) : String(singular) + "s";
 }
 
+// HANDWRITTEN
 export const StringOps = {
   upperfirst, lowerfirst, strReversed, trimmed, words,
   strNth, strRepeated, strFind, strReplaced, digitFormat, plural,

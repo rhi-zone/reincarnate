@@ -1,7 +1,14 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Browser input — keyboard, mouse, touch, gamepad, and text input event binding. */
 
+// HANDWRITTEN
 export type DeviceKind = "keyboard" | "mouse" | "touch" | "gamepad";
 
+// HANDWRITTEN
 export class InputState {
   keysDown = new Set<string>();
   mouseButtons = new Set<number>();
@@ -14,6 +21,7 @@ export class InputState {
 
 // --- Device enumeration ---
 
+// HANDWRITTEN
 export function devices(state: InputState, kind: DeviceKind): number[] {
   switch (kind) {
     case "keyboard":
@@ -32,6 +40,7 @@ export function devices(state: InputState, kind: DeviceKind): number[] {
   }
 }
 
+// HANDWRITTEN
 export function onDeviceConnect(
   _state: InputState,
   cb: (device: number, kind: DeviceKind) => void,
@@ -41,6 +50,7 @@ export function onDeviceConnect(
   });
 }
 
+// HANDWRITTEN
 export function onDeviceDisconnect(
   _state: InputState,
   cb: (device: number) => void,
@@ -52,6 +62,7 @@ export function onDeviceDisconnect(
 
 // --- Keyboard ---
 
+// HANDWRITTEN
 export function onKeyDown(
   state: InputState,
   _canvas: HTMLCanvasElement,
@@ -63,6 +74,7 @@ export function onKeyDown(
   });
 }
 
+// HANDWRITTEN
 export function onKeyUp(
   state: InputState,
   _canvas: HTMLCanvasElement,
@@ -74,12 +86,14 @@ export function onKeyUp(
   });
 }
 
+// HANDWRITTEN
 export function isKeyDown(state: InputState, _device: number, code: string): boolean {
   return state.keysDown.has(code);
 }
 
 // --- Mouse ---
 
+// HANDWRITTEN
 export function onMouseDown(
   state: InputState,
   canvas: HTMLCanvasElement,
@@ -95,6 +109,7 @@ export function onMouseDown(
   });
 }
 
+// HANDWRITTEN
 export function onMouseUp(
   state: InputState,
   canvas: HTMLCanvasElement,
@@ -106,6 +121,7 @@ export function onMouseUp(
   });
 }
 
+// HANDWRITTEN
 export function onMouseMove(
   state: InputState,
   canvas: HTMLCanvasElement,
@@ -121,6 +137,7 @@ export function onMouseMove(
   });
 }
 
+// HANDWRITTEN
 export function onScroll(
   _state: InputState,
   canvas: HTMLCanvasElement,
@@ -136,32 +153,39 @@ export function onScroll(
   );
 }
 
+// HANDWRITTEN
 export function isMouseDown(state: InputState, _device: number, button: number): boolean {
   return state.mouseButtons.has(button);
 }
 
+// HANDWRITTEN
 export function mouseX(state: InputState, _device: number): number {
   return state.mouseX;
 }
 
+// HANDWRITTEN
 export function mouseY(state: InputState, _device: number): number {
   return state.mouseY;
 }
 
 // --- Pointer lock ---
 
+// HANDWRITTEN
 export function requestPointerLock(canvas: HTMLCanvasElement): void {
   canvas.requestPointerLock();
 }
 
+// HANDWRITTEN
 export function releasePointerLock(): void {
   document.exitPointerLock();
 }
 
+// HANDWRITTEN
 export function isPointerLocked(state: InputState): boolean {
   return state.pointerLocked;
 }
 
+// HANDWRITTEN
 export function onMouseDelta(
   _state: InputState,
   canvas: HTMLCanvasElement,
@@ -182,6 +206,7 @@ function touchPos(
   return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
 }
 
+// HANDWRITTEN
 export function onTouchStart(
   state: InputState,
   canvas: HTMLCanvasElement,
@@ -197,6 +222,7 @@ export function onTouchStart(
   }, { passive: false });
 }
 
+// HANDWRITTEN
 export function onTouchMove(
   state: InputState,
   canvas: HTMLCanvasElement,
@@ -212,6 +238,7 @@ export function onTouchMove(
   }, { passive: false });
 }
 
+// HANDWRITTEN
 export function onTouchEnd(
   state: InputState,
   canvas: HTMLCanvasElement,
@@ -226,20 +253,24 @@ export function onTouchEnd(
   });
 }
 
+// HANDWRITTEN
 export function touchCount(state: InputState, _device: number): number {
   return state.touches.size;
 }
 
+// HANDWRITTEN
 export function touchX(state: InputState, _device: number, id: number): number {
   return state.touches.get(id)?.x ?? 0;
 }
 
+// HANDWRITTEN
 export function touchY(state: InputState, _device: number, id: number): number {
   return state.touches.get(id)?.y ?? 0;
 }
 
 // --- Gamepad ---
 
+// HANDWRITTEN
 export function deviceAxis(
   _state: InputState,
   device: number,
@@ -248,6 +279,7 @@ export function deviceAxis(
   return navigator.getGamepads()[device]?.axes[axis] ?? 0;
 }
 
+// HANDWRITTEN
 export function deviceButtonPressed(
   _state: InputState,
   device: number,
@@ -256,6 +288,7 @@ export function deviceButtonPressed(
   return navigator.getGamepads()[device]?.buttons[button]?.pressed ?? false;
 }
 
+// HANDWRITTEN
 export function deviceButtonValue(
   _state: InputState,
   device: number,
@@ -264,6 +297,7 @@ export function deviceButtonValue(
   return navigator.getGamepads()[device]?.buttons[button]?.value ?? 0;
 }
 
+// HANDWRITTEN
 export function deviceConnected(
   _state: InputState,
   device: number,
@@ -271,6 +305,7 @@ export function deviceConnected(
   return navigator.getGamepads()[device]?.connected ?? false;
 }
 
+// HANDWRITTEN
 export function deviceDescription(
   _state: InputState,
   device: number,
@@ -278,23 +313,27 @@ export function deviceDescription(
   return navigator.getGamepads()[device]?.id ?? "";
 }
 
+// HANDWRITTEN
 export function deviceCount(_state: InputState): number {
   return navigator.getGamepads().filter(g => g != null).length;
 }
 
 /** Snapshot the pressed state of all buttons for a gamepad (for pressed/released edge detection). */
+// HANDWRITTEN
 export function snapshotGamepadButtons(_state: InputState, device: number): boolean[] {
   const gp = navigator.getGamepads()[device];
   return gp ? gp.buttons.map(b => b.pressed) : [];
 }
 
 /** Return the number of gamepad slots (including disconnected). */
+// HANDWRITTEN
 export function gamepadSlotCount(_state: InputState): number {
   return navigator.getGamepads().length;
 }
 
 // --- Text input ---
 
+// HANDWRITTEN
 export function onTextInput(
   _state: InputState,
   _canvas: HTMLCanvasElement,
@@ -305,6 +344,7 @@ export function onTextInput(
   });
 }
 
+// HANDWRITTEN
 export function onCompositionStart(
   _state: InputState,
   _canvas: HTMLCanvasElement,
@@ -315,6 +355,7 @@ export function onCompositionStart(
   });
 }
 
+// HANDWRITTEN
 export function onCompositionUpdate(
   _state: InputState,
   _canvas: HTMLCanvasElement,
@@ -325,6 +366,7 @@ export function onCompositionUpdate(
   });
 }
 
+// HANDWRITTEN
 export function onCompositionEnd(
   _state: InputState,
   _canvas: HTMLCanvasElement,

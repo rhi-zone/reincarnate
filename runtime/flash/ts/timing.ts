@@ -1,5 +1,11 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Flash timing shim — delta time, frame counter, target FPS. */
 
+// HANDWRITTEN
 export class TimingShim {
   private _lastTime = performance.now() / 1000;
   private _startTime = performance.now() / 1000;

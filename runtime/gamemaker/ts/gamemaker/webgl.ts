@@ -1,5 +1,11 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** WebGL2 utilities for GML shader support. */
 
+// HANDWRITTEN
 export interface ShaderProgram {
   program: WebGLProgram;
   uniformLocations: Map<string, WebGLUniformLocation>;
@@ -9,6 +15,7 @@ export interface ShaderProgram {
  * Compile and link a GLSL ES vertex + fragment shader pair.
  * Returns null on compilation or link failure (errors logged to console).
  */
+// HANDWRITTEN
 export function compileProgram(
   gl: WebGL2RenderingContext,
   vert: string,
@@ -57,6 +64,7 @@ function compileShader(gl: WebGL2RenderingContext, type: number, src: string): W
  * Build a column-major 4×4 orthographic projection matrix mapping
  * [0,w] × [0,h] → NDC, with y flipped (top-left origin) and z depth [-1,1].
  */
+// HANDWRITTEN
 export function orthoMatrix(w: number, h: number): Float32Array {
   // Column-major layout for gl.uniformMatrix4fv
   return new Float32Array([
@@ -71,6 +79,7 @@ export function orthoMatrix(w: number, h: number): Float32Array {
  * Create a VAO with a fullscreen clip-space quad (-1..1) plus UV coords (0..1).
  * Attribute 0 = vec2 position, attribute 1 = vec2 texcoord.
  */
+// HANDWRITTEN
 export function makeFullscreenQuad(gl: WebGL2RenderingContext): WebGLVertexArrayObject | null {
   const vao = gl.createVertexArray();
   if (!vao) return null;

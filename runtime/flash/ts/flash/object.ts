@@ -1,5 +1,11 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Flash.Object — AVM2 object model operations. */
 
+// HANDWRITTEN
 export function typeOf(value: unknown): string {
   if (value === null || value === undefined) return "object";
   const t = typeof value;
@@ -12,6 +18,7 @@ export function typeOf(value: unknown): string {
   return "object";
 }
 
+// HANDWRITTEN
 export function deleteProperty(obj: unknown, name: string): boolean {
   try {
     return delete (obj as Record<string, unknown>)[name];
@@ -20,10 +27,12 @@ export function deleteProperty(obj: unknown, name: string): boolean {
   }
 }
 
+// HANDWRITTEN
 export function construct(ctor: Function, ...args: unknown[]): unknown {
   return new (ctor as new(...args: unknown[]) => unknown)(...args);
 }
 
+// HANDWRITTEN
 export function newObject(...pairs: unknown[]): Record<string, unknown> {
   const obj: Record<string, unknown> = {};
   for (let i = 0; i < pairs.length; i += 2) {
@@ -32,12 +41,14 @@ export function newObject(...pairs: unknown[]): Record<string, unknown> {
   return obj;
 }
 
+// HANDWRITTEN
 export function applyType(base: unknown, ..._typeArgs: unknown[]): unknown {
   // AVM2 ApplyType creates a parameterized type (e.g., Vector.<int>).
   // In TypeScript land, just return the base — generics are erased.
   return base;
 }
 
+// HANDWRITTEN
 export function hasProperty(obj: unknown, name: string): boolean {
   if (obj === null || obj === undefined) return false;
   return name in Object(obj);

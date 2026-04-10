@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * flash.media package — SoundTransform, Sound, SoundChannel, SoundMixer,
  * SoundLoaderContext, ID3Info, Microphone, Camera, Video.
@@ -9,6 +14,7 @@ import { EventDispatcher, Event } from "./events";
 // SoundTransform
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class SoundTransform {
   volume: number;
   pan: number;
@@ -31,6 +37,7 @@ export class SoundTransform {
 // SoundLoaderContext
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class SoundLoaderContext {
   bufferTime: number;
   checkPolicyFile: boolean;
@@ -45,6 +52,7 @@ export class SoundLoaderContext {
 // ID3Info
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class ID3Info {
   album: string | null = null;
   artist: string | null = null;
@@ -59,6 +67,7 @@ export class ID3Info {
 // SoundChannel
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class SoundChannel extends EventDispatcher {
   leftPeak = 0;
   rightPeak = 0;
@@ -74,6 +83,7 @@ export class SoundChannel extends EventDispatcher {
 // Sound
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Sound extends EventDispatcher {
   bytesLoaded = 0;
   bytesTotal = 0;
@@ -105,6 +115,7 @@ export class Sound extends EventDispatcher {
 // SoundMixer
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class SoundMixer {
   static bufferTime = 0;
   static soundTransform: SoundTransform = new SoundTransform();
@@ -126,6 +137,7 @@ export class SoundMixer {
 // Microphone (stub — no browser capture yet)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Microphone extends EventDispatcher {
   activityLevel = -1;
   gain = 50;
@@ -153,6 +165,7 @@ export class Microphone extends EventDispatcher {
 // Video
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class Video extends EventDispatcher {
   deblocking = 0;
   smoothing = false;

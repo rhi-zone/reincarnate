@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * Browser graphics — Canvas 2D initialization, state management, and drawing.
  *
@@ -19,6 +24,7 @@ import type { DocumentFactory } from "../render-root";
 // Legacy interface (preserved for existing callers)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export class GraphicsContext {
   canvas!: HTMLCanvasElement;
   ctx!: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -32,6 +38,7 @@ export class GraphicsContext {
   gl: WebGL2RenderingContext | null = null;
 }
 
+// HANDWRITTEN
 export function initCanvas(gfx: GraphicsContext, id: string, doc: DocumentFactory = document): void {
   gfx.canvas = (doc as Document).getElementById
     ? (doc as Document).getElementById(id) as HTMLCanvasElement
@@ -49,6 +56,7 @@ export function initCanvas(gfx: GraphicsContext, id: string, doc: DocumentFactor
  * Lazily initialize a WebGL2 overlay canvas positioned over the main canvas.
  * Returns true if WebGL2 is available; false if not supported (shaders will be skipped).
  */
+// HANDWRITTEN
 export function initWebGL(gfx: GraphicsContext): boolean {
   if (gfx.gl) return true;
   const main = gfx.canvas;
@@ -73,19 +81,28 @@ export function initWebGL(gfx: GraphicsContext): boolean {
 // Handle types
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export type CanvasHandle = number;
+// HANDWRITTEN
 export type FontHandle = number;
+// HANDWRITTEN
 export type PathHandle = number;
+// HANDWRITTEN
 export type GradientHandle = number;
 
 // ---------------------------------------------------------------------------
 // Named constant types
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export type BlendMode = "normal" | "additive" | "multiply" | "screen" | "erase";
+// HANDWRITTEN
 export type TextAlign = "left" | "center" | "right";
+// HANDWRITTEN
 export type TextBaseline = "top" | "middle" | "bottom" | "alphabetic";
+// HANDWRITTEN
 export type LineCap = "butt" | "round" | "square";
+// HANDWRITTEN
 export type LineJoin = "miter" | "round" | "bevel";
 
 // ---------------------------------------------------------------------------
@@ -97,6 +114,7 @@ type CanvasEntry = {
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 };
 
+// HANDWRITTEN
 export class GraphicsState {
   canvases = new Map<CanvasHandle, CanvasEntry>();
   fonts = new Map<FontHandle, FontFace>();
@@ -160,6 +178,7 @@ function fontCss(state: GraphicsState, font: FontHandle, size: number): string {
  * Get an existing canvas element by DOM id, wrap it in GraphicsState, and
  * return a handle. Sets imageSmoothingEnabled = false by default.
  */
+// HANDWRITTEN
 export function initSurface(state: GraphicsState, id: string, doc: Document = document): CanvasHandle {
   const el = doc.getElementById(id) as HTMLCanvasElement;
   if (!el) throw new Error(`graphics: no element with id "${id}"`);
@@ -174,6 +193,7 @@ export function initSurface(state: GraphicsState, id: string, doc: Document = do
  * Create a new offscreen canvas (OffscreenCanvas if available, else
  * HTMLCanvasElement). Returns a handle.
  */
+// HANDWRITTEN
 export function createCanvas(state: GraphicsState, w: number, h: number): CanvasHandle {
   let el: HTMLCanvasElement | OffscreenCanvas;
   if ("OffscreenCanvas" in globalThis) {
@@ -191,6 +211,7 @@ export function createCanvas(state: GraphicsState, w: number, h: number): Canvas
 }
 
 /** Resize a canvas by handle. */
+// HANDWRITTEN
 export function resizeCanvas(state: GraphicsState, canvas: CanvasHandle, w: number, h: number): void {
   const el = getEl(state, canvas);
   el.width = w;
@@ -201,6 +222,7 @@ export function resizeCanvas(state: GraphicsState, canvas: CanvasHandle, w: numb
  * Load a font from `url`, add it to `document.fonts`, and return a handle.
  * The CSS family name is auto-generated as `rf_${handle}`.
  */
+// HANDWRITTEN
 export async function loadFont(state: GraphicsState, url: string): Promise<FontHandle> {
   const handle = state.nextFont++;
   const family = `rf_${handle}`;
@@ -213,44 +235,54 @@ export async function loadFont(state: GraphicsState, url: string): Promise<FontH
 }
 
 /** Allocate a new reusable Path2D and return its handle. */
+// HANDWRITTEN
 export function createPath(state: GraphicsState): PathHandle {
   const handle = state.nextPath++;
   state.paths.set(handle, new Path2D());
   return handle;
 }
 
+// HANDWRITTEN
 export function pathMoveTo(state: GraphicsState, path: PathHandle, x: number, y: number): void {
   getPath(state, path).moveTo(x, y);
 }
 
+// HANDWRITTEN
 export function pathLineTo(state: GraphicsState, path: PathHandle, x: number, y: number): void {
   getPath(state, path).lineTo(x, y);
 }
 
+// HANDWRITTEN
 export function pathBezierTo(state: GraphicsState, path: PathHandle, cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): void {
   getPath(state, path).bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
 }
 
+// HANDWRITTEN
 export function pathQuadraticTo(state: GraphicsState, path: PathHandle, cpx: number, cpy: number, x: number, y: number): void {
   getPath(state, path).quadraticCurveTo(cpx, cpy, x, y);
 }
 
+// HANDWRITTEN
 export function pathArc(state: GraphicsState, path: PathHandle, x: number, y: number, r: number, start: number, end: number, ccw: boolean): void {
   getPath(state, path).arc(x, y, r, start, end, ccw);
 }
 
+// HANDWRITTEN
 export function pathClose(state: GraphicsState, path: PathHandle): void {
   getPath(state, path).closePath();
 }
 
+// HANDWRITTEN
 export function destroyPath(state: GraphicsState, path: PathHandle): void {
   state.paths.delete(path);
 }
 
+// HANDWRITTEN
 export function destroyCanvas(state: GraphicsState, canvas: CanvasHandle): void {
   state.canvases.delete(canvas);
 }
 
+// HANDWRITTEN
 export function destroyFont(state: GraphicsState, font: FontHandle): void {
   const face = state.fonts.get(font);
   if (face) document.fonts.delete(face);
@@ -259,6 +291,7 @@ export function destroyFont(state: GraphicsState, font: FontHandle): void {
 }
 
 /** Create a linear gradient on the given canvas context and return a handle. */
+// HANDWRITTEN
 export function createLinearGradient(state: GraphicsState, canvas: CanvasHandle, x0: number, y0: number, x1: number, y1: number): GradientHandle {
   const ctx = getCtx(state, canvas);
   const grad = ctx.createLinearGradient(x0, y0, x1, y1);
@@ -268,6 +301,7 @@ export function createLinearGradient(state: GraphicsState, canvas: CanvasHandle,
 }
 
 /** Create a radial gradient on the given canvas context and return a handle. */
+// HANDWRITTEN
 export function createRadialGradient(state: GraphicsState, canvas: CanvasHandle, x0: number, y0: number, r0: number, x1: number, y1: number, r1: number): GradientHandle {
   const ctx = getCtx(state, canvas);
   const grad = ctx.createRadialGradient(x0, y0, r0, x1, y1, r1);
@@ -280,10 +314,12 @@ export function createRadialGradient(state: GraphicsState, canvas: CanvasHandle,
  * Add a color stop to a gradient. `color` is 0xRRGGBBAA.
  * `offset` is in [0, 1].
  */
+// HANDWRITTEN
 export function gradientAddStop(state: GraphicsState, gradient: GradientHandle, offset: number, color: number): void {
   getGradient(state, gradient).addColorStop(offset, colorToCss(color));
 }
 
+// HANDWRITTEN
 export function destroyGradient(state: GraphicsState, gradient: GradientHandle): void {
   state.gradients.delete(gradient);
 }
@@ -292,15 +328,18 @@ export function destroyGradient(state: GraphicsState, gradient: GradientHandle):
 // Query (sync)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function canvasWidth(state: GraphicsState, canvas: CanvasHandle): number {
   return getEl(state, canvas).width;
 }
 
+// HANDWRITTEN
 export function canvasHeight(state: GraphicsState, canvas: CanvasHandle): number {
   return getEl(state, canvas).height;
 }
 
 /** Return a copy of the pixel data in the given rectangle as a Uint8Array (RGBA). */
+// HANDWRITTEN
 export function readCanvasPixels(state: GraphicsState, canvas: CanvasHandle, x: number, y: number, w: number, h: number): Uint8Array {
   const ctx = getCtx(state, canvas);
   return new Uint8Array(ctx.getImageData(x, y, w, h).data.buffer);
@@ -310,6 +349,7 @@ export function readCanvasPixels(state: GraphicsState, canvas: CanvasHandle, x: 
  * Create an ImageBitmap from the canvas. The caller is responsible for passing
  * the result into ImageState — graphics does not own ImageState.
  */
+// HANDWRITTEN
 export function canvasToImage(state: GraphicsState, canvas: CanvasHandle): ImageBitmap {
   // createImageBitmap is async in the spec but synchronous-capable for canvas
   // elements in practice. Callers that need strict async should await the
@@ -327,6 +367,7 @@ export function canvasToImage(state: GraphicsState, canvas: CanvasHandle): Image
  * Async variant: resolves to an ImageBitmap from the canvas.
  * Caller passes result to ImageState.
  */
+// HANDWRITTEN
 export async function createImageBitmapAsync(state: GraphicsState, canvas: CanvasHandle): Promise<ImageBitmap> {
   const el = getEl(state, canvas);
   return createImageBitmap(el as ImageBitmapSource);
@@ -336,11 +377,13 @@ export async function createImageBitmapAsync(state: GraphicsState, canvas: Canva
 // Hot tier — state (saved/restored)
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function setTransform(state: GraphicsState, canvas: CanvasHandle, a: number, b: number, c: number, d: number, e: number, f: number): void {
   getCtx(state, canvas).setTransform(a, b, c, d, e, f);
 }
 
 /** Set global alpha (0–1). */
+// HANDWRITTEN
 export function setAlpha(state: GraphicsState, canvas: CanvasHandle, alpha: number): void {
   getCtx(state, canvas).globalAlpha = alpha;
 }
@@ -353,6 +396,7 @@ const BLEND_MODE_MAP: Record<BlendMode, GlobalCompositeOperation> = {
   erase: "destination-out",
 };
 
+// HANDWRITTEN
 export function setBlendMode(state: GraphicsState, canvas: CanvasHandle, mode: BlendMode): void {
   getCtx(state, canvas).globalCompositeOperation = BLEND_MODE_MAP[mode];
 }
@@ -364,15 +408,18 @@ export function setBlendMode(state: GraphicsState, canvas: CanvasHandle, mode: B
  * Currently a no-op — callers relying on color transforms must use a WebGL
  * overlay or CSS filter workaround.
  */
+// HANDWRITTEN
 export function setColorTransform(_state: GraphicsState, _canvas: CanvasHandle, _matrix: Float32Array): void {
   // no-op: Canvas 2D does not support color matrices natively.
   // Store matrix per-canvas for a future WebGL/CSS-filter impl.
 }
 
+// HANDWRITTEN
 export function setImageSmoothing(state: GraphicsState, canvas: CanvasHandle, enabled: boolean): void {
   getCtx(state, canvas).imageSmoothingEnabled = enabled;
 }
 
+// HANDWRITTEN
 export function setStrokeStyle(state: GraphicsState, canvas: CanvasHandle, cap: LineCap, join: LineJoin, miterLimit: number): void {
   const ctx = getCtx(state, canvas);
   ctx.lineCap = cap;
@@ -380,16 +427,19 @@ export function setStrokeStyle(state: GraphicsState, canvas: CanvasHandle, cap: 
   ctx.miterLimit = miterLimit;
 }
 
+// HANDWRITTEN
 export function setDashPattern(state: GraphicsState, canvas: CanvasHandle, segments: number[], offset: number): void {
   const ctx = getCtx(state, canvas);
   ctx.setLineDash(segments);
   ctx.lineDashOffset = offset;
 }
 
+// HANDWRITTEN
 export function saveState(state: GraphicsState, canvas: CanvasHandle): void {
   getCtx(state, canvas).save();
 }
 
+// HANDWRITTEN
 export function restoreState(state: GraphicsState, canvas: CanvasHandle): void {
   getCtx(state, canvas).restore();
 }
@@ -399,6 +449,7 @@ export function restoreState(state: GraphicsState, canvas: CanvasHandle): void {
  * available (Chrome 99+). Falls back to replacing the context by re-obtaining
  * it from the canvas element, which discards all saved state layers.
  */
+// HANDWRITTEN
 export function resetCanvasState(state: GraphicsState, canvas: CanvasHandle): void {
   const entry = state.canvases.get(canvas);
   if (!entry) throw new Error(`graphics: unknown CanvasHandle ${canvas}`);
@@ -420,6 +471,7 @@ export function resetCanvasState(state: GraphicsState, canvas: CanvasHandle): vo
  * Fill the entire canvas with `color` (0xRRGGBBAA).
  * Respects current clip — does not modify other canvas state.
  */
+// HANDWRITTEN
 export function clearCanvas(state: GraphicsState, canvas: CanvasHandle, color: number): void {
   const ctx = getCtx(state, canvas);
   const el = getEl(state, canvas);
@@ -427,6 +479,7 @@ export function clearCanvas(state: GraphicsState, canvas: CanvasHandle, color: n
   ctx.fillRect(0, 0, el.width, el.height);
 }
 
+// HANDWRITTEN
 export function fillRect(state: GraphicsState, canvas: CanvasHandle, x: number, y: number, w: number, h: number, color: number): void {
   const ctx = getCtx(state, canvas);
   ctx.fillStyle = colorToCss(color);
@@ -437,11 +490,13 @@ export function fillRect(state: GraphicsState, canvas: CanvasHandle, x: number, 
  * Draw a region of an ImageBitmap onto the canvas.
  * The caller extracts the ImageBitmap from ImageState; graphics does not own it.
  */
+// HANDWRITTEN
 export function drawImage(state: GraphicsState, canvas: CanvasHandle, img: ImageBitmap, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void {
   getCtx(state, canvas).drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
 }
 
 /** Blit a region of one managed canvas onto another. */
+// HANDWRITTEN
 export function drawCanvas(state: GraphicsState, dst: CanvasHandle, src: CanvasHandle, sx: number, sy: number, sw: number, sh: number, dx: number, dy: number, dw: number, dh: number): void {
   const dstCtx = getCtx(state, dst);
   const srcEl = getEl(state, src);
@@ -449,6 +504,7 @@ export function drawCanvas(state: GraphicsState, dst: CanvasHandle, src: CanvasH
 }
 
 /** Draw `text` at (x, y) using the given font handle and size. */
+// HANDWRITTEN
 export function drawText(state: GraphicsState, canvas: CanvasHandle, text: string, x: number, y: number, font: FontHandle, size: number, color: number, align: TextAlign, baseline: TextBaseline): void {
   const ctx = getCtx(state, canvas);
   ctx.font = fontCss(state, font, size);
@@ -462,6 +518,7 @@ export function drawText(state: GraphicsState, canvas: CanvasHandle, text: strin
  * Measure the rendered width of `text` using the given font and size.
  * Uses the first available canvas context for measurement.
  */
+// HANDWRITTEN
 export function measureText(state: GraphicsState, canvas: CanvasHandle, text: string, font: FontHandle, size: number): number {
   const ctx = getCtx(state, canvas);
   ctx.font = fontCss(state, font, size);
@@ -472,35 +529,43 @@ export function measureText(state: GraphicsState, canvas: CanvasHandle, text: st
 // Hot tier — one-off (immediate) paths
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export function beginPath(state: GraphicsState, canvas: CanvasHandle): void {
   getCtx(state, canvas).beginPath();
 }
 
+// HANDWRITTEN
 export function moveTo(state: GraphicsState, canvas: CanvasHandle, x: number, y: number): void {
   getCtx(state, canvas).moveTo(x, y);
 }
 
+// HANDWRITTEN
 export function lineTo(state: GraphicsState, canvas: CanvasHandle, x: number, y: number): void {
   getCtx(state, canvas).lineTo(x, y);
 }
 
+// HANDWRITTEN
 export function bezierTo(state: GraphicsState, canvas: CanvasHandle, cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): void {
   getCtx(state, canvas).bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
 }
 
+// HANDWRITTEN
 export function quadraticTo(state: GraphicsState, canvas: CanvasHandle, cpx: number, cpy: number, x: number, y: number): void {
   getCtx(state, canvas).quadraticCurveTo(cpx, cpy, x, y);
 }
 
+// HANDWRITTEN
 export function arc(state: GraphicsState, canvas: CanvasHandle, x: number, y: number, r: number, start: number, end: number, ccw: boolean): void {
   getCtx(state, canvas).arc(x, y, r, start, end, ccw);
 }
 
+// HANDWRITTEN
 export function closePath(state: GraphicsState, canvas: CanvasHandle): void {
   getCtx(state, canvas).closePath();
 }
 
 /** Fill the current path with `color` (0xRRGGBBAA). */
+// HANDWRITTEN
 export function fillPath(state: GraphicsState, canvas: CanvasHandle, color: number): void {
   const ctx = getCtx(state, canvas);
   ctx.fillStyle = colorToCss(color);
@@ -508,6 +573,7 @@ export function fillPath(state: GraphicsState, canvas: CanvasHandle, color: numb
 }
 
 /** Fill the current path with a gradient. */
+// HANDWRITTEN
 export function fillPathGradient(state: GraphicsState, canvas: CanvasHandle, gradient: GradientHandle): void {
   const ctx = getCtx(state, canvas);
   ctx.fillStyle = getGradient(state, gradient);
@@ -515,6 +581,7 @@ export function fillPathGradient(state: GraphicsState, canvas: CanvasHandle, gra
 }
 
 /** Stroke the current path with `color` and `width`. */
+// HANDWRITTEN
 export function strokePath(state: GraphicsState, canvas: CanvasHandle, color: number, width: number): void {
   const ctx = getCtx(state, canvas);
   ctx.strokeStyle = colorToCss(color);
@@ -522,6 +589,7 @@ export function strokePath(state: GraphicsState, canvas: CanvasHandle, color: nu
   ctx.stroke();
 }
 
+// HANDWRITTEN
 export function clip(state: GraphicsState, canvas: CanvasHandle): void {
   getCtx(state, canvas).clip();
 }
@@ -531,6 +599,7 @@ export function clip(state: GraphicsState, canvas: CanvasHandle): void {
  * Canvas 2D has no text-to-path support. Use an SVG or opentype.js shim
  * to convert glyphs to Path2D objects if outline text is required.
  */
+// HANDWRITTEN
 export function beginTextPath(_state: GraphicsState, _canvas: CanvasHandle, _text: string, _x: number, _y: number, _font: FontHandle, _size: number): void {
   // no-op: Canvas 2D has no text-to-path; use a SVG/opentype.js shim.
 }
@@ -540,6 +609,7 @@ export function beginTextPath(_state: GraphicsState, _canvas: CanvasHandle, _tex
 // ---------------------------------------------------------------------------
 
 /** Fill a reusable path with `color` (0xRRGGBBAA). */
+// HANDWRITTEN
 export function fillPathHandle(state: GraphicsState, canvas: CanvasHandle, path: PathHandle, color: number): void {
   const ctx = getCtx(state, canvas);
   ctx.fillStyle = colorToCss(color);
@@ -547,6 +617,7 @@ export function fillPathHandle(state: GraphicsState, canvas: CanvasHandle, path:
 }
 
 /** Fill a reusable path with a gradient. */
+// HANDWRITTEN
 export function fillPathHandleGradient(state: GraphicsState, canvas: CanvasHandle, path: PathHandle, gradient: GradientHandle): void {
   const ctx = getCtx(state, canvas);
   ctx.fillStyle = getGradient(state, gradient);
@@ -554,6 +625,7 @@ export function fillPathHandleGradient(state: GraphicsState, canvas: CanvasHandl
 }
 
 /** Stroke a reusable path with `color` and `width`. */
+// HANDWRITTEN
 export function strokePathHandle(state: GraphicsState, canvas: CanvasHandle, path: PathHandle, color: number, width: number): void {
   const ctx = getCtx(state, canvas);
   ctx.strokeStyle = colorToCss(color);
@@ -562,6 +634,7 @@ export function strokePathHandle(state: GraphicsState, canvas: CanvasHandle, pat
 }
 
 /** Clip to a reusable path. */
+// HANDWRITTEN
 export function clipPathHandle(state: GraphicsState, canvas: CanvasHandle, path: PathHandle): void {
   getCtx(state, canvas).clip(getPath(state, path));
 }

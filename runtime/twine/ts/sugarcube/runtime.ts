@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** SugarCube runtime — owns all mutable sub-objects.
  *
  * Multiple independent game instances can coexist on the same page,
@@ -22,6 +27,7 @@ import { SCSetup } from "./setup";
 import { SCEngine } from "./engine";
 import { Wikifier } from "./wikifier";
 
+// HANDWRITTEN
 export class SugarCubeRuntime {
   readonly Platform: PlatformBundle;
   readonly Setup: SCSetup;
@@ -132,6 +138,7 @@ export class SugarCubeRuntime {
   }
 }
 
+// HANDWRITTEN
 export function createSugarCubeRuntime(): SugarCubeRuntime {
   return new SugarCubeRuntime();
 }

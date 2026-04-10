@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Platform interface — re-exports from per-concern implementation modules.
  *
  * Swap any concern by replacing its module with a different implementation.
@@ -27,18 +32,22 @@ import {
 } from "./audio";
 import type { Command } from "keybinds";
 
+// HANDWRITTEN
 export { loadLocal, saveLocal, removeLocal, localStorageBackend } from "./persistence";
 
+// HANDWRITTEN
 export {
   type HistoryStrategy,
   snapshotHistory, diffHistory,
 } from "./history";
 
+// HANDWRITTEN
 export {
   type SaveBackend, type SaveableState, type PersistenceOpts,
   tee, debounced, rolling,
 } from "./save";
 
+// HANDWRITTEN
 export {
   type AudioHandle,
   createAudio, playAudio, pauseAudio, stopAudio,
@@ -47,13 +56,17 @@ export {
   fadeAudio, isAudioReady,
 } from "./audio";
 
+// HANDWRITTEN
 export {
   scheduleTimeout, cancelTimeout,
   scheduleInterval, cancelInterval,
 } from "./timing";
 
+// HANDWRITTEN
 export { type SaveSlotInfo } from "./save-ui";
+// HANDWRITTEN
 export { type SettingUIEntry } from "./settings-ui";
+// HANDWRITTEN
 export { type SidebarConfig } from "./layout";
 
 /** All stateful platform concerns bundled into a single instance.
@@ -62,6 +75,7 @@ export { type SidebarConfig } from "./layout";
  * dependencies (dialog ↔ input, layout ↔ input, save-ui ↔ dialog) in its
  * constructor. Call initSave() once engine state is available.
  */
+// HANDWRITTEN
 export class PlatformBundle {
   private _overlay: OverlayManager;
   private _dialog: DialogManager;

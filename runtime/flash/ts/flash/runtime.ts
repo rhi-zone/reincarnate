@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * Flash runtime — FlashRuntime instance owns Canvas2D, Stage,
  * ENTER_FRAME dispatch, and DOM → Flash event bridging.
@@ -40,10 +45,12 @@ const DEG_TO_RAD = Math.PI / 180;
 // FlashRuntime
 // ---------------------------------------------------------------------------
 
+// HANDWRITTEN
 export interface FlashRuntimeOptions {
   root?: RenderRoot;
 }
 
+// HANDWRITTEN
 export class FlashRuntime {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -225,6 +232,7 @@ export class FlashRuntime {
   }
 }
 
+// HANDWRITTEN
 export function createFlashRuntime(canvasId = "reincarnate-canvas", opts?: FlashRuntimeOptions): FlashRuntime {
   return new FlashRuntime(canvasId, opts);
 }

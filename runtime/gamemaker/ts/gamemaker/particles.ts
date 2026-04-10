@@ -1,9 +1,15 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /**
  * Particle system types and helpers for GML runtime.
  *
  * Extracted from runtime.ts.
  */
 
+// HANDWRITTEN
 export interface PartTypeConfig {
   life: [number, number];
   speed: [number, number, number, number];       // min, max, inc, wiggle
@@ -21,6 +27,7 @@ export interface PartTypeConfig {
   gravity: [number, number]; // gx, gy
 }
 
+// HANDWRITTEN
 export interface PartInst {
   x: number; y: number; vx: number; vy: number;
   life: number; maxLife: number;
@@ -31,12 +38,14 @@ export interface PartInst {
   sizeWiggle: number; angleWiggle: number; speedWiggle: number;
 }
 
+// HANDWRITTEN
 export interface PartEmitter {
   x1: number; y1: number; x2: number; y2: number; shape: number; dist: number;
   /** Stream config set by `part_emitter_stream`; emitted each step. */
   stream?: { typeId: number; num: number };
 }
 
+// HANDWRITTEN
 export interface PartSystem {
   particles: PartInst[];
   autoDraw: boolean;
@@ -49,6 +58,7 @@ export interface PartSystem {
   nextEmitId: number;
 }
 
+// HANDWRITTEN
 export function defaultPartType(): PartTypeConfig {
   return {
     life: [1, 1], speed: [0, 0, 0, 0], direction: [0, 360, 0, 0],
@@ -59,8 +69,10 @@ export function defaultPartType(): PartTypeConfig {
   };
 }
 
+// HANDWRITTEN
 export function randf(min: number, max: number): number { return min + Math.random() * (max - min); }
 
+// HANDWRITTEN
 export function hsv2rgb(h: number, s: number, v: number): number {
   const hi = Math.floor(h / 60) % 6, f = h / 60 - Math.floor(h / 60);
   const [p, q, t] = [v * (1 - s), v * (1 - f * s), v * (1 - (1 - f) * s)];
@@ -68,6 +80,7 @@ export function hsv2rgb(h: number, s: number, v: number): number {
   return ((r * 255) << 16) | ((g * 255) << 8) | (b * 255 | 0);
 }
 
+// HANDWRITTEN
 export function lerpColor(c1: number, c2: number, t: number): number {
   const r = ((c1 & 0xff) + ((c2 & 0xff) - (c1 & 0xff)) * t) | 0;
   const g = (((c1 >> 8) & 0xff) + (((c2 >> 8) & 0xff) - ((c1 >> 8) & 0xff)) * t) | 0;
@@ -76,6 +89,7 @@ export function lerpColor(c1: number, c2: number, t: number): number {
 }
 
 /** Returns the byte size of a GML buffer type constant, or 0 for string types. */
+// HANDWRITTEN
 export function bufferTypeSize(type: number): number {
   switch (type) {
     case 1: case 2: case 13: return 1;   // buffer_u8, buffer_s8, buffer_bool
@@ -87,5 +101,7 @@ export function bufferTypeSize(type: number): number {
 }
 
 // PRNG constants (used by Math API methods)
+// HANDWRITTEN
 export const _UINT32_MAX = 4294967295;
+// HANDWRITTEN
 export const _UINT32_OFFSET = 2147483648;

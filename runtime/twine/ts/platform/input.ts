@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** Browser input — keybinds-backed command registry with UI components. */
 
 import keybindsInit, { type Command, registerComponents, executeCommand } from "keybinds";
@@ -6,6 +11,7 @@ import keybindsInit, { type Command, registerComponents, executeCommand } from "
 // This is idempotent and browser-global — safe to call at module load time.
 registerComponents();
 
+// HANDWRITTEN
 export class InputManager {
   private commands: Command[] = [];
   private cleanup: (() => void) | null = null;

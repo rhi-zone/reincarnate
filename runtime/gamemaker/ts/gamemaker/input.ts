@@ -1,3 +1,8 @@
+// HANDWRITTEN: This file is a temporary implementation placeholder. All exports
+// will be replaced by code generated from IR bodies once implemented. Do not
+// add new functionality here — implement it in the appropriate runtime_bodies.rs
+// (or equivalent source-engine registration file) instead.
+
 /** GML input handling — mouse, keyboard. */
 
 import type { GameRuntime } from "./runtime";
@@ -6,6 +11,7 @@ import { ACTIVE, noop } from "./constants";
 
 interface ButtonState { pressed: boolean; released: boolean; held: boolean; }
 
+// HANDWRITTEN
 export class InputState {
   mouse = {
     x: 0,
@@ -25,6 +31,7 @@ export class InputState {
   keysReleased = new Set<number>();
 }
 
+// HANDWRITTEN
 export function createInputAPI(rt: GameRuntime) {
   const input = rt._input;
 
