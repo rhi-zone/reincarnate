@@ -9,8 +9,7 @@ use reincarnate_core::entity::PrimaryMap;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{
-    structurize, ClassDef, Constant, FuncId, Function, MethodKind, Module, StructDef, Terminator,
-    Type, TypeId,
+    structurize, ClassDef, Constant, FuncId, Function, MethodKind, Module, StructDef, Type, TypeId,
 };
 use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, RuntimeConfig};
@@ -102,28 +101,15 @@ pub(super) fn group_by_class(module: &Module) -> (Vec<ClassGroup>, Vec<FuncId>) 
         });
     }
 
-    // Exclude runtime stubs registered via Module::register_runtime — they are
-    // IR-only entries used by the constraint collector and must not be emitted
-    // as TypeScript function declarations.  Runtime functions that have real
-    // bodies (non-stub) are allowed through so they can be emitted normally.
+    // Exclude all runtime functions registered via Module::register_runtime —
+    // they belong in the handwritten runtime TS files, not the game's emitted
+    // free-function file.  Emitting them here would cause name collisions with
+    // game-defined scripts of the same name.
     let runtime_ids: HashSet<FuncId> = module.runtime_registry.values().copied().collect();
     let free: Vec<FuncId> = module
         .functions
         .keys()
-        .filter(|fid| {
-            if claimed.contains(fid) {
-                return false;
-            }
-            if runtime_ids.contains(fid) {
-                // Only filter runtime functions that are stubs (empty body).
-                let func = &module.functions[*fid];
-                let is_stub = func.blocks.values().next().is_some_and(|entry| {
-                    entry.insts.is_empty() && matches!(entry.terminator, Terminator::Return(None))
-                });
-                return !is_stub;
-            }
-            true
-        })
+        .filter(|fid| !claimed.contains(fid) && !runtime_ids.contains(fid))
         .collect();
 
     (groups, free)

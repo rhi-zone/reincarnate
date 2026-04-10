@@ -38,4 +38,19 @@ export function string_hash_to_newline(s: string): string { return s.replace(/#/
 
 export function string_ord_at(str: string, pos: number): number { return str.charCodeAt(pos - 1) || 0; }
 
+// TODO: re-verify against spcs
+export function string_repeat(str: string, count: number): string { return str.repeat(count); }
+
+// TODO: re-verify against spcs
+export function string_replace(str: string, sub: string, rep: string): string { return str.replace(sub, rep); }
+
+// TODO: re-verify against spcs
+export function string_byte_at(str: string, index: number): number { return str.charCodeAt(index - 1); }
+
+// TODO: re-verify against spcs
+export function ord(str: string): number { return str.charCodeAt(0); }
+
+// TODO: re-verify against spcs
+export function chr(code: number): string { return String.fromCharCode(code); }
+
 // GML's string() is just String() — emitted code calls String() directly.

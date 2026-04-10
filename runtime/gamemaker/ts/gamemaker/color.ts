@@ -122,6 +122,11 @@ export function make_color_hsv(h: number, s: number, v: number): number {
   );
 }
 
+// TODO: re-verify against spcs
+export function make_colour_hsv(hue: number, sat: number, val: number): number {
+  return make_color_hsv(hue, sat, val);
+}
+
 /** Convert a GML BGR color to a CSS hex string. */
 export function gmlColorToCss(color: number): string {
   const r = color & 0xff;

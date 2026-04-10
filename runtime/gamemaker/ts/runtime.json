@@ -599,6 +599,18 @@
       ],
       "returns": "number"
     },
+    "arccos": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
+    "arcsin": {
+      "params": [
+        "number"
+      ],
+      "returns": "number"
+    },
     "arctan": {
       "params": [
         "number"
@@ -7567,6 +7579,17 @@
       ],
       "returns": "number"
     },
+    "dot_product_3d": {
+      "params": [
+        "number",
+        "number",
+        "number",
+        "number",
+        "number",
+        "number"
+      ],
+      "returns": "number"
+    },
     "math_get_epsilon": {
       "params": [],
       "returns": "number"
@@ -7906,6 +7929,9 @@
         "real",
         "string",
         "dot_product",
+        "arcsin",
+        "arccos",
+        "dot_product_3d",
         "math_get_epsilon",
         "is_bool"
       ],
@@ -7938,9 +7964,22 @@
         "string_count",
         "string_hash_to_newline",
         "string_trim",
-        "string_ord_at"
+        "string_ord_at",
+        "string_repeat",
+        "string_replace",
+        "string_byte_at",
+        "ord",
+        "chr"
       ],
       "path": "gamemaker/string"
+    },
+    {
+      "names": [
+        "array_length",
+        "array_length_1d",
+        "array_contains"
+      ],
+      "path": "gamemaker/array"
     },
     {
       "names": [
@@ -7991,7 +8030,8 @@
         "color_get_hue",
         "color_get_saturation",
         "colour_get_hue",
-        "colour_get_saturation"
+        "colour_get_saturation",
+        "make_colour_hsv"
       ],
       "path": "gamemaker/color"
     },

@@ -154,5 +154,15 @@ export function arctan(x: number): number { return Math.atan(x) * RAD_TO_DEG; }
 export function arctan2(y: number, x: number): number { return Math.atan2(y, x); }
 
 export function dot_product(x1: number, y1: number, x2: number, y2: number): number { return x1 * x2 + y1 * y2; }
+// TODO: re-verify against spcs
+export function arcsin(x: number): number { return Math.asin(x); }
+
+// TODO: re-verify against spcs
+export function arccos(x: number): number { return Math.acos(x); }
+
+// TODO: re-verify against spcs
+export function dot_product_3d(x1: number, y1: number, z1: number, x2: number, y2: number, z2: number): number {
+  return x1 * x2 + y1 * y2 + z1 * z2;
+}
 export function math_get_epsilon(): number { return 0.00001; }
 export function is_bool(val: unknown): val is boolean { return typeof val === "boolean"; }
