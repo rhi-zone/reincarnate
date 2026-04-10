@@ -420,7 +420,6 @@ pub(super) fn translate_with_body(
     )?;
 
     if !terminated {
-        // with-body closures are void — fall-through always emits void return.
         fb.ret(None);
     }
 

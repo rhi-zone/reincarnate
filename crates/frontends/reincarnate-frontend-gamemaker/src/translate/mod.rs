@@ -227,14 +227,9 @@ pub fn translate_code_entry(
         global_arg_count,
     )?;
 
-    // GML fall-through semantics: scripts return 0 on fall-through; event handlers are truly void.
+    // If the last block wasn't terminated, add a void return.
     if !terminated {
-        if ctx.is_event_handler {
-            fb.ret(None);
-        } else {
-            let zero = fb.const_float(0.0);
-            fb.ret(Some(zero));
-        }
+        fb.ret(None);
     }
 
     let mut func = fb.build();

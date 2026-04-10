@@ -6,10 +6,6 @@ Reincarnate translates games from any source engine into working, type-safe, hig
 
 **Never suggest bundling an existing interpreter.** inkjs, Parchment, renpyweb, libqsp-WASM are "quick deploy" alternatives — not the goal.
 
-**Handwritten runtime files are tech debt in two distinct categories:**
-- `shared/platform/*` — the platform interface (WebGL, Web Audio, DOM, timing). Legitimately backend-provided; may stay handwritten as a thin abstraction layer. The backend is responsible for this.
-- Everything else in `runtime/<engine>/` — engine semantics (GML draw, instance management, room logic, Flash display list, Harlowe navigation, etc.). These represent game-engine logic expressed in the target language instead of in IR. They should eventually become IR bodies or `Op::SystemCall` interfaces. They are handwritten only because the IR pipeline hasn't grown to cover them yet — not because they're inherently un-IR-able. Do not add to them without an IR plan.
-
 **Emitted code is measured against handwritten code.** Runtime name lookup where a direct call is possible, `unknown` where a concrete type is inferrable, or any other indirection a human would never write are all defects. Closing the gap is always higher priority than adding new features.
 
 ## Quality
