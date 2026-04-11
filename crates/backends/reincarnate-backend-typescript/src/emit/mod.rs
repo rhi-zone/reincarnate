@@ -911,8 +911,13 @@ fn emit_class_file(
         .cloned()
         .collect();
     if !generated_calls.is_empty() {
-        let runtime_prefix = "../".repeat(depth + 1);
-        let runtime_prefix = runtime_prefix.trim_end_matches('/');
+        // _runtime.ts lives at module_dir; traverse `depth` parent dirs to reach it.
+        // depth=0 → "./_runtime", depth=1 → "../_runtime", etc.
+        let runtime_prefix = if depth == 0 {
+            ".".to_string()
+        } else {
+            "../".repeat(depth).trim_end_matches('/').to_string()
+        };
         let names: Vec<&str> = {
             let mut v: Vec<&str> = generated_calls.iter().map(|s| s.as_str()).collect();
             v.sort();
