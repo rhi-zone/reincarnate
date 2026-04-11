@@ -780,12 +780,20 @@ fn translate_call_op(
                 // structs are GMLObject instances (no events, not a room instance, but the
                 // same base type). Giving it a concrete return type lets type inference produce
                 // proper unions (e.g. `GMLObject | boolean | number`) instead of Unknown.
+                //
+                // @@NewGMLArray@@(v0, v1, ...) creates a GML array literal.  Its function
+                // stub has return_ty=Void (default), which would override any TypeVar-based
+                // inference and type every array literal as void.  Use Array(Unknown) as the
+                // call-site type so the writeback preserves a concrete array type even when
+                // the constraint solver tries to reconcile with the Void stub sig.
                 let ret_ty = if func_name == "@@NewGMLObject@@" {
                     ctx.instance_types
                         .get("GMLObject")
                         .copied()
                         .map(Type::Instance)
                         .unwrap_or_else(|| fb.fresh_var())
+                } else if func_name == "@@NewGMLArray@@" {
+                    Type::Array(Box::new(Type::Unknown))
                 } else {
                     fb.fresh_var()
                 };
