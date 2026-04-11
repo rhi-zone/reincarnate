@@ -1510,7 +1510,7 @@ fn emit_free_functions_file(
         .map(|&fid| module.name_table.func_name(fid).to_string())
         .collect();
 
-    // Emit `export type Name = GMLObject & { … }` for each inferred
+    // Emit `export interface Name extends GMLObject { … }` for each inferred
     // constructor type whose name matches a constructor function in this module.
     if !constructor_names.is_empty() {
         let mut interfaces_out = String::new();
@@ -1540,12 +1540,12 @@ fn emit_free_functions_file(
             {
                 continue;
             }
-            // Resolve the parent type name for intersection, if set.
-            let parent_prefix = if let Some(parent_id) = parent {
+            // Resolve the parent type name for `extends`, if set.
+            let extends_clause = if let Some(parent_id) = parent {
                 if let Some(parent_decl) = module.types.get(*parent_id) {
                     if let Some(parent_name) = parent_decl.name() {
                         let parent_short = parent_name.rsplit("::").next().unwrap_or(parent_name);
-                        format!("{parent_short} & ")
+                        format!(" extends {parent_short}")
                     } else {
                         String::new()
                     }
@@ -1555,16 +1555,22 @@ fn emit_free_functions_file(
             } else {
                 String::new()
             };
-            // Use `type Alias = Parent & { … }` rather than `interface … extends Parent`
-            // because GMLObject is a class, and TypeScript disallows interfaces extending
-            // classes with incompatible members.
-            let _ = writeln!(interfaces_out, "export type {short} = {parent_prefix}{{");
+            let _ = writeln!(
+                interfaces_out,
+                "export interface {short}{extends_clause} {{"
+            );
             for field in fields {
                 let field_ts_type = ts_type_with_module(&field.ty, &module.types);
+                // Skip unknown-typed fields: they carry no type information and
+                // re-declaring a parent field as `unknown` conflicts with its
+                // concrete type on the parent (TS2430).
+                if field_ts_type == "unknown" {
+                    continue;
+                }
                 let field_name = sanitize_ident(&field.name);
                 let _ = writeln!(interfaces_out, "  {field_name}: {field_ts_type};");
             }
-            let _ = writeln!(interfaces_out, "}};");
+            let _ = writeln!(interfaces_out, "}}");
         }
         if !interfaces_out.is_empty() {
             out.push_str(&interfaces_out);
