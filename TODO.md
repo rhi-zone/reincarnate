@@ -352,13 +352,27 @@ TODO in runtime.ts. Changing to `unknown` requires the emitter to insert casts a
 Until the emitter generates these casts, `any` is kept to avoid ~1000 spurious TS18046 errors.
 Track here: unblock by adding `getInstanceField<T>` generic or emit-time `as T` casts.
 
-**GML constructor function struct types (TS2749/TS2304):** Structs like `Button`, `Menu`,
-`Section`, `TextPiece`, `Challenge` are GML 2.3+ constructor functions emitted as TypeScript
-functions, not classes. When the IR has `Type::Instance(id)` for these types and the name
-is used in a TypeScript type annotation position, TypeScript gives TS2749 (value used as type)
-or TS2304 (not imported). Fix: either emit GML constructor function structs as TypeScript
-classes, or when a `Type::Instance(id)` name is not in the ClassRegistry, emit `GMLObject`
-instead of the function name.
+**GML constructor function struct types (TS2749/TS2430/class emit):** Structs like `Button`,
+`Menu`, `Section`, `TextPiece`, `Challenge` are GML 2.3+ constructor functions. Current emit:
+`export function Button(...)` (free function) + `export interface Button extends GMLObject {}`.
+This works for type annotations but is wrong in two ways:
+
+1. **Constructor calls should use `new`** — call sites emit `Button(rt, self, ...)` but should
+   emit `new Button(rt, self, ...)`. Requires constructor functions to be emitted as classes.
+
+2. **GetField doesn't traverse the TypeDecl parent chain** — when `section.x` is accessed,
+   the type system returns `unknown` instead of `number` (inherited from GMLObject). Fix:
+   `GetField` inference must walk `TypeDecl::Object { parent, .. }` to find fields declared
+   on ancestor types. Child fields don't need to re-declare parent fields in the interface —
+   they inherit them — but inference must follow the chain to resolve them.
+   The current interface emit skips `unknown`-typed fields (correct: don't re-declare
+   inherited fields), but the skip criterion should be "already declared on parent with
+   concrete type", not "typed as unknown" — these overlap today but diverge when inference
+   improves.
+
+**Correct long-term fix:** emit GML constructor functions as TypeScript classes that extend
+GMLObject. Then call sites use `new`, the type system is coherent, and TypeDecl fields emit
+as class fields.
 
 **Remaining error breakdown after DataType::Variable fix (2026-03-31, 1,017 errors):**
 Root-cause analysis of the remaining unknown-cascade (sampled 2026-03-31):
