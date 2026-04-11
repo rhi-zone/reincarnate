@@ -12,12 +12,13 @@ use std::fs;
 use std::path::Path;
 
 use reincarnate_core::error::CoreError;
+use reincarnate_core::ir::module::TypeDecl;
 use reincarnate_core::ir::{ClassDef, FuncId, MethodKind, Module, StructDef};
 use reincarnate_core::pipeline::{DebugConfig, Diagnostic, LoweringConfig};
 use reincarnate_core::project::{ExternalMethodSig, ExternalTypeDef, RuntimeConfig};
 
 use crate::runtime::SYSTEM_NAMES;
-use crate::types::ts_type;
+use crate::types::{ts_type, ts_type_with_module};
 
 // Re-export public items from sub-modules.
 pub(crate) use class::ClassGroup;
@@ -1500,6 +1501,77 @@ fn emit_free_functions_file(
     }
 
     emit_imports(module, &mut out);
+
+    // Collect the names of free constructor functions so we know which TypeDecls
+    // to emit as interfaces.
+    let constructor_names: HashSet<String> = free_funcs
+        .iter()
+        .filter(|&&fid| module.functions[fid].method_kind == MethodKind::Constructor)
+        .map(|&fid| module.name_table.func_name(fid).to_string())
+        .collect();
+
+    // Emit `export type Name = GMLObject & { … }` for each inferred
+    // constructor type whose name matches a constructor function in this module.
+    if !constructor_names.is_empty() {
+        let mut interfaces_out = String::new();
+        for (_type_id, decl) in module.types.iter() {
+            let TypeDecl::Object {
+                name: Some(ref raw_name),
+                inferred: true,
+                ref parent,
+                ref fields,
+                ..
+            } = *decl
+            else {
+                continue;
+            };
+            // Short name after `::` — must match a constructor function name and
+            // must be a valid TypeScript identifier (no `@` or other non-identifier
+            // characters that appear in anonymous/internal GML constructor names).
+            let short = raw_name.rsplit("::").next().unwrap_or(raw_name.as_str());
+            if !constructor_names.contains(short) {
+                continue;
+            }
+            // Skip names that are not valid identifiers — they cannot be emitted as
+            // TypeScript interface names.
+            if !short
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '_' || c == '$')
+            {
+                continue;
+            }
+            // Resolve the parent type name for intersection, if set.
+            let parent_prefix = if let Some(parent_id) = parent {
+                if let Some(parent_decl) = module.types.get(*parent_id) {
+                    if let Some(parent_name) = parent_decl.name() {
+                        let parent_short = parent_name.rsplit("::").next().unwrap_or(parent_name);
+                        format!("{parent_short} & ")
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            };
+            // Use `type Alias = Parent & { … }` rather than `interface … extends Parent`
+            // because GMLObject is a class, and TypeScript disallows interfaces extending
+            // classes with incompatible members.
+            let _ = writeln!(interfaces_out, "export type {short} = {parent_prefix}{{");
+            for field in fields {
+                let field_ts_type = ts_type_with_module(&field.ty, &module.types);
+                let field_name = sanitize_ident(&field.name);
+                let _ = writeln!(interfaces_out, "  {field_name}: {field_ts_type};");
+            }
+            let _ = writeln!(interfaces_out, "}};");
+        }
+        if !interfaces_out.is_empty() {
+            out.push_str(&interfaces_out);
+            out.push('\n');
+        }
+    }
+
     let closure_fids: Vec<FuncId> = free_funcs
         .iter()
         .copied()

@@ -5,6 +5,7 @@ mod call_site_arity_widen;
 mod classref_resolve;
 mod data;
 mod default_arg;
+mod gml_constructor_parent;
 mod instance_type_flow;
 mod logical_op;
 pub(crate) mod naming;
@@ -423,6 +424,7 @@ impl Frontend for GameMakerFrontend {
                     obj_names: obj_names_set,
                 }),
                 Box::new(classref_resolve::GmlClassRefResolve),
+                Box::new(gml_constructor_parent::GmlConstructorParent),
             ],
         })
     }
