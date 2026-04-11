@@ -138,7 +138,14 @@ pub(super) fn emit_runtime_imports(
     let calls =
         collect_call_names_from_funcs(all_funcs(), engine, Some(&intrinsic_calls), &func_names);
     let mut _flat_stateful = BTreeSet::new();
-    emit_function_imports_with_prefix(&calls, out, ".", runtime_config, &mut _flat_stateful);
+    emit_function_imports_with_prefix(
+        &calls,
+        out,
+        ".",
+        runtime_config,
+        &mut _flat_stateful,
+        module,
+    );
 }
 
 /// Emit runtime imports for files inside a module directory.
@@ -406,6 +413,7 @@ pub(super) fn emit_function_imports_with_prefix(
     prefix: &str,
     runtime_config: Option<&RuntimeConfig>,
     stateful_out: &mut BTreeSet<String>,
+    module: &Module,
 ) {
     let Some(cfg) = runtime_config else { return };
     if cfg.function_modules.is_empty() {
@@ -418,6 +426,25 @@ pub(super) fn emit_function_imports_with_prefix(
         for name in &group.names {
             func_to_module.insert(name.as_str(), (group.path.as_str(), is_stateful));
         }
+    }
+
+    // Expand func_to_module with aliases: if the config lists a name (canonical
+    // or alias), find its FuncId in the runtime registry, then add all other
+    // registry entries pointing to the same FuncId. This bridges the gap when
+    // call sites emit the canonical name but function_modules lists the alias,
+    // or vice versa.
+    let mut alias_expansions: Vec<(String, (&str, bool))> = Vec::new();
+    for (name, &entry) in &func_to_module {
+        if let Some(&fid) = module.runtime_registry.get(*name) {
+            for (reg_name, &reg_fid) in &module.runtime_registry {
+                if reg_fid == fid && reg_name.as_str() != *name {
+                    alias_expansions.push((reg_name.clone(), entry));
+                }
+            }
+        }
+    }
+    for (name, entry) in &alias_expansions {
+        func_to_module.entry(name.as_str()).or_insert(*entry);
     }
     // Group needed imports by module path (pure only).
     let mut by_mod: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();

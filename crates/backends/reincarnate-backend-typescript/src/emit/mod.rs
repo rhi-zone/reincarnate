@@ -939,6 +939,7 @@ fn emit_class_file(
         func_prefix,
         runtime_config,
         &mut stateful_names,
+        module,
     );
     stateful_names.retain(|name| !free_func_names.contains(name.as_str()));
     emit_free_function_imports(&calls, free_func_names, depth, &mut out);
@@ -1234,6 +1235,7 @@ fn emit_runtime_functions_file(
         "..",
         runtime_config,
         &mut _rt_stateful_names,
+        module,
     );
 
     let object_ts_names = class::resolve_object_ts_names(&module.object_names, class_names);
@@ -1393,6 +1395,7 @@ fn emit_free_functions_file(
         "..",
         runtime_config,
         &mut free_stateful_names,
+        module,
     );
     // Remove any runtime stateful entry that the game overrides — inside each
     // function body the `const { name } = _rt` destructuring would shadow the
