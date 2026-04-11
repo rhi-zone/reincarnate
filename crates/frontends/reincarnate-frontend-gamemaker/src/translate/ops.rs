@@ -826,6 +826,17 @@ fn translate_conv_op(
     gml_sizes: &mut HashMap<ValueId, u8>,
 ) -> Result<(), String> {
     let val = pop(stack, inst)?;
+    // Conv → Variable is a boxing-to-generic-slot operation.  In the IR we
+    // have no Variable type — values carry their actual types — so this coerce
+    // is a no-op.  Push the source value directly instead of wrapping it in a
+    // Coerce(val, Var(fresh)), which would leave the result unresolved → Unknown
+    // after constraint solving.
+    if inst.type2 == DataType::Variable {
+        let val_size = gml_sizes.get(&val).copied().unwrap_or(4);
+        gml_sizes.insert(val, val_size);
+        stack.push(val);
+        return Ok(());
+    }
     let target_ty = datatype_to_ir_type(inst.type2, fb);
     let coerced = fb.coerce(val, target_ty);
     gml_sizes.insert(coerced, gml_slot_units(inst.type2));

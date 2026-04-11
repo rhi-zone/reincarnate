@@ -91,6 +91,41 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 - No `function_modules` entry without a corresponding `function_signatures` entry
 - No special-casing for builtin functions — builtins are functions with FuncIds like any other function. No `BuiltinOp` enum, no prefix-based dispatch (`starts_with("builtin.")`), no separate pipeline paths for builtins vs. game-defined functions. A builtin call emits as a function call; the runtime defines the body. Name collisions are resolved at registration time (rename the game function), not by reserving a namespace prefix.
 
+## IR Type System Architecture
+
+The IR has two parallel type representations that serve different purposes and must not be conflated.
+
+### `module.structs: Vec<StructDef>`
+
+**Purpose:** Frozen, backend-facing record of struct shapes as declared by the frontend. Contains `namespace`, `visibility`, and `fields` — everything the emitter needs to output a type declaration.
+
+**Lifecycle:** Written by the frontend (ModuleBuilder), read by the backend emitter. Never mutated by core passes.
+
+**Consumers:** Backend emitters only. `build_own_fields` in `constraint_solve_hm.rs` reads this to seed field type maps.
+
+### `module.types: PrimaryMap<TypeId, TypeDecl>`
+
+**Purpose:** Mutable inference-time representation of the type graph. Contains `parent` (for inheritance chains), `inferred` flag, and `methods`. Used by all core transforms and constraint solving.
+
+**Lifecycle:** Initialized by the frontend; enriched by passes (e.g. `ConstructorStructInfer` adds `TypeDecl::Object` entries, `GmlConstructorParent` sets `parent`). Authoritative during inference.
+
+**Consumers:** All core passes. The backend reads it for parent-chain traversal during `build_all_fields`.
+
+### Invariant: They are used in tandem by `constraint_solve_hm.rs`
+
+`build_own_fields` seeds field types from `module.structs`. `build_all_fields` then walks the TypeDecl parent chain via `module.types` to merge inherited fields. Both systems must agree on struct names — a name present in one but not the other will produce wrong or missing types.
+
+After `ModuleBuilder::build()`, enrichments made to `module.types` by later passes (e.g. setting `parent`) do **not** sync back to `StructDef` — this is intentional. `StructDef` is a snapshot; `TypeDecl` is the live graph.
+
+### Migration path
+
+`TypeDecl::Object` is strictly more capable than `StructDef`. The end state is one system. Migration requires:
+1. Add `namespace: Vec<String>` and `visibility: Visibility` to `TypeDecl::Object`
+2. Migrate all `module.structs` consumers to read from `module.types`
+3. Remove `StructDef` and `module.structs`
+
+Until that migration is complete: **never add new fields to `StructDef`** — add them to `TypeDecl::Object` instead. Never route around `module.types` by reading `module.structs` for anything that should be in the live type graph (parent chains, inferred flag, methods).
+
 ## Crate Structure
 
 All crates use the `reincarnate-` prefix:
