@@ -533,7 +533,7 @@ export class GameRuntime {
     c1: number, c2: number, c3: number, c4: number, alpha: number,
   ): void { this.draw_text_transformed_color(x, y, text, xscale, yscale, angle, c1, c2, c3, c4, alpha); }
 
-  draw_text_ext_transformed_color(
+  draw_text_ext_transformed_colour(
     x: number, y: number, text: string, sep: number, w: number,
     xscale: number, yscale: number, angle: number,
     c1: number, _c2: number, _c3: number, _c4: number, alpha: number,
@@ -1465,8 +1465,8 @@ export class GameRuntime {
 
   // ---- GPU state API — partial Canvas 2D support ----
 
-  gpu_set_colorwriteenable(_r: boolean, _g: boolean, _b: boolean, _a: boolean): void { /* no-op — Canvas 2D has no per-channel write mask */ }
-  gpu_get_colorwriteenable(): [boolean, boolean, boolean, boolean] { return [true, true, true, true]; }
+  gpu_set_colourwriteenable(_r: boolean, _g: boolean, _b: boolean, _a: boolean): void { /* no-op — Canvas 2D has no per-channel write mask */ }
+  gpu_get_colourwriteenable(): [boolean, boolean, boolean, boolean] { return [true, true, true, true]; }
   gpu_set_fog(_enabled: boolean, _color: number, _start: number, _end: number): void { /* no-op — Canvas 2D has no depth fog */ }
   gpu_set_blendmode(mode: number): void {
     // GML bm_normal=0, bm_add=1, bm_subtract=2, bm_max=3, bm_subtract_ext=4
@@ -1583,9 +1583,9 @@ export class GameRuntime {
   part_type_speed(type: number, min: number, max: number, inc: number, wiggle: number): void { const t = this._partTypes.get(type); if (t) t.speed = [min, max, inc, wiggle]; }
   part_type_sprite(type: number, spr: number, anim: boolean, stretch: boolean, random: boolean): void { const t = this._partTypes.get(type); if (t) t.sprite = { spr, anim, stretch, random }; }
   part_type_color1(type: number, col: number): void { const t = this._partTypes.get(type); if (t) t.colors = [col]; }
-  part_type_color2(type: number, col1: number, col2: number): void { const t = this._partTypes.get(type); if (t) t.colors = [col1, col2]; }
-  part_type_color3(type: number, col1: number, col2: number, col3: number): void { const t = this._partTypes.get(type); if (t) t.colors = [col1, col2, col3]; }
-  part_type_color_hsv(type: number, hmin: number, hmax: number, smin: number, smax: number, vmin: number, vmax: number): void {
+  part_type_colour2(type: number, col1: number, col2: number): void { const t = this._partTypes.get(type); if (t) t.colors = [col1, col2]; }
+  part_type_colour3(type: number, col1: number, col2: number, col3: number): void { const t = this._partTypes.get(type); if (t) t.colors = [col1, col2, col3]; }
+  part_type_colour_hsv(type: number, hmin: number, hmax: number, smin: number, smax: number, vmin: number, vmax: number): void {
     const t = this._partTypes.get(type); if (!t) return;
     // Store ranges; randomized per-particle at spawn time in _spawnParticle.
     t.hsvRange = { h1: hmin, h2: hmax, s1: smin, s2: smax, v1: vmin, v2: vmax };
@@ -1867,7 +1867,7 @@ export class GameRuntime {
   variable_struct_exists(struct: any, name: string): boolean {
     return struct != null && Object.prototype.hasOwnProperty.call(struct, name);
   }
-  variable_struct_set(struct: any, name: string, value: any): void {
+  struct_set(struct: any, name: string, value: any): void {
     if (struct != null) struct[name] = value;
   }
   variable_struct_get(struct: any, name: string): any {
@@ -2199,7 +2199,7 @@ export class GameRuntime {
     this.draw_sprite_tiled(spr, sub, x / xscale, y / yscale);
     ctx.restore();
   }
-  draw_ellipse_color(x1: number, y1: number, x2: number, y2: number, col1: number, col2: number, outline: boolean): void {
+  draw_ellipse_colour(x1: number, y1: number, x2: number, y2: number, col1: number, col2: number, outline: boolean): void {
     const ctx = this._gfx.ctx;
     const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2;
     const rx = Math.abs(x2 - x1) / 2, ry = Math.abs(y2 - y1) / 2;
@@ -2570,7 +2570,7 @@ export class GameRuntime {
     ctx.strokeStyle = gmlColorToCss(this._draw.config.color);
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
   }
-  draw_line_color(x1: number, y1: number, x2: number, y2: number, col1: number, col2: number): void {
+  draw_line_colour(x1: number, y1: number, x2: number, y2: number, col1: number, col2: number): void {
     const ctx = this._gfx.ctx;
     const g = ctx.createLinearGradient(x1, y1, x2, y2);
     g.addColorStop(0, gmlColorToCss(col1)); g.addColorStop(1, gmlColorToCss(col2));
@@ -2589,7 +2589,7 @@ export class GameRuntime {
     if (outline) { ctx.strokeStyle = css; ctx.stroke(); }
     else { ctx.fillStyle = css; ctx.fill(); }
   }
-  draw_triangle_color(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, c1: number, c2: number, c3: number, outline: boolean): void {
+  draw_triangle_colour(x1: number, y1: number, x2: number, y2: number, x3: number, y3: number, c1: number, c2: number, c3: number, outline: boolean): void {
     const ctx = this._gfx.ctx;
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.closePath();
     if (outline) {
@@ -3094,7 +3094,7 @@ export class GameRuntime {
     const canvas = this._surfaces.get(surf);
     if (canvas) this._gfx.ctx.drawImage(canvas, x, y, w, h);
   }
-  draw_circle_color(x: number, y: number, r: number, col1: number, col2: number, outline: boolean): void {
+  draw_circle_colour(x: number, y: number, r: number, col1: number, col2: number, outline: boolean): void {
     const ctx = this._gfx.ctx;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -3217,7 +3217,7 @@ export class GameRuntime {
     if (outline) { ctx.strokeStyle = css; ctx.stroke(); }
     else { ctx.fillStyle = css; ctx.fill(); }
   }
-  draw_roundrect_color(x1: number, y1: number, x2: number, y2: number, col1: number, _col2: number, outline: number | boolean): void {
+  draw_roundrect_colour(x1: number, y1: number, x2: number, y2: number, col1: number, _col2: number, outline: number | boolean): void {
     const ctx = this._gfx.ctx;
     const r = Math.round(Math.min(Math.abs(x2 - x1), Math.abs(y2 - y1)) / 6);
     ctx.beginPath();

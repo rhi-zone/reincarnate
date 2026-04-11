@@ -1679,7 +1679,7 @@
       ],
       "returns": "void"
     },
-    "draw_circle_color": {
+    "draw_circle_colour": {
       "params": [
         "number",
         "number",
@@ -1713,7 +1713,7 @@
       ],
       "returns": "void"
     },
-    "draw_ellipse_color": {
+    "draw_ellipse_colour": {
       "params": [
         "number",
         "number",
@@ -1782,7 +1782,7 @@
       ],
       "returns": "void"
     },
-    "draw_line_color": {
+    "draw_line_colour": {
       "params": [
         "number",
         "number",
@@ -1897,7 +1897,7 @@
       ],
       "returns": "void"
     },
-    "draw_roundrect_color": {
+    "draw_roundrect_colour": {
       "params": [
         "number",
         "number",
@@ -2223,7 +2223,7 @@
       ],
       "returns": "void"
     },
-    "draw_text_ext_transformed_color": {
+    "draw_text_ext_transformed_colour": {
       "params": [
         "number",
         "number",
@@ -2292,7 +2292,7 @@
       ],
       "returns": "void"
     },
-    "draw_triangle_color": {
+    "draw_triangle_colour": {
       "params": [
         "number",
         "number",
@@ -3285,7 +3285,7 @@
       "params": [],
       "returns": "any"
     },
-    "gpu_get_colorwriteenable": {
+    "gpu_get_colourwriteenable": {
       "params": [],
       "returns": "*"
     },
@@ -3323,7 +3323,7 @@
       ],
       "returns": "void"
     },
-    "gpu_set_colorwriteenable": {
+    "gpu_set_colourwriteenable": {
       "params": [
         "boolean",
         "boolean",
@@ -4544,7 +4544,7 @@
       ],
       "returns": "void"
     },
-    "part_type_color2": {
+    "part_type_colour2": {
       "params": [
         "number",
         "number",
@@ -4552,7 +4552,7 @@
       ],
       "returns": "void"
     },
-    "part_type_color3": {
+    "part_type_colour3": {
       "params": [
         "number",
         "number",
@@ -4561,7 +4561,7 @@
       ],
       "returns": "void"
     },
-    "part_type_color_hsv": {
+    "part_type_colour_hsv": {
       "params": [
         "int",
         "number",
@@ -6822,7 +6822,7 @@
       ],
       "returns": "void"
     },
-    "variable_struct_set": {
+    "struct_set": {
       "params": [
         "any",
         "string",
@@ -7937,7 +7937,7 @@
         "draw_text_ext_transformed",
         "draw_text_transformed_color",
         "draw_text_transformed_colour",
-        "draw_text_ext_transformed_color",
+        "draw_text_ext_transformed_colour",
         "draw_rectangle",
         "draw_set_ext",
         "string_height_ext"
@@ -8051,8 +8051,8 @@
         "shader_set_uniform_f",
         "shader_set_uniform_i",
         "shader_get_sampler_index",
-        "gpu_set_colorwriteenable",
-        "gpu_get_colorwriteenable",
+        "gpu_set_colourwriteenable",
+        "gpu_get_colourwriteenable",
         "gpu_set_fog",
         "gpu_set_blendmode",
         "gpu_set_blendmode_ext",
@@ -8102,8 +8102,8 @@
         "part_type_speed",
         "part_type_sprite",
         "part_type_color1",
-        "part_type_color2",
-        "part_type_color3",
+        "part_type_colour2",
+        "part_type_colour3",
         "part_type_alpha1",
         "part_type_alpha2",
         "part_type_alpha3",
@@ -8183,7 +8183,7 @@
         "method",
         "variable_struct_exists",
         "variable_get_hash",
-        "variable_struct_set",
+        "struct_set",
         "variable_struct_get",
         "variable_struct_remove",
         "variable_struct_names_count",
@@ -8286,7 +8286,7 @@
         "json_stringify",
         "json_parse",
         "draw_surface_stretched",
-        "draw_circle_color",
+        "draw_circle_colour",
         "draw_path",
         "buffer_get_size",
         "buffer_exists",
@@ -8336,7 +8336,7 @@
         "rectangle_in_rectangle",
         "collision_circle_list",
         "draw_roundrect",
-        "draw_roundrect_color",
+        "draw_roundrect_colour",
         "draw_sprite_stretched",
         "draw_line_width",
         "draw_ellipse",
@@ -8453,10 +8453,10 @@
         "collision_rectangle_list",
         "distance_to_point",
         "draw_line",
-        "draw_line_color",
+        "draw_line_colour",
         "draw_point_color",
         "draw_triangle",
-        "draw_triangle_color",
+        "draw_triangle_colour",
         "draw_primitive_begin_texture",
         "draw_set_circle_precision",
         "draw_sprite_part_ext",
@@ -8640,7 +8640,7 @@
         "draw_get_color",
         "draw_get_halign",
         "draw_get_valign",
-        "draw_ellipse_color",
+        "draw_ellipse_colour",
         "draw_sprite_part",
         "draw_primitive_begin",
         "sprite_set_offset",
@@ -8659,7 +8659,7 @@
         "layer_background_get_index",
         "part_type_shape",
         "part_type_death",
-        "part_type_color_hsv",
+        "part_type_colour_hsv",
         "part_type_clear",
         "part_type_size_x",
         "part_type_size_y",
