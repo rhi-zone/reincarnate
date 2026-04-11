@@ -1561,12 +1561,6 @@ fn emit_free_functions_file(
             );
             for field in fields {
                 let field_ts_type = ts_type_with_module(&field.ty, &module.types);
-                // Skip unknown-typed fields: they carry no type information and
-                // re-declaring a parent field as `unknown` conflicts with its
-                // concrete type on the parent (TS2430).
-                if field_ts_type == "unknown" {
-                    continue;
-                }
                 let field_name = sanitize_ident(&field.name);
                 let _ = writeln!(interfaces_out, "  {field_name}: {field_ts_type};");
             }

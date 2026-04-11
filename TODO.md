@@ -365,10 +365,9 @@ This works for type annotations but is wrong in two ways:
    `GetField` inference must walk `TypeDecl::Object { parent, .. }` to find fields declared
    on ancestor types. Child fields don't need to re-declare parent fields in the interface —
    they inherit them — but inference must follow the chain to resolve them.
-   The current interface emit skips `unknown`-typed fields (correct: don't re-declare
-   inherited fields), but the skip criterion should be "already declared on parent with
-   concrete type", not "typed as unknown" — these overlap today but diverge when inference
-   improves.
+   All fields are emitted (including `unknown`-typed ones) — TS2430 errors where a child
+   field is `unknown` but the parent has a concrete type are correct inference failure
+   signals, not bugs to suppress.
 
 **Correct long-term fix:** emit GML constructor functions as TypeScript classes that extend
 GMLObject. Then call sites use `new`, the type system is coherent, and TypeDecl fields emit
