@@ -576,15 +576,48 @@ pub fn collect_function(
 
     // -----------------------------------------------------------------------
     // Phase 1 — allocate a TypeVarId for every value in value_types.
+    //
+    // Rule: pre-bind a value to its declared type only when the type is
+    // concrete AND either:
+    //   a) the type is not Unknown, OR
+    //   b) the value is a function parameter (entry block param).
+    //
+    // In other words: Unknown is pre-bound ONLY for function parameters.
+    // All other Unknown values are left as free TypeVars so constraints can
+    // infer their actual types.
+    //
+    // Why function params get special treatment:
+    //   Entry block params carry a declared parameter type.  Pre-binding them
+    //   prevents interprocedural constraints from changing that declaration.
+    //   An Unknown parameter type means "accepts any type at call sites" —
+    //   that is a declared contract, not an inference gap.
+    //
+    // Why all other Unknown values are freed:
+    //   - Alloc results: their cell TypeVar must be free to bind to the
+    //     stored type via Store constraints.
+    //   - Non-entry block params (phi values from mem2reg): their type must
+    //     be inferred from phi-merge Equal constraints, not fixed at Unknown.
+    //   - Phi feed values (args to non-entry branch targets): must be free so
+    //     the phi-merge constraint can propagate the phi param's type back.
+    //   - Other Unknown instruction results (e.g. results poisoned by an
+    //     earlier HM pass): must be free so a later pass can infer them from
+    //     callee return types, field types, etc.
+    //   Pre-binding any of these to Unknown blocks the `(Unknown, _)` arm of
+    //   unify from ever binding that TypeVar to a useful type.
     // -----------------------------------------------------------------------
+    let entry_param_ids: HashSet<ValueId> = func.blocks[func.entry]
+        .params
+        .iter()
+        .map(|p| p.value)
+        .collect();
+
     for (vid, ty) in func.value_types.iter() {
         let var = arena.fresh();
-        if is_concrete(ty) {
-            // Concrete types (including Unknown) seed the solver: bind the
-            // var immediately so inference can only confirm, never weaken.
+        let should_bind =
+            is_concrete(ty) && (!matches!(ty, Type::Unknown) || entry_param_ids.contains(&vid));
+        if should_bind {
             arena.bind(var, ty.clone());
         }
-        // Type::Var(_) → fresh unbound var, open for inference.
         value_vars.insert(vid, var);
     }
 
@@ -794,24 +827,77 @@ pub fn collect_function(
                 } => {
                     if let Some(callee) = module.functions.get(*callee_fid) {
                         let sig = &callee.sig;
-                        // Result ← callee return type.
-                        if let Some(rv) = result_var.as_ref() {
-                            if is_concrete(&sig.return_ty) {
-                                constraints
-                                    .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
+                        // Type-conflict guard: if any arg has a concrete type that
+                        // conflicts with the corresponding param type, skip ALL
+                        // return and param constraints for this call.
+                        //
+                        // This prevents "wrong function selected" scenarios from
+                        // poisoning the inference graph.  The canonical case: GML's
+                        // `DataType::Variable` maps to `add_f64`, so a String
+                        // accumulator gets `add_f64(str_var, ...)` in the IR.  If we
+                        // emitted `Equal(str_var, Float64)`, the solver would
+                        // force-rebind `str_var` to Unknown, propagating poison
+                        // through every phi and store constraint that touches it.
+                        //
+                        // Detecting the conflict early and skipping the constraints
+                        // lets the phi/store/return constraints infer the correct
+                        // types instead.  The call still emits (it's lowered to an
+                        // operator by the backend), so behavioral equivalence is
+                        // preserved.
+                        //
+                        // The check fires only when:
+                        //   - the arg's type is concrete and not Unknown/Var (i.e.
+                        //     a resolved concrete type like String or Bool), AND
+                        //   - the corresponding param type is also concrete and
+                        //     non-Unknown, AND
+                        //   - they differ.
+                        // Unknown/Var arg types are not concrete mismatches — they
+                        // are open inference targets that SHOULD be constrained.
+                        let has_type_conflict = args.iter().enumerate().any(|(i, &arg)| {
+                            if i >= sig.params.len() {
+                                return false;
                             }
-                        }
-                        // Args → callee param types (only concrete, non-Unknown).
-                        // Unknown params are wildcards — they accept any type and must not
-                        // constrain the argument, since Equal(arg_var, Unknown) would
-                        // poison the arg to Unknown and prevent downstream inference.
-                        for (i, &arg) in args.iter().enumerate() {
-                            if i < sig.params.len() {
-                                let param_ty = &sig.params[i];
-                                if is_concrete(param_ty) && !matches!(param_ty, Type::Unknown) {
-                                    if let Some(arg_var) = var_for(arg, &value_vars) {
-                                        constraints
-                                            .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
+                            let param_ty = &sig.params[i];
+                            if !is_concrete(param_ty) || matches!(param_ty, Type::Unknown) {
+                                return false;
+                            }
+                            let arg_ty = &func.value_types[arg];
+                            is_concrete(arg_ty)
+                                && !matches!(arg_ty, Type::Unknown | Type::Var(_))
+                                && arg_ty != param_ty
+                        });
+
+                        if !has_type_conflict {
+                            // Result ← callee return type.
+                            // Unknown return types are wildcards — they carry no type
+                            // information and must not constrain the result, since
+                            // Equal(rv, Unknown) would poison the result to Unknown
+                            // and prevent downstream inference.
+                            if let Some(rv) = result_var.as_ref() {
+                                if is_concrete(&sig.return_ty)
+                                    && !matches!(sig.return_ty, Type::Unknown)
+                                {
+                                    constraints.push(TypeConstraint::Equal(
+                                        rv.clone(),
+                                        sig.return_ty.clone(),
+                                    ));
+                                }
+                            }
+                            // Args → callee param types (only concrete, non-Unknown).
+                            // Unknown params are wildcards — they accept any type and
+                            // must not constrain the argument, since
+                            // Equal(arg_var, Unknown) would poison the arg to Unknown
+                            // and prevent downstream inference.
+                            for (i, &arg) in args.iter().enumerate() {
+                                if i < sig.params.len() {
+                                    let param_ty = &sig.params[i];
+                                    if is_concrete(param_ty) && !matches!(param_ty, Type::Unknown) {
+                                        if let Some(arg_var) = var_for(arg, &value_vars) {
+                                            constraints.push(TypeConstraint::Equal(
+                                                arg_var,
+                                                param_ty.clone(),
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -839,8 +925,11 @@ pub fn collect_function(
                 } => {
                     if let Some(sig) = func_sigs.get(method.as_str()) {
                         // Result ← callee return type.
+                        // Unknown return types are wildcards — see Op::Call comment above.
                         if let Some(rv) = result_var.as_ref() {
-                            if is_concrete(&sig.return_ty) {
+                            if is_concrete(&sig.return_ty)
+                                && !matches!(sig.return_ty, Type::Unknown)
+                            {
                                 constraints
                                     .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
                             }
@@ -905,17 +994,21 @@ pub fn collect_function(
 
                 // Alloc — record the cell TypeVar for this allocation slot.
                 //
-                // Always allocate a fresh arena TypeVar for the cell contents.
+                // We reuse the arena TypeVar already allocated for the alloc
+                // result in Phase 1 (rather than creating a fresh one) so that
+                // writeback propagates the inferred cell type back to the
+                // alloc result's value_types entry.  This is what gives
+                // `let str: string` instead of `let str: unknown` in the
+                // emitted output.
+                //
                 // The inner_ty carried on the Alloc op uses frontend-local
-                // TypeVarIds (e.g. TypeVarId(5) from build_signature_with_args)
-                // that have no identity in the shared arena — reusing them
-                // directly would alias unrelated TypeVars from earlier functions.
-                // A fresh var is correct: Store constraints bind it to the stored
-                // value's type; Load constraints propagate it to the load result.
+                // TypeVarIds that have no identity in the shared arena — they
+                // must never be used directly.  Seeding the cell via an
+                // Equal constraint (not direct reuse) avoids that aliasing.
                 Op::Alloc(inner_ty) => {
                     if let Some(alloc_result) = inst.result {
-                        let cell_var = arena.fresh();
-                        if is_concrete(inner_ty) {
+                        let cell_var = *value_vars.get(&alloc_result).unwrap();
+                        if is_concrete(inner_ty) && !matches!(inner_ty, Type::Unknown) {
                             constraints
                                 .push(TypeConstraint::Equal(Type::Var(cell_var), inner_ty.clone()));
                         }

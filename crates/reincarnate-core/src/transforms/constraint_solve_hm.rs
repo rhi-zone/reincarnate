@@ -133,7 +133,7 @@ fn process_constraint(
 ) {
     match c {
         TypeConstraint::Equal(a, b) => {
-            let _ = unify(a, b, arena);
+            let _ = unify(a.clone(), b.clone(), arena);
         }
         TypeConstraint::Subtype { sub, sup } => {
             // Phase 1: treat as equality.
