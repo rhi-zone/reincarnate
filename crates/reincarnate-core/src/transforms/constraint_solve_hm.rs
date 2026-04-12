@@ -174,7 +174,10 @@ fn process_constraint(
                         })
                         .map(|(_, &id)| id)
                         .collect();
-                    if candidates.len() == 1 {
+                    let field_in_non_leaf = non_leaf_type_names
+                        .iter()
+                        .any(|name| own_fields.get(name).is_some_and(|f| f.contains_key(&field)));
+                    if candidates.len() == 1 && !field_in_non_leaf {
                         let type_id = candidates[0];
                         let _ = unify(resolved_ty, Type::Instance(type_id), arena);
                         if let Some(name) = type_id_to_name.get(&type_id) {
@@ -831,7 +834,12 @@ impl Transform for ConstraintSolveHM {
                     .map(|(_, &id)| id)
                     .collect();
 
-                if candidates.len() == 1 {
+                let any_field_in_non_leaf = fields.iter().any(|f| {
+                    non_leaf_type_names
+                        .iter()
+                        .any(|name| own_fields.get(name).is_some_and(|sf| sf.contains_key(f)))
+                });
+                if candidates.len() == 1 && !any_field_in_non_leaf {
                     let type_id = candidates[0];
                     let _ = unify(Type::Var(*var_id), Type::Instance(type_id), &mut arena);
                     // Emit field-type constraints for all HasField constraints on this var.
