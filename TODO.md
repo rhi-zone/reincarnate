@@ -345,21 +345,26 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
 **TS2571 root cause:** `getInstanceField` on Unknown receiver → field type Unknown.
 Fix: HasField reverse-index (TODO below) or better ConstructorStructInfer coverage.
 
-**`getInstanceField`/`getAllField` → `unknown` with scalar casts (2026-04-12):**
-`any` removed from runtime.ts. The emitter now injects `as number/boolean/string` casts at
-call sites where inference narrowed the field type to a scalar via `ResolveInstanceField`
-constraints. Struct and array casts are disabled: HasField narrowing resolves to the wrong
-struct when a leaf type redefines a common field name ("x", "y", "z") with a different type,
-causing wrong casts (e.g. `"x" as unknown[]`, `"z" as GMLObject`) that cascade into more
-errors than staying at `unknown`.
+**`getInstanceField`/`getAllField` → `unknown` with scalar + struct casts (2026-04-12):**
+`any` removed from runtime.ts. The emitter injects `as number/boolean/string` casts (scalar)
+and `as TypeName` casts (struct) at call sites where inference narrowed the field type via
+`ResolveInstanceField` constraints. Both scalar and struct casts are enabled.
 
 Dead Estate: 0 → 2062 errors (all genuine inference gaps from unresolved receiver types).
 
-**HasField narrowing fix (blocks struct/array casts):** The single-candidate narrowing in
-`process_constraint` (constraint_solve_hm.rs) must be made more conservative for GML. A field
-that appears in multiple leaf types (directly, not inherited) cannot be used for narrowing
-— the narrowing is only valid when the field appears in EXACTLY one leaf type. Until this is
-fixed, struct/array casts from `cast_struct_syscall_results_for` remain disabled.
+**HasField narrowing made conservative (2026-04-12):** The single-candidate narrowing in
+`process_constraint` (constraint_solve_hm.rs) was over-triggering: when a leaf type redefines
+a common field ("x", "y", "z") that a non-leaf ancestor also defines, the leaf was the sole
+candidate and narrowing fired incorrectly. Fixed by adding a `field_in_non_leaf` guard — if
+any non-leaf type defines the field in its own `own_fields`, narrowing is skipped. Both
+step-4 (single-field) and step-4.5 (multi-field) paths carry this guard.
+
+**`build_own_fields` enriched with `module.types` (2026-04-12):** `build_own_fields` in
+`constraint_solve_hm.rs` was only reading from `module.structs` (frozen frontend snapshot),
+missing fields injected by `ConstructorStructInfer` into `module.types`. Now prefers
+`module.types[id].fields()` when non-empty; also includes types only in `module.types`.
+
+Dead Estate: 2062 → 2043 errors after HasField narrowing fix + build_own_fields enrichment.
 
 **GML constructor function struct types (TS2749/TS2430/class emit):** Structs like `Button`,
 `Menu`, `Section`, `TextPiece`, `Challenge` are GML 2.3+ constructor functions. Current emit:
@@ -385,6 +390,16 @@ as class fields.
 **Dead Estate error history:**
 - 2026-03-31: 1,017 errors after `DataType::Variable → "any"` fix
 - 2026-04-12: 0 errors after three fixes:
+  (scalar casts only, struct casts blocked by HasField narrowing bug)
+- 2026-04-12: 2062 errors after enabling scalar casts (genuine inference gaps)
+- 2026-04-12: 2043 errors after HasField narrowing conservative fix + build_own_fields
+  enrichment + struct/scalar casts both enabled. Breakdown:
+  - TS2345 (831): unknown assignability (347 unknown→GMLObject instance args)
+  - TS2571 (498): property access on unknown receiver (self: GMLObject in event handlers)
+  - TS2769 (259): no overload matches (unknown args to overloaded runtime fns)
+  - TS2322 (183): type mismatch (includes ~184 number→string in closure params)
+  - TS18046 (172): unknown variables (argument0 41, a 27, _bulletDamage 17, argument1 10)
+- 2026-04-12: 0 errors before three fixes:
   1. `@@NewGMLArray@@`/`@@NewGMLObject@@` registered with correct return types — the Void
      stub was causing the constraint solver to poison all array/object-literal result vars,
      cascading unknown through everything that consumed arrays or structs. Registering with
@@ -393,6 +408,30 @@ as class fields.
      now receive types from the values captured at the creation site.
   3. `DataType::Variable → "any"` in `type_suffix_for` (correct for games that use Variable
      arithmetic; no-op for Dead Estate).
+
+**Remaining open gaps (Dead Estate 2043 baseline):**
+
+- **Instance method field gaps.** `Gun.bulletDamageMultiplier` and similar fields set only
+  in non-constructor GML events (Step, Alarm, etc.) are still `Unknown`. `ConstructorStructInfer`
+  only processes `MethodKind::Constructor`. Instance method scanning was attempted 2026-04-12
+  and reverted: caused Union types from conflicting assignments across events (Create sets
+  `owner = 0` as Int, Step sets `owner = GMLObject`) — net regression. Safe fix requires
+  distinguishing "first assignment (Create)" from "reassignment (other events)".
+
+- **TS2322 closure parameter mismatch (~184 errors).** Closures like `_generatingFloorDotTimer`
+  are typed as `string` instead of `number`. Root cause: wrong constraint propagation for
+  closure capture params or wrong HasField resolution for the captured field. Needs investigation
+  in the HM solver's `MakeClosure` path.
+
+- **TS2571 unknown receiver (498 errors).** Nested `getInstanceField` chains produce
+  `unknown` receivers. Root cause: event handlers have `self: GMLObject` (the base type),
+  not the concrete object type. Systemic fix requires better event handler receiver type
+  inference — probably emitting typed wrappers per object type.
+
+- **GMLObject `[key: string]: any` in runtime.** `runtime/gamemaker/object.ts:21` still has
+  an index signature returning `any`. CLAUDE.md forbids `any` in runtime code. Fix requires
+  emitting class field declarations for dynamically-set fields so the index signature can be
+  removed.
 
 **Remaining gap (not yet causing errors, but inference quality could be higher):**
 - **Parametric array types.** All arrays are `Array(Unknown)` — element type is not
