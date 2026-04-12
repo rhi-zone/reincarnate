@@ -2900,7 +2900,7 @@ fn main() -> Result<()> {
             dump_ast,
             dump_function,
             dump_ir_after,
-            timing,
+            timing: _,
             no_emit,
             dump_inference_failures,
         } => {
@@ -2926,7 +2926,7 @@ fn main() -> Result<()> {
                 dump_ast: *dump_ast,
                 function_filter: dump_function.clone(),
                 dump_ir_after: dump_ir_after.clone(),
-                timing: *timing,
+                timing: true,
             };
             if *all {
                 cmd_emit_all(skip_passes, preset, &debug)
