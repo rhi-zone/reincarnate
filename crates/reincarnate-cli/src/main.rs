@@ -105,6 +105,9 @@ enum Command {
         /// "mem2reg"). Use "frontend" to dump raw IR before any transforms.
         #[arg(long = "dump-ir-after")]
         dump_ir_after: Option<String>,
+        /// Print per-pass wall-clock timing to stderr after each pass completes.
+        #[arg(long)]
+        timing: bool,
         /// Run the full pipeline but skip writing output files to disk.
         /// Useful with --dump-function or --dump-ir to inspect IR without
         /// producing a full emit.
@@ -1998,6 +2001,7 @@ fn cmd_list_functions(manifest_path: &Path, filter: Option<&str>) -> Result<()> 
         dump_ast: false,
         function_filter: filter.map(|s| s.to_string()),
         dump_ir_after: None,
+        timing: false,
     };
 
     for module in &output.modules {
@@ -2896,6 +2900,7 @@ fn main() -> Result<()> {
             dump_ast,
             dump_function,
             dump_ir_after,
+            timing,
             no_emit,
             dump_inference_failures,
         } => {
@@ -2921,6 +2926,7 @@ fn main() -> Result<()> {
                 dump_ast: *dump_ast,
                 function_filter: dump_function.clone(),
                 dump_ir_after: dump_ir_after.clone(),
+                timing: *timing,
             };
             if *all {
                 cmd_emit_all(skip_passes, preset, &debug)

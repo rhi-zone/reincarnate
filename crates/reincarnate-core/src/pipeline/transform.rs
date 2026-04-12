@@ -329,7 +329,21 @@ impl TransformPipeline {
                     if pass_dirty.is_some_and(|d| d.is_empty()) {
                         continue;
                     }
+                    let t0 = if debug.timing {
+                        Some(std::time::Instant::now())
+                    } else {
+                        None
+                    };
                     let result = transform.apply(module, pass_dirty)?;
+                    if let Some(t0) = t0 {
+                        let iter = MAX_FIXPOINT_ITERATIONS - iterations_remaining;
+                        eprintln!(
+                            "[timing] iter {}: {}: {}ms",
+                            iter,
+                            transform.name(),
+                            t0.elapsed().as_millis()
+                        );
+                    }
                     if result.changed {
                         if result.changed_funcs.is_empty() {
                             // Pass changed something but didn't track which functions.
@@ -356,7 +370,19 @@ impl TransformPipeline {
             }
         } else {
             for transform in &self.transforms {
+                let t0 = if debug.timing {
+                    Some(std::time::Instant::now())
+                } else {
+                    None
+                };
                 module = transform.apply(module, None)?.module;
+                if let Some(t0) = t0 {
+                    eprintln!(
+                        "[timing] {}: {}ms",
+                        transform.name(),
+                        t0.elapsed().as_millis()
+                    );
+                }
                 if stop_after == Some(transform.name()) {
                     dump_ir_functions(&module, debug);
                     return Ok(PipelineOutput {

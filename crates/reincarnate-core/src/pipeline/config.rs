@@ -23,6 +23,11 @@ pub struct DebugConfig {
     /// raw IR before any transforms run.  Honoured by
     /// [`crate::pipeline::TransformPipeline::run_with_debug`].
     pub dump_ir_after: Option<String>,
+    /// Print per-pass wall-clock timing to stderr after each pass completes.
+    ///
+    /// Output format: `[timing] pass-name: Xms` (non-fixpoint) or
+    /// `[timing] iter N: pass-name: Xms` (fixpoint).
+    pub timing: bool,
 }
 
 impl DebugConfig {
@@ -534,6 +539,7 @@ mod tests {
             dump_ast: false,
             dump_ir_after: None,
             function_filter: Some(filter.to_string()),
+            timing: false,
         }
     }
 
@@ -544,6 +550,7 @@ mod tests {
             dump_ast: false,
             function_filter: None,
             dump_ir_after: None,
+            timing: false,
         };
         assert!(cfg.should_dump("Gun::event_step_2"));
         assert!(cfg.should_dump("anything"));
