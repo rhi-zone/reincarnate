@@ -40,6 +40,11 @@ use crate::transforms::constraint_collect::{
 ///
 /// "Own fields" means only the fields declared directly on each struct, not
 /// inherited from parent types.  Used for struct narrowing discriminants.
+/// Build own-fields from `module.types` (the live graph), falling back to `module.structs`.
+///
+/// Used to build `all_fields` for HasField **resolution**: when the struct type is already
+/// known (e.g. `HasField(Instance(Gun), "bulletDamageMultiplier", X)`), use the full
+/// TypeDecl field set so that pass-inferred fields (from ConstructorStructInfer) are visible.
 fn build_own_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
     let mut map: HashMap<String, HashMap<String, Type>> = HashMap::new();
     for s in &module.structs {
@@ -344,6 +349,11 @@ impl Transform for ConstraintSolveHM {
         mut module: Module,
         dirty: Option<&HashSet<FuncId>>,
     ) -> Result<TransformResult, CoreError> {
+        // own_fields: enriched from module.types (live graph).
+        // - For narrowing discriminants: constructor-only scanning means non-leaf types
+        //   don't gain spurious fields that would over-trigger field_in_non_leaf.
+        // - For all_fields resolution: includes constructor-inferred fields on leaf structs
+        //   (e.g. Gun.bulletDamageMultiplier) that are not in module.structs.
         let own_fields = build_own_fields(&module);
         let type_id_to_name: HashMap<TypeId, String> = module
             .types
