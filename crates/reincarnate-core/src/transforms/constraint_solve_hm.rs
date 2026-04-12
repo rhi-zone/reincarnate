@@ -43,12 +43,48 @@ use crate::transforms::constraint_collect::{
 fn build_own_fields(module: &Module) -> HashMap<String, HashMap<String, Type>> {
     let mut map: HashMap<String, HashMap<String, Type>> = HashMap::new();
     for s in &module.structs {
-        let fields: HashMap<String, Type> = s
-            .fields
-            .iter()
-            .map(|f| (f.name.clone(), f.ty.clone()))
-            .collect();
+        // Prefer module.types fields when available — TypeDecl is the live graph,
+        // enriched by passes like ConstructorStructInfer with constructor/event fields.
+        // Fall back to the StructDef snapshot if module.types has no fields for this type.
+        let live_fields: Option<&[crate::ir::FieldDef]> = module
+            .find_type(&s.name)
+            .map(|id| module.types[id].fields())
+            .filter(|f| !f.is_empty());
+        let fields: HashMap<String, Type> = if let Some(live) = live_fields {
+            live.iter()
+                .map(|f| (f.name.clone(), f.ty.clone()))
+                .collect()
+        } else {
+            s.fields
+                .iter()
+                .map(|f| (f.name.clone(), f.ty.clone()))
+                .collect()
+        };
         map.insert(s.name.clone(), fields);
+    }
+    // Also include types that exist only in module.types (e.g. GML 2.3 constructor structs
+    // inferred by ConstructorStructInfer that were never registered in module.structs).
+    for (_id, decl) in module.types.iter() {
+        if let TypeDecl::Object {
+            name: Some(name),
+            fields,
+            ..
+        } = decl
+        {
+            if map.contains_key(name) {
+                continue;
+            }
+            if fields.is_empty() {
+                continue;
+            }
+            map.insert(
+                name.clone(),
+                fields
+                    .iter()
+                    .map(|f| (f.name.clone(), f.ty.clone()))
+                    .collect(),
+            );
+        }
     }
     map
 }
