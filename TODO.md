@@ -373,34 +373,24 @@ This works for type annotations but is wrong in two ways:
 GMLObject. Then call sites use `new`, the type system is coherent, and TypeDecl fields emit
 as class fields.
 
-**Remaining error breakdown after DataType::Variable fix (2026-03-31, 1,017 errors):**
-Root-cause analysis of the remaining unknown-cascade (sampled 2026-03-31):
+**Dead Estate error history:**
+- 2026-03-31: 1,017 errors after `DataType::Variable → "any"` fix
+- 2026-04-12: 0 errors after three fixes:
+  1. `@@NewGMLArray@@`/`@@NewGMLObject@@` registered with correct return types — the Void
+     stub was causing the constraint solver to poison all array/object-literal result vars,
+     cascading unknown through everything that consumed arrays or structs. Registering with
+     `Array(Unknown)` and `Instance(GMLObject)` fixed the root cause.
+  2. Step 3 interprocedural linking extended to `Op::MakeClosure` — closure capture params
+     now receive types from the values captured at the creation site.
+  3. `DataType::Variable → "any"` in `type_suffix_for` (correct for games that use Variable
+     arithmetic; no-op for Dead Estate).
 
-- **~400–500: Interprocedural parameter inference (HIGH).** GML script params have no
-  declared type. HM inference runs per-function — it does not flow argument types from call
-  sites back into parameter declarations. A param `argument0: Var(x)` that's always called
-  with a `number` stays `unknown` because `Equal(Var(x_callee), Float(64))` is never added.
-  Fix: collect `Equal(param_ty, arg_ty)` constraints across call boundaries — either as a
-  second-pass over call edges after per-function solving, or by running the solver over a
-  whole-module constraint graph. This is the single highest-leverage remaining fix.
-
-- **~150–200: Parametric array types (HIGH).** All arrays are `Array(Unknown)` — the
-  element type has nowhere to live. `[1.0, 4.0, 7.0]` produces `unknown[]`; indexing yields
-  `unknown`. Fix: `Array(Var(fresh))` for every array allocation, plus `HasElement`
-  constraints so push/get operations constrain the element variable. This is the parametric
-  polymorphism primitive deferred earlier — same mechanism needed for `array_get(arr: Array<T>) → T`.
-  Blocked on extending the IR and solver with `HasElement`.
-
-- **~100–150: User function return types (MEDIUM).** Same interprocedural gap as params —
-  return types not propagated to callers. Largely fixed by the same cross-function constraint
-  pass as params.
-
-- **~50–80: `withInstances` closure captures (MEDIUM).** Closure capture params inherit
-  `unknown` from the captured variable. Follows from fixing the above two.
-
-- **~40–60: Runtime helper signatures (LOW).** `_instanceof` and similar — verified that
-  `builtins_generated.rs` already has correct types; `runtime.json` mismatch was cosmetic.
-  Remaining cases are legitimately dynamic (`ds_map_find_value`).
+**Remaining gap (not yet causing errors, but inference quality could be higher):**
+- **Parametric array types.** All arrays are `Array(Unknown)` — element type is not
+  inferred. `[1.0, 4.0, 7.0]` produces `unknown[]`; indexing yields `unknown`. No TS errors
+  because getters return `any` (kept to avoid ~1000 spurious TS18046 — see note above about
+  `getInstanceField`). Fix: `HasElement` constraint to link array element type to push/get
+  operations. Blocked on extending IR and solver.
 
 ### After inference is solid
 
