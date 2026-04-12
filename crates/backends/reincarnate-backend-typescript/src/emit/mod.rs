@@ -168,18 +168,17 @@ pub(crate) fn lowering_config_for_engine<'a>(
             if let Some(map) = gml_intrinsic_calls {
                 c.intrinsic_calls = map;
             }
-            // Inject `as <type>` casts on GameMaker instance field getter results
-            // that type inference has narrowed.  The runtime declares these as
-            // `unknown`; the cast surfaces the inferred type in emitted TypeScript.
-            // Where inference can't resolve the field type (e.g. receiver is unknown),
-            // the result stays `unknown` — surfacing a real inference gap.
+            // Inject `as <type>` casts for scalar results (number/boolean/string)
+            // from GameMaker instance field getters narrowed by type inference.
+            // Scalar casts are safe: `number`, `boolean`, and `string` have no
+            // structural subtypes so a wrong inference just widens, it doesn't
+            // produce a wrong-direction error. Array and struct casts are excluded:
+            // HasField narrowing for GML can resolve to the wrong struct when a
+            // leaf type redefines a common field name ("x", "y", "z") with a
+            // different type, causing wrong casts that cascade into more errors.
+            // TODO: enable struct/array casts once HasField narrowing is made
+            // more conservative (field must appear in ONLY one leaf type to narrow).
             c.cast_narrowed_syscall_results_for = vec![
-                ("GameMaker.Instance".to_string(), "getOn".to_string()),
-                ("GameMaker.Instance".to_string(), "getAll".to_string()),
-                ("GameMaker.Instance".to_string(), "getField".to_string()),
-                ("GameMaker.Instance".to_string(), "getOther".to_string()),
-            ];
-            c.cast_struct_syscall_results_for = vec![
                 ("GameMaker.Instance".to_string(), "getOn".to_string()),
                 ("GameMaker.Instance".to_string(), "getAll".to_string()),
                 ("GameMaker.Instance".to_string(), "getField".to_string()),
