@@ -399,46 +399,29 @@ as class fields.
   - TS2769 (259): no overload matches (unknown args to overloaded runtime fns)
   - TS2322 (183): type mismatch (includes ~184 number→string in closure params)
   - TS18046 (172): unknown variables (argument0 41, a 27, _bulletDamage 17, argument1 10)
-- 2026-04-12: 0 errors before three fixes:
-  1. `@@NewGMLArray@@`/`@@NewGMLObject@@` registered with correct return types — the Void
-     stub was causing the constraint solver to poison all array/object-literal result vars,
-     cascading unknown through everything that consumed arrays or structs. Registering with
-     `Array(Unknown)` and `Instance(GMLObject)` fixed the root cause.
-  2. Step 3 interprocedural linking extended to `Op::MakeClosure` — closure capture params
-     now receive types from the values captured at the creation site.
-  3. `DataType::Variable → "any"` in `type_suffix_for` (correct for games that use Variable
-     arithmetic; no-op for Dead Estate).
+- 2026-04-12: 0 errors after MakeClosure capture param offset fix + all prior fixes:
+  1. `@@NewGMLArray@@`/`@@NewGMLObject@@` registered with correct return types
+  2. Step 3 interprocedural linking extended to `Op::MakeClosure`
+  3. `DataType::Variable → "any"` in `type_suffix_for`
+  4. HasField narrowing conservative fix (field_in_non_leaf guard)
+  5. `build_own_fields` enriched with `module.types` live field graph
+  6. Struct + scalar casts both re-enabled
+  7. MakeClosure capture param offset fix: captures[i] now maps to
+     entry_params[sig.params.len() + i], not entry_params[i]. The `_self`
+     (instance) regular param was consuming captures[0], leaving all capture
+     tvars unresolved → unknown.
 
-**Remaining open gaps (Dead Estate 2043 baseline):**
-
-- **Instance method field gaps.** `Gun.bulletDamageMultiplier` and similar fields set only
-  in non-constructor GML events (Step, Alarm, etc.) are still `Unknown`. `ConstructorStructInfer`
-  only processes `MethodKind::Constructor`. Instance method scanning was attempted 2026-04-12
-  and reverted: caused Union types from conflicting assignments across events (Create sets
-  `owner = 0` as Int, Step sets `owner = GMLObject`) — net regression. Safe fix requires
-  distinguishing "first assignment (Create)" from "reassignment (other events)".
-
-- **TS2322 closure parameter mismatch (~184 errors).** Closures like `_generatingFloorDotTimer`
-  are typed as `string` instead of `number`. Root cause: wrong constraint propagation for
-  closure capture params or wrong HasField resolution for the captured field. Needs investigation
-  in the HM solver's `MakeClosure` path.
-
-- **TS2571 unknown receiver (498 errors).** Nested `getInstanceField` chains produce
-  `unknown` receivers. Root cause: event handlers have `self: GMLObject` (the base type),
-  not the concrete object type. Systemic fix requires better event handler receiver type
-  inference — probably emitting typed wrappers per object type.
+**Remaining known gaps (0 TS errors, but quality / correctness items):**
 
 - **GMLObject `[key: string]: any` in runtime.** `runtime/gamemaker/object.ts:21` still has
   an index signature returning `any`. CLAUDE.md forbids `any` in runtime code. Fix requires
   emitting class field declarations for dynamically-set fields so the index signature can be
-  removed.
+  removed. Currently not causing TS errors because `any` silences them.
 
-**Remaining gap (not yet causing errors, but inference quality could be higher):**
 - **Parametric array types.** All arrays are `Array(Unknown)` — element type is not
   inferred. `[1.0, 4.0, 7.0]` produces `unknown[]`; indexing yields `unknown`. No TS errors
-  because getters return `any` (kept to avoid ~1000 spurious TS18046 — see note above about
-  `getInstanceField`). Fix: `HasElement` constraint to link array element type to push/get
-  operations. Blocked on extending IR and solver.
+  because getters return `any`. Fix: `HasElement` constraint to link array element type to
+  push/get operations. Blocked on extending IR and solver.
 
 ### After inference is solid
 
