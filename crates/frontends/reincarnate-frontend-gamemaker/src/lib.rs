@@ -19,7 +19,9 @@ use std::fs;
 use datawin::DataWin;
 use reincarnate_core::error::CoreError;
 use reincarnate_core::ir::builder::{FunctionBuilder, ModuleBuilder};
-use reincarnate_core::ir::func::{FuncId, Function, IntrinsicKind, MethodKind, Visibility};
+use reincarnate_core::ir::func::{
+    FuncId, Function, InlineHint, IntrinsicKind, MethodKind, Visibility,
+};
 use reincarnate_core::ir::module::{FieldDef, Global, Module, StructDef, SystemCallTypeRule};
 use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId};
 use reincarnate_core::pipeline::{Frontend, FrontendInput, FrontendOutput};
@@ -1693,6 +1695,7 @@ fn register_arithmetic_any_builtins(module: &mut Module) {
         module.functions[any_id].value_types = built.value_types;
         module.functions[any_id].entry = built.entry;
         module.functions[any_id].specializations = specs;
+        module.functions[any_id].inline_hint = InlineHint::Always;
     }
 
     {
@@ -1722,6 +1725,7 @@ fn register_arithmetic_any_builtins(module: &mut Module) {
         module.functions[any_id].value_types = built.value_types;
         module.functions[any_id].entry = built.entry;
         module.functions[any_id].specializations = specs;
+        module.functions[any_id].inline_hint = InlineHint::Always;
     }
 }
 

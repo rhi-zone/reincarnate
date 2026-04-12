@@ -335,7 +335,7 @@ fn type_suffix_for(dt: DataType) -> &'static str {
         DataType::Int64 => "i64",
         DataType::Bool => "bool",
         DataType::String => "str",
-        DataType::Variable => "f64",
+        DataType::Variable => "any",
         _ => "any",
     }
 }
