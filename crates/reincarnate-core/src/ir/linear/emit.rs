@@ -1441,24 +1441,43 @@ impl<'a> EmitCtx<'a> {
             Type::Array(_) | Type::Function(_) => Some(CastKind::NullableCoerce),
             _ => None,
         };
-        let expr = if let Op::SystemCall { system, method, .. } = &op_clone {
-            let in_narrowed = self
-                .config
-                .cast_narrowed_syscall_results_for
-                .iter()
-                .any(|(s, m)| s == system && m == method);
-            let in_struct_only = matches!(&result_ty, Type::Instance(_))
-                && self
+        let expr = {
+            // Look up the (system, method) pair for this op — either from an
+            // explicit Op::SystemCall, or from an intrinsic Op::Call that the
+            // emitter lowers to Expr::SystemCall via `intrinsic_calls`.
+            let system_method: Option<(&str, &str)> = match &op_clone {
+                Op::SystemCall { system, method, .. } => Some((system.as_str(), method.as_str())),
+                Op::Call {
+                    func: callee_fid, ..
+                } => self
                     .config
-                    .cast_struct_syscall_results_for
+                    .func_names
+                    .get(callee_fid)
+                    .and_then(|fname| self.config.intrinsic_calls.get(fname.as_str()))
+                    .map(|(sys, meth)| (sys.as_str(), meth.as_str())),
+                _ => None,
+            };
+            if let Some((system, method)) = system_method {
+                let in_narrowed = self
+                    .config
+                    .cast_narrowed_syscall_results_for
                     .iter()
                     .any(|(s, m)| s == system && m == method);
-            if let Some(cast_kind) = syscall_cast_kind {
-                if in_narrowed || in_struct_only {
-                    Expr::Cast {
-                        expr: Box::new(expr),
-                        ty: result_ty.clone(),
-                        kind: cast_kind,
+                let in_struct_only = matches!(&result_ty, Type::Instance(_))
+                    && self
+                        .config
+                        .cast_struct_syscall_results_for
+                        .iter()
+                        .any(|(s, m)| s == system && m == method);
+                if let Some(cast_kind) = syscall_cast_kind {
+                    if in_narrowed || in_struct_only {
+                        Expr::Cast {
+                            expr: Box::new(expr),
+                            ty: result_ty.clone(),
+                            kind: cast_kind,
+                        }
+                    } else {
+                        expr
                     }
                 } else {
                     expr
@@ -1466,8 +1485,6 @@ impl<'a> EmitCtx<'a> {
             } else {
                 expr
             }
-        } else {
-            expr
         };
         let side_effecting = is_side_effecting_op(&op_clone);
 

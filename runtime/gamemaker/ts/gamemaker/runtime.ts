@@ -919,13 +919,9 @@ export class GameRuntime {
   // ---- Instance field helpers ----
 
   /** Get a field value from a specific instance or the first instance of a given class.
-   * TODO: change return type to `unknown` once the emitter generates type params at call sites.
-   * The return type is `any` here because the GML backend calls this with a string field name
-   * and assigns the result to typed variables without a cast — the emitter needs to emit
-   * `getInstanceField<FieldType>(cls, field)` or `getInstanceField(cls, field) as FieldType`
-   * using the IR type info for the field. Until then, `any` is required to avoid ~1000 TS18046. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string): any {
+   * Returns `unknown`; the emitter injects `as <type>` casts at call sites where
+   * type inference resolved the field type via ResolveInstanceField constraints. */
+  getInstanceField(cls: GMLObject | typeof GMLObject | number | null, field: string): unknown {
     if (cls instanceof GMLObject) return (cls as unknown as Record<string, unknown>)[field];
     const clazz = typeof cls === 'number' ? this.classes[cls] : cls;
     if (!clazz) return undefined;
@@ -952,9 +948,9 @@ export class GameRuntime {
   }
 
   /** Get a field value from ALL instances.
-   * TODO: same emitter gap as getInstanceField — return `unknown` once emitter casts results. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  getAllField(field: string): any {
+   * Returns `unknown`; the emitter injects `as <type>` casts at call sites where
+   * type inference resolved the field type via ResolveInstanceField constraints. */
+  getAllField(field: string): unknown {
     for (const inst of this.roomVariables) {
       return (inst as unknown as Record<string, unknown>)[field];
     }

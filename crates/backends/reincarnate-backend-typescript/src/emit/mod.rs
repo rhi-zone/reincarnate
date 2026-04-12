@@ -168,6 +168,23 @@ pub(crate) fn lowering_config_for_engine<'a>(
             if let Some(map) = gml_intrinsic_calls {
                 c.intrinsic_calls = map;
             }
+            // Inject `as <type>` casts on GameMaker instance field getter results
+            // that type inference has narrowed.  The runtime declares these as
+            // `unknown`; the cast surfaces the inferred type in emitted TypeScript.
+            // Where inference can't resolve the field type (e.g. receiver is unknown),
+            // the result stays `unknown` — surfacing a real inference gap.
+            c.cast_narrowed_syscall_results_for = vec![
+                ("GameMaker.Instance".to_string(), "getOn".to_string()),
+                ("GameMaker.Instance".to_string(), "getAll".to_string()),
+                ("GameMaker.Instance".to_string(), "getField".to_string()),
+                ("GameMaker.Instance".to_string(), "getOther".to_string()),
+            ];
+            c.cast_struct_syscall_results_for = vec![
+                ("GameMaker.Instance".to_string(), "getOn".to_string()),
+                ("GameMaker.Instance".to_string(), "getAll".to_string()),
+                ("GameMaker.Instance".to_string(), "getField".to_string()),
+                ("GameMaker.Instance".to_string(), "getOther".to_string()),
+            ];
         }
         if needs_twine {
             c.output_node_system = Some(("Harlowe.H".to_string(), "h".to_string()));
