@@ -757,15 +757,17 @@ impl Transform for ConstraintSolveHM {
                                     let entry = callee_func.entry;
                                     let entry_params = &callee_func.blocks[entry].params;
 
+                                    let capture_param_offset = callee_func.sig.params.len();
                                     for (i, &capture) in captures.iter().enumerate() {
-                                        if i >= entry_params.len() {
+                                        let param_idx = capture_param_offset + i;
+                                        if param_idx >= entry_params.len() {
                                             break;
                                         }
                                         let capture_ty = &func.value_types[capture];
                                         if matches!(capture_ty, Type::Unknown) {
                                             continue;
                                         }
-                                        let param_val = entry_params[i].value;
+                                        let param_val = entry_params[param_idx].value;
                                         let param_ty = &callee_func.value_types[param_val];
                                         if is_concrete(param_ty) {
                                             continue;
