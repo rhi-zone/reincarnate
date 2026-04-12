@@ -345,12 +345,21 @@ failing to annotate the type. In practice, almost all `Variable`-typed values ar
 **TS2571 root cause:** `getInstanceField` on Unknown receiver → field type Unknown.
 Fix: HasField reverse-index (TODO below) or better ConstructorStructInfer coverage.
 
-**`getInstanceField` returning `any` — intentional, blocked (Law 4 violation):**
-The runtime method `getInstanceField(...): any` is a documented Law 4 violation with a
-TODO in runtime.ts. Changing to `unknown` requires the emitter to insert casts at call sites
-(e.g., `_rt.getInstanceField(self, "x") as number`) using IR type info for the field result.
-Until the emitter generates these casts, `any` is kept to avoid ~1000 spurious TS18046 errors.
-Track here: unblock by adding `getInstanceField<T>` generic or emit-time `as T` casts.
+**`getInstanceField`/`getAllField` → `unknown` with scalar casts (2026-04-12):**
+`any` removed from runtime.ts. The emitter now injects `as number/boolean/string` casts at
+call sites where inference narrowed the field type to a scalar via `ResolveInstanceField`
+constraints. Struct and array casts are disabled: HasField narrowing resolves to the wrong
+struct when a leaf type redefines a common field name ("x", "y", "z") with a different type,
+causing wrong casts (e.g. `"x" as unknown[]`, `"z" as GMLObject`) that cascade into more
+errors than staying at `unknown`.
+
+Dead Estate: 0 → 2062 errors (all genuine inference gaps from unresolved receiver types).
+
+**HasField narrowing fix (blocks struct/array casts):** The single-candidate narrowing in
+`process_constraint` (constraint_solve_hm.rs) must be made more conservative for GML. A field
+that appears in multiple leaf types (directly, not inherited) cannot be used for narrowing
+— the narrowing is only valid when the field appears in EXACTLY one leaf type. Until this is
+fixed, struct/array casts from `cast_struct_syscall_results_for` remain disabled.
 
 **GML constructor function struct types (TS2749/TS2430/class emit):** Structs like `Button`,
 `Menu`, `Section`, `TextPiece`, `Challenge` are GML 2.3+ constructor functions. Current emit:
