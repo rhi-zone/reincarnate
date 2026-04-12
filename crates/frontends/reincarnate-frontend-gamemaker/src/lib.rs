@@ -151,6 +151,40 @@ impl Frontend for GameMakerFrontend {
             add_extension_stubs(&dw, extn, &mb.existing_function_names(), &mut mb);
         }
 
+        // Register GML compiler-synthesized functions with correct return types before
+        // the stub-registration loop.  These appear as Call references in the FUNC
+        // chunk, so the loop below would otherwise register them as void stubs.
+        //
+        // @@NewGMLArray@@(v0, v1, ...) — variadic array literal constructor.
+        // Return type is Array(Unknown): element type is not inferrable without
+        // HasElement constraints, and Unknown correctly signals an inference gap.
+        // A fresh Var would be incorrect here: the same FunctionSig instance is
+        // shared across all call sites, so a single Var would unify across ALL
+        // array literals and produce wrong cross-call constraints.
+        //
+        // @@NewGMLObject@@() — anonymous struct constructor.
+        // Return type is Instance(GMLObject).
+        mb.register_runtime(
+            "@@NewGMLArray@@".to_string(),
+            FunctionSig {
+                params: vec![],
+                return_ty: Type::Array(Box::new(Type::Unknown)),
+                has_rest_param: true,
+                ..Default::default()
+            },
+        );
+        {
+            let gml_object_id = mb.intern_type("GMLObject");
+            mb.register_runtime(
+                "@@NewGMLObject@@".to_string(),
+                FunctionSig {
+                    params: vec![],
+                    return_ty: Type::Instance(gml_object_id),
+                    ..Default::default()
+                },
+            );
+        }
+
         // Pre-register user function stubs so their FuncIds exist before translation.
         // Translators resolve Call opcodes to named functions — all reachable function
         // names must be in the registry before the first Call opcode is translated.

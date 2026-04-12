@@ -696,6 +696,57 @@ impl Transform for ConstraintSolveHM {
                                     }
                                 }
                             }
+                            Op::MakeClosure {
+                                func: callee_name,
+                                captures,
+                            } => {
+                                if let Some(&(callee_idx, callee_fid)) =
+                                    name_to_idx.get(callee_name.as_str())
+                                {
+                                    let callee_func = &module.functions[callee_fid];
+                                    let callee_data = &func_data[callee_idx];
+                                    let entry = callee_func.entry;
+                                    let entry_params = &callee_func.blocks[entry].params;
+
+                                    for (i, &capture) in captures.iter().enumerate() {
+                                        if i >= entry_params.len() {
+                                            break;
+                                        }
+                                        let capture_ty = &func.value_types[capture];
+                                        if matches!(capture_ty, Type::Unknown) {
+                                            continue;
+                                        }
+                                        let param_val = entry_params[i].value;
+                                        let param_ty = &callee_func.value_types[param_val];
+                                        if is_concrete(param_ty) {
+                                            continue;
+                                        }
+                                        let is_struct_arg = matches!(
+                                            capture_ty,
+                                            Type::Instance(_) | Type::ClassRef(_)
+                                        );
+                                        if !is_struct_arg
+                                            && param_used_with_field_access(
+                                                callee_func,
+                                                param_val,
+                                                &module.array_like_fns,
+                                                &func_names,
+                                            )
+                                        {
+                                            continue;
+                                        }
+                                        if let (Some(&capture_var), Some(&param_var)) = (
+                                            caller_data.value_vars.get(&capture),
+                                            callee_data.value_vars.get(&param_val),
+                                        ) {
+                                            all_constraints.push(TypeConstraint::Equal(
+                                                Type::Var(capture_var),
+                                                Type::Var(param_var),
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
