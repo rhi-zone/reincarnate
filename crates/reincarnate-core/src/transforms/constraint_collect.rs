@@ -1264,4 +1264,29 @@ mod tests {
         assert_eq!(sets.len(), 0);
         assert!(!result.changed, "expected changed=false for empty module");
     }
+
+    /// Type::Unknown is concrete — inference exhausted, not a free variable.
+    /// Type::Var is the pre-inference placeholder and is NOT concrete.
+    /// This invariant must never regress: code that treats Unknown as solvable
+    /// or Var as concrete will produce wrong types throughout the pipeline.
+    #[test]
+    fn unknown_is_concrete_var_is_not() {
+        use crate::ir::ty::TypeVarId;
+        assert!(
+            is_concrete(&Type::Unknown),
+            "Type::Unknown must be concrete"
+        );
+        assert!(
+            !is_concrete(&Type::Var(TypeVarId::new(0))),
+            "Type::Var must not be concrete"
+        );
+        assert!(
+            !is_concrete(&Type::Array(Box::new(Type::Var(TypeVarId::new(0))))),
+            "Array(Var) must not be concrete"
+        );
+        assert!(
+            is_concrete(&Type::Array(Box::new(Type::Unknown))),
+            "Array(Unknown) must be concrete"
+        );
+    }
 }
