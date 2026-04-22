@@ -410,13 +410,18 @@ as class fields.
   - TS18046 (151): unknown variables
   NOTE: check cache returned a false "0 errors" (stale entry from pre-fix state);
   confirmed 1869 via direct tsgo run after clearing ~/.cache/reincarnate/check-*.json.
+- 2026-04-19: 51,705 errors after removing `[key: string]: any` from GMLObject.
+  The index signature was silencing all TS2339 ("Property X does not exist on GMLObject")
+  errors. Now ~50K of these surface as expected: every field access on a GMLObject
+  subclass where we haven't emitted a field declaration. This is the correct state —
+  the errors reflect a real inference gap, not a regression.
 
-**Remaining known gaps (Dead Estate 1869 baseline):**
+**Remaining known gaps (Dead Estate 51,705 baseline):**
 
-- **GMLObject `[key: string]: any` in runtime.** `runtime/gamemaker/object.ts:21` still has
-  an index signature returning `any`. CLAUDE.md forbids `any` in runtime code. Fix requires
-  emitting class field declarations for dynamically-set fields so the index signature can be
-  removed. Currently not causing TS errors because `any` silences them.
+- **GMLObject missing field declarations.** Every SetField op across all GML events must be
+  collected per object type and emitted as TypeScript class field declarations. Currently
+  ConstructorStructInfer only collects fields from `create` events. Fix: extend to all events.
+  Until fixed, all instance field accesses produce TS2339. This is ~50K of the 51,705 errors.
 
 - **Parametric array types.** All arrays are `Array(Unknown)` — element type is not
   inferred. `[1.0, 4.0, 7.0]` produces `unknown[]`; indexing yields `unknown`. No TS errors
