@@ -827,9 +827,26 @@ pub fn collect_function(
                 } => {
                     if let Some(callee) = module.functions.get(*callee_fid) {
                         let sig = &callee.sig;
-                        // Type-conflict guard: if any arg has a concrete type that
-                        // conflicts with the corresponding param type, skip ALL
-                        // return and param constraints for this call.
+                        // Result ← callee return type.
+                        // Unknown return types are wildcards — they carry no type
+                        // information and must not constrain the result, since
+                        // Equal(rv, Unknown) would poison the result to Unknown
+                        // and prevent downstream inference.
+                        // The return-type constraint is always emitted regardless of
+                        // any per-arg conflicts below.
+                        if let Some(rv) = result_var.as_ref() {
+                            if is_concrete(&sig.return_ty)
+                                && !matches!(sig.return_ty, Type::Unknown)
+                            {
+                                constraints
+                                    .push(TypeConstraint::Equal(rv.clone(), sig.return_ty.clone()));
+                            }
+                        }
+                        // Args → callee param types.
+                        //
+                        // Per-arg type-conflict guard: if this arg has a concrete
+                        // type that conflicts with the param type, skip only that
+                        // arg's constraint (not the whole call).
                         //
                         // This prevents "wrong function selected" scenarios from
                         // poisoning the inference graph.  The canonical case: GML's
@@ -839,13 +856,7 @@ pub fn collect_function(
                         // force-rebind `str_var` to Unknown, propagating poison
                         // through every phi and store constraint that touches it.
                         //
-                        // Detecting the conflict early and skipping the constraints
-                        // lets the phi/store/return constraints infer the correct
-                        // types instead.  The call still emits (it's lowered to an
-                        // operator by the backend), so behavioral equivalence is
-                        // preserved.
-                        //
-                        // The check fires only when:
+                        // The conflict check fires only when:
                         //   - the arg's type is concrete and not Unknown/Var (i.e.
                         //     a resolved concrete type like String or Bool), AND
                         //   - the corresponding param type is also concrete and
@@ -853,45 +864,30 @@ pub fn collect_function(
                         //   - they differ.
                         // Unknown/Var arg types are not concrete mismatches — they
                         // are open inference targets that SHOULD be constrained.
-                        let has_type_conflict = args.iter().enumerate().any(|(i, &arg)| {
-                            if i >= sig.params.len() {
-                                return false;
-                            }
-                            let param_ty = &sig.params[i];
-                            if !is_concrete(param_ty) || matches!(param_ty, Type::Unknown) {
-                                return false;
-                            }
-                            let arg_ty = &func.value_types[arg];
-                            is_concrete(arg_ty)
-                                && !matches!(arg_ty, Type::Unknown | Type::Var(_))
-                                && arg_ty != param_ty
-                        });
-
-                        if !has_type_conflict {
-                            // Result ← callee return type.
-                            // Unknown return types are wildcards — they carry no type
-                            // information and must not constrain the result, since
-                            // Equal(rv, Unknown) would poison the result to Unknown
-                            // and prevent downstream inference.
-                            if let Some(rv) = result_var.as_ref() {
-                                if is_concrete(&sig.return_ty)
-                                    && !matches!(sig.return_ty, Type::Unknown)
+                        //
+                        // When param_ty is a Var, emit Equal(arg_var, param_ty) so
+                        // that intra-procedural arg type info flows into the callee
+                        // param Var (mirrors the inter-procedural fix in
+                        // constraint_solve_hm.rs).
+                        for (i, &arg) in args.iter().enumerate() {
+                            if i < sig.params.len() {
+                                let param_ty = &sig.params[i];
+                                if let Type::Var(_) = param_ty {
+                                    // Param is an open Var — flow arg type into it.
+                                    if let Some(arg_var) = var_for(arg, &value_vars) {
+                                        constraints
+                                            .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
+                                    }
+                                } else if is_concrete(param_ty)
+                                    && !matches!(param_ty, Type::Unknown)
                                 {
-                                    constraints.push(TypeConstraint::Equal(
-                                        rv.clone(),
-                                        sig.return_ty.clone(),
-                                    ));
-                                }
-                            }
-                            // Args → callee param types (only concrete, non-Unknown).
-                            // Unknown params are wildcards — they accept any type and
-                            // must not constrain the argument, since
-                            // Equal(arg_var, Unknown) would poison the arg to Unknown
-                            // and prevent downstream inference.
-                            for (i, &arg) in args.iter().enumerate() {
-                                if i < sig.params.len() {
-                                    let param_ty = &sig.params[i];
-                                    if is_concrete(param_ty) && !matches!(param_ty, Type::Unknown) {
+                                    // Param is a concrete type — check for conflict
+                                    // before emitting.
+                                    let arg_ty = &func.value_types[arg];
+                                    let conflict = is_concrete(arg_ty)
+                                        && !matches!(arg_ty, Type::Unknown | Type::Var(_))
+                                        && arg_ty != param_ty;
+                                    if !conflict {
                                         if let Some(arg_var) = var_for(arg, &value_vars) {
                                             constraints.push(TypeConstraint::Equal(
                                                 arg_var,
@@ -900,6 +896,10 @@ pub fn collect_function(
                                         }
                                     }
                                 }
+                                // Unknown params are wildcards — they accept any type
+                                // and must not constrain the argument, since
+                                // Equal(arg_var, Unknown) would poison the arg to
+                                // Unknown and prevent downstream inference.
                             }
                         }
                     }
@@ -944,12 +944,23 @@ pub fn collect_function(
                                 }
                             }
                         }
-                        // Args → callee params[1..] (only concrete, non-Unknown).
+                        // Args → callee params[1..].
+                        // When param_ty is a Var, emit Equal(arg_var, param_ty) so
+                        // that intra-procedural arg type info flows into the callee
+                        // param Var (mirrors the fix in Op::Call above).
+                        // Unknown params are wildcards — skip to avoid poisoning.
                         for (i, &arg) in args.iter().enumerate() {
                             let param_idx = i + 1;
                             if param_idx < sig.params.len() {
                                 let param_ty = &sig.params[param_idx];
-                                if is_concrete(param_ty) && !matches!(param_ty, Type::Unknown) {
+                                if let Type::Var(_) = param_ty {
+                                    if let Some(arg_var) = var_for(arg, &value_vars) {
+                                        constraints
+                                            .push(TypeConstraint::Equal(arg_var, param_ty.clone()));
+                                    }
+                                } else if is_concrete(param_ty)
+                                    && !matches!(param_ty, Type::Unknown)
+                                {
                                     if let Some(arg_var) = var_for(arg, &value_vars) {
                                         constraints
                                             .push(TypeConstraint::Equal(arg_var, param_ty.clone()));

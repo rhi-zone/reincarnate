@@ -560,7 +560,7 @@ impl Transform for ConstraintSolveHM {
                 .collect();
 
             for (caller_idx, (caller_fid, func)) in module.functions.iter().enumerate() {
-                let caller_name = module.func_name(caller_fid);
+                let _caller_name = module.func_name(caller_fid);
                 let caller_data = &func_data[caller_idx];
 
                 for block in func.blocks.values() {
@@ -655,6 +655,17 @@ impl Transform for ConstraintSolveHM {
                                                     Type::Var(result_var),
                                                     Type::Var(callee_data.return_var),
                                                 ));
+                                                // If the callee's return type is already
+                                                // concrete (e.g. a runtime builtin), emit a
+                                                // direct constraint so the caller result var
+                                                // is resolved even if return_var never gets
+                                                // bound through transitive constraints.
+                                                if is_concrete(&callee_func.sig.return_ty) {
+                                                    all_constraints.push(TypeConstraint::Equal(
+                                                        Type::Var(result_var),
+                                                        callee_func.sig.return_ty.clone(),
+                                                    ));
+                                                }
                                             }
                                         }
                                     }
@@ -665,12 +676,12 @@ impl Transform for ConstraintSolveHM {
                                 args,
                                 receiver,
                             } => {
-                                if method == caller_name {
-                                    continue;
-                                }
                                 if let Some(&(callee_idx, callee_fid)) =
                                     name_to_idx.get(method.as_str())
                                 {
+                                    if callee_fid == caller_fid {
+                                        continue;
+                                    }
                                     let callee_func = &module.functions[callee_fid];
                                     let callee_data = &func_data[callee_idx];
                                     let entry = callee_func.entry;
@@ -760,6 +771,17 @@ impl Transform for ConstraintSolveHM {
                                                     Type::Var(result_var),
                                                     Type::Var(callee_data.return_var),
                                                 ));
+                                                // If the callee's return type is already
+                                                // concrete (e.g. a runtime builtin), emit a
+                                                // direct constraint so the caller result var
+                                                // is resolved even if return_var never gets
+                                                // bound through transitive constraints.
+                                                if is_concrete(&callee_func.sig.return_ty) {
+                                                    all_constraints.push(TypeConstraint::Equal(
+                                                        Type::Var(result_var),
+                                                        callee_func.sig.return_ty.clone(),
+                                                    ));
+                                                }
                                             }
                                         }
                                     }
