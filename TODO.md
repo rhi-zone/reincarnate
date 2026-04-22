@@ -399,19 +399,19 @@ as class fields.
   - TS2769 (259): no overload matches (unknown args to overloaded runtime fns)
   - TS2322 (183): type mismatch (includes ~184 number→string in closure params)
   - TS18046 (172): unknown variables (argument0 41, a 27, _bulletDamage 17, argument1 10)
-- 2026-04-12: 0 errors after MakeClosure capture param offset fix + all prior fixes:
-  1. `@@NewGMLArray@@`/`@@NewGMLObject@@` registered with correct return types
-  2. Step 3 interprocedural linking extended to `Op::MakeClosure`
-  3. `DataType::Variable → "any"` in `type_suffix_for`
-  4. HasField narrowing conservative fix (field_in_non_leaf guard)
-  5. `build_own_fields` enriched with `module.types` live field graph
-  6. Struct + scalar casts both re-enabled
-  7. MakeClosure capture param offset fix: captures[i] now maps to
-     entry_params[sig.params.len() + i], not entry_params[i]. The `_self`
-     (instance) regular param was consuming captures[0], leaving all capture
-     tvars unresolved → unknown.
+- 2026-04-19: 1869 errors after MakeClosure capture param offset fix (2043 → 1869).
+  captures[i] now maps to entry_params[sig.params.len() + i], not entry_params[i].
+  The `_self` regular param was consuming captures[0], leaving all capture tvars
+  unresolved → unknown. Breakdown:
+  - TS2345 (739): unknown assignability
+  - TS2571 (497): property access on unknown receiver
+  - TS2769 (205): no overload matches
+  - TS2322 (177): type mismatch
+  - TS18046 (151): unknown variables
+  NOTE: check cache returned a false "0 errors" (stale entry from pre-fix state);
+  confirmed 1869 via direct tsgo run after clearing ~/.cache/reincarnate/check-*.json.
 
-**Remaining known gaps (0 TS errors, but quality / correctness items):**
+**Remaining known gaps (Dead Estate 1869 baseline):**
 
 - **GMLObject `[key: string]: any` in runtime.** `runtime/gamemaker/object.ts:21` still has
   an index signature returning `any`. CLAUDE.md forbids `any` in runtime code. Fix requires
