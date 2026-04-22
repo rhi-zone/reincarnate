@@ -246,9 +246,10 @@ pub(super) fn translate_with_body(
     wctx: &WithBodyCtx<'_>,
     extra_funcs: &mut Vec<Function>,
 ) -> Result<Function, String> {
-    // When the with-target is a known OBJT, type _self as that class.
-    // Otherwise fall back to GMLObject — all GML instances extend it,
-    // so field access via the `[key: string]: any` index signature works.
+    // When the with-target is a known OBJT or self-sentinel, type _self as that class.
+    // For unknown targets (variables, `all`, etc.) use a fresh type variable so
+    // inference can resolve the type from field accesses rather than locking it to
+    // GMLObject (which forecloses access to subclass-specific fields).
     // Pre-builder type variable counter: used for FunctionSig construction before
     // FunctionBuilder is available. The constraint solver ignores TypeVarId values —
     // only is_concrete() matters — so counter collisions across functions are safe.
@@ -263,7 +264,6 @@ pub(super) fn translate_with_body(
     let self_ty = wctx
         .instance_class
         .and_then(|n| instance_types.get(n).copied())
-        .or_else(|| instance_types.get("GMLObject").copied())
         .map(Type::Instance)
         .unwrap_or_else(&mut pre_fresh);
     // Use a fresh type variable for the return type when the body contains

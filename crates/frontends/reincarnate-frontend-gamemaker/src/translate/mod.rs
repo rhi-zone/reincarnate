@@ -9,7 +9,7 @@ use reincarnate_core::ir::builder::FunctionBuilder;
 use reincarnate_core::ir::func::{FuncId, Function, Visibility};
 use reincarnate_core::ir::inst::CmpKind;
 use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId, TypeVarId};
-use reincarnate_core::ir::value::ValueId;
+use reincarnate_core::ir::value::{Constant, ValueId};
 
 mod cfg;
 mod constants;
@@ -783,8 +783,29 @@ fn run_translation_loop(
                 }
 
                 // Determine the class of the with-target (if it's a typed OBJT pushref).
-                let instance_class: Option<&str> =
+                let mut instance_class: Option<&str> =
                     obj_ref_values.get(&target_obj).map(String::as_str);
+                // `with (self)` pushes the GML self-sentinel (-9) as the target.
+                // In that case, use the outer context's class name so that `_self`
+                // is typed as the enclosing object rather than an anonymous type var.
+                if instance_class.is_none() {
+                    let target_const = fb.try_resolve_const(target_obj);
+                    let target_i64 = target_const.as_ref().and_then(|c| match c {
+                        Constant::Int(n) => Some(*n),
+                        Constant::Float(f) => {
+                            let i = *f as i64;
+                            if i as f64 == *f {
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    });
+                    if target_i64 == Some(-9) {
+                        instance_class = ctx.class_name;
+                    }
+                }
 
                 // Detect "return X inside with" pattern: an exit PopEnv with sentinel
                 // branch offset exists in body_insts. In this case the closure should
