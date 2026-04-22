@@ -258,6 +258,33 @@ fn process_constraint(
             }
             // Other — no useful info.
         }
+        TypeConstraint::HasIndex {
+            container,
+            index_ty,
+            elem_ty,
+        } => {
+            let resolved = resolve(container, arena);
+            match resolved {
+                Type::Array(elem_type_box) => {
+                    deferred.push(TypeConstraint::Equal(elem_ty, *elem_type_box));
+                    // index_ty is left unconstrained here; the actual index value's
+                    // type is already known from its own instruction (no engine-specific
+                    // Int width should be assumed in core).
+                    let _ = index_ty;
+                }
+                Type::Var(_) => {
+                    // Container type not yet resolved — re-defer.
+                    deferred.push(TypeConstraint::HasIndex {
+                        container: resolved,
+                        index_ty,
+                        elem_ty,
+                    });
+                }
+                _ => {
+                    // Unknown or other concrete type — no useful info.
+                }
+            }
+        }
     }
 }
 
@@ -306,6 +333,21 @@ fn param_used_as_collection(
         }
     }
     false
+}
+
+/// Returns true only when `ty` is a known primitive scalar that can never be a struct instance.
+/// Returns false for `Type::Var`, `Type::Unknown`, and any compound or reference type so that
+/// unresolved type variables are not incorrectly excluded from inter-procedural constraints.
+fn is_definitely_scalar(ty: &crate::ir::Type) -> bool {
+    matches!(
+        ty,
+        crate::ir::Type::Int(_)
+            | crate::ir::Type::UInt(_)
+            | crate::ir::Type::Float(_)
+            | crate::ir::Type::Bool
+            | crate::ir::Type::String
+            | crate::ir::Type::Void
+    )
 }
 
 /// Check whether a callee parameter value is used with field access in the callee's body.
@@ -612,7 +654,7 @@ impl Transform for ConstraintSolveHM {
                                             {
                                                 continue;
                                             }
-                                        } else if !is_struct_arg
+                                        } else if is_definitely_scalar(arg_ty)
                                             && param_used_with_field_access(
                                                 callee_func,
                                                 param_val,
@@ -728,9 +770,7 @@ impl Transform for ConstraintSolveHM {
                                         if is_concrete(param_ty) {
                                             continue;
                                         }
-                                        let is_struct_arg =
-                                            matches!(arg_ty, Type::Instance(_) | Type::ClassRef(_));
-                                        if !is_struct_arg
+                                        if is_definitely_scalar(arg_ty)
                                             && param_used_with_field_access(
                                                 callee_func,
                                                 param_val,
@@ -885,7 +925,8 @@ impl Transform for ConstraintSolveHM {
                     &mut deferred,
                 );
             }
-            if deferred.is_empty() || deferred.len() >= pending_count {
+            let did_bind = arena.take_did_bind();
+            if deferred.is_empty() || (!did_bind && deferred.len() >= pending_count) {
                 stalled_deferred = deferred;
                 break;
             }
@@ -989,7 +1030,8 @@ impl Transform for ConstraintSolveHM {
                         &mut deferred,
                     );
                 }
-                if deferred.is_empty() || deferred.len() >= pending_count {
+                let did_bind = arena.take_did_bind();
+                if deferred.is_empty() || (!did_bind && deferred.len() >= pending_count) {
                     break;
                 }
                 pending2 = deferred;

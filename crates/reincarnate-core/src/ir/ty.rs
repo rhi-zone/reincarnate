@@ -138,4 +138,10 @@ pub enum TypeConstraint {
         args: Vec<Type>,
         ret: Type,
     },
+    /// A type must support indexing: container[index_ty] = elem_ty.
+    HasIndex {
+        container: Type,
+        index_ty: Type,
+        elem_ty: Type,
+    },
 }

@@ -34,6 +34,7 @@ pub struct TypeVarArena {
     levels: Vec<u32>,
     bindings: Vec<Option<Type>>,
     current_level: u32,
+    did_bind: bool,
 }
 
 impl Default for TypeVarArena {
@@ -49,6 +50,7 @@ impl TypeVarArena {
             levels: Vec::new(),
             bindings: Vec::new(),
             current_level: 0,
+            did_bind: false,
         }
     }
 
@@ -96,6 +98,16 @@ impl TypeVarArena {
             id
         );
         self.bindings[idx] = Some(ty);
+        self.did_bind = true;
+    }
+
+    /// Reset and return the `did_bind` flag.
+    ///
+    /// Returns `true` if any [`TypeVarId`] was bound via [`bind`] since the
+    /// last call to this method (or since construction).  Resets the flag to
+    /// `false` atomically so the next iteration starts clean.
+    pub fn take_did_bind(&mut self) -> bool {
+        std::mem::replace(&mut self.did_bind, false)
     }
 
     /// Overwrite the binding of `id` unconditionally.
@@ -772,6 +784,40 @@ pub fn collect_function(
                             ty: obj_var,
                             field: field.clone(),
                             field_ty: val_var,
+                        });
+                    }
+                }
+
+                // GetIndex — emit HasIndex on the collection type.
+                Op::GetIndex { collection, index } => {
+                    if let (Some(coll_var), Some(idx_var), Some(rv)) = (
+                        var_for(*collection, &value_vars),
+                        var_for(*index, &value_vars),
+                        result_var,
+                    ) {
+                        constraints.push(TypeConstraint::HasIndex {
+                            container: coll_var,
+                            index_ty: idx_var,
+                            elem_ty: rv,
+                        });
+                    }
+                }
+
+                // SetIndex — emit HasIndex; the stored value type is the element type.
+                Op::SetIndex {
+                    collection,
+                    index,
+                    value,
+                } => {
+                    if let (Some(coll_var), Some(idx_var), Some(val_var)) = (
+                        var_for(*collection, &value_vars),
+                        var_for(*index, &value_vars),
+                        var_for(*value, &value_vars),
+                    ) {
+                        constraints.push(TypeConstraint::HasIndex {
+                            container: coll_var,
+                            index_ty: idx_var,
+                            elem_ty: val_var,
                         });
                     }
                 }
