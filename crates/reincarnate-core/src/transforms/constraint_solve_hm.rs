@@ -622,14 +622,24 @@ impl Transform for ConstraintSolveHM {
                                         {
                                             continue;
                                         }
-                                        if let (Some(&arg_var), Some(&param_var)) = (
-                                            caller_data.value_vars.get(&arg),
-                                            callee_data.value_vars.get(&param_val),
+                                        match (
+                                            caller_data.value_vars.get(&arg).copied(),
+                                            callee_data.value_vars.get(&param_val).copied(),
                                         ) {
-                                            all_constraints.push(TypeConstraint::Equal(
-                                                Type::Var(arg_var),
-                                                Type::Var(param_var),
-                                            ));
+                                            (Some(arg_var), Some(param_var)) => {
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    Type::Var(arg_var),
+                                                    Type::Var(param_var),
+                                                ));
+                                            }
+                                            (None, Some(param_var)) => {
+                                                // Concrete arg flowing into a Var param — emit direct constraint.
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    arg_ty.clone(),
+                                                    Type::Var(param_var),
+                                                ));
+                                            }
+                                            _ => {}
                                         }
                                     }
 
@@ -719,14 +729,24 @@ impl Transform for ConstraintSolveHM {
                                         {
                                             continue;
                                         }
-                                        if let (Some(&arg_var), Some(&param_var)) = (
-                                            caller_data.value_vars.get(&arg),
-                                            callee_data.value_vars.get(&param_val),
+                                        match (
+                                            caller_data.value_vars.get(&arg).copied(),
+                                            callee_data.value_vars.get(&param_val).copied(),
                                         ) {
-                                            all_constraints.push(TypeConstraint::Equal(
-                                                Type::Var(arg_var),
-                                                Type::Var(param_var),
-                                            ));
+                                            (Some(arg_var), Some(param_var)) => {
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    Type::Var(arg_var),
+                                                    Type::Var(param_var),
+                                                ));
+                                            }
+                                            (None, Some(param_var)) => {
+                                                // Concrete arg flowing into a Var param — emit direct constraint.
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    arg_ty.clone(),
+                                                    Type::Var(param_var),
+                                                ));
+                                            }
+                                            _ => {}
                                         }
                                     }
 
@@ -786,14 +806,24 @@ impl Transform for ConstraintSolveHM {
                                         {
                                             continue;
                                         }
-                                        if let (Some(&capture_var), Some(&param_var)) = (
-                                            caller_data.value_vars.get(&capture),
-                                            callee_data.value_vars.get(&param_val),
+                                        match (
+                                            caller_data.value_vars.get(&capture).copied(),
+                                            callee_data.value_vars.get(&param_val).copied(),
                                         ) {
-                                            all_constraints.push(TypeConstraint::Equal(
-                                                Type::Var(capture_var),
-                                                Type::Var(param_var),
-                                            ));
+                                            (Some(capture_var), Some(param_var)) => {
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    Type::Var(capture_var),
+                                                    Type::Var(param_var),
+                                                ));
+                                            }
+                                            (None, Some(param_var)) => {
+                                                // Concrete capture flowing into a Var param — emit direct constraint.
+                                                all_constraints.push(TypeConstraint::Equal(
+                                                    capture_ty.clone(),
+                                                    Type::Var(param_var),
+                                                ));
+                                            }
+                                            _ => {}
                                         }
                                     }
                                 }
