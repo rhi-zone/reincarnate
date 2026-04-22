@@ -41,7 +41,7 @@ Invariant. When a violation appears, adjust the law — don't add a corollary.
 **3. Behavioral Equivalence.** Emitted code produces identical observable output for any input. Preserve source-language bugs.
 
 **4. Honest Representation.** IR types reflect source-language semantics, not VM storage format. A GML boolean is `Bool`, not `Float`. Source-level type violations surface as target-language type errors — that is correct behavior. Prohibited:
-- `any` in runtime type signatures, emitted TypeScript, or Rust emit paths — use `unknown`
+- `any` anywhere — unconditionally forbidden. In TypeScript: `unknown`. In Rust emit paths: concrete types. No exceptions for "open" objects, dynamic fields, or handwritten runtime code. The full source is available; every field is statically known.
 - `(expr as any)` in the emitter — fix the IR type instead
 - Backward type propagation (inferring a value's type from how it is used downstream)
 - Any of the above added to reduce TS error counts
@@ -81,7 +81,7 @@ Always pass `--include-ignored`. Edit all files first, then build once.
 
 - No engine-specific logic in `reincarnate-core` — no named engine functions, no engine-specific heuristics, no backward inference that compensates for engine gaps
 - No backward type propagation in core transforms (inferring a value's type from how it is used downstream)
-- No `any` in emitted TypeScript, runtime code, or Rust emit paths — `unknown` for unknown types, specific types for known types
+- No `any` anywhere — unconditionally forbidden in emitted TypeScript, handwritten runtime code, and Rust emit paths. No exceptions.
 - No widening runtime types to match wrong emitter output — fix the inference
 - No Claude Code auto-memory (`~/.claude/projects/.*./memory/`) — unversioned and invisible; write behavioral changes to CLAUDE.md instead
 - No path dependencies in Cargo.toml

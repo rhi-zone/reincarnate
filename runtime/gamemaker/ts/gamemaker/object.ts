@@ -17,8 +17,6 @@ const __baseproto = Object.getPrototypeOf(class {});
 // HANDWRITTEN
 export class GMLObject {
   static instances: GMLObject[];
-  // GML objects are open — instance variables are set dynamically in event handlers.
-  [key: string]: any;
   _rt!: GameRuntime;
   x = 0;
   y = 0;
@@ -92,28 +90,29 @@ export class GMLObject {
   drawgui(): void {}
 }
 
+const proto = GMLObject.prototype as Record<string, unknown>;
 // Alarm stubs
 for (let i = 0; i < 12; i++) {
-  (GMLObject.prototype as any)["alarm" + i] = noop;
+  proto["alarm" + i] = noop;
 }
 // Key press / keyboard / key release stubs
 for (let i = 0; i <= 0xff; i++) {
-  (GMLObject.prototype as any)["keypress" + i] = noop;
-  (GMLObject.prototype as any)["keyboard" + i] = noop;
-  (GMLObject.prototype as any)["keyrelease" + i] = noop;
+  proto["keypress" + i] = noop;
+  proto["keyboard" + i] = noop;
+  proto["keyrelease" + i] = noop;
 }
 // View event stubs
 for (let i = 0; i < 8; i++) {
-  (GMLObject.prototype as any)["outsideview" + i] = noop;
-  (GMLObject.prototype as any)["boundaryview" + i] = noop;
+  proto["outsideview" + i] = noop;
+  proto["boundaryview" + i] = noop;
 }
 // User event stubs
 for (let i = 0; i < 16; i++) {
-  (GMLObject.prototype as any)["user" + i] = noop;
+  proto["user" + i] = noop;
 }
 // Draw variant stubs
 for (const ev of ["drawbegin", "drawend", "drawguibegin", "drawguiend", "drawpre", "drawpost", "drawresize"]) {
-  (GMLObject.prototype as any)[ev] = noop;
+  proto[ev] = noop;
 }
 // Mouse button stubs
 for (const ev of [
@@ -124,7 +123,7 @@ for (const ev of [
   "globalleftpressed", "globalrightpressed", "globalmiddlepressed",
   "globalleftreleased", "globalrightreleased", "globalmiddlereleased",
 ]) {
-  (GMLObject.prototype as any)[ev] = noop;
+  proto[ev] = noop;
 }
 
 /** Sentinel prototype for detecting the root of the GMLObject hierarchy. */
