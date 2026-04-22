@@ -12,6 +12,7 @@ use reincarnate_core::ir::ty::{FunctionSig, Type, TypeId, TypeVarId};
 use reincarnate_core::ir::value::ValueId;
 
 mod cfg;
+mod constants;
 mod ops;
 pub(crate) mod switch;
 #[cfg(test)]

@@ -10,7 +10,7 @@
 //!
 //! ```text
 //! entry_block(..., v_arg: arg):
-//!     v_undef = get_field self, "undefined"
+//!     v_undef = const null
 //!     v_cmp = cmp.eq v_arg, v_undef
 //!     br_if v_cmp, default_block, continue_block(v_arg)
 //!
@@ -258,15 +258,12 @@ fn scan_default_chain(func: &Function) -> Vec<DefaultCheckMatch> {
         .map(|p| p.value)
         .collect();
 
-    // We need at least one param (self) to do GetField on.
     if entry_params.is_empty() {
         return results;
     }
 
-    let self_param = entry_params[0];
-
     while let Some((param_idx, constant, next_block)) =
-        try_match_default_check(func, current_block, self_param, &entry_params)
+        try_match_default_check(func, current_block, &entry_params)
     {
         results.push(DefaultCheckMatch {
             param_idx,
@@ -283,7 +280,7 @@ fn scan_default_chain(func: &Function) -> Vec<DefaultCheckMatch> {
 /// Try to match the default-check pattern in a single block.
 ///
 /// Pattern:
-///   v_undef = get_field self, "undefined"
+///   v_undef = const null           (GML `undefined` compiled to IR Constant::Null)
 ///   v_cmp = cmp.eq param[N], v_undef
 ///   br_if v_cmp, then_block, else_block(param[N])
 ///
@@ -295,25 +292,20 @@ fn scan_default_chain(func: &Function) -> Vec<DefaultCheckMatch> {
 fn try_match_default_check(
     func: &Function,
     block_id: BlockId,
-    self_param: ValueId,
     entry_params: &[ValueId],
 ) -> Option<(usize, Constant, BlockId)> {
     let block = &func.blocks[block_id];
     let insts = &block.insts;
 
-    // We need at least 2-3 instructions: possibly GetField, Cmp, BrIf.
-    // The GetField for "undefined" might be in this block or a previous one,
-    // so we need to find a Cmp that compares a param with an undefined value.
+    // We need at least 2-3 instructions: possibly Const(Null), Cmp, BrIf.
 
-    // Find any value that is `get_field self, "undefined"` in this block.
+    // Find any value that is `const null` (the IR form of GML's `undefined`) in this block.
     let mut undefined_val = None;
     for &inst_id in insts {
         let inst = &func.insts[inst_id];
-        if let Op::GetField { object, field } = &inst.op {
-            if *object == self_param && field == "undefined" {
-                undefined_val = inst.result;
-                break;
-            }
+        if let Op::Const(Constant::Null) = &inst.op {
+            undefined_val = inst.result;
+            break;
         }
     }
     let undefined_val = undefined_val?;
@@ -440,8 +432,8 @@ mod tests {
         for (i, default_val) in defaults.iter().enumerate() {
             let arg_param = fb.param(1 + i);
 
-            // get_field self, "undefined"
-            let undef = fb.get_field(self_param, "undefined", Type::Unknown);
+            // const null (IR form of GML's `undefined`)
+            let undef = fb.const_null();
 
             // cmp.eq arg, undef
             let cmp = fb.cmp(CmpKind::Eq, arg_param, undef);

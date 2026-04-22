@@ -7,8 +7,8 @@ use reincarnate_core::ir::ty::Type;
 use reincarnate_core::ir::value::{Constant, ValueId};
 
 use super::{
-    is_2d_array_access, is_cross_obj_2d_read, is_stacktop_ref, parse_argument_index, pop,
-    resolve_variable_name, TranslateCtx,
+    constants::gml_builtin_constant, is_2d_array_access, is_cross_obj_2d_read, is_stacktop_ref,
+    parse_argument_index, pop, resolve_variable_name, TranslateCtx,
 };
 
 /// Coerce a compile-time constant to an `i64` integer value.
@@ -421,6 +421,16 @@ pub(super) fn translate_push_variable(
                     let val = fb.call_named("GameMaker.Global.get", &[name_val], ty);
                     stack.push(val);
                 }
+            } else if let Some(constant) = gml_builtin_constant(&var_name) {
+                let val = match constant {
+                    Constant::Null => fb.const_null(),
+                    Constant::Bool(b) => fb.const_bool(b),
+                    Constant::Int(n) => fb.const_int(n, 64),
+                    Constant::UInt(n) => fb.const_uint(n),
+                    Constant::Float(f) => fb.const_float(f),
+                    Constant::String(s) => fb.const_string(s),
+                };
+                stack.push(val);
             } else if ctx.has_self {
                 let self_param = fb.param(0);
                 let ty = fb.fresh_var();
