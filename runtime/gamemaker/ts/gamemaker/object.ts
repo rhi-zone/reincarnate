@@ -90,7 +90,7 @@ export class GMLObject {
   drawgui(): void {}
 }
 
-const proto = GMLObject.prototype as Record<string, unknown>;
+const proto = GMLObject.prototype as unknown as Record<string, unknown>;
 // Alarm stubs
 for (let i = 0; i < 12; i++) {
   proto["alarm" + i] = noop;

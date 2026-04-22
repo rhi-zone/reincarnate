@@ -7,7 +7,7 @@ pub(super) fn gml_builtin_constant(name: &str) -> Option<Constant> {
         "undefined" => Some(Constant::Null),
         "noone" => Some(Constant::Float(-4.0)),
         "pi" => Some(Constant::Float(std::f64::consts::PI)),
-        "infinity" => Some(Constant::Float(f64::INFINITY)),
+        "inf" | "infinity" => Some(Constant::Float(f64::INFINITY)),
         "NaN" => Some(Constant::Float(f64::NAN)),
         "pointer_null" => Some(Constant::Int(0)),
         "pointer_invalid" => Some(Constant::Int(-1)),
