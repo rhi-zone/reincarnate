@@ -570,24 +570,37 @@ pub(super) fn translate_push_variable(
             // Argument variable: map to function parameter (or captured slot).
             // variable_id is the VARI table index, not the argument index —
             // extract the actual index from the variable name ("argument3" → 3).
-            let arg_idx = parse_argument_index(&var_name).unwrap_or(var_ref.variable_id as usize);
-            if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
-                let ty = fb.fresh_var();
-                stack.push(fb.load(slot, ty));
-            } else {
-                let param_offset =
-                    if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
-                let idx = param_offset + arg_idx;
-                if idx < fb.param_count() {
-                    let param = fb.param(idx);
-                    stack.push(param);
-                } else {
-                    // Out-of-range argument access — emit as dynamic lookup.
-                    let name_val = fb.const_string(format!("argument{arg_idx}"));
+            if let Some(arg_idx) = parse_argument_index(&var_name) {
+                if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
                     let ty = fb.fresh_var();
-                    let val = fb.call_named("GameMaker.Argument.get", &[name_val], ty);
-                    stack.push(val);
+                    stack.push(fb.load(slot, ty));
+                } else {
+                    let param_offset =
+                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                    let idx = param_offset + arg_idx;
+                    if idx < fb.param_count() {
+                        let param = fb.param(idx);
+                        stack.push(param);
+                    } else {
+                        // Out-of-range argument access — emit as dynamic lookup.
+                        let name_val = fb.const_string(format!("argument{arg_idx}"));
+                        let ty = fb.fresh_var();
+                        let val = fb.call_named("GameMaker.Argument.get", &[name_val], ty);
+                        stack.push(val);
+                    }
                 }
+            } else if ctx.has_self {
+                // Haxe-emitted `argument.field` read on a struct constructor's
+                // class descriptor: route to self-field read on param(0).
+                let self_param = fb.param(0);
+                let ty = fb.fresh_var();
+                let val = fb.get_field(self_param, &var_name, ty);
+                stack.push(val);
+            } else {
+                let name_val = fb.const_string(&var_name);
+                let ty = fb.fresh_var();
+                let val = fb.call_named("GameMaker.Global.get", &[name_val], ty);
+                stack.push(val);
             }
         }
         _ => {
@@ -909,6 +922,38 @@ pub(super) fn translate_pop(
                         // else: OOB (with-body uncaptured arg or invalid game code) — skip.
                     }
                 } else if ctx.has_self {
+                    let self_param = fb.param(0);
+                    fb.set_field(self_param, &var_name, value);
+                } else {
+                    let name_val = fb.const_string(&var_name);
+                    fb.call_named("GameMaker.Global.set", &[name_val, value], Type::Void);
+                }
+            }
+            Some(InstanceType::Arg) => {
+                if let Some(arg_idx) = parse_argument_index(&var_name) {
+                    // Formal-parameter write → create local slot seeded from the
+                    // param so subsequent reads see the updated value.
+                    let param_offset =
+                        if ctx.has_self { 1 } else { 0 } + if ctx.has_other { 1 } else { 0 };
+                    if let Some(&slot) = locals.get(&format!("_argument{arg_idx}")) {
+                        // Inside a with-body: update the captured argument slot.
+                        fb.store(slot, value);
+                    } else {
+                        let abs_idx = param_offset + arg_idx;
+                        if abs_idx < fb.param_count() {
+                            let param = fb.param(abs_idx);
+                            let ty = fb.fresh_var();
+                            let slot = fb.alloc(ty);
+                            fb.name_value(slot, var_name.clone());
+                            fb.store(slot, param);
+                            fb.store(slot, value);
+                            locals.insert(var_name, slot);
+                        }
+                        // else: OOB — skip.
+                    }
+                } else if ctx.has_self {
+                    // Haxe-emitted `argument.field = ...` write on a struct
+                    // constructor's class descriptor: self-field write on param(0).
                     let self_param = fb.param(0);
                     fb.set_field(self_param, &var_name, value);
                 } else {
