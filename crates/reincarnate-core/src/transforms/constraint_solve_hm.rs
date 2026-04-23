@@ -29,7 +29,7 @@ use crate::entity::EntityRef;
 use crate::error::CoreError;
 use crate::ir::inst::Op;
 use crate::ir::module::{SystemCallTypeRule, TypeDecl};
-use crate::ir::ty::{TypeConstraint, TypeId};
+use crate::ir::ty::{TypeConstraint, TypeId, TypeVarId};
 use crate::ir::{Constant, FuncId, Module, Type, ValueId};
 use crate::pipeline::{Transform, TransformResult};
 use crate::transforms::constraint_collect::{
@@ -570,6 +570,10 @@ impl Transform for ConstraintSolveHM {
         }
 
         // -----------------------------------------------------------------------
+        // Accumulates concrete types flowing into each param var from multiple call sites.
+        // Drained after the interprocedural loop to emit union constraints.
+        let mut param_concrete_types: HashMap<TypeVarId, Vec<Type>> = HashMap::new();
+
         // Step 3: emit interprocedural call-site constraints.
         //
         // For every Op::Call and Op::MethodCall, link the caller's argument
@@ -669,17 +673,23 @@ impl Transform for ConstraintSolveHM {
                                             callee_data.value_vars.get(&param_val).copied(),
                                         ) {
                                             (Some(arg_var), Some(param_var)) => {
-                                                all_constraints.push(TypeConstraint::Equal(
-                                                    Type::Var(arg_var),
-                                                    Type::Var(param_var),
-                                                ));
+                                                if is_concrete(arg_ty) {
+                                                    param_concrete_types
+                                                        .entry(param_var)
+                                                        .or_default()
+                                                        .push(arg_ty.clone());
+                                                } else {
+                                                    all_constraints.push(TypeConstraint::Equal(
+                                                        Type::Var(arg_var),
+                                                        Type::Var(param_var),
+                                                    ));
+                                                }
                                             }
                                             (None, Some(param_var)) => {
-                                                // Concrete arg flowing into a Var param — emit direct constraint.
-                                                all_constraints.push(TypeConstraint::Equal(
-                                                    arg_ty.clone(),
-                                                    Type::Var(param_var),
-                                                ));
+                                                param_concrete_types
+                                                    .entry(param_var)
+                                                    .or_default()
+                                                    .push(arg_ty.clone());
                                             }
                                             _ => {}
                                         }
@@ -747,10 +757,17 @@ impl Transform for ConstraintSolveHM {
                                                 caller_data.value_vars.get(receiver),
                                                 callee_data.value_vars.get(&param_val),
                                             ) {
-                                                all_constraints.push(TypeConstraint::Equal(
-                                                    Type::Var(recv_var),
-                                                    Type::Var(param_var),
-                                                ));
+                                                if is_concrete(recv_ty) {
+                                                    param_concrete_types
+                                                        .entry(param_var)
+                                                        .or_default()
+                                                        .push(recv_ty.clone());
+                                                } else {
+                                                    all_constraints.push(TypeConstraint::Equal(
+                                                        Type::Var(recv_var),
+                                                        Type::Var(param_var),
+                                                    ));
+                                                }
                                             }
                                         }
                                     }
@@ -785,17 +802,23 @@ impl Transform for ConstraintSolveHM {
                                             callee_data.value_vars.get(&param_val).copied(),
                                         ) {
                                             (Some(arg_var), Some(param_var)) => {
-                                                all_constraints.push(TypeConstraint::Equal(
-                                                    Type::Var(arg_var),
-                                                    Type::Var(param_var),
-                                                ));
+                                                if is_concrete(arg_ty) {
+                                                    param_concrete_types
+                                                        .entry(param_var)
+                                                        .or_default()
+                                                        .push(arg_ty.clone());
+                                                } else {
+                                                    all_constraints.push(TypeConstraint::Equal(
+                                                        Type::Var(arg_var),
+                                                        Type::Var(param_var),
+                                                    ));
+                                                }
                                             }
                                             (None, Some(param_var)) => {
-                                                // Concrete arg flowing into a Var param — emit direct constraint.
-                                                all_constraints.push(TypeConstraint::Equal(
-                                                    arg_ty.clone(),
-                                                    Type::Var(param_var),
-                                                ));
+                                                param_concrete_types
+                                                    .entry(param_var)
+                                                    .or_default()
+                                                    .push(arg_ty.clone());
                                             }
                                             _ => {}
                                         }
@@ -873,17 +896,23 @@ impl Transform for ConstraintSolveHM {
                                             callee_data.value_vars.get(&param_val).copied(),
                                         ) {
                                             (Some(capture_var), Some(param_var)) => {
-                                                all_constraints.push(TypeConstraint::Equal(
-                                                    Type::Var(capture_var),
-                                                    Type::Var(param_var),
-                                                ));
+                                                if is_concrete(capture_ty) {
+                                                    param_concrete_types
+                                                        .entry(param_var)
+                                                        .or_default()
+                                                        .push(capture_ty.clone());
+                                                } else {
+                                                    all_constraints.push(TypeConstraint::Equal(
+                                                        Type::Var(capture_var),
+                                                        Type::Var(param_var),
+                                                    ));
+                                                }
                                             }
                                             (None, Some(param_var)) => {
-                                                // Concrete capture flowing into a Var param — emit direct constraint.
-                                                all_constraints.push(TypeConstraint::Equal(
-                                                    capture_ty.clone(),
-                                                    Type::Var(param_var),
-                                                ));
+                                                param_concrete_types
+                                                    .entry(param_var)
+                                                    .or_default()
+                                                    .push(capture_ty.clone());
                                             }
                                             _ => {}
                                         }
@@ -895,6 +924,22 @@ impl Transform for ConstraintSolveHM {
                     }
                 }
             }
+        }
+
+        // Emit union constraints for params called with multiple concrete types.
+        for (param_var, types) in param_concrete_types {
+            let mut deduped: Vec<Type> = Vec::new();
+            for ty in types {
+                if !deduped.contains(&ty) {
+                    deduped.push(ty);
+                }
+            }
+            let constraint_ty = if deduped.len() == 1 {
+                deduped.into_iter().next().unwrap()
+            } else {
+                Type::Union(deduped)
+            };
+            all_constraints.push(TypeConstraint::Equal(constraint_ty, Type::Var(param_var)));
         }
 
         // -----------------------------------------------------------------------

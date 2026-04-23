@@ -4,24 +4,28 @@ use crate::error::CoreError;
 use crate::ir::{FieldDef, FuncId, Function, MethodKind, Module, Op, StructDef, Type, Visibility};
 use crate::pipeline::{Transform, TransformResult};
 
-/// Infer struct definitions from constructor `SetField` ops.
+/// Infer struct definitions from constructor and instance-method `SetField` ops.
 ///
-/// Scans constructor functions (`MethodKind::Constructor`) for
-/// `SetField { object: self_param, field, value }` ops and synthesizes or augments
-/// a `StructDef` entry in `module.structs`.  Runs before `TypeInference` so that field
-/// types are available to the solver.
+/// Scans constructor functions (`MethodKind::Constructor`) and instance methods
+/// (`MethodKind::Instance`) for `SetField { object: self_param, field, value }` ops
+/// and synthesizes or augments a `StructDef` entry in `module.structs`.  Runs before
+/// `TypeInference` so that field types are available to the solver.
 ///
 /// Rules:
-/// - Functions with `method_kind == MethodKind::Constructor` are scanned.
+/// - Functions with `method_kind == MethodKind::Constructor` or `MethodKind::Instance`
+///   are scanned.  `MethodKind::Closure` is skipped (different self convention).
+/// - Fields are accumulated per class name across all matching functions, then committed
+///   once per class.
 /// - Only `SetField` ops whose `object` is the first entry-block parameter (the `self`
 ///   parameter) are collected.
 /// - If a `StructDef` with the derived name already exists AND was previously inferred by
-///   this pass, the function is skipped.  Frontend-declared structs (not inferred) are
+///   this pass, the class is skipped.  Frontend-declared structs (not inferred) are
 ///   augmented with user-defined fields.
 /// - The struct name is taken from `func.class` if present; otherwise the last `::` segment
 ///   of the function name (read from `module.func_name`).
 /// - After building the `StructDef`, the first entry-block param's type and `sig.params[0]`
-///   are updated to `Type::Instance(type_id)` when they were `Unknown` or `Var(_)`.
+///   are updated to `Type::Instance(type_id)` only for `MethodKind::Constructor` (instance
+///   method self params are already typed by the frontend).
 pub struct ConstructorStructInfer;
 
 /// Determine whether a type should be replaced by an inferred struct type.
@@ -88,27 +92,30 @@ impl Transform for ConstructorStructInfer {
         let known_struct_names: HashSet<String> =
             module.structs.iter().map(|s| s.name.clone()).collect();
 
-        // Collect (struct_name, fields_map) from each init function.
-        struct Inferred {
-            name: String,
-            fields: Vec<FieldDef>,
-            func_id: FuncId,
-        }
-
-        let mut inferred: Vec<Inferred> = Vec::new();
+        // Collect fields per class name across all Constructor and Instance functions.
+        // Value: (accumulated fields map, constructor FuncId if seen).
+        // The FuncId is used for self-param type update, which is only needed for
+        // Constructor methods (Instance method self params are already typed).
+        let mut per_class: HashMap<String, (HashMap<String, Type>, Option<FuncId>)> =
+            HashMap::new();
 
         for (func_id, func) in module.functions.iter() {
             let func_name = module.func_name(func_id);
-            // Only Constructor methods are scanned for field initialization.
-            if func.method_kind != MethodKind::Constructor {
+            // Scan Constructor and Instance methods for SetField on self.
+            // Skip Closure — closures have a different self convention.
+            let is_constructor = func.method_kind == MethodKind::Constructor;
+            let is_instance = func.method_kind == MethodKind::Instance;
+            if !is_constructor && !is_instance {
                 continue;
             }
 
             let name = struct_name(func, func_name);
 
-            // Skip if the struct was already fully inferred by a prior pass run.
-            // Frontend-declared structs (inferred == false) should be augmented.
-            if known_struct_names.contains(&name) {
+            // For pure-script inferred structs (not in known_struct_names): skip if
+            // the struct was already fully inferred by a prior pass run.
+            // For frontend-declared structs (in known_struct_names): always accumulate
+            // so we capture fields from all events (Constructor + Instance).
+            if !known_struct_names.contains(&name) {
                 let already_inferred = module
                     .find_type(&name)
                     .map(|id| module.types[id].inferred())
@@ -126,7 +133,15 @@ impl Transform for ConstructorStructInfer {
             let self_value = self_param.value;
 
             // Walk all instructions in all blocks, collecting SetField ops on self.
-            let mut field_types: HashMap<String, Type> = HashMap::new();
+            let entry = per_class
+                .entry(name)
+                .or_insert_with(|| (HashMap::new(), None));
+
+            // Record Constructor FuncId for self-param type update.
+            if is_constructor && entry.1.is_none() {
+                entry.1 = Some(func_id);
+            }
+
             for (_bid, block) in func.blocks.iter() {
                 for &inst_id in &block.insts {
                     if let Op::SetField {
@@ -139,7 +154,8 @@ impl Transform for ConstructorStructInfer {
                             continue;
                         }
                         let val_ty = func.value_types[*value].clone();
-                        field_types
+                        entry
+                            .0
                             .entry(field.clone())
                             .and_modify(|existing| {
                                 *existing = merge_field_type(existing.clone(), val_ty.clone());
@@ -148,28 +164,40 @@ impl Transform for ConstructorStructInfer {
                     }
                 }
             }
-
-            if field_types.is_empty() {
-                continue;
-            }
-
-            // Stable ordering: sort fields alphabetically for determinism.
-            let mut fields: Vec<FieldDef> = field_types
-                .into_iter()
-                .map(|(fname, ty)| FieldDef {
-                    name: fname,
-                    ty,
-                    default: None,
-                })
-                .collect();
-            fields.sort_by(|a, b| a.name.cmp(&b.name));
-
-            inferred.push(Inferred {
-                name,
-                fields,
-                func_id,
-            });
         }
+
+        // Build the final list of classes that actually have fields to commit.
+        struct Inferred {
+            name: String,
+            fields: Vec<FieldDef>,
+            constructor_func_id: Option<FuncId>,
+        }
+
+        let mut inferred: Vec<Inferred> = per_class
+            .into_iter()
+            .filter_map(|(name, (field_types, constructor_func_id))| {
+                if field_types.is_empty() {
+                    return None;
+                }
+                let mut fields: Vec<FieldDef> = field_types
+                    .into_iter()
+                    .map(|(fname, ty)| FieldDef {
+                        name: fname,
+                        ty,
+                        default: None,
+                    })
+                    .collect();
+                // Stable ordering: sort fields alphabetically for determinism.
+                fields.sort_by(|a, b| a.name.cmp(&b.name));
+                Some(Inferred {
+                    name,
+                    fields,
+                    constructor_func_id,
+                })
+            })
+            .collect();
+        // Stable ordering across classes.
+        inferred.sort_by(|a, b| a.name.cmp(&b.name));
 
         let changed = !inferred.is_empty();
 
@@ -215,19 +243,23 @@ impl Transform for ConstructorStructInfer {
                 module.types[type_id].set_inferred(true);
             }
 
-            // Update the self param type in value_types and sig.params[0].
-            let func = &mut module.functions[inf.func_id];
-            let entry_block_param_value = func.blocks[func.entry].params[0].value;
+            // Update the self param type in value_types and sig.params[0] — only for
+            // Constructor methods.  Instance method self params are already typed by
+            // the frontend.
+            if let Some(constructor_func_id) = inf.constructor_func_id {
+                let func = &mut module.functions[constructor_func_id];
+                let entry_block_param_value = func.blocks[func.entry].params[0].value;
 
-            let current_ty = func.value_types[entry_block_param_value].clone();
-            if is_unresolved(&current_ty) {
-                func.value_types[entry_block_param_value] = Type::Instance(type_id);
-                func.blocks[func.entry].params[0].ty = Type::Instance(type_id);
-            }
+                let current_ty = func.value_types[entry_block_param_value].clone();
+                if is_unresolved(&current_ty) {
+                    func.value_types[entry_block_param_value] = Type::Instance(type_id);
+                    func.blocks[func.entry].params[0].ty = Type::Instance(type_id);
+                }
 
-            if let Some(param0_ty) = func.sig.params.first_mut() {
-                if is_unresolved(param0_ty) {
-                    *param0_ty = Type::Instance(type_id);
+                if let Some(param0_ty) = func.sig.params.first_mut() {
+                    if is_unresolved(param0_ty) {
+                        *param0_ty = Type::Instance(type_id);
+                    }
                 }
             }
         }
