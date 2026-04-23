@@ -1328,6 +1328,7 @@ fn emit_runtime_functions_file(
             &no_unique_static,
             &name_map,
             overloads,
+            None,
             debug,
             &mut out,
             diagnostics,
