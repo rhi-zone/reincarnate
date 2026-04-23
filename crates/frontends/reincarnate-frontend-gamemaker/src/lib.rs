@@ -326,6 +326,9 @@ impl Frontend for GameMakerFrontend {
             ensure_gml_object_struct(&mut mb);
             instance_types.insert("GMLObject".to_string(), gml_object_id);
 
+            let obj_name_set: HashSet<&str> = obj_names.iter().map(String::as_str).collect();
+            let mut missing_owners_warned: HashSet<String> = HashSet::new();
+
             // Collect stub FuncIds: stubs have an empty params list (no self param).
             let stub_funcs: Vec<(String, FuncId)> = user_func_registry
                 .iter()
@@ -351,6 +354,21 @@ impl Frontend for GameMakerFrontend {
                 let code_name = dw.resolve_string(code_entry.name).unwrap_or_default();
                 let locals = code_locals_map.get(&code_name).copied();
 
+                let owner_raw = extract_script_owner(&code_name, &obj_name_set);
+                let owner_pascal = owner_raw.map(naming::object_name_to_pascal);
+                if let Some(owner) = owner_pascal.as_deref() {
+                    if !instance_types.contains_key(owner)
+                        && missing_owners_warned.insert(owner.to_string())
+                    {
+                        eprintln!(
+                            "[gamemaker] warn: stub {code_name} references unknown owner class {owner}; falling back to GMLObject"
+                        );
+                    }
+                }
+                let class_name = owner_pascal
+                    .as_deref()
+                    .filter(|o| instance_types.contains_key(*o));
+
                 let ctx = TranslateCtx {
                     function_names: &function_names,
                     asset_ref_names: &asset_ref_names,
@@ -364,7 +382,7 @@ impl Frontend for GameMakerFrontend {
                     has_other: false,
                     arg_count: code_entry.args_count & 0x7FFF,
                     obj_names: &obj_names,
-                    class_name: None,
+                    class_name,
                     self_object_index: None,
                     ancestor_indices: HashSet::new(),
                     script_names: &script_names,
@@ -762,6 +780,11 @@ fn translate_scripts(
     ensure_gml_object_struct(mb);
     instance_types.insert("GMLObject".to_string(), gml_object_id);
 
+    // Borrowed lookup set for extract_script_owner — owner strings extracted
+    // from CODE names are matched against real object names here.
+    let obj_name_set: HashSet<&str> = obj_names.iter().map(String::as_str).collect();
+    let mut missing_owners_warned: HashSet<String> = HashSet::new();
+
     for script in &scpt.scripts {
         let script_name = dw
             .resolve_string(script.name)
@@ -834,6 +857,24 @@ fn translate_scripts(
 
         let locals = code_locals_map.get(&code_name).copied();
 
+        // Extract the owning object class from the CODE entry name so lifted
+        // nested/event/struct scripts get `self: <OwnerClass>` rather than the
+        // `GMLObject` fallback. Top-level scripts stay as None.
+        let owner_raw = extract_script_owner(&code_name, &obj_name_set);
+        let owner_pascal = owner_raw.map(naming::object_name_to_pascal);
+        if let Some(owner) = owner_pascal.as_deref() {
+            if !instance_types.contains_key(owner)
+                && missing_owners_warned.insert(owner.to_string())
+            {
+                eprintln!(
+                    "[gamemaker] warn: script {code_name} references unknown owner class {owner}; falling back to GMLObject"
+                );
+            }
+        }
+        let class_name = owner_pascal
+            .as_deref()
+            .filter(|o| instance_types.contains_key(*o));
+
         let ctx = TranslateCtx {
             function_names,
             asset_ref_names,
@@ -847,7 +888,7 @@ fn translate_scripts(
             has_other: false,
             arg_count: code_entry.args_count & 0x7FFF,
             obj_names,
-            class_name: None,
+            class_name,
             self_object_index: None,
             ancestor_indices: HashSet::new(),
             script_names,
@@ -1335,6 +1376,91 @@ fn strip_script_prefix(name: &str) -> &str {
     name.strip_prefix("gml_GlobalScript_")
         .or_else(|| name.strip_prefix("gml_Script_"))
         .unwrap_or(name)
+}
+
+/// Extract the owner object name from a canonical CODE entry name produced by
+/// the GameMaker compiler.
+///
+/// SCPT entries carry no owner field, but the compiler encodes the owning
+/// object into the CODE entry name for nested-context scripts:
+///
+/// - `gml_Script_anon@<n>@gml_Object_<Owner>_<Event>_<n>` (event-scoped anon)
+/// - `gml_Script_anon@<n>@anon@<n>@gml_Object_<Owner>_<Event>_<n>` (nested anon)
+/// - `gml_Script_anon_<Owner>_<Event>_<n>_<n>` (alternate anon form)
+/// - `gml_Script____struct___<n>_gml_Object_<Owner>_<Event>_<n>_<n>`
+///   (struct declared in event)
+/// - `gml_Script_<Owner>_<MethodName>` (bound-method form, matched only when
+///   `<Owner>` appears in the caller's object table)
+///
+/// Both `_` and `@` are used as part separators inside the CODE name — anon
+/// parts are delimited with `@` (e.g. `anon@11762@`), while object/event parts
+/// are delimited with `_`.
+///
+/// Top-level scripts unrelated to an object return `None`.
+///
+/// The owner substring in the CODE name is the raw GML object identifier
+/// (e.g. `oPlayer`). Callers pass an `obj_names` set keyed by whatever form
+/// they already have (usually the PascalCase post-normalization name); the
+/// helper applies `naming::object_name_to_pascal` internally before lookup so
+/// both camelCase and snake_case raw GML names match against the normalized
+/// table.
+fn extract_script_owner<'a>(code_name: &'a str, obj_names: &HashSet<&str>) -> Option<&'a str> {
+    let matches = |candidate: &str| -> bool {
+        obj_names.contains(candidate)
+            || obj_names.contains(naming::object_name_to_pascal(candidate).as_str())
+    };
+
+    // Event-scoped forms: the substring `gml_Object_<Owner>_<Event>_...` is
+    // unambiguous. The owner is everything between `gml_Object_` and the next
+    // `_<Event>` delimiter — but we don't know where the event name starts, so
+    // we rely on the object table to disambiguate. The preceding separator is
+    // either `_` (struct-in-event form) or `@` (anon-in-event form).
+    if let Some(rest) = code_name
+        .split("_gml_Object_")
+        .nth(1)
+        .or_else(|| code_name.split("@gml_Object_").nth(1))
+    {
+        // `rest` is `<Owner>_<Event>_<n>...`. Walk underscore boundaries and
+        // return the longest prefix that matches a known object name.
+        let mut best: Option<&str> = None;
+        for (i, _) in rest.match_indices('_') {
+            let candidate = &rest[..i];
+            if matches(candidate) {
+                best = Some(candidate);
+            }
+        }
+        return best;
+    }
+
+    // `gml_Script_anon_<Owner>_<Event>_<n>_<n>` — alternate anon form with no
+    // `_gml_Object_` segment.
+    if let Some(rest) = code_name.strip_prefix("gml_Script_anon_") {
+        let mut best: Option<&str> = None;
+        for (i, _) in rest.match_indices('_') {
+            let candidate = &rest[..i];
+            if matches(candidate) {
+                best = Some(candidate);
+            }
+        }
+        if best.is_some() {
+            return best;
+        }
+    }
+
+    // `gml_Script_<Owner>_<MethodName>` — only trust this form when `<Owner>`
+    // is a known object.
+    if let Some(rest) = code_name.strip_prefix("gml_Script_") {
+        let mut best: Option<&str> = None;
+        for (i, _) in rest.match_indices('_') {
+            let candidate = &rest[..i];
+            if matches(candidate) {
+                best = Some(candidate);
+            }
+        }
+        return best;
+    }
+
+    None
 }
 
 /// Build the GMS2.3+ pushref asset name map.
@@ -1881,4 +2007,69 @@ fn build_unary_any_dispatch(
     fb.ret(None);
 
     fb.build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn objs<'a>(names: &'a [&'a str]) -> HashSet<&'a str> {
+        names.iter().copied().collect()
+    }
+
+    #[test]
+    fn extract_owner_event_scoped_anon() {
+        let set = objs(&["oAnyaGalleryPaintingPuzzle"]);
+        let name = "gml_Script_anon_11762_gml_Object_oAnyaGalleryPaintingPuzzle_Step_0";
+        assert_eq!(
+            extract_script_owner(name, &set),
+            Some("oAnyaGalleryPaintingPuzzle")
+        );
+    }
+
+    #[test]
+    fn extract_owner_alternate_anon() {
+        let set = objs(&["oPlayer"]);
+        let name = "gml_Script_anon_oPlayer_Step_0_42";
+        assert_eq!(extract_script_owner(name, &set), Some("oPlayer"));
+    }
+
+    #[test]
+    fn extract_owner_struct_in_event() {
+        let set = objs(&["oEnemy"]);
+        let name = "gml_Script____struct___3_gml_Object_oEnemy_Create_0_0";
+        assert_eq!(extract_script_owner(name, &set), Some("oEnemy"));
+    }
+
+    #[test]
+    fn extract_owner_bound_method() {
+        let set = objs(&["oPlayer"]);
+        let name = "gml_Script_oPlayer_doThing";
+        assert_eq!(extract_script_owner(name, &set), Some("oPlayer"));
+    }
+
+    #[test]
+    fn extract_owner_anon_at_separator() {
+        // Canonical GMS2.3+ form: anon parts separated by `@`, object/event by `_`.
+        let set = objs(&["OAnyaGalleryPaintingPuzzle"]);
+        let name = "gml_Script_anon@11762@gml_Object_oAnyaGalleryPaintingPuzzle_Step_0";
+        assert_eq!(
+            extract_script_owner(name, &set),
+            Some("oAnyaGalleryPaintingPuzzle")
+        );
+    }
+
+    #[test]
+    fn extract_owner_nested_anon_at_separator() {
+        let set = objs(&["OEnemy"]);
+        let name = "gml_Script_anon@4040@anon@3413@gml_Object_oEnemy_Step_0";
+        assert_eq!(extract_script_owner(name, &set), Some("oEnemy"));
+    }
+
+    #[test]
+    fn extract_owner_top_level_script_returns_none() {
+        let set = objs(&["oPlayer"]);
+        let name = "gml_Script_scr_global_helper";
+        assert_eq!(extract_script_owner(name, &set), None);
+    }
 }
