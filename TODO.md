@@ -1394,6 +1394,47 @@ Session 24 fixes:
 - TS2322 (2): Sansshadowgen `y = comparison` (game-author `===` instead of `=`),
   UndergroundExit `z = instance_create()` (game-author using built-in `z` to store instance)
 
+**Session 26 (HM inference improvements — Dead Estate 5→24249):**
+
+This session focused on error count reduction after a structural regression: emit was switched
+to typecheck mode (using `cargo run -p reincarnate-cli -- check`) which revealed 52,195 errors
+that had been hidden behind cast-based suppression. These are genuine inference gaps.
+
+Session 26 fixes applied (52,195 → 24,249):
+- `HasIndex` constraint for array element type inference via `Op::GetIndex`/`Op::SetIndex`
+- `TypeVarArena::did_bind` flag to detect fixpoint progress across deferred constraints
+- `is_definitely_scalar` guard replacing `!is_struct_arg` in inter-proc constraint linking
+- Union accumulation: instead of conflicting `Equal(A, param)` + `Equal(B, param)` from
+  different call sites, emit `Equal(Union([A, B]), param)` — fixes script function self params
+- `declare` field emission for GML create-event fields: reads from `module.types` (enriched
+  by `ConstructorStructInfer`) instead of only `module.structs` (frozen frontend snapshot)
+- `ConstructorStructInfer` extended to scan all `MethodKind::Instance` methods (not just
+  Constructor), accumulating fields per class name. Fixes event14_0 (GML Pre-Create / variable
+  definition event) field declarations — affected 887/~900 objects.
+
+**Dead Estate error breakdown (24,249):**
+- 16,202 TS2339 "Property X does not exist on type" — dominated by:
+  - 9,555 where receiver is typed `GMLObject` (includes `_rt.global.X` global var accesses)
+  - ~6,647 where receiver is a specific class but field is missing (cross-function fields)
+- 2,879 TS2345 — type argument mismatches
+- 2,503 TS2571 — Object of type 'unknown'
+- 949 TS18046 — 'x' is of type 'unknown'
+- 832 TS2769 — no overload matches
+- 428 TS2322 — type not assignable
+- 280 TS2551 — property doesn't exist on type (similar to TS2339)
+
+**Remaining known gaps:**
+- `_rt.global` typed as `GMLObject` — needs game-specific `GlobalState extends GMLObject`
+  class with `declare` fields for each GML global variable. Affects ~9,555 TS2339 errors.
+  Currently global variables appear in `_globals.ts` but `_rt.global.X` accesses don't
+  use that type. Fix requires emitting a GlobalState class and retyping `GameRuntime.global`.
+- Fields set by script functions on passed-in instances (e.g., `_self.radius = 40.0` in a
+  script called with Gun instances) not collected by `ConstructorStructInfer` — the script
+  function's SetField ops aren't attributed to any class because `_self: GMLObject`.
+  Fix: when union accumulation resolves `_self` to a specific class, attribute those SetField
+  ops to that class for field declaration purposes.
+- `object_index` missing from `GMLObject` runtime base class (114 TS2339 errors).
+
 **Session 25 fixes (11→8):**
 - For-loop scoping (TS2304 `len`): guard in `try_promote_while` prevents promotion when
   update expression references variables declared in the loop body.
