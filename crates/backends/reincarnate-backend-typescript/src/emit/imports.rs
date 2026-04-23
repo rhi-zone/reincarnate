@@ -1508,6 +1508,7 @@ pub(super) fn emit_intra_imports(
     short_to_qualified: &HashMap<String, String>,
     depth: usize,
     engine: EngineKind,
+    game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     self_ts_name: &str,
     out: &mut String,
 ) -> HashSet<String> {
@@ -1612,6 +1613,21 @@ pub(super) fn emit_intra_imports(
             "import {{ {} }} from \"{globals_path}\";",
             import_names.join(", ")
         );
+        // GameMaker constant-key global accesses use `(_rt.global as GameGlobalState).field`.
+        // Import the type so the cast is in scope. `has_globals` already gates this
+        // to exactly the files that reference global state — idempotent per file.
+        if game_global_state_type_id.is_some() {
+            let global_state_path = if depth == 0 {
+                "./_global_state".to_string()
+            } else {
+                let prefix = "../".repeat(depth);
+                format!("{}_global_state", prefix)
+            };
+            let _ = writeln!(
+                out,
+                "import type {{ GameGlobalState }} from \"{global_state_path}\";",
+            );
+        }
     }
     out.push('\n');
     late_bound

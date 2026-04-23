@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use reincarnate_core::ir::inst::CastKind;
 use reincarnate_core::ir::value::Constant;
-use reincarnate_core::ir::{CmpKind, ExternalImport, Type, ValueId};
+use reincarnate_core::ir::{CmpKind, ExternalImport, Type, TypeId, ValueId};
 use reincarnate_core::project::ExternalMethodSig;
 
 use crate::emit::{ClassRegistry, RefSets};
@@ -171,6 +171,7 @@ pub fn rewrite_gamemaker_function(
     closure_bodies: &HashMap<String, JsFunction>,
     event_name: Option<&str>,
     name_map: &HashMap<String, String>,
+    global_state_type_id: Option<TypeId>,
 ) -> JsFunction {
     rewrite_stmts(
         &mut func.body,
@@ -179,6 +180,7 @@ pub fn rewrite_gamemaker_function(
         closure_bodies,
         event_name,
         name_map,
+        global_state_type_id,
     );
     func
 }
@@ -190,6 +192,7 @@ fn rewrite_stmts(
     closure_bodies: &HashMap<String, JsFunction>,
     event_name: Option<&str>,
     name_map: &HashMap<String, String>,
+    global_state_type_id: Option<TypeId>,
 ) {
     for stmt in stmts.iter_mut() {
         rewrite_stmt(
@@ -199,6 +202,7 @@ fn rewrite_stmts(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         );
     }
     // Remove no-op expression statements produced by GML internal function rewrites:
@@ -220,6 +224,7 @@ fn rewrite_stmt(
     closure_bodies: &HashMap<String, JsFunction>,
     event_name: Option<&str>,
     name_map: &HashMap<String, String>,
+    global_state_type_id: Option<TypeId>,
 ) {
     match stmt {
         JsStmt::VarDecl { init, .. } => {
@@ -231,6 +236,7 @@ fn rewrite_stmt(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -242,6 +248,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 value,
@@ -250,6 +257,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             try_resolve_sprite_assign(target, value, sprite_names);
             // GML auto-creates arrays on first indexed write; TypeScript requires
@@ -266,6 +274,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 value,
@@ -274,6 +283,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             try_resolve_sprite_assign(target, value, sprite_names);
             try_null_coalesce_self_array_collection(target);
@@ -304,10 +314,16 @@ fn rewrite_stmt(
                         closure_bodies,
                         event_name,
                         name_map,
+                        global_state_type_id,
                     );
+                    // Wrap `global` in a `GameGlobalState` cast so that
+                    // `_rt.global.fieldName = val` becomes
+                    // `(_rt.global as GameGlobalState).fieldName = val`,
+                    // resolving TS2339 for game-specific global variables.
+                    let global_expr = cast_global_for_field(global_state_type_id);
                     *stmt = JsStmt::Assign {
                         target: JsExpr::Field {
-                            object: Box::new(JsExpr::Var("global".into())),
+                            object: Box::new(global_expr),
                             field: field_name,
                         },
                         value: val,
@@ -354,6 +370,7 @@ fn rewrite_stmt(
                                 closure_bodies,
                                 event_name,
                                 name_map,
+                                global_state_type_id,
                             );
                             *stmt = JsStmt::Assign { target, value: val };
                             return;
@@ -380,6 +397,7 @@ fn rewrite_stmt(
                                 closure_bodies,
                                 event_name,
                                 name_map,
+                                global_state_type_id,
                             );
                             let target = JsExpr::Index {
                                 collection: Box::new(JsExpr::Field {
@@ -396,6 +414,7 @@ fn rewrite_stmt(
                                 closure_bodies,
                                 event_name,
                                 name_map,
+                                global_state_type_id,
                             );
                             *stmt = JsStmt::Assign { target, value: val };
                             return;
@@ -411,6 +430,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsStmt::Return(Some(e)) => rewrite_expr(
@@ -420,6 +440,7 @@ fn rewrite_stmt(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsStmt::Return(None) => {}
         JsStmt::If {
@@ -434,6 +455,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_stmts(
                 then_body,
@@ -442,6 +464,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_stmts(
                 else_body,
@@ -450,6 +473,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsStmt::While { cond, body } => {
@@ -460,6 +484,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_stmts(
                 body,
@@ -468,6 +493,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsStmt::For {
@@ -483,6 +509,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 cond,
@@ -491,6 +518,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_stmts(
                 update,
@@ -499,6 +527,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_stmts(
                 body,
@@ -507,6 +536,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsStmt::Loop { body } => {
@@ -517,6 +547,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsStmt::ForOf { iterable, body, .. } => {
@@ -527,6 +558,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_stmts(
                 body,
@@ -535,6 +567,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsStmt::Throw(e) => rewrite_expr(
@@ -544,6 +577,7 @@ fn rewrite_stmt(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsStmt::Dispatch { blocks, .. } => {
             for (_, stmts) in blocks {
@@ -554,6 +588,7 @@ fn rewrite_stmt(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -569,6 +604,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             for (_, stmts) in cases {
                 rewrite_stmts(
@@ -578,6 +614,7 @@ fn rewrite_stmt(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
             rewrite_stmts(
@@ -587,6 +624,7 @@ fn rewrite_stmt(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsStmt::Break | JsStmt::Continue | JsStmt::LabeledBreak { .. } => {}
@@ -668,6 +706,7 @@ fn rewrite_expr(
     closure_bodies: &HashMap<String, JsFunction>,
     event_name: Option<&str>,
     name_map: &HashMap<String, String>,
+    global_state_type_id: Option<TypeId>,
 ) {
     // Rename raw GML object names to their disambiguated TypeScript identifiers.
     if let JsExpr::Var(name) = expr {
@@ -698,6 +737,7 @@ fn rewrite_expr(
                             closure_bodies,
                             event_name,
                             name_map,
+                            global_state_type_id,
                         );
                     }
                     *expr = JsExpr::ArrayInit(std::mem::take(args));
@@ -750,6 +790,7 @@ fn rewrite_expr(
                         closure_bodies,
                         event_name,
                         name_map,
+                        global_state_type_id,
                     );
                     *expr = JsExpr::Field {
                         object: Box::new(arr),
@@ -770,6 +811,7 @@ fn rewrite_expr(
                             closure_bodies,
                             event_name,
                             name_map,
+                            global_state_type_id,
                         );
                     }
                     let mut args = std::mem::take(args);
@@ -798,6 +840,7 @@ fn rewrite_expr(
                             closure_bodies,
                             event_name,
                             name_map,
+                            global_state_type_id,
                         );
                     }
                     *expr = JsExpr::Call {
@@ -819,6 +862,7 @@ fn rewrite_expr(
                         closure_bodies,
                         event_name,
                         name_map,
+                        global_state_type_id,
                     );
                     let val_box = Box::new(val);
                     *expr = JsExpr::LogicalAnd {
@@ -863,6 +907,7 @@ fn rewrite_expr(
         closure_bodies,
         event_name,
         name_map,
+        global_state_type_id,
     );
 
     // Then, attempt to resolve SystemCall patterns.
@@ -871,7 +916,15 @@ fn rewrite_expr(
             system,
             method,
             args,
-        } => try_rewrite_system_call(system, method, args, object_names, closure_bodies, name_map),
+        } => try_rewrite_system_call(
+            system,
+            method,
+            args,
+            object_names,
+            closure_bodies,
+            name_map,
+            global_state_type_id,
+        ),
         _ => None,
     };
 
@@ -886,6 +939,7 @@ fn rewrite_expr(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         );
     }
 }
@@ -897,6 +951,7 @@ fn rewrite_expr_children(
     closure_bodies: &HashMap<String, JsFunction>,
     event_name: Option<&str>,
     name_map: &HashMap<String, String>,
+    global_state_type_id: Option<TypeId>,
 ) {
     match expr {
         JsExpr::Binary { lhs, rhs, .. }
@@ -910,6 +965,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 rhs,
@@ -918,6 +974,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsExpr::LogicalOr { lhs, rhs } | JsExpr::LogicalAnd { lhs, rhs } => {
@@ -928,6 +985,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 rhs,
@@ -936,6 +994,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsExpr::Unary { expr: inner, .. } => rewrite_expr(
@@ -945,6 +1004,7 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::Not(inner) | JsExpr::PostIncrement(inner) | JsExpr::Spread(inner) => rewrite_expr(
             inner,
@@ -953,6 +1013,7 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::Field { object, field } => {
             // GML separates event handlers and instance variables into different
@@ -975,6 +1036,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -986,6 +1048,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 index,
@@ -994,6 +1057,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsExpr::Call { callee, args } => {
@@ -1004,6 +1068,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             for arg in args {
                 rewrite_expr(
@@ -1013,6 +1078,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -1028,6 +1094,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 then_val,
@@ -1036,6 +1103,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 else_val,
@@ -1044,6 +1112,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsExpr::ArrayInit(items) | JsExpr::TupleInit(items) => {
@@ -1055,6 +1124,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -1067,6 +1137,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -1078,6 +1149,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             for arg in args {
                 rewrite_expr(
@@ -1087,6 +1159,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -1097,6 +1170,7 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::In { key, object } => {
             rewrite_expr(
@@ -1106,6 +1180,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 object,
@@ -1114,6 +1189,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsExpr::Delete { object, key } => {
@@ -1124,6 +1200,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 key,
@@ -1132,6 +1209,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsExpr::Cast { expr: inner, .. } => rewrite_expr(
@@ -1141,6 +1219,7 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::TypeCheck {
             expr: inner,
@@ -1158,6 +1237,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             )
         }
         // Arrow functions are closures: `event_inherited` inside a closure is
@@ -1169,6 +1249,7 @@ fn rewrite_expr_children(
             closure_bodies,
             None,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::SuperCall(args) | JsExpr::SuperMethodCall { args, .. } => {
             for arg in args {
@@ -1179,6 +1260,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -1190,6 +1272,7 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::GeneratorCreate { args, .. } => {
             for arg in args {
@@ -1200,6 +1283,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -1210,6 +1294,7 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::Yield(inner) => {
             if let Some(e) = inner {
@@ -1220,6 +1305,7 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
@@ -1230,6 +1316,7 @@ fn rewrite_expr_children(
             closure_bodies,
             event_name,
             name_map,
+            global_state_type_id,
         ),
         JsExpr::NullCoalesceAssign { target, value } => {
             rewrite_expr(
@@ -1239,6 +1326,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
             rewrite_expr(
                 value,
@@ -1247,6 +1335,7 @@ fn rewrite_expr_children(
                 closure_bodies,
                 event_name,
                 name_map,
+                global_state_type_id,
             );
         }
         JsExpr::Activation => {}
@@ -1259,11 +1348,34 @@ fn rewrite_expr_children(
                     closure_bodies,
                     event_name,
                     name_map,
+                    global_state_type_id,
                 );
             }
         }
         // Leaf nodes — nothing to recurse into.
         JsExpr::Literal(_) | JsExpr::Var(_) | JsExpr::This => {}
+    }
+}
+
+/// Build the expression used as the object in `global.fieldName` accesses.
+///
+/// When `global_state_type_id` is `Some`, wraps `global` in a `Coerce` cast to
+/// `GameGlobalState` so that constant-key accesses emit
+/// `(_rt.global as GameGlobalState).fieldName` rather than `_rt.global.fieldName`,
+/// resolving TS2339 errors for game-specific global variables.
+///
+/// The cast node holds `Var("global")` as its inner expression; the stateful-call
+/// rewrite pass later expands `Var("global")` to `this._rt.global` / `_rt.global`
+/// inside the cast, producing the correct qualified form.
+fn cast_global_for_field(global_state_type_id: Option<TypeId>) -> JsExpr {
+    if let Some(id) = global_state_type_id {
+        JsExpr::Cast {
+            expr: Box::new(JsExpr::Var("global".into())),
+            ty: Type::Instance(id),
+            kind: CastKind::Coerce,
+        }
+    } else {
+        JsExpr::Var("global".into())
     }
 }
 
@@ -1275,6 +1387,7 @@ fn try_rewrite_system_call(
     object_names: &[String],
     closure_bodies: &HashMap<String, JsFunction>,
     name_map: &HashMap<String, String>,
+    global_state_type_id: Option<TypeId>,
 ) -> Option<JsExpr> {
     match (system, method) {
         // SugarCube.Engine.closure(name[, cap0, cap1, ...]) → arrow function or IIFE
@@ -1395,8 +1508,13 @@ fn try_rewrite_system_call(
         ("GameMaker.Global", "get") if args.len() == 1 => {
             let name = take_arg(args, "GameMaker.Global.get");
             if let JsExpr::Literal(Constant::String(field_name)) = name {
+                // Wrap `global` in a `GameGlobalState` cast so that after the
+                // stateful-call rewrite this becomes
+                // `(this._rt.global as GameGlobalState).fieldName`, resolving
+                // TS2339 errors for game-specific global variables.
+                let global_expr = cast_global_for_field(global_state_type_id);
                 Some(JsExpr::Field {
-                    object: Box::new(JsExpr::Var("global".into())),
+                    object: Box::new(global_expr),
                     field: field_name,
                 })
             } else {
