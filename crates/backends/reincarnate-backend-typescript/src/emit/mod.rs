@@ -319,6 +319,8 @@ pub fn emit_module_to_string(
     emit_globals(module, &mut out);
 
     // Single-file mode — globals are in the same scope, no ESM setter rewrite needed.
+    // No GameGlobalState type in flat module mode (no classes, no _globals.ts).
+    let no_game_global_state: Option<reincarnate_core::ir::TypeId> = None;
     let no_mutable_globals = HashSet::new();
     if module.classes.is_empty() {
         emit_functions(
@@ -331,6 +333,7 @@ pub fn emit_module_to_string(
             &stateful_system_aliases,
             runtime_config,
             &class_meta.unique_static_field_map,
+            no_game_global_state,
             debug,
             &mut out,
             diagnostics,
@@ -363,6 +366,7 @@ pub fn emit_module_to_string(
                 &no_stateful,
                 &no_free_fns,
                 func_sigs,
+                no_game_global_state,
                 debug,
                 &mut out,
                 &mut traits_buf,
@@ -410,6 +414,7 @@ pub fn emit_module_to_string(
                     &class_meta.unique_static_field_map,
                     &name_map,
                     overloads,
+                    no_game_global_state,
                     debug,
                     &mut out,
                     diagnostics,
@@ -740,6 +745,27 @@ fn emit_globals_file(
     }
     let path = module_dir.join("_globals.ts");
     fs::write(&path, &out).map_err(CoreError::Io)?;
+
+    // Emit companion _global_state.ts with the GameGlobalState intersection type.
+    // This allows constant-key global accesses to be cast to a fully-typed shape.
+    let mut state_out = String::new();
+    if let Some(preamble) = runtime_config.and_then(|c| c.class_preamble.as_ref()) {
+        let _ = writeln!(
+            state_out,
+            "import {{ GMLObject }} from \"../runtime/{}\";",
+            preamble.path,
+        );
+        state_out.push('\n');
+    }
+    let _ = writeln!(state_out, "export type GameGlobalState = GMLObject & {{");
+    for global in &module.globals {
+        let ident = sanitize_ident(&global.name);
+        let _ = writeln!(state_out, "  {ident}: unknown;");
+    }
+    let _ = writeln!(state_out, "}};");
+    let state_path = module_dir.join("_global_state.ts");
+    fs::write(&state_path, &state_out).map_err(CoreError::Io)?;
+
     Ok(true)
 }
 
@@ -811,6 +837,7 @@ fn emit_class_file(
     lowering_config: &LoweringConfig,
     runtime_config: Option<&RuntimeConfig>,
     engine: EngineKind,
+    game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     debug: &DebugConfig,
     barrel_exports: &mut Vec<String>,
     seen_paths: &mut HashMap<String, usize>,
@@ -1010,6 +1037,7 @@ fn emit_class_file(
         short_to_qualified,
         depth,
         engine,
+        game_global_state_type_id,
         self_ts_name,
         &mut out,
     );
@@ -1050,6 +1078,7 @@ fn emit_class_file(
         &stateful_names,
         free_func_names,
         func_sigs,
+        game_global_state_type_id,
         debug,
         &mut out,
         &mut traits_buf,
@@ -1330,6 +1359,7 @@ fn emit_free_functions_file(
     lowering_config: &LoweringConfig,
     runtime_config: Option<&RuntimeConfig>,
     engine: EngineKind,
+    game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     debug: &DebugConfig,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<bool, CoreError> {
@@ -1510,6 +1540,13 @@ fn emit_free_functions_file(
             "import {{ {} }} from \"./_globals\";",
             import_names.join(", ")
         );
+        // GameMaker constant-key global accesses use `(_rt.global as GameGlobalState).field`.
+        if game_global_state_type_id.is_some() {
+            let _ = writeln!(
+                out,
+                "import type {{ GameGlobalState }} from \"./_global_state\";",
+            );
+        }
     }
 
     emit_imports(module, &mut out);
@@ -1620,6 +1657,7 @@ fn emit_free_functions_file(
                 &class_meta.unique_static_field_map,
                 &name_map,
                 overloads,
+                game_global_state_type_id,
                 debug,
                 &mut out,
                 diagnostics,
@@ -1733,7 +1771,16 @@ pub fn emit_module_to_dir(
     // Globals → _globals.ts
     if emit_globals_file(module, &module_dir, &registry, runtime_config)? {
         barrel_exports.push("_globals".to_string());
+        barrel_exports.push("_global_state".to_string());
     }
+
+    // Intern GameGlobalState type id for use in typed cast expressions.
+    let game_global_state_type_id: Option<reincarnate_core::ir::TypeId> =
+        if !module.globals.is_empty() && engine == EngineKind::GameMaker {
+            Some(module.intern_type("GameGlobalState"))
+        } else {
+            None
+        };
 
     // Pre-collect transitive value imports for cycle detection.
     let transitive_value_imports = collect_transitive_imports(
@@ -1769,6 +1816,7 @@ pub fn emit_module_to_dir(
             lowering_config,
             runtime_config,
             engine,
+            game_global_state_type_id,
             debug,
             &mut barrel_exports,
             &mut seen_paths,
@@ -1793,6 +1841,7 @@ pub fn emit_module_to_dir(
         lowering_config,
         runtime_config,
         engine,
+        game_global_state_type_id,
         debug,
         diagnostics,
     )? {
