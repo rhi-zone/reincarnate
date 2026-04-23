@@ -1394,6 +1394,44 @@ Session 24 fixes:
 - TS2322 (2): Sansshadowgen `y = comparison` (game-author `===` instead of `=`),
   UndergroundExit `z = instance_create()` (game-author using built-in `z` to store instance)
 
+**Session 27 (Dead Estate 24,249 → 20,955 — `any` removal + targeted inference fixes):**
+
+Removed `[key: string]: any` from `GMLObject` (commit `ba08b31`) — this was the primary
+suppression hiding ~19k errors. Honest post-removal baseline: **22,029 errors**.
+
+Session 27 fixes applied (22,029 → 20,955):
+- `_rt.global` typed as `GameGlobalState` intersection: emits `_global_state.ts` alongside
+  `_globals.ts`; constant-key `Global.get`/`Global.set` rewrites cast `_rt.global` to it.
+  Closed ~9,548 TS2339. (commits `8c5e4c7`, `691e91a`)
+- `InstanceType::Arg` writes routed to self-field, not `_rt.global`. Haxe struct constructor
+  fields (`argument.superClass`, etc.) were falling to the global-write default. (commit `9e12c2d`)
+- Lifted script/event `self` typed from CODE entry name rather than hardcoded `GMLObject`.
+  `anon@<n>@gml_Object_<Owner>_<Event>_N` pattern parsed in one localized helper.
+  `translate_scripts` now passes `class_name: Some(owner)` for recognized patterns. (commit `ac96a09`)
+
+**Dead Estate error breakdown (20,955 after Session 27):**
+
+By code:
+- 12,743 TS2339 "Property X does not exist on type"
+- 3,494 TS2345 — type argument mismatches
+- 2,668 TS2571 — Object of type 'unknown'
+- 949 TS18046 — 'x' is of type 'unknown'
+- 847 TS2769 — no overload matches
+- 433 TS2322 — type not assignable
+- 280 TS2551 — property doesn't exist on type
+
+**TS2339 bucket breakdown (12,743 — triaged Session 27):**
+
+| # | Est. | Root cause | Status |
+|---|------|-----------|--------|
+| A | ~7,200 (−444 actual) | Lifted script self typed GMLObject — owner class encoded in CODE entry name. Residual: field-type inference after self is correctly typed. | DONE `ac96a09` |
+| B | ~2,000 | GM built-in instance fields missing from GMLObject base: `bbox_*`, `sprite_width/height`, `room_height/width`, `async_load`, `image_blend`, `image_number`, `current_time`, `view_camera`. | Blocked — runtime `object.ts` slated for IR-generation deletion (`06cc501`). Fix direction: add to IR-generated runtime, not handwritten file. |
+| C | ~1,300 | Field set in sibling subclasses, read from shared parent. Example: `OEmptySpaceController.makerStart` (532 hits) set in 7 `LevelController` siblings. | Open — ConstructorStructInfer needs common-ancestor lift. Design decision: trigger condition. |
+| D | ~1,050 | Field set inside `withInstances` closure body, not recorded on target class. Example: `_self.witchItem = []` in `ONoSpillBloodController`. | Open — ConstructorStructInfer doesn't recurse into closures. Design decision: which class owns the field. |
+| E | ~650 (−266 actual) | `InstanceType::Arg` writes routed to `_rt.global` instead of self-field. | DONE `9e12c2d`. Residual: struct shapes still not inferred — downstream of C/D/F. |
+| F | ~500 | Fields assigned in Step/Draw/Alarm events missed — ConstructorStructInfer only walks Create events. | Landmine: earlier attempt caused Union regressions (reverted). Design decision needed before retrying. |
+| G | ~400 | Long tail: `event14_0` (77), reserved identifiers (`__enum__`, `__class__`), etc. | Not yet categorized. |
+
 **Session 26 (HM inference improvements — Dead Estate 5→24249):**
 
 This session focused on error count reduction after a structural regression: emit was switched
