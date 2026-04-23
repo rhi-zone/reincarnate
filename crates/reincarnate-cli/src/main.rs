@@ -847,6 +847,19 @@ fn cmd_emit(
             bail!("no backend available for {:?}", target.backend);
         };
 
+        // Clear the output directory before emitting so stale files from
+        // previous runs cannot mix with fresh output. The output dir is
+        // fully generated — nothing in it is user-owned.
+        if target.output_dir.exists() {
+            fs::remove_dir_all(&target.output_dir).with_context(|| {
+                format!(
+                    "failed to clear output dir: {}",
+                    target.output_dir.display()
+                )
+            })?;
+        }
+        fs::create_dir_all(&target.output_dir)?;
+
         // Copy icon to output dir and compute the favicon filename.
         // Priority: manifest `icon` field > icon extracted from game binary.
         let favicon = if let Some(icon_path) = &manifest.icon {
