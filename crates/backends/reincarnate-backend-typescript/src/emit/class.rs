@@ -170,6 +170,7 @@ pub(super) fn emit_functions(
     stateful_system_aliases: &BTreeMap<String, String>,
     runtime_config: Option<&RuntimeConfig>,
     unique_static_fields: &HashMap<String, String>,
+    game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     debug: &DebugConfig,
     out: &mut String,
     diagnostics: &mut Vec<Diagnostic>,
@@ -219,6 +220,7 @@ pub(super) fn emit_functions(
                 unique_static_fields,
                 &name_map,
                 overloads,
+                game_global_state_type_id,
                 debug,
                 out,
                 diagnostics,
@@ -250,6 +252,7 @@ pub(super) fn emit_function(
     unique_static_fields: &HashMap<String, String>,
     name_map: &HashMap<String, String>,
     overloads: Vec<(Vec<Type>, Type)>,
+    game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     debug: &DebugConfig,
     out: &mut String,
     diagnostics: &mut Vec<Diagnostic>,
@@ -293,6 +296,7 @@ pub(super) fn emit_function(
             closure_bodies,
             None,
             name_map,
+            game_global_state_type_id,
         ),
         EngineKind::Flash => {
             let class_type_ids = build_class_type_ids(module_types);
@@ -429,6 +433,7 @@ pub(super) fn emit_class(
     stateful_names: &BTreeSet<String>,
     free_func_names: &HashSet<String>,
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
+    game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     debug: &DebugConfig,
     out: &mut String,
     traits_out: &mut String,
@@ -774,6 +779,7 @@ pub(super) fn emit_class(
             free_func_names,
             func_sigs,
             &name_map,
+            game_global_state_type_id,
             debug,
             out,
             diagnostics,
@@ -996,6 +1002,7 @@ fn emit_class_method(
     free_func_names: &HashSet<String>,
     func_sigs: &BTreeMap<String, ExternalMethodSig>,
     name_map: &HashMap<String, String>,
+    game_global_state_type_id: Option<reincarnate_core::ir::TypeId>,
     debug: &DebugConfig,
     out: &mut String,
     diagnostics: &mut Vec<Diagnostic>,
@@ -1063,6 +1070,7 @@ fn emit_class_method(
             closure_bodies,
             Some(&raw_name),
             name_map,
+            game_global_state_type_id,
         ),
         EngineKind::Flash => {
             let is_constructor = matches!(func.method_kind, MethodKind::Constructor);
