@@ -578,6 +578,30 @@ pub(super) fn emit_class(
             let _ = writeln!(out, "  {ov}{ident}{bang}: {ts};");
         }
     }
+    // Inferred create-event fields (GML only) — emit as `declare` class property
+    // declarations so TypeScript knows the fields exist at runtime without managing
+    // their initialization (suppresses TS2564 entirely for these fields).
+    if engine == EngineKind::GameMaker {
+        if let Some(type_id) = module.find_type(&group.struct_def.name) {
+            // Fields already emitted by the struct_def loop above.
+            let struct_def_names: std::collections::HashSet<String> = group
+                .struct_def
+                .fields
+                .iter()
+                .map(|f| f.name.clone())
+                .collect();
+            // Fields declared on any ancestor in the module.types parent chain.
+            let ancestor_names = collect_ancestor_field_names(type_id, &module.types);
+            for field in module.types[type_id].fields() {
+                if struct_def_names.contains(&field.name) || ancestor_names.contains(&field.name) {
+                    continue;
+                }
+                let ident = sanitize_ident(&field.name);
+                let ts = ts_type_with_names_and_module(&field.ty, class_names, &module.types);
+                let _ = writeln!(out, "  declare {ident}: {ts};");
+            }
+        }
+    }
     // Index signatures for AS3 `dynamic` classes and Proxy subclasses — these allow
     // arbitrary property access by string or number key.
     // The Flash frontend sets needs_index_signature on ClassDef; the Proxy class itself
@@ -1200,6 +1224,34 @@ fn emit_class_method(
     );
     crate::ast_printer::NULL_ASSERT.set(false);
     Ok(())
+}
+
+/// Collect the set of field names declared on any ancestor of `type_id` in the
+/// `module.types` parent chain.  Used to avoid re-emitting inherited fields as
+/// `declare` properties on a subclass.
+fn collect_ancestor_field_names(
+    type_id: TypeId,
+    module_types: &reincarnate_core::entity::PrimaryMap<
+        TypeId,
+        reincarnate_core::ir::module::TypeDecl,
+    >,
+) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    let mut current = match &module_types[type_id] {
+        reincarnate_core::ir::module::TypeDecl::Object { parent, .. } => *parent,
+        _ => return names,
+    };
+    while let Some(id) = current {
+        let decl = &module_types[id];
+        for f in decl.fields() {
+            names.insert(f.name.clone());
+        }
+        current = match decl {
+            reincarnate_core::ir::module::TypeDecl::Object { parent, .. } => *parent,
+            _ => None,
+        };
+    }
+    names
 }
 
 /// Append `throw new Error("unreachable")` to a non-void function body if the
